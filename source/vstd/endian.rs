@@ -1,4 +1,6 @@
-use core::marker::PhantomData;
+/*!
+Reasoning about representations of non-negative numbers in general bases with endianness and conversion between bases.
+*/
 use crate::vstd::arithmetic::mul::*;
 use crate::vstd::arithmetic::power::*;
 use crate::vstd::arithmetic::power2::*;
@@ -6,12 +8,14 @@ use crate::vstd::calc_macro::*;
 use crate::vstd::group_vstd_default;
 use crate::vstd::layout;
 use crate::vstd::prelude::*;
+use core::marker::PhantomData;
 
 verus! {
 
 broadcast use group_vstd_default;
 /***** Traits *****/
 
+/// Represents a base with value [`Self::base()`].
 pub trait Base {
     spec fn base() -> nat;
 
@@ -21,6 +25,14 @@ pub trait Base {
     ;
 }
 
+/// The maximum value that can be stored with `len` digits in base [`B::base()`].
+///
+/// [`B::base()`]: Base::base
+pub open spec fn base_max_val<B: Base>(len: nat) -> int {
+    pow(B::base() as int, len)
+}
+
+/// Represents a base which is a power of 2 specified by [`Self::bits()`].
 pub trait BasePow2: Base {
     spec fn bits() -> nat;
 
@@ -31,6 +43,7 @@ pub trait BasePow2: Base {
     ;
 }
 
+/// Represents a base for which each digit of `BIG` converts to multiple digits in this base.
 pub trait CompatibleSmallerBaseFor<BIG: BasePow2>: BasePow2 {
     proof fn compatible()
         ensures
@@ -45,15 +58,15 @@ pub enum Endian {
     Big,
 }
 
+/// Abstracts the endianness of the currently executing hardware.
+/// Use this when you want to use the same endianness everywhere, but don't wish to specify which endianness is used.
 pub uninterp spec fn endianness() -> Endian;
 
 /***** EndianNat *****/
 
-/// Provides either little endian or big endian interpretation of a sequence of numbers with a given base.
-/// With little endian, the first element of a sequence is the least significant position; the last
-// element is the most significant position.
-/// With big endian, the last element of a sequence is the least significant position; the first
-// element is the most significant position.
+/// Provides either little-endian or big-endian interpretation of a sequence of numbers with a given base.
+/// With little-endian, the first digit is the least significant position; the last digit is the most significant position.
+/// With big-endian, the last digit of a sequence is the least significant position; the first digit is the most significant position.
 #[verifier::ext_equal]
 pub struct EndianNat<B: Base> {
     pub endian: Endian,
@@ -62,10 +75,17 @@ pub struct EndianNat<B: Base> {
 }
 
 impl<B: Base> EndianNat<B> {
+    /// True when all numbers in `s` are valid digits in the given base.
     pub open spec fn in_bounds(s: Seq<int>) -> bool {
         forall|i| 0 <= i < s.len() ==> 0 <= #[trigger] s[i] < B::base()
     }
 
+    /// True when all of `self.digits` are valid digits in the given base.
+    pub open spec fn wf(self) -> bool {
+        Self::in_bounds(self.digits)
+    }
+
+    /// Creates a new `EndianNat` with the given digits and endianness.
     pub open spec fn new(endian: Endian, digits: Seq<int>) -> Self
         recommends
             Self::in_bounds(digits),
@@ -73,6 +93,7 @@ impl<B: Base> EndianNat<B> {
         EndianNat { endian, digits, phantom: PhantomData }
     }
 
+    /// Creates a new `EndianNat` with the given digits and the default endianness: [`endianness()`].
     pub open spec fn new_default(digits: Seq<int>) -> Self
         recommends
             Self::in_bounds(digits),
@@ -80,53 +101,27 @@ impl<B: Base> EndianNat<B> {
         EndianNat { endian: endianness(), digits, phantom: PhantomData }
     }
 
-    pub open spec fn wf(self) -> bool {
-        Self::in_bounds(self.digits)
-    }
-
+    /// Number of digits in this `EndianNat`.
     pub open spec fn len(self) -> nat {
         self.digits.len()
     }
 
+    /// The `i`th digit in this `EndianNat`.
     pub open spec fn index(self, i: int) -> int {
         self.digits[i]
     }
 
-    pub proof fn index_nat(self, i: int)
-        requires
-            self.wf(),
-            0 <= i < self.len(),
-        ensures
-            self.index(i) as int == self.digits.index(i),
-    {
-    }
-
+    /// The first digit in this `EndianNat`. Ignores endianness.
     pub open spec fn first(self) -> nat {
         self.digits.first() as nat
     }
 
-    pub proof fn first_nat(self)
-        requires
-            self.wf(),
-            self.len() > 0,
-        ensures
-            self.first() as int == self.digits.first(),
-    {
-    }
-
+    /// The last digit in this `EndianNat`. Ignores endianness.
     pub open spec fn last(self) -> nat {
         self.digits.last() as nat
     }
 
-    pub proof fn last_nat(self)
-        requires
-            self.wf(),
-            self.len() > 0,
-        ensures
-            self.last() as int == self.digits.last(),
-    {
-    }
-
+    /// The least significant digit in this `EndianNat`.
     pub open spec fn least(self) -> nat {
         match self.endian {
             Endian::Little => self.first(),
@@ -134,6 +129,7 @@ impl<B: Base> EndianNat<B> {
         }
     }
 
+    /// The most significant digit in this `EndianNat`.
     pub open spec fn most(self) -> nat {
         match self.endian {
             Endian::Little => self.last(),
@@ -141,22 +137,59 @@ impl<B: Base> EndianNat<B> {
         }
     }
 
+    /// Constructs an `EndianNat` by skipping the first `n` digits of the original `EndianNat`. Ignores endianness.
     pub open spec fn skip(self, n: nat) -> Self {
         EndianNat { endian: self.endian, digits: self.digits.skip(n as int), phantom: self.phantom }
     }
 
+    /// Constructs an `EndianNat` by taking only the first `n` digits of the original `EndianNat`. Ignores endianness.
     pub open spec fn take(self, n: nat) -> Self {
         EndianNat { endian: self.endian, digits: self.digits.take(n as int), phantom: self.phantom }
     }
 
+    /// Constructs an `EndianNat` by skipping the least significant `n` digits of the original `EndianNat`.
+    pub open spec fn skip_least(self, n: nat) -> Self {
+        match self.endian {
+            Endian::Little => self.skip(n),
+            Endian::Big => self.take((self.len() - n) as nat),
+        }
+    }
+
+    /// Constructs an `EndianNat` by skipping the most significant `n` digits of the original `EndianNat`.
+    pub open spec fn skip_most(self, n: nat) -> Self {
+        match self.endian {
+            Endian::Little => self.take((self.len() - n) as nat),
+            Endian::Big => self.skip(n),
+        }
+    }
+
+    /// Constructs an `EndianNat` by taking only the least significant `n` digits of the original `EndianNat`.
+    pub open spec fn take_least(self, n: nat) -> Self {
+        match self.endian {
+            Endian::Little => self.take(n),
+            Endian::Big => self.skip((self.len() - n) as nat),
+        }
+    }
+
+    /// Constructs an `EndianNat` by taking only the most significant `n` digits of the original `EndianNat`.
+    pub open spec fn take_most(self, n: nat) -> Self {
+        match self.endian {
+            Endian::Little => self.skip((self.len() - n) as nat),
+            Endian::Big => self.take(n),
+        }
+    }
+
+    /// Constructs an `EndianNat` by dropping the first digit of the original `EndianNat`. Ignores endianness.
     pub open spec fn drop_first(self) -> Self {
         EndianNat { endian: self.endian, digits: self.digits.drop_first(), phantom: self.phantom }
     }
 
+    /// Constructs an `EndianNat` by dropping the last digit of the original `EndianNat`. Ignores endianness.
     pub open spec fn drop_last(self) -> Self {
         EndianNat { endian: self.endian, digits: self.digits.drop_last(), phantom: self.phantom }
     }
 
+    /// Constructs an `EndianNat` by dropping the least significant digit of the original `EndianNat`.
     pub open spec fn drop_least(self) -> Self {
         match self.endian {
             Endian::Little => self.drop_first(),
@@ -164,6 +197,7 @@ impl<B: Base> EndianNat<B> {
         }
     }
 
+    /// Constructs an `EndianNat` by dropping the most significant digits of the original `EndianNat`.
     pub open spec fn drop_most(self) -> Self {
         match self.endian {
             Endian::Little => self.drop_last(),
@@ -171,6 +205,7 @@ impl<B: Base> EndianNat<B> {
         }
     }
 
+    /// Constructs an `EndianNat` by appending the digits of `other` to the end of the digits of `self`. Ignores endianness.
     pub open spec fn append(self, other: Self) -> Self
         recommends
             self.endian == other.endian,
@@ -178,6 +213,31 @@ impl<B: Base> EndianNat<B> {
         EndianNat::new(self.endian, self.digits + other.digits)
     }
 
+    /// Constructs an `EndianNat` by appending the digits of `other` to the digits of `self` in the least significant position
+    /// (i.e., `other` becomes the least significant bits).
+    pub open spec fn append_least(self, other: Self) -> Self
+        recommends
+            self.endian == other.endian,
+    {
+        match self.endian {
+            Endian::Little => other.append(self),
+            Endian::Big => self.append(other),
+        }
+    }
+
+    /// Constructs an `EndianNat` by appending the digits of `other` to the digits of `self` in the most significant position
+    /// (i.e., `other` becomes the most significant bits).
+    pub open spec fn append_most(self, other: Self) -> Self
+        recommends
+            self.endian == other.endian,
+    {
+        match self.endian {
+            Endian::Little => self.append(other),
+            Endian::Big => other.append(self),
+        }
+    }
+
+    /// Constructs an `EndianNat` by appending `n` to the front of the digits of `self`. Ignores endianness.
     pub open spec fn push_first(self, n: int) -> Self
         recommends
             n < B::base(),
@@ -185,6 +245,7 @@ impl<B: Base> EndianNat<B> {
         EndianNat { endian: self.endian, digits: seq![n].add(self.digits), phantom: self.phantom }
     }
 
+    /// Constructs an `EndianNat` by appending `n` to the end of the digits of `self`. Ignores endianness.
     pub open spec fn push_last(self, n: int) -> Self
         recommends
             n < B::base(),
@@ -192,6 +253,7 @@ impl<B: Base> EndianNat<B> {
         EndianNat { endian: self.endian, digits: self.digits.push(n), phantom: self.phantom }
     }
 
+    /// Constructs an `EndianNat` by appending `n` to the least significant position in the digits of `self`.
     pub open spec fn push_least(self, n: int) -> Self
         recommends
             n < B::base(),
@@ -202,6 +264,7 @@ impl<B: Base> EndianNat<B> {
         }
     }
 
+    /// Constructs an `EndianNat` by appending `n` to the most significant position in the digits of `self`.
     pub open spec fn push_most(self, n: int) -> Self
         recommends
             n < B::base(),
@@ -212,6 +275,231 @@ impl<B: Base> EndianNat<B> {
         }
     }
 
+    /// Converts an `EndianNat` to the natural number that it represents, hiding the details of endianness.
+    #[verifier::opaque]
+    pub open spec fn to_nat(self) -> nat
+        decreases self.len(),
+    {
+        if self.len() == 0 {
+            0
+        } else {
+            self.drop_least().to_nat() * B::base() + self.least()
+        }
+    }
+
+    pub broadcast proof fn to_nat_properties(self)
+        requires
+            self.wf(),
+        ensures
+            #[trigger] self.to_nat() < base_max_val::<B>(self.len()),
+        decreases self.len(),
+    {
+        reveal(EndianNat::to_nat);
+        reveal(pow);
+        if self.len() == 0 {
+        } else {
+            self.drop_least().to_nat_properties();
+
+            calc! {
+                (<)
+                self.to_nat(); (==) {}
+                self.drop_least().to_nat() * B::base() + self.least(); (<) {}
+                self.drop_least().to_nat() * B::base() + B::base(); (<=) {
+                    broadcast use lemma_mul_inequality, lemma_mul_is_distributive_sub_other_way;
+
+                    assert((base_max_val::<B>((self.len() - 1) as nat) - 1) * B::base() as nat == (
+                    base_max_val::<B>((self.len() - 1) as nat) * B::base() - B::base()) as nat);
+                }
+                (base_max_val::<B>((self.len() - 1) as nat) * B::base() - B::base()
+                    + B::base()) as nat; (==) {
+                    broadcast use lemma_pow1;
+
+                }
+                (base_max_val::<B>((self.len() - 1) as nat) * pow(
+                    B::base() as int,
+                    1,
+                )) as nat; (==) {
+                    broadcast use lemma_pow_sub_add_cancel;
+
+                }
+                base_max_val::<B>(self.len()) as nat;
+            }
+        }
+    }
+
+    pub proof fn to_nat_append_least(endian: Self, other: Self)
+        requires
+            endian.wf(),
+            other.wf(),
+            endian.endian == other.endian,
+        ensures
+            endian.append_least(other).to_nat() == (endian.to_nat() * base_max_val::<B>(
+                other.len(),
+            )) + other.to_nat(),
+        decreases other.len(),
+    {
+        reveal(EndianNat::to_nat);
+        reveal(pow);
+        if other.len() == 0 {
+        } else {
+            let least = other.least();
+            let rest = other.drop_least();
+            Self::to_nat_append_least(endian, rest);
+            assert(endian.append_least(other).drop_least() =~= endian.append_least(rest));
+            assert(endian.to_nat() * base_max_val::<B>(rest.len()) * B::base() == endian.to_nat()
+                * base_max_val::<B>(rest.len() + 1)) by {
+                broadcast use lemma_pow1;
+
+                assert(B::base() == pow(B::base() as int, 1));
+                broadcast use lemma_pow_adds;
+
+                assert(pow(B::base() as int, rest.len() + 1) == pow(B::base() as int, rest.len())
+                    * pow(B::base() as int, 1));
+                assert(endian.to_nat() * base_max_val::<B>(rest.len()) * B::base()
+                    == endian.to_nat() * base_max_val::<B>(rest.len() + 1)) by (nonlinear_arith)
+                    requires
+                        base_max_val::<B>(rest.len()) * B::base() == base_max_val::<B>(
+                            rest.len() + 1,
+                        ),
+                ;
+            }
+            assert(endian.append_least(other).to_nat() == (endian.to_nat() * base_max_val::<B>(
+                other.len(),
+            )) + other.to_nat()) by (nonlinear_arith)
+                requires
+                    endian.append_least(other).to_nat() == endian.append_least(rest).to_nat()
+                        * B::base() + least,
+                    other.to_nat() == rest.to_nat() * B::base() + least,
+                    endian.append_least(rest).to_nat() == (endian.to_nat() * base_max_val::<B>(
+                        rest.len(),
+                    )) + rest.to_nat(),
+                    endian.to_nat() * base_max_val::<B>(rest.len()) * B::base() == endian.to_nat()
+                        * base_max_val::<B>(rest.len() + 1),
+                    other.len() == rest.len() + 1,
+            ;
+        }
+    }
+
+    /// Converts a natural number to an `EndianNat` representation with the specified number of digits (`len`).
+    /// `n` should be less than the maximum number that can be represented in `len` digits in this base.
+    pub open spec fn from_nat(n: nat, len: nat) -> Self
+        recommends
+            n < base_max_val::<B>(len),
+        decreases len,
+    {
+        if len == 0 {
+            EndianNat { digits: Seq::empty(), endian: endianness(), phantom: PhantomData }
+        } else {
+            let least = (n % B::base()) as int;
+            let rest = n / B::base();
+            let rest_endian = Self::from_nat(rest, (len - 1) as nat);
+            rest_endian.push_least(least)
+        }
+    }
+
+    proof fn base_max_val_len(n: nat, len: nat)
+        requires
+            n < base_max_val::<B>(len),
+            0 < len,
+        ensures
+            n / B::base() < base_max_val::<B>((len - 1) as nat),
+    {
+        reveal(pow);
+        assert(n / B::base() < base_max_val::<B>((len - 1) as nat)) by (nonlinear_arith)
+            requires
+                n < B::base() * base_max_val::<B>((len - 1) as nat),
+                B::base() > 0,
+        ;
+    }
+
+    pub broadcast proof fn from_nat_properties(n: nat, len: nat)
+        requires
+            n < base_max_val::<B>(len),
+        ensures
+            #![trigger Self::from_nat(n, len)]
+            Self::from_nat(n, len).len() == len,
+            Self::from_nat(n, len).endian == endianness(),
+            Self::from_nat(n, len).wf(),
+        decreases len,
+    {
+        if len == 0 {
+        } else {
+            Self::base_max_val_len(n, len);
+            let endian = Self::from_nat(n, len);
+            let least = endian.least();
+            Self::from_nat_properties(n / B::base(), (len - 1) as nat);
+            B::base_min();
+            assert(least < B::base()) by (nonlinear_arith)
+                requires
+                    B::base() > 0,
+                    least == (n % B::base()),
+            ;
+        }
+    }
+
+    /// Ensures that performing [`from_nat`] and then [`to_nat`] results in the original value,
+    /// provided that the value can be encoded in the given base in the given number of digits.
+    ///
+    /// [`from_nat`]: EndianNat::from_nat
+    /// [`to_nat`]: EndianNat::to_nat
+    pub broadcast proof fn from_nat_to_nat(n: nat, len: nat)
+        requires
+            n < base_max_val::<B>(len),
+        ensures
+            #[trigger] Self::from_nat(n, len).to_nat() == n,
+        decreases Self::from_nat(n, len).len(),
+    {
+        reveal(pow);
+        reveal(EndianNat::to_nat);
+        if Self::from_nat(n, len).len() == 0 {
+        } else {
+            let endian = Self::from_nat(n, len);
+            let least = endian.least();
+            let rest = endian.drop_least();
+            assert(rest =~= Self::from_nat(n / B::base(), (len - 1) as nat));
+            Self::base_max_val_len(n, len);
+            Self::from_nat_to_nat(n / B::base(), (len - 1) as nat);
+            assert((n % B::base()) + (n / B::base()) * B::base() == n) by (nonlinear_arith)
+                requires
+                    B::base() > 0,
+            ;
+        }
+    }
+
+    /// Ensures that performing [`to_nat`] and then [`from_nat`] results in the original `EndianNat`.
+    ///
+    /// [`from_nat`]: EndianNat::from_nat
+    /// [`to_nat`]: EndianNat::to_nat
+    pub broadcast proof fn to_nat_from_nat(endian: Self)
+        requires
+            endian.wf(),
+            endian.endian == endianness(),
+        ensures
+            #[trigger] Self::from_nat(endian.to_nat(), endian.len()) == endian,
+        decreases endian.len(),
+    {
+        reveal(pow);
+        reveal(EndianNat::to_nat);
+        if endian.len() == 0 {
+        } else {
+            let n = endian.to_nat();
+            let least = endian.least();
+            let rest = endian.drop_least();
+            Self::to_nat_from_nat(rest);
+            assert(least == n % B::base()) by (nonlinear_arith)
+                requires
+                    n == rest.to_nat() * B::base() + least,
+                    least < B::base(),
+            ;
+            assert(rest.to_nat() == n / B::base()) by (nonlinear_arith)
+                requires
+                    n == rest.to_nat() * B::base() + least,
+                    least < B::base(),
+            ;
+        }
+    }
+
+    /// Converts an `EndianNat` to the natural number that it represents, working from "left to right".
     #[verifier::opaque]
     pub open spec fn to_nat_right(self) -> nat
         decreases self.len(),
@@ -231,6 +519,7 @@ impl<B: Base> EndianNat<B> {
         }
     }
 
+    /// Converts an `EndianNat` to the natural number that it represents, working from "right to left".
     #[verifier::opaque]
     pub open spec fn to_nat_left(self) -> nat
         decreases self.len(),
@@ -250,76 +539,25 @@ impl<B: Base> EndianNat<B> {
         }
     }
 
-    // Provides default version of to_nat() which hides details of the endianness
-    #[verifier::opaque]
-    pub open spec fn to_nat(self) -> nat
-        decreases self.len(),
-    {
-        if self.len() == 0 {
-            0
-        } else {
-            self.drop_least().to_nat() * B::base() + self.least()
-        }
-    }
-
-    pub proof fn to_nat_upper_bound(self)
-        requires
-            self.wf(),
-        ensures
-            self.to_nat() < pow(B::base() as int, self.len()),
-        decreases self.len(),
-    {
-        reveal(EndianNat::to_nat);
-        reveal(pow);
-        if self.len() == 0 {
-        } else {
-            self.drop_least().to_nat_upper_bound();
-
-            calc! {
-                (<)
-                self.to_nat(); (==) {}
-                self.drop_least().to_nat() * B::base() + self.least(); (<) {}
-                self.drop_least().to_nat() * B::base() + B::base(); (<=) {
-                    broadcast use lemma_mul_inequality, lemma_mul_is_distributive_sub_other_way;
-                    // assert(self.drop_least().to_nat() < pow(B::base() as int, (self.len() - 1) as nat));
-                    // assert(self.drop_least().to_nat() <= (pow(B::base() as int, (self.len() - 1) as nat) - 1) as nat);
-                    // assert(self.drop_least().to_nat() * B::base() <= (pow(B::base() as int, (self.len() - 1) as nat) - 1) * B::base() as nat);
-
-                    assert((pow(B::base() as int, (self.len() - 1) as nat) - 1) * B::base() as nat
-                        == (pow(B::base() as int, (self.len() - 1) as nat) * B::base()
-                        - B::base()) as nat);
-                }
-                (pow(B::base() as int, (self.len() - 1) as nat) * B::base() - B::base()
-                    + B::base()) as nat; (==) {
-                    broadcast use lemma_pow1;
-
-                }
-                (pow(B::base() as int, (self.len() - 1) as nat) * pow(
-                    B::base() as int,
-                    1,
-                )) as nat; (==) {
-                    broadcast use lemma_pow_sub_add_cancel;
-
-                }
-                pow(B::base() as int, self.len()) as nat;
-            }
-        }
-    }
-
-    pub proof fn nat_left_nat_right_to_nat_eq(self)
+    /// Ensures that [`to_nat`], [`to_nat_right`], and [`to_nat_left`] agree.
+    ///
+    /// [`to_nat`]: EndianNat::to_nat
+    /// [`to_nat_right`]: EndianNat::to_nat_right
+    /// [`to_nat_left`]: EndianNat::to_nat_left
+    pub proof fn to_nat_left_right_eq(self)
         requires
             self.wf(),
         ensures
             self.to_nat() == self.to_nat_right() == self.to_nat_left(),
     {
-        self.to_nat_eq();
+        self.to_nat_big_left_little_right_eq();
         match self.endian {
             Endian::Little => self.nat_left_eq_nat_right_little(),
             Endian::Big => self.nat_left_eq_nat_right_big(),
         }
     }
 
-    pub proof fn to_nat_eq(self)
+    proof fn to_nat_big_left_little_right_eq(self)
         requires
             self.wf(),
         ensures
@@ -333,13 +571,13 @@ impl<B: Base> EndianNat<B> {
 
         if self.len() == 0 {
         } else {
-            self.drop_least().to_nat_eq();
+            self.drop_least().to_nat_big_left_little_right_eq();
         }
     }
 
     // TODO: How many of the triggering issues that arose with the broadcast pow properties are due to having mul_recursive and pow not opaque?
     #[verifier::spinoff_prover]
-    pub proof fn nat_left_eq_nat_right_little(self)
+    proof fn nat_left_eq_nat_right_little(self)
         requires
             self.wf(),
             self.endian == Endian::Little,
@@ -464,7 +702,7 @@ impl<B: Base> EndianNat<B> {
     }
 
     // TODO: How many of the triggering issues that arose with the broadcast pow properties are due to having mul_recursive and pow not opaque?
-    pub proof fn nat_left_eq_nat_right_big(self)
+    proof fn nat_left_eq_nat_right_big(self)
         requires
             self.wf(),
             self.endian == Endian::Big,
@@ -587,141 +825,24 @@ impl<B: Base> EndianNat<B> {
             }
         }
     }
+}
 
-    /// Converts a nat to a sequence
-    pub uninterp spec fn from_nat(n: nat) -> Self;
-
-    /// Converts a nat to an `EndianNat` representation with the specified number of digits
-    pub open spec fn from_nat_with_len(n: nat, len: nat) -> Self
-        recommends
-            pow(B::base() as int, len) > n,
-        decreases len,
-    {
-        if len == 0 {
-            EndianNat { digits: Seq::empty(), endian: endianness(), phantom: PhantomData }
-        } else {
-            let least = (n % B::base()) as int;
-            let rest = n / B::base();
-            let rest_endian = Self::from_nat_with_len(rest, (len - 1) as nat);
-            rest_endian.push_least(least)
-        }
-    }
-
-    pub proof fn base_max_bounds(n: nat, len: nat)
-        requires
-            pow(B::base() as int, len) > n,
-            len > 0,
-        ensures
-            pow(B::base() as int, (len - 1) as nat) > n / B::base(),
-    {
-        reveal(pow);
-        assert(n / B::base() < pow(B::base() as int, (len - 1) as nat)) by (nonlinear_arith)
-            requires
-                n < B::base() * pow(B::base() as int, (len - 1) as nat),
-                B::base() > 0,
-        ;
-    }
-
-    /// Ensures that the `EndianNat` representation from `from_nat_with_len` will have the given number of digits.
-    pub broadcast proof fn from_nat_len(n: nat, len: nat)
-        requires
-            pow(B::base() as int, len) > n,
-        ensures
-            #[trigger] Self::from_nat_with_len(n, len).len() == len,
-        decreases len,
-    {
-        if len == 0 {
-        } else {
-            Self::base_max_bounds(n, len);
-            Self::from_nat_len(n / B::base(), (len - 1) as nat);
-        }
-    }
-
-    /// Ensures that the `EndianNat` representation from `from_nat_with_len` will have the (axiomatized)
-    /// default endian representation.
-    pub broadcast proof fn from_nat_with_len_endianness(n: nat, len: nat)
-        requires
-            pow(B::base() as int, len) > n,
-        ensures
-            #[trigger] Self::from_nat_with_len(n, len).endian == endianness(),
-        decreases len,
-    {
-        if len == 0 {
-        } else {
-            Self::base_max_bounds(n, len);
-            Self::from_nat_with_len_endianness(n / B::base(), (len - 1) as nat);
-        }
-    }
-
-    /// Ensures that the `EndianNat` representation from `from_nat_with_len` is well-formed.
-    pub broadcast proof fn from_nat_with_len_wf(n: nat, len: nat)
-        requires
-            pow(B::base() as int, len) > n,
-        ensures
-            #[trigger] Self::from_nat_with_len(n, len).wf(),
-        decreases len,
-    {
-        if len == 0 {
-        } else {
-            let endian = Self::from_nat_with_len(n, len);
-            let least = endian.least();
-            Self::base_max_bounds(n, len);
-            Self::from_nat_with_len_wf(n / B::base(), (len - 1) as nat);
-            B::base_min();
-            assert(least < B::base()) by (nonlinear_arith)
-                requires
-                    B::base() > 0,
-                    least == (n % B::base()),
-            ;
-        }
-    }
-
-    /// Ensures that `to_nat` correctly inverts `from_nat_with_len`,
-    /// provided that the given value can be encoded in the given base using the given length.
-    pub broadcast proof fn from_nat_to_nat(n: nat, len: nat)
-        requires
-            n < pow(B::base() as int, len),
-        ensures
-            #[trigger] Self::from_nat_with_len(n, len).to_nat() == n,
-        decreases Self::from_nat_with_len(n, len).len(),
-    {
-        reveal(pow);
-        reveal(EndianNat::to_nat);
-        if Self::from_nat_with_len(n, len).len() == 0 {
-        } else {
-            let endian = Self::from_nat_with_len(n, len);
-            let least = endian.least();
-            let rest = endian.drop_least();
-            assert(rest =~= Self::from_nat_with_len(n / B::base(), (len - 1) as nat));
-            Self::base_max_bounds(n, len);
-            Self::from_nat_to_nat(n / B::base(), (len - 1) as nat);
-            assert(rest.to_nat() == (n / B::base()));
-            assert(endian.to_nat() == (n % B::base()) + (n / B::base()) * B::base());
-            assert((n % B::base()) + (n / B::base()) * B::base() == n) by (nonlinear_arith)
-                requires
-                    B::base() > 0,
-            ;
-            assert(Self::from_nat_with_len(n, len).to_nat() == n);
-        }
-    }
-
-    // proof fn lemma_from_nat_injective(n: nat)
-    //     ensures
-    //         Self::from_nat(n).to_nat() == n,
-    // {
-    //     assume(false);
-    // }
-    // /////////////////////////////////////////////////// //
-    //         Conversion Routines                         //
-    // /////////////////////////////////////////////////// //
-    /// SMALL::base() to the power of exp() is BIG::base()
+// /////////////////////////////////////////////////// //
+//         Conversion Routines                         //
+// /////////////////////////////////////////////////// //
+impl<B: Base> EndianNat<B> {
+    /// [`B::base()`] to the power of `exp()` is [`BIG::base()`].
+    /// In other words, `exp()` is the number of digits in base `B` that correspond to a single digit in base `BIG`.
+    ///
+    /// [`B::base()`]: Base::base
+    /// [`BIG::base()`]: Base::base
     pub open spec fn exp<BIG>() -> nat where BIG: BasePow2, B: CompatibleSmallerBaseFor<BIG> {
         BIG::bits() / B::bits()
     }
 
-    proof fn exp_ensures<BIG>() where BIG: BasePow2, B: CompatibleSmallerBaseFor<BIG>
+    pub proof fn exp_properties<BIG>() where BIG: BasePow2, B: CompatibleSmallerBaseFor<BIG>
         ensures
-            pow(B::base() as int, Self::exp()) == BIG::base(),
+            base_max_val::<B>(Self::exp()) == BIG::base(),
             Self::exp() > 0,
     {
         broadcast use crate::vstd::arithmetic::div_mod::group_div_basics;
@@ -747,7 +868,7 @@ impl<B: Base> EndianNat<B> {
         }
         calc! {
             (==)
-            pow(B::base() as int, Self::exp()); {
+            base_max_val::<B>(Self::exp()); {
                 crate::vstd::arithmetic::power::lemma_pow_multiplies(2, B::bits(), Self::exp());
                 crate::vstd::arithmetic::power2::lemma_pow2(B::bits());
             }
@@ -767,6 +888,8 @@ impl<B: Base> EndianNat<B> {
 
     }
 
+    /// Converts an `EndianNat` representation in the "big" base `BIG` to an `EndianNat` representation in the "small" base `B`.
+    /// The result represents the same non-negative number as the original.
     pub open spec fn from_big<BIG>(n: EndianNat<BIG>) -> Self where
         BIG: BasePow2,
         B: CompatibleSmallerBaseFor<BIG>,
@@ -776,12 +899,48 @@ impl<B: Base> EndianNat<B> {
         if n.len() == 0 {
             EndianNat::new(n.endian, Seq::empty())
         } else {
-            EndianNat::from_nat_with_len(n.first(), Self::exp()).append(
-                Self::from_big(n.drop_first()),
-            )
+            Self::from_big(n.drop_least()).append_least(EndianNat::from_nat(n.least(), Self::exp()))
         }
     }
 
+    pub broadcast proof fn from_big_properties<BIG>(n: EndianNat<BIG>) where
+        BIG: BasePow2,
+        B: CompatibleSmallerBaseFor<BIG>,
+
+        requires
+            n.wf(),
+            n.endian == endianness(),
+        ensures
+            #![trigger Self::from_big(n)]
+            Self::from_big(n).wf(),
+            Self::from_big(n).endian == endianness(),
+            Self::from_big(n).len() == n.len() * Self::exp(),
+            Self::from_big(n).to_nat() == n.to_nat(),
+        decreases n.len(),
+    {
+        reveal(EndianNat::to_nat);
+        Self::exp_properties();
+        if n.len() == 0 {
+        } else {
+            let least = n.least();
+            let rest = n.drop_least();
+            Self::from_big_properties(rest);
+            Self::from_nat_properties(least, Self::exp());
+            assert(Self::from_big(n).len() == n.len() * Self::exp()) by (nonlinear_arith)
+                requires
+                    Self::from_big(n).len() == (n.len() - 1) * Self::exp() + Self::exp(),
+            ;
+            let small_least = EndianNat::from_nat(least, Self::exp());
+            let small_rest = Self::from_big(rest);
+            // small_rest.append_least(small_least).to_nat() == (small_rest.to_nat() * base_max_val::<B>(small_least.len())) + small_least.to_nat()
+            Self::to_nat_append_least(small_rest, small_least);
+            // least == small_least.to_nat()
+            Self::from_nat_to_nat(least, Self::exp());
+        }
+    }
+
+    /// Converts an `EndianNat` representation in the "small" base `B` to an `EndianNat` representation in the "big" base `BIG`.
+    /// The result represents the same non-negative number as the original.
     #[verifier::opaque]
     pub open spec fn to_big<BIG>(n: EndianNat<B>) -> EndianNat<BIG> where
         BIG: BasePow2,
@@ -796,8 +955,8 @@ impl<B: Base> EndianNat<B> {
         if n.len() == 0 {
             EndianNat::new(n.endian, Seq::empty())
         } else {
-            EndianNat::new(n.endian, seq![n.take(Self::exp()).to_nat() as int]).append(
-                Self::to_big(n.skip(Self::exp())),
+            Self::to_big(n.skip_least(Self::exp())).append_least(
+                EndianNat::new(n.endian, seq![n.take_least(Self::exp()).to_nat() as int]),
             )
         }
     }
@@ -807,150 +966,207 @@ impl<B: Base> EndianNat<B> {
         BIG: BasePow2,
         B: CompatibleSmallerBaseFor<BIG>,
      {
-        Self::exp_ensures();
+        Self::exp_properties();
         if n.len() != 0 {
             assert(Self::exp() <= n.len()) by {
                 broadcast use crate::vstd::arithmetic::div_mod::lemma_mod_is_zero;
 
             }
-            assert(n.skip(Self::exp()).len() < n.len());
+            assert(n.skip_least(Self::exp()).len() < n.len());
         }
     }
 
-    // /// Converting from a BIG base to a SMALL base does not change the fundamental value
-    // pub proof fn to_small_ensures<BIG>(n: EndianNat<BIG>)
-    //     where
-    //         BIG: BasePow2,
-    //         B: CompatibleSmallerBaseFor<BIG>,
-    //     ensures
-    //         Self::from_big(n).len() == n.len() * Self::exp(),
-    //         Self::from_big(n).to_nat() == n.to_nat(),
-    // {
-    //     assume(false);
-    // }
-    // /// Converting from a SMALL base to a BIG base does not change the fundamental value
-    // pub proof fn to_big_ensures<BIG>(n: EndianNat<B>)
-    //     where
-    //         BIG: BasePow2,
-    //         B: CompatibleSmallerBaseFor<BIG>,
-    //     requires
-    //         n.len() % Self::exp() == 0,
-    //     ensures
-    //         Self::to_big(n).len() == n.len() / Self::exp(),
-    //         Self::to_big(n).to_nat() == n.to_nat(),
-    // {
-    //     assume(false);
-    // }
-    // // to_small is injective
-    // pub proof fn to_small_injective<BIG>(x: EndianNat<BIG>, y: EndianNat<BIG>)
-    //     where
-    //         BIG: BasePow2,
-    //         B: CompatibleSmallerBaseFor<BIG>,
-    //     requires
-    //         Self::from_big(x) == Self::from_big(y),
-    //         x.len() == y.len(),
-    //         x.endian == y.endian,
-    //     ensures
-    //         x == y,
-    // {
-    //     assume(false);
-    // }
-    // // to_big is injective
-    // pub proof fn to_big_injective<BIG>(x: EndianNat<B>, y: EndianNat<B>)
-    //     where
-    //         BIG: BasePow2,
-    //         B: CompatibleSmallerBaseFor<BIG>,
-    //     requires
-    //         x.len() % Self::exp() == 0,
-    //         y.len() % Self::exp() == 0,
-    //         Self::to_big(x) == Self::to_big(y),
-    //         x.len() == y.len(),
-    //         x.endian == y.endian,
-    //     ensures
-    //         x == y,
-    // {
-    //     assume(false);
-    // }
-    // pub proof fn to_big_cycle<BIG>(x: EndianNat<B>)
-    //     where
-    //         BIG: BasePow2,
-    //         B: CompatibleSmallerBaseFor<BIG>,
-    //     requires
-    //         x.len() % Self::exp() == 0,
-    //     ensures
-    //         Self::from_big(Self::to_big(x)) == x,
-    // {
-    //     assume(false);
-    // }
-    // pub proof fn from_big_cycle<BIG>(x: EndianNat<BIG>)
-    //     where
-    //         BIG: BasePow2,
-    //         B: CompatibleSmallerBaseFor<BIG>,
-    //     ensures
-    //         Self::to_big(Self::from_big(x)) == x,
-    // {
-    //     assume(false);
-    // }
-    // TODO: Generalize this to: Self::to_big(x).index(i) == x.skip(i * Self.exp()).take(Self::exp()).to_nat_right() as int,
-    pub proof fn to_big_initial<BIG>(x: EndianNat<B>) where
+    pub broadcast proof fn to_big_properties<BIG>(n: EndianNat<B>) where
         BIG: BasePow2,
         B: CompatibleSmallerBaseFor<BIG>,
 
         requires
-            x.len() % Self::exp() == 0,
-            x.len() > 0,
+            n.wf(),
+            n.endian == endianness(),
+            n.len() % Self::exp() == 0,
         ensures
-            Self::to_big(x).index(0) == x.take(Self::exp()).to_nat() as int,
+            #![trigger Self::to_big(n)]
+            Self::to_big(n).wf(),
+            Self::to_big(n).endian == endianness(),
+            Self::to_big(n).len() == n.len() / Self::exp(),
+            Self::to_big(n).to_nat() == n.to_nat(),
+        decreases n.len(),
     {
         reveal(EndianNat::to_big);
-        assert(x.skip(Self::exp()).len() % Self::exp() == 0) by {
-            assert(Self::exp() <= x.len()) by {
-                Self::exp_ensures();
-                crate::vstd::arithmetic::div_mod::lemma_mod_is_zero(x.len(), Self::exp());
-            };
-            assert(x.skip(Self::exp()).len() == x.len() - Self::exp());
-            broadcast use crate::vstd::arithmetic::div_mod::lemma_mod_sub_multiples_vanish;
+        reveal(EndianNat::to_nat);
+        Self::exp_properties();
+        if n.len() == 0 {
+        } else {
+            let least = n.take_least(Self::exp());
+            let rest = n.skip_least(Self::exp());
+            assert(n.len() >= Self::exp()) by (nonlinear_arith)
+                requires
+                    n.len() % Self::exp() == 0,
+                    Self::exp() > 0,
+                    n.len() > 0,
+            ;
+            assert(rest.len() % Self::exp() == 0) by (nonlinear_arith)
+                requires
+                    rest.len() == n.len() - Self::exp(),
+                    n.len() % Self::exp() == 0,
+            ;
+            Self::to_big_properties(rest);
+            Self::to_nat_properties(least);
+            let big_least = EndianNat::<BIG>::new(n.endian, seq![least.to_nat() as int]);
+            let big_rest = Self::to_big(rest);
+            assert(Self::to_big(n).to_nat() == n.to_nat()) by {
+                assert(big_rest.append_least(big_least).to_nat() == (big_rest.to_nat()
+                    * base_max_val::<BIG>(big_least.len())) + big_least.to_nat()) by {
+                    EndianNat::<BIG>::to_nat_append_least(big_rest, big_least);
+                }
+                assert(big_least.to_nat() == least.to_nat()) by {
+                    assert(big_least.least() == least.to_nat());
+                    reveal_with_fuel(EndianNat::to_nat, 2);
+                }
+                assert(n.to_nat() == (rest.to_nat() * base_max_val::<B>(Self::exp()))
+                    + least.to_nat()) by {
+                    assert(n =~= rest.append_least(least));
+                    EndianNat::<B>::to_nat_append_least(rest, least);
+                }
+                assert(base_max_val::<B>(Self::exp()) == base_max_val::<BIG>(big_least.len())) by {
+                    broadcast use lemma_pow1;
 
+                }
+            }
+            assert(Self::to_big(n).len() == n.len() / Self::exp()) by {
+                assert(Self::to_big(n).len() == n.len() / Self::exp()) by (nonlinear_arith)
+                    requires
+                        big_rest.len() == rest.len() / Self::exp(),
+                        Self::to_big(n).len() == big_rest.len() + 1,
+                        n.len() == rest.len() + Self::exp(),
+                        Self::exp() > 0,
+                ;
+            }
         }
-        assert(Self::to_big(x) == EndianNat::new(
-            x.endian,
-            seq![x.take(Self::exp()).to_nat() as int],
-        ).append(Self::to_big(x.skip(Self::exp()))));
+
+    }
+
+    /// Ensures that performing [`to_big`] and then [`from_big`] results in the original `EndianNat<B>`.
+    ///
+    /// [`to_big`]: EndianNat::to_big
+    /// [`from_big`]: EndianNat::from_big
+    pub broadcast proof fn to_big_from_big<BIG>(n: EndianNat<B>) where
+        BIG: BasePow2,
+        B: CompatibleSmallerBaseFor<BIG>,
+
+        requires
+            n.wf(),
+            n.endian == endianness(),
+            n.len() % Self::exp() == 0,
+        ensures
+            #[trigger] Self::from_big(Self::to_big(n)) == n,
+        decreases n.len(),
+    {
+        reveal(EndianNat::to_big);
+        Self::exp_properties();
+        if n.len() == 0 {
+        } else {
+            let least = n.take_least(Self::exp());
+            let rest = n.skip_least(Self::exp());
+            assert(n.len() >= Self::exp()) by (nonlinear_arith)
+                requires
+                    n.len() % Self::exp() == 0,
+                    Self::exp() > 0,
+                    n.len() > 0,
+            ;
+            assert(rest.len() % Self::exp() == 0) by (nonlinear_arith)
+                requires
+                    rest.len() == n.len() - Self::exp(),
+                    n.len() % Self::exp() == 0,
+            ;
+            // Self::from_big(Self::to_big(rest)) == rest
+            Self::to_big_from_big(rest);
+            let big = Self::to_big(n);
+            assert(big =~= Self::to_big(rest).append_least(
+                EndianNat::new(n.endian, seq![least.to_nat() as int]),
+            ));
+            let big_least = big.least();
+            let big_rest = big.drop_least();
+            assert(big_rest =~= Self::to_big(rest));
+            assert(Self::from_big(big_rest) == rest);
+            Self::to_nat_from_nat(least);
+            assert(EndianNat::<B>::from_nat(big_least, Self::exp()) == least);
+        }
+    }
+
+    /// Ensures that performing [`from_big`] and then [`to_big`] results in the original `EndianNat<BIG>`.
+    ///
+    /// [`to_big`]: EndianNat::to_big
+    /// [`from_big`]: EndianNat::from_big
+    pub broadcast proof fn from_big_to_big<BIG>(n: EndianNat<BIG>) where
+        BIG: BasePow2,
+        B: CompatibleSmallerBaseFor<BIG>,
+
+        requires
+            n.wf(),
+            n.endian == endianness(),
+        ensures
+            #[trigger] Self::to_big(Self::from_big(n)) == n,
+        decreases n.len(),
+    {
+        reveal(EndianNat::to_big);
+        reveal(EndianNat::to_nat);
+        Self::exp_properties();
+        if n.len() == 0 {
+            Self::from_big_properties(n);
+            let small = Self::from_big(n);
+            assert(small.len() % Self::exp() == 0) by (nonlinear_arith)
+                requires
+                    small.len() == 0,
+                    Self::exp() > 0,
+            ;
+            Self::to_big_properties(small);
+            assert(Self::to_big(Self::from_big(n)).digits == n.digits);
+            assert(Self::to_big(Self::from_big(n)).endian == n.endian);
+        } else {
+            let least = n.least();
+            let rest = n.drop_least();
+            // Self::to_big(Self::from_big(rest)) == rest
+            Self::from_big_to_big(rest);
+            Self::from_big_properties(rest);
+
+            let small = Self::from_big(n);
+            let small_least = small.take_least(Self::exp());
+            let small_rest = small.skip_least(Self::exp());
+            Self::from_nat_properties(least, Self::exp());
+            let from_nat_least = EndianNat::<B>::from_nat(least, Self::exp());
+            assert(from_nat_least.endian == endianness());
+            assert(small =~= Self::from_big(rest).append_least(from_nat_least));
+            assert(small_least =~= from_nat_least);
+            assert(small_rest =~= Self::from_big(rest));
+            EndianNat::<B>::from_nat_to_nat(least, Self::exp());
+            assert(from_nat_least.to_nat() == least);
+            assert(small_least.to_nat() == least);
+
+            assert(small_rest.len() % Self::exp() == 0) by (nonlinear_arith)
+                requires
+                    small_rest.len() == rest.len() * Self::exp(),
+                    Self::exp() > 0,
+            ;
+            Self::from_big_properties(n);
+            assert(small.len() % Self::exp() == 0) by (nonlinear_arith)
+                requires
+                    small.len() == n.len() * Self::exp(),
+                    Self::exp() > 0,
+            ;
+
+            assert(Self::to_big(small) == n);
+        }
     }
 }
 
 /***** Functions involving both little and big endian *****/
 
-pub open spec fn to_seq_int<B>(n: Seq<B>) -> Seq<int> where B: Integer {
-    Seq::new(n.len(), |i: int| n[i] as int)
-}
-
-pub open spec fn to_big_ne<BIG, B>(n: Seq<B>) -> EndianNat<BIG> where
+pub open spec fn to_big_from_digits<BIG, B>(n: Seq<B>) -> EndianNat<BIG> where
     BIG: BasePow2,
     B: CompatibleSmallerBaseFor<BIG> + Integer,
-{
-    EndianNat::<B>::to_big::<BIG>(EndianNat::<B>::new(endianness(), to_seq_int(n)))
-}
-
-pub proof fn lemma_little_right_eq_big_left_const<B>(n: Seq<int>, x: int) where B: Base
-    requires
-        forall|i| 0 <= i < n.len() ==> n[i] == x,
-    ensures
-        EndianNat::<B>::new(Endian::Little, n).to_nat() == EndianNat::<B>::new(
-            Endian::Big,
-            n,
-        ).to_nat(),
-    decreases n.len(),
-{
-    reveal(EndianNat::to_nat);
-
-    if n.len() == 0 {
-    } else {
-        lemma_little_right_eq_big_left_const::<B>(n.drop_first(), x);
-        lemma_little_right_eq_big_left_const::<B>(n.drop_last(), x);
-
-        assert(n.drop_first() == n.drop_last());
-    }
+ {
+    EndianNat::<B>::to_big::<BIG>(EndianNat::<B>::new(endianness(), n.map(|i, d| d as int)))
 }
 
 /***** Implementations and proofs for specific types *****/
@@ -1022,75 +1238,16 @@ impl CompatibleSmallerBaseFor<usize> for u8 {
     }
 }
 
-// proof fn test(x: EndianNat<u64>, y: EndianNat<u8>)
-//     requires y.len() % 8 == 0,
-// {
-//     let x8 = EndianNat::<u8>::from_big(x);
-//     let x8_64 = EndianNat::<u8>::to_big::<u64>(x8);
-//     assert(x == x8_64) by {
-//         EndianNat::<u8>::from_big_cycle(x);
-//     };
-//     let y_64 = EndianNat::<u8>::to_big::<u64>(y);
-//     if y.len() > 0 {
-//         assert(y_64.index(0) == y.take(8).to_nat() as int) by {
-//             EndianNat::<u8>::to_big_initial::<u64>(y);
-//         };
-//     }
-// }
-pub proof fn lemma_to_nat_bitwise_and(x: EndianNat<u8>, y: EndianNat<u8>)
-    requires
-        x.to_nat() as usize & y.to_nat() as usize == 0,
-        x.len() == y.len() <= layout::size_of::<usize>(),
-        x.wf(),
-        y.wf(),
-        x.endian == y.endian,
-    ensures
-        forall|i| 0 <= i < x.len() ==> #[trigger] x.index(i) as u8 & y.index(i) as u8 == 0,
-    decreases x.len(),
-{
-    reveal(EndianNat::to_nat);
-
-    if x.len() == 0 {
-    } else if x.len() == 1 {
-        reveal_with_fuel(EndianNat::to_nat, 2);
-    } else {
-        let x_rest = x.drop_least().to_nat() as usize;
-        let y_rest = y.drop_least().to_nat() as usize;
-        let x_least = x.least() as u8;
-        let y_least = y.least() as u8;
-
-        // To compute pow(256, x.drop_least().len()), which is the upper bound on x.drop_least().to_nat(),
-        // at most we need to unfold pow layout::size_of::<usize>() times, since x.drop_least().len() < layout::size_of::<usize>().
-        // Since layout::size_of::<usize>() <= 8, we reveal with fuel 8.
-        reveal_with_fuel(pow, 8);
-        assert(x.drop_least().to_nat() * 256 <= usize::MAX) by { x.drop_least().to_nat_upper_bound()
-        };
-        assert(y.drop_least().to_nat() * 256 <= usize::MAX) by { y.drop_least().to_nat_upper_bound()
-        };
-
-        assert((x_rest * 256 + x_least) as usize & (y_rest * 256 + y_least) as usize == 0
-            ==> x_least & y_least == 0) by (bit_vector);
-        assert((x_rest * 256 + x_least) as usize & (y_rest * 256 + y_least) as usize == 0 ==> (
-        x_rest * 256) as usize & (y_rest * 256) as usize == 0) by (bit_vector);
-
-        let x_rest_times = (x_rest * 256) as usize;
-        let y_rest_times = (y_rest * 256) as usize;
-
-        assert(x_rest_times & y_rest_times == 0 ==> x_rest & y_rest == 0) by (bit_vector)
-            requires
-                x_rest_times == x_rest * 256,
-                y_rest_times == y_rest * 256,
-        ;
-
-        lemma_to_nat_bitwise_and(x.drop_least(), y.drop_least());
-
-        assert(forall|i: int| 1 <= i < x.len() ==> x.drop_first().index(i - 1) == x.index(i));
-        assert(forall|i: int| 1 <= i < y.len() ==> y.drop_first().index(i - 1) == y.index(i));
-        assert(forall|i: int|
-            0 <= i < x.len() - 1 ==> x.drop_last().index(i) == #[trigger] x.index(i));
-        assert(forall|i: int|
-            0 <= i < y.len() - 1 ==> y.drop_last().index(i) == #[trigger] y.index(i));
-    }
+pub broadcast group group_endian_nat_axioms {
+    EndianNat::from_nat_properties,
+    EndianNat::to_nat_properties,
+    EndianNat::from_nat_to_nat,
+    EndianNat::to_nat_from_nat,
+    EndianNat::to_big_properties,
+    EndianNat::from_big_properties,
+    EndianNat::from_big_to_big,
+    EndianNat::to_big_from_big,
 }
 
+//todo(nneamtu) - lemma_to_nat_bitwise_and -- boot this into rustlib ??
 } // verus!
