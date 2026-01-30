@@ -245,7 +245,7 @@ pub broadcast axiom fn align_properties<T>()
     ensures
         #![trigger align_of::<T>()]
         size_of::<T>() % align_of::<T>() == 0,
-        is_pow2_exists(align_of::<T>() as int),
+        is_pow2(align_of::<T>() as int),
 ;
 
 /// The alignment is at least 1
@@ -256,6 +256,7 @@ pub broadcast proof fn align_nonzero<T>()
         align_of::<T>() > 0,
 {
     broadcast use crate::vstd::arithmetic::power::lemma_pow_positive, align_properties;
+    broadcast use crate::vstd::arithmetic::power2::is_pow2_equiv;
 
 }
 

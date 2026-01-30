@@ -56,7 +56,9 @@ pub open spec fn is_pow2_exists(n: int) -> bool {
 /// Proof that the recursive and existential specifications for `is_pow2` are equivalent.
 pub broadcast proof fn is_pow2_equiv(n: int)
     ensures
-        #[trigger] is_pow2(n) <==> #[trigger] is_pow2_exists(n),
+        #![trigger is_pow2(n)]
+        #![trigger is_pow2_exists(n)]
+        is_pow2(n) <==> is_pow2_exists(n),
 {
     if is_pow2(n) {
         assert(is_pow2_exists(n)) by {
