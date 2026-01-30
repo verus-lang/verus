@@ -1249,5 +1249,4 @@ pub broadcast group group_endian_nat_axioms {
     EndianNat::to_big_from_big,
 }
 
-//todo(nneamtu) - lemma_to_nat_bitwise_and -- boot this into rustlib ??
 } // verus!
