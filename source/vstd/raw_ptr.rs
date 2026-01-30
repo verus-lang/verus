@@ -25,6 +25,7 @@ use super::arithmetic::mul::*;
 #[cfg(verus_keep_ghost)]
 use super::arithmetic::power::pow;
 use super::calc_macro::*;
+use super::layout;
 use super::layout::*;
 use super::prelude::*;
 use super::set::group_set_axioms;
