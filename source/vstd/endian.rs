@@ -1,4 +1,3 @@
-use core::marker::PhantomData;
 use crate::vstd::arithmetic::mul::*;
 use crate::vstd::arithmetic::power::*;
 use crate::vstd::arithmetic::power2::*;
@@ -6,6 +5,7 @@ use crate::vstd::calc_macro::*;
 use crate::vstd::group_vstd_default;
 use crate::vstd::layout;
 use crate::vstd::prelude::*;
+use core::marker::PhantomData;
 
 verus! {
 
@@ -928,7 +928,7 @@ pub open spec fn to_seq_int<B>(n: Seq<B>) -> Seq<int> where B: Integer {
 pub open spec fn to_big_ne<BIG, B>(n: Seq<B>) -> EndianNat<BIG> where
     BIG: BasePow2,
     B: CompatibleSmallerBaseFor<BIG> + Integer,
-{
+ {
     EndianNat::<B>::to_big::<BIG>(EndianNat::<B>::new(endianness(), to_seq_int(n)))
 }
 

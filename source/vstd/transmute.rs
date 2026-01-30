@@ -17,14 +17,19 @@ broadcast use {group_layout_axioms, group_vstd_default};
 
 /// Generic precondition on transmute.
 pub open spec fn transmute_pre<T, U>(src: T, dst: U) -> bool {
+pub open spec fn transmute_pre<T, U>(src: T, dst: U) -> bool {
     &&& forall|bytes|
         #![trigger abs_encode::<T>(&src, bytes)]
+        #![trigger abs_decode::<U>(bytes, &dst)]
+        abs_encode::<T>(&src, bytes) ==> abs_decode::<U>(bytes, &dst)
         #![trigger abs_decode::<U>(bytes, &dst)]
         abs_encode::<T>(&src, bytes) ==> abs_decode::<U>(bytes, &dst)
     &&& abs_can_be_encoded::<T>()
 }
 
 /// Generic postcondition on transmute.
+pub open spec fn transmute_post<U>(dst_ghost: U, dst: U) -> bool {
+    dst_ghost == dst
 pub open spec fn transmute_post<U>(dst_ghost: U, dst: U) -> bool {
     dst_ghost == dst
 }
@@ -293,6 +298,7 @@ impl PointsTo<str> {
         ensures
             ret.is_init(),
             ret.value() == target@,
+            ret.phy() == target,
             ret.ptr()@.addr == self.ptr()@.addr,
             ret.ptr()@.provenance == self.ptr()@.provenance,
             ret.ptr()@.metadata == self.ptr()@.metadata,
