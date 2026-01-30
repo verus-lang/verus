@@ -1095,7 +1095,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let ident = Arc::new(ident.to_string());
                 Arc::new(ExprX::Apply(ident, Arc::new(exprs)))
             }
-            UnaryOp::MutRefFinal => {
+            UnaryOp::MutRefFinal(_) => {
                 panic!("internal error: MutRefFinal should have been removed before here")
             }
             UnaryOp::Length(kind) => {

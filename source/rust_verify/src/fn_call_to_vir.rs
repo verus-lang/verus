@@ -9,7 +9,7 @@ use crate::rust_to_vir_base::{
     typ_of_expr_adjusted, typ_of_node_unadjusted, typ_of_node_unadjusted_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
-    ExprModifier, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir,
+    ExprModifier, ExprOrPlace, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir,
     expr_to_vir_consume, extract_array, extract_tuple, get_fn_path, is_expr_typ_mut_ref,
     mk_ty_clip, pat_to_var,
 };
@@ -530,7 +530,12 @@ fn verus_item_to_vir<'tcx, 'a>(
             SpecItem::Ensures => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected ensures", &args);
-                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let bctx = &BodyCtxt {
+                    external_body: false,
+                    in_ghost: true,
+                    in_postcondition: true,
+                    ..bctx.clone()
+                };
                 let header = extract_ensures(&bctx, args[0])?;
                 // extract_ensures does most of the necessary work, so we can return at this point
                 mk_expr_span(args[0].span, ExprX::Header(header))
@@ -717,11 +722,26 @@ fn verus_item_to_vir<'tcx, 'a>(
                             args[0].span,
                             &expr.hir_id,
                         )?;
-                        return Ok(bctx.spanned_typed_new(
-                            expr.span,
-                            &typ,
-                            ExprX::VarAt(pat_to_var(pat)?, VarAt::Pre),
-                        ));
+                        let name = pat_to_var(pat)?;
+                        if bctx.new_mut_ref {
+                            // TODO(new_mut_ref): fix old
+                            //  1. check that the use of old is appropriate
+                            //  2. type checking issues (adjustments are skipped)
+                            //  3. old needs to be applicable in the body
+                            let place =
+                                bctx.spanned_typed_new(expr.span, &typ, PlaceX::Local(name));
+                            {
+                                let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                                erasure_info.hir_vir_ids.push((args[0].hir_id, place.span.id));
+                            }
+                            return Ok(ExprOrPlace::Place(place).to_spec_expr(bctx));
+                        } else {
+                            return Ok(bctx.spanned_typed_new(
+                                expr.span,
+                                &typ,
+                                ExprX::VarAt(name, VarAt::Pre),
+                            ));
+                        }
                     }
                 }
                 err_span(expr.span, "only a variable binding is allowed as the argument to old")
@@ -1861,15 +1881,28 @@ fn verus_item_to_vir<'tcx, 'a>(
             mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
         }
         VerusItem::MutRefCurrent | VerusItem::MutRefFuture | VerusItem::Final => {
+            let name = match verus_item {
+                VerusItem::MutRefCurrent => "mut_ref_current",
+                VerusItem::MutRefFuture => "mut_ref_future",
+                VerusItem::Final => "final",
+                _ => unreachable!(),
+            };
+
             if !bctx.new_mut_ref {
                 unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
             }
-            record_spec_fn_no_proof_args(bctx, expr);
-            if !bctx.in_ghost {
+            if bctx.migrate_postcondition_vars.is_some() {
                 return err_span(
                     expr.span,
-                    "mut_ref_current/mut_ref_future must be in a 'proof' block",
+                    format!(
+                        "to use `{name}`, disable mut-ref backwards-compatability (add #[verifier::migrate_postcondition_with_mut_refs(false)] to the function)"
+                    ),
                 );
+            }
+
+            record_spec_fn_no_proof_args(bctx, expr);
+            if !bctx.in_ghost {
+                return err_span(expr.span, format!("{name} must be in a 'proof' block"));
             }
             let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
             let op = match verus_item {
@@ -1877,7 +1910,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 VerusItem::MutRefFuture => {
                     UnaryOp::MutRefFuture(vir::ast::MutRefFutureSourceName::MutRefFuture)
                 }
-                VerusItem::Final => UnaryOp::MutRefFinal,
+                VerusItem::Final => UnaryOp::MutRefFinal(false),
                 _ => unreachable!(),
             };
             mk_expr(ExprX::Unary(op, exp))

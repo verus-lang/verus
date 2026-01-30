@@ -685,10 +685,14 @@ fn check_one_expr<Emit: EmitError>(
                 ),
             ));
         }
-        ExprX::Unary(UnaryOp::MutRefFinal, _) => {
+        ExprX::Unary(UnaryOp::MutRefFinal(migrated), _) => {
             return Err(error(
                 &expr.span,
-                "The result of `fin` must be dereferenced (e.g., `*fin(x)`)",
+                if *migrated {
+                    "This `&mut` parameter must be dereferenced (either explicitly, as in `*x`, or implicitly, as in `x.field`). For more flexible mutable reference support, disable the backwards-compatability (add #[verifier::migrate_postcondition_with_mut_refs(false)] to the function)"
+                } else {
+                    "The result of `fin` must be dereferenced (either explicitly, as in `*fin(x)`, or implicitly, as in `fin(x).field`)"
+                },
             ));
         }
         ExprX::Match(_place, arms) => {

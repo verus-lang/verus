@@ -57,6 +57,8 @@ pub(crate) struct BodyCtxt<'tcx> {
     // loop_isolation for the nearest enclosing loop, false otherwise
     pub(crate) loop_isolation: bool,
     pub(crate) new_mut_ref: bool,
+    pub(crate) migrate_postcondition_vars: Option<std::collections::HashSet<vir::ast::VarIdent>>,
+    pub(crate) in_postcondition: bool,
 }
 
 impl<'tcx> ContextX<'tcx> {

@@ -3112,3 +3112,63 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_fails(e, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            *a = *a + 1;
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            test(a);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat_fail ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *fin(a) == *old(a) + 1,
+        {
+            *a = *a + 1;
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            test(a);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to use `final`, disable mut-ref backwards-compatability")
+}
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat_fail2 ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            *a = *a + 1;
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(a: &mut u8)
+            requires *old(a) < 255,
+            ensures a == a
+        {
+            test(a);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "For more flexible mutable reference support, disable the backwards-compatability")
+}

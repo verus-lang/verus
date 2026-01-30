@@ -54,10 +54,10 @@ use vir::ast_util::{
 };
 use vir::def::{field_ident_from_rust, positional_field_ident};
 
-/// Enum representing either an Expr (value expression) or a `Place` (place expression).
+/// Enum representing either an `Expr` (value expression) or a `Place` (place expression).
 ///
-/// While converting HIR -> VIR, every HIR node is converting into one of these kinds
-/// of expressions. Place expressions include local variables, field accesses (`x.foo`)
+/// While converting HIR -> VIR, every HIR node is converted into one of these kinds
+/// of expressions. Place expressions include local variables (`x`), field accesses (`x.foo`)
 /// and dereferences (`*x`).
 ///
 /// The Rust reference has more information on place expressions and "place expression contexts",
@@ -111,6 +111,7 @@ pub(crate) enum ExprOrPlace {
 
 impl ExprOrPlace {
     /// If necessary, coerce the expression to a `Place` by creating a temporary.
+    /// TODO(new_mut_ref): fix types
     pub(crate) fn to_place(&self) -> Place {
         match self {
             ExprOrPlace::Expr(e) => {
@@ -205,7 +206,7 @@ impl ExprOrPlace {
                     preliminary_kind: rk,
                     id: bctx.ctxt.unique_read_kind_id(),
                 };
-                SpannedTyped::new(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk))
+                bctx.ctxt.spanned_typed_new_vir(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk))
             }
         }
     }
@@ -2270,11 +2271,25 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let ctor_opt = resolve_ctor(bctx.ctxt.tcx, res);
             match (res, ctor_opt) {
                 (Res::Local(id), _) => match tcx.hir_node(id) {
-                    Node::Pat(pat) => Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
-                        expr.span,
-                        &expr_typ()?,
-                        PlaceX::Local(pat_to_var(pat)?),
-                    ))),
+                    Node::Pat(pat) => {
+                        let name = pat_to_var(pat)?;
+                        let x = PlaceX::Local(pat_to_var(pat)?);
+                        let typ = &expr_typ()?;
+                        let place = bctx.spanned_typed_new(expr.span, typ, x);
+                        match &bctx.migrate_postcondition_vars {
+                            Some(vars) if bctx.in_postcondition && vars.contains(&name) => {
+                                {
+                                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                                    erasure_info.hir_vir_ids.push((expr.hir_id, place.span.id));
+                                }
+                                let e = ExprOrPlace::Place(place).to_spec_expr(bctx);
+                                let x = ExprX::Unary(UnaryOp::MutRefFinal(true), e);
+                                let e = bctx.spanned_typed_new(expr.span, typ, x);
+                                Ok(ExprOrPlace::Expr(e))
+                            }
+                            _ => Ok(ExprOrPlace::Place(place)),
+                        }
+                    }
                     node => unsupported_err!(expr.span, format!("Path {:?}", node)),
                 },
                 (_, Some((ctor, ctor_kind))) => {
@@ -3844,7 +3859,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
             ExprX::BorrowMut(place) => {
                 return place.clone();
             }
-            ExprX::Unary(UnaryOp::MutRefFinal, arg) => {
+            ExprX::Unary(UnaryOp::MutRefFinal(_), arg) => {
                 let t = match &*undecorate_typ(&place.typ) {
                     TypX::MutRef(t) => t.clone(),
                     _ => panic!("expected mut ref"),

@@ -442,9 +442,11 @@ pub enum UnaryOp {
     CastToInteger,
     MutRefCurrent,
     MutRefFuture(MutRefFutureSourceName),
-    /// The `final` keyword. `*final(e)` should be replaced with `mut_ref_future(e)`
-    /// and `final` on its own is unsupported.
-    MutRefFinal,
+    /// The `final` keyword.
+    /// Note: `final` on its own is unsupported.
+    /// `*final(e)` should be replaced with `mut_ref_future(e)`; other appearances are an error
+    /// boolean param = did this arise from migration?
+    MutRefFinal(bool),
 
     /// Length of an array or slice
     Length(ArrayKind),

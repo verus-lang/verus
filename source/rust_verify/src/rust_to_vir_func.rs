@@ -222,6 +222,7 @@ fn body_to_vir<'tcx>(
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     new_mut_ref: bool,
+    migrate_postcondition_vars: Option<HashSet<VarIdent>>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let types = body_id_to_types(ctxt.tcx, id);
     let bctx = BodyCtxt {
@@ -234,6 +235,8 @@ fn body_to_vir<'tcx>(
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
         new_mut_ref,
+        migrate_postcondition_vars,
+        in_postcondition: false,
     };
     let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
 
@@ -1113,6 +1116,18 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
 
+    let do_migration = if ctxt.cmd_line_args.new_mut_ref {
+        if vattrs.ignore_outside_new_mut_ref_experiment {
+            false
+        } else {
+            let migration_attr =
+                crate::attributes::migrate_postconditions_walk_parents(ctxt.tcx, id);
+            migration_attr == Some(true)
+        }
+    } else {
+        false
+    };
+
     let new_mut_ref = vattrs.ignore_outside_new_mut_ref_experiment;
     if new_mut_ref && !matches!(ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore) {
         return err_span(sig.span, "ignore_outside_new_mut_ref_experiment is only for vstd");
@@ -1273,6 +1288,7 @@ pub(crate) fn check_item_fn<'tcx>(
         }
     };
 
+    let mut migrate_postcondition_vars: HashSet<VarIdent> = HashSet::new();
     let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut mut_params_redecl: Vec<vir::ast::Stmt> = Vec::new();
@@ -1286,6 +1302,13 @@ pub(crate) fn check_item_fn<'tcx>(
             // where the mode will later be overridden by the separate spec method anyway:
             Mode::Exec
         };
+
+        if do_migration {
+            if is_mut_ty(ctxt, *input).is_some() {
+                migrate_postcondition_vars.insert(name.clone());
+            }
+        }
+
         let is_ref_mut = if new_mut_ref { None } else { is_mut_ty(ctxt, *input) };
         if is_ref_mut.is_some() && mode == Mode::Spec {
             return err_span(span, format!("&mut parameter not allowed for spec functions"));
@@ -1370,6 +1393,9 @@ pub(crate) fn check_item_fn<'tcx>(
         vir_params.push((vir_param, is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
     }
 
+    let migrate_postcondition_vars =
+        if do_migration { Some(migrate_postcondition_vars) } else { None };
+
     let n_params = vir_params.len();
 
     let (vir_body, header, body_hir_id) = match body_id {
@@ -1385,6 +1411,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 external_body,
                 &external_trait_from_to,
                 new_mut_ref,
+                migrate_postcondition_vars,
             )?;
             let header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
@@ -2376,8 +2403,17 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     }
 
     let body = find_body(ctxt, body_id);
-    let mut vir_body =
-        body_to_vir(ctxt, id, &body_id, body, body_mode, vattrs.external_body, &None, new_mut_ref)?;
+    let mut vir_body = body_to_vir(
+        ctxt,
+        id,
+        &body_id,
+        body,
+        body_mode,
+        vattrs.external_body,
+        &None,
+        new_mut_ref,
+        None,
+    )?;
     let header = vir::headers::read_header(
         &mut vir_body,
         &vir::headers::HeaderAllows::Some(vec![vir::headers::HeaderAllow::Ensure]),

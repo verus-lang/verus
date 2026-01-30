@@ -479,7 +479,9 @@ impl ExpX {
                 UnaryOp::MutRefFuture(_) => {
                     (format!("mut_ref_future({})", exp.x.to_string_prec(global, 99)), 0)
                 }
-                UnaryOp::MutRefFinal => (format!("fin({})", exp.x.to_string_prec(global, 99)), 0),
+                UnaryOp::MutRefFinal(_) => {
+                    (format!("fin({})", exp.x.to_string_prec(global, 99)), 0)
+                }
                 UnaryOp::Length(_kind) => {
                     (format!("length({})", exp.x.to_string_prec(global, 99)), 0)
                 }
