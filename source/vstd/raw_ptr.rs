@@ -29,8 +29,6 @@ use super::layout::*;
 use super::prelude::*;
 use super::set::group_set_axioms;
 use crate::vstd::endian::*;
-use crate::vstd::layout;
-use crate::vstd::primitive_int::PrimitiveInt;
 use crate::vstd::seq::*;
 use crate::vstd::slice::*;
 use core::ops::Index;
@@ -456,8 +454,8 @@ impl<T> PointsTo<[T]> {
     /// and `self.value().len() * size_of::<T>() == size_of::<V>()`,
     /// we can always cast a `[T]` permission to a `V` permission.
     pub axiom fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>) where
-        T: PrimitiveInt + CompatibleSmallerBaseFor<V> + Integer,
-        V: PrimitiveInt + BasePow2 + Integer,
+        T: CompatibleSmallerBaseFor<V> + Integer,
+        V: BasePow2 + Integer,
 
         requires
             self.is_init(),

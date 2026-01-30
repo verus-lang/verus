@@ -6,7 +6,6 @@ use super::endian::*;
 use super::layout::*;
 use super::math::*;
 use super::prelude::*;
-use super::primitive_int::*;
 use super::raw_ptr::*;
 use super::seq::*;
 use super::type_representation::*;
@@ -242,11 +241,12 @@ pub proof fn transmute_const_ptr_unsized_refl<T: ?Sized>(tracked x: *const T, y:
 }
 
 /// A `usize` can be transmuted to a `*mut T` for `T: Sized`. The resulting pointer has an address corresponding to the source value and a null `Provenance`.
-pub proof fn transmute_usize_mut_ptr<T: Sized>(tracked src: usize) -> (dst: Tracked<*mut T>)
+pub proof fn transmute_usize_mut_ptr<T: Sized>(tracked src: usize) -> (tracked dst: Tracked<*mut T>)
     ensures
         transmute_pre(src, dst),
-        dst@@.addr == src,
-        dst@@.provenance == Provenance::null(),
+        dst@ == ptr_mut_from_data(
+            PtrData::<T> { addr: src, provenance: Provenance::null(), metadata: () },
+        ),
 {
     broadcast use group_transmute_axioms;
 
