@@ -1760,16 +1760,22 @@ impl Visitor {
             args.push(Expr::Verbatim(quote! { #ident }));
         }
 
-        let callee =
-            verus_syn::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
-        // We wrap the function call in an 'unsafe' block, since the user might be applying
-        // a specification to an unsafe function.
-        let e = if is_const {
-            Expr::Verbatim(quote!(unsafe { #callee }))
-        } else {
+        let e = if self.erase_ghost.erase() {
             Expr::Verbatim(quote! {
-                unsafe { #callee(#(#args),*) }
+                ::core::unimplemented!()
             })
+        } else {
+            let callee =
+                verus_syn::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
+            // We wrap the function call in an 'unsafe' block, since the user might be applying
+            // a specification to an unsafe function.
+            if is_const {
+                Expr::Verbatim(quote!(unsafe { #callee }))
+            } else {
+                Expr::Verbatim(quote! {
+                    unsafe { #callee(#(#args),*) }
+                })
+            }
         };
         stmts.push(Stmt::Expr(e, None));
 
