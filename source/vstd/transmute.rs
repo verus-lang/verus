@@ -2,7 +2,6 @@
 
 use super::arithmetic::power::*;
 use super::arithmetic::power2::*;
-use super::endian::*;
 use super::layout::*;
 use super::math::*;
 use super::prelude::*;

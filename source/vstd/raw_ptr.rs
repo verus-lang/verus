@@ -435,7 +435,7 @@ impl<T> PointsTo<[T]> {
                 },
             ),
             points_to.is_init(),
-            points_to.value() as int == to_big_ne::<V, T>(self.value()).index(0),
+            points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
     ;
 
     /// "Forgets" about the value stored behind the pointer.
