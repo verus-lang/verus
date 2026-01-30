@@ -1,5 +1,3 @@
-use core::marker::PhantomData;
-// use crate::vstd::arithmetic::mul::lemma_mul_is_distributive_add_other_way;
 use crate::vstd::arithmetic::mul::*;
 use crate::vstd::arithmetic::power::*;
 use crate::vstd::arithmetic::power2::*;
@@ -7,7 +5,7 @@ use crate::vstd::calc_macro::*;
 use crate::vstd::group_vstd_default;
 use crate::vstd::layout;
 use crate::vstd::prelude::*;
-use crate::vstd::primitive_int::PrimitiveInt;
+use core::marker::PhantomData;
 
 verus! {
 
@@ -923,14 +921,13 @@ impl<B: Base> EndianNat<B> {
 
 /***** Functions involving both little and big endian *****/
 
-pub open spec fn to_seq_int<B>(n: Seq<B>) -> Seq<int> where B: PrimitiveInt + Integer {
+pub open spec fn to_seq_int<B>(n: Seq<B>) -> Seq<int> where B: Integer {
     Seq::new(n.len(), |i: int| n[i] as int)
 }
 
-// TODO: something relating PrimitiveInt to Integer, so that if it's a primitive int, then casting is fine
 pub open spec fn to_big_ne<BIG, B>(n: Seq<B>) -> EndianNat<BIG> where
     BIG: BasePow2,
-    B: CompatibleSmallerBaseFor<BIG> + PrimitiveInt + Integer,
+    B: CompatibleSmallerBaseFor<BIG> + Integer,
  {
     EndianNat::<B>::to_big::<BIG>(EndianNat::<B>::new(endianness(), to_seq_int(n)))
 }

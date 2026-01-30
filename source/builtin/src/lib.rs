@@ -439,7 +439,6 @@ impl<A> Ghost<A> {
     #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::borrow"]
     #[verifier::spec]
     #[verifier::external_body]
-    // #[allow(fuzzy_provenance_casts)]
     pub fn borrow(&self) -> &A {
         #[allow(deref_nullptr)]
         unsafe {
@@ -452,7 +451,6 @@ impl<A> Ghost<A> {
     #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::borrow_mut"]
     #[verifier::proof]
     #[verifier::external]
-    // #[allow(fuzzy_provenance_casts)]
     pub fn borrow_mut(#[verifier::proof] &mut self) -> &mut A {
         #[allow(deref_nullptr)]
         unsafe {
@@ -507,7 +505,6 @@ impl<A> Tracked<A> {
     #[verifier::proof]
     #[verifier::external_body]
     #[verifier::returns(proof)]
-    // #[allow(fuzzy_provenance_casts)]
     pub fn borrow(#[verifier::proof] &self) -> &A {
         #[allow(deref_nullptr)]
         unsafe {
@@ -521,7 +518,6 @@ impl<A> Tracked<A> {
     #[verifier::proof]
     #[verifier::external_body]
     #[verifier::returns(proof)]
-    // #[allow(fuzzy_provenance_casts)]
     pub fn borrow_mut(#[verifier::proof] &mut self) -> &mut A {
         #[allow(deref_nullptr)]
         unsafe {

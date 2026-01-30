@@ -93,51 +93,8 @@ pub trait ExIterator {
 
     type Item;
 
-    fn next(&mut self) -> Option<Self::Item>
-        // ensures
-        //     self@.pos == old(self@).pos + 1
-    ;
+    fn next(&mut self) -> Option<Self::Item>;
 }
-
-// impl<T> View for Iterator<Item = T> {
-//     // type Item;
-//     type V = (Seq<T>, T);
-
-//     uninterp spec fn view(&self) -> Self::V;
-// }
-// TODO: impl view for iterator that gives a sequence and position
-// Problem: adding spec information to existing trait
-// Potential solution: define new trait IteratorVerus as a subtrait of Iterator, plus spec information, change function signature to use that
-
-// pub trait IteratorVerus : Iterator {
-//     type V = (Seq<Item>, int);
-//     // change to struct with named fields values, pos instead of a tuple
-
-//     uninterp spec fn view(&self) -> V;
-
-//     proof fn good_next() -> (b: bool)
-//         ensures
-//             next.call_ensures(x, y) == b
-// }
-
-// pub trait IteratorVerus<I: Iterator> {
-//     // type V = (Seq<I::Item>, int);
-//     // change to struct with named fields values, pos instead of a tuple
-
-//     // uninterp spec fn view(&self) -> V;
-
-//     // define struct that holds an iterator
-//     // define new function that instantiates the struct
-//     // define view on the struct (or not, use spec fns)
-
-//     #[verifier::external_body]
-//     fn next(&mut self) -> (result: Option<I::Item>)
-//         ensures
-//             // 0 <= old(self@.pos) < self@.len() - 1 ==> result.is_some()
-//     {
-//         // self.iter.next()
-//     }
-// }
 
 #[verifier::external_trait_specification]
 pub trait ExIntoIterator {

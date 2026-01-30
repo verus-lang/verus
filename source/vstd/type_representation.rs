@@ -33,7 +33,6 @@ use super::endian::*;
 use super::layout::*;
 use super::math::*;
 use super::prelude::*;
-use super::primitive_int::*;
 use super::raw_ptr::*;
 use super::seq::*;
 use crate::vstd::group_vstd_default;
@@ -1014,9 +1013,7 @@ raw_ptr_encoding_from_type_representation! {
 /// This trait is used to define a `AbstractByteEncoding` for `Self` which is implemented on `PrimitiveRepresentationEncoding<Primitive, Self>`.
 /// This representation uses `<Primitive as AbstractByteRepresentation>::encode` and `<Primitive as AbstractByteRepresentation>::decode` after invoking `Self::to_primitive`.
 /// `PrimitiveRepresentationEncoding<Primitive, Self>` can then be used to implement `AbstractByteRepresentation` on `Self`.
-pub trait PrimitiveRepresentation<Primitive: AbstractByteRepresentation + PrimitiveInt> where
-    Self: Sized,
- {
+pub trait PrimitiveRepresentation<Primitive: AbstractByteRepresentation> where Self: Sized {
     spec fn to_primitive(v: Self) -> Primitive;
 
     proof fn to_primitive_tracked(tracked v: &Self) -> (tracked p: &Primitive)
@@ -1032,7 +1029,7 @@ pub trait PrimitiveRepresentation<Primitive: AbstractByteRepresentation + Primit
 }
 
 pub struct PrimitiveRepresentationEncoding<
-    Primitive: AbstractByteRepresentation + PrimitiveInt,
+    Primitive: AbstractByteRepresentation,
     T: PrimitiveRepresentation<Primitive>,
 > {
     _t: T,
@@ -1040,7 +1037,7 @@ pub struct PrimitiveRepresentationEncoding<
 }
 
 impl<
-    Primitive: AbstractByteRepresentation + PrimitiveInt,
+    Primitive: AbstractByteRepresentation,
     T: PrimitiveRepresentation<Primitive>,
 > AbstractByteEncoding<T> for PrimitiveRepresentationEncoding<Primitive, T> {
     open spec fn can_be_encoded() -> bool {

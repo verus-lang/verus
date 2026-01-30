@@ -708,7 +708,6 @@ impl FunctionX {
     pub fn unwind_spec_or_default(&self) -> UnwindSpec {
         if matches!(self.kind, FunctionKind::TraitMethodImpl { .. }) {
             // Always get the unwind spec from the trait method decl
-            dbg!(&self.name);
             panic!("mask_spec_or_default should not be called for TraitMethodImpl");
         }
 
