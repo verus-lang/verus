@@ -2455,14 +2455,14 @@ fn check_function(
 
         if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
             let functionx = &mut Arc::make_mut(&mut *function).x;
-            if !new_mut_ref {
-                crate::user_defined_type_invariants::annotate_user_defined_invariants(
-                    functionx,
-                    &record.type_inv_info,
-                    &ctxt.funs,
-                    &ctxt.datatypes,
-                )?;
-            } else {
+            crate::user_defined_type_invariants::annotate_user_defined_invariants(
+                functionx,
+                &record.type_inv_info,
+                &ctxt.funs,
+                &ctxt.datatypes,
+                new_mut_ref,
+            )?;
+            if new_mut_ref {
                 if let Some(body) = &mut functionx.body {
                     *body = crate::resolution_inference::infer_resolution(
                         &functionx.params,
