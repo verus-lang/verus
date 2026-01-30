@@ -1174,6 +1174,9 @@ impl<'a> Builder<'a> {
             ExprX::UseLeftWhereRightCanHaveNoAssignments(..) => {
                 panic!("UseLeftWhereRightCanHaveNoAssignments shouldn't be created yet");
             }
+            ExprX::ImplicitReborrowOrSpecRead(..) => {
+                panic!("ImplicitReborrowOrSpecRead should have been removed");
+            }
         }
     }
 
