@@ -1282,8 +1282,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 // Rust often inserts &mut* adjustments in argument positions.
                 // e.g., `foo(a)` where `a: &mut T` really becomes `foo(&mut *a)`.
                 // (This is done to force a reborrow.)
-                // We actually don't want this in spec contexts, so we detect this
-                // case and skip it.
+                // We actually don't want this in spec contexts, but we *do* want it in
+                // exec/tracked contexts. So we need to handle this case specially.
                 if adjustment_idx >= 2
                     && matches!(&adjustments[adjustment_idx - 2].kind, Adjust::Deref(None))
                 {
@@ -1297,13 +1297,21 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                         }
                         // TODO(new_mut_ref): we need to improve this condition to work for tracked code
                         if bctx.in_ghost {
-                            return expr_to_vir_with_adjustments(
+                            let p = expr_to_vir_with_adjustments(
                                 bctx,
                                 expr,
                                 current_modifier,
                                 adjustments,
                                 adjustment_idx - 2,
-                            );
+                            ).to_place();
+                            let b = match allow_two_phase_borrow {
+                                AllowTwoPhase::Yes => true,
+                                AllowTwoPhase::No => false,
+                            };
+                            let x = ExprX::ImplicitReborrowOrSpecRead(p.clone(), b);
+                            let typ = bctx.mid_ty_to_vir(expr.span, adjustment.target, false)?;
+                            let e = bctx.spanned_typed_new(expr.span, typ, x);
+                            Ok(ExprOrPlace::Expr(e))
                         }
                     }
                 }

@@ -175,6 +175,7 @@ struct Record {
     var_modes: HashMap<VarIdent, Mode>,
     /// Modes of all PlaceX::Temporary nodes
     temporary_modes: HashMap<crate::messages::AstId, Mode>,
+    implicit_reborrow_spec: HashMap<crate::messages::AstId, bool>,
 }
 
 #[derive(Debug)]
@@ -2214,7 +2215,28 @@ fn check_expr_handle_mut_arg(
         ExprX::Nondeterministic => {
             panic!("Nondeterministic is not created by user code right now");
         }
-        ExprX::BorrowMut(place) | ExprX::TwoPhaseBorrowMut(place) => {
+        ExprX::ImplicitReborrowOrSpecRead(place, _) if expect.0 == Mode::Spec || outer_mode == Mode::Spec => {
+            let found = record.implicit_reborrow_spec.insert(expr.span.id, true);
+            assert!(found.is_none());
+
+            check_place(
+                ctxt,
+                record,
+                typing,
+                outer_mode,
+                place,
+                PlaceAccess::Read,
+                Expect(Mode::Spec),
+            )?;
+            Ok(Mode::Spec)
+        }
+        ExprX::BorrowMut(place)
+            | ExprX::TwoPhaseBorrowMut(place)
+            | ExprX::ImplicitReborrowOrSpecRead(place)
+        => {
+            let found = record.implicit_reborrow_spec.insert(expr.span.id, false);
+            assert!(found.is_none());
+
             if typing.in_forall_stmt {
                 return Err(error(
                     &expr.span,
@@ -2236,14 +2258,7 @@ fn check_expr_handle_mut_arg(
             )?;
             match mode {
                 Mode::Exec => {}
-                Mode::Proof => {
-                    if typing.block_ghostness == Ghost::Exec {
-                        return Err(error(
-                            &expr.span,
-                            "cannot take mutable borrow of tracked-mode place outside of a proof block",
-                        ));
-                    }
-                }
+                Mode::Proof => {}
                 Mode::Spec => {
                     return Err(error(
                         &place.span,
@@ -2251,7 +2266,7 @@ fn check_expr_handle_mut_arg(
                     ));
                 }
             }
-            Ok(typing.block_ghostness.join_mode(outer_mode))
+            Ok(join_mode(mode, typing.block_ghostness.join_mode(outer_mode)))
         }
         ExprX::UnaryOpr(UnaryOpr::HasResolved(_t), e) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
