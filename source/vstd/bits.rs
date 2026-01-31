@@ -49,7 +49,6 @@ macro_rules! lemma_shr_is_div {
                 #[trigger] (x >> shift) == x as nat / pow2(shift as nat),
             decreases shift,
         {
-            reveal(pow2);
             if shift == 0 {
                 assert(x >> 0 == x) by (bit_vector);
                 reveal(pow);
@@ -326,7 +325,6 @@ pub proof fn lemma_low_bits_mask_values()
         low_bits_mask(32) == 0xffffffff,
         low_bits_mask(64) == 0xffffffffffffffff,
 {
-    reveal(pow2);
     #[verusfmt::skip]
     assert(
         low_bits_mask(0) == 0x0 &&
