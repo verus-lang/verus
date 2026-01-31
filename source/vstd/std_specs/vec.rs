@@ -112,11 +112,17 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::new_in ](alloc: A) -> (v
 ;
 
 pub assume_specification<T>[ Vec::<T>::with_capacity ](capacity: usize) -> (v: Vec<T>)
+    requires
+        // Rust documentation says "Panics if the new capacity exceeds `isize::MAX` bytes"
+        capacity <= isize::MAX,
     ensures
         v@ == Seq::<T>::empty(),
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::with_capacity_in ](capacity: usize, alloc: A) -> (v: Vec<T, A>)
+    requires
+        // Rust documentation says "Panics if the new capacity exceeds `isize::MAX` bytes"
+        capacity <= isize::MAX,
     ensures
         v@ == Seq::<T>::empty(),
 ;
