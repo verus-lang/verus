@@ -112,17 +112,11 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::new_in ](alloc: A) -> (v
 ;
 
 pub assume_specification<T>[ Vec::<T>::with_capacity ](capacity: usize) -> (v: Vec<T>)
-    requires
-        // Rust documentation says "Panics if the new capacity exceeds `isize::MAX` bytes"
-        capacity <= isize::MAX,
     ensures
         v@ == Seq::<T>::empty(),
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::with_capacity_in ](capacity: usize, alloc: A) -> (v: Vec<T, A>)
-    requires
-        // Rust documentation says "Panics if the new capacity exceeds `isize::MAX` bytes"
-        capacity <= isize::MAX,
     ensures
         v@ == Seq::<T>::empty(),
 ;
@@ -170,9 +164,6 @@ pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::exte
     vec: &mut Vec<T, A>,
     other: &[T],
 )
-    requires
-        // Rust documentation says "Panics if the new capacity exceeds `isize::MAX` bytes"
-        old(vec).len() + other@.len() <= isize::MAX,
     ensures
         vec@.len() == old(vec)@.len() + other@.len(),
         forall|i: int|
@@ -308,8 +299,6 @@ pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
     len: usize,
     value: T,
 )
-    requires
-        len <= isize::MAX, // Rust documentation says "Panics if the new capacity exceeds `isize::MAX` bytes"
     ensures
         len <= old(vec).len() ==> vec@ == old(vec)@.subrange(0, len as int),
         len > old(vec).len() ==> {
