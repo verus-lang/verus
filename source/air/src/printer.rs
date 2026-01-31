@@ -157,28 +157,25 @@ impl Printer {
                     UnaryOp::BitZeroExtend(_) => "zero_extend",
                     UnaryOp::BitSignExtend(_) => "sign_extend",
                     UnaryOp::ToReal => "to_real",
+                    UnaryOp::RealToInt => "to_int",
                 };
                 // ( (_ extract numeral numeral) BitVec )
                 match op {
                     UnaryOp::BitExtract(high, low) => {
-                        let mut nodes: Vec<Node> = Vec::new();
-                        let mut nodes_in: Vec<Node> = Vec::new();
-                        nodes_in.push(str_to_node("_"));
-                        nodes_in.push(str_to_node(sop));
-                        nodes_in.push(str_to_node(&high.to_string()));
-                        nodes_in.push(str_to_node(&low.to_string()));
-                        nodes.push(Node::List(nodes_in));
-                        nodes.push(self.expr_to_node(expr));
+                        let nodes_in = vec![
+                            str_to_node("_"),
+                            str_to_node(sop),
+                            str_to_node(&high.to_string()),
+                            str_to_node(&low.to_string()),
+                        ];
+                        let nodes = vec![Node::List(nodes_in), self.expr_to_node(expr)];
+
                         Node::List(nodes)
                     }
                     UnaryOp::BitZeroExtend(w) | UnaryOp::BitSignExtend(w) => {
-                        let mut nodes: Vec<Node> = Vec::new();
-                        let mut nodes_in: Vec<Node> = Vec::new();
-                        nodes_in.push(str_to_node("_"));
-                        nodes_in.push(str_to_node(sop));
-                        nodes_in.push(str_to_node(&w.to_string()));
-                        nodes.push(Node::List(nodes_in));
-                        nodes.push(self.expr_to_node(expr));
+                        let nodes_in =
+                            vec![str_to_node("_"), str_to_node(sop), str_to_node(&w.to_string())];
+                        let nodes = vec![Node::List(nodes_in), self.expr_to_node(expr)];
                         Node::List(nodes)
                     }
                     _ => Node::List(vec![str_to_node(sop), self.expr_to_node(expr)]),

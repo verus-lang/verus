@@ -1,8 +1,8 @@
 use crate::ast::{
-    BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX,
-    FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
-    Pattern, PatternX, Place, PlaceX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent,
-    VirErr, VirErrAs, Visibility,
+    BodyVisibility, CallTarget, CallTargetKind, Constant, Datatype, DatatypeTransparency, Dt, Expr,
+    ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
+    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec,
+    VarIdent, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
@@ -21,6 +21,7 @@ struct Ctxt<'a> {
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) reveal_groups: HashSet<Fun>,
     pub(crate) dts: HashMap<Path, Datatype>,
+    pub(crate) traits: HashMap<Path, Trait>,
     pub(crate) krate: &'a Krate,
     unpruned_krate: &'a Krate,
     no_cheating: bool,
@@ -69,6 +70,31 @@ fn check_one_typ<Emit: EmitError>(
         TypX::Datatype(Dt::Path(path), _, _) => {
             let _ = check_path_and_get_datatype(ctxt, path, span, emit)?;
             Ok(())
+        }
+        TypX::Dyn(path, _, _) => {
+            if let Some(tr) = ctxt.traits.get(path) {
+                use crate::ast::DynCompatible;
+                match &**tr.x.dyn_compatible.as_ref().expect("dyn_compatible should be Some") {
+                    DynCompatible::Accept => Ok(()),
+                    DynCompatible::Reject { reason } => {
+                        let msg = format!("Trait is not Verus dyn-compatible: {}", reason);
+                        Err(error(span, msg))
+                    }
+                    DynCompatible::RejectUnsizedBlanketImpl { trait_path } => {
+                        let name = path_as_friendly_rust_name(trait_path);
+                        let msg = format!(
+                            "Verus disallows dyn for trait {} because it has an unsized blanket impl (see https://github.com/rust-lang/rust/issues/57893 )",
+                            name,
+                        );
+                        Err(error(span, msg))
+                    }
+                }
+            } else {
+                Err(error(
+                    span,
+                    &format!("trait {} not declared to Verus", path_as_friendly_rust_name(path)),
+                ))
+            }
         }
         TypX::FnDef(fun, _typs, opt_res_fun) => {
             check_function_access(ctxt, fun, None, span, emit)?;
@@ -659,6 +685,76 @@ fn check_one_expr<Emit: EmitError>(
                 ),
             ));
         }
+        ExprX::Unary(UnaryOp::MutRefFinal(migrated), _) => {
+            return Err(error(
+                &expr.span,
+                if *migrated {
+                    "This `&mut` parameter must be dereferenced (either explicitly, as in `*x`, or implicitly, as in `x.field`). For more flexible mutable reference support, disable the backwards-compatability (add #[verifier::migrate_postcondition_with_mut_refs(false)] to the function)"
+                } else {
+                    "The result of `fin` must be dereferenced (either explicitly, as in `*fin(x)`, or implicitly, as in `fin(x).field`)"
+                },
+            ));
+        }
+        ExprX::Match(_place, arms) => {
+            for (i, arm) in arms.iter().enumerate() {
+                // Error if the arm contains more than 1 of these 3 nontrivial features:
+                let has_guard = !matches!(&arm.x.guard.x, ExprX::Const(Constant::Bool(true)));
+                let has_or = crate::patterns::pattern_has_or(&arm.x.pattern);
+                let has_ref_mut_binding = crate::patterns::pattern_find_mut_binding(&arm.x.pattern);
+
+                if has_guard && has_or {
+                    // This is nontrivial because we might need to evaluate the guard condition more than once
+                    return Err(error(
+                        &arm.x.pattern.span,
+                        "Not supported: match arm containing both an or-pattern (|) and a match-guard",
+                    ));
+                }
+                if let Some(span) = has_ref_mut_binding {
+                    if has_or {
+                        // This probably isn't that bad to support
+                        return Err(error(
+                            &span,
+                            "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
+                        ));
+                    }
+                    if has_guard {
+                        // This is complicated because we need to create a mutable borrow to evaluate
+                        // the test condition, but the mutable borrow is immutable until it ends
+                        return Err(error(
+                            &span,
+                            "Not supported: match arm containing both a match-guard and a binding by mutable reference",
+                        ));
+                    }
+                }
+
+                // Error if the last arm has a guard (this would just be a warning from Rust)
+                if i == arms.len() - 1 && has_guard {
+                    return Err(error(
+                        &arm.x.guard.span,
+                        "Not supported: match where the last arm has a match guard (this would necessarily mean the entire arm is unreachable)",
+                    ));
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn check_one_stmt(_ctxt: &Ctxt, stmt: &Stmt) -> Result<(), VirErr> {
+    match &stmt.x {
+        StmtX::Decl { pattern, .. } => {
+            let has_ref_mut_binding = crate::patterns::pattern_find_mut_binding(&pattern);
+            if let Some(span) = has_ref_mut_binding {
+                let has_or = crate::patterns::pattern_has_or(&pattern);
+                if has_or {
+                    return Err(error(
+                        &span,
+                        "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
+                    ));
+                }
+            }
+        }
         _ => {}
     }
     Ok(())
@@ -758,7 +854,7 @@ fn check_expr<Emit: EmitError>(
         &mut |emit, _scope_map, expr: &Arc<crate::ast::SpannedTyped<ExprX>>| {
             check_one_expr(ctxt, function, expr, disallow_private_access, area, emit)
         },
-        &mut |_emit, _scope_map, _stmt| Ok(()),
+        &mut |_emit, _scope_map, stmt| check_one_stmt(ctxt, stmt),
         &mut |emit, _scope_map, pattern: &Arc<crate::ast::SpannedTyped<PatternX>>| {
             check_one_pattern(ctxt, function, pattern, disallow_private_access, emit)
         },
@@ -1809,7 +1905,7 @@ pub fn check_crate(
     let diag_map: HashMap<Path, usize> = HashMap::new();
     let new_diags: Vec<VirErrAs> = Vec::new();
     let mut emit = EmitErrorState { diag_map, diags: new_diags };
-    let ctxt = Ctxt { funs, reveal_groups, dts, krate, unpruned_krate, no_cheating };
+    let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
         check_function(&ctxt, function, &mut emit, no_verify)?;

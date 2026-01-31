@@ -65,46 +65,48 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
                 }))
             }
         }
-        SimplStmt::Split(span, SplitKind::If(cond), es, _) => {
-            assert!(es.len() == 2);
-            let t1 = safety_condition_body_simpl_vec(&es[0].1);
-            let t2 = safety_condition_body_simpl_vec(&es[1].1);
-            match (t1, t2) {
-                (None, None) => None,
-                (Some(e), None) => Some(Expr::Verbatim(quote_spanned! {*span =>
-                    if #cond {
-                        #e
-                    }
-                })),
-                (None, Some(e)) => Some(Expr::Verbatim(quote_spanned! {*span =>
-                    if #cond {
-                    } else {
-                        #e
-                    }
-                })),
-                (Some(e1), Some(e2)) => Some(Expr::Verbatim(quote_spanned! {*span =>
-                    if #cond {
-                        #e1
-                    } else {
-                        #e2
-                    }
-                })),
+        SimplStmt::Split(span, split_kind, es, _) => match &**split_kind {
+            SplitKind::If(cond) => {
+                assert!(es.len() == 2);
+                let t1 = safety_condition_body_simpl_vec(&es[0].1);
+                let t2 = safety_condition_body_simpl_vec(&es[1].1);
+                match (t1, t2) {
+                    (None, None) => None,
+                    (Some(e), None) => Some(Expr::Verbatim(quote_spanned! {*span =>
+                        if #cond {
+                            #e
+                        }
+                    })),
+                    (None, Some(e)) => Some(Expr::Verbatim(quote_spanned! {*span =>
+                        if #cond {
+                        } else {
+                            #e
+                        }
+                    })),
+                    (Some(e1), Some(e2)) => Some(Expr::Verbatim(quote_spanned! {*span =>
+                        if #cond {
+                            #e1
+                        } else {
+                            #e2
+                        }
+                    })),
+                }
             }
-        }
-        SimplStmt::Split(span, SplitKind::Match(match_e, arms), es, _) => {
-            let cases: Vec<Option<Expr>> =
-                es.iter().map(|e| safety_condition_body_simpl_vec(&e.1)).collect();
-            if cases.iter().any(|c| c.is_some()) {
-                // Any case which is empty will just look like
-                //      `... => { }`
-                Some(emit_match(*span, match_e, arms, &cases))
-            } else {
-                None
+            SplitKind::Match(match_e, arms) => {
+                let cases: Vec<Option<Expr>> =
+                    es.iter().map(|e| safety_condition_body_simpl_vec(&e.1)).collect();
+                if cases.iter().any(|c| c.is_some()) {
+                    // Any case which is empty will just look like
+                    //      `... => { }`
+                    Some(emit_match(*span, match_e, arms, &cases))
+                } else {
+                    None
+                }
             }
-        }
-        SimplStmt::Split(..) => {
-            panic!("should SplitKind should have been translated out");
-        }
+            _ => {
+                panic!("should SplitKind should have been translated out");
+            }
+        },
         SimplStmt::Require(span, e) => Some(Expr::Verbatim(quote_spanned_vstd! {vstd, *span =>
             #vstd::prelude::assume_(#e);
         })),
@@ -139,7 +141,6 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
 }
 
 /// Returns true if there are any 'assert' statements.
-
 pub fn has_any_assert_simpl_vec(sops: &Vec<SimplStmt>) -> bool {
     for sop in sops.iter() {
         if has_any_assert_simpl(sop) {

@@ -44,6 +44,7 @@ pub enum UnaryOp {
     BitZeroExtend(u32),
     BitSignExtend(u32),
     ToReal,
+    RealToInt,
 }
 
 /// These are Z3 special relations x <= y that are documented at

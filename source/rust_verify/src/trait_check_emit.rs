@@ -85,6 +85,13 @@ impl ToString for TypX {
             TypX::Datatype(path, lifetimes, args) => {
                 typ_args_to_string(Some(path), lifetimes, args, &None)
             }
+            TypX::Dyn(path, args) => {
+                format!("dyn {}", typ_args_to_string(Some(path), &vec![], args, &None))
+            }
+            TypX::Slice(elem) => {
+                format!("[{}]", elem.to_string())
+            }
+            TypX::StrSlice => "str".to_string(),
             TypX::Projection { self_typ, trait_as_datatype: tr, name, assoc_typ_args } => {
                 format!(
                     "<{} as {}>::{}",
@@ -414,8 +421,7 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
             state.write(" : ");
             let bounds_strs: Vec<_> = bares
                 .iter()
-                .map(|bound| emit_generic_bound(bound, true))
-                .flatten()
+                .filter_map(|bound| emit_generic_bound(bound, true))
                 .chain(unsize.into_iter())
                 .collect();
             state.write(bounds_strs.join("+"));

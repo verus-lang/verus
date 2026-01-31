@@ -2317,6 +2317,54 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] no_resolve_ghost_binders ["new-mut-ref"] => verus_code! {
+        proof fn test1<T>(x: (T, T)) {
+            match x {
+                (y, z) => {
+                    assert(has_resolved(y)); // FAILS
+                }
+            }
+        }
+
+        proof fn test2<T>(x: (T, T)) {
+            let (y, z) = x;
+            assert(has_resolved(y)); // FAILS
+        }
+
+        tracked struct TG<T, G> {
+            tracked t: T,
+            ghost g: G,
+        }
+
+        proof fn test_tg1<T>(tracked x: TG<T, T>) {
+            match x {
+                TG { t, g } => {
+                    assert(has_resolved(g)); // FAILS
+                }
+            }
+        }
+
+        proof fn test_tg2<T>(tracked x: TG<T, T>) {
+            match x {
+                TG { t, g } => {
+                    assert(has_resolved(t));
+                }
+            }
+        }
+
+        proof fn test_tg1_let<T>(tracked x: TG<T, T>) {
+            let tracked TG { t, g } = x;
+            assert(has_resolved(g)); // FAILS
+        }
+
+        proof fn test_tg2_let<T>(tracked x: TG<T, T>) {
+            let tracked TG { t, g } = x;
+            assert(has_resolved(t));
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
     #[test] mut_ref_ghost_binder_forbidden ["new-mut-ref"] => verus_code! {
         struct X {
             a: u64
@@ -2724,4 +2772,773 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] enum_conditional_resolution ["new-mut-ref"] => verus_code! {
+        enum Foo<A, B> {
+            Bar(A, B),
+            Qux(A, B),
+        }
+
+        fn consume<A>(a: A) { }
+
+        fn test<A, B>(foo: Foo<A, B>) {
+            assert(foo is Qux ==> has_resolved(foo->Qux_1));
+
+            match foo {
+                Foo::Bar(a, b) => {
+                    consume(a);
+                    consume(b);
+                }
+                Foo::Qux(a, _) => {
+                    consume(a);
+                }
+            }
+        }
+
+        fn test_fails<A, B>(foo: Foo<A, B>) {
+            match foo {
+                Foo::Bar(a, b) => {
+                    consume(a);
+                    consume(b);
+                }
+                Foo::Qux(a, _) => {
+                    consume(a);
+                }
+            }
+
+            assert(foo is Qux ==> has_resolved(foo->Qux_0)); // FAILS
+        }
+
+        fn test_fails2<A, B>(foo: Foo<A, B>) {
+            match foo {
+                Foo::Bar(a, b) => {
+                    consume(a);
+                    consume(b);
+                }
+                Foo::Qux(a, _) => {
+                    consume(a);
+                }
+            }
+
+            assert(foo is Bar ==> has_resolved(foo->Bar_0)); // FAILS
+        }
+
+        fn test_fails3<A, B>(foo: Foo<A, B>) {
+            match foo {
+                Foo::Bar(a, b) => {
+                    consume(a);
+                    consume(b);
+                }
+                Foo::Qux(a, _) => {
+                    consume(a);
+                }
+            }
+
+            assert(has_resolved(foo->Qux_1)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] enum_conditional_resolution_with_mut_refs ["new-mut-ref"] => verus_code! {
+        enum Foo<A, B> {
+            Bar(A, B),
+            Qux(A, B),
+        }
+
+        fn test<A, B>(cond: bool) {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+
+            let m_ref = if cond {
+                Foo::Bar(&mut a, &mut b)
+            } else {
+                Foo::Qux(&mut c, &mut d)
+            };
+
+            match m_ref {
+                Foo::Bar(a_ref, b_ref) => {
+                    assert(*a_ref == 0);
+                    assert(*b_ref == 1);
+                    *a_ref = 100;
+                    *b_ref = 101;
+                }
+                Foo::Qux(_, d_ref) => {
+                    assert(*d_ref == 3);
+                    *d_ref = 103;
+                }
+            }
+
+            assert(a === (if cond { 100 } else { 0 }));
+            assert(b === (if cond { 101 } else { 1 }));
+            assert(c === 2);
+            assert(d === (if cond { 3 } else { 103 }));
+        }
+
+        fn test_fails<A, B>(cond: bool) {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+
+            let m_ref = if cond {
+                Foo::Bar(&mut a, &mut b)
+            } else {
+                Foo::Qux(&mut c, &mut d)
+            };
+
+            match m_ref {
+                Foo::Bar(a_ref, b_ref) => {
+                    assert(*a_ref == 0);
+                    assert(*b_ref == 1);
+                    *a_ref = 100;
+                    *b_ref = 101;
+                }
+                Foo::Qux(_, d_ref) => {
+                    assert(*d_ref == 3);
+                    *d_ref = 103;
+                }
+            }
+
+            assert(a === (if cond { 100 } else { 0 }));
+            assert(b === (if cond { 101 } else { 1 }));
+            assert(c === 2);
+            assert(d === (if cond { 3 } else { 103 }));
+
+            if cond {
+                assert(false); // FAILS
+            } else {
+                assert(false); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] enum_conditional_resolution_with_mut_refs_and_moves ["new-mut-ref"] => verus_code! {
+        enum Foo<A, B> {
+            Bar(A, B),
+            Qux(A, B),
+        }
+
+        fn test<A, B>(cond: bool) {
+            let mut a = 0;
+            let mut c = 2;
+
+            let mut m_ref = if cond {
+                Foo::Bar(&mut a, 1)
+            } else {
+                Foo::Qux(&mut c, 3)
+            };
+
+            match m_ref {
+                Foo::Bar(a_ref, ref mut b_ref) => {
+                    assert(*a_ref == 0);
+                    assert(*b_ref == 1);
+                    *a_ref = 100;
+                    *b_ref = 101;
+                }
+                Foo::Qux(_, ref mut d_ref) => {
+                    assert(*d_ref == 3);
+                    *d_ref = 103;
+                }
+            }
+
+            assert(a === (if cond { 100 } else { 0 }));
+            assert(c === 2);
+
+            if cond {
+                assert(m_ref->Bar_1 == 101);
+            } else {
+                assert(m_ref->Qux_1 == 103);
+            }
+        }
+
+        fn test_fails<A, B>(cond: bool) {
+            let mut a = 0;
+            let mut c = 2;
+
+            let mut m_ref = if cond {
+                Foo::Bar(&mut a, 1)
+            } else {
+                Foo::Qux(&mut c, 3)
+            };
+
+            match m_ref {
+                Foo::Bar(a_ref, ref mut b_ref) => {
+                    assert(*a_ref == 0);
+                    assert(*b_ref == 1);
+                    *a_ref = 100;
+                    *b_ref = 101;
+                }
+                Foo::Qux(_, ref mut d_ref) => {
+                    assert(*d_ref == 3);
+                    *d_ref = 103;
+                }
+            }
+
+            assert(a === (if cond { 100 } else { 0 }));
+            assert(c === 2);
+
+            if cond {
+                assert(m_ref->Bar_1 == 101);
+                assert(false); // FAILS
+            } else {
+                assert(m_ref->Qux_1 == 103);
+                assert(false); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] enum_conditional_resolution_nested ["new-mut-ref"] => verus_code! {
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        fn consume<A>(a: A) { }
+
+        fn test<A, B, C>(x: Option<(Option<(A, B)>, C)>) {
+            assert(x is Some && x->Some_0.0 is Some ==> has_resolved(x->Some_0.0->Some_0.1));
+
+            match x {
+                Some((Some((a, _)), c)) => {
+                    consume(a);
+                    consume(c);
+                }
+                _ => { }
+            }
+        }
+
+        fn test_fails<A, B, C>(x: Option<(Option<(A, B)>, C)>) {
+            match x {
+                Some((Some((a, _)), c)) => {
+                    consume(a);
+                    consume(c);
+                }
+                _ => { }
+            }
+
+            assert(x is Some ==> has_resolved(x->Some_0.0->Some_0.1)); // FAILS
+        }
+
+        fn test_fails2<A, B, C>(x: Option<(Option<(A, B)>, C)>) {
+            match x {
+                Some((Some((a, _)), c)) => {
+                    consume(a);
+                    consume(c);
+                }
+                _ => { }
+            }
+
+            assert(x->Some_0.0 is Some ==> has_resolved(x->Some_0.0->Some_0.1)); // FAILS
+        }
+
+        fn test_fails3<A, B, C>(x: Option<(Option<(A, B)>, C)>) {
+            match x {
+                Some((Some((a, _)), c)) => {
+                    consume(a);
+                    consume(c);
+                }
+                _ => { }
+            }
+
+            assert(x is Some && x->Some_0.0 is Some ==> has_resolved(x->Some_0.0->Some_0.0)); // FAILS
+        }
+
+        fn test_fails4<A, B, C>(x: Option<(Option<(A, B)>, C)>) {
+            match x {
+                Some((Some((a, _)), c)) => {
+                    consume(a);
+                    consume(c);
+                }
+                _ => { }
+            }
+
+            assert(x is Some && x->Some_0.0 is Some ==> has_resolved(x->Some_0.1)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] enum_conditional_resolution_nested_with_mut_refs ["new-mut-ref"] => verus_code! {
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        fn test() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+
+            let x = Some((Some((&mut a, &mut b)), &mut c));
+
+            match x {
+                Some((Some((a_ref, _)), c_ref)) => {
+                    *a_ref = 10;
+                    *c_ref = 12;
+                }
+                _ => { }
+            }
+
+            assert(a == 10);
+            assert(b == 1);
+            assert(c == 12);
+        }
+
+        fn test_fails() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+
+            let x = Some((Some((&mut a, &mut b)), &mut c));
+
+            match x {
+                Some((Some((a_ref, _)), c_ref)) => {
+                    *a_ref = 10;
+                    *c_ref = 12;
+                }
+                _ => { }
+            }
+
+            assert(a == 10);
+            assert(b == 1);
+            assert(c == 12);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] partial_move_out_of_enum ["new-mut-ref"] => verus_code! {
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        fn test() {
+            let mut a = 0;
+            let mut b = 1;
+            let x = Some((&mut a, &mut b));
+
+            match x {
+                Some((a, _)) => {
+                    *a = 5;
+                }
+                _ => { }
+            }
+
+            match x {
+                Some((_, b)) => {
+                    *b = 6;
+                }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of partially moved value: `x`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] partial_move_out_of_enum_no_lifetime ["new-mut-ref", "--no-lifetime"] => verus_code! {
+        // Rust's ownership-checking rejects this with "use of partially moved value: `x`"
+        // at the second match statement. (As shown in the above test case.)
+        // According to a rust dev, this is because the second match statement has to
+        // check the discriminant, which is not allowed after a partial move.
+        //
+        // I still want to check that our resolution analysis does the right thing in this
+        // scenario so this test is done with no-lifetime enabled.
+
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        fn test() {
+            let mut a = 0;
+            let mut b = 1;
+            let x = Some((&mut a, &mut b));
+
+            match x {
+                Some((a_ref, _)) => {
+                    *a_ref = 5;
+                }
+                _ => { }
+            }
+
+            match x {
+                Some((_, b_ref)) => {
+                    *b_ref = 6;
+                }
+                _ => { }
+            }
+
+            assert(a == 5);
+            assert(b == 6);
+        }
+
+        fn test2() {
+            let mut a = 0;
+            let mut b = 1;
+            let x = Some((&mut a, &mut b));
+
+            match x {
+                Some((a_ref, _)) => {
+                    *a_ref = 5;
+                }
+                _ => { }
+            }
+
+            match x {
+                Some((_, b_ref)) => {
+                    *b_ref = 6;
+                }
+                _ => { }
+            }
+
+            assert(a == 5);
+            assert(b == 6);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] partial_move_out_of_enum2 ["new-mut-ref"] => verus_code! {
+        // One way to get around the error more legitimately is to use an enum where
+        // one variant is impossible.
+        // However, I am told this may be disallowed in the future as well.
+
+        enum Option<T, U> { Some(T), None(U) }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        fn test() {
+            let mut a = 0;
+            let mut b = 1;
+            let x = Some::<_, !>((&mut a, &mut b));
+
+            match x {
+                Some((a_ref, _)) => {
+                    *a_ref = 5;
+                }
+            }
+
+            match x {
+                Some((_, b_ref)) => {
+                    *b_ref = 6;
+                }
+            }
+
+            assert(a == 5);
+            assert(b == 6);
+        }
+
+        fn test2() {
+            let mut a = 0;
+            let mut b = 1;
+            let x = Some::<_, !>((&mut a, &mut b));
+
+            match x {
+                Some((a_ref, _)) => {
+                    *a_ref = 5;
+                }
+            }
+
+            match x {
+                Some((_, b_ref)) => {
+                    *b_ref = 6;
+                }
+            }
+
+            assert(a == 5);
+            assert(b == 6);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] partial_move_out_of_enum3 ["new-mut-ref"] => verus_code! {
+        // Or we could just have an enum with only 1 variant
+        // (though this is basically the same as a struct anyway
+        // so not a very interesting test case)
+
+        enum Option<T> { Some(T) }
+        use crate::Option::Some;
+
+        fn test() {
+            let mut a = 0;
+            let mut b = 1;
+            let x = Some((&mut a, &mut b));
+
+            match x {
+                Some((a_ref, _)) => {
+                    *a_ref = 5;
+                }
+            }
+
+            match x {
+                Some((_, b_ref)) => {
+                    *b_ref = 6;
+                }
+            }
+
+            assert(a == 5);
+            assert(b == 6);
+        }
+
+        fn test2() {
+            let mut a = 0;
+            let mut b = 1;
+            let x = Some((&mut a, &mut b));
+
+            match x {
+                Some((a_ref, _)) => {
+                    *a_ref = 5;
+                }
+            }
+
+            match x {
+                Some((_, b_ref)) => {
+                    *b_ref = 6;
+                }
+            }
+
+            assert(a == 5);
+            assert(b == 6);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] not_support_pattern_mut_ref_binding_with_guard ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let m = (0, 1);
+            match m {
+                (ref mut a, b) if b == 1 => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: match arm containing both a match-guard and a binding by mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] not_support_pattern_mut_ref_binding_with_or_pat ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let m = (0, false);
+            match m {
+                (ref mut a, false) | (ref mut a, true) => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] not_support_let_pattern_mut_ref_binding_with_or_pat ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let x = Some((5, true));
+            let Some((ref mut i, true | false)) = x;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_match_guards ["new-mut-ref"] => verus_code! {
+        enum Foo<A> {
+            Bar(A),
+            Qux(A),
+        }
+
+        fn consume<A>(a: A) no_unwind { }
+
+        fn cond2<A>(b: &mut A) -> bool no_unwind { true }
+        fn cond() -> bool no_unwind { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn get_b<A>() -> A {
+            loop { }
+        }
+
+        fn test<A>(foo: Foo<A>, b: A) {
+            let mut b = b;
+
+            assert(has_resolved(b)); // FAILS
+
+            match foo {
+                Foo::Bar(t) => {
+                    consume(t);
+                }
+                Foo::Qux(t) if cond2(&mut b) => {
+                    consume(t);
+                }
+                Foo::Qux(t) => {
+                    consume(t);
+                }
+            }
+        }
+
+        fn test2<A>(foo: Foo<A>, b: A) {
+            let mut b = b;
+
+            match foo {
+                Foo::Bar(t) if ({
+                    assert(has_resolved(b)); // FAILS
+                    cond()
+                }) => {
+                    consume(t);
+                }
+                Foo::Qux(t) if cond2(&mut b) => {
+                    consume(t);
+                }
+                Foo::Qux(t) => {
+                    consume(t);
+                }
+                Foo::Bar(t) => { }
+            }
+        }
+
+        fn test3<A>(foo: Foo<A>, b: A) {
+            let mut b = b;
+
+            match foo {
+                Foo::Bar(t) if cond() => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Qux(t) if cond2(&mut b) => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Qux(t) => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Bar(t) => {
+                    // TODO(new_mut_ref): this should pass; the resolution goes to a "MatchIntermediate" position which gets dropped
+                    assert(has_resolved(b)); // FAILS
+                }
+            }
+        }
+
+        fn test4<A>(foo: Foo<A>, b: A) {
+            let mut b: A;
+            let mut entered_guard = false;
+
+            match foo {
+                Foo::Bar(t) if cond() => {
+                }
+                Foo::Qux(t) if ({ entered_guard = true; b = get_b(); cond() }) => {
+                    consume(b);
+                }
+                Foo::Qux(t) => {
+                    assert(entered_guard ==> has_resolved(b));
+                }
+                Foo::Bar(t) => {
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_or_patterns ["new-mut-ref"] => verus_code! {
+        enum Foo<A> {
+            Bar(A),
+            Qux(A),
+            Duck(A),
+        }
+
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: Foo<A>) {
+            match foo {
+                Foo::Bar(x) | Foo::Qux(x) => {
+                    consume(x);
+                }
+                Foo::Duck(_) => { }
+            }
+            assert(foo is Bar ==> has_resolved(foo->Bar_0)); // FAILS
+        }
+
+        fn test2<A>(foo: Foo<A>) {
+            match foo {
+                Foo::Bar(x) | Foo::Qux(x) => {
+                    consume(x);
+                }
+                Foo::Duck(_) => { }
+            }
+            assert(foo is Duck ==> has_resolved(foo->Duck_0));
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] decl_test_or_patterns ["new-mut-ref"] => verus_code! {
+        enum Foo<A> {
+            Bar(A),
+            Qux(A),
+        }
+
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: Foo<A>) {
+            let (Foo::Bar(x) | Foo::Qux(x)) = foo;
+            consume(x);
+            assert(foo is Bar ==> has_resolved(foo->Bar_0)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] or_patterns_with_conditional_moves ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: (bool, A, A)) {
+            match foo {
+                (true, x, _) | (false, _, x) => {
+                    consume(x);
+                    // TODO(new_mut_ref): these ought to pass
+                    assert(foo.0 ==> has_resolved(foo.2)); // FAILS
+                    assert(!foo.0 ==> has_resolved(foo.1)); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] or_patterns_with_conditional_moves2 ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: (bool, A, A)) {
+            match foo {
+                (true, x, _) | (false, _, x) => {
+                    consume(x);
+                    assert(has_resolved(foo.1)); // FAILS
+                    assert(has_resolved(foo.2)); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] or_patterns_with_moves_in_same_place ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: (bool, A, A)) {
+            match foo {
+                (true, x, _) | (false, x, _) => {
+                    consume(x);
+                    assert(has_resolved(foo.2));
+                    assert(has_resolved(foo.1)); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

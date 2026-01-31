@@ -89,7 +89,7 @@ fn func_def_typs_args(
     params: &Pars,
 ) -> Vec<Expr> {
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
-    let mut f_args: Vec<Expr> = typ_args.iter().map(typ_to_ids).flatten().collect();
+    let mut f_args: Vec<Expr> = typ_args.iter().flat_map(typ_to_ids).collect();
     for param in params.iter() {
         let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
             prefix_pre_var(&param.x.name.lower())
@@ -749,7 +749,6 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
 /// (This may include the proof content of a decreases_by function.)
 /// (Note: this means that you shouldn't call func_axioms_to_air with a decreases_by function
 /// on its own.)
-
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
     function: &FunctionSst,
@@ -793,8 +792,7 @@ pub fn func_axioms_to_air(
                         Arc::make_mut(&mut trait_typ_args)
                             .push(Arc::new(TypX::TypParam(x.clone())));
                     }
-                    let mut args: Vec<Expr> =
-                        trait_typ_args.iter().map(typ_to_ids).flatten().collect();
+                    let mut args: Vec<Expr> = trait_typ_args.iter().flat_map(typ_to_ids).collect();
                     for p in function.x.pars.iter() {
                         args.push(ident_var(&p.x.name.lower()));
                     }
@@ -818,7 +816,17 @@ pub fn func_axioms_to_air(
                 }
             }
 
-            if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
+            if let FunctionKind::TraitMethodImpl { trait_path, .. } = &function.x.kind {
+                let orig_trait =
+                    ctx.global.extension_to_trait.get(trait_path).unwrap_or(trait_path);
+                if ctx.reached_dyn_traits.contains(orig_trait) {
+                    crate::traits::dyn_spec_fn_axiom(
+                        ctx,
+                        &mut decl_commands,
+                        orig_trait,
+                        &function,
+                    );
+                }
                 // For a trait method implementation, we just need to supply a body axiom
                 // for the existing trait method declaration function, so we can return here.
                 return Ok((Arc::new(decl_commands), check_commands));

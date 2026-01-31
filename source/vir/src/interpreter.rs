@@ -6,8 +6,8 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Div0Behavior, Dt, Fun, FunX,
-    Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind,
+    ArchWordBits, ArithOp, ArrayKind, BinaryOp, BitwiseOp, ComputeMode, Constant, Div0Behavior, Dt,
+    Fun, FunX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind,
     OverflowBehavior, PathX, Primitive, SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent,
     VarIdentDisambiguate, VirErr,
 };
@@ -185,8 +185,7 @@ impl State {
     }
 
     fn log(&self, s: String) {
-        if self.log.is_some() {
-            let mut log = self.log.as_ref().unwrap();
+        if let Some(mut log) = self.log.as_ref() {
             writeln!(log, "{}", s).expect("I/O error writing to the interpreter's log");
         }
     }
@@ -588,7 +587,7 @@ fn u128_to_fixed_width(u: u128, width: u32) -> BigInt {
         16 => BigInt::from_u16(u as u16),
         32 => BigInt::from_u32(u as u32),
         64 => BigInt::from_u64(u as u64),
-        128 => BigInt::from_u128(u as u128),
+        128 => BigInt::from_u128(u),
         _ => panic!("Unexpected fixed-width integer type U({})", width),
     }
     .unwrap()
@@ -601,7 +600,7 @@ fn i128_to_fixed_width(i: i128, width: u32) -> BigInt {
         16 => BigInt::from_i16(i as i16),
         32 => BigInt::from_i32(i as i32),
         64 => BigInt::from_i64(i as i64),
-        128 => BigInt::from_i128(i as i128),
+        128 => BigInt::from_i128(i),
         _ => panic!("Unexpected fixed-width integer type U({})", width),
     }
     .unwrap()
@@ -883,7 +882,7 @@ fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
         typ
     };
     let exp_new = |e: ExpX| SpannedTyped::new(span, &arr_typ, e);
-    let exps = Arc::new(arr.iter().map(|e| cleanup_exp(e)).flatten().collect());
+    let exps = Arc::new(arr.iter().flat_map(|e| cleanup_exp(e)).collect());
     let exp = exp_new(ExpX::ArrayLiteral(exps));
     exp
 }
@@ -1058,7 +1057,11 @@ fn eval_array_index(
     use InterpExp::*;
     let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
     // If we can't make any progress at all, we return the partially simplified call
-    let ok = Ok(exp_new(Binary(crate::ast::BinaryOp::ArrayIndex, arr.clone(), index_exp.clone())));
+    let ok = Ok(exp_new(Binary(
+        crate::ast::BinaryOp::Index(ArrayKind::Array, crate::ast::BoundsCheck::Allow),
+        arr.clone(),
+        index_exp.clone(),
+    )));
     // For now, the only possible function is array_index
     match &arr.x {
         Interp(Array(s)) => match &index_exp.x {
@@ -1169,13 +1172,17 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Clip { .. }
                         | FloatToBits
                         | IntToReal
+                        | RealToInt
                         | HeightTrigger
                         | Trigger(_)
                         | CoerceMode { .. }
+                        | ToDyn
                         | StrLen
+                        | Length(..)
                         | StrIsAscii
                         | MutRefCurrent
-                        | MutRefFuture
+                        | MutRefFuture(_)
+                        | MutRefFinal(_)
                         | InferSpecForLoopIter { .. } => ok,
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
@@ -1288,11 +1295,15 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Trigger(_)
                         | FloatToBits
                         | IntToReal
+                        | RealToInt
                         | CoerceMode { .. }
+                        | ToDyn
                         | StrLen
+                        | Length(..)
                         | StrIsAscii
                         | MutRefCurrent
-                        | MutRefFuture
+                        | MutRefFuture(_)
+                        | MutRefFinal(_)
                         | InferSpecForLoopIter { .. } => ok,
                     }
                 }
@@ -1409,7 +1420,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => {
                             let e2 = eval_expr_internal(ctx, state, e2)?;
                             match &e2.x {
-                                Const(Bool(true)) => bool_new(false),
+                                Const(Bool(true)) => bool_new(true),
                                 Const(Bool(false)) =>
                                 // Recurse in case we can simplify the new negation
                                 {
@@ -1608,11 +1619,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                 }
-                ArrayIndex => {
+                Index(ArrayKind::Array, _) => {
                     let e2 = eval_expr_internal(ctx, state, e2)?;
                     eval_array_index(state, exp, &e1, &e2)
                 }
-                HeightCompare { .. } | StrGetChar | RealArith(..) => ok_e2(e2.clone()),
+                Index(ArrayKind::Slice, _) | HeightCompare { .. } | StrGetChar | RealArith(..) => {
+                    ok_e2(e2.clone())
+                }
             }
         }
         BinaryOpr(op, e1, e2) => {
@@ -1993,8 +2006,8 @@ fn eval_expr_launch(
     };
     let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
-    if state.log.is_some() {
-        log.replace(state.log.unwrap());
+    if let Some(state_log) = state.log {
+        log.replace(state_log);
     }
 
     match result {

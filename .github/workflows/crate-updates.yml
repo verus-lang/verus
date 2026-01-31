@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   bump-crate-versions:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     if: github.repository == 'verus-lang/verus'
 
     steps:
@@ -22,7 +22,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.93.0
 
       - name: Update crate versions, if needed
         run: |

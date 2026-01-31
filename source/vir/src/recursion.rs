@@ -3,6 +3,7 @@ use crate::ast::{
     GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, TraitId, Typ, TypX, Typs, UnaryOpr,
     VarBinder, VirErr,
 };
+use crate::ast_to_sst::PreLocalDecl;
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
 use crate::ast_util::undecorate_typ;
@@ -252,6 +253,26 @@ pub(crate) fn mk_decreases_at_entry(
     Ok((decls, stm_assigns))
 }
 
+pub(crate) fn mk_decreases_at_entry_pre(
+    ctx: &Ctx,
+    loop_id: Option<u64>,
+    exps: &Vec<Exp>,
+) -> Result<Vec<PreLocalDecl>, VirErr> {
+    let mut decls: Vec<PreLocalDecl> = Vec::new();
+    for (i, exp) in exps.iter().enumerate() {
+        let typ = height_typ(ctx, exp);
+        let decl = PreLocalDecl {
+            ident: unique_local(&decrease_at_entry(loop_id, i)),
+            typ: typ.clone(),
+            kind: crate::ast_to_sst::PreLocalDeclKind::Immutable(crate::ast_to_sst::Immutable(
+                crate::sst::LocalDeclKind::Decreases,
+            )),
+        };
+        decls.push(decl);
+    }
+    Ok(decls)
+}
+
 pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
     function: &crate::sst::FunctionSst,
@@ -432,10 +453,20 @@ pub(crate) fn expand_call_graph(
     // See recursive_types::check_traits for more documentation
     let f_node = Node::Fun(function.x.name.clone());
 
+    // Add f -> T nodes for any dyn T in f
+    use crate::ast_visitor::{AstVisitor, WalkTypVisitorEnv};
+    let ft = &|call_graph: &mut GraphBuilder<Node>, t: &Typ| {
+        crate::recursive_types::add_trait_type_edges(call_graph, &f_node, t);
+        Ok(())
+    };
+    let mut visitor = WalkTypVisitorEnv { env: call_graph, ft };
+    visitor.visit_function(function).unwrap();
+
     // Add T --> f if T declares method f
     if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
         // T --> f
         call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
+        // T --> ...typs...
     }
 
     // Add D: T --> f and f --> T where f is one of D's methods that implements T
