@@ -789,7 +789,7 @@ pub mod parsing {
     impl Parse for Recommends {
         fn parse(input: ParseStream) -> Result<Self> {
             let token = input.parse()?;
-            let exprs = input.parse()?;
+            let exprs = Specification::parse_in_item(input)?;
             let via = if input.peek(Token![via]) {
                 let via_token: Token![via] = input.parse()?;
                 // let expr = input.parse()?;
@@ -859,7 +859,7 @@ pub mod parsing {
             let token = input.parse()?;
             Ok(Returns {
                 token,
-                exprs: input.parse()?,
+                exprs: Specification::parse_in_item(input)?,
             })
         }
     }
@@ -905,9 +905,20 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Decreases {
+        /// Parse a `decreases` clause in the context of an `Item` e.g. a `fn` definition.
+        pub fn parse_in_item(input: ParseStream) -> Result<Self> {
+            Ok(Decreases {
+                token: input.parse()?,
+                exprs: Specification::parse_in_item(input)?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for SignatureDecreases {
         fn parse(input: ParseStream) -> Result<Self> {
-            let decreases = input.parse()?;
+            let decreases = Decreases::parse_in_item(input)?;
             let when = if input.peek(Token![when]) {
                 let when_token = input.parse()?;
                 let expr = Expr::parse_without_eager_brace(input)?;
