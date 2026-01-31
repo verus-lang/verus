@@ -171,6 +171,26 @@ macro_rules! num_specs {
                     result == checked_div(lhs, rhs);
 
             #[verifier::allow_in_spec]
+            pub assume_specification[<$uN>::saturating_add](x: $uN, y: $uN) -> $uN
+                returns (
+                    if x + y > <$uN>::MAX {
+                        <$uN>::MAX
+                    } else {
+                        (x + y) as $uN
+                    }
+                );
+
+            #[verifier::allow_in_spec]
+            pub assume_specification[<$uN>::saturating_sub](x: $uN, y: $uN) -> $uN
+                returns (
+                    if x - y < <$uN>::MIN {
+                        <$uN>::MIN
+                    } else {
+                        (x - y) as $uN
+                    }
+                );
+
+            #[verifier::allow_in_spec]
             pub assume_specification[<$uN>::is_multiple_of](x: $uN, y: $uN) -> bool
                 returns (
                     if y == 0 { x == 0 } else { x % y == 0 }
@@ -306,26 +326,6 @@ macro_rules! num_specs {
                         None
                     } else {
                         Some((x + y) as $iN)
-                    }
-                );
-
-            #[verifier::allow_in_spec]
-            pub assume_specification[<$uN>::saturating_add](x: $uN, y: $uN) -> $uN
-                returns (
-                    if x + y > <$uN>::MAX {
-                        <$uN>::MAX
-                    } else {
-                        (x + y) as $uN
-                    }
-                );
-
-            #[verifier::allow_in_spec]
-            pub assume_specification[<$uN>::saturating_sub](x: $uN, y: $uN) -> $uN
-                returns (
-                    if x - y < <$uN>::MIN {
-                        <$uN>::MIN
-                    } else {
-                        (x - y) as $uN
                     }
                 );
 
