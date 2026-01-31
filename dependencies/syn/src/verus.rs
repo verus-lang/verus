@@ -825,6 +825,7 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for DefaultEnsures {
+        /// Parse a `default_ensures` clause in the context of an `Item` e.g. a `fn` definition.
         fn parse(input: ParseStream) -> Result<Self> {
             let token = input.parse()?;
             Ok(DefaultEnsures {
