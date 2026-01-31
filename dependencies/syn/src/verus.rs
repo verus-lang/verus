@@ -793,6 +793,7 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Ensures {
+        /// Parse an `ensures` clause in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
             let mut attrs = Vec::new();
             let token = input.parse()?;
@@ -802,6 +803,23 @@ pub mod parsing {
                 token,
                 exprs: input.parse()?,
             })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Ensures {
+        /// Parse an `ensures` clause in the context of an `Item` e.g. a `fn` definition.
+        pub fn parse_in_item(input: ParseStream) -> Result<Self> {
+            <Self as parse::Parse>::parse(input)
+        }
+
+        /// Parse an optional `ensures` clause in the context of an `Item` e.g. a `fn` definition.
+        pub fn parse_optional_in_item(input: ParseStream) -> Result<Option<Self>> {
+            if input.peek(Token![ensures]) {
+                Self::parse_in_item(input).map(Some)
+            } else {
+                Ok(None)
+            }
         }
     }
 
@@ -1128,7 +1146,7 @@ pub mod parsing {
             let with: Option<WithSpecOnFn> = input.parse()?;
             let requires: Option<Requires> = Requires::parse_optional_in_item(input)?;
             let recommends: Option<Recommends> = input.parse()?;
-            let ensures: Option<Ensures> = input.parse()?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in_item(input)?;
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
@@ -1434,7 +1452,7 @@ pub mod parsing {
             generics.where_clause = input.parse()?;
 
             let requires: Option<Requires> = Requires::parse_optional_in_item(input)?;
-            let ensures: Option<Ensures> = input.parse()?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in_item(input)?;
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
