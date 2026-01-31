@@ -748,11 +748,29 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Requires {
+        /// Parse a `requires` clause in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(Requires {
                 token: input.parse()?,
                 exprs: input.parse()?,
             })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Requires {
+        /// Parse a `requires` clause in the context of an `Item` e.g. a `fn` definition.
+        pub fn parse_in_item(input: ParseStream) -> Result<Self> {
+            <Self as parse::Parse>::parse(input)
+        }
+
+        /// Parse an optional `requires` clause in the context of an `Item` e.g. a `fn` definition.
+        pub fn parse_optional_in_item(input: ParseStream) -> Result<Option<Self>> {
+            if input.peek(Token![requires]) {
+                Self::parse_in_item(input).map(Some)
+            } else {
+                Ok(None)
+            }
         }
     }
 
@@ -1108,7 +1126,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let prover: Option<Prover> = input.parse()?;
             let with: Option<WithSpecOnFn> = input.parse()?;
-            let requires: Option<Requires> = input.parse()?;
+            let requires: Option<Requires> = Requires::parse_optional_in_item(input)?;
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
@@ -1415,7 +1433,7 @@ pub mod parsing {
             let output: ReturnType = input.parse()?;
             generics.where_clause = input.parse()?;
 
-            let requires: Option<Requires> = input.parse()?;
+            let requires: Option<Requires> = Requires::parse_optional_in_item(input)?;
             let ensures: Option<Ensures> = input.parse()?;
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
