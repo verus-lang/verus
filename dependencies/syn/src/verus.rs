@@ -708,9 +708,24 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Specification {
+        /// Parse a `Specification` in the context of an `Expr` e.g. a closure.
+        pub fn parse_in_expr(input: ParseStream) -> Result<Self> {
+            let mut exprs = Punctuated::new();
+            while !input.is_empty() && is_next_clause_valid(input) {
+                let expr = Expr::parse_without_eager_brace(input)?;
+                exprs.push(expr);
+                if !input.peek(Token![,]) {
+                    break;
+                }
+                let punct = input.parse()?;
+                exprs.push_punct(punct);
+            }
+            Ok(Specification { exprs })
+        }
+
         /// Parse a `Specification` in the context of an `Item` e.g. a `fn` definition.
         pub fn parse_in_item(input: ParseStream) -> Result<Self> {
-            <Self as parse::Parse>::parse(input)
+            Self::parse_in_expr(input)
         }
     }
 
@@ -767,6 +782,14 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Requires {
+        /// Parse a `requires` clause in the context of an `Expr` e.g. a closure.
+        pub fn parse_in_expr(input: ParseStream) -> Result<Self> {
+            Ok(Requires {
+                token: input.parse()?,
+                exprs: Specification::parse_in_expr(input)?,
+            })
+        }
+
         /// Parse a `requires` clause in the context of an `Item` e.g. a `fn` definition.
         pub fn parse_in_item(input: ParseStream) -> Result<Self> {
             Ok(Requires {
@@ -819,6 +842,18 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Ensures {
+        /// Parse an `ensures` clause in the context of an `Expr` e.g. a closure.
+        pub fn parse_in_expr(input: ParseStream) -> Result<Self> {
+            let mut attrs = Vec::new();
+            let token = input.parse()?;
+            attr::parsing::parse_inner(input, &mut attrs)?;
+            Ok(Ensures {
+                attrs,
+                token,
+                exprs: Specification::parse_in_expr(input)?,
+            })
+        }
+
         /// Parse an `ensures` clause in the context of an `Item` e.g. a `fn` definition.
         pub fn parse_in_item(input: ParseStream) -> Result<Self> {
             let mut attrs = Vec::new();
@@ -906,6 +941,14 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Decreases {
+        /// Parse a `decreases` clause in the context of an `Expr` e.g. a loop spec.
+        pub fn parse_in_expr(input: ParseStream) -> Result<Self> {
+            Ok(Decreases {
+                token: input.parse()?,
+                exprs: Specification::parse_in_expr(input)?,
+            })
+        }
+
         /// Parse a `decreases` clause in the context of an `Item` e.g. a `fn` definition.
         pub fn parse_in_item(input: ParseStream) -> Result<Self> {
             Ok(Decreases {
