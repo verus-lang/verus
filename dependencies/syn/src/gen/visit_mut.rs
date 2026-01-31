@@ -2095,8 +2095,14 @@ where
         skip!((* * it).1);
     }
     v.visit_expr_mut(&mut *node.expr);
+    if let Some(it) = &mut node.invariant_except_break {
+        v.visit_invariant_except_break_mut(it);
+    }
     if let Some(it) = &mut node.invariant {
         v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
     }
     if let Some(it) = &mut node.decreases {
         v.visit_decreases_mut(it);

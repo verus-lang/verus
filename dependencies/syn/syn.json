@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2025-11-09-0048",
+  "version": "0.0.0-2025-11-16-0050",
   "types": [
     {
       "ident": "Abi",
@@ -1852,9 +1852,19 @@
             "syn": "Expr"
           }
         },
+        "invariant_except_break": {
+          "option": {
+            "syn": "InvariantExceptBreak"
+          }
+        },
         "invariant": {
           "option": {
             "syn": "Invariant"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
           }
         },
         "decreases": {

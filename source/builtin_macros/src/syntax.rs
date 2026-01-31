@@ -3267,6 +3267,7 @@ impl Visitor {
         self.inside_ghost -= 1;
     }
 
+    #[allow(dead_code)]
     fn desugar_for_loop(&mut self, for_loop: verus_syn::ExprForLoop) -> Expr {
         // The regular Rust for-loop doesn't give us direct access to the iterator,
         // which we need for writing invariants.
@@ -3338,7 +3339,9 @@ impl Visitor {
             in_token,
             expr_name,
             expr,
+            invariant_except_break: _,
             invariant,
+            ensures: _,
             mut decreases,
             body,
         } = for_loop;
@@ -3372,7 +3375,9 @@ impl Visitor {
                 in_token,
                 expr_name: None,
                 expr,
+                invariant_except_break: None,
                 invariant: None,
+                ensures: None,
                 decreases: None,
                 body,
             });
@@ -3618,7 +3623,9 @@ impl Visitor {
             in_token,
             expr_name, // y
             expr, // e
+            invariant_except_break,
             invariant,
+            ensures,
             mut decreases,
             body,
         } = for_loop;
@@ -3652,14 +3659,14 @@ impl Visitor {
                 in_token,
                 expr_name: None,
                 expr,
+                invariant_except_break: None,
                 invariant: None,
+                ensures: None,
                 decreases: None,
                 body,
             });
         }
         dbg!(no_auto_loop_invariant);
-        // TODO: This should be part of ExprForLoop 
-        let mut inv_except_break: Option<InvariantExceptBreak> = None;
 
         attrs.push(mk_verus_attr(span, quote! { for_loop }));
         let decrease_is_some_msg = "Failed to prove that the iterator always returns a decreases metric.
@@ -3713,7 +3720,7 @@ impl Visitor {
             #[verifier::custom_err(#exec_inv_msg)]
             #vstd::prelude::spec_eq(#x_iter_name.snapshot.view(), #x_snapshot)
         ));
-        let wf_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
+        let wf_inv: Expr = Expr::Verbatim(quote_spanned!( expr.span() =>
             #[verifier::custom_err(#exec_inv_msg)]
             #x_iter_name.wf()
         ));
@@ -3761,11 +3768,12 @@ impl Visitor {
             None
         };
         dbg!("invariant created");
-        let inv_except_break = if let Some(mut invariant) = inv_except_break {
+        let inv_except_break = if let Some(mut invariant_except_break) = invariant_except_break {
             dbg!("inv_except_break 1");
-            for inv in &mut invariant.exprs.exprs {
+            for inv in &mut invariant_except_break.exprs.exprs {
+                dbg!(&inv);
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
-                    let #pat = if #x_iter_name.index.view().spec_ln(#x_iter_name.seq().len()) {
+                    let #pat = if #x_iter_name.index.view().spec_le(#x_iter_name.seq().len()) {
                         #x_iter_name.seq().spec_index(#x_iter_name.index.view())
                     } else {
                         #vstd::pervasive::arbitrary()
@@ -3774,9 +3782,9 @@ impl Visitor {
                 }));
             }
             if no_loop_invariant.is_none() {
-                invariant.exprs.exprs.insert(0, some_inv);
+                invariant_except_break.exprs.exprs.insert(0, some_inv);
             }
-            Some(InvariantExceptBreak { token: Token![invariant_except_break](span), exprs: invariant.exprs })
+            Some(InvariantExceptBreak { token: Token![invariant_except_break](span), exprs: invariant_except_break.exprs })
         } else if no_loop_invariant.is_none() {
             dbg!("inv_except_break 2");
             //Some(parse_quote_spanned!(span => invariant #some_inv,))
@@ -3811,14 +3819,21 @@ impl Visitor {
         // REVIEW: we might also want no_auto_loop_invariant to suppress the ensures,
         // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.
         let ensure = if no_loop_invariant.is_none() {
-            Some(parse_quote_spanned_vstd!(vstd, span =>
+            let mut auto_ensures: Ensures = parse_quote_spanned_vstd!(vstd, span =>
                 ensures
                     #[verus::internal(auto_decreases)]
                     #vstd::std_specs::iter::IteratorSpec::completes(&#x_iter_name.snapshot.view()),
                     #[verus::internal(auto_decreases)]
                     #vstd::prelude::spec_eq(#x_iter_name.index.view(), #x_iter_name.seq().len()),
                     true,
-            ))
+            );
+            // REVIEW: Do we need to combine user_ensures.attrs?
+            if let Some(user_ensures) = ensures {
+                for expr in user_ensures.exprs.exprs {
+                    auto_ensures.exprs.exprs.insert(0, expr);
+                }
+            }
+            Some(auto_ensures)
         } else {
             None
         };
@@ -3855,7 +3870,7 @@ impl Visitor {
         body.stmts.splice(0..0, stmts);
 
         dbg!("about to create loop_expr");
-        let mut loop_expr: ExprLoop = parse_quote_spanned_vstd!(vstd, span => loop #body);
+        let mut loop_expr: ExprLoop = parse_quote_spanned!(span => loop #body);
         loop_expr.label = label;
         loop_expr.attrs = attrs;
         dbg!("about to create final expression");
@@ -5377,7 +5392,7 @@ pub(crate) fn for_loop_spec_attr(
     };
     let mut spec_attr = spec_attr;
     visitor.visit_loop_spec(&mut spec_attr);
-    let verus_syn::LoopSpec { iter_name, invariants: invariant, decreases, .. } = spec_attr;
+    let verus_syn::LoopSpec { iter_name, invariants: invariant, invariant_except_breaks: invariant_except_break, ensures, decreases, .. } = spec_attr;
     let syn::ExprForLoop { attrs, label, for_token, pat, in_token, expr, body, .. } = forloop;
     let verus_forloop = ExprForLoop {
         attrs: attrs.into_iter().map(|a| parse_quote_spanned! {a.span() => #a}).collect(),
@@ -5390,7 +5405,9 @@ pub(crate) fn for_loop_spec_attr(
         in_token: Token![in](in_token.span),
         expr_name: iter_name.map(|(name, token)| Box::new((name, Token![:](token.span())))),
         expr: Box::new(Expr::Verbatim(quote_spanned! {expr.span() => #expr})),
+        invariant_except_break,
         invariant,
+        ensures,
         decreases,
         body: Block {
             brace_token: Brace(body.brace_token.span),
