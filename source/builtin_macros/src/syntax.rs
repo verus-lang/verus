@@ -1027,7 +1027,9 @@ impl Visitor {
             verus_inputs_to_tokens(&sig.inputs),
         );
         if !self.erase_ghost.erase() {
-            stmts.extend(spec_stmts);
+            if !(self.rustdoc && sig.constness.is_some()) {
+                stmts.extend(spec_stmts);
+            }
         }
 
         self.inside_ghost -= 1;
