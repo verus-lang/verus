@@ -2,6 +2,13 @@ use super::*;
 use crate::parse::ParseStream;
 use crate::punctuated::Punctuated;
 
+pub enum Context {
+    /// The parsing context of an `Expr`, e.g. a closure.
+    Expr,
+    /// The parsing context of an `Item`, e.g. a `fn` definition.
+    Item,
+}
+
 ast_enum_of_structs! {
     pub enum Publish {
         Closed(Closed),
