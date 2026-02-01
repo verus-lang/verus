@@ -20,17 +20,17 @@ fn test_basic() {
 }
 */
 
-spec fn sum_u8(s: Seq<&u8>) -> nat 
+spec fn sum_u8(s: Seq<u8>) -> nat 
     decreases s.len(),
 {
     if s.len() == 0 {
         0
     } else {
-        (sum_u8(s.drop_last()) + *s.last()) as nat
+        (sum_u8(s.drop_last()) + s.last()) as nat
     }
 }
 
-proof fn sum_u8_monotonic(s: Seq<&u8>, i: int, j: int)
+proof fn sum_u8_monotonic(s: Seq<u8>, i: int, j: int)
     requires
         0 <= i <= j < s.len(),
     ensures 
@@ -49,11 +49,11 @@ proof fn sum_u8_monotonic(s: Seq<&u8>, i: int, j: int)
 
 proof fn sum_u8_monotonic_forall()
     ensures 
-        forall |s: Seq<&u8>, i, j| #![auto]
+        forall |s: Seq<u8>, i, j| #![auto]
             0 <= i <= j < s.len() ==>
             sum_u8(s.take(i)) <= sum_u8(s.take(j)),
 {
-    assert forall |s: Seq<&u8>, i, j| #![auto] 0 <= i <= j < s.len() implies sum_u8(s.take(i)) <= sum_u8(s.take(j)) by {
+    assert forall |s: Seq<u8>, i, j| #![auto] 0 <= i <= j < s.len() implies sum_u8(s.take(i)) <= sum_u8(s.take(j)) by {
         sum_u8_monotonic(s, i, j);
     }
 }
@@ -63,14 +63,15 @@ fn for_loop_test_skip(v: Vec<u8>) {
     let mut sum: u8 = 0;
 
     for x in y: v 
-     invariant_except_break
-         sum == y.index@, //sum_u8(v@.take(y.index@))
+      invariant_except_break
+         sum == sum_u8(v@.take(y.index@))
       ensures
-          true,
-//          (y.index@ == y.seq().len() && sum == sum_u8(y.seq().take(y.index@))) || 
-//              (sum == u8::MAX && sum_u8(y.seq().take(y.index@)) > u8::MAX),
+          (y.index@ == y.seq().len() && sum == sum_u8(y.seq().take(y.index@))) || 
+              (sum == u8::MAX && sum_u8(v@.take(y.index@)) > u8::MAX),
     {
-        assert(v@.take(y.index@).drop_last() == v@.take(y.index@ - 1 as int)); // OBSERVE
+        assert(sum == sum_u8(v@.take(y.index@)));
+        assert(0 <= y.index@ < v.len());
+        assert(v@.take(y.index@ + 1).drop_last() == v@.take(y.index@ as int)); // OBSERVE
         if x <= u8::MAX - sum {
             sum += x;
         } else {
