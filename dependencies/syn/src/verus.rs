@@ -949,12 +949,9 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Decreases> {
+        /// Parse an optional `decreases` clause in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
-            if input.peek(Token![decreases]) {
-                input.parse().map(Some)
-            } else {
-                Ok(None)
-            }
+            Decreases::parse_optional_in_expr(input)
         }
     }
 
