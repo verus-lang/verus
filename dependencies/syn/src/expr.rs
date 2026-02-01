@@ -1265,7 +1265,8 @@ pub(crate) mod parsing {
     use crate::ty::ReturnType;
     use crate::verbatim;
     use crate::verus::{
-        ClosureArg, Ensures, ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, Requires, View,
+        ClosureArg, Decreases, Ensures, ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot,
+        Requires, View,
     };
     #[cfg(feature = "full")]
     use proc_macro2::{Span, TokenStream};
@@ -2533,7 +2534,7 @@ pub(crate) mod parsing {
                 };
             let expr: Expr = input.call(Expr::parse_without_eager_brace)?;
             let invariant = input.parse()?;
-            let decreases = crate::Decreases::parse_optional_in_expr(input)?;
+            let decreases = Decreases::parse_optional_in_expr(input)?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2566,7 +2567,7 @@ pub(crate) mod parsing {
             let invariant = input.parse()?;
             let invariant_ensures = input.parse()?;
             let ensures = Ensures::parse_optional_in_expr(input)?;
-            let decreases = crate::Decreases::parse_optional_in_expr(input)?;
+            let decreases = Decreases::parse_optional_in_expr(input)?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2918,7 +2919,7 @@ pub(crate) mod parsing {
             let invariant = input.parse()?;
             let invariant_ensures = input.parse()?;
             let ensures = Ensures::parse_optional_in_expr(input)?;
-            let decreases = crate::Decreases::parse_optional_in_expr(input)?;
+            let decreases = Decreases::parse_optional_in_expr(input)?;
 
             let content;
             let brace_token = braced!(content in input);
