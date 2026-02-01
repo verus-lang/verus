@@ -3671,7 +3671,7 @@ impl Visitor {
         attrs.push(mk_verus_attr(span, quote! { for_loop }));
         let decrease_is_some_msg = "Failed to prove that the iterator always returns a decreases metric.
             If you don't expect the iterator to provide such a metric, try adding #[verifier::exec_allows_no_decreases_clause].
-            You might laos try using a `loop` instead of a `for`.";
+            You might also try using a `loop` instead of a `for`.";
         let exec_inv_msg = "For-loop iterator invariant failed. \
             This may indicate a bug in the definition of the VerusForLoopWrapper. \
             You might try using a `loop` instead of a `for`.";

@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use vstd::std_specs::iter::IteratorSpecImpl;
 
 verus! {
-/*
 fn test_basic() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
     let mut w: Vec<u8> = Vec::new();
@@ -10,15 +9,14 @@ fn test_basic() {
     for x in y: v 
         invariant
             w.len() as int == y.index@,
-            forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i],
-            //forall |i| 0 <= i < w.len() ==> w[i] == v[i],
+            //forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i],
+            forall |i| 0 <= i < w.len() ==> w[i] == v[i],
     {
         w.push(x);
     }
     assert(w.len() == v.len());
     assert(w@ == v@);
 }
-*/
 
 spec fn sum_u8(s: Seq<u8>) -> nat 
     decreases s.len(),
@@ -86,7 +84,6 @@ fn for_loop_test_skip(v: Vec<u8>) {
     }
     assert(sum == sum_u8(v@) || (sum == u8::MAX && sum_u8(v@) > u8::MAX));
 }
-
 /*
 struct NoTerminate {
     x: u64,

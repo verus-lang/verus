@@ -593,25 +593,25 @@ pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
     Spanned::new(span.clone(), StmX::Assume(has_typ))
 }
 
-fn loop_body_find_break(
+fn loop_body_find_breaks(
     loop_label: &Option<String>,
     in_subloop: bool,
-    found_break: &mut bool,
+    num_breaks: &mut usize,
     body: &Expr,
 ) {
     let mut f = |expr: &Expr| match &expr.x {
         ExprX::Loop { body, .. } => {
-            loop_body_find_break(loop_label, true, found_break, body);
+            loop_body_find_breaks(loop_label, true, num_breaks, body);
             VisitorControlFlow::Return
         }
         ExprX::BreakOrContinue { label: break_label, is_break: true } => {
             if break_label.is_none() {
                 if !in_subloop {
-                    *found_break = true;
+                    *num_breaks += 1;
                 }
             } else {
                 if break_label == loop_label {
-                    *found_break = true;
+                    *num_breaks += 1;
                 }
             }
             VisitorControlFlow::Recurse
@@ -621,10 +621,10 @@ fn loop_body_find_break(
     crate::ast_visitor::expr_visitor_walk(body, &mut f);
 }
 
-fn loop_body_has_break(loop_label: &Option<String>, body: &Expr) -> bool {
-    let mut found_break = false;
-    loop_body_find_break(loop_label, false, &mut found_break, body);
-    found_break
+fn loop_body_has_breaks(loop_label: &Option<String>, body: &Expr) -> usize {
+    let mut num_breaks = 0;
+    loop_body_find_breaks(loop_label, false, &mut num_breaks, body);
+    num_breaks 
 }
 
 /// Determine if it's possible for control flow to reach the statement after the loop exit.
@@ -635,7 +635,7 @@ fn loop_body_has_break(loop_label: &Option<String>, body: &Expr) -> bool {
 /// be wrapped in the NeverToAny node. It's likely that this check can simply be removed.
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
-        ExprX::Loop { label, cond: None, body, .. } => loop_body_has_break(label, body),
+        ExprX::Loop { label, cond: None, body, .. } => loop_body_has_breaks(label, body) > 0,
         ExprX::Loop { cond: Some(_), .. } => true,
         _ => {
             panic!("expected while loop");
@@ -2373,8 +2373,9 @@ pub(crate) fn expr_to_stm_opt(
             } else {
                 invs.clone()
             };
-            let has_break = loop_body_has_break(label, body);
-            let invs = if is_for_loop && has_break {
+            let num_breaks = loop_body_has_breaks(label, body);
+            let has_user_break = num_breaks > if is_for_loop { 1 } else { 0 } ;
+            let invs = if is_for_loop && has_user_break {
                 // If the user added a break statement, then we need to remove the auto-generated ensures
                 // clauses (since they typically don't apply any more)
                 Arc::new(
@@ -2384,8 +2385,10 @@ pub(crate) fn expr_to_stm_opt(
                             LoopInvariantKind::InvariantAndEnsures => Some(inv.clone()),
                             LoopInvariantKind::Ensures => {
                                 if matches!(inv.inv.x, ExprX::UnaryOpr(UnaryOpr::AutoDecreases, _)) {
+                                    dbg!("Filtering out an ensures", &inv.inv.x);
                                     None
                                 } else {
+                                    dbg!("Filtering out an ensures", &inv.inv.x);
                                     Some(inv.clone())
                                 }
                             }
@@ -2397,7 +2400,7 @@ pub(crate) fn expr_to_stm_opt(
             };
             let simple_invs =
                 invs.iter().all(|inv| inv.kind == LoopInvariantKind::InvariantAndEnsures);
-            let simple_while = !has_break && simple_invs && cond.is_some() && loop_isolation;
+            let simple_while = !has_user_break && simple_invs && cond.is_some() && loop_isolation;
 
             if allow_complex_invariants && loop_isolation && !is_for_loop {
                 return Err(error(
