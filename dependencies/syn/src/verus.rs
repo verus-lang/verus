@@ -691,18 +691,9 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Specification {
+        /// Parse a `Specification` in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
-            let mut exprs = Punctuated::new();
-            while !input.is_empty() && is_next_clause_valid(input) {
-                let expr = Expr::parse_without_eager_brace(input)?;
-                exprs.push(expr);
-                if !input.peek(Token![,]) {
-                    break;
-                }
-                let punct = input.parse()?;
-                exprs.push_punct(punct);
-            }
-            Ok(Specification { exprs })
+            Specification::parse_in_expr(input)
         }
     }
 
@@ -928,7 +919,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(InvariantExceptBreak {
                 token: input.parse()?,
-                exprs: input.parse()?,
+                exprs: Specification::parse_in_expr(input)?,
             })
         }
     }
@@ -938,7 +929,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(Invariant {
                 token: input.parse()?,
-                exprs: input.parse()?,
+                exprs: Specification::parse_in_expr(input)?,
             })
         }
     }
@@ -948,7 +939,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(InvariantEnsures {
                 token: input.parse()?,
-                exprs: input.parse()?,
+                exprs: Specification::parse_in_expr(input)?,
             })
         }
     }
