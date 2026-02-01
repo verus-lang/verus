@@ -706,8 +706,8 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Specification {
-        /// Parse a `Specification` in the context of an `Expr` e.g. a closure.
-        fn parse_in_expr(input: ParseStream) -> Result<Self> {
+        /// Parse a `Specification` in a given context.
+        pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             let mut exprs = Punctuated::new();
             while !input.is_empty() && Self::is_next_condition_valid(input) {
                 let expr = Expr::parse_without_eager_brace(input)?;
@@ -719,19 +719,6 @@ pub mod parsing {
                 exprs.push_punct(punct);
             }
             Ok(Specification { exprs })
-        }
-
-        /// Parse a `Specification` in the context of an `Item` e.g. a `fn` definition.
-        fn parse_in_item(input: ParseStream) -> Result<Self> {
-            Self::parse_in_expr(input)
-        }
-
-        /// Parse a `Specification` in a given context.
-        pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
-            match ctx {
-                Context::Item => Self::parse_in_item(input),
-                Context::Expr => Self::parse_in_expr(input),
-            }
         }
 
         fn is_next_condition_valid(input: ParseStream) -> bool {
@@ -793,53 +780,37 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Requires {
-        /// Parse a `requires` clause in the context of an `Expr` e.g. a closure.
-        fn parse_in_expr(input: ParseStream) -> Result<Self> {
-            Ok(Requires {
-                token: input.parse()?,
-                exprs: Specification::parse_in(Context::Expr, input)?,
-            })
-        }
-
-        /// Parse an optional `requires` clause in the context of an `Expr` e.g. a closure.
-        fn parse_optional_in_expr(input: ParseStream) -> Result<Option<Self>> {
-            if input.peek(Token![requires]) {
-                Self::parse_in_expr(input).map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-
-        /// Parse a `requires` clause in the context of an `Item` e.g. a `fn` definition.
-        fn parse_in_item(input: ParseStream) -> Result<Self> {
-            Ok(Requires {
-                token: input.parse()?,
-                exprs: Specification::parse_in(Context::Item, input)?,
-            })
-        }
-
-        /// Parse an optional `requires` clause in the context of an `Item` e.g. a `fn` definition.
-        fn parse_optional_in_item(input: ParseStream) -> Result<Option<Self>> {
-            if input.peek(Token![requires]) {
-                Self::parse_in_item(input).map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-
         /// Parse a `requires` clause in a given context.
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             match ctx {
-                Context::Item => Self::parse_in_item(input),
-                Context::Expr => Self::parse_in_expr(input),
+                Context::Item => Ok(Requires {
+                    token: input.parse()?,
+                    exprs: Specification::parse_in(Context::Item, input)?,
+                }),
+                Context::Expr => Ok(Requires {
+                    token: input.parse()?,
+                    exprs: Specification::parse_in(Context::Expr, input)?,
+                }),
             }
         }
 
         /// Parse an optional `requires` clause in a given context.
         pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
             match ctx {
-                Context::Item => Self::parse_optional_in_item(input),
-                Context::Expr => Self::parse_optional_in_expr(input),
+                Context::Item => {
+                    if input.peek(Token![requires]) {
+                        Self::parse_in(Context::Item, input).map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Context::Expr => {
+                    if input.peek(Token![requires]) {
+                        Self::parse_in(Context::Expr, input).map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                }
             }
         }
     }
@@ -879,61 +850,49 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Ensures {
-        /// Parse an `ensures` clause in the context of an `Expr` e.g. a closure.
-        fn parse_in_expr(input: ParseStream) -> Result<Self> {
-            let mut attrs = Vec::new();
-            let token = input.parse()?;
-            attr::parsing::parse_inner(input, &mut attrs)?;
-            Ok(Ensures {
-                attrs,
-                token,
-                exprs: Specification::parse_in(Context::Expr, input)?,
-            })
-        }
-
-        /// Parse an optional `ensures` clause in the context of an `Expr` e.g. a closure.
-        fn parse_optional_in_expr(input: ParseStream) -> Result<Option<Self>> {
-            if input.peek(Token![ensures]) {
-                Self::parse_in_expr(input).map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-
-        /// Parse an `ensures` clause in the context of an `Item` e.g. a `fn` definition.
-        fn parse_in_item(input: ParseStream) -> Result<Self> {
-            let mut attrs = Vec::new();
-            let token = input.parse()?;
-            attr::parsing::parse_inner(input, &mut attrs)?;
-            Ok(Ensures {
-                attrs,
-                token,
-                exprs: Specification::parse_in(Context::Item, input)?,
-            })
-        }
-
-        /// Parse an optional `ensures` clause in the context of an `Item` e.g. a `fn` definition.
-        fn parse_optional_in_item(input: ParseStream) -> Result<Option<Self>> {
-            if input.peek(Token![ensures]) {
-                Self::parse_in_item(input).map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-
         /// Parse an `ensures` clause in a given context.
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             match ctx {
-                Context::Item => Self::parse_in_item(input),
-                Context::Expr => Self::parse_in_expr(input),
+                Context::Item => {
+                    let mut attrs = Vec::new();
+                    let token = input.parse()?;
+                    attr::parsing::parse_inner(input, &mut attrs)?;
+                    Ok(Ensures {
+                        attrs,
+                        token,
+                        exprs: Specification::parse_in(Context::Item, input)?,
+                    })
+                }
+                Context::Expr => {
+                    let mut attrs = Vec::new();
+                    let token = input.parse()?;
+                    attr::parsing::parse_inner(input, &mut attrs)?;
+                    Ok(Ensures {
+                        attrs,
+                        token,
+                        exprs: Specification::parse_in(Context::Expr, input)?,
+                    })
+                }
             }
         }
 
         /// Parse an optional `ensures` clause in a given context.
         pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
             match ctx {
-                Context::Item => Self::parse_optional_in_item(input),
-                Context::Expr => Self::parse_optional_in_expr(input),
+                Context::Item => {
+                    if input.peek(Token![ensures]) {
+                        Self::parse_in(Context::Item, input).map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Context::Expr => {
+                    if input.peek(Token![ensures]) {
+                        Self::parse_in(Context::Expr, input).map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                }
             }
         }
     }
@@ -1009,53 +968,37 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Decreases {
-        /// Parse a `decreases` clause in the context of an `Expr` e.g. a loop spec.
-        fn parse_in_expr(input: ParseStream) -> Result<Self> {
-            Ok(Decreases {
-                token: input.parse()?,
-                exprs: Specification::parse_in(Context::Expr, input)?,
-            })
-        }
-
-        /// Parse an optional `decreases` clause in the context of an `Expr` e.g. a loop spec.
-        fn parse_optional_in_expr(input: ParseStream) -> Result<Option<Self>> {
-            if input.peek(Token![decreases]) {
-                Self::parse_in_expr(input).map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-
-        /// Parse a `decreases` clause in the context of an `Item` e.g. a `fn` definition.
-        fn parse_in_item(input: ParseStream) -> Result<Self> {
-            Ok(Decreases {
-                token: input.parse()?,
-                exprs: Specification::parse_in(Context::Item, input)?,
-            })
-        }
-
-        /// Parse an optional `decreases` clause in the context of an `Item` e.g. a `fn` definition.
-        fn parse_optional_in_item(input: ParseStream) -> Result<Option<Self>> {
-            if input.peek(Token![decreases]) {
-                Self::parse_in_item(input).map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-
         /// Parse a `decreases` clause in a given context.
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             match ctx {
-                Context::Item => Self::parse_in_item(input),
-                Context::Expr => Self::parse_in_expr(input),
+                Context::Item => Ok(Decreases {
+                    token: input.parse()?,
+                    exprs: Specification::parse_in(Context::Item, input)?,
+                }),
+                Context::Expr => Ok(Decreases {
+                    token: input.parse()?,
+                    exprs: Specification::parse_in(Context::Expr, input)?,
+                }),
             }
         }
 
         /// Parse an optional `decreases` clause in a given context.
         pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
             match ctx {
-                Context::Item => Self::parse_optional_in_item(input),
-                Context::Expr => Self::parse_optional_in_expr(input),
+                Context::Item => {
+                    if input.peek(Token![decreases]) {
+                        Self::parse_in(Context::Item, input).map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Context::Expr => {
+                    if input.peek(Token![decreases]) {
+                        Self::parse_in(Context::Expr, input).map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                }
             }
         }
     }
