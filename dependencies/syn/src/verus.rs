@@ -707,7 +707,7 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Specification {
         /// Parse a `Specification` in the context of an `Expr` e.g. a closure.
-        pub fn parse_in_expr(input: ParseStream) -> Result<Self> {
+        fn parse_in_expr(input: ParseStream) -> Result<Self> {
             let mut exprs = Punctuated::new();
             while !input.is_empty() && Self::is_next_condition_valid(input) {
                 let expr = Expr::parse_without_eager_brace(input)?;
@@ -722,7 +722,7 @@ pub mod parsing {
         }
 
         /// Parse a `Specification` in the context of an `Item` e.g. a `fn` definition.
-        pub fn parse_in_item(input: ParseStream) -> Result<Self> {
+        fn parse_in_item(input: ParseStream) -> Result<Self> {
             Self::parse_in_expr(input)
         }
 
@@ -794,7 +794,7 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Requires {
         /// Parse a `requires` clause in the context of an `Expr` e.g. a closure.
-        pub fn parse_in_expr(input: ParseStream) -> Result<Self> {
+        fn parse_in_expr(input: ParseStream) -> Result<Self> {
             Ok(Requires {
                 token: input.parse()?,
                 exprs: Specification::parse_in_expr(input)?,
@@ -802,7 +802,7 @@ pub mod parsing {
         }
 
         /// Parse an optional `requires` clause in the context of an `Expr` e.g. a closure.
-        pub fn parse_optional_in_expr(input: ParseStream) -> Result<Option<Self>> {
+        fn parse_optional_in_expr(input: ParseStream) -> Result<Option<Self>> {
             if input.peek(Token![requires]) {
                 Self::parse_in_expr(input).map(Some)
             } else {
@@ -811,7 +811,7 @@ pub mod parsing {
         }
 
         /// Parse a `requires` clause in the context of an `Item` e.g. a `fn` definition.
-        pub fn parse_in_item(input: ParseStream) -> Result<Self> {
+        fn parse_in_item(input: ParseStream) -> Result<Self> {
             Ok(Requires {
                 token: input.parse()?,
                 exprs: Specification::parse_in_item(input)?,
@@ -819,7 +819,7 @@ pub mod parsing {
         }
 
         /// Parse an optional `requires` clause in the context of an `Item` e.g. a `fn` definition.
-        pub fn parse_optional_in_item(input: ParseStream) -> Result<Option<Self>> {
+        fn parse_optional_in_item(input: ParseStream) -> Result<Option<Self>> {
             if input.peek(Token![requires]) {
                 Self::parse_in_item(input).map(Some)
             } else {
@@ -880,7 +880,7 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Ensures {
         /// Parse an `ensures` clause in the context of an `Expr` e.g. a closure.
-        pub fn parse_in_expr(input: ParseStream) -> Result<Self> {
+        fn parse_in_expr(input: ParseStream) -> Result<Self> {
             let mut attrs = Vec::new();
             let token = input.parse()?;
             attr::parsing::parse_inner(input, &mut attrs)?;
@@ -892,7 +892,7 @@ pub mod parsing {
         }
 
         /// Parse an optional `ensures` clause in the context of an `Expr` e.g. a closure.
-        pub fn parse_optional_in_expr(input: ParseStream) -> Result<Option<Self>> {
+        fn parse_optional_in_expr(input: ParseStream) -> Result<Option<Self>> {
             if input.peek(Token![ensures]) {
                 Self::parse_in_expr(input).map(Some)
             } else {
@@ -901,7 +901,7 @@ pub mod parsing {
         }
 
         /// Parse an `ensures` clause in the context of an `Item` e.g. a `fn` definition.
-        pub fn parse_in_item(input: ParseStream) -> Result<Self> {
+        fn parse_in_item(input: ParseStream) -> Result<Self> {
             let mut attrs = Vec::new();
             let token = input.parse()?;
             attr::parsing::parse_inner(input, &mut attrs)?;
@@ -913,7 +913,7 @@ pub mod parsing {
         }
 
         /// Parse an optional `ensures` clause in the context of an `Item` e.g. a `fn` definition.
-        pub fn parse_optional_in_item(input: ParseStream) -> Result<Option<Self>> {
+        fn parse_optional_in_item(input: ParseStream) -> Result<Option<Self>> {
             if input.peek(Token![ensures]) {
                 Self::parse_in_item(input).map(Some)
             } else {
@@ -1018,7 +1018,7 @@ pub mod parsing {
         }
 
         /// Parse an optional `decreases` clause in the context of an `Expr` e.g. a loop spec.
-        pub fn parse_optional_in_expr(input: ParseStream) -> Result<Option<Self>> {
+        fn parse_optional_in_expr(input: ParseStream) -> Result<Option<Self>> {
             if input.peek(Token![decreases]) {
                 Self::parse_in_expr(input).map(Some)
             } else {
@@ -1027,7 +1027,7 @@ pub mod parsing {
         }
 
         /// Parse a `decreases` clause in the context of an `Item` e.g. a `fn` definition.
-        pub fn parse_in_item(input: ParseStream) -> Result<Self> {
+        fn parse_in_item(input: ParseStream) -> Result<Self> {
             Ok(Decreases {
                 token: input.parse()?,
                 exprs: Specification::parse_in_item(input)?,
