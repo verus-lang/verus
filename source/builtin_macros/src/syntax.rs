@@ -3635,7 +3635,6 @@ impl Visitor {
                 && attr.path().segments[0].ident.to_string() == "verifier"
                 && attr.path().segments[1].ident.to_string() == "no_loop_invariant"
         });
-        dbg!(no_loop_invariant);
         if let Some(i) = no_loop_invariant {
             attrs.remove(i);
         }
@@ -3666,7 +3665,6 @@ impl Visitor {
                 body,
             });
         }
-        dbg!(no_auto_loop_invariant);
 
         attrs.push(mk_verus_attr(span, quote! { for_loop }));
         let decrease_is_some_msg = "Failed to prove that the iterator always returns a decreases metric.
@@ -3705,7 +3703,6 @@ impl Visitor {
         // Name that "remembers" the initial iterator at the start of the loop body 
         let x_iter_body_old = Ident::new("VERUS_old_iter", span);
 
-        dbg!("names done");
         let mut stmts: Vec<Stmt> = Vec::new();
         let expr_inv = expr.clone();
         //              ::vstd::pervasive::ForLoopGhostIterator::exec_invariant(&y, &VERUS_exec_iter),
@@ -3740,7 +3737,6 @@ impl Visitor {
             #[verus::internal(auto_decreases)]
             #vstd::prelude::is_variant(#vstd::std_specs::iter::IteratorSpec::decrease(&#x_iter_name.iter), "Some")
         ));
-        dbg!("invs created");
         let invariant_for = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
@@ -3767,9 +3763,7 @@ impl Visitor {
         } else {
             None
         };
-        dbg!("invariant created");
         let inv_except_break = if let Some(mut invariant_except_break) = invariant_except_break {
-            dbg!("inv_except_break 1");
             for inv in &mut invariant_except_break.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
                     let #pat = if #x_iter_name.index.view().spec_le(#x_iter_name.seq().len()) {
@@ -3785,15 +3779,10 @@ impl Visitor {
             }
             Some(InvariantExceptBreak { token: Token![invariant_except_break](span), exprs: invariant_except_break.exprs })
         } else if no_loop_invariant.is_none() {
-            dbg!("inv_except_break 2");
-            //Some(parse_quote_spanned!(span => invariant #some_inv,))
-            //Some(parse_quote_spanned!(span => invariant_except_break #some_inv,))
             Some(parse_quote_spanned!(span => invariant_except_break #some_inv,))
         } else {
-            dbg!("inv_except_break 3");
             None
         };
-        dbg!("inv_except_break created");
         if let Some(decreases) = &mut decreases {
             for expr in &mut decreases.exprs.exprs {
                 *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() => {
@@ -3814,7 +3803,6 @@ impl Visitor {
                     .unwrap_or(#vstd::pervasive::arbitrary()),
             ))
         }
-        dbg!("decreases created");
         // REVIEW: we might also want no_auto_loop_invariant to suppress the ensures,
         // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.
         let ensure = if no_loop_invariant.is_none() {
@@ -3836,9 +3824,7 @@ impl Visitor {
         } else {
             None
         };
-        dbg!("about to call add_loop_specs");
         self.add_loop_specs(&mut stmts, inv_except_break, invariant_for, None, ensure, decreases);
-        dbg!("about to create body_exec");
         let body_exec = Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
             #[verus::internal(spec)] 
             #[verus::internal(unwrapped_binding)]
@@ -3868,11 +3854,9 @@ impl Visitor {
         let mut body: Block = parse_quote_spanned!(span => { #body_exec });
         body.stmts.splice(0..0, stmts);
 
-        dbg!("about to create loop_expr");
         let mut loop_expr: ExprLoop = parse_quote_spanned!(span => loop #body);
         loop_expr.label = label;
         loop_expr.attrs = attrs;
-        dbg!("about to create final expression");
         let f = Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
             #[allow(non_snake_case)]
             let #x_verus_iter_init = #expr;

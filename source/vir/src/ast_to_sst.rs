@@ -2385,10 +2385,8 @@ pub(crate) fn expr_to_stm_opt(
                             LoopInvariantKind::InvariantAndEnsures => Some(inv.clone()),
                             LoopInvariantKind::Ensures => {
                                 if matches!(inv.inv.x, ExprX::UnaryOpr(UnaryOpr::AutoDecreases, _)) {
-                                    dbg!("Filtering out an ensures", &inv.inv.x);
                                     None
                                 } else {
-                                    dbg!("Filtering out an ensures", &inv.inv.x);
                                     Some(inv.clone())
                                 }
                             }
