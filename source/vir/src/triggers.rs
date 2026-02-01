@@ -143,7 +143,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             }
             UnaryOpr::AutoDecreases => {
                 // recurse inside marker
-                check_trigger_expr_arg(state, expect_boxed, arg)
+                check_trigger_expr_arg(state, arg)
             }
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }

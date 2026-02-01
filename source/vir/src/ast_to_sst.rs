@@ -2374,6 +2374,27 @@ pub(crate) fn expr_to_stm_opt(
                 invs.clone()
             };
             let has_break = loop_body_has_break(label, body);
+            let invs = if is_for_loop && has_break {
+                // If the user added a break statement, then we need to remove the auto-generated ensures
+                // clauses (since they typically don't apply any more)
+                Arc::new(
+                    invs.iter()
+                        .filter_map(|inv| match inv.kind {
+                            LoopInvariantKind::InvariantExceptBreak => Some(inv.clone()),
+                            LoopInvariantKind::InvariantAndEnsures => Some(inv.clone()),
+                            LoopInvariantKind::Ensures => {
+                                if matches!(inv.inv.x, ExprX::UnaryOpr(UnaryOpr::AutoDecreases, _)) {
+                                    None
+                                } else {
+                                    Some(inv.clone())
+                                }
+                            }
+                        })
+                        .collect(),
+                )
+            } else {
+                invs.clone()
+            };
             let simple_invs =
                 invs.iter().all(|inv| inv.kind == LoopInvariantKind::InvariantAndEnsures);
             let simple_while = !has_break && simple_invs && cond.is_some() && loop_isolation;
