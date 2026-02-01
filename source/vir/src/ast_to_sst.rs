@@ -2378,7 +2378,7 @@ pub(crate) fn expr_to_stm_opt(
                 invs.iter().all(|inv| inv.kind == LoopInvariantKind::InvariantAndEnsures);
             let simple_while = !has_break && simple_invs && cond.is_some() && loop_isolation;
 
-            if allow_complex_invariants && loop_isolation {
+            if allow_complex_invariants && loop_isolation && !is_for_loop {
                 return Err(error(
                     &expr.span,
                     "attribute 'allow_complex_invariants' can only be used with 'loop_isolation(false)'",
@@ -2429,9 +2429,9 @@ pub(crate) fn expr_to_stm_opt(
             let mut check_recommends: Vec<Stm> = Vec::new();
             let mut invs1: Vec<crate::sst::LoopInv> = Vec::new();
             for inv in invs.iter() {
-                // Ensures clauses are unnecessary if loop_isolation is true (implied by allow_complex_invariants),
+                // Ensures clauses are unnecessary if loop_isolation is true,
                 // since the weakest precondition already tracks all the paths through the breaks into the code after the loop
-                if allow_complex_invariants && inv.kind == LoopInvariantKind::Ensures {
+                if !loop_isolation && allow_complex_invariants && inv.kind == LoopInvariantKind::Ensures {
                     continue;
                 }
 
@@ -2440,11 +2440,10 @@ pub(crate) fn expr_to_stm_opt(
                     crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.invariant);
                 check_recommends.extend(rec);
 
-                let (at_entry, at_exit) = if allow_complex_invariants
+                let (at_entry, at_exit) = if !loop_isolation && allow_complex_invariants
                     && inv.kind == LoopInvariantKind::InvariantExceptBreak
                 {
-                    // With loop_isolation disabled (implied by allow_complex invariants), an
-                    // invariant_except_break simply becomes an invariant
+                    // With loop_isolation disabled, an invariant_except_break simply becomes an invariant
                     (true, true)
                 } else {
                     match inv.kind {
