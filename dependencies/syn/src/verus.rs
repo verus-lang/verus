@@ -726,6 +726,14 @@ pub mod parsing {
             Self::parse_in_expr(input)
         }
 
+        /// Parse a `Specification` in a given context.
+        pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
+            match ctx {
+                Context::Item => Self::parse_in_item(input),
+                Context::Expr => Self::parse_in_expr(input),
+            }
+        }
+
         fn is_next_condition_valid(input: ParseStream) -> bool {
             Self::is_next_condition_bare(input) || Self::is_next_condition_in_braces(input)
         }
@@ -818,6 +826,22 @@ pub mod parsing {
                 Ok(None)
             }
         }
+
+        /// Parse a `requires` clause in a given context.
+        pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
+            match ctx {
+                Context::Item => Self::parse_in_item(input),
+                Context::Expr => Self::parse_in_expr(input),
+            }
+        }
+
+        /// Parse an optional `requires` clause in a given context.
+        pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
+            match ctx {
+                Context::Item => Self::parse_optional_in_item(input),
+                Context::Expr => Self::parse_optional_in_expr(input),
+            }
+        }
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
@@ -870,7 +894,7 @@ pub mod parsing {
         /// Parse an optional `ensures` clause in the context of an `Expr` e.g. a closure.
         pub fn parse_optional_in_expr(input: ParseStream) -> Result<Option<Self>> {
             if input.peek(Token![ensures]) {
-                Self::parse_in_item(input).map(Some)
+                Self::parse_in_expr(input).map(Some)
             } else {
                 Ok(None)
             }
@@ -894,6 +918,22 @@ pub mod parsing {
                 Self::parse_in_item(input).map(Some)
             } else {
                 Ok(None)
+            }
+        }
+
+        /// Parse an `ensures` clause in a given context.
+        pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
+            match ctx {
+                Context::Item => Self::parse_in_item(input),
+                Context::Expr => Self::parse_in_expr(input),
+            }
+        }
+
+        /// Parse an optional `ensures` clause in a given context.
+        pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
+            match ctx {
+                Context::Item => Self::parse_optional_in_item(input),
+                Context::Expr => Self::parse_optional_in_expr(input),
             }
         }
     }
@@ -992,6 +1032,14 @@ pub mod parsing {
                 token: input.parse()?,
                 exprs: Specification::parse_in_item(input)?,
             })
+        }
+
+        /// Parse in a given context.
+        pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
+            match ctx {
+                Context::Item => Self::parse_in_item(input),
+                Context::Expr => Self::parse_in_expr(input),
+            }
         }
     }
 
