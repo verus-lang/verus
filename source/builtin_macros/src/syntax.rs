@@ -3771,7 +3771,6 @@ impl Visitor {
         let inv_except_break = if let Some(mut invariant_except_break) = invariant_except_break {
             dbg!("inv_except_break 1");
             for inv in &mut invariant_except_break.exprs.exprs {
-                dbg!(&inv);
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
                     let #pat = if #x_iter_name.index.view().spec_le(#x_iter_name.seq().len()) {
                         #x_iter_name.seq().spec_index(#x_iter_name.index.view())
@@ -3842,8 +3841,8 @@ impl Visitor {
         dbg!("about to create body_exec");
         let body_exec = Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
             #[verus::internal(spec)] 
-            #[verus::internal(unwrapped_binding)] // See REVIEW below
-            let mut #x_iter_body_old;
+            #[verus::internal(unwrapped_binding)]
+            let mut #x_iter_body_old; // REVIEW: We appear to need this to be mut so we can initialize it in a separate proof block
             #[verifier::proof_block]
             {
                 #x_iter_body_old = #x_iter_name;
@@ -3858,7 +3857,7 @@ impl Visitor {
             };
             let #pat = VERUS_loop_next;
             #[verus::internal(spec)] 
-            #[verus::internal(unwrapped_binding)] // See REVIEW below
+            #[verus::internal(unwrapped_binding)] // REVIEW: We appear to need this to be mut so we can initialize it in a separate proof block
             let mut #x_iter_name;
             #[verifier::proof_block]
             {
@@ -3899,7 +3898,9 @@ impl Visitor {
             #[allow(non_snake_case)]
             let VERUS_loop_result = match #x_wrapped_iter {
                 #[allow(non_snake_case)]
-                mut #x_iter_name => #loop_expr
+                mut #x_iter_name => 
+                    #[verifier::allow_complex_invariants]
+                    #loop_expr
             };
             VERUS_loop_result
         }));
