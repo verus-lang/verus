@@ -702,7 +702,7 @@ pub mod parsing {
         /// Parse a `Specification` in the context of an `Expr` e.g. a closure.
         pub fn parse_in_expr(input: ParseStream) -> Result<Self> {
             let mut exprs = Punctuated::new();
-            while !input.is_empty() && is_next_clause_valid(input) {
+            while !input.is_empty() && Self::is_next_condition_valid(input) {
                 let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
                 if !input.peek(Token![,]) {
@@ -718,31 +718,31 @@ pub mod parsing {
         pub fn parse_in_item(input: ParseStream) -> Result<Self> {
             Self::parse_in_expr(input)
         }
-    }
 
-    fn is_next_clause_valid(input: ParseStream) -> bool {
-        is_next_clause_bare(input) || is_next_clause_in_braces(input)
-    }
+        fn is_next_condition_valid(input: ParseStream) -> bool {
+            Self::is_next_condition_bare(input) || Self::is_next_condition_in_braces(input)
+        }
 
-    fn is_next_clause_bare(input: ParseStream) -> bool {
-        !(input.peek(Token![,])
-            || input.peek(token::Brace)
-            || input.peek(Token![;])
-            || input.peek(Token![invariant_except_break])
-            || input.peek(Token![invariant])
-            || input.peek(Token![invariant_ensures])
-            || input.peek(Token![ensures])
-            || input.peek(Token![default_ensures])
-            || input.peek(Token![returns])
-            || input.peek(Token![decreases])
-            || input.peek(Token![via])
-            || input.peek(Token![when])
-            || input.peek(Token![no_unwind])
-            || input.peek(Token![opens_invariants]))
-    }
+        fn is_next_condition_bare(input: ParseStream) -> bool {
+            !(input.peek(Token![,])
+                || input.peek(token::Brace)
+                || input.peek(Token![;])
+                || input.peek(Token![invariant_except_break])
+                || input.peek(Token![invariant])
+                || input.peek(Token![invariant_ensures])
+                || input.peek(Token![ensures])
+                || input.peek(Token![default_ensures])
+                || input.peek(Token![returns])
+                || input.peek(Token![decreases])
+                || input.peek(Token![via])
+                || input.peek(Token![when])
+                || input.peek(Token![no_unwind])
+                || input.peek(Token![opens_invariants]))
+        }
 
-    fn is_next_clause_in_braces(input: ParseStream) -> bool {
-        input.peek(token::Brace) && input.peek2(Token![,])
+        fn is_next_condition_in_braces(input: ParseStream) -> bool {
+            input.peek(token::Brace) && input.peek2(Token![,])
+        }
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
