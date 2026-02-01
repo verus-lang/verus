@@ -2565,7 +2565,7 @@ pub(crate) mod parsing {
             let invariant_except_break = input.parse()?;
             let invariant = input.parse()?;
             let invariant_ensures = input.parse()?;
-            let ensures = input.parse()?;
+            let ensures = Ensures::parse_optional_in_expr(input)?;
             let decreases = crate::Decreases::parse_optional_in_expr(input)?;
 
             let content;
@@ -2814,7 +2814,7 @@ pub(crate) mod parsing {
         let (output, requires, ensures, inner_attrs, body) = if needs_block {
             let output = input.parse()?;
             let requires: Option<Requires> = input.parse()?;
-            let ensures: Option<Ensures> = input.parse()?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in_expr(input)?;
             let body: Block = input.parse()?;
             let inner_attrs = input.call(Attribute::parse_inner)?;
             let block = Expr::Block(ExprBlock {
@@ -2917,7 +2917,7 @@ pub(crate) mod parsing {
             let invariant_except_break = input.parse()?;
             let invariant = input.parse()?;
             let invariant_ensures = input.parse()?;
-            let ensures = input.parse()?;
+            let ensures = Ensures::parse_optional_in_expr(input)?;
             let decreases = crate::Decreases::parse_optional_in_expr(input)?;
 
             let content;
