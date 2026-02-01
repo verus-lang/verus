@@ -53,7 +53,6 @@ use verus_syn::{Expr, ExprField, ExprPath, Ident, Member};
 /// an error if it finds a use of `pre` for any reason that is NOT an access
 /// of a state machine field. For example, `pre.associated_method()` is
 /// not allowed, nor is using `pre` without a "dot" access.
-
 pub fn visit_field_accesses(
     e: &mut Expr,
     f: impl FnMut(&mut Vec<Error>, &Field, &mut Expr) -> (),
@@ -139,7 +138,6 @@ fn get_field_by_ident<'a>(
 /// the value exactly.
 /// (This ONLY applies to the StorageMap, not the ordinary Map; i.e., for
 /// RemoveKV, AddKV, and HaveKV, we check the 'key' expression like you'd expect.)
-
 pub fn visit_field_accesses_all_exprs(
     ts: &mut TransitionStmt,
     f: &mut impl FnMut(&mut Vec<Error>, &Field, &mut Expr, bool) -> (),
@@ -153,7 +151,7 @@ pub fn visit_field_accesses_all_exprs(
             }
         }
         TransitionStmt::Split(_span, split_kind, splits) => {
-            match split_kind {
+            match &mut **split_kind {
                 SplitKind::Let(_pat, _ty, lk, init_e) => {
                     let is_birds_eye = *lk == LetKind::BirdsEye;
                     visit_field_accesses(
@@ -298,7 +296,6 @@ fn visit_special_op(
 /// and it doesn't seem worthwhile to implement two different versions for
 /// `&mut` vs `&` parameters. But if we really needed to pass a `&TransitionStmt` here,
 /// it could be done.)
-
 pub fn find_all_accesses(
     ts: &mut TransitionStmt,
     errors: &mut Vec<Error>,

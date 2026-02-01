@@ -30,3 +30,6 @@ assert_cmd = "2.0"
 name = "fake-cargo"
 path = "tests/src/fake_cargo.rs"
 required-features = ["integration-tests"]
+
+[lints]
+workspace = true

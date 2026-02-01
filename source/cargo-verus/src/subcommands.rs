@@ -60,7 +60,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-01-11-0057"
+vstd = "=0.0.0-2026-01-25-0057"
 
 [package.metadata.verus]
 verify = true
@@ -154,6 +154,10 @@ pub fn run_cargo(cfg: CargoRunConfig) -> Result<ExitCode> {
         packages_to_process,
         packages_to_verify,
     )?;
+
+    if cfg.options.verbose {
+        eprintln!("running cargo command:\n{command:?}");
+    }
 
     let exit_status = command
         .spawn()
@@ -266,7 +270,7 @@ fn make_cargo_command(
     // TODO: use the "+ ... toolchain" argument?
     let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
-    cmd.arg(subcommand.to_owned()).args(cargo_args);
+    cmd.arg(subcommand).args(cargo_args);
 
     cmd.env("RUSTC_WRAPPER", get_verus_driver_path());
 
@@ -353,7 +357,7 @@ fn make_cargo_command(
 }
 
 fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -> String {
-    args.map(|arg| [VERUS_DRIVER_ARGS_SEP.to_owned(), arg.as_ref().to_owned()]).flatten().collect()
+    args.flat_map(|arg| [VERUS_DRIVER_ARGS_SEP.to_owned(), arg.as_ref().to_owned()]).collect()
 }
 
 fn get_verus_driver_path() -> PathBuf {

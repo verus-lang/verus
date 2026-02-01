@@ -134,7 +134,8 @@ pub fn main() {
         }
     }
 
-    std::env::set_var("RUSTC_BOOTSTRAP", "1");
+    // TODO: Audit that the environment access only happens in single-threaded code.
+    unsafe { std::env::set_var("RUSTC_BOOTSTRAP", "1") };
 
     let verifier =
         rust_verify::verifier::Verifier::new(our_args, via_cargo, via_cargo_compile, dep_tracker);
@@ -154,7 +155,7 @@ pub fn main() {
             verifier: &rust_verify::verifier::Verifier,
             f: impl Fn(&rust_verify::verifier::BucketStats) -> std::time::Duration,
         ) -> u128 {
-            verifier.bucket_stats.iter().map(|(_, v)| f(v)).sum::<std::time::Duration>().as_millis()
+            verifier.bucket_stats.values().map(|v| f(v)).sum::<std::time::Duration>().as_millis()
         }
 
         #[derive(Debug, Clone)]
@@ -207,12 +208,12 @@ pub fn main() {
                     init: SmtStat {
                         time_millis: v.time_smt_init.as_millis(),
                         time_micros: v.time_smt_init.as_micros(),
-                        rlimit_count: v.rlimit_count,
+                        rlimit_count: v.rlimit_count.map(|x| x.0),
                     },
                     run: SmtStat {
                         time_millis: v.time_smt_run.as_millis(),
                         time_micros: v.time_smt_run.as_micros(),
-                        rlimit_count: v.rlimit_count,
+                        rlimit_count: v.rlimit_count.map(|x| x.1),
                     },
                 });
             }
@@ -230,15 +231,19 @@ pub fn main() {
             stats
         }
 
-        let smt_init_times = sorted_smt_stats(&smt_module_stats, |v| &v.init);
+        let smt_init_stats = sorted_smt_stats(&smt_module_stats, |v| &v.init);
         let total_smt_init: u128 = compute_total(&verifier, |v| v.time_smt_init);
 
         let smt_run_stats = sorted_smt_stats(&smt_module_stats, |v| &v.run);
         let total_smt_run: u128 = compute_total(&verifier, |v| v.time_smt_run);
-        let rlimit_counts: Option<Vec<u64>> =
+
+        let smt_init_rlimit_counts: Option<Vec<u64>> =
+            smt_init_stats.iter().map(|(_, v)| v.rlimit_count).collect();
+        let total_rlimit_init: Option<u64> = smt_init_rlimit_counts.map(|rs| rs.iter().sum());
+
+        let smt_run_rlimit_counts: Option<Vec<u64>> =
             smt_run_stats.iter().map(|(_, v)| v.rlimit_count).collect();
-        let total_rlimit_count: Option<u64> =
-            rlimit_counts.map(|rlimit_counts| rlimit_counts.iter().sum());
+        let total_rlimit_run: Option<u64> = smt_run_rlimit_counts.map(|rs| rs.iter().sum());
 
         let mut smt_function_breakdown = {
             let mod_fun_times: Vec<_> = verifier
@@ -375,28 +380,30 @@ pub fn main() {
                     serde_json::json!({
                         "total": (total_smt_init + total_smt_run),
                         "smt-init": total_smt_init,
-                        "smt-init-module-times" : smt_init_times.iter().map(|(m, t)| {
+                        "rlimit-init": total_rlimit_init,
+                        "smt-init-module-times" : smt_init_stats.iter().map(|(m, t)| {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
                                 "time" : t.time_millis,
                                 "time-micros" : t.time_micros,
-                                "rlimit-count" : t.rlimit_count,
+                                "rlimit" : t.rlimit_count,
                             })
                         }).collect::<Vec<serde_json::Value>>(),
                         "smt-run": total_smt_run,
+                        "rlimit-run": total_rlimit_run,
                         "smt-run-module-times" : smt_run_stats.iter().map(|(m, t)| {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
                                 "time" : t.time_millis,
                                 "time-micros" : t.time_micros,
-                                "rlimit-count" : t.rlimit_count,
+                                "rlimit" : t.rlimit_count,
                                 "function-breakdown" : smt_function_breakdown.get_mut(*m).map(|b| b.iter().map(|(f, t)| {
                                     serde_json::json!({
                                         "function" : vir::ast_util::fun_as_friendly_rust_name(f),
                                         "mode:" : verifier.get_function_mode(f).map(|m| m.to_string()),
                                         "time" : t.time_millis,
                                         "time-micros" : t.time_micros,
-                                        "rlimit-count" : t.rlimit_count,
+                                        "rlimit" : t.rlimit_count,
                                         "success" : !verifier.func_fails.contains(f),
                                     })
                                  }).collect::<Vec<serde_json::Value>>()).unwrap_or_default(),
@@ -465,11 +472,15 @@ pub fn main() {
                     verifier.num_threads
                 );
                 println!(
-                    "            total smt-init:        {:>10} ms   ({} threads)",
-                    total_smt_init, verifier.num_threads
+                    "            total smt-init:        {:>10} ms{} ({} threads)",
+                    total_smt_init,
+                    total_rlimit_init
+                        .map(|rc| format!(", {:>8} rlimit", rc))
+                        .unwrap_or(format!("")),
+                    verifier.num_threads
                 );
                 if verifier.args.time_expanded {
-                    for (i, (m, t)) in smt_init_times.iter().take(3).enumerate() {
+                    for (i, (m, t)) in smt_init_stats.iter().take(3).enumerate() {
                         println!(
                             "                {}. {:<40} {:>10} ms",
                             i + 1,
@@ -481,9 +492,7 @@ pub fn main() {
                 println!(
                     "            total smt-run:         {:>10} ms{} ({} threads)",
                     total_smt_run,
-                    total_rlimit_count
-                        .map(|rc| format!(", {:>8} rlimit", rc))
-                        .unwrap_or(format!("")),
+                    total_rlimit_run.map(|rc| format!(", {:>8} rlimit", rc)).unwrap_or(format!("")),
                     verifier.num_threads,
                 );
                 if verifier.args.time_expanded {

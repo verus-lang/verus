@@ -30,12 +30,12 @@ pub(crate) fn internal_err_span<A>(span: Span, msg: String) -> Result<A, VirErr>
 #[macro_export]
 macro_rules! unsupported_err {
     ($span: expr, $msg: expr) => {{
-        crate::util::unsupported_err_span($span, $msg.to_string())?;
+        $crate::util::unsupported_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
     ($span: expr, $msg: expr, $info: expr) => {{
         dbg!($info);
-        crate::util::unsupported_err_span($span, $msg.to_string())?;
+        $crate::util::unsupported_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
 }
@@ -43,12 +43,12 @@ macro_rules! unsupported_err {
 #[macro_export]
 macro_rules! internal_err {
     ($span: expr, $msg: expr) => {{
-        crate::util::internal_err_span($span, $msg.to_string())?;
+        $crate::util::internal_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
     ($span: expr, $msg: expr, $info: expr) => {{
         dbg!($info);
-        crate::util::internal_err_span($span, $msg.to_string())?;
+        $crate::util::internal_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
 }
@@ -57,13 +57,13 @@ macro_rules! internal_err {
 macro_rules! unsupported_err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
-            crate::util::unsupported_err_span($span, $msg.to_string())?;
+            $crate::util::unsupported_err_span($span, $msg.to_string())?;
         }
     };
     ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
         if (!$assertion) {
             dbg!($info);
-            crate::util::unsupported_err_span($span, $msg.to_string())?;
+            $crate::util::unsupported_err_span($span, $msg.to_string())?;
         }
     };
 }
@@ -72,13 +72,13 @@ macro_rules! unsupported_err_unless {
 macro_rules! err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
-            crate::util::err_span($span, $msg)?;
+            $crate::util::err_span($span, $msg)?;
         }
     };
     ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
         if (!$assertion) {
             dbg!($info);
-            crate::util::err_span($span, $msg)?;
+            $crate::util::err_span($span, $msg)?;
         }
     };
 }

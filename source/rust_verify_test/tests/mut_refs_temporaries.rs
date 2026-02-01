@@ -688,7 +688,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_ctor_update_taile ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_ctor_update_tail ["new-mut-ref"] => verus_code! {
         broadcast proof fn stronger_resolver_axiom<A, B>(pair: TGPair<A, B>) // TODO(new_mut_ref)
             ensures #[trigger] has_resolved(pair) ==> has_resolved(pair.t)
         {
@@ -994,7 +994,7 @@ test_verify_one_file_with_options! {
 
             assert(a == 0); // FAILS
             assert(b == 0);
-            //assert(c == 0);  // TODO(new_mut_ref)
+            assert(c == 0);
         }
 
         fn test9() {
@@ -3869,6 +3869,45 @@ test_verify_one_file_with_options! {
         proof fn test_consume<T>(tracked t: T) {
             let x = consume(t);
             assert(has_resolved(t)); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] assign_eval_ordering_with_temporary ["new-mut-ref"] => verus_code! {
+        fn mut_ref_id(a: &mut u64) -> (ret: &mut u64)
+            ensures
+                mut_ref_current(ret) == 30,
+                mut_ref_future(a) == mut_ref_future(ret),
+        {
+            *a = 30;
+            a
+        }
+
+        fn test1() {
+            let mut a: u64 = 20;
+            *mut_ref_id(&mut a) = a;
+            assert(a == 20);
+        }
+
+        fn fails1() {
+            let mut a: u64 = 20;
+            *mut_ref_id(&mut a) = a;
+            assert(a == 20);
+            assert(false); // FAILS
+        }
+
+        fn test2() {
+            let mut a: u64 = 20;
+            *mut_ref_id(&mut a) += a;
+            assert(a == 50);
+        }
+
+        fn fails2() {
+            let mut a: u64 = 20;
+            *mut_ref_id(&mut a) += a;
+            assert(a == 50);
+            assert(false); // FAILS
         }
     } => Err(e) => assert_fails(e, 2)
 }

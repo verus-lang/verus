@@ -360,7 +360,7 @@ test_verify_one_file_with_options! {
             x = 23;
             x
         }
-    } => Err(err) => assert_vir_error_msg(err, "delayed assignment to non-mut let not allowed for spec variables")
+    } => Err(err) => assert_vir_error_msg(err, "expected pure mathematical expression")
 }
 
 test_verify_one_file_with_options! {
@@ -380,7 +380,31 @@ test_verify_one_file_with_options! {
             x = 3;
             verus_builtin::assert_(false); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "delayed assignment to non-mut let not allowed for spec variables")
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] decl_init_let_spec_fail2 verus_code! {
+        fn test1() {
+            let ghost x: u64; // TODO should probably require this to be mut
+            proof {
+                x = 2;
+                x = 3;
+            }
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] decl_init_let_spec_fail3 verus_code! {
+        proof fn test1() {
+            let x: u64;
+            x = 2;
+            x = 3;
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }
 
 const FIELD_UPDATE: &str = code_str! {
@@ -1560,4 +1584,79 @@ test_verify_one_file! {
             let tracked foo2 = Foo { gh: x, .. foo };
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] tracked_ctor_immediately_coerce_to_spec verus_code! {
+        proof fn test(x: int) {
+            let y = Tracked(x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_ctor_immediately_coerce_to_spec_fail verus_code! {
+        fn test() {
+            let ghost x = true;
+            let y = Tracked(x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] tracked_tracked_get verus_code! {
+        proof fn test<T>(tracked t: Tracked<T>) {
+            let tracked r = t.get();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_get verus_code! {
+        proof fn test<T>(t: Tracked<T>) {
+            let tracked r = t.get();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_borrow verus_code! {
+        proof fn test<T>(t: Tracked<T>) {
+            let tracked r = t.borrow();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] tracked_ghost_get verus_code! {
+        proof fn test<T>(tracked t: Ghost<T>) {
+            let tracked r = t@;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] tracked_var_consumed_in_tuple_in_match_scrutinee verus_code! {
+        struct S;
+
+        proof fn test_match(tracked t: S, g: S) {
+            // This test infers the mode of `t` as tracked here, thus consuming it:
+            // In principle we could infer it as spec (since the tuple `(t, g)` as a whole is spec)
+            // and this used to work before we changed the way erasure is computed from
+            // the mode-checking results.
+            //
+            // Supporting this fundamentally requires a second pass
+            // (or otherwise a more sophisticated way of handling mode constraints).
+            // The issue is we don't know that we want to upcast `t` to spec until we see `g`
+            // forcing the tuple to be spec.
+            //
+            // However, it also seems fine to just not support this.
+            match (t, g) {
+                (t, g) => {}
+            }
+            match (t, g) {
+                (t, g) => {}
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
 }

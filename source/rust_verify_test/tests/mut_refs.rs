@@ -2819,7 +2819,10 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         fn test2() {
             let mut a = 4;
-            *({ loop {}; &mut a }) = ({ assert(false); 5 });
+            *({ loop {}; &mut a }) = ({
+                assert(false); // FAILS
+                5
+            });
             assert(false);
         }
 
@@ -2828,7 +2831,7 @@ test_verify_one_file_with_options! {
         fn test2_fails() {
             let mut a = 4;
             *({
-                assert(false); // FAILS
+                assert(false);
             &mut a }) = ({ loop {} 5 });
         }
 
@@ -2880,7 +2883,7 @@ test_verify_one_file_with_options! {
         fn test2(y: [&mut (u64, u64); 2]) {
             let mut y = y;
             (*y[({
-                assert(false); // FAILS
+                assert(false);
             0 })]).0 += ({ loop{} 20 });
         }
 
@@ -2911,7 +2914,7 @@ test_verify_one_file_with_options! {
                 0
             });
         }
-    } => Err(e) => assert_fails(e, 2)
+    } => Err(e) => assert_fails(e, 1)
 }
 
 test_verify_one_file_with_options! {
@@ -3081,4 +3084,91 @@ test_verify_one_file_with_options! {
             return list;
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_snapshot ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut a = 0;
+            let a_ref = &mut a;
+
+            let ghost snapshot = a_ref;
+
+            assert(a == 0);
+            assert(mut_ref_future(snapshot) == 0);
+            assert(mut_ref_current(snapshot) == 0);
+        }
+
+        fn fails() {
+            let mut a = 0;
+            let a_ref = &mut a;
+
+            let ghost snapshot = a_ref;
+
+            assert(a == 0);
+            assert(mut_ref_future(snapshot) == 0);
+            assert(mut_ref_current(snapshot) == 0);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            *a = *a + 1;
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            test(a);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat_fail ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *fin(a) == *old(a) + 1,
+        {
+            *a = *a + 1;
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            test(a);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to use `final`, disable mut-ref backwards-compatability")
+}
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat_fail2 ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            *a = *a + 1;
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(a: &mut u8)
+            requires *old(a) < 255,
+            ensures a == a
+        {
+            test(a);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "For more flexible mutable reference support, disable the backwards-compatability")
 }

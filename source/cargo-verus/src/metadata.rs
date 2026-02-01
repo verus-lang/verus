@@ -78,10 +78,6 @@ impl<'a> MetadataIndex<'a> {
         self.entries.get(id).unwrap()
     }
 
-    pub fn entries(&self) -> impl Iterator<Item = &MetadataIndexEntry<'a>> {
-        self.entries.values()
-    }
-
     pub fn get_transitive_closure(&self, roots: Set<PackageId>) -> Set<PackageId> {
         // Breadth-first traversal to collect transitive deps of `roots`
         let mut visited = roots;

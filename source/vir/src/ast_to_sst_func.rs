@@ -4,9 +4,10 @@ use crate::ast::{
     VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
-    FinalState, State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks,
-    expr_to_one_stm_with_post, expr_to_pure_exp_check, expr_to_pure_exp_check_with_typ_substs,
-    expr_to_pure_exp_skip_checks, expr_to_stm_opt, expr_to_stm_or_error, stms_to_one_stm,
+    FinalState, PreLocalDeclKind, State, expr_to_bind_decls_exp_skip_checks,
+    expr_to_exp_skip_checks, expr_to_one_stm_with_post, expr_to_pure_exp_check,
+    expr_to_pure_exp_check_with_typ_substs, expr_to_pure_exp_skip_checks, expr_to_stm_opt,
+    expr_to_stm_or_error, stms_to_one_stm,
 };
 use crate::ast_util::{is_body_visible_to, unit_typ};
 use crate::ast_visitor;
@@ -95,7 +96,7 @@ pub fn mk_fun_ctx<F: FunctionCommon>(
 
 pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
     param.map_x(|p| {
-        let ParamX { name, typ, mode, is_mut, unwrapped_info: _ } = p;
+        let ParamX { name, typ, mode, is_mut, user_mut: _, unwrapped_info: _ } = p;
         if *is_mut && !allow_is_mut {
             panic!("mut unexpected here");
         }
@@ -164,7 +165,7 @@ fn func_body_to_sst(
     // because spec precondition checking is performed as a separate query
     let body_exp = expr_to_pure_exp_skip_checks(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(ctx, &body_exp)?;
-    state.finalize();
+    state.finalize()?;
 
     // Check termination and/or recommends
     let scc_rep = ctx
@@ -227,7 +228,7 @@ fn func_body_to_sst(
     }
     let proof_body_stm = stms_to_one_stm(&body.span, proof_body_stms);
     let proof_body_stm = check_state.finalize_stm(ctx, &proof_body_stm)?;
-    let FinalState { local_decls, statics: _ } = check_state.finalize();
+    let FinalState { local_decls, statics: _ } = check_state.finalize()?;
 
     let is_recursive = crate::recursion::fun_is_recursive(ctx, function);
     let termination_check = if is_recursive && verifying_owning_bucket {
@@ -346,7 +347,7 @@ pub fn func_decl_to_sst(
             let mut state = State::new(diagnostics);
             let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, fndef_axiom)?;
             let exp = state.finalize_exp(ctx, &exp)?;
-            state.finalize();
+            state.finalize()?;
 
             // Add forall-binders for each type param
             // The fndef_axiom should already be a 'forall' statement
@@ -702,7 +703,7 @@ pub fn func_def_to_sst(
     let dest = if function.x.ens_has_return {
         let ParamX { name, typ, .. } = &function.x.ret.x;
         ens_params.push(function.x.ret.clone());
-        state.declare_var_stm(name, typ, LocalDeclKind::Return, false);
+        state.declare_imm_var_stm(name, typ, LocalDeclKind::Return, false);
         Some(unique_local(name))
     } else {
         None
@@ -714,7 +715,7 @@ pub fn func_def_to_sst(
         state.declare_var_stm(
             &param.x.name,
             &param.x.typ,
-            LocalDeclKind::Param { mutable: param.x.is_mut },
+            if param.x.is_mut { PreLocalDeclKind::MutParam } else { PreLocalDeclKind::Param },
             false,
         );
     }
@@ -843,7 +844,7 @@ pub fn func_def_to_sst(
             )?
         };
 
-    let FinalState { mut local_decls, statics } = state.finalize();
+    let FinalState { mut local_decls, statics } = state.finalize()?;
 
     // SST --> AIR
     for decl in decls {

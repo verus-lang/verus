@@ -40,6 +40,7 @@ pub fn migrate_mut_ref_function(f: &mut Function) {
                         typ: Arc::new(TypX::MutRef(p.x.typ.clone())),
                         mode: p.x.mode,
                         is_mut: false,
+                        user_mut: p.x.user_mut,
                         unwrapped_info: p.x.unwrapped_info.clone(),
                     })
                 } else {

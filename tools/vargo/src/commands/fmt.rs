@@ -24,7 +24,7 @@ impl AddOptions for VargoFmt {
             cargo.args(["--package", p]);
         }
 
-        cargo.args(["--", "--config", "style_edition=2024"]);
+        cargo.args(["--"]);
         cargo.args(&self.rustfmt_args);
     }
 
@@ -42,17 +42,18 @@ pub fn fmt(
         return Ok(());
     }
 
+    info!("formatting source");
     cargo_run(options, context, vargo_cmd)?;
 
     format_rust_dir(
         Path::new("../dependencies/syn"),
         &vargo_cmd.rustfmt_args,
-        options.cargo_options.verbose > 0,
+        options.vargo_verbose,
     )?;
     format_rust_dir(
         Path::new("../dependencies/prettyplease"),
         &vargo_cmd.rustfmt_args,
-        options.cargo_options.verbose > 0,
+        options.vargo_verbose,
     )?;
 
     if !vargo_cmd.exclude.iter().any(|e| e.as_str() == "vstd") {
@@ -73,7 +74,6 @@ fn format_rust_dir(
     let mut cargo_fmt = std::process::Command::new("cargo");
     cargo_fmt
         .current_dir(path)
-        // TODO(bsdinis): these other libraries are not being formatted with style_edition=2024
         .args(["fmt", "--"])
         .args(rustfmt_args);
     log_command(&cargo_fmt, verbose);

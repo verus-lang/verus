@@ -1,6 +1,6 @@
 [package]
 name = "verus_builtin_macros"
-version = "0.0.0-2025-12-07-0054"
+version = "0.0.0-2026-01-25-0057"
 edition = "2018"
 license = "MIT"
 description = "Verus Builtin Macros: Various macros used by Verus"
@@ -18,14 +18,14 @@ proc-macro2 = "1.0.39"
 quote = "1.0"
 synstructure = "0.13.2"
 syn = { version = "2.0", features = ["full", "visit", "visit-mut", "extra-traits"] }
-verus_syn = { version = "=0.0.0-2025-11-16-0050", path = "../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
-verus_prettyplease = { version = "=0.0.0-2025-11-16-0050", path = "../../dependencies/prettyplease" }
+verus_syn = { version = "=0.0.0-2026-01-25-0057", path = "../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
+verus_prettyplease = { version = "=0.0.0-2026-01-25-0057", path = "../../dependencies/prettyplease" }
 
 [package.metadata.verus]
 is-builtin-macros = true
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_keep_ghost)'] }
-
 [features]
 vpanic = []
+
+[lints]
+workspace = true

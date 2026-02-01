@@ -29,6 +29,7 @@ pub(crate) fn annotate_user_defined_invariants(
     info: &TypeInvInfo,
     functions: &HashMap<Fun, Function>,
     datatypes: &HashMap<Path, Datatype>,
+    new_mut_ref: bool,
 ) -> Result<(), VirErr> {
     let module = functionx.owning_module.as_ref().unwrap();
     let id_cell = Cell::<u64>::new(0);
@@ -36,7 +37,7 @@ pub(crate) fn annotate_user_defined_invariants(
         functionx.body.as_ref().unwrap(),
         &|expr: &Expr| {
             match &expr.x {
-                ExprX::Ctor(Dt::Path(_), ..) => {
+                ExprX::Ctor(Dt::Path(_), ..) if !new_mut_ref => {
                     if info.ctor_needs_check[&expr.span.id]
                         && typ_has_user_defined_type_invariant(datatypes, &expr.typ)
                     {
@@ -48,7 +49,7 @@ pub(crate) fn annotate_user_defined_invariants(
                         Ok(expr.clone())
                     }
                 }
-                ExprX::Assign { lhs, .. } => {
+                ExprX::Assign { lhs, .. } if !new_mut_ref => {
                     let new_asserts = asserts_for_lhs(info, functions, datatypes, module, lhs)?;
                     if new_asserts.len() > 0 {
                         Ok(expr_followed_by_stmts(expr, new_asserts, &id_cell))
@@ -56,7 +57,7 @@ pub(crate) fn annotate_user_defined_invariants(
                         Ok(expr.clone())
                     }
                 }
-                ExprX::Call(CallTarget::Fun(_, fun, _, _, _), args, _post_args) => {
+                ExprX::Call(CallTarget::Fun(_, fun, _, _, _), args, _post_args) if !new_mut_ref => {
                     let function = &functions.get(fun).unwrap();
                     let mut all_asserts = vec![];
                     for (arg, param) in args.iter().zip(function.x.params.iter()) {
@@ -149,9 +150,9 @@ fn expr_followed_by_stmts(expr: &Expr, stmts: Vec<Stmt>, id_cell: &Cell<u64>) ->
         );
 
         let decl = StmtX::Decl {
-            pattern: PatternX::simple_var(ident.clone(), false, &expr.span, &expr.typ),
+            pattern: PatternX::simple_var(ident.clone(), &expr.span, &expr.typ),
             mode: None,
-            init: Some(PlaceX::temporary(expr.clone())),
+            init: Some(PlaceX::spec_temporary(expr.clone())),
             els: None,
         };
         stmts.insert(0, Spanned::new(expr.span.clone(), decl));
