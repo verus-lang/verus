@@ -2533,7 +2533,7 @@ pub(crate) mod parsing {
                 };
             let expr: Expr = input.call(Expr::parse_without_eager_brace)?;
             let invariant = input.parse()?;
-            let decreases = input.parse()?;
+            let decreases = crate::Decreases::parse_optional_in_expr(input)?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2566,7 +2566,7 @@ pub(crate) mod parsing {
             let invariant = input.parse()?;
             let invariant_ensures = input.parse()?;
             let ensures = input.parse()?;
-            let decreases = input.parse()?;
+            let decreases = crate::Decreases::parse_optional_in_expr(input)?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2918,7 +2918,7 @@ pub(crate) mod parsing {
             let invariant = input.parse()?;
             let invariant_ensures = input.parse()?;
             let ensures = input.parse()?;
-            let decreases = input.parse()?;
+            let decreases = crate::Decreases::parse_optional_in_expr(input)?;
 
             let content;
             let brace_token = braced!(content in input);

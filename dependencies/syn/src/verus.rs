@@ -931,11 +931,20 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Decreases {
+        /// Parse a `decreases` clause in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
-            Ok(Decreases {
-                token: input.parse()?,
-                exprs: input.parse()?,
-            })
+            Decreases::parse_in_expr(input)
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<Decreases> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![decreases]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
         }
     }
 
@@ -947,6 +956,15 @@ pub mod parsing {
                 token: input.parse()?,
                 exprs: Specification::parse_in_expr(input)?,
             })
+        }
+
+        /// Parse an optional `decreases` clause in the context of an `Expr` e.g. a loop spec.
+        pub fn parse_optional_in_expr(input: ParseStream) -> Result<Option<Self>> {
+            if input.peek(Token![decreases]) {
+                Self::parse_in_expr(input).map(Some)
+            } else {
+                Ok(None)
+            }
         }
 
         /// Parse a `decreases` clause in the context of an `Item` e.g. a `fn` definition.
@@ -1172,17 +1190,6 @@ pub mod parsing {
     impl Parse for Option<InvariantEnsures> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![invariant_ensures]) {
-                input.parse().map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-    }
-
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for Option<Decreases> {
-        fn parse(input: ParseStream) -> Result<Self> {
-            if input.peek(Token![decreases]) {
                 input.parse().map(Some)
             } else {
                 Ok(None)
@@ -2512,7 +2519,7 @@ impl parse::Parse for LoopSpec {
         let invariants: Option<Invariant> = input.parse()?;
         let invariant_except_breaks: Option<InvariantExceptBreak> = input.parse()?;
         let ensures: Option<Ensures> = input.parse()?;
-        let decreases: Option<Decreases> = input.parse()?;
+        let decreases = Decreases::parse_optional_in_expr(input)?;
         Ok(LoopSpec {
             iter_name,
             invariants,
