@@ -90,28 +90,7 @@ fn for_loop_test_skip(v: Vec<u8>) {
 //            (sum == u8::MAX && sum_u8(v@.map_values(|e:u8| &e)) > u8::MAX));
 }
 
-
 /*
- * Verus complains: loop invariants with 'loop_isolation(false)' cannot be invariant_except_break or ensures
- *
-fn test_no_loop_isolation() {
-    let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
-    let mut w: Vec<u8> = Vec::new();
-
-    #[verifier::loop_isolation(false)]
-    for x in y: v 
-        invariant
-            w.len() as int == y.index@,
-            forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i],
-    {
-        w.push(x);
-    }
-    assert(w.len() == v.len());
-    assert(w@ == v@);
-
-}
-
-
 struct NoTerminate {
     x: u64,
 }
@@ -145,15 +124,16 @@ impl IteratorSpecImpl for NoTerminate {
 }
 
 
+#[verifier::exec_allows_no_decreases_clause]
 fn test_no_termination(n: NoTerminate) {
     let mut w: Vec<u64> = Vec::new();
 
-    //#[verifier::exec_allows_no_decreases_clause]
     for x in y: n 
         invariant
-            w.len() as int == y.index@,
+            true,
+            //w.len() as int == y.index@,
     {
-        w.push(x);
+        //w.push(x);
     }
 }
 */
