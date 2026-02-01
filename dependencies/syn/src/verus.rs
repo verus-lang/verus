@@ -700,7 +700,7 @@ pub mod parsing {
     impl Parse for Specification {
         /// Parse a `Specification` in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
-            Specification::parse_in_expr(input)
+            Specification::parse_in(Context::Expr, input)
         }
     }
 
@@ -779,7 +779,7 @@ pub mod parsing {
     impl Parse for Requires {
         /// Parse a `requires` clause in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
-            Requires::parse_in_expr(input)
+            Requires::parse_in(Context::Expr, input)
         }
     }
 
@@ -787,7 +787,7 @@ pub mod parsing {
     impl Parse for Option<Requires> {
         /// Parse an optional `requires` clause in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
-            Requires::parse_optional_in_expr(input)
+            Requires::parse_optional_in(Context::Expr, input)
         }
     }
 
@@ -797,7 +797,7 @@ pub mod parsing {
         fn parse_in_expr(input: ParseStream) -> Result<Self> {
             Ok(Requires {
                 token: input.parse()?,
-                exprs: Specification::parse_in_expr(input)?,
+                exprs: Specification::parse_in(Context::Expr, input)?,
             })
         }
 
@@ -814,7 +814,7 @@ pub mod parsing {
         fn parse_in_item(input: ParseStream) -> Result<Self> {
             Ok(Requires {
                 token: input.parse()?,
-                exprs: Specification::parse_in_item(input)?,
+                exprs: Specification::parse_in(Context::Item, input)?,
             })
         }
 
@@ -848,7 +848,7 @@ pub mod parsing {
     impl Parse for Recommends {
         fn parse(input: ParseStream) -> Result<Self> {
             let token = input.parse()?;
-            let exprs = Specification::parse_in_item(input)?;
+            let exprs = Specification::parse_in(Context::Item, input)?;
             let via = if input.peek(Token![via]) {
                 let via_token: Token![via] = input.parse()?;
                 // let expr = input.parse()?;
@@ -865,7 +865,7 @@ pub mod parsing {
     impl Parse for Ensures {
         /// Parse an `ensures` clause in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
-            Ensures::parse_in_expr(input)
+            Ensures::parse_in(Context::Expr, input)
         }
     }
 
@@ -873,7 +873,7 @@ pub mod parsing {
     impl Parse for Option<Ensures> {
         /// Parse an optional `ensures` clause in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
-            Ensures::parse_optional_in_expr(input)
+            Ensures::parse_optional_in(Context::Expr, input)
         }
     }
 
@@ -887,7 +887,7 @@ pub mod parsing {
             Ok(Ensures {
                 attrs,
                 token,
-                exprs: Specification::parse_in_expr(input)?,
+                exprs: Specification::parse_in(Context::Expr, input)?,
             })
         }
 
@@ -908,7 +908,7 @@ pub mod parsing {
             Ok(Ensures {
                 attrs,
                 token,
-                exprs: Specification::parse_in_item(input)?,
+                exprs: Specification::parse_in(Context::Item, input)?,
             })
         }
 
@@ -945,7 +945,7 @@ pub mod parsing {
             let token = input.parse()?;
             Ok(DefaultEnsures {
                 token,
-                exprs: Specification::parse_in_item(input)?,
+                exprs: Specification::parse_in(Context::Item, input)?,
             })
         }
     }
@@ -956,7 +956,7 @@ pub mod parsing {
             let token = input.parse()?;
             Ok(Returns {
                 token,
-                exprs: Specification::parse_in_item(input)?,
+                exprs: Specification::parse_in(Context::Item, input)?,
             })
         }
     }
@@ -966,7 +966,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(InvariantExceptBreak {
                 token: input.parse()?,
-                exprs: Specification::parse_in_expr(input)?,
+                exprs: Specification::parse_in(Context::Expr, input)?,
             })
         }
     }
@@ -976,7 +976,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(Invariant {
                 token: input.parse()?,
-                exprs: Specification::parse_in_expr(input)?,
+                exprs: Specification::parse_in(Context::Expr, input)?,
             })
         }
     }
@@ -986,7 +986,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(InvariantEnsures {
                 token: input.parse()?,
-                exprs: Specification::parse_in_expr(input)?,
+                exprs: Specification::parse_in(Context::Expr, input)?,
             })
         }
     }
@@ -995,7 +995,7 @@ pub mod parsing {
     impl Parse for Decreases {
         /// Parse a `decreases` clause in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
-            Decreases::parse_in_expr(input)
+            Decreases::parse_in(Context::Expr, input)
         }
     }
 
@@ -1003,17 +1003,17 @@ pub mod parsing {
     impl Parse for Option<Decreases> {
         /// Parse an optional `decreases` clause in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
-            Decreases::parse_optional_in_expr(input)
+            Decreases::parse_optional_in(Context::Expr, input)
         }
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Decreases {
         /// Parse a `decreases` clause in the context of an `Expr` e.g. a loop spec.
-        pub fn parse_in_expr(input: ParseStream) -> Result<Self> {
+        fn parse_in_expr(input: ParseStream) -> Result<Self> {
             Ok(Decreases {
                 token: input.parse()?,
-                exprs: Specification::parse_in_expr(input)?,
+                exprs: Specification::parse_in(Context::Expr, input)?,
             })
         }
 
@@ -1030,15 +1030,32 @@ pub mod parsing {
         fn parse_in_item(input: ParseStream) -> Result<Self> {
             Ok(Decreases {
                 token: input.parse()?,
-                exprs: Specification::parse_in_item(input)?,
+                exprs: Specification::parse_in(Context::Item, input)?,
             })
         }
 
-        /// Parse in a given context.
+        /// Parse an optional `decreases` clause in the context of an `Item` e.g. a `fn` definition.
+        fn parse_optional_in_item(input: ParseStream) -> Result<Option<Self>> {
+            if input.peek(Token![decreases]) {
+                Self::parse_in_item(input).map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+
+        /// Parse a `decreases` clause in a given context.
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             match ctx {
                 Context::Item => Self::parse_in_item(input),
                 Context::Expr => Self::parse_in_expr(input),
+            }
+        }
+
+        /// Parse an optional `decreases` clause in a given context.
+        pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
+            match ctx {
+                Context::Item => Self::parse_optional_in_item(input),
+                Context::Expr => Self::parse_optional_in_expr(input),
             }
         }
     }
@@ -1046,7 +1063,7 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for SignatureDecreases {
         fn parse(input: ParseStream) -> Result<Self> {
-            let decreases = Decreases::parse_in_item(input)?;
+            let decreases = Decreases::parse_in(Context::Item, input)?;
             let when = if input.peek(Token![when]) {
                 let when_token = input.parse()?;
                 let expr = Expr::parse_without_eager_brace(input)?;
@@ -1269,9 +1286,9 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let prover: Option<Prover> = input.parse()?;
             let with: Option<WithSpecOnFn> = input.parse()?;
-            let requires: Option<Requires> = Requires::parse_optional_in_item(input)?;
+            let requires: Option<Requires> = Requires::parse_optional_in(Context::Item, input)?;
             let recommends: Option<Recommends> = input.parse()?;
-            let ensures: Option<Ensures> = Ensures::parse_optional_in_item(input)?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
@@ -1362,7 +1379,7 @@ pub mod parsing {
                     None
                 };
                 let (requires, body) = if input.peek(Token![requires]) || input.peek(token::Brace) {
-                    let requires = Requires::parse_optional_in_expr(input)?;
+                    let requires = Requires::parse_optional_in(Context::Expr, input)?;
                     let block = if input.peek(token::Brace) {
                         Some(Box::new(input.parse()?))
                     } else {
@@ -1576,8 +1593,8 @@ pub mod parsing {
             let output: ReturnType = input.parse()?;
             generics.where_clause = input.parse()?;
 
-            let requires: Option<Requires> = Requires::parse_optional_in_item(input)?;
-            let ensures: Option<Ensures> = Ensures::parse_optional_in_item(input)?;
+            let requires: Option<Requires> = Requires::parse_optional_in(Context::Item, input)?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
@@ -2563,8 +2580,8 @@ impl parse::Parse for LoopSpec {
 
         let invariants: Option<Invariant> = input.parse()?;
         let invariant_except_breaks: Option<InvariantExceptBreak> = input.parse()?;
-        let ensures: Option<Ensures> = Ensures::parse_optional_in_expr(input)?;
-        let decreases = Decreases::parse_optional_in_expr(input)?;
+        let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Expr, input)?;
+        let decreases = Decreases::parse_optional_in(Context::Expr, input)?;
         Ok(LoopSpec {
             iter_name,
             invariants,

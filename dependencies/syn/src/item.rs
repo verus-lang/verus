@@ -1001,7 +1001,7 @@ pub(crate) mod parsing {
     use crate::token;
     use crate::ty::{Abi, ReturnType, Type, TypePath, TypeReference};
     use crate::verbatim;
-    use crate::verus::{DataMode, Ensures, FnMode, Publish};
+    use crate::verus::{Context, DataMode, Ensures, FnMode, Publish};
     use proc_macro2::TokenStream;
 
     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
@@ -1073,7 +1073,7 @@ pub(crate) mod parsing {
             } else {
                 let colon_token = input.parse()?;
                 let ty = input.parse()?;
-                let ensures: Option<Ensures> = Ensures::parse_optional_in_expr(input)?;
+                let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Expr, input)?;
                 if input.peek(Token![;]) {
                     input.parse::<Token![;]>()?;
                     Ok(Item::Verbatim(verbatim::between(&begin, input)))
@@ -1127,7 +1127,7 @@ pub(crate) mod parsing {
                 None
             };
             generics.where_clause = input.parse()?;
-            let ensures: Option<Ensures> = Ensures::parse_optional_in_expr(input)?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Expr, input)?;
             let (value, block, semi_token) = match (value, &ensures) {
                 (None, None) => (None, None, Some(input.parse()?)),
                 (Some((eq_token, expr)), None) => (
@@ -1558,7 +1558,7 @@ pub(crate) mod parsing {
             let ident = input.parse()?;
             let colon_token = input.parse()?;
             let ty = input.parse()?;
-            let ensures: Option<Ensures> = Ensures::parse_optional_in_expr(input)?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Expr, input)?;
             if ensures.is_none() {
                 Ok(ItemStatic {
                     attrs,
@@ -1615,7 +1615,7 @@ pub(crate) mod parsing {
 
             let colon_token: Token![:] = input.parse()?;
             let ty: Type = input.parse()?;
-            let ensures: Option<Ensures> = Ensures::parse_optional_in_expr(input)?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Expr, input)?;
             let (eq_token, expr, block, semi_token) = if ensures.is_none() {
                 (
                     Some(input.parse()?),
@@ -2906,7 +2906,7 @@ pub(crate) mod parsing {
                     None
                 };
                 generics.where_clause = input.parse()?;
-                let ensures: Option<Ensures> = Ensures::parse_optional_in_item(input)?;
+                let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
                 let (value, block, semi_token) = match (value, &ensures) {
                     (None, None) => (None, None, Some(input.parse()?)),
                     (Some((eq_token, expr)), None) => (
@@ -2992,7 +2992,7 @@ pub(crate) mod parsing {
 
             let colon_token: Token![:] = input.parse()?;
             let ty: Type = input.parse()?;
-            let ensures: Option<Ensures> = Ensures::parse_optional_in_expr(input)?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Expr, input)?;
             let (eq_token, expr, block, semi_token) = if ensures.is_none() {
                 (
                     Some(input.parse()?),
