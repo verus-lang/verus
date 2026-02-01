@@ -773,10 +773,15 @@ pub mod parsing {
     impl Parse for Requires {
         /// Parse a `requires` clause in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
-            Ok(Requires {
-                token: input.parse()?,
-                exprs: input.parse()?,
-            })
+            Requires::parse_in_expr(input)
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<Requires> {
+        /// Parse an optional `requires` clause in the context of an `Expr` e.g. a closure.
+        fn parse(input: ParseStream) -> Result<Self> {
+            Requires::parse_optional_in_expr(input)
         }
     }
 
@@ -788,6 +793,15 @@ pub mod parsing {
                 token: input.parse()?,
                 exprs: Specification::parse_in_expr(input)?,
             })
+        }
+
+        /// Parse an optional `requires` clause in the context of an `Expr` e.g. a closure.
+        pub fn parse_optional_in_expr(input: ParseStream) -> Result<Option<Self>> {
+            if input.peek(Token![requires]) {
+                Self::parse_in_expr(input).map(Some)
+            } else {
+                Ok(None)
+            }
         }
 
         /// Parse a `requires` clause in the context of an `Item` e.g. a `fn` definition.
@@ -1117,17 +1131,6 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for Option<Requires> {
-        fn parse(input: ParseStream) -> Result<Self> {
-            if input.peek(Token![requires]) {
-                input.parse().map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-    }
-
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Recommends> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![recommends]) {
@@ -1313,7 +1316,7 @@ pub mod parsing {
                     None
                 };
                 let (requires, body) = if input.peek(Token![requires]) || input.peek(token::Brace) {
-                    let requires = input.parse()?;
+                    let requires = Requires::parse_optional_in_expr(input)?;
                     let block = if input.peek(token::Brace) {
                         Some(Box::new(input.parse()?))
                     } else {

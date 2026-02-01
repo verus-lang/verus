@@ -2813,7 +2813,7 @@ pub(crate) mod parsing {
             input.peek(Token![->]) || input.peek(Token![requires]) || input.peek(Token![ensures]);
         let (output, requires, ensures, inner_attrs, body) = if needs_block {
             let output = input.parse()?;
-            let requires: Option<Requires> = input.parse()?;
+            let requires: Option<Requires> = Requires::parse_optional_in_expr(input)?;
             let ensures: Option<Ensures> = Ensures::parse_optional_in_expr(input)?;
             let body: Block = input.parse()?;
             let inner_attrs = input.call(Attribute::parse_inner)?;
