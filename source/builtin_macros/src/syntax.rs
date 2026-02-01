@@ -3574,6 +3574,7 @@ impl Visitor {
         //      #[allow(non_snake_case)]
         //      let VERUS_loop_result = match VERUS_iter {
         //         mut y => {
+        //             #[verifier::allow_complex_invariants]
         //             'label: loop
         //                  invariant_except_break
         //                     #[verus::internal(auto_decreases)]
