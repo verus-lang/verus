@@ -1609,11 +1609,15 @@ impl Visitor {
                     );
                 }
                 Item::AssumeSpecification(assume_specification) => {
-                    *item = self.handle_assume_specification(
-                        assume_specification,
-                        item.span(),
-                        &mut assume_spec_extra_impl_items,
-                    );
+                    *item = if self.erase_ghost.erase() {
+                        Item::Verbatim(quote! { const _: () = (); })
+                    } else {
+                        self.handle_assume_specification(
+                            assume_specification,
+                            item.span(),
+                            &mut assume_spec_extra_impl_items,
+                        )
+                    };
                 }
                 _ => (),
             }
@@ -1760,22 +1764,16 @@ impl Visitor {
             args.push(Expr::Verbatim(quote! { #ident }));
         }
 
-        let e = if self.erase_ghost.erase() {
-            Expr::Verbatim(quote! {
-                ::core::unimplemented!()
-            })
+        let callee =
+            verus_syn::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
+        // We wrap the function call in an 'unsafe' block, since the user might be applying
+        // a specification to an unsafe function.
+        let e = if is_const {
+            Expr::Verbatim(quote!(unsafe { #callee }))
         } else {
-            let callee =
-                verus_syn::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
-            // We wrap the function call in an 'unsafe' block, since the user might be applying
-            // a specification to an unsafe function.
-            if is_const {
-                Expr::Verbatim(quote!(unsafe { #callee }))
-            } else {
-                Expr::Verbatim(quote! {
-                    unsafe { #callee(#(#args),*) }
-                })
-            }
+            Expr::Verbatim(quote! {
+                unsafe { #callee(#(#args),*) }
+            })
         };
         stmts.push(Stmt::Expr(e, None));
 

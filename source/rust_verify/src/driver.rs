@@ -1,8 +1,11 @@
 use crate::config::Vstd;
 use crate::externs::VerusExterns;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
-use rustc_hir::{ImplItemKind, ItemKind, MaybeOwner, OwnerNode};
+use rustc_hir::attrs::AttributeKind;
+use rustc_hir::{Attribute, AttributeMap};
+use rustc_hir::{HirId, ItemKind, OwnerId, OwnerNode, ImplItemKind, MaybeOwner};
 use rustc_middle::ty::TyCtxt;
+use rustc_span::{Span, sym};
 use std::time::{Duration, Instant};
 
 struct DefaultCallbacks;
@@ -381,7 +384,7 @@ pub fn run(
 }
 
 fn stable_attr(span: Span) -> Attribute {
-    use rustc_attr_data_structures::*;
+    use rustc_hir::*;
     Attribute::Parsed(AttributeKind::Stability {
         stability: Stability {
             level: StabilityLevel::Unstable {
@@ -389,6 +392,7 @@ fn stable_attr(span: Span) -> Attribute {
                 issue: None,
                 is_soft: false,
                 implied_by: None,
+                old_name: None,
             },
             feature: sym::rustc_private,
         },
