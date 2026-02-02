@@ -214,6 +214,75 @@ impl Proph {
     }
 }
 
+/// For any expression that can't be allowed in prophecy-conditional context
+/// i.e., if it should be an error to do this:
+/// ```
+/// if proph_value() {
+///    e;
+/// }
+/// ```
+/// Then either this function should return a reason, OR it needs to be checked as part
+/// of the main `check_expr` function.
+///
+/// When in doubt, make it an error.
+///
+/// The main purpose of splitting this function out is to make it easy to add a check when
+/// someone adds a new variant to ExprX
+fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
+    match &e.x {
+        ExprX::Const(_)
+            | ExprX::Var(_)
+            | ExprX::VarLoc(_)
+            | ExprX::VarAt(..)
+            | ExprX::ConstVar(..)
+            | ExprX::StaticVar(..)
+            | ExprX::Loc(_)
+            | ExprX::Call(..) // requires more complex checks
+            | ExprX::Ctor(..)
+            | ExprX::NullaryOpr(_)
+            | ExprX::Unary(..)
+            | ExprX::UnaryOpr(..)
+            | ExprX::Binary(..)
+            | ExprX::BinaryOpr(..)
+            | ExprX::Multi(..)
+            | ExprX::Quant(..)
+            | ExprX::Closure(..)
+            | ExprX::ArrayLiteral(_)
+            | ExprX::ExecFnByName(_)
+            | ExprX::Choose { .. }
+            | ExprX::WithTriggers { .. }
+            | ExprX::Assign { .. } // requires more complex checks
+            | ExprX::AssignToPlace { .. } // requires more complex checks
+            | ExprX::Fuel(..)
+            | ExprX::RevealString(..)
+            | ExprX::Header(..)
+            | ExprX::AssertAssume { .. }
+            | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
+            | ExprX::AssertBy { .. }
+            | ExprX::AssertQuery { .. }
+            | ExprX::AssertCompute { .. }
+            | ExprX::If(..)
+            | ExprX::Match(..)
+            | ExprX::Ghost { .. }
+            | ExprX::ProofInSpec(..)
+            | ExprX::Block(..)
+            | ExprX::AirStmt(..)
+            | ExprX::NeverToAny(..)
+            | ExprX::Nondeterministic
+            | ExprX::UseLeftWhereRightCanHaveNoAssignments(..)
+            | ExprX::ReadPlace(..)
+        => None,
+        ExprX::NonSpecClosure { .. } => Some(OuterProphReason::NonSpecClosure),
+        ExprX::Loop { .. } => Some(OuterProphReason::Loop),
+        ExprX::OpenInvariant { .. } => Some(OuterProphReason::OpenInvariant),
+        ExprX::Return(..) => Some(OuterProphReason::Return),
+        ExprX::BreakOrContinue { is_break: true, .. } => Some(OuterProphReason::Break),
+        ExprX::BreakOrContinue { is_break: false, .. } => Some(OuterProphReason::Continue),
+        ExprX::BorrowMut(..) => Some(OuterProphReason::MutBorrow),
+        ExprX::TwoPhaseBorrowMut(..) => Some(OuterProphReason::MutBorrow),
+    }
+}
+
 impl ProphVar {
     fn to_proph(&self, name: &VarIdent, use_span: &Span) -> Proph {
         match self {
@@ -236,15 +305,8 @@ impl ProphReason {
             );
         }
         let mut root = self;
-        loop {
-            match &root.kind {
-                ProphReasonKind::Var(_, ProphVarReason::Inferred(r)) => {
-                    root = &r;
-                }
-                _ => {
-                    break;
-                }
-            }
+        while let ProphReasonKind::Var(_, ProphVarReason::Inferred(r)) = &root.kind {
+            root = &r;
         }
         match &root.kind {
             ProphReasonKind::Var(_, ProphVarReason::Inferred(_)) => unreachable!(),
@@ -1331,6 +1393,10 @@ fn check_expr_handle_mut_arg(
     expr: &Expr,
     outer_proph: &Proph,
 ) -> Result<(Mode, Option<Mode>, Proph), VirErr> {
+    if let Some(r) = outer_reason_by_expr_kind(expr) {
+        outer_proph.outer_check(&expr.span, r)?;
+    }
+
     let mode_proph = match &expr.x {
         ExprX::Const(_) => Ok((Mode::Exec, Proph::No)),
         ExprX::Var(x) | ExprX::VarLoc(x) | ExprX::VarAt(x, _) => {
@@ -2048,8 +2114,6 @@ fn check_expr_handle_mut_arg(
             let mut typing = typing.push_atomic_insts(None);
             let mut typing = typing.push_ret_mode(Some(ret_mode));
 
-            outer_proph.outer_check(&expr.span, OuterProphReason::NonSpecClosure)?;
-
             {
                 let mut ghost_typing = typing.push_block_ghostness(Ghost::Ghost);
                 for req in requires.iter() {
@@ -2565,7 +2629,6 @@ fn check_expr_handle_mut_arg(
             is_for_loop: _,
             label: _,
         } => {
-            outer_proph.outer_check(&expr.span, OuterProphReason::Loop)?;
             // We could also allow this for proof, if we check it for termination
             if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
                 return Err(error(&expr.span, "cannot use while in proof or spec mode"));
@@ -2649,7 +2712,6 @@ fn check_expr_handle_mut_arg(
             if typing.in_proof_in_spec {
                 return Err(error(&expr.span, "return is not allowed inside spec"));
             }
-            outer_proph.outer_check(&expr.span, OuterProphReason::Return)?;
             match (e1, typing.ret_mode) {
                 (None, _) => {}
                 (Some(v), None) if is_unit(&v.typ) => {}
@@ -2669,12 +2731,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok((Mode::Exec, Proph::No))
         }
-        ExprX::BreakOrContinue { label: _, is_break } => {
-            let reason =
-                if *is_break { OuterProphReason::Break } else { OuterProphReason::Continue };
-            outer_proph.outer_check(&expr.span, reason)?;
-            Ok((Mode::Exec, Proph::No))
-        }
+        ExprX::BreakOrContinue { label: _, is_break: _ } => Ok((Mode::Exec, Proph::No)),
         ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let block_ghostness = match (typing.block_ghostness, alloc_wrapper, tracked) {
                 (Ghost::Exec, false, false) => {
@@ -2791,7 +2848,6 @@ fn check_expr_handle_mut_arg(
             if outer_mode == Mode::Spec {
                 return Err(error(&expr.span, "Cannot open invariant in Spec mode."));
             }
-            outer_proph.outer_check(&expr.span, OuterProphReason::OpenInvariant)?;
 
             record.var_modes.insert(binder.name.clone(), Mode::Proof);
 
@@ -2896,7 +2952,6 @@ fn check_expr_handle_mut_arg(
                     ),
                 ));
             }
-            outer_proph.outer_check(&expr.span, OuterProphReason::MutBorrow)?;
             proph.check(&expr.span, NoProphReason::MutBorrow)?;
             Ok((Mode::Exec, Proph::No))
         }
