@@ -590,3 +590,35 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] heuristic_ensures_pattern verus_code! {
+        use vstd::prelude::*;
+
+        trait Tr : Sized {
+            proof fn foo(self) -> ((lhs, rhs): (Self, Self))
+                ensures lhs == rhs;
+        }
+
+        struct X { }
+
+        #[verifier::auto_ext_equal(ensures)]
+        impl Tr for X {
+            proof fn foo(self) -> ((lhs, rhs): (Self, Self))
+            {
+                (X { }, X { })
+            }
+        }
+
+        #[verifier::auto_ext_equal(ensures)]
+        impl Tr for Seq<int> {
+            proof fn foo(self) -> ((lhs, rhs): (Self, Self))
+                ensures lhs == rhs
+            {
+                let s = self;
+                let t = s.push(5).drop_last();
+                (s, t)
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}

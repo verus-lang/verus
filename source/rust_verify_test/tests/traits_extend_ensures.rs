@@ -65,6 +65,39 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_basic_pattern verus_code! {
+        trait Tr {
+            fn stuff() -> ((a, b): (u8, u8))
+                ensures 0 <= a < 20,
+                        25 <= b < 40;
+        }
+
+        struct X { }
+
+        impl Tr for X {
+            fn stuff() -> ((a, b): (u8, u8))
+                ensures 25 <= b < 40,
+            {
+                (10, 90) // FAILS
+            }
+        }
+
+        fn test() {
+            let (a, b) = X::stuff();
+            assert(0 <= a < 20);
+            assert(25 <= b < 40);
+            assert(false); // FAILS
+        }
+
+        fn test2() {
+            let (a, b) = X::stuff();
+            assert(0 <= a < 20);
+            assert(25 <= b < 40);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
     #[test] test_renaming verus_code! {
         trait Tr {
             fn stuff(x: u8, y: u8) -> (res: u8)
@@ -363,6 +396,91 @@ test_verify_one_file! {
             let r = Z::stuff(a, b, c);
             assert(r.0 == r.1 + 1);
             assert(r.1 == r.2 + 1);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_arg3_pattern verus_code! {
+        trait Compare {
+            spec fn comp(&self, other: &Self) -> bool;
+        }
+
+        struct Y { j: int }
+        impl Compare for Y {
+            spec fn comp(&self, other: &Self) -> bool {
+                self.j == other.j + 1
+            }
+        }
+
+        trait Tr<B: Compare> {
+            proof fn stuff(a: B, b: B, c: B) -> ((x, y, z): (B, B, B))
+                requires a.comp(&b), b.comp(&c),
+                ensures x.comp(&y);
+        }
+
+        struct X<B> { b: B }
+
+        impl<B: Compare> Tr<B> for X<B> {
+            proof fn stuff(a: B, b: B, c: B) -> ((x, y, z): (B, B, B))
+                ensures y.comp(&z)
+            {
+                (a, a, b) // FAILS
+            }
+        }
+
+        struct X2<B> { b: B }
+
+        impl<B: Compare> Tr<B> for X2<B> {
+            proof fn stuff(a: B, b: B, c: B) -> ((x, y, z): (B, B, B))
+                ensures y.comp(&z)
+            {
+                (a, b, b) // FAILS
+            }
+        }
+
+        struct X3<B> { b: B }
+
+        impl<B: Compare> Tr<B> for X3<B> {
+            proof fn stuff(a: B, b: B, c: B) -> ((x, y, z): (B, B, B))
+                ensures y.comp(&z)
+            {
+                (a, b, c)
+            }
+        }
+
+        proof fn test(a: Y, b: Y, c: Y)
+            requires a.comp(&b), b.comp(&c),
+        {
+            let (x, y, z) = X::<Y>::stuff(a, b, c);
+            assert(x.comp(&y));
+            assert(y.comp(&z));
+            assert(false); // FAILS
+        }
+
+        impl Compare for u8 {
+            spec fn comp(&self, other: &Self) -> bool {
+                self == other + 1
+            }
+        }
+
+        struct Z { j: int }
+
+        impl Tr<u8> for Z {
+            proof fn stuff(a: u8, b: u8, c: u8) -> ((x, y, z): (u8, u8, u8))
+                ensures y.comp(&z)
+            {
+                (1, 1, 0) // FAILS
+            }
+        }
+
+        proof fn test2(a: u8, b: u8, c: u8)
+            requires a == b + 1, b == c + 1,
+        {
+            let (x, y, z) = Z::stuff(a, b, c);
+            assert(x == y + 1);
+            assert(y == z + 1);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 5)

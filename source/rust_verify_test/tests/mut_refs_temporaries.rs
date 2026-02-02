@@ -15,6 +15,16 @@ test_verify_one_file_with_options! {
             (a, b)
         }
 
+        fn mut_ref_pairs_pattern<'a, 'b>(a: &'a mut u64, b: &'b mut u64) -> ((ra, rb): (&'a mut u64, &'b mut u64))
+            ensures
+                mut_ref_current(ra) == mut_ref_current(a),
+                mut_ref_future(ra) == mut_ref_future(a),
+                mut_ref_current(rb) == mut_ref_current(b),
+                mut_ref_future(rb) == mut_ref_future(b),
+        {
+            (a, b)
+        }
+
         fn test1() {
             let mut a: u64 = 0;
             let mut b: u64 = 0;
@@ -726,6 +736,21 @@ test_verify_one_file_with_options! {
                 mut_ref_future(ret.1.a) == mut_ref_future(c),
                 mut_ref_current(ret.1.b) == mut_ref_current(d),
                 mut_ref_future(ret.1.b) == mut_ref_future(d),
+        {
+            (Pair { a: a, b: b }, Pair { a: c, b: d })
+        }
+
+        fn mut_ref_pairs2_pattern<'a, 'b, 'c, 'd>(a: &'a mut u64, b: &'b mut u64, c: &'c mut u64, d: &'d mut u64)
+            -> ((p1, p2): (Pair<&'a mut u64, &'b mut u64>, Pair<&'c mut u64, &'d mut u64>))
+            ensures
+                mut_ref_current(p1.a) == mut_ref_current(a),
+                mut_ref_future(p1.a) == mut_ref_future(a),
+                mut_ref_current(p1.b) == mut_ref_current(b),
+                mut_ref_future(p1.b) == mut_ref_future(b),
+                mut_ref_current(p2.a) == mut_ref_current(c),
+                mut_ref_future(p2.a) == mut_ref_future(c),
+                mut_ref_current(p2.b) == mut_ref_current(d),
+                mut_ref_future(p2.b) == mut_ref_future(d),
         {
             (Pair { a: a, b: b }, Pair { a: c, b: d })
         }
