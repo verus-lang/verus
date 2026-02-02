@@ -19,6 +19,7 @@ verus! {
 #[cfg(verus_keep_ghost)]
 use super::power::{
     pow,
+    lemma_pow0,
     lemma_pow_positive,
     lemma_pow_adds,
     lemma_pow_strictly_increases,
@@ -32,13 +33,96 @@ pub open spec fn pow2(e: nat) -> nat {
     pow(2, e) as nat
 }
 
+/// Returns true if the given integer is a power of 2 (defined recursively).
+#[verifier::opaque]
+pub open spec fn is_pow2(n: int) -> bool
+    decreases n,
+{
+    if n <= 0 {
+        false
+    } else if n == 1 {
+        true
+    } else {
+        n % 2 == 0 && is_pow2(n / 2)
+    }
+}
+
+/// Returns true if the given integer is a power of 2
+/// (defined by existential quantification in terms of `pow`).
+pub open spec fn is_pow2_exists(n: int) -> bool {
+    exists|i: nat| pow(2, i) == n
+}
+
+/// Proof that the recursive and existential specifications for `is_pow2` are equivalent.
+pub broadcast proof fn is_pow2_equiv(n: int)
+    ensures
+        #![trigger is_pow2(n)]
+        #![trigger is_pow2_exists(n)]
+        is_pow2(n) <==> is_pow2_exists(n),
+{
+    if is_pow2(n) {
+        assert(is_pow2_exists(n)) by {
+            is_pow2_equiv_forward(n);
+        }
+    }
+    if is_pow2_exists(n) {
+        assert(is_pow2(n)) by {
+            broadcast use lemma_pow_positive;
+
+            is_pow2_equiv_reverse(n);
+        }
+    }
+}
+
+proof fn is_pow2_equiv_forward(n: int)
+    requires
+        is_pow2(n),
+    ensures
+        is_pow2_exists(n),
+    decreases n,
+{
+    reveal(is_pow2);
+    reveal(pow);
+
+    if n == 1 {
+        broadcast use lemma_pow0;
+
+        assert(pow(2, 0) == n);
+    } else {
+        is_pow2_equiv_forward(n / 2);
+        let exp = choose|i: nat| pow(2, i) == n / 2;
+        assert(pow(2, exp + 1) == 2 * pow(2, exp));
+    }
+}
+
+proof fn is_pow2_equiv_reverse(n: int)
+    requires
+        n > 0,
+        is_pow2_exists(n),
+    ensures
+        is_pow2(n),
+    decreases n,
+{
+    reveal(is_pow2);
+    reveal(pow);
+
+    let exp = choose|i: nat| pow(2, i) == n;
+
+    if exp == 0 {
+        broadcast use lemma_pow0;
+
+    } else {
+        assert(pow(2, (exp - 1) as nat) == n / 2);
+        is_pow2_equiv_reverse(n / 2);
+    }
+}
+
 /// Proof that 2 to the power of any natural number (specifically,
 /// `e`) is positive.
 pub broadcast proof fn lemma_pow2_pos(e: nat)
     ensures
         #[trigger] pow2(e) > 0,
 {
-    reveal(pow2);
     lemma_pow_positive(2, e);
 }
 
@@ -49,7 +133,6 @@ pub broadcast proof fn lemma_pow2(e: nat)
     decreases e,
 {
     reveal(pow);
-    reveal(pow2);
     if e != 0 {
         lemma_pow2((e - 1) as nat);
     }
@@ -141,7 +224,6 @@ pub proof fn lemma2_to64()
         pow2(32) == 0x100000000,
         pow2(64) == 0x10000000000000000,
 {
-    reveal(pow2);
     reveal(pow);
     #[verusfmt::skip]
     assert(
@@ -220,7 +302,6 @@ pub proof fn lemma2_to64_rest()
         pow2(63) == 0x8000000000000000,
         pow2(64) == 0x10000000000000000,
 {
-    reveal(pow2);
     reveal(pow);
     #[verusfmt::skip]
     assert(
