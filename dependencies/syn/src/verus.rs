@@ -2,10 +2,16 @@ use super::*;
 use crate::parse::ParseStream;
 use crate::punctuated::Punctuated;
 
+/// The parsing context, used to support context-sensitive grammars.
+///
+/// Currently used to make the `Specification` grammar context-sensitive:
+///   - In an `Expr` context, a condition in braces must also be parenthesized, i.e. `({ ... })`.
+///   - In an `Item` context, a condition in braces may appear unparenthesized, i.e. `{ ... }`.
+#[derive(Debug, Clone, Copy)]
 pub enum Context {
-    /// The parsing context of an `Expr`, e.g. a closure.
+    /// In an `Expr` e.g. a closure.
     Expr,
-    /// The parsing context of an `Item`, e.g. a `fn` definition.
+    /// In an `Item` e.g. a `fn` definition.
     Item,
 }
 
@@ -709,7 +715,7 @@ pub mod parsing {
         /// Parse a `Specification` in a given context.
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             let mut exprs = Punctuated::new();
-            while !input.is_empty() && Self::is_next_condition_valid(input) {
+            while !input.is_empty() && Self::is_next_condition_valid(ctx, input) {
                 let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
                 if !input.peek(Token![,]) {
@@ -721,8 +727,10 @@ pub mod parsing {
             Ok(Specification { exprs })
         }
 
-        fn is_next_condition_valid(input: ParseStream) -> bool {
-            Self::is_next_condition_bare(input) || Self::is_next_condition_in_braces(input)
+        fn is_next_condition_valid(ctx: Context, input: ParseStream) -> bool {
+            let allow_braces = matches!(ctx, Context::Item);
+            Self::is_next_condition_bare(input)
+                || allow_braces && Self::is_next_condition_in_braces(input)
         }
 
         fn is_next_condition_bare(input: ParseStream) -> bool {
