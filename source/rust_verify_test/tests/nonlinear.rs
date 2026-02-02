@@ -284,7 +284,7 @@ test_verify_one_file_with_options! {
             requires x == 5,
         {
             assert({let z: int = 2; x * z == 10}) by(nonlinear_arith)
-                requires {let z: int = 5; x == z},
+                requires ({let z: int = 5; x == z}),
             {
                 let y: nat = mul(x as nat, 2);
                 assert(y == 10);
@@ -296,7 +296,7 @@ test_verify_one_file_with_options! {
             loop {
                 assert(true) by (nonlinear_arith)
                     requires
-                        {let q = n; q <= n},
+                        ({let q = n; q <= n}),
                 { }
                 break;
             }
