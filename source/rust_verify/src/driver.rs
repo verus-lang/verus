@@ -3,7 +3,7 @@ use crate::externs::VerusExterns;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
 use rustc_hir::attrs::AttributeKind;
 use rustc_hir::{Attribute, AttributeMap};
-use rustc_hir::{HirId, ItemKind, OwnerId, OwnerNode, ImplItemKind, MaybeOwner};
+use rustc_hir::{HirId, ImplItemKind, ItemKind, MaybeOwner, OwnerId, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::{Span, sym};
 use std::time::{Duration, Instant};
