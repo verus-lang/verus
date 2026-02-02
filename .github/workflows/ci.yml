@@ -3,7 +3,7 @@ name: ci
 on:
   push:
     branches:
-      - 'main'
+      - "main"
 
   workflow_dispatch:
 
@@ -178,7 +178,21 @@ jobs:
 
       - name: download singular
         if: matrix.features == 'singular'
-        run: curl -LO https://www.singular.uni-kl.de/ftp/pub/Math/Singular/UNIX/Singular-4-3-2_M1.dmg
+        run: |
+          set -euxo pipefail
+
+          # DNS and routing visibility
+          getent hosts www.singular.uni-kl.de || true
+          nslookup www.singular.uni-kl.de || true
+
+          # Quick connectivity checks
+          curl -vI --max-time 20 https://www.singular.uni-kl.de/ || true
+
+          # Check whether 443 is reachable at all
+          # (if nc isn't installed, skip or install it)
+          nc -vz -w 10 www.singular.uni-kl.de 443 || true
+
+          curl -LO https://www.singular.uni-kl.de/ftp/pub/Math/Singular/UNIX/Singular-4-3-2_M1.dmg
 
       - name: build
         working-directory: ./source
