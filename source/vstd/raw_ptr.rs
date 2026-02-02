@@ -314,41 +314,24 @@ impl<T> PointsTo<T> {
 
     /// Convert an aligned PointsTo to an unaligned PointsToUnaligned.
     /// This is always safe since aligned is stricter than unaligned.
+    ///
+    /// Ensures pointer locations remain the same, and memory
+    /// initializations states remain the same.
     pub axiom fn into_unaligned(tracked self) -> (tracked perm: PointsToUnaligned<T>)
         ensures
-    // pointer locations remain the same
-
             perm.ptr() == self.ptr(),
-            // the status of memory initialization also remains the same
             perm.opt_value() == self.opt_value(),
     ;
 
-    /// Borrow as unaligned (non-consuming).
+    /// Borrow an aligned PointsTo as an unaligned PointsToUnaligned.
+    /// This is always safe since aligned is stricter than unaligned.
+    ///
+    /// Ensures pointer locations remain the same, and memory
+    /// initializations states remain the same .
     pub axiom fn as_unaligned(tracked &self) -> (tracked perm: &PointsToUnaligned<T>)
         ensures
-    // pointer locations remain the same
-
             perm.ptr() == self.ptr(),
-            // the status of memory initialization also remains the same
             perm.opt_value() == self.opt_value(),
-    ;
-
-    /// Cast a `PointsTo<T>` to a `PointsTo<V>`, provided memory is initialized,
-    /// the pointer is aligned to `V`, and sizes match.
-    pub axiom fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>)
-        requires
-            self.is_init(),
-            self.ptr()@.addr as int % align_of::<V>() as int == 0,
-            size_of::<T>() == size_of::<V>(),
-        ensures
-            points_to.ptr() == ptr_mut_from_data::<V>(
-                PtrData {
-                    addr: self.ptr()@.addr,
-                    provenance: self.ptr()@.provenance,
-                    metadata: (),
-                },
-            ),
-            points_to.is_init(),
     ;
 }
 
@@ -404,43 +387,30 @@ impl<T> PointsToUnaligned<T> {
                 + size_of::<S>() <= self.ptr() as int,
     ;
 
-    /// Convert PointsToUnaligned to an aligned PointsTo
+    /// Convert PointsToUnaligned to an aligned PointsTo.
+    /// Requires the pointer address to be properly aligned.
+    ///
+    /// Ensures pointer locations remain the same, and memory
+    /// initializations states remain the same.
     pub axiom fn into_aligned(tracked self) -> (tracked perm: PointsTo<T>)
         requires
-    // require alignment as a precondition for conversion
-
             self.ptr()@.addr as int % align_of::<T>() as int == 0,
         ensures
-    // ensure the pointer values are the same
-
             perm.ptr() == self.ptr(),
-            // and the memory initialization status
             perm.opt_value() == self.opt_value(),
     ;
 
+    /// Borrow an unaligned PointsToUnaligned as an aligned PointsTo.
+    /// Requires the pointer address to be properly aligned.
+    ///
+    /// Ensures pointer locations remain the same, and memory
+    /// initializations states remain the same.
     pub axiom fn as_aligned(tracked &self) -> (tracked perm: &PointsTo<T>)
         requires
             self.ptr()@.addr as int % align_of::<T>() as int == 0,
         ensures
             perm.ptr() == self.ptr(),
             perm.opt_value() == self.opt_value(),
-    ;
-
-    /// Cast a `PointsToUnaligned<T>` to a `PointsToUnaligned<V>`, provided memory
-    /// is initialized and sizes match. No alignment requirement.
-    pub axiom fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsToUnaligned<V>)
-        requires
-            self.is_init(),
-            size_of::<T>() == size_of::<V>(),
-        ensures
-            points_to.ptr() == ptr_mut_from_data::<V>(
-                PtrData {
-                    addr: self.ptr()@.addr,
-                    provenance: self.ptr()@.provenance,
-                    metadata: (),
-                },
-            ),
-            points_to.is_init(),
     ;
 }
 
@@ -572,9 +542,18 @@ impl<T> PointsTo<[T]> {
             ),
     ;
 
-    /// Provided that memory is initialized, the pointer's address is aligned to `V`,
-    /// and `self.value().len() * size_of::<T>() == size_of::<V>()`,
-    /// we can always cast a `[T]` permission to a `V` permission.
+    /// We can cast a `[T]` permission to a `V` permission under the following conditions:
+    ///
+    /// (1) `T` and `V` are integer types where `V` is a power of 2
+    /// and the bit encoding of a `V` can be viewed as
+    /// the bit encoding for multiple `T`s
+    /// (as defined precisely in the trait `CompatibleSmallerBaseFor<V>`).
+    ///
+    /// (2) Memory is initialized.
+    ///
+    /// (3) The pointer's address is aligned to `V`.
+    ///
+    /// (4) `self.value().len() * size_of::<T>() == size_of::<V>()`.
     pub axiom fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>) where
         T: PrimitiveInt + CompatibleSmallerBaseFor<V> + Integer,
         V: PrimitiveInt + BasePow2 + Integer,
@@ -1327,7 +1306,6 @@ impl<'a, T> SharedReference<'a, T> {
             pt.is_init(),
             pt.value() == self.value(),
     ;
-
 }
 
 impl<'a, T: ?Sized> SharedReference<'a, T> {
