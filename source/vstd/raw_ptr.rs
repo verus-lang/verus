@@ -272,7 +272,7 @@ impl<T> View for PointsToUnaligned<T> {
     type V = PointsToData<T>;
 
     open spec fn view(&self) -> Self::V {
-        PointsToData { ptr: self.ptr(), opt_value: self.opt_value() }
+        PointsToData { ptr: self.ptr(), mem_contents: self.mem_contents() }
     }
 }
 
@@ -366,7 +366,7 @@ impl<T> PointsTo<T> {
     pub axiom fn into_unaligned(tracked self) -> (tracked perm: PointsToUnaligned<T>)
         ensures
             perm.ptr() == self.ptr(),
-            perm.opt_value() == self.opt_value(),
+            perm.mem_contents() == self.mem_contents(),
     ;
 
     /// Borrow an aligned PointsTo as an unaligned PointsToUnaligned.
@@ -377,7 +377,7 @@ impl<T> PointsTo<T> {
     pub axiom fn as_unaligned(tracked &self) -> (tracked perm: &PointsToUnaligned<T>)
         ensures
             perm.ptr() == self.ptr(),
-            perm.opt_value() == self.opt_value(),
+            perm.mem_contents() == self.mem_contents(),
     ;
 }
 
@@ -386,18 +386,18 @@ impl<T> PointsToUnaligned<T> {
     pub uninterp spec fn ptr(&self) -> *mut T;
 
     /// The (possibly uninitialized) memory that this permission gives access to.
-    pub uninterp spec fn opt_value(&self) -> MemContents<T>;
+    pub uninterp spec fn mem_contents(&self) -> MemContents<T>;
 
     /// Returns `true` if the permission's associated memory is initialized.
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
-        self.opt_value().is_init()
+        self.mem_contents().is_init()
     }
 
     /// Returns `true` if the permission's associated memory is uninitialized.
     #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
-        self.opt_value().is_uninit()
+        self.mem_contents().is_uninit()
     }
 
     /// If the permission's associated memory is initialized,
@@ -407,7 +407,7 @@ impl<T> PointsToUnaligned<T> {
         recommends
             self.is_init(),
     {
-        self.opt_value().value()
+        self.mem_contents().value()
     }
 
     /// Guarantee that the `PointsToUnaligned` for any non-zero-sized type points to a non-null address.
@@ -443,7 +443,7 @@ impl<T> PointsToUnaligned<T> {
             self.ptr()@.addr as int % align_of::<T>() as int == 0,
         ensures
             perm.ptr() == self.ptr(),
-            perm.opt_value() == self.opt_value(),
+            perm.mem_contents() == self.mem_contents(),
     ;
 
     /// Borrow an unaligned PointsToUnaligned as an aligned PointsTo.
@@ -456,7 +456,7 @@ impl<T> PointsToUnaligned<T> {
             self.ptr()@.addr as int % align_of::<T>() as int == 0,
         ensures
             perm.ptr() == self.ptr(),
-            perm.opt_value() == self.opt_value(),
+            perm.mem_contents() == self.mem_contents(),
     ;
 }
 
