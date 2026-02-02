@@ -3459,7 +3459,7 @@ fn add_decls_for_temps(
                     expr.span.clone(),
                     StmtX::Decl {
                         pattern: PatternX::simple_var(x, &expr.span, typ),
-                        mode: Some(Mode::Exec), // doesn't matter
+                        mode: None, // doesn't matter
                         init: None,
                         els: None,
                     },
