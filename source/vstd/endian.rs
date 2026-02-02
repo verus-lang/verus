@@ -628,13 +628,14 @@ impl<B: Base> EndianNat<B> {
         if self.len() == 0 {
         } else {
             if self.drop_last().len() == 0 {
-                reveal(pow);
                 calc! {
                     (==)
                     self.to_nat_left(); {
                         assert(self.drop_last().to_nat_left() == 0);
                     }
-                    (self.last() * pow(B::base() as int, (self.len() - 1) as nat)) as nat; {}
+                    (self.last() * pow(B::base() as int, (self.len() - 1) as nat)) as nat; {
+                        reveal(pow);
+                    }
                     self.last(); {}
                     self.first(); {
                         assert(self.drop_first().to_nat_right() == 0);
