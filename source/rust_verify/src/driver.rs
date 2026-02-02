@@ -147,12 +147,10 @@ for all functions (it would only be needed for functions with tracked data in pr
 */
 struct CompilerCallbacksEraseMacro {
     pub do_compile: bool,
-    #[cfg(verus_verify_core)]
     pub override_stability: bool,
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
-    #[cfg(verus_verify_core)]
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         if self.override_stability {
             config.override_queries = Some(|_session, providers| {
@@ -202,7 +200,6 @@ pub(crate) fn run_with_erase_macro_compile(
 ) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro {
         do_compile: compile,
-        #[cfg(verus_verify_core)]
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
     };
     rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
@@ -383,7 +380,6 @@ pub fn run(
     (verifier, stats, Ok(()))
 }
 
-#[cfg(verus_verify_core)]
 fn stable_attr(span: Span) -> Attribute {
     use rustc_attr_data_structures::*;
     Attribute::Parsed(AttributeKind::Stability {
@@ -400,7 +396,6 @@ fn stable_attr(span: Span) -> Attribute {
     })
 }
 
-#[cfg(verus_verify_core)]
 fn has_stable_attr(attrmap: &AttributeMap, owner_id: OwnerId) -> bool {
     let hir_id = HirId::from(owner_id);
     match attrmap.map.get(&hir_id.local_id) {
@@ -411,7 +406,6 @@ fn has_stable_attr(attrmap: &AttributeMap, owner_id: OwnerId) -> bool {
     }
 }
 
-#[cfg(verus_verify_core)]
 fn add_stable_attr<'tcx>(
     tcx: TyCtxt<'tcx>,
     owner_id: OwnerId,
@@ -448,7 +442,6 @@ fn add_stable_attr<'tcx>(
     */
 }
 
-#[cfg(verus_verify_core)]
 fn needs_stable_attr<'tcx>(tcx: TyCtxt<'tcx>, owner_id: OwnerId) -> bool {
     let owner = tcx.hir_owner_node(owner_id);
     match owner {
