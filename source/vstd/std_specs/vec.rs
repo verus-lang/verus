@@ -394,9 +394,23 @@ pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Ve
     A,
 > as core::iter::IntoIterator>::IntoIter);
 
+// TODO: This seems like it's redundant
+pub uninterp spec fn spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>) -> (iter: <&Vec<
+    T,
+    A,
+> as core::iter::IntoIterator>::IntoIter);
+
+
 pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
     ensures
         #[trigger] spec_into_iter(v).seq() == v@,
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>)
+    ensures
+        #[trigger] spec_into_iter_borrowed(v).seq() == v@.map_values(|x| &x),
 {
     admit();
 }
@@ -408,6 +422,15 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
 > as core::iter::IntoIterator>::IntoIter)
     ensures
         iter == spec_into_iter(vec),
+        crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
+        crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, Some(&iter)),
+;
+
+#[verifier::when_used_as_spec(spec_into_iter_borrowed)]
+pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::IntoIterator>::into_iter] (vec: &'a Vec<T, A>) -> 
+    (iter: <&'a Vec<T, A> as core::iter::IntoIterator>::IntoIter)
+    ensures
+        iter == spec_into_iter_borrowed(vec),
         crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
         crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, Some(&iter)),
 ;
@@ -467,6 +490,7 @@ pub broadcast group group_vec_axioms {
     axiom_vec_index_decreases,
     vec_clone_deep_view_proof,
     axiom_spec_into_iter,
+    axiom_spec_into_iter_borrowed,
     axiom_vec_has_resolved,
 }
 

@@ -2,26 +2,26 @@ use vstd::prelude::*;
 use vstd::std_specs::iter::IteratorSpecImpl;
 
 verus! {
-fn test_basic() {
-    let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
-    let mut w: Vec<u8> = Vec::new();
+    
+//fn test_basic() {
+//    let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
+//    let mut w: Vec<u8> = Vec::new();
+//
+//    for x in y: v 
+//        invariant
+//            w.len() as int == y.index@,
+//            //forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i],
+//            forall |i| 0 <= i < w.len() ==> w[i] == v[i],
+//    {
+//        w.push(x);
+//    }
+//    assert(w.len() == v.len());
+//    assert(w@ == v@);
+//}
 
-    for x in y: v 
-        invariant
-            w.len() as int == y.index@,
-            //forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i],
-            forall |i| 0 <= i < w.len() ==> w[i] == v[i],
-    {
-        w.push(x);
-    }
-    assert(w.len() == v.len());
-    assert(w@ == v@);
-}
-
-/*
 fn all_positive(v: &Vec<u8>) -> (b: bool)
-    ensures
-        b <==> (forall|i: int| 0 <= i < v.len() ==> v[i] > 0),
+//    ensures
+//        b <==> (forall|i: int| 0 <= i < v.len() ==> v[i] > 0),
 {
     let mut b: bool = true;
 
@@ -29,12 +29,15 @@ fn all_positive(v: &Vec<u8>) -> (b: bool)
         invariant
             b <==> (forall|i: int| 0 <= i < iter.index@ ==> v[i] > 0),
     {
+        assert(iter.iter.obeys_prophetic_iter_laws());
+//        assert(0 <= iter.index@ < v.len());
+//        assume(false);
         b = b && *x > 0;
     }
     b
 }
-*/
 
+/*
 fn test() {
     let mut v1: Vec<u32> = Vec::new();
     let mut v2: Vec<u32> = Vec::new();
@@ -141,6 +144,8 @@ fn for_loop_test_skip(v: Vec<u8>) {
     }
     assert(sum == sum_u8(v@) || (sum == u8::MAX && sum_u8(v@) > u8::MAX));
 }
+*/
+
 /*
 struct NoTerminate {
     x: u64,

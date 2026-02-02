@@ -527,6 +527,7 @@ impl GlobalCtx {
                                 }
                             }
                             // Is there a path trait_impl --*--> f4?
+                            dbg!(&trait_impl, &node_f4);
                             if preliminary_call_graph.can_reach(&trait_impl, &node_f4, Some(&order))
                             {
                                 continue 'f1;
