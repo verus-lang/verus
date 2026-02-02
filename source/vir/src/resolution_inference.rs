@@ -1186,12 +1186,27 @@ impl<'a> Builder<'a> {
 
                 Ok(bb)
             }
-            StmtX::Decl { pattern, mode: _, init: Some(init), els: None } => {
+            StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
                 let (cpt, bb) = self.build_place_typed(init, bb)?;
+
+                let next_bb = match els {
+                    Some(els) => {
+                        let els_bb = self.new_bb(AstPosition::Before(els.span.id), false);
+                        let next_bb = self.new_bb(AstPosition::After(stmt.span.id), false);
+                        self.basic_blocks[bb].successors.push(els_bb);
+                        self.basic_blocks[bb].successors.push(next_bb);
+                        match self.build(els, els_bb) {
+                            Ok(_) | Err(()) => {}
+                        }
+                        next_bb
+                    }
+                    None => bb,
+                };
+
                 self.append_instructions_for_pattern_moves_mutations(
                     pattern,
                     &cpt,
-                    bb,
+                    next_bb,
                     AstPosition::After(stmt.span.id),
                 );
 
@@ -1209,15 +1224,15 @@ impl<'a> Builder<'a> {
                     };
                     let fp = self.locals.add_place(&fpt);
                     self.push_instruction_propagate(
-                        bb,
+                        next_bb,
                         AstPosition::After(stmt.span.id),
                         InstructionKind::Overwrite(fp),
                     );
                 }
-                Ok(bb)
+                Ok(next_bb)
             }
-            StmtX::Decl { pattern: _, mode: _, init: _, els: Some(_) } => {
-                todo!()
+            StmtX::Decl { pattern: _, mode: _, init: None, els: Some(_) } => {
+                panic!("Unexpected let-else without an initializer");
             }
         }
     }
