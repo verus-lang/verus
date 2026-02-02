@@ -200,7 +200,7 @@ impl Proph {
         let mut err = error_with_label(
             span,
             format!("{:} cannot occur in prophecy-conditional context", reason_str),
-            "this operation can be performed conditionally when the condition depends on a prophecy",
+            "this operation cannot be performed conditionally when the condition depends on a prophecy",
         );
         err = proph_reason.annotate_err(err);
         Err(err)
@@ -2535,6 +2535,8 @@ fn check_expr_handle_mut_arg(
                 )?;
                 arm_outer_proph = arm_outer_proph.join(guard_proph.clone());
                 // REVIEW: does this need to accumulate modes from previous guards?
+                // By the formalism, yes, but right now it seems to be redundant with
+                // the ghost-blocks check.
                 let arm_outer_mode = match (arm_outer_mode, guard_mode) {
                     (Mode::Exec, Mode::Spec | Mode::Proof) => Mode::Proof,
                     (m, _) => m,

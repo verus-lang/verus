@@ -102,8 +102,12 @@ fn temp_var(state: &mut State, expr: &Expr) -> (Stmt, VarIdent) {
     let temp = state.next_temp();
     let name = temp.clone();
     let pattern = PatternX::simple_var(name, &expr.span, &expr.typ);
-    let decl =
-        StmtX::Decl { pattern, mode: None, init: Some(PlaceX::spec_temporary(expr.clone())), els: None };
+    let decl = StmtX::Decl {
+        pattern,
+        mode: None,
+        init: Some(PlaceX::spec_temporary(expr.clone())),
+        els: None,
+    };
     let temp_decl = Spanned::new(expr.span.clone(), decl);
     (temp_decl, temp)
 }
@@ -143,7 +147,7 @@ fn pattern_to_exprs(
     for pbd in pattern_bound_decls {
         let PatternBoundDecl { name, expr } = pbd;
         let pattern = PatternX::simple_var(name, &expr.span, &expr.typ);
-        // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
+        // Mode doesn't matter at this stage; arbitrarily set it to None
         let decl = StmtX::Decl {
             pattern,
             mode: None,

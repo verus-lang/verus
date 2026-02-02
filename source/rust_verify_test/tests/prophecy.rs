@@ -824,3 +824,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] use_prophetic_fn_as_fn_spec verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::prophetic]
+        spec fn f() -> int {
+            5
+        }
+
+        proof fn test() -> int {
+            let g = f; // may be supported in the future, meaning the same as "let g = || f();"
+            g() // returning g() should fail, because the result of calling g() is a prophetic int, not an unrestricted int
+        }
+    //} => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it as mode 'exec'")
+}
