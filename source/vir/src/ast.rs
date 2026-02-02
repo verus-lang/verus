@@ -1221,7 +1221,21 @@ pub enum StmtX {
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
     /// (The mode is only allowed to be None for one special case; see modes.rs)
-    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Place>, els: Option<Expr> },
+    Decl {
+        pattern: Pattern,
+        mode: Option<(Mode, DeclProph)>,
+        init: Option<Place>,
+        els: Option<Expr>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq, Clone, Copy)]
+pub enum DeclProph {
+    /// Default; can be inferred as prophetic if the mode is ghost
+    Default,
+    /// Prophetic, only allowed if mode is ghost
+    Prophetic,
+    DelayedInfer,
 }
 
 /// Function parameter

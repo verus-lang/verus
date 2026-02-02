@@ -1185,7 +1185,7 @@ impl VisitMut for ExecGhostPatVisitor {
                         }
                     } else {
                         if self.inside_ghost == 0 {
-                            parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x;)
+                            parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(infer_proph)] let mut #x;)
                         } else if id.mutability.is_some() {
                             parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x = #tmp_x.view();)
                         } else {
@@ -1234,7 +1234,7 @@ impl VisitMut for ExecGhostPatVisitor {
                 x.mutability = None;
                 let span = id.span();
                 let decl = if self.ghost.is_some() {
-                    parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x;)
+                    parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(infer_proph)] let mut #x;)
                 } else {
                     parse_quote_spanned!(span => #[verus::internal(infer_mode)] let mut #x;)
                 };
@@ -1304,6 +1304,12 @@ impl Visitor {
             return (false, vec![]);
         }
 
+        for decl in visit_pat.x_decls.iter_mut() {
+            if let Stmt::Local(new_local) = decl {
+                new_local.attrs.extend(local.attrs.clone());
+            }
+        }
+
         let span = local.span();
         // Make proof block that will be subsequently visited with inside_ghost > 0
         let mk_proof_block = |block: Block| {
@@ -1326,7 +1332,7 @@ impl Visitor {
             let tmp_decl = if local.tracked.is_some() {
                 parse_quote_spanned!(span => #[verus::internal(proof)] #[verus::internal(unwrapped_binding)] let #tmp;)
             } else {
-                parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(unwrapped_binding)] let mut #tmp;)
+                parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(unwrapped_binding)] #[verus::internal(infer_proph)] let mut #tmp;)
             };
             stmts.push(tmp_decl);
             let pat = take_pat(&mut local.pat);
@@ -1335,7 +1341,7 @@ impl Visitor {
             stmts.push(Stmt::Expr(mk_proof_block(block1), Some(Semi { spans: [span] })));
             stmts.extend(visit_pat.x_decls);
             let let_pat = if local.tracked.is_some() {
-                parse_quote_spanned!(span => #[verus::internal(proof)] let #pat = #tmp;)
+                parse_quote_spanned!(span => #[verus::internal(proof)]  let #pat = #tmp;)
             } else {
                 parse_quote_spanned!(span => #[verus::internal(spec)] let #pat = #tmp;)
             };

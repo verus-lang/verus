@@ -1489,3 +1489,21 @@ impl ArmX {
         !matches!(&self.guard.x, ExprX::Const(Constant::Bool(true)))
     }
 }
+
+impl BinaryOp {
+    pub fn short_circuits(&self) -> bool {
+        match self {
+            BinaryOp::And | BinaryOp::Or | BinaryOp::Implies => true,
+            BinaryOp::Xor
+            | BinaryOp::HeightCompare { .. }
+            | BinaryOp::Eq(_)
+            | BinaryOp::Ne
+            | BinaryOp::Inequality(_)
+            | BinaryOp::Arith(_)
+            | BinaryOp::RealArith(_)
+            | BinaryOp::Bitwise(..)
+            | BinaryOp::StrGetChar
+            | BinaryOp::Index(..) => false,
+        }
+    }
+}

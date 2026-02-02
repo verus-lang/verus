@@ -98,7 +98,7 @@ test_verify_one_file! {
             assert(waluigi == proph.value());
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for argument to proof-mode function with tracked parameters")
 }
 
 test_verify_one_file! {
@@ -106,7 +106,7 @@ test_verify_one_file! {
         spec fn stuff(p: Prophecy<bool>) -> bool {
             p.value()
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
 
 test_verify_one_file! {
@@ -115,7 +115,7 @@ test_verify_one_file! {
             // This would be okay as long as we track how x is used
             let x = p.value();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -170,7 +170,7 @@ test_verify_one_file! {
         spec fn specific_fn(t: &Prophecy<bool>) -> bool {
             t.f()
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
 
 test_verify_one_file! {
@@ -183,7 +183,7 @@ test_verify_one_file! {
         spec fn general_fn<T: Tr>(t: &T) -> bool {
             t.f()
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
 
 test_verify_one_file! {
@@ -213,7 +213,7 @@ test_verify_one_file! {
         impl Tr for Prophecy<bool> {
             spec fn f(&self) -> bool { self.value() }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
 
 test_verify_one_file! {
@@ -294,7 +294,7 @@ test_verify_one_file! {
         {
             test();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'decreases' clause")
 }
 
 test_verify_one_file! {
@@ -307,7 +307,7 @@ test_verify_one_file! {
         {
             test();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'decreases' clause")
 }
 
 test_verify_one_file! {
@@ -322,5 +322,538 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'decreases' clause")
+}
+
+test_verify_one_file! {
+    #[test] ghost_ctor_okay_in_spec_code verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn proph() -> bool;
+
+        proof fn test_proof() {
+            let x = proph();
+            let y = Ghost(x); // ok since this is ghost
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ghost_ctor_fail_in_tracked_code verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn proph() -> bool;
+
+        proof fn test_proof() {
+            let x = proph();
+            let tracked y = Ghost(x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'Ghost' wrapper")
+}
+
+test_verify_one_file! {
+    #[test] ghost_ctor_fail verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn proph() -> bool;
+
+        fn test_proof() {
+            let ghost x = proph();
+            let y = Ghost(x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'Ghost' wrapper")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_decl_fail verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn proph() -> bool;
+
+        fn test_proof() {
+            #[verifier::prophetic]
+            let ghost x = false;
+            let y = Ghost(x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'Ghost' wrapper")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_func_fail verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn proph() -> bool;
+
+        proof fn bad(b: bool, tracked t: ()) { }
+
+        fn test_proof() {
+            #[verifier::prophetic]
+            let ghost x = false;
+            proof { bad(x, ()); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for argument to proof-mode function with tracked parameters")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_func_fail_ret verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn proph() -> bool;
+
+        tracked struct X { }
+        proof fn bad(b: bool) -> (tracked t: X) { X{} }
+
+        fn test_proof() {
+            #[verifier::prophetic]
+            let ghost x = false;
+            proof { bad(x); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for argument to proof-mode function with tracked parameters")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_func_fail2 verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn proph() -> bool;
+
+        proof fn bad(b: bool, tracked t: ()) { }
+
+        fn test_proof() {
+            let ghost x = proph();
+            proof { bad(x, ()); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for argument to proof-mode function with tracked parameters")
+}
+
+test_verify_one_file! {
+    #[test] proph_assign_to_proph_location_ok verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn proph() -> bool;
+
+        proof fn test() {
+            let mut x = proph();
+            x = proph();
+        }
+
+        proof fn test2() {
+            #[verifier::prophetic] let mut x = false;
+            x = proph();
+        }
+
+        fn exec_test() {
+            let ghost mut x = proph();
+            proof { x = proph(); }
+        }
+
+        fn exec_test2() {
+            #[verifier::prophetic] let ghost mut x = false;
+            proof { x = proph(); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] proph_assign_to_nonproph_location_bad verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn proph() -> bool;
+
+        proof fn test() {
+            let mut x = false;
+            x = proph();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for assignment to non-prophetic location")
+}
+
+test_verify_one_file! {
+    #[test] proph_assign_to_nonproph_location_bad2 verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn proph() -> bool;
+
+        fn test() {
+            let ghost mut x = false;
+            proof { x = proph(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for assignment to non-prophetic location")
+}
+
+test_verify_one_file! {
+    #[test] prophecy_conditional_assign verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn test_if() {
+            let mut x = false;
+            if proph() {
+                x = true;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment to non-prophetic location cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] prophecy_conditional_assign_else verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn test_if() {
+            let mut x = false;
+            if proph() {
+            } else {
+                x = true;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment to non-prophetic location cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] prophecy_conditional_call verus_code! {
+        proof fn bad(b: bool, tracked t: ()) { }
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn test_if() {
+            let mut x = false;
+            if proph() {
+                bad(true, ());
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "call to proof-mode function with tracked parameters cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] prophecy_conditional_return verus_code! {
+        proof fn bad(b: bool, tracked t: ()) { }
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn test_if() {
+            let mut x = false;
+            if proph() {
+                return;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "return cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] prophecy_conditional_loop verus_code! {
+        proof fn bad(b: bool, tracked t: ()) { }
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn test_if() {
+            let mut x = false;
+            if proph() {
+                loop { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "loop cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] loop_condition_prophetic verus_code! {
+        proof fn bad(b: bool, tracked t: ()) { }
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn test_while() {
+            while proph() {
+            }
+        }
+    //} => Err(err) => assert_vir_error_msg(err, "loop cannot occur in prophecy-conditional context")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof or spec mode")
+}
+
+test_verify_one_file! {
+    #[test] loop_break_prophetic verus_code! {
+        proof fn bad(b: bool, tracked t: ()) { }
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn test_break() {
+            loop
+                decreases 0nat
+            {
+                if proph() { break; }
+            }
+        }
+    //} => Err(err) => assert_vir_error_msg(err, "loop cannot occur in prophecy-conditional context")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof or spec mode")
+}
+
+test_verify_one_file! {
+    #[test] loop_continue_prophetic verus_code! {
+        proof fn bad(b: bool, tracked t: ()) { }
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn test_continue() {
+            loop
+                decreases 0nat
+            {
+                if proph() { continue; }
+            }
+        }
+    //} => Err(err) => assert_vir_error_msg(err, "loop cannot occur in prophecy-conditional context")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof or spec mode")
+}
+
+test_verify_one_file! {
+    #[test] prophecy_conditional_let_else verus_code! {
+        proof fn bad(b: bool, tracked t: ()) { }
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        enum A {
+            B, C
+        }
+
+        axiom fn never() -> (tracked t: !);
+
+        proof fn test(a: A) {
+            if proph() {
+                let A::B = a else { never(); };
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: let-else in spec/proof")
+}
+
+test_verify_one_file! {
+    #[test] let_else_prophetic_scrutinee verus_code! {
+        proof fn bad(b: bool, tracked t: ()) { }
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        enum A {
+            B, C
+        }
+
+        axiom fn never() -> (tracked t: !);
+
+        fn test() {
+            #[verifier::prophetic]
+            let ghost a = A::B;
+
+            proof {
+                let A::B = a else { never(); };
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "let-else only work in exec mode")
+}
+
+test_verify_one_file! {
+    #[test] conditional_short_circuit_and verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn sc() {
+            let mut x = false;
+            let y = proph() && ({ x = true; false });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment to non-prophetic location cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] conditional_short_circuit_or verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn sc() {
+            let mut x = false;
+            let y = proph() || ({ x = true; false });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment to non-prophetic location cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] conditional_short_circuit_implies verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn sc() {
+            let mut x = false;
+            let y = proph() ==> ({ x = true; false });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment to non-prophetic location cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] conditional_match0 verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn test() {
+            let mut x = false;
+            match proph() {
+                false => { }
+                true => { x = true; }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment to non-prophetic location cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] conditional_match1 verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn test(b: bool) {
+            let mut x = false;
+            match b {
+                false if proph() => { x = true }
+                true => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment to non-prophetic location cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] conditional_match2 verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn test(b: bool) {
+            let mut x = false;
+            match b {
+                false if proph() => { }
+                false => { x = true; }
+                true => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment to non-prophetic location cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] conditional_match3 verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+
+        proof fn test(b: bool) {
+            let mut x = false;
+            match b {
+                true => { x = true; }
+                false if proph() => { }
+                false => { }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lemma_call_ok verus_code! {
+        proof fn easy_lemma(a: int, b: int)
+            ensures a <= b ==> a <= b + 1
+        { }
+
+        proof fn lemma_add(a: int, b: int) -> (r: int)
+            ensures r == a + b
+        { a + b }
+
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+        #[verifier::prophetic] uninterp spec fn proph_int() -> int;
+
+        proof fn test(b: bool) {
+            if proph() {
+                easy_lemma(0, 1);
+            }
+            easy_lemma(proph_int(), proph_int());
+            let x = lemma_add(proph_int(), proph_int());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lemma_call_propagate verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph_int() -> int;
+
+        proof fn lemma_add(a: int, b: int) -> (r: int)
+            ensures r == a + b
+        { a + b }
+
+        proof fn test(b: bool) {
+            let mut x = false;
+            if lemma_add(proph_int(), 0) == 0 {
+                x = true;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment to non-prophetic location cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] lemma_return_fail verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph_int() -> int;
+
+        proof fn test(b: bool) -> int {
+            proph_int()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for return value")
+}
+
+test_verify_one_file! {
+    #[test] lemma_return_fail2 verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph_int() -> int;
+
+        proof fn test(b: bool) -> int {
+            return proph_int();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for return value")
+}
+
+test_verify_one_file! {
+    #[test] conditional_expression_propagate verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+        #[verifier::prophetic] uninterp spec fn proph_int() -> int;
+
+        spec fn test(b: bool, x: int, y: int) -> int {
+            if proph() { 0 } else { 1 }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
+}
+
+test_verify_one_file! {
+    #[test] conditional_expression_propagate1 verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+        #[verifier::prophetic] uninterp spec fn proph_int() -> int;
+
+        spec fn test(b: bool, x: int, y: int) -> int {
+            if b { proph_int() } else { x }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
+}
+
+test_verify_one_file! {
+    #[test] conditional_expression_propagate2 verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+        #[verifier::prophetic] uninterp spec fn proph_int() -> int;
+
+        spec fn test(b: bool, x: int, y: int) -> int {
+            if b { x } else { proph_int() }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
+}
+
+test_verify_one_file! {
+    #[test] decls_in_conditional verus_code! {
+        #[verifier::prophetic] uninterp spec fn proph() -> bool;
+        #[verifier::prophetic] uninterp spec fn proph_int() -> int;
+
+        proof fn test() {
+            let mut z = proph_int();
+            if proph() {
+                let mut x = 0;
+                x = proph_int();
+                z = x;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] use_prophetic_fn_as_fn_spec_closure verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::prophetic]
+        spec fn f() -> int {
+            5
+        }
+
+        spec fn test() -> int {
+            let g = || f();
+            g()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
+}
+
+test_verify_one_file! {
+    #[test] use_prophetic_fn_as_fn_spec verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::prophetic]
+        spec fn f() -> int {
+            5
+        }
+
+        spec fn test() -> int {
+            let g = f; // may be supported in the future, meaning the same as "let g = || f();"
+            g() // returning g() should fail, because the result of calling g() is a prophetic int, not an unrestricted int
+        }
+    //} => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it as mode 'exec'")
 }
