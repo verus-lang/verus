@@ -244,7 +244,7 @@ impl<V> PointsTo<V> {
     }
 
     pub closed spec fn mem_contents(&self) -> MemContents<V> {
-        self.points_to.opt_value()
+        self.points_to.mem_contents()
     }
 
     #[doc(hidden)]
@@ -358,7 +358,6 @@ impl<V> PPtr<V> {
             return (pptr, Tracked(pt));
         } else {
             let p = core::mem::align_of::<V>();
-            reveal(is_power_2);
             assert(p % p == 0) by (nonlinear_arith)
                 requires
                     p != 0,
