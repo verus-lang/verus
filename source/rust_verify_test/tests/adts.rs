@@ -1319,33 +1319,6 @@ test_verify_one_file! {
         }
 
         proof fn test1(t: S<nat>)
-            requires ({
-                &&& t is That ==> t->v == 3
-                &&& t is This ==> t->0 == 2
-            })
-        {
-            match t {
-                S::This(a) => {
-                    assert(a == 2);
-                }
-                S::That { v } => {
-                    assert(v == 3);
-                }
-                _ => (),
-            }
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] get_syntax_2_pass_no_parens verus_code! {
-        tracked enum S<T> {
-            This(T),
-            That { v: int },
-            Other { t: T },
-        }
-
-        proof fn test1(t: S<nat>)
             requires {
                 &&& t is That ==> t->v == 3
                 &&& t is This ==> t->0 == 2
@@ -1366,30 +1339,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] get_syntax_2_fail verus_code! {
-        tracked enum S<T> {
-            This(T),
-            That { v: int },
-            Other { t: T },
-        }
-
-        proof fn test1(t: S<nat>)
-            requires ({
-                &&& t is That ==> t->v == 3
-                &&& t is This ==> t->0 == 2
-            }),
-        {
-            match t {
-                S::This(a) => {
-                    assert(a == 3); // FAILS
-                }
-                _ => (),
-            }
-        }
-    } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_one_file! {
-    #[test] get_syntax_2_fail_no_parens verus_code! {
         tracked enum S<T> {
             This(T),
             That { v: int },
@@ -1490,23 +1439,6 @@ const MATCHES_SYNTAX_COMMON: &str = verus_code_str! {
 test_verify_one_file! {
     #[test] matches_syntax_1_pass MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
-                &&& t matches S::That { v: a } ==> a == 3
-                &&& t matches S::This(v) ==> v == 4
-            }),
-        {
-            match t {
-                S::This(v) => assert(v == 4),
-                S::That { v: a } => assert(a == 3),
-                _ => (),
-            }
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] matches_syntax_1_pass_no_parens MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
-        proof fn test1(t: S)
             requires {
                 &&& t matches S::That { v: a } ==> a == 3
                 &&& t matches S::This(v) ==> v == 4
@@ -1524,22 +1456,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] matches_syntax_1_fails MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
-                &&& t matches S::That { v: a } ==> a == 3
-                &&& t matches S::This(v) ==> v == 4
-            }),
-        {
-            match t {
-                S::This(v) => assert(v == 3), // FAILS
-                _ => (),
-            }
-        }
-    } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_one_file! {
-    #[test] matches_syntax_1_fails_no_parens MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
-        proof fn test1(t: S)
             requires {
                 &&& t matches S::That { v: a } ==> a == 3
                 &&& t matches S::This(v) ==> v == 4
@@ -1556,18 +1472,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] matches_syntax_2 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
-                &&& t matches S::That { v: _ }
-            }),
-        {
-            assert(t is That);
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] matches_syntax_2_no_parens MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
-        proof fn test1(t: S)
             requires {
                 &&& t matches S::That { v: _ }
             },
@@ -1579,23 +1483,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] matches_syntax_3 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
-        proof fn test1(t: S)
-            requires ({
-                && t matches S::That { v: a }
-                && a == 3
-            }),
-        {
-            assert(t is That);
-            assert(match t {
-                S::That { v } => v == 3,
-                _ => false,
-            });
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] matches_syntax_3_no_parens MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
             requires {
                 && t matches S::That { v: a }
@@ -1614,29 +1501,11 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] matches_syntax_4 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
-                &&& t matches S::That { v: a }
-                &&& a > 3
-                &&& a < 5
-            })
-        {
-            assert(t is That);
-            assert(match t {
-                S::That { v } => v == 4,
-                _ => false,
-            });
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] matches_syntax_4_no_parens MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
-        proof fn test1(t: S)
             requires {
                 &&& t matches S::That { v: a }
                 &&& a > 3
                 &&& a < 5
-            },
+            }
         {
             assert(t is That);
             assert(match t {
