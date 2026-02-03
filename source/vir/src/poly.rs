@@ -607,7 +607,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1.clone()))
                 }
-                UnaryOp::MutRefFinal => {
+                UnaryOp::MutRefFinal(_) => {
                     panic!("internal error: MustBeFinalized in SST")
                 }
             }
@@ -973,6 +973,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             typ_inv_vars,
             modified_vars,
             au_branch_bool,
+            pre_modified_params,
         } => {
             let cond = cond
                 .as_ref()
@@ -997,6 +998,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
                 au_branch_bool,
+                pre_modified_params: pre_modified_params.clone(),
             })
         }
         StmX::OpenInvariant(s) => {
@@ -1142,7 +1144,7 @@ fn visit_func_check_sst(
             | (LocalDeclKind::LetBinder, _, _)
             | (LocalDeclKind::OpenInvariantInnerTemp, _, _)
             | (LocalDeclKind::ExecClosureId, _, _)
-            | (LocalDeclKind::ExecClosureParam, _, _)
+            | (LocalDeclKind::ExecClosureParam { .. }, _, _)
             | (LocalDeclKind::Nondeterministic, _, _)
             | (LocalDeclKind::BorrowMut, _, _)
             | (LocalDeclKind::ExecClosureRet, _, _)

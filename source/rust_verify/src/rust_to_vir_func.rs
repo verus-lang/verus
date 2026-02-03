@@ -224,6 +224,7 @@ fn body_to_vir<'tcx>(
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     new_mut_ref: bool,
+    migrate_postcondition_vars: Option<HashSet<VarIdent>>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let types = body_id_to_types(ctxt.tcx, id);
     let bctx = BodyCtxt {
@@ -238,6 +239,8 @@ fn body_to_vir<'tcx>(
         atomically: None,
         au_pred_args: None,
         new_mut_ref,
+        migrate_postcondition_vars,
+        in_postcondition: false,
     };
     let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
 
@@ -1118,6 +1121,18 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
 
+    let do_migration = if ctxt.cmd_line_args.new_mut_ref {
+        if vattrs.ignore_outside_new_mut_ref_experiment {
+            false
+        } else {
+            let migration_attr =
+                crate::attributes::migrate_postconditions_walk_parents(ctxt.tcx, id);
+            migration_attr == Some(true)
+        }
+    } else {
+        false
+    };
+
     let new_mut_ref = vattrs.ignore_outside_new_mut_ref_experiment;
     if new_mut_ref && !matches!(ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore) {
         return err_span(sig.span, "ignore_outside_new_mut_ref_experiment is only for vstd");
@@ -1278,9 +1293,8 @@ pub(crate) fn check_item_fn<'tcx>(
         }
     };
 
-    let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
+    let mut migrate_postcondition_vars: HashSet<VarIdent> = HashSet::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
-    let mut mut_params_redecl: Vec<vir::ast::Stmt> = Vec::new();
     assert!(params.len() == inputs.len());
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
         let param_mode = if let Some(hir_id) = hir_id {
@@ -1291,6 +1305,13 @@ pub(crate) fn check_item_fn<'tcx>(
             // where the mode will later be overridden by the separate spec method anyway:
             Mode::Exec
         };
+
+        if do_migration {
+            if is_mut_ty(ctxt, *input).is_some() {
+                migrate_postcondition_vars.insert(name.clone());
+            }
+        }
+
         let is_ref_mut = if new_mut_ref { None } else { is_mut_ty(ctxt, *input) };
         if is_ref_mut.is_some() && mode == Mode::Spec {
             return err_span(span, format!("&mut parameter not allowed for spec functions"));
@@ -1321,13 +1342,7 @@ pub(crate) fn check_item_fn<'tcx>(
             },
         );
 
-        // TODO(new_mut_ref): be more precise here
         // TODO(new_mut_ref): should probably error for mutable references in the dual exec/spec cases
-        let is_mut_var = if new_mut_ref {
-            is_mut_var || (param_mode != Mode::Spec && mode != Mode::Spec)
-        } else {
-            is_mut_var
-        };
 
         if is_mut_var {
             if mode == Mode::Spec {
@@ -1341,39 +1356,13 @@ pub(crate) fn check_item_fn<'tcx>(
                 // declaring and assigning to a variable of type `&mut T` is not implemented yet.
                 unsupported_err!(span, "mut parameters of &mut types")
             }
-            vir_mut_params
-                .push((vir_param.clone(), is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
-            // TODO(new_mut_ref): resolve_inference expects no shadowing
-            let new_binding_pat = ctxt.spanned_typed_new(
-                span,
-                &typ,
-                vir::ast::PatternX::Var(vir::ast::PatternBinding {
-                    name: name.clone(),
-                    user_mut: Some(true),
-                    by_ref: vir::ast::ByRef::No,
-                    typ: typ.clone(),
-                    copy: false,
-                }),
-            );
-            let new_init_expr =
-                ctxt.spanned_typed_new(span, &typ, vir::ast::PlaceX::Local(name.clone()));
-            if let Some(hir_id) = hir_id {
-                ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_binding_pat.span.id));
-                ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_init_expr.span.id));
-            }
-            let redecl = ctxt.spanned_new(
-                span,
-                vir::ast::StmtX::Decl {
-                    pattern: new_binding_pat,
-                    mode: Some(mode),
-                    init: Some(new_init_expr),
-                    els: None,
-                },
-            );
-            mut_params_redecl.push(redecl);
         }
+
         vir_params.push((vir_param, is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
     }
+
+    let migrate_postcondition_vars =
+        if do_migration { Some(migrate_postcondition_vars) } else { None };
 
     let n_params = vir_params.len();
 
@@ -1390,6 +1379,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 external_body,
                 &external_trait_from_to,
                 new_mut_ref,
+                migrate_postcondition_vars,
             )?;
             let header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
@@ -1643,21 +1633,6 @@ pub(crate) fn check_item_fn<'tcx>(
             visibility.restricted_to = None;
         }
     }
-
-    // Given a func named 'f' which has mut parameters 'x_0', ..., 'x_n' and body
-    // 'f_body', we rewrite it to a function without mut params and body
-    // 'let mut x_0 = x_0; ...; let mut x_n = x_n; f_body'.
-    let body = if vir_mut_params.is_empty() {
-        body
-    } else {
-        body.map(move |body| {
-            ctxt.spanned_typed_new_vir(
-                &body.span,
-                &body.typ,
-                vir::ast::ExprX::Block(Arc::new(mut_params_redecl), Some(body.clone())),
-            )
-        })
-    };
 
     // Note: ens_has_return isn't final; it may need to be changed later to make
     // sure it's in sync for trait method impls and trait method decls.
@@ -2376,8 +2351,17 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     }
 
     let body = find_body(ctxt, body_id);
-    let mut vir_body =
-        body_to_vir(ctxt, id, &body_id, body, body_mode, vattrs.external_body, &None, new_mut_ref)?;
+    let mut vir_body = body_to_vir(
+        ctxt,
+        id,
+        &body_id,
+        body,
+        body_mode,
+        vattrs.external_body,
+        &None,
+        new_mut_ref,
+        None,
+    )?;
     let header = vir::headers::read_header(
         &mut vir_body,
         &vir::headers::HeaderAllows::Some(vec![vir::headers::HeaderAllow::Ensure]),

@@ -125,7 +125,7 @@ test_verify_one_file_with_options! {
         spec fn test<T>(x: &mut T) -> T {
             mut_ref_future(x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent function `mut_ref_future` in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
 
 test_verify_one_file_with_options! {
@@ -133,7 +133,7 @@ test_verify_one_file_with_options! {
         spec fn test<T>(x: &mut T) -> T {
             *fin(x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent function `fin` in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
 
 test_verify_one_file_with_options! {
@@ -141,7 +141,7 @@ test_verify_one_file_with_options! {
         spec fn test<T>(x: &mut T) -> bool {
             has_resolved(x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent predicate `has_resolved` in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
 
 test_verify_one_file_with_options! {
@@ -150,11 +150,11 @@ test_verify_one_file_with_options! {
             let mut x = 0;
             let x_ref = &mut x;
 
-            let ghost y = after_borrow(x);
+            let y = Ghost(after_borrow(x));
 
             *x_ref = 20;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent function `after_borrow` in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'Ghost' wrapper")
 }
 
 test_verify_one_file_with_options! {
@@ -3111,4 +3111,64 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            *a = *a + 1;
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            test(a);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat_fail ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *fin(a) == *old(a) + 1,
+        {
+            *a = *a + 1;
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            test(a);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to use `final`, disable mut-ref backwards-compatability")
+}
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat_fail2 ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            *a = *a + 1;
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(a: &mut u8)
+            requires *old(a) < 255,
+            ensures a == a
+        {
+            test(a);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "For more flexible mutable reference support, disable the backwards-compatability")
 }

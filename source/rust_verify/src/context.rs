@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::mpsc::Sender;
 use std::sync::atomic::AtomicU64;
+use std::sync::mpsc::Sender;
 use vir::ast::{AtomicCallInfo, Ident, Mode, Path, Pattern, VirErr};
 use vir::messages::AstId;
 
@@ -60,6 +60,8 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) atomically: Option<Arc<AtomicallyCtxt>>,
     pub(crate) au_pred_args: Option<vir::ast::Exprs>,
     pub(crate) new_mut_ref: bool,
+    pub(crate) migrate_postcondition_vars: Option<std::collections::HashSet<vir::ast::VarIdent>>,
+    pub(crate) in_postcondition: bool,
 }
 
 pub(crate) struct AtomicallyCtxt {

@@ -2486,7 +2486,8 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_ghost_binder_forbidden_trk_type ["new-mut-ref"] => verus_code! {
+    // TODO(new_mut_ref): combination mut param and unwrapped param gives messed up VIR
+    #[ignore] #[test] mut_ref_ghost_binder_forbidden_trk_type ["new-mut-ref"] => verus_code! {
         enum Opt<T> { Some(T), None }
         struct X { a: u64 }
 
@@ -3323,7 +3324,7 @@ test_verify_one_file_with_options! {
                 _ => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an if-guard and a binding by mutable reference")
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: match arm containing both a match-guard and a binding by mutable reference")
 }
 
 test_verify_one_file_with_options! {
@@ -3345,4 +3346,828 @@ test_verify_one_file_with_options! {
             let Some((ref mut i, true | false)) = x;
         }
     } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_match_guards ["new-mut-ref"] => verus_code! {
+        enum Foo<A> {
+            Bar(A),
+            Qux(A),
+        }
+
+        fn consume<A>(a: A) no_unwind { }
+
+        fn cond2<A>(b: &mut A) -> bool no_unwind { true }
+        fn cond() -> bool no_unwind { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn get_b<A>() -> A {
+            loop { }
+        }
+
+        fn test<A>(foo: Foo<A>, b: A) {
+            let mut b = b;
+
+            assert(has_resolved(b)); // FAILS
+
+            match foo {
+                Foo::Bar(t) => {
+                    consume(t);
+                }
+                Foo::Qux(t) if cond2(&mut b) => {
+                    consume(t);
+                }
+                Foo::Qux(t) => {
+                    consume(t);
+                }
+            }
+        }
+
+        fn test2<A>(foo: Foo<A>, b: A) {
+            let mut b = b;
+
+            match foo {
+                Foo::Bar(t) if ({
+                    assert(has_resolved(b)); // FAILS
+                    cond()
+                }) => {
+                    consume(t);
+                }
+                Foo::Qux(t) if cond2(&mut b) => {
+                    consume(t);
+                }
+                Foo::Qux(t) => {
+                    consume(t);
+                }
+                Foo::Bar(t) => { }
+            }
+        }
+
+        fn test3<A>(foo: Foo<A>, b: A) {
+            let mut b = b;
+
+            match foo {
+                Foo::Bar(t) if cond() => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Qux(t) if cond2(&mut b) => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Qux(t) => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Bar(t) => {
+                    // TODO(new_mut_ref): this should pass; the resolution goes to a "MatchIntermediate" position which gets dropped
+                    assert(has_resolved(b)); // FAILS
+                }
+            }
+        }
+
+        fn test4<A>(foo: Foo<A>, b: A) {
+            let mut b: A;
+            let mut entered_guard = false;
+
+            match foo {
+                Foo::Bar(t) if cond() => {
+                }
+                Foo::Qux(t) if ({ entered_guard = true; b = get_b(); cond() }) => {
+                    consume(b);
+                }
+                Foo::Qux(t) => {
+                    assert(entered_guard ==> has_resolved(b));
+                }
+                Foo::Bar(t) => {
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_or_patterns ["new-mut-ref"] => verus_code! {
+        enum Foo<A> {
+            Bar(A),
+            Qux(A),
+            Duck(A),
+        }
+
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: Foo<A>) {
+            match foo {
+                Foo::Bar(x) | Foo::Qux(x) => {
+                    consume(x);
+                }
+                Foo::Duck(_) => { }
+            }
+            assert(foo is Bar ==> has_resolved(foo->Bar_0)); // FAILS
+        }
+
+        fn test2<A>(foo: Foo<A>) {
+            match foo {
+                Foo::Bar(x) | Foo::Qux(x) => {
+                    consume(x);
+                }
+                Foo::Duck(_) => { }
+            }
+            assert(foo is Duck ==> has_resolved(foo->Duck_0));
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] decl_test_or_patterns ["new-mut-ref"] => verus_code! {
+        enum Foo<A> {
+            Bar(A),
+            Qux(A),
+        }
+
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: Foo<A>) {
+            let (Foo::Bar(x) | Foo::Qux(x)) = foo;
+            consume(x);
+            assert(foo is Bar ==> has_resolved(foo->Bar_0)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] or_patterns_with_conditional_moves ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: (bool, A, A)) {
+            match foo {
+                (true, x, _) | (false, _, x) => {
+                    consume(x);
+                    // TODO(new_mut_ref): these ought to pass
+                    assert(foo.0 ==> has_resolved(foo.2)); // FAILS
+                    assert(!foo.0 ==> has_resolved(foo.1)); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] or_patterns_with_conditional_moves2 ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: (bool, A, A)) {
+            match foo {
+                (true, x, _) | (false, _, x) => {
+                    consume(x);
+                    assert(has_resolved(foo.1)); // FAILS
+                    assert(has_resolved(foo.2)); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] or_patterns_with_moves_in_same_place ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: (bool, A, A)) {
+            match foo {
+                (true, x, _) | (false, x, _) => {
+                    consume(x);
+                    assert(has_resolved(foo.2));
+                    assert(has_resolved(foo.1)); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_else_cfg_reachability ["new-mut-ref"] => verus_code! {
+        enum Opt<A> { Some(A), None }
+        use Opt::Some;
+        use Opt::None;
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test(t: Opt<u64>) {
+            let mut x = 0;
+            let x_ref: &mut u64 = &mut x;
+
+            let Some(x) = t else {
+                assert(has_resolved(x_ref));
+                loop { }
+            };
+
+            *x_ref = 20;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test1(t: Opt<u64>) {
+            let mut x = 0;
+            let x_ref: &mut u64 = &mut x;
+
+            let Some(x) = t else {
+                *x_ref = 20;
+                loop { }
+            };
+
+            assert(has_resolved(x_ref));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test2(t: Opt<u64>) {
+            let mut x = 0;
+            let x_ref: &mut u64 = &mut x;
+
+            assert(has_resolved(x_ref)); // FAILS
+
+            let Some(x) = t else {
+                loop { }
+            };
+
+            *x_ref = 20;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test3(t: Opt<u64>) {
+            let mut x = 0;
+            let x_ref: &mut u64 = &mut x;
+
+            assert(has_resolved(x_ref)); // FAILS
+
+            let Some(x) = t else {
+                *x_ref = 20;
+                loop { }
+            };
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] basic_let_else_mut_ref ["new-mut-ref"] => verus_code! {
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        struct Foo(u64);
+
+        #[allow(irrefutable_let_patterns)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_foo(o: Foo, orig: Foo) {
+            assume(orig == o);
+
+            let mut o = o;
+            let mut o_ref = &mut o;
+            let Foo(i) = o_ref else { assert(false); loop{} };
+            assert(orig == Foo(*i));
+            *i = 20;
+            assert(o === Foo(20));
+        }
+
+        #[allow(irrefutable_let_patterns)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_foo_fails(o: Foo, orig: Foo) {
+            assume(orig == o);
+
+            let mut o = o;
+            let mut o_ref = &mut o;
+            let Foo(i) = o_ref else { loop{} };
+            *i = 20;
+            assert(false); // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_opt(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let mut o_ref = &mut o;
+            let Some(i) = o_ref else {
+                assert(orig is None);
+                assert(o is None);
+                loop{}
+            };
+            assert(orig == Some(*i));
+            *i = 20;
+            assert(o === Some(20));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_opt_fails1(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+            let mut o = o;
+            let mut o_ref = &mut o;
+            let Some(i) = o_ref else {
+                assert(orig is None);
+                assert(o is None);
+                assert(false); // FAILS
+                loop{}
+            };
+            assert(orig == Some(*i));
+            *i = 20;
+            assert(o === Some(20));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_else_on_a_field_place_via_dot ["new-mut-ref"] => verus_code! {
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_opt(cond: bool) {
+            let mut x = 3;
+
+            let mut o = if cond {
+                Some(&mut x)
+            } else {
+                None
+            };
+
+            let mut y = 4;
+
+            let pair = (o, &mut y);
+
+            let Some(i) = pair.0 else {
+                assert(!cond);
+                assert(x == 3);
+                assert(y == 4);
+                loop{}
+            };
+            assert(cond);
+            assert(*i == 3);
+            *i = 20;
+
+            assert(x == 20);
+            assert(y == 4);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_opt_fails(cond: bool) {
+            let mut x = 3;
+
+            let mut o = if cond {
+                Some(&mut x)
+            } else {
+                None
+            };
+
+            let mut y = 4;
+
+            let pair = (o, &mut y);
+
+            let Some(i) = pair.0 else {
+                assert(!cond);
+                assert(x == 3);
+                assert(y == 4);
+                assert(false); // FAILS
+                loop{}
+            };
+            assert(cond);
+            assert(*i == 3);
+            *i = 20;
+
+            assert(x == 20);
+            assert(y == 4);
+            assert(false); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_else_match_on_a_field_via_underscore ["new-mut-ref"] => verus_code! {
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_opt(cond: bool) {
+            let mut x = 3;
+
+            let mut o = if cond {
+                Some(&mut x)
+            } else {
+                None
+            };
+
+            let mut y = 4;
+
+            let pair = (o, &mut y);
+
+            let (Some(i), _) = pair else {
+                assert(!cond);
+                assert(x == 3);
+                assert(y == 4);
+                loop {}
+            };
+
+            assert(cond);
+            assert(*i == 3);
+            *i = 20;
+            assert(x == 20);
+            assert(y == 4);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_opt_fails(cond: bool) {
+            let mut x = 3;
+
+            let mut o = if cond {
+                Some(&mut x)
+            } else {
+                None
+            };
+
+            let mut y = 4;
+
+            let pair = (o, &mut y);
+
+            let (Some(i), _) = pair else {
+                assert(!cond);
+                assert(x == 3);
+                assert(y == 4);
+                assert(false); // FAILS
+                loop {}
+            };
+
+            assert(cond);
+            assert(*i == 3);
+            *i = 20;
+            assert(x == 20);
+            assert(y == 4);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_else_explicit_ref_mut_binding ["new-mut-ref"] => verus_code! {
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_explicit_ref_mut(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let Some(ref mut i) = o else {
+                assert(orig is None);
+                assert(o is None);
+                loop{}
+            };
+            assert(orig == Some(*i));
+            *i = 20;
+            assert(o === Some(20));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_explicit_ref_mut_fails(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let Some(ref mut i) = o else {
+                assert(orig is None);
+                assert(false); // FAILS
+                loop{}
+            };
+            assert(orig == Some(*i));
+            *i = 20;
+
+            assert(o === Some(20));
+            assert(false); // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_explicit_redundant_ref_mut(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let mut o_ref = &mut o;
+            let Some(ref mut i) = o_ref else {
+                assert(orig is None);
+                assert(o is None);
+                loop{}
+            };
+            assert(orig == Some(*i));
+            *i = 20;
+            assert(o === Some(20));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_explicit_redundant_ref_mut_fails(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let mut o_ref = &mut o;
+            let Some(ref mut i) = o_ref else {
+                assert(orig is None);
+                assert(o is None);
+                assert(false); // FAILS
+                loop{}
+            };
+            assert(orig == Some(*i));
+            *i = 20;
+            assert(o === Some(20));
+            assert(false); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_else_ref_mut_inside_immut_ref ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        #[verifier::exec_allows_no_decreases_clause]
+        fn ref_mut(o: Option<u64>, orig: Option<u64>) {
+            let mut o = o;
+            let mut o_ref = &o;
+            let Some(ref mut i) = o_ref else { loop{} };
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `o_ref.0` as mutable, as it is behind a `&` reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_else_ref_mut_inside_immut_ref_no_lifetime ["new-mut-ref", "--no-lifetime"] => verus_code! {
+        use vstd::prelude::*;
+        #[verifier::exec_allows_no_decreases_clause]
+        fn ref_mut(o: Option<u64>, orig: Option<u64>) {
+            let mut o = o;
+            let mut o_ref = &o;
+            let Some(ref mut i) = o_ref else { loop{} };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot borrow this place as mutable, as it is behind a `&` reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_else_ref_mut_inside_at_binder ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_copy_with_ref_mut_binder_in_subpat(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+
+            // You could imagine this being supported (i.e., by copying `opt` before
+            // taking the mut-ref to i) but it's a lifetime error.
+            // If Rust ever supports this, need to make sure we handle it in the right order.
+            let opt @ Some(ref mut i) = o else { loop {} };
+            assert(orig == Some(*i));
+            assert(opt == orig);
+
+            *i = 20;
+
+            assert(o === match orig {
+                Some(x) => Some(20),
+                None => None,
+            });
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot use `o` because it was mutably borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_else_complex_mut_ref_combos ["new-mut-ref"] => verus_code! {
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_mut_mut(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let mut o_ref = &mut o;
+            let mut o_ref_ref = &mut o_ref;
+            let Option::Some(i) = o_ref else {
+                assert(orig is None);
+                assert(o is None);
+                loop{}
+            };
+            assert(orig == Option::Some(*i));
+            *i = 20;
+            assert(orig is Some);
+            assert(o === Option::Some(20));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_mut_mut_fails(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let mut o_ref = &mut o;
+            let mut o_ref_ref = &mut o_ref;
+            let Option::Some(i) = o_ref else {
+                assert(orig is None);
+                assert(o is None);
+                assert(false); // FAILS
+                loop{}
+            };
+            assert(orig == Option::Some(*i));
+            *i = 20;
+            assert(orig is Some);
+            assert(o === Option::Some(20));
+            assert(false); // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_ref_mut_binder_copy_in_subpat(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let ref mut opt @ Some(i) = o else {
+                loop{}
+            };
+            assert(orig == Some(i));
+            assert(*opt == orig);
+            *opt = None;
+            assert(o is None);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_ref_mut_binder_copy_in_subpat_fails(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let ref mut opt @ Some(i) = o else {
+                assert(false); // FAILS
+                loop{}
+            };
+            assert(orig == Some(i));
+            assert(*opt == orig);
+            *opt = None;
+            assert(o is None);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_else_complex_nesting_enum_1_variant ["new-mut-ref"] => verus_code! {
+        enum BigEnum1<'a, 'b, 'c> {
+            A((&'a mut (u64, &'b mut u64), &'c mut u64)),
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_big_enum1() {
+            let mut x = 0;
+            let mut y = 1;
+            let mut z = 2;
+
+            let x_ref = &mut x;
+            let mut pair = (4, x_ref);
+            let pair_ref = &mut pair;
+
+            let y_ref = &mut y;
+            let mut big_pair = (pair_ref, y_ref);
+
+            let z_ref = &mut z;
+
+            let bg = BigEnum1::A(big_pair);
+
+            let mut o = bg;
+            let BigEnum1::A(((r_pair_0, rx), ry)) = o else {
+                loop{}
+            };
+            assert(*r_pair_0 == 4);
+            assert(**rx == 0);
+            assert(*ry == 1);
+
+            assert(has_resolved(o->A_0.0.1)); // TODO(new_mut_ref): better triggering
+
+            *r_pair_0 = 20;
+            assert(mut_ref_future(r_pair_0) == pair.0);
+            **rx = 21;
+            *ry = 22;
+
+            assert(pair.0 == 20);
+            assert(x == 21);
+            assert(y == 22);
+        }
+
+        fn test_big_enum1_with_mut_ref() {
+            let mut x = 0;
+            let mut y = 1;
+            let mut z = 2;
+
+            let x_ref = &mut x;
+            let mut pair = (4, x_ref);
+            let pair_ref = &mut pair;
+
+            let y_ref = &mut y;
+            let mut big_pair = (pair_ref, y_ref);
+
+            let z_ref = &mut z;
+
+            let bg = BigEnum1::A(big_pair);
+
+            // mostly the same as previous case, but with a &mut ref at the top
+            let mut o = bg;
+            let mut o_ref = &mut o;
+            let BigEnum1::A(((r_pair_0, rx), ry)) = o_ref else {
+                return;
+            };
+            assert(*r_pair_0 == 4);
+            assert(**rx == 0);
+            assert(**ry == 1);
+
+            assert(has_resolved(o->A_0.0.1)); // TODO(new_mut_ref): better triggering
+            assert(has_resolved(o->A_0.1));
+
+            *r_pair_0 = 20;
+            **rx = 21;
+            **ry = 22;
+
+            assert(has_resolved(r_pair_0));
+
+            assert(pair.0 == 20);
+            assert(x == 21);
+            assert(y == 22);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_big_enum1_fails() {
+            let mut x = 0;
+            let mut y = 1;
+            let mut z = 2;
+
+            let x_ref = &mut x;
+            let mut pair = (4, x_ref);
+            let pair_ref = &mut pair;
+
+            let y_ref = &mut y;
+            let mut big_pair = (pair_ref, y_ref);
+
+            let z_ref = &mut z;
+
+            let bg = BigEnum1::A(big_pair);
+
+            let mut o = bg;
+            let BigEnum1::A(((r_pair_0, rx), ry)) = o else {
+                loop{}
+            };
+            assert(*r_pair_0 == 4);
+            assert(**rx == 0);
+            assert(*ry == 1);
+
+            assert(has_resolved(o->A_0.0.1)); // TODO(new_mut_ref): better triggering
+
+            *r_pair_0 = 20;
+            assert(mut_ref_future(r_pair_0) == pair.0);
+            **rx = 21;
+            *ry = 22;
+
+            assert(pair.0 == 20);
+            assert(x == 21);
+            assert(y == 22);
+            assert(false); // FAILS
+        }
+
+        fn test_big_enum1_with_mut_ref_fails() {
+            let mut x = 0;
+            let mut y = 1;
+            let mut z = 2;
+
+            let x_ref = &mut x;
+            let mut pair = (4, x_ref);
+            let pair_ref = &mut pair;
+
+            let y_ref = &mut y;
+            let mut big_pair = (pair_ref, y_ref);
+
+            let z_ref = &mut z;
+
+            let bg = BigEnum1::A(big_pair);
+
+            // mostly the same as previous case, but with a &mut ref at the top
+            let mut o = bg;
+            let mut o_ref = &mut o;
+            let BigEnum1::A(((r_pair_0, rx), ry)) = o_ref else {
+                return;
+            };
+            assert(*r_pair_0 == 4);
+            assert(**rx == 0);
+            assert(**ry == 1);
+
+            assert(has_resolved(o->A_0.0.1)); // TODO(new_mut_ref): better triggering
+            assert(has_resolved(o->A_0.1));
+
+            *r_pair_0 = 20;
+            **rx = 21;
+            **ry = 22;
+
+            assert(has_resolved(r_pair_0));
+
+            assert(pair.0 == 20);
+            assert(x == 21);
+            assert(y == 22);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }

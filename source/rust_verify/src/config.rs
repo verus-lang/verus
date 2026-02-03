@@ -103,7 +103,6 @@ pub struct ArgsX {
     pub profile_all: bool,
     pub capture_profiles: bool,
     pub spinoff_all: bool,
-    pub use_internal_profiler: bool,
     pub vstd: Vstd,
     pub compile: bool,
     pub solver_version_check: bool,
@@ -151,7 +150,6 @@ impl ArgsX {
             profile_all: Default::default(),
             capture_profiles: Default::default(),
             spinoff_all: Default::default(),
-            use_internal_profiler: Default::default(),
             vstd: Vstd::Imported,
             compile: Default::default(),
             solver_version_check: Default::default(),
@@ -395,7 +393,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
-    const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
     const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
@@ -414,10 +411,6 @@ pub fn parse_args_with_imports(
         (
             EXTENDED_CAPTURE_PROFILES,
             "Always collect prover performance data, but don't generate output reports",
-        ),
-        (
-            EXTENDED_USE_INTERNAL_PROFILER,
-            "Use an internal profiler that shows internal quantifier instantiations",
         ),
         (EXTENDED_CVC5, "Use the cvc5 SMT solver, rather than the default (Z3)"),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
@@ -810,7 +803,6 @@ pub fn parse_args_with_imports(
             extended.contains_key(EXTENDED_CAPTURE_PROFILES)
         },
         spinoff_all: extended.contains_key(EXTENDED_SPINOFF_ALL),
-        use_internal_profiler: extended.contains_key(EXTENDED_USE_INTERNAL_PROFILER),
         compile: matches.opt_present(OPT_COMPILE),
         vstd,
         solver_version_check: !extended.contains_key(EXTENDED_NO_SOLVER_VERSION_CHECK),

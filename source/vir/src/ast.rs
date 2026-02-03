@@ -442,9 +442,11 @@ pub enum UnaryOp {
     CastToInteger,
     MutRefCurrent,
     MutRefFuture(MutRefFutureSourceName),
-    /// The `final` keyword. `*final(e)` should be replaced with `mut_ref_future(e)`
-    /// and `final` on its own is unsupported.
-    MutRefFinal,
+    /// The `final` keyword.
+    /// Note: `final` on its own is unsupported.
+    /// `*final(e)` should be replaced with `mut_ref_future(e)`; other appearances are an error
+    /// boolean param = did this arise from migration?
+    MutRefFinal(bool),
 
     /// Length of an array or slice
     Length(ArrayKind),
@@ -1089,6 +1091,7 @@ pub enum ExprX {
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
         loop_isolation: bool,
+        allow_complex_invariants: bool,
         is_for_loop: bool,
         assume_termination: bool,
         label: Option<String>,
@@ -1208,12 +1211,27 @@ pub type Places = Arc<Vec<Place>>;
 pub enum PlaceX {
     /// Place of the given field. May have a precondition if VariantCheck is set to Union
     Field(FieldOpr, Place),
-    /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
+    /// Place pointed to by the given mutable reference.
+    /// (i.e., `*` operator in Rust when applied to a mutable reference).
+    /// Encoding-wise, this is conceptually like Field, if you think of mutable references
+    /// as a struct with MutRefCurrent as a field.
     DerefMut(Place),
     /// Unwrap a Ghost or a Tracked
     ModeUnwrap(Place, ModeWrapperMode),
-    /// Index into an array or slice (`place[expr]`)
-    /// The bool = needs bounds check
+    /// Index into an array or slice (`place[expr]`).
+    /// May have a precondition if BoundsCheck is set.
+    ///
+    /// Note: typically, the index operator [] in Rust is lowered to an `index` or `index_mut`
+    /// call, which can handle via a Call node. However, indexing into a slice or array is
+    /// treated specially in a way which is more permissive with respect to borrow checking,
+    /// and in particular, two-phase borrows, than it otherwise would be if it were just treated
+    /// as a call. (See, for example, the `two_phase_arrays_slices` test cases in mut_refs.rs).
+    ///
+    /// Therefore, to properly handle programs with are admitted due to these special
+    /// cases, we also need to treat array indexing and slice indexing via a Place node.
+    /// That's why `PlaceX::Index` exists.
+    /// It is _not_ necessary to handle other types (like Vec indexing) in this way
+    /// (although it wouldn't hurt, either).
     Index(Place, Expr, ArrayKind, BoundsCheck),
     /// Named local variable.
     Local(VarIdent),
@@ -1239,7 +1257,21 @@ pub enum StmtX {
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
     /// (The mode is only allowed to be None for one special case; see modes.rs)
-    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Place>, els: Option<Expr> },
+    Decl {
+        pattern: Pattern,
+        mode: Option<(Mode, DeclProph)>,
+        init: Option<Place>,
+        els: Option<Expr>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq, Clone, Copy)]
+pub enum DeclProph {
+    /// Default; can be inferred as prophetic if the mode is ghost
+    Default,
+    /// Prophetic, only allowed if mode is ghost
+    Prophetic,
+    DelayedInfer,
 }
 
 /// Function parameter

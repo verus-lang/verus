@@ -1182,7 +1182,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | StrIsAscii
                         | MutRefCurrent
                         | MutRefFuture(_)
-                        | MutRefFinal
+                        | MutRefFinal(_)
                         | InferSpecForLoopIter { .. } => ok,
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
@@ -1303,7 +1303,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | StrIsAscii
                         | MutRefCurrent
                         | MutRefFuture(_)
-                        | MutRefFinal
+                        | MutRefFinal(_)
                         | InferSpecForLoopIter { .. } => ok,
                     }
                 }
@@ -1420,7 +1420,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => {
                             let e2 = eval_expr_internal(ctx, state, e2)?;
                             match &e2.x {
-                                Const(Bool(true)) => bool_new(false),
+                                Const(Bool(true)) => bool_new(true),
                                 Const(Bool(false)) =>
                                 // Recurse in case we can simplify the new negation
                                 {

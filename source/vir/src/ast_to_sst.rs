@@ -22,8 +22,9 @@ use crate::sst::{
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    sst_bitwidth, sst_conjoin, sst_equal, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
-    sst_unit_value, subst_exp, subst_pre_local_decl, subst_stm,
+    exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_int_literal, sst_le,
+    sst_lt, sst_mut_ref_current, sst_unit_value, stm_with_vars_at_pre_state, subst_exp,
+    subst_pre_local_decl, subst_stm,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
@@ -34,7 +35,7 @@ use air::scope_map::ScopeMap;
 use indexmap::IndexSet;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -54,6 +55,8 @@ pub(crate) enum PreLocalDeclKind {
     Immutable(Immutable),
     /// Param (mutability to be inferred)
     Param,
+    /// ExecClosureParam (mutability to be inferred)
+    ExecClosureParam,
     /// StmtLet (mutability to be inferred)
     StmtLet,
     /// Param, always consider mut
@@ -428,7 +431,6 @@ impl<'a> State<'a> {
         }
     }
 
-    // Erase unused unique ids from Vars and process inline functions
     pub(crate) fn finalize_exp(&self, _ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
         let exp = map_exp_visitor(exp, &mut |exp| match &exp.x {
             ExpX::Var(x) if self.rename_delayed.contains_key(x) => {
@@ -440,8 +442,6 @@ impl<'a> State<'a> {
         Ok(exp)
     }
 
-    // Erase unused unique ids from Vars, perform inlining, choose triggers,
-    // and perform splitting if necessary
     pub(crate) fn finalize_stm(&mut self, ctx: &Ctx, stm: &Stm) -> Result<Stm, VirErr> {
         let stm = map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, exp))?;
         map_stm_visitor(&stm, &mut |stm| {
@@ -542,6 +542,9 @@ impl PreLocalDeclKind {
                 }
             }
             PreLocalDeclKind::Param => Ok(LocalDeclKind::Param { mutable: mutbl.is_some() }),
+            PreLocalDeclKind::ExecClosureParam => {
+                Ok(LocalDeclKind::ExecClosureParam { mutable: mutbl.is_some() })
+            }
             PreLocalDeclKind::StmtLet => Ok(LocalDeclKind::StmtLet { mutable: mutbl.is_some() }),
             PreLocalDeclKind::MutParam => Ok(LocalDeclKind::Param { mutable: true }),
         }
@@ -2409,6 +2412,7 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::Loop {
             loop_isolation,
+            allow_complex_invariants,
             is_for_loop,
             assume_termination,
             label,
@@ -2420,6 +2424,7 @@ pub(crate) fn expr_to_stm_opt(
         } => {
             let is_for_loop = *is_for_loop;
             let loop_isolation = *loop_isolation;
+            let allow_complex_invariants = *allow_complex_invariants;
             let id = state.loop_id_counter;
             state.loop_id_counter += 1;
             let invs = if is_for_loop && !loop_isolation {
@@ -2443,11 +2448,19 @@ pub(crate) fn expr_to_stm_opt(
             let simple_invs =
                 invs.iter().all(|inv| inv.kind == LoopInvariantKind::InvariantAndEnsures);
             let simple_while = !has_break && simple_invs && cond.is_some() && loop_isolation;
-            if !loop_isolation && !simple_invs {
+
+            if allow_complex_invariants && loop_isolation {
+                return Err(error(
+                    &expr.span,
+                    "attribute 'allow_complex_invariants' can only be used with 'loop_isolation(false)'",
+                ));
+            }
+
+            if !loop_isolation && !simple_invs && !allow_complex_invariants {
                 return Err(error(
                     &expr.span,
                     "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break \
-                        or ensures",
+                        or ensures, unless #[verifier::allow_complex_invariants] is used",
                 ));
             }
             let mut cnd = if let Some(cond) = cond {
@@ -2500,15 +2513,31 @@ pub(crate) fn expr_to_stm_opt(
             let mut check_recommends: Vec<Stm> = Vec::new();
             let mut invs1: Vec<crate::sst::LoopInv> = Vec::new();
             for inv in invs.iter() {
+                // Ensures clauses are unnecessary if loop_isolation is true (implied by allow_complex_invariants),
+                // since the weakest precondition already tracks all the paths through the breaks into the code after the loop
+                if allow_complex_invariants && inv.kind == LoopInvariantKind::Ensures {
+                    continue;
+                }
+
                 let (rec, exp) = expr_to_pure_exp_check(ctx, state, &inv.inv)?;
                 let exp =
                     crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.invariant);
                 check_recommends.extend(rec);
-                let (at_entry, at_exit) = match inv.kind {
-                    LoopInvariantKind::InvariantExceptBreak => (true, false),
-                    LoopInvariantKind::InvariantAndEnsures => (true, true),
-                    LoopInvariantKind::Ensures => (false, true),
+
+                let (at_entry, at_exit) = if allow_complex_invariants
+                    && inv.kind == LoopInvariantKind::InvariantExceptBreak
+                {
+                    // With loop_isolation disabled (implied by allow_complex invariants), an
+                    // invariant_except_break simply becomes an invariant
+                    (true, true)
+                } else {
+                    match inv.kind {
+                        LoopInvariantKind::InvariantExceptBreak => (true, false),
+                        LoopInvariantKind::InvariantAndEnsures => (true, true),
+                        LoopInvariantKind::Ensures => (false, true),
+                    }
                 };
+
                 let inv1 = crate::sst::LoopInv { inv: exp, at_entry, at_exit };
                 invs1.push(inv1);
             }
@@ -2557,6 +2586,7 @@ pub(crate) fn expr_to_stm_opt(
                     typ_inv_vars: Arc::new(vec![]),
                     modified_vars: Arc::new(vec![]),
                     au_branch_bool,
+                    pre_modified_params: Arc::new(vec![]),
                 },
             );
             if can_control_flow_reach_after_loop(expr) {
@@ -2712,8 +2742,11 @@ pub(crate) fn expr_to_stm_opt(
                 );
             };
 
-            let (x_var_id, x_var_exp) =
-                state.declare_temp_var_stm(&expr.span, x_typ, PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)));
+            let (x_var_id, x_var_exp) = state.declare_temp_var_stm(
+                &expr.span,
+                x_typ,
+                PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
+            );
             stms.push(assume_has_typ(&x_var_id, x_typ, &expr.span));
 
             // assume atomic requires
@@ -2912,8 +2945,11 @@ pub(crate) fn expr_to_stm_opt(
 
             // construct predicate type
 
-            let (pred_var_id, pred_var_exp) =
-                state.declare_temp_var_stm(&expr.span, pred_typ, PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)));
+            let (pred_var_id, pred_var_exp) = state.declare_temp_var_stm(
+                &expr.span,
+                pred_typ,
+                PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
+            );
             stms.push(assume_has_typ(&pred_var_id, pred_typ, &expr.span));
 
             let call_pred_args = SpannedTyped::new(
@@ -3048,8 +3084,11 @@ pub(crate) fn expr_to_stm_opt(
             let (x_var_id, x_var_exp) = state.declare_temp_assign(&x_expr.span, x_typ);
             stms.push(init_var(&x_expr.span, &x_var_id, &x_raw_exp));
 
-            let (y_var_id, y_var_exp) =
-                state.declare_temp_var_stm(&expr.span, y_typ, PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)));
+            let (y_var_id, y_var_exp) = state.declare_temp_var_stm(
+                &expr.span,
+                y_typ,
+                PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
+            );
             stms.push(assume_has_typ(&y_var_id, y_typ, &expr.span));
 
             // check invariant mask
@@ -3924,11 +3963,14 @@ fn exec_closure_body_stms(
     let mut mask = Some(MaskSet::full(&body.span));
     std::mem::swap(&mut state.mask, &mut mask);
 
+    let mut param_set = HashSet::<VarIdent>::new();
+
     for param in params.iter() {
         // TODO(new_mut_ref): can't assume closure params are immutable anymore
-        let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ExecClosureParam));
+        let kind = PreLocalDeclKind::ExecClosureParam;
         let uid = state.declare_var_stm(&param.name, &param.a, kind, false);
-        typ_inv_vars.push((uid, param.a.clone()));
+        typ_inv_vars.push((uid.clone(), param.a.clone()));
+        param_set.insert(uid);
     }
 
     // Assert all the requires
@@ -3952,6 +3994,9 @@ fn exec_closure_body_stms(
         ens_checks.extend(check_stms);
         ens_exps.push(exp);
     }
+
+    let ens_exps = ens_exps.iter().map(|e| exp_with_vars_at_pre_state(e, &param_set)).collect();
+    let ens_checks = ens_checks.iter().map(|s| stm_with_vars_at_pre_state(s, &param_set)).collect();
 
     // Set up the ClosureState so any 'return' statements inside know what to do
 

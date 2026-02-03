@@ -388,7 +388,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
 
                 self.push_scope();
                 for b in R::get_vec_or(&params, p).iter() {
-                    self.insert_binding(&b.name, ScopeEntry::new(&b.a, Some(false), true));
+                    self.insert_binding(&b.name, ScopeEntry::new(&b.a, Some(true), true));
                 }
 
                 let requires = self.visit_exprs(requires)?;
@@ -544,6 +544,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             }
             ExprX::Loop {
                 loop_isolation,
+                allow_complex_invariants,
                 is_for_loop,
                 assume_termination,
                 label,
@@ -560,6 +561,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 R::ret(|| {
                     expr_new(ExprX::Loop {
                         loop_isolation: *loop_isolation,
+                        allow_complex_invariants: *allow_complex_invariants,
                         is_for_loop: *is_for_loop,
                         assume_termination: *assume_termination,
                         label: label.clone(),

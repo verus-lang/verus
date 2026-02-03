@@ -564,7 +564,9 @@ pub(crate) fn check_item_external<'tcx>(
             );
         }
     };
-    if !external_adt_def.is_struct() && !external_adt_def.is_enum() {
+
+    if !vattrs.external_body && !external_adt_def.is_struct() && !external_adt_def.is_enum() {
+        // Should be possible to do unions too, just need to implement the case for it below
         return err_span(
             span,
             "external_type_specification: the external type needs to be a struct or enum",
