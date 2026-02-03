@@ -3516,10 +3516,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                     return err_span(x.span, "closures only accept exec-mode parameters");
                 }
 
-                let (is_mut, name) = pat_to_mut_var(x.pat)?;
-                if is_mut {
-                    return err_span(x.span, "Verus does not support 'mut' params for closures");
-                }
+                let (_is_mut, name) = pat_to_mut_var(x.pat)?;
                 Ok(Arc::new(VarBinderX { name, a: t }))
             })
             .collect::<Result<Vec<_>, _>>()?;
