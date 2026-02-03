@@ -5,7 +5,6 @@ use anyhow::Context;
 use regex::Regex;
 
 use crate::cli::VargoCli;
-use crate::cli::VargoSubcommand;
 use crate::macros::info;
 use crate::macros::warning;
 use crate::smt_solver::SmtSolverBinary;
@@ -165,7 +164,7 @@ impl VargoContext {
 
         // check binary versions
         if vargo_nest == 0
-            && !matches!(cli.command, VargoSubcommand::Fmt { .. })
+            && cli.command.needs_solver_version_check()
             && cli.options.solver_version_check
         {
             solver_binary_z3.check_version()?;

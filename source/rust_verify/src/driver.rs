@@ -171,7 +171,7 @@ pub struct Stats {
     pub time_rustc: Duration,
     /// time it took to verify the crate (this includes VIR generation, SMT solving, etc.)
     pub time_verify: Duration,
-    /// tiem for lifetime/borrow checking
+    /// time for lifetime/borrow checking
     pub time_trait_conflicts: Duration,
     /// compilation time
     pub time_compile: Duration,

@@ -9,8 +9,8 @@ use vir::modes::ErasureModes;
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
-    BodyErasure, CallErasure, ExpectSpec, ExpectSpecArgs, NodeErase, VarErasure, VerusErasureCtxt,
-    set_verus_aware_def_ids, set_verus_erasure_ctxt,
+    BodyErasure, CallErasure, NodeErase, VarErasure, VerusErasureCtxt, set_verus_aware_def_ids,
+    set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -35,6 +35,7 @@ pub enum CompilableOperator {
     TrackedBorrowMut,
     UseTypeInvariant,
     ClosureToFnProof(Mode),
+    GhostBorrowMut,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).
@@ -96,14 +97,13 @@ fn mode_to_var_erase(mode: Mode) -> VarErasure {
 fn resolved_call_to_call_erase(
     _span: Span,
     functions: &HashMap<Fun, Function>,
-    datatypes: &HashMap<Path, Datatype>,
+    _datatypes: &HashMap<Path, Datatype>,
     resolved_call: &ResolvedCall,
+    ctor_mode: Option<Mode>,
 ) -> Result<CallErasure, VirErr> {
     Ok(match resolved_call {
         ResolvedCall::Spec => CallErasure::EraseTree,
-        ResolvedCall::SpecAllowProofArgs => {
-            CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllPropagate)
-        }
+        ResolvedCall::SpecAllowProofArgs => CallErasure::Call(NodeErase::Erase),
         ResolvedCall::Call(ufun, rfun, in_ghost) => {
             // Note: in principle, the unresolved function ufun should always be present,
             // but we currently allow external declarations of resolved trait functions
@@ -114,91 +114,21 @@ fn resolved_call_to_call_erase(
             };
             if *in_ghost && f.x.mode == Mode::Exec {
                 // This must be an autospec, so change exec -> spec
-                CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllYes)
+                CallErasure::Call(NodeErase::Erase)
             } else if f.x.mode == Mode::Spec {
-                CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllYes)
+                CallErasure::Call(NodeErase::Erase)
             } else {
-                let args =
-                    f.x.params
-                        .iter()
-                        .map(|p| match p.x.mode {
-                            Mode::Spec => ExpectSpec::Yes,
-                            Mode::Proof | Mode::Exec => ExpectSpec::No,
-                        })
-                        .collect::<Vec<_>>();
-                CallErasure::Call(NodeErase::Keep, ExpectSpecArgs::PerArg(Arc::new(args)))
+                CallErasure::Call(NodeErase::Keep)
             }
         }
-        ResolvedCall::Ctor(path, variant_name) => {
-            let datatype = &datatypes[path];
-            match &datatype.x.mode {
-                Mode::Spec => {
-                    CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllYes)
-                }
-                Mode::Proof | Mode::Exec => {
-                    let variant = datatype.x.get_variant(variant_name);
-                    let args = variant
-                        .fields
-                        .iter()
-                        .map(|field| {
-                            let (_, field_mode, _) = &field.a;
-                            match field_mode {
-                                Mode::Spec => ExpectSpec::Yes,
-                                Mode::Proof | Mode::Exec => ExpectSpec::Propagate,
-                            }
-                        })
-                        .collect::<Vec<_>>();
-                    CallErasure::Call(
-                        NodeErase::WhenExpectingSpec,
-                        ExpectSpecArgs::PerArg(Arc::new(args)),
-                    )
-                }
-            }
-        }
-        ResolvedCall::BracesCtor(path, variant_name, fields, has_tail) => {
-            let datatype = &datatypes[path];
-            match &datatype.x.mode {
-                Mode::Spec => {
-                    CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllYes)
-                }
-                Mode::Proof | Mode::Exec => {
-                    let variant = datatype.x.get_variant(variant_name);
-                    let mut args = fields
-                        .iter()
-                        .map(|field_name| {
-                            let field = vir::ast_util::get_field(&variant.fields, field_name);
-                            let (_, field_mode, _) = &field.a;
-                            match field_mode {
-                                Mode::Spec => ExpectSpec::Yes,
-                                Mode::Proof | Mode::Exec => ExpectSpec::Propagate,
-                            }
-                        })
-                        .collect::<Vec<_>>();
-                    if *has_tail {
-                        args.push(ExpectSpec::Propagate);
-                    }
-                    CallErasure::Call(
-                        NodeErase::WhenExpectingSpec,
-                        ExpectSpecArgs::PerArg(Arc::new(args)),
-                    )
-                }
-            }
-        }
+        ResolvedCall::Ctor(..) | ResolvedCall::BracesCtor(..) => match ctor_mode {
+            Some(Mode::Spec) => CallErasure::Call(NodeErase::Erase),
+            Some(_) | None => CallErasure::Call(NodeErase::Keep),
+        },
         ResolvedCall::NonStaticExec => CallErasure::keep_all(),
-        ResolvedCall::NonStaticProof(modes) => {
-            let args = modes
-                .iter()
-                .map(|mode| match mode {
-                    Mode::Spec => ExpectSpec::Yes,
-                    Mode::Proof | Mode::Exec => ExpectSpec::No,
-                })
-                .collect::<Vec<_>>();
-            CallErasure::Call(NodeErase::Keep, ExpectSpecArgs::PerArg(Arc::new(args)))
-        }
+        ResolvedCall::NonStaticProof(_modes) => CallErasure::Call(NodeErase::Keep),
         ResolvedCall::CompilableOperator(co) => match co {
-            CompilableOperator::IntIntrinsic => {
-                CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllPropagate)
-            }
+            CompilableOperator::IntIntrinsic => CallErasure::Call(NodeErase::Erase),
 
             CompilableOperator::GhostExec => CallErasure::EraseTree,
 
@@ -208,15 +138,14 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::BoxNew
             | CompilableOperator::SmartPtrClone { .. }
             | CompilableOperator::TrackedNew
-            | CompilableOperator::TrackedExec => {
-                CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllPropagate)
-            }
+            | CompilableOperator::TrackedExec => CallErasure::keep_all(),
 
             CompilableOperator::ClosureToFnProof(_)
             | CompilableOperator::TrackedExecBorrow
             | CompilableOperator::TrackedGet
             | CompilableOperator::TrackedBorrow
             | CompilableOperator::TrackedBorrowMut
+            | CompilableOperator::GhostBorrowMut
             | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
         },
     })
@@ -242,9 +171,31 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
         if !id_to_hir.contains_key(&span.id) {
             dbg!(span);
             dbg!(mode);
+            return Err(vir::messages::error(
+                span,
+                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, var lookup failed",
+            ));
         }
         for hir_id in &id_to_hir[&span.id] {
             vars.insert(*hir_id, mode_to_var_erase(*mode));
+        }
+    }
+
+    let mut ctor_modes = HashMap::<HirId, Mode>::new();
+    for (span, mode) in erasure_hints.erasure_modes.ctor_modes.iter() {
+        if crate::spans::from_raw_span(&span.raw_span).is_none() {
+            continue;
+        }
+        if !id_to_hir.contains_key(&span.id) {
+            dbg!(span);
+            dbg!(mode);
+            return Err(vir::messages::error(
+                span,
+                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, ctor lookup failed",
+            ));
+        }
+        for hir_id in &id_to_hir[&span.id] {
+            ctor_modes.insert(*hir_id, *mode);
         }
     }
 
@@ -263,9 +214,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
     let mut calls = HashMap::<HirId, CallErasure>::new();
     for (hir_id, span_data, resolved_call) in &erasure_hints.resolved_calls {
         let span = span_data.span();
+        let ctor_mode = ctor_modes.get(hir_id).cloned();
         calls.insert(
             *hir_id,
-            resolved_call_to_call_erase(span, &functions, &datatypes, resolved_call)?,
+            resolved_call_to_call_erase(span, &functions, &datatypes, resolved_call, ctor_mode)?,
         );
     }
 
@@ -274,33 +226,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
         bodies.insert(*hir_id, *c);
     }
 
-    let mut condition_spec = HashMap::<HirId, bool>::new();
-    for (span, mode) in &erasure_hints.erasure_modes.condition_modes {
-        let spec = matches!(mode, Mode::Spec);
-        if crate::spans::from_raw_span(&span.raw_span).is_none() {
-            continue;
-        }
-        if !id_to_hir.contains_key(&span.id) {
-            dbg!(span, span.id);
-            panic!("missing id_to_hir");
-        }
-        for hir_id in &id_to_hir[&span.id] {
-            if condition_spec.contains_key(hir_id) {
-                if condition_spec[hir_id] != spec {
-                    panic!("inconsistent condition_modes: {:?}", span);
-                }
-            } else {
-                condition_spec.insert(*hir_id, spec);
-            }
-        }
-    }
-
     let verus_erasure_ctxt = VerusErasureCtxt {
         vars,
         calls,
         bodies,
-
-        condition_spec,
 
         erased_ghost_value_fn_def_id: *verus_items
             .name_to_id

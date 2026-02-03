@@ -24,7 +24,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.92.0
+          toolchain: 1.93.0
 
       - name: setup verusfmt
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
@@ -38,6 +38,29 @@ jobs:
       - name: check cargo fmt for vargo
         working-directory: ./tools/vargo
         run: cargo fmt -- --check
+
+  # run linter (clippy)
+  clippy:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: clippy
+
+      - name: clippy check codebase
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          vargo clippy -- -D warnings
+
+      - name: clippy check vargo
+        working-directory: ./tools/vargo
+        run: cargo clippy -- -D warnings
 
   # check if it builds and runs on macos, running the full test suite
   # (in release mode because it makes a huge difference)
@@ -67,7 +90,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.92.0
+          toolchain: 1.93.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -124,7 +147,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.92.0
+          toolchain: 1.93.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -171,7 +194,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.92.0
+          toolchain: 1.93.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -228,7 +251,7 @@ jobs:
   # build the documentation
   # will complain if there are warnings
   build-docs:
-    needs: [fmt]
+    needs: [fmt, clippy]
     runs-on: ubuntu-22.04
     steps:
       - name: checkout
@@ -237,7 +260,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.92.0
+          toolchain: 1.93.0
 
       - name: build docs
         working-directory: ./source
@@ -294,7 +317,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.92.0
+          toolchain: 1.93.0
 
       - name: build
         working-directory: ./source

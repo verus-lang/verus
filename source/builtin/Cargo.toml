@@ -1,6 +1,6 @@
 [package]
 name = "verus_builtin"
-version = "0.0.0-2026-01-11-0057"
+version = "0.0.0-2026-01-25-0057"
 edition = "2018"
 license = "MIT"
 description = "Verus Builtins: Rust definitions for core constructs in Verus"
@@ -15,8 +15,5 @@ categories = ["development-tools"]
 [package.metadata.verus]
 is-builtin = true
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = [
-  'cfg(verus_keep_ghost)',
-  'cfg(verus_verify_core)',
-] }
+[lints]
+workspace = true

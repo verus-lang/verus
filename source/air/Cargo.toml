@@ -9,7 +9,8 @@ edition = "2018"
 [dependencies]
 sise = "0.6.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
-z3tracer = { git = "https://github.com/verus-lang/smt2utils.git", rev = "ec4c894d04d7cd39c9a8aa1eda51db71cc54fe61" }
+smt-scope = { version = "0.1.7", features = ["analysis"] }
+petgraph = "0.6"
 serde = { version = "1", features = ["derive", "rc"] }
 indexmap = { version = "1" }
 yansi = "0.5"
@@ -19,3 +20,6 @@ win32job = "1"
 
 [features]
 singular = []
+
+[lints]
+workspace = true

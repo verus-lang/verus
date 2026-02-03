@@ -124,13 +124,14 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::Clip { .. }
             | UnaryOp::FloatToBits
             | UnaryOp::IntToReal
+            | UnaryOp::RealToInt
             | UnaryOp::BitNot(_)
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
             | UnaryOp::CastToInteger
             | UnaryOp::MutRefCurrent
             | UnaryOp::MutRefFuture(_)
-            | UnaryOp::MutRefFinal
+            | UnaryOp::MutRefFinal(_)
             | UnaryOp::Length(_)
             | UnaryOp::InferSpecForLoopIter { .. } => {}
         },
@@ -264,11 +265,14 @@ fn check_trigger_expr(
                 | UnaryOp::BitNot(_)
                 | UnaryOp::MutRefCurrent
                 | UnaryOp::MutRefFuture(_)
-                | UnaryOp::MutRefFinal => {
+                | UnaryOp::MutRefFinal(_) => {
                     check_trigger_expr_arg(state, arg);
                     Ok(())
                 }
-                UnaryOp::Clip { .. } | UnaryOp::FloatToBits | UnaryOp::IntToReal => {
+                UnaryOp::Clip { .. }
+                | UnaryOp::FloatToBits
+                | UnaryOp::IntToReal
+                | UnaryOp::RealToInt => {
                     check_trigger_expr_arg(state, arg);
                     Ok(())
                 }

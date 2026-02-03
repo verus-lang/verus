@@ -388,7 +388,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
 
                 self.push_scope();
                 for b in R::get_vec_or(&params, p).iter() {
-                    self.insert_binding(&b.name, ScopeEntry::new(&b.a, Some(false), true));
+                    self.insert_binding(&b.name, ScopeEntry::new(&b.a, Some(true), true));
                 }
 
                 let requires = self.visit_exprs(requires)?;
@@ -542,7 +542,16 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let arms = self.visit_arms(arms)?;
                 R::ret(|| expr_new(ExprX::Match(R::get(place), R::get_vec_a(arms))))
             }
-            ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs, decrease } => {
+            ExprX::Loop {
+                loop_isolation,
+                allow_complex_invariants,
+                is_for_loop,
+                label,
+                cond,
+                body,
+                invs,
+                decrease,
+            } => {
                 let cond = self.visit_opt_expr(cond)?;
                 let body = self.visit_expr(body)?;
                 let invs = self.visit_loop_invariants(invs)?;
@@ -550,6 +559,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 R::ret(|| {
                     expr_new(ExprX::Loop {
                         loop_isolation: *loop_isolation,
+                        allow_complex_invariants: *allow_complex_invariants,
                         is_for_loop: *is_for_loop,
                         label: label.clone(),
                         cond: R::get_opt(cond),
@@ -1461,7 +1471,6 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
 }
 
 /// Walk the AST, visit every Expr, Stmt, Pattern, Typ
-
 pub(crate) fn ast_visitor_check_with_scope_map<ERR, E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
     scope_map: &mut VisitorScopeMap,
@@ -1626,7 +1635,6 @@ where
 }
 
 /// Walk the AST, visit every Expr
-
 pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
 where
     MF: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
