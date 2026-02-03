@@ -877,6 +877,19 @@ pub fn typ_inv_relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan
 }
 
 #[allow(dead_code)]
+pub fn assert_has_recommends_failure(err: TestErr) {
+    assert!(err.errors.len() > 0);
+    let mut found_rec_failure = false;
+    for note in err.notes.iter() {
+        if note.message.contains("recommendation not met") {
+            found_rec_failure = true;
+            break;
+        }
+    }
+    assert!(found_rec_failure);
+}
+
+#[allow(dead_code)]
 pub fn assert_fails_type_invariant_error(err: TestErr, count: usize) {
     assert_eq!(err.errors.len(), count);
     for c in 0..count {
