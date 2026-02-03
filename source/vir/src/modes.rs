@@ -1982,8 +1982,8 @@ fn check_expr_handle_mut_arg(
             Ok((Mode::Spec, p))
         }
         ExprX::UnaryOpr(UnaryOpr::AutoDecreases, e1) => {
-            check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec)?;
-            Ok(Mode::Spec)
+            let p = check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
+            Ok((Mode::Spec, p))
         }
         ExprX::Loc(e) => {
             return check_expr_handle_mut_arg(
