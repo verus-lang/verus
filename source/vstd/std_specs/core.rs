@@ -35,6 +35,7 @@ pub trait ExSpecOrd<Rhs> {
     type ExternalTraitSpecificationFor: SpecOrd<Rhs>;
 }
 
+// #[cfg(verus_verify_core)]
 // #[verifier::external_trait_specification]
 // pub trait ExAllocator {
 //     type ExternalTraitSpecificationFor: core::alloc::Allocator;

@@ -85,8 +85,9 @@ pub trait StrSliceExecFns {
 
     fn get_ascii(&self, i: usize) -> u8;
 
-    // #[cfg(feature = "alloc")]
-    // fn as_bytes_vec(&self) -> alloc::vec::Vec<u8>;
+    #[cfg(verus_verify_core)]
+    #[cfg(feature = "alloc")]
+    fn as_bytes_vec(&self) -> alloc::vec::Vec<u8>;
 }
 
 impl StrSliceExecFns for str {
@@ -174,20 +175,21 @@ impl StrSliceExecFns for str {
     // TODO:This should be the as_bytes function after
     // slice support is added
     // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
-    // #[cfg(feature = "alloc")]
-    // #[verifier::external_body]
-    // fn as_bytes_vec(&self) -> (ret: alloc::vec::Vec<u8>)
-    //     requires
-    //         self.is_ascii(),
-    //     ensures
-    //         ret.view() == Seq::new(self.view().len(), |i| self.view().index(i) as u8),
-    // {
-    //     let mut v = alloc::vec::Vec::new();
-    //     for c in self.as_bytes().iter() {
-    //         v.push(*c);
-    //     }
-    //     v
-    // }
+    #[cfg(verus_verify_core)]
+    #[cfg(feature = "alloc")]
+    #[verifier::external_body]
+    fn as_bytes_vec(&self) -> (ret: alloc::vec::Vec<u8>)
+        requires
+            self.is_ascii(),
+        ensures
+            ret.view() == Seq::new(self.view().len(), |i| self.view().index(i) as u8),
+    {
+        let mut v = alloc::vec::Vec::new();
+        for c in self.as_bytes().iter() {
+            v.push(*c);
+        }
+        v
+    }
 }
 
 pub broadcast axiom fn axiom_str_literal_is_ascii<'a>(s: &'a str)
