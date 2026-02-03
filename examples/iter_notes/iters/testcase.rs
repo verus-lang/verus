@@ -2,6 +2,16 @@ use vstd::prelude::*;
 use vstd::std_specs::iter::IteratorSpecImpl;
 
 verus! {
+
+fn exec_for_loop() {
+    let mut n: u64 = 0;
+    for x in iter: 0..10
+        invariant n == iter.index@ * 3,
+    {
+        n += 3;
+    }
+}
+/*
 fn test_basic() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
     let mut w: Vec<u8> = Vec::new();
@@ -188,7 +198,7 @@ fn test_no_termination(n: NoTerminate) {
     }
 }
 */
-
+*/
 }
 
 fn main() {}
