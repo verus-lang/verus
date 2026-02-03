@@ -567,7 +567,7 @@ impl PointsTo<str> {
     ;
 }
 
-pub struct MapPointsTo<T> {
+pub tracked struct MapPointsTo<T> {
     points_to: Map<nat, PointsTo<T>>,
     ghost ptr: *mut [T],
 }
