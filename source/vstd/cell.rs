@@ -23,7 +23,7 @@ verus! {
 
 broadcast use {super::map::group_map_axioms, super::set::group_set_axioms};
 
-/// **Now deprecated** See [`pcell::PCell`] or [`pcell_maybe_uninit::PCellUn`] instead
+/// **Now deprecated** See [`pcell::PCell`] or [`pcell_maybe_uninit::PCell`] instead
 ///
 /// `PCell<V>` (which stands for "permissioned call") is the primitive Verus `Cell` type.
 ///
@@ -59,7 +59,7 @@ broadcast use {super::map::group_map_axioms, super::set::group_set_axioms};
 /// Also note that the `PCell` might be dropped before the `PointsTo` token is dropped,
 /// although in that case it will no longer be possible to use the `PointsTo` in `exec` code
 /// to extract data from the cell.
-#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::pcell::PCell` or `vstd::cell::pcell_maybe_uninit::PCellUn` instead")]
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::pcell::PCell` or `vstd::cell::pcell_maybe_uninit::PCell` instead")]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(V)]
 pub struct PCell<V> {
@@ -301,6 +301,7 @@ impl<T> InvariantPredicate<(Set<T>, PCell<T>), PointsTo<T>> for InvCellPred {
     }
 }
 
+/// **Now deprecated** See [`invcell::InvCell`] instead
 #[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::invcell::InvCell` instead")]
 #[verifier::reject_recursive_types(T)]
 pub struct InvCell<T> {

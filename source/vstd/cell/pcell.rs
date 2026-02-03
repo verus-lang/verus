@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 
 use super::super::prelude::*;
-use super::pcell_maybe_uninit::*;
 use super::CellId;
+use super::pcell_maybe_uninit::*;
 use core::cell::UnsafeCell;
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
@@ -21,7 +21,7 @@ as a basis for verifying many other interior-mutable types
 documentation for the basics.
 For `PCell`, the associated type of the permission token is [`PointsTo`].
 
-If you want a cell that can be optionally initialized, see [`PCellUn`].
+If you want a cell that can be optionally initialized, see [`pcell_maybe_uninit::PCell`](super::pcell_maybe_uninit::PCell).
 
 ### Differences from `PPtr`.
 
@@ -38,8 +38,8 @@ and has no runtime representation.
 
 ### Differences from [`UnsafeCell`](core::cell::UnsafeCell).
 
-Those inspired by `UnsafeCell`, `PCell` is not quite the same thing.
-These differences include:
+Though inspired by `UnsafeCell`, `PCell` is not quite the same thing.
+The differences include:
 
  * `PCell<T>` **does not call the destructor of `T` when it goes out of scope**.
    Technically speaking, `PCell<T>` is actually implemented via
@@ -51,7 +51,31 @@ These differences include:
    Instead, it is `PointsTo<T>` where the marker traits matter.
    (It doesn't matter if you move the bytes to another thread if you can't access them.)
 
-### Example (TODO)
+### Example
+
+```rust,ignore
+use vstd::prelude::*;
+use vstd::cell::pcell as pc;
+
+verus! {
+
+fn example_pcell() {
+    let (cell, Tracked(mut points_to)) = pc::PCell::new(5);
+
+    assert(points_to.id() == cell.id());
+    assert(points_to.value() == 5);
+
+    cell.write(Tracked(&mut points_to), 17);
+
+    assert(points_to.id() == cell.id());
+    assert(points_to.value() == 17);
+
+    let x = cell.into_inner(Tracked(points_to));
+    assert(x == 17);
+}
+
+} // verus!
+```
 */
 
 #[verifier::external_body]

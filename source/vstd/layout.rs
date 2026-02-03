@@ -391,7 +391,6 @@ pub broadcast group group_layout_axioms {
     layout_of_str,
     layout_of_maybe_uninit,
     group_align_properties,
->>>>>>> 1867b48fc (vstd cell restructuring)
 }
 
 } // verus!

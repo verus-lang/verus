@@ -3,8 +3,8 @@
 use super::super::invariant::*;
 use super::super::predicate::*;
 use super::super::prelude::*;
-use super::pcell::*;
 use super::CellId;
+use super::pcell::*;
 
 use verus as verus_;
 verus_! {
