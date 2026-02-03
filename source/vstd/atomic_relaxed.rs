@@ -75,8 +75,8 @@ impl<T> Acquire<T> {
     }
 }
 
-unsafe impl<T> IsObjective for Release<T> {}
-unsafe impl<T> IsObjective for Acquire<T> {}
+unsafe impl<T> Objective for Release<T> {}
+unsafe impl<T> Objective for Acquire<T> {}
 
 #[verifier::external_body]
 // HOARE-REL-FENCE
@@ -141,38 +141,32 @@ pub proof fn ghost_acqmod<P: PCM>(tracked rsrc: Resource<P>) -> (tracked out: Ac
     acq_fence_intro(rsrc)
 }
 
-// Here is an attempt to use Objective to encode the ghost + relmod/acqmod rules:
-
-// Hmm, this isn't quite the same as relmod_ghost -- there is an extra Objective in the input.
-// This is required by the signature of Objective::from_release, which models RELMOD-OBJMOD-ELIM.
-// To remove this Objective, we could use a rule like: from_release<T: IsObjective>(tracked r: Release<T>) -> (tracked out: T)
-// But would this rule be sound???
-pub proof fn relmod_ghost2<P: PCM>(tracked r: Release<Objective<Resource<P>>>) -> (tracked out: Resource<P>)
+pub proof fn relmod_ghost2<P: PCM>(tracked r: Release<Resource<P>>) -> (tracked out: Resource<P>)
     ensures
-        r.value().value() == out
+        r.value() == out
 {
-    Objective::from_release(r).to_inner()
+    objective_from_release(r)
 }
 
-pub proof fn acqmod_ghost2<P: PCM>(tracked r: Acquire<Objective<Resource<P>>>) -> (tracked out: Resource<P>)
+pub proof fn acqmod_ghost2<P: PCM>(tracked r: Acquire<Resource<P>>) -> (tracked out: Resource<P>)
     ensures
-        r.value().value() == out
+        r.value() == out
 {
-    Objective::from_acquire(r).to_inner()
+    objective_from_acquire(r)
 }
 
 pub proof fn ghost_relmod2<P: PCM>(tracked r: Resource<P>) -> (tracked out: Release<Resource<P>>)
     ensures
         r == out.value()
 {
-    Objective::new(r).as_release()
+    objective_as_release(r)
 }
 
 pub proof fn ghost_acqmod2<P: PCM>(tracked r: Resource<P>) -> (tracked out: Acquire<Resource<P>>)
     ensures
         r == out.value()
 {
-    Objective::new(r).as_acquire()
+    objective_as_acquire(r)
 }
 
 /// Release modality rules
@@ -289,45 +283,23 @@ pub axiom fn relmod_or<P, Q>(tracked rsrc: Release<Or<P, Q>>) -> (tracked out: O
         },
     ;
 
-// Using IsObjective, I think the following approach could be used to derive relmod_and and relmod_or on any struct and enum, respectively.
-// - I'm assuming that structs encode /\ and enums encode \/
-// - relmod_or2 isn't an exact encoding, but I think that it would "get the job done" if you had an enum and essentially needed to destruct it
-// - The inputs have an extra Objective that is not present in the original rules. See note above on relmod_ghost2
-// - It's possible that we could write a proc macro that could automatically implement derived rules such as these ones on any user-defined types.
-//   This would be convenient if we find ourselves using these rules a lot.
-pub struct MyAnd<T1: IsObjective, T2: IsObjective> {
-    pub t1: T1,
-    pub t2: T2
-}
-
-// See note below -- it would be preferable to automatically derive IsObjective on a struct/enum where all of its fields impl IsObjective.
-unsafe impl<T1: IsObjective, T2: IsObjective> IsObjective for MyAnd<T1, T2> {}
-
-pub proof fn relmod_and2<T1: IsObjective, T2: IsObjective>(tracked r: Release<Objective<MyAnd<T1, T2>>>) -> (tracked out: (Release<T1>, Release<T2>))
-    ensures
-        out.0.value() == r.value().value().t1,
-        out.1.value() == r.value().value().t2
-{
-    let tracked and = Objective::from_release(r).to_inner();
-    (Objective::new(and.t1).as_release(), Objective::new(and.t2).as_release())
-}
-
-pub enum MyOr<T1: IsObjective, T2: IsObjective> {
+pub enum MyOr<T1: Objective, T2: Objective> {
     Left(T1),
     Right(T2)
 }
-unsafe impl<T1: IsObjective, T2: IsObjective> IsObjective for MyOr<T1, T2> {}
+unsafe impl<T1: Objective, T2: Objective> Objective for MyOr<T1, T2> {}
 
-pub proof fn relmod_or2<T1: IsObjective, T2: IsObjective>(tracked r: Release<Objective<MyOr<T1, T2>>>) -> (tracked out: (Option<Release<T1>>, Option<Release<T2>>))
+// weaker version (T1 and T2 must be objective)
+pub proof fn relmod_or2<T1: Objective, T2: Objective>(tracked r: Release<MyOr<T1, T2>>) -> (tracked out: (Option<Release<T1>>, Option<Release<T2>>))
     ensures
-        match r.value().value() {
+        match r.value() {
             MyOr::Left(t1) => out.0.is_some() && out.0.unwrap().value() == t1 && out.1 == None::<Release<T2>>,
             MyOr::Right(t2) => out.1.is_some() && out.1.unwrap().value() == t2 && out.0 == None::<Release<T1>>
         }
 {
-    match Objective::from_release(r).to_inner() {
-        MyOr::Left(t1) => (Some(Objective::new(t1).as_release()), None),
-        MyOr::Right(t2) => (None, Some(Objective::new(t2).as_release()))
+    match objective_from_release(r) {
+        MyOr::Left(t1) => (Some(objective_as_release(t1)), None),
+        MyOr::Right(t2) => (None, Some(objective_as_release(t2)))
     }
 }
 
@@ -405,16 +377,16 @@ pub axiom fn acqmod_or<P, Q>(tracked rsrc: Acquire<Or<P, Q>>) -> (tracked out: O
     ;
 
 // ACQMOD-OR (weaker version)
-pub proof fn acqmod_or2<T1: IsObjective, T2: IsObjective>(tracked r: Acquire<Objective<MyOr<T1, T2>>>) -> (tracked out: (Option<Acquire<T1>>, Option<Acquire<T2>>))
+pub proof fn acqmod_or2<T1: Objective, T2: Objective>(tracked r: Acquire<MyOr<T1, T2>>) -> (tracked out: (Option<Acquire<T1>>, Option<Acquire<T2>>))
     ensures
-        match r.value().value() {
+        match r.value() {
             MyOr::Left(t1) => out.0.is_some() && out.0.unwrap().value() == t1 && out.1 == None::<Acquire<T2>>,
             MyOr::Right(t2) => out.1.is_some() && out.1.unwrap().value() == t2 && out.0 == None::<Acquire<T1>>
         }
 {
-    match Objective::from_acquire(r).to_inner() {
-        MyOr::Left(t1) => (Some(Objective::new(t1).as_acquire()), None),
-        MyOr::Right(t2) => (None, Some(Objective::new(t2).as_acquire()))
+    match objective_from_acquire(r) {
+        MyOr::Left(t1) => (Some(objective_as_acquire(t1)), None),
+        MyOr::Right(t2) => (None, Some(objective_as_acquire(t2)))
     }
 }
 
@@ -447,61 +419,31 @@ pub axiom fn acqmod_wand<P, Q>(
     				forall|p : Acquire<P>, q : Acquire<Q>| (#[trigger] out.ensures((p,), q)) ==>  (#[trigger] rsrc.value().ensures((p.value(),), q.value())),
         ;
 
-// Objective modality
+// Objective
 /// This trait should be implemented on types P such that objective(P) holds
-pub unsafe trait IsObjective {
-
-}
-
-/// Represents objective modality: <obj>(P)
-pub struct Objective<T> {
-    v: T,
-}
+pub unsafe trait Objective {}
 
 // GHOST-OBJ 
-// todo: what other ghost state can be marked IsObjective?
-unsafe impl<P: PCM> IsObjective for Resource<P> {}
+// todo: what other ghost state can be marked Objective?
+unsafe impl<P: PCM> Objective for Resource<P> {}
 
-// todo: for the rules below, I am not sure what their Verus equivalent is
-// PURE-OBJ - does "pure" equate to types that don't represent permissions? E.g. all of the primitives
-// TRUE-OBJ 
-// FALSE-OBJ
-// OBJ-BOPS - would /\ and \/ be modeled as structs/tuples and enums, respectively? what about =>, * and -* ?
-// OBJ-UOPS - don't know about these
-// OBJ-FORALL - how would you have a tracked forall?
-// OBJ-EXISTS
-
-// implement IsObjective on primitive types and tuples of IsObjective types
-// todo: could we support automatically implementing IsObjective on structs and enums whose fields all satisfy IsObjective?
+// implement Objective on primitive types -- these are trivially objective
 macro_rules! declare_primitive_is_objective {
     ($($a:ty),*) => {
         verus! {
-            $(unsafe impl IsObjective for $a {})*
+            $(unsafe impl Objective for $a {})*
         }
     }
 }
 
 declare_primitive_is_objective!(bool, char, (), u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, int, nat, str);
 
-macro_rules! declare_generic_primitive_is_objective {
-    ($($t: ident $a:ty),*) => {
-        verus! {
-            $(unsafe impl<$t: IsObjective> IsObjective for $a {})*
-        }
-    }
-}
-
-// todo: verifier currently does not support &mut T
-declare_generic_primitive_is_objective!(T [T], T &T, T *mut T, T *const T);
-
-unsafe impl<T: IsObjective, const N: usize> IsObjective for [T; N] {
-
-}
-
+// implement Objective on tuples of Objective types
+// todo: could we support automatically implementing Objective on structs and enums whose fields are all Objective? (but where would we need this though?)
 macro_rules! declare_tuple_is_objective {
     ($($($a:ident)*),*) => {
         verus! {
-            $(unsafe impl<$($a: IsObjective, )*> IsObjective for ($($a, )*) {})*
+            $(unsafe impl<$($a: Objective, )*> Objective for ($($a, )*) {})*
         }
     }
 }
@@ -509,76 +451,34 @@ macro_rules! declare_tuple_is_objective {
 // could declare for longer tuples as well
 declare_tuple_is_objective!(T0, T0 T1, T0 T1 T2, T0 T1 T2 T3);
 
-// OBJ-OBJ
-unsafe impl<T> IsObjective for Objective<T> {
+// note: the fact that tuples are Objective (above) suffices for OBJMOD-SEP
 
-}
+// OBJ-BOPS with wand
+unsafe impl<'a, P: Objective, Q: Objective, F: ProofFnOnce> Objective for proof_fn<'a, F>(tracked p: P) -> tracked Q {}
 
-impl<T: IsObjective> Objective<T> {
-    // OBJMOD-INTRO
-    pub axiom fn new(tracked v: T) -> (tracked obj: Objective<T>)
-        ensures
-            obj.value() == v,
-    ;
-}
+// OBJMOD-RELMOD-INTRO
+pub axiom fn objective_as_release<T: Objective>(tracked v: T) -> (tracked out: Release<T>)
+    ensures
+        v == out.value(),
+;
 
-impl<T> Objective<T> {
-    pub closed spec fn value(&self) -> T {
-        self.v
-    }
+// RELMOD-OBJMOD-ELIM
+pub axiom fn objective_from_release<T: Objective>(tracked r: Release<T>) -> (tracked out: T)
+    ensures
+        r.value() == out,
+;
 
-    // OBJMOD-ELIM
-    pub axiom fn to_inner(tracked self) -> (tracked v: T)
-        ensures
-            self.value() == v,
-    ;
+// OBJMOD-ACQMOD-INTRO
+pub axiom fn objective_as_acquire<T: Objective>(tracked v: T) -> (tracked out: Acquire<T>)
+    ensures
+        v == out.value(),
+;
 
-    // OBJMOD-MONO - how to represent P |- Q ?
-    // OBJMOD-AND
-    // OBJMOD-OR
-    // OBJMOD-FORALL - how would you have something of type Objective<forall x ...> ?
-    // OBJMOD-EXIST - how would you have something of type Objective<exists x ...> ?
-
-    // OBJMOD-SEP -|
-    pub axiom fn join<U>(tracked self, tracked u: Objective<U>) -> (tracked out: Objective<(T, U)>)
-        ensures
-            self.value() == out.value().0,
-            u.value() == out.value().1,
-    ;
-
-    // OBJMOD-RELMOD-INTRO
-    pub axiom fn as_release(tracked self) -> (tracked out: Release<T>)
-        ensures
-            self.value() == out.value(),
-    ;
-
-    // RELMOD-OBJMOD-ELIM
-    pub axiom fn from_release(tracked r: Release<Objective<T>>) -> (tracked out: Self)
-        ensures
-            r.value() == out,
-    ;
-
-    // OBJMOD-ACQMOD-INTRO
-    pub axiom fn as_acquire(tracked self) -> (tracked out: Acquire<T>)
-        ensures
-            self.value() == out.value(),
-    ;
-
-    // ACQMOD-OBJMOD-ELIM
-    pub axiom fn from_acquire(tracked a: Acquire<Objective<T>>) -> (tracked out: Self)
-        ensures
-            a.value() == out,
-    ;
-}
-
-impl<T, U> Objective<(T, U)> {
-    // OBJMOD-SEP |-
-    pub axiom fn split(tracked self) -> (tracked out: (Objective<T>, Objective<U>))
-        ensures
-            self.value().0 == out.0.value(),
-            self.value().1 == out.1.value(),
-    ;
-}
+// ACQMOD-OBJMOD-ELIM
+pub axiom fn objective_from_acquire<T: Objective>(tracked a: Acquire<T>) -> (tracked out: T)
+    ensures
+        a.value() == out,
+;
 
 /// This trait should be implemented on types P such that timeless(P) holds
 pub unsafe trait IsTimeless {
@@ -597,7 +497,7 @@ pub struct ViewSeen {
 }
 
 // How to implement a trait for a specific construction of a struct? 
-// unsafe impl IsObjective for ViewSeen { View::empty() } {
+// unsafe impl Objective for ViewSeen { View::empty() } {
 
 // }
 
