@@ -6,6 +6,8 @@ use super::pcell_maybe_uninit::*;
 use core::cell::UnsafeCell;
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
+use core::intrinsics;
+use core::intrinsics::AtomicOrdering as AO;
 
 use verus as verus_;
 verus_! {
@@ -212,6 +214,55 @@ impl<T: ?Sized> PCell<T> {
         no_unwind
     {
         *self.borrow(Tracked(perm))
+    }
+}
+
+// atomics
+
+impl PCell<u32> {
+    #[inline(always)]
+    #[verifier::atomic]
+    #[verifier::external_body]
+    fn atomic_u32_and_seq_cst(&self, arg: u32, Tracked(perm): Tracked<&mut PointsTo<u32>>)
+        requires
+            self.id() == old(perm).id(),
+        ensures
+            perm.id() == old(perm).id(),
+            perm.value() == old(perm).value() & arg,
+    {
+        unsafe {
+            intrinsics::atomic_and::<u32, u32, { AO::SeqCst }>((*self.ucell).get(), arg);
+        }
+    }
+
+    #[inline(always)]
+    #[verifier::atomic]
+    #[verifier::external_body]
+    fn atomic_u32_or_seq_cst(&self, arg: u32, Tracked(perm): Tracked<&mut PointsTo<u32>>)
+        requires
+            self.id() == old(perm).id(),
+        ensures
+            perm.id() == old(perm).id(),
+            perm.value() == old(perm).value() | arg,
+    {
+        unsafe {
+            intrinsics::atomic_or::<u32, u32, { AO::SeqCst }>((*self.ucell).get(), arg);
+        }
+    }
+
+    #[inline(always)]
+    #[verifier::atomic]
+    #[verifier::external_body]
+    fn atomic_u32_xor_seq_cst(&self, arg: u32, Tracked(perm): Tracked<&mut PointsTo<u32>>)
+        requires
+            self.id() == old(perm).id(),
+        ensures
+            perm.id() == old(perm).id(),
+            perm.value() == old(perm).value() ^ arg,
+    {
+        unsafe {
+            intrinsics::atomic_xor::<u32, u32, { AO::SeqCst }>((*self.ucell).get(), arg);
+        }
     }
 }
 
