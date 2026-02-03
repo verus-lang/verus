@@ -8,7 +8,7 @@ verus! {
 // Location = CellId
 // Timestamp = nat
 /// Represents "simple" view
-pub struct View(pub Map<CellId, nat>);
+pub ghost struct View(pub Map<CellId, nat>);
 
 impl View {
     /// True when `other` is contained in this View
@@ -21,7 +21,7 @@ impl View {
     }
 }
 
-pub struct History<T>(pub Map<nat, (T, Option<View>)>);
+pub ghost struct History<T>(pub Map<nat, (T, Option<View>)>);
 
 impl<T> History<T> {
     /// True when `other` is contained in this History
@@ -68,7 +68,7 @@ impl<T> History<T> {
     }
 }
 
-pub struct HistorySingleton<T> {
+pub ghost struct HistorySingleton<T> {
     timestamp: nat,
     value: T,
     view: Option<View>,
@@ -96,7 +96,7 @@ impl<T> HistorySingleton<T> {
 }
 
 // Fence modalities
-pub struct Release<T> {
+pub tracked struct Release<T> {
     v: T,
 }
 
@@ -106,7 +106,7 @@ impl<T> Release<T> {
     }
 }
 
-pub struct Acquire<T> {
+pub tracked struct Acquire<T> {
     v: T,
 }
 
@@ -162,6 +162,7 @@ pub proof fn relmod_ghost<P: PCM>(tracked rsrc: Release<Resource<P>>) -> (tracke
 }
 
 // ACQMOD-GHOST
+// todo - switch to objectivity version
 pub axiom fn acqmod_ghost<P: PCM>(tracked rsrc: Acquire<Resource<P>>) -> (tracked out: Resource<P>)
     ensures
         out == rsrc.value(),
@@ -182,6 +183,7 @@ pub proof fn ghost_acqmod<P: PCM>(tracked rsrc: Resource<P>) -> (tracked out: Ac
     acq_fence_intro(rsrc)
 }
 
+// todo - single encoding of these rules
 pub proof fn relmod_ghost2<P: PCM>(tracked r: Release<Resource<P>>) -> (tracked out: Resource<P>)
     ensures
         r.value() == out
@@ -212,137 +214,11 @@ pub proof fn ghost_acqmod2<P: PCM>(tracked r: Resource<P>) -> (tracked out: Acqu
 
 /// Release modality rules
 
-// ATTEMPT 1: encode the fact that T1 |- T2 via a proof function that trnasform ownership of T1 into ownership of T2
-// pub proof fn relmod_mono<T1, T2>(tracked rsrc : Release<T1>, to : T2, tracked f : proof_fn(tracked t1 : T1) -> tracked T2) -> (tracked out : Release<T2>)
-//     requires
-//         f.requires((rsrc.v,)),
-//         forall|rsrc2: T2| f.ensures((rsrc.v,), rsrc2) ==>  rsrc2 == to,
-//     ensures
-//         out.v == to,
-// {
-//     let tracked v2 = f(rsrc.v);
-//     Release { v: v2 }
-// }
-// ATTEMPT 2: encode the fact that T1 |- T2 via a trait. Is this the correct trait definition?
-pub trait Entails<T1, T2> {
-    proof fn entails(tracked t1: T1, t2: T2) -> (tracked out: T2)
-        ensures
-            out == t2,
-    ;
-}
-
-// RELMOD-MONO
-pub proof fn relmod_mono<T1, T2, E: Entails<T1, T2>>(
-    tracked rsrc: Release<T1>,
-    to: T2,
-) -> (tracked out: Release<T2>)
-    ensures
-        out.value() == to,
-{
-    let tracked v = rel_fence_elim(rsrc);
-    let tracked v2 = E::entails(v, to);
-    Release { v: v2 }
-}
+// skip - RELMOD-MONO
 
 // NOTE skipping RELMOD-PURE (what does owning a pure proposition mean in Verus?)
-// pub proof fn relmod_pure<T>(tracked t : Release<T>) -> (out: T)
-//     ensures out == rsrc.v,
-// {
-//     rel_fence_elim(rsrc)
-// }
-// NOTE I'm not sure if it's very important to have relmod_and, but in any case, below are two attempts at encoding it.
-// ATTEMPT 1: Encoding P /\ Q with two separate shared references
-// I tried here to return references to P and Q to indicate that there could be sharing, but I'm not sure how to relate rsrc (which need to be P /\ Q) to the result.
-// pub axiom fn relmod_and<'a, T>(tracked rsrc: &'a Release<T>, P : T, Q : T) -> (tracked out: (&'a Release<P>, &'a Release<Q>))
-//     requires
-//         rsrc.v = ???
-//     ensures
-//         out.0.v == P,
-//         out.1.v == Q,
-//     ;
-// ATTEMPT 2: Encoding the /\ operator explicitly as a struct, where basically owning And<T, T1, T2> means owning resource T and having proofs to get T1 from T and to get T2 from T.
-// // For some reason the compiler rejects the below struct:
-// // error[E0106]: missing lifetime specifier
-// //    --> vstd/atomic_relaxed.rs:144:15
-// //     |
-// // 144 |     pub fst : proof_fn(tracked t : T) -> tracked T1,
-// //     |               ^ expected named lifetime parameter
-// //     |
-// // help: consider introducing a named lifetime parameter
-// //     |
-// // 142 ~ pub struct And<'a, T1, T2, T> {
-// // 143 |     pub v : Tracked<T>,
-// // 144 ~     pub fst : p'a, roof_fn(tracked t : T) -> tracked T1,
-// //     |
-// pub struct and<T1, T2, T> {
-//     pub v : tracked<T>,
-//     pub fst : proof_fn(tracked t : T) -> tracked T1,
-//     pub snd : proof_fn(tracked t : T) -> tracked T2,
-// }
-// pub axiom fn relmod_and<'a, T, P, Q>(tracked rsrc: Release<And<T,P,Q>>, p : P, q : Q) -> (tracked out: (Release<P>, &'a Release<Q>))
-//     requires
-//         rsrc.v.fst.requires((rsrc.v.v,)),
-//         forall|p2: P| rsrc.v.fst.ensures((rsrc.v.v,), p2) ==> p2 == p,
-//         rsrc.v.snd.requires((rsrc.v.v,)),
-//         forall|q2: Q| rsrc.v.snd.ensures((rsrc.v.v,), q2) ==> q2 == q,
-//     ensures
-//         out.0.v == p,
-//         out.1.v == q,
-//     ;
-// ATTEMPT 3: Encoding the /\ operator explicitly as a trait. Basically owning E where E implements And<T1, T2> means owning resource T and having proofs to get T1 from T and to get T2 from T.
-// pub trait And<T1, T2> {
-//     proof fn fst(tracked self, to: T1) -> (tracked out: T1)
-//         ensures
-//             out == to,
-//         ;
-//     proof fn snd(tracked self, to: T2) -> (tracked out: T2)
-//         ensures
-//             out == to,
-//         ;
-// }
-// pub axiom fn relmod_and<'a, P, Q, E : And<P, Q>>(tracked rsrc: Release<E>, p : P, q : Q) -> (tracked out: (&'a Release<P>, &'a Release<Q>))
-//     requires ???,
-//     ensures
-//         out.0.v == p,
-//         out.1.v == q,
-//     ;
-pub enum Or<T1, T2> {
-    Left(T1),
-    Right(T2),
-}
-
-// RELMOD-OR
-pub axiom fn relmod_or<P, Q>(tracked rsrc: Release<Or<P, Q>>) -> (tracked out: Or<
-    Release<P>,
-    Release<Q>,
->)
-    ensures
-        match (rsrc.value(), out) {
-            (Or::Left(p), Or::Left(p2)) => p == p2.value(),
-            (Or::Right(p), Or::Right(p2)) => p == p2.value(),
-            _ => false,
-        },
-    ;
-
-pub enum MyOr<T1: Objective, T2: Objective> {
-    Left(T1),
-    Right(T2)
-}
-unsafe impl<T1: Objective, T2: Objective> Objective for MyOr<T1, T2> {}
-
-// weaker version (T1 and T2 must be objective)
-pub proof fn relmod_or2<T1: Objective, T2: Objective>(tracked r: Release<MyOr<T1, T2>>) -> (tracked out: (Option<Release<T1>>, Option<Release<T2>>))
-    ensures
-        match r.value() {
-            MyOr::Left(t1) => out.0.is_some() && out.0.unwrap().value() == t1 && out.1 == None::<Release<T2>>,
-            MyOr::Right(t2) => out.1.is_some() && out.1.unwrap().value() == t2 && out.0 == None::<Release<T1>>
-        }
-{
-    match objective_from_release(r) {
-        MyOr::Left(t1) => (Some(objective_as_release(t1)), None),
-        MyOr::Right(t2) => (None, Some(objective_as_release(t2)))
-    }
-}
+// skip - RELMOD-AND
+// skip - RELMOD-OR. in theory we could encode this rule for all enums, but maybe not necssasry
 
 // NOTE skipping RELMOD-FORALL and RELMOD-EXIST for now
 // RELMOD-SEP |-
@@ -365,6 +241,7 @@ pub axiom fn relmod_join<P, Q>(tracked rsrc: (Release<P>, Release<Q>)) -> (track
 
 // NOTE The specs seem weak
 // RELMOD-WAND
+// todo: take Release<P> as input, return a Release<Q>
 pub axiom fn relmod_wand<P, Q>(
     tracked rsrc: Release<proof_fn[Once](tracked p: P) -> tracked Q>,
 ) -> (tracked out: proof_fn[Once](tracked p: Release<P>) -> tracked Release<Q>)
@@ -375,61 +252,13 @@ pub axiom fn relmod_wand<P, Q>(
     				forall|p : Release<P>, q : Release<Q>| (#[trigger] out.ensures((p,), q)) ==>  (#[trigger] rsrc.value().ensures((p.value(),), q.value())),
         ;
 
-// XXX how does verus accept this definition? Shouldn't the field v be private?
-// pub axiom fn relmod_wand<P, Q>(
-//     tracked rsrc: Release<proof_fn[Once](tracked p: P) -> tracked Q>,
-// ) -> (tracked out: proof_fn[Once](tracked p: Release<P>) -> tracked Release<Q>)
-// {
-//     let tracked f = rsrc.v;
-//     let tracked f2 = proof_fn[Once] |tracked p: Release<P>| -> (tracked q: Release<Q>)
-//         requires
-//             f.requires((p.v,)),
-//         {
-//             let tracked v2 = f(p.v);
-//             Release { v: v2 }
-//         };
-//     f2
-// }
-
 // NOTE skipping RELMOD-LATER-INTRO and RELMOD-UNOPS
 
 /// Acquire modality rules
 
-// ACQMOD-MONO
-pub axiom fn acqmod_mono<T1, T2, E: Entails<T1, T2>>(
-    tracked rsrc: Acquire<T1>,
-    to: T2,
-) -> (tracked out: Acquire<T2>)
-    ensures
-        out.value() == to,
-    ;
+// skip - ACQMOD-MONO
 
-// ACQMOD-OR
-pub axiom fn acqmod_or<P, Q>(tracked rsrc: Acquire<Or<P, Q>>) -> (tracked out: Or<
-    Acquire<P>,
-    Acquire<Q>,
->)
-    ensures
-        match (rsrc.value(), out) {
-            (Or::Left(p), Or::Left(p2)) => p == p2.value(),
-            (Or::Right(p), Or::Right(p2)) => p == p2.value(),
-            _ => false,
-        },
-    ;
-
-// ACQMOD-OR (weaker version)
-pub proof fn acqmod_or2<T1: Objective, T2: Objective>(tracked r: Acquire<MyOr<T1, T2>>) -> (tracked out: (Option<Acquire<T1>>, Option<Acquire<T2>>))
-    ensures
-        match r.value() {
-            MyOr::Left(t1) => out.0.is_some() && out.0.unwrap().value() == t1 && out.1 == None::<Acquire<T2>>,
-            MyOr::Right(t2) => out.1.is_some() && out.1.unwrap().value() == t2 && out.0 == None::<Acquire<T1>>
-        }
-{
-    match objective_from_acquire(r) {
-        MyOr::Left(t1) => (Some(objective_as_acquire(t1)), None),
-        MyOr::Right(t2) => (None, Some(objective_as_acquire(t2)))
-    }
-}
+// skip - ACQMOD-OR
 
 // ACQMOD-SEP |-
 pub axiom fn acqmod_sep<P, Q>(tracked rsrc: Acquire<(P, Q)>) -> (tracked out: (
@@ -450,6 +279,7 @@ pub axiom fn acqmod_join<P, Q>(tracked rsrc: (Acquire<P>, Acquire<Q>)) -> (track
     ;
 
 // ACQMOD-WAND
+// todo: update signature, same as above
 pub axiom fn acqmod_wand<P, Q>(
     tracked rsrc: Acquire<proof_fn[Once](tracked p: P) -> tracked Q>,
 ) -> (tracked out: proof_fn[Once](tracked p: Acquire<P>) -> tracked Acquire<Q>)
@@ -494,7 +324,7 @@ declare_tuple_is_objective!(T0, T0 T1, T0 T1 T2, T0 T1 T2 T3);
 
 // note: the fact that tuples are Objective (above) suffices for OBJMOD-SEP
 
-// OBJ-BOPS with wand
+// OBJ with wand update
 unsafe impl<'a, P: Objective, Q: Objective, F: ProofFnOnce> Objective for proof_fn<'a, F>(tracked p: P) -> tracked Q {}
 
 // OBJMOD-RELMOD-INTRO
@@ -521,34 +351,26 @@ pub axiom fn objective_from_acquire<T: Objective>(tracked a: Acquire<T>) -> (tra
         a.value() == out,
 ;
 
-/// This trait should be implemented on types P such that timeless(P) holds
-pub unsafe trait IsTimeless {
+// skip - timeless
 
-}
-
-// Do we have a trait for this or just use Copy?
-/// This trait should be implemented on types P such that persistent(P) holds
-pub unsafe trait IsPersistent {
-
-}
+// todo - for tracked types:
+// make the structs tracked
+// remove fields, just have uninterp spec fns instead
+// this makes it easier to e.g. impl Copy
+// todo - can such types be Send/Sync? Should either impl Send or !Send
 
 // Explicit views
 pub struct ViewSeen {
     view: View,
 }
 
+// todo - implement Objective on a new type representing ViewSeen { empty }
 // How to implement a trait for a specific construction of a struct? 
 // unsafe impl Objective for ViewSeen { View::empty() } {
 
 // }
 
-unsafe impl IsTimeless for ViewSeen {
-
-}
-
-unsafe impl IsPersistent for ViewSeen {
-
-}
+// todo - impl Copy on ViewSeen
 
 impl ViewSeen {
     pub closed spec fn view(&self) -> View {
@@ -671,7 +493,7 @@ impl<T> NonAtomicPointsTo<T> {
     }
 
     // NA-AT-SW
-    // todo: why are the view and the timestamp arbitrary? would it not be derived from the history in this NA points to?
+    // todo: why are the view and the timestamp arbitrary? would it not be derived from the history in this NA points to? Ans: yes you could
     // note: I put the timestamp in the output to avoid an existential quantifier
     pub axiom fn as_atomic_points_to(tracked self) -> (tracked out: (AtomicPointsTo<T>, SingleWriter<T>, ViewSeen, nat))
         ensures
@@ -696,7 +518,7 @@ impl<T> NonAtomicPointsTo<T> {
 
 // Atomic Points-To
 
-// AT-EXCL, AT-SW-EXCL, AT-SW-CAS-EXCL -- skip, this is taken care of by the borrow checker
+// AT-EXCL, AT-SW-EXCL, AT-SW-CAS-EXCL -- todo, could be useful in proof by contradiction. one arg is mut ref, other is shared ref
 // AT-CAS-CAS-FRAC-AGREE -- skip for now, we aren't modeling the timestamp
 // AT-CAS-SPLIT -- skip, taken care of by borrowing
 // AT-SN-UNFOLD -- skip for now, only relates to race detector info
@@ -738,6 +560,7 @@ impl<T> AtomicPointsTo<T> {
         requires
             self.loc() == sw.loc()
         ensures
+            self.mode() == AtomicMode::SingleWriter,
             self.hist() == sw.hist()
         ;
 
@@ -746,11 +569,12 @@ impl<T> AtomicPointsTo<T> {
         requires
             self.loc() == cas.loc()
         ensures
+            self.mode() != AtomicMode::Concurrent,
             self.hist().contains(cas.hist())
         ;
 
     // AT-SN-VALID
-    // there is probably an analogous rule for history sync?
+    // there is probably an analogous rule for history sync? --- you could derive a rule by downgrading a history sync to a history seen, then applying this rule
     pub axiom fn history_seen_agree(tracked &self, tracked sn: &HistorySeen<T>)
         requires
             self.loc() == sn.loc()
@@ -767,7 +591,7 @@ impl<T> AtomicPointsTo<T> {
         ;
 
     // AT-NA
-    // todo: I assumed that the NA points-to's history is exactly the last item in the atomic points-to's history
+    // todo: don't strengthen this rule
     pub axiom fn as_nonatomic_points_to(tracked self) -> (tracked out: (NonAtomicPointsTo<T>, ViewSeen, nat))
         ensures
             self.hist().is_max_timestamp(out.2),
@@ -882,6 +706,7 @@ impl<T> HistorySeen<T> {
         ;
 
     // AT-SN-MONO
+    // todo - use a mut reference here
     pub axiom fn restrict(tracked self, h: History<T>) -> (tracked out: Self)
         requires
             h.0.dom().len() > 0,
@@ -890,6 +715,8 @@ impl<T> HistorySeen<T> {
             self.loc() == out.loc(),
             out.hist() == h
         ;
+
+    // todo - add AT-SN-UNFOLD
 }
 
 pub struct HistorySync<T> {
@@ -920,6 +747,7 @@ impl<T> HistorySync<T> {
 
     // AT-SY-UNFOLD
     // note: skipped view-seen with the race detector info
+    // todo - actually this is not race detector info. need another view seen.
     pub axiom fn get_view_seen(tracked &self, timestamp: nat) -> (out: ViewSeen)
         requires
             self.hist().contains_timestamp(timestamp) && self.hist().has_view(timestamp)
@@ -997,7 +825,7 @@ impl<T> CompareAndSwap<T> {
     }
 
     // AT-CAS-JOIN
-    pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
+    pub axiom fn join(tracked &self, tracked other: &Self) -> (tracked out: &Self)
         requires
             self.loc() == other.loc()
         ensures
