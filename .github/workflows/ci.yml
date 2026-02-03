@@ -201,7 +201,7 @@ jobs:
 
       - name: download singular
         if: matrix.features == 'singular'
-        run: curl -fLO https://github.com/verus-lang/verus/releases/download/dependency/singular-4.3.2/Singular-4-3-2_M1.dmg
+        run: curl -fLO https://www.singular.uni-kl.de/ftp/pub/Math/Singular/UNIX/Singular-4-3-2_M1.dmg
 
       - name: build
         working-directory: ./source
