@@ -237,6 +237,11 @@ pub enum StmX {
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         /// Variables potentially modified by the loop body
         modified_vars: Arc<Vec<UniqueIdent>>,
+        /// Params (including closure params) that may be modified _in or before_ this loop body
+        /// but *excluding* their initial assignments.
+        /// This is the same set of variables for which we need to consider different values
+        /// for the 'current' and 'pre-state' value of the variable at the beginning of the loop.
+        pre_modified_params: Arc<Vec<(UniqueIdent, Typ)>>,
     },
     /// Atomic invariant opening for concurrent verification
     OpenInvariant(Stm),
@@ -265,7 +270,7 @@ pub enum LocalDeclKind {
     ChooseBinder,
     ClosureBinder,
     ExecClosureId,
-    ExecClosureParam,
+    ExecClosureParam { mutable: bool },
     ExecClosureRet,
     Nondeterministic,
     OpenInvariantInnerTemp,

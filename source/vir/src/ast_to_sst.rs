@@ -19,8 +19,9 @@ use crate::sst::{
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    sst_bitwidth, sst_conjoin, sst_equal, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
-    sst_unit_value, subst_exp, subst_pre_local_decl, subst_stm,
+    exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_int_literal, sst_le,
+    sst_lt, sst_mut_ref_current, sst_unit_value, stm_with_vars_at_pre_state, subst_exp,
+    subst_pre_local_decl, subst_stm,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
@@ -31,7 +32,7 @@ use air::scope_map::ScopeMap;
 use indexmap::IndexSet;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -51,6 +52,8 @@ pub(crate) enum PreLocalDeclKind {
     Immutable(Immutable),
     /// Param (mutability to be inferred)
     Param,
+    /// ExecClosureParam (mutability to be inferred)
+    ExecClosureParam,
     /// StmtLet (mutability to be inferred)
     StmtLet,
     /// Param, always consider mut
@@ -411,7 +414,6 @@ impl<'a> State<'a> {
         }
     }
 
-    // Erase unused unique ids from Vars and process inline functions
     pub(crate) fn finalize_exp(&self, _ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
         let exp = map_exp_visitor(exp, &mut |exp| match &exp.x {
             ExpX::Var(x) if self.rename_delayed.contains_key(x) => {
@@ -423,8 +425,6 @@ impl<'a> State<'a> {
         Ok(exp)
     }
 
-    // Erase unused unique ids from Vars, perform inlining, choose triggers,
-    // and perform splitting if necessary
     pub(crate) fn finalize_stm(&mut self, ctx: &Ctx, stm: &Stm) -> Result<Stm, VirErr> {
         let stm = map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, exp))?;
         map_stm_visitor(&stm, &mut |stm| {
@@ -525,6 +525,9 @@ impl PreLocalDeclKind {
                 }
             }
             PreLocalDeclKind::Param => Ok(LocalDeclKind::Param { mutable: mutbl.is_some() }),
+            PreLocalDeclKind::ExecClosureParam => {
+                Ok(LocalDeclKind::ExecClosureParam { mutable: mutbl.is_some() })
+            }
             PreLocalDeclKind::StmtLet => Ok(LocalDeclKind::StmtLet { mutable: mutbl.is_some() }),
             PreLocalDeclKind::MutParam => Ok(LocalDeclKind::Param { mutable: true }),
         }
@@ -2521,6 +2524,7 @@ pub(crate) fn expr_to_stm_opt(
                     // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
                     modified_vars: Arc::new(vec![]),
+                    pre_modified_params: Arc::new(vec![]),
                 },
             );
             if can_control_flow_reach_after_loop(expr) {
@@ -3295,11 +3299,14 @@ fn exec_closure_body_stms(
     let mut mask = Some(MaskSet::full(&body.span));
     std::mem::swap(&mut state.mask, &mut mask);
 
+    let mut param_set = HashSet::<VarIdent>::new();
+
     for param in params.iter() {
         // TODO(new_mut_ref): can't assume closure params are immutable anymore
-        let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ExecClosureParam));
+        let kind = PreLocalDeclKind::ExecClosureParam;
         let uid = state.declare_var_stm(&param.name, &param.a, kind, false);
-        typ_inv_vars.push((uid, param.a.clone()));
+        typ_inv_vars.push((uid.clone(), param.a.clone()));
+        param_set.insert(uid);
     }
 
     // Assert all the requires
@@ -3323,6 +3330,9 @@ fn exec_closure_body_stms(
         ens_checks.extend(check_stms);
         ens_exps.push(exp);
     }
+
+    let ens_exps = ens_exps.iter().map(|e| exp_with_vars_at_pre_state(e, &param_set)).collect();
+    let ens_checks = ens_checks.iter().map(|s| stm_with_vars_at_pre_state(s, &param_set)).collect();
 
     // Set up the ClosureState so any 'return' statements inside know what to do
 
