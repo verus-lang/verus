@@ -341,13 +341,11 @@ test_verify_one_file! {
             let tracked mut token = Token::new();
             atomic_function() atomically |update| -> (au: FunAU)
                 invariant token.is_valid(),
-                ensures au.resolves(),
             {
                 let tracked res: Result<Token, Token> = update(token);
                 match res {
                     Ok(t) => {
                         assert(res.branch() == UpdateControlFlow::Commit);
-                        assert(au.resolves());
                         break;
                     }
 

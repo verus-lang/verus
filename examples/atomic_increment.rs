@@ -52,6 +52,7 @@ pub fn increment_good(var: &PAtomicU64)
             }
         },
         outer_mask any,
+        inner_mask none,
     },
 {
     let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
@@ -134,7 +135,28 @@ fn call_increment_good() {
     };
 
     let tracked perm = inv.into_inner();
-    assert(perm@.patomic == var.id());
+    assert(perm.is_for(var));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+fn call_increment_good_sync() {
+    let (var, Tracked(mut perm)) = PAtomicU64::new(6);
+
+    increment_good(&var) atomically |update|
+        invariant
+            perm.is_for(var),
+            perm.points_to(6),
+    {
+        match update(perm) {
+            Err((p, _)) => perm = p,
+            Ok(p) => { perm = p; break }
+        }
+    };
+
+    assert(perm.is_for(var));
+    assert(perm.points_to(7));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

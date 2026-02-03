@@ -2900,8 +2900,6 @@ pub(crate) fn expr_to_stm_opt(
             //
             // () = $body;
             //
-            // assert(resolves(au));
-            //
             // au
             // ```
 
@@ -3014,29 +3012,6 @@ pub(crate) fn expr_to_stm_opt(
             let TypX::Datatype(Dt::Tuple(0), ..) = value.typ.as_ref() else {
                 panic!("malformed atomic function call; body does not return unit");
             };
-
-            // assert atomic update resolves
-
-            if !state.checking_recommends(ctx) {
-                let call_resolves = ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::resolves"),
-                    au_typ_args.clone(),
-                    Arc::new(vec![au_var_exp.clone()]),
-                );
-
-                let call_resolves =
-                    SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_resolves);
-                let err = error(
-                    &expr.span,
-                    "atomic function call might not allow atomic update to resolve",
-                )
-                .help("make sure to `break` this loop only if the update function succeeded");
-
-                stms.push(Spanned::new(
-                    expr.span.clone(),
-                    StmX::Assert(state.next_assert_id(), Some(err), call_resolves),
-                ));
-            }
 
             // return atomic update
 
