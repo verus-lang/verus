@@ -11,13 +11,9 @@ verus! {
 pub struct View(pub Map<CellId, nat>);
 
 impl View {
-    // todo: we could make this opaque if unfolding this definition is not required very often
-    pub open spec fn contains(&self, other: Self) -> bool {
-        forall|l| #[trigger]
-            self.0.dom().contains(l) ==> {
-                &&& other.0.dom().contains(l)
-                &&& self.0[l] <= other.0[l]
-            }
+    /// True when `other` is contained in this View
+    pub open spec fn contains(self, other: Self) -> bool {
+        other.0.submap_of(self.0)
     }
 
     pub open spec fn empty() -> Self {
@@ -26,6 +22,51 @@ impl View {
 }
 
 pub struct History<T>(pub Map<nat, (T, Option<View>)>);
+
+impl<T> History<T> {
+    /// True when `other` is contained in this History
+    pub open spec fn contains(self, other: Self) -> bool {
+        other.0.submap_of(self.0)
+    }
+
+    pub open spec fn join(self, other: Self) -> History<T> 
+        recommends
+            self.contains(other) || other.contains(self)
+    {
+        History(self.0.union_prefer_right(other.0))
+    }
+
+    pub open spec fn contains_timestamp(&self, timestamp: nat) -> bool {
+        self.0.dom().contains(timestamp)
+    }
+
+    pub open spec fn is_max_timestamp(&self, timestamp: nat) -> bool
+    {
+        &&& self.contains_timestamp(timestamp)
+        &&& forall |t| #[trigger] self.contains_timestamp(t) ==> t <= timestamp
+    }
+
+    pub open spec fn has_view(&self, timestamp: nat) -> bool 
+        recommends
+            self.contains_timestamp(timestamp)
+    {
+        self.0[timestamp].1.is_some()
+    }
+
+    pub open spec fn view(&self, timestamp: nat) -> View
+        recommends
+            self.has_view(timestamp)
+    {
+        self.0[timestamp].1.unwrap()
+    }
+
+    pub open spec fn value(&self, timestamp: nat) -> T
+        recommends
+            self.contains_timestamp(timestamp)
+    {
+        self.0[timestamp].0
+    }
+}
 
 pub struct HistorySingleton<T> {
     timestamp: nat,
@@ -590,8 +631,6 @@ impl<T> PrimitiveNonAtomicPointsTo<T> {
     }
 }
 
-// invariant:
-// views match
 pub struct NonAtomicPointsTo<T> {
     prim: PrimitiveNonAtomicPointsTo<T>,
     seen: Option<ViewSeen>,
@@ -630,9 +669,39 @@ impl<T> NonAtomicPointsTo<T> {
     {
         self.seen.unwrap().view()
     }
+
+    // NA-AT-SW
+    // todo: why are the view and the timestamp arbitrary? would it not be derived from the history in this NA points to?
+    // note: I put the timestamp in the output to avoid an existential quantifier
+    pub axiom fn as_atomic_points_to(tracked self) -> (tracked out: (AtomicPointsTo<T>, SingleWriter<T>, ViewSeen, nat))
+        ensures
+            out.0.loc() == self.loc(),
+            out.0.mode() == AtomicMode::SingleWriter,
+            out.1.loc() == self.loc(),
+            out.0.hist() == out.1.hist(),
+            out.0.hist().0 == map![out.3 => (self.value(), Some(out.2.view()))]
+        ;
+
+    // NA-AT-SW-VIEW
+    pub axiom fn as_atomic_points_to_with_rsrc<P>(tracked self, tracked rsrc: P) -> (tracked out: (ViewAt<(P, AtomicPointsTo<T>, SingleWriter<T>)>, ViewSeen, nat))
+        ensures
+            out.0.value().0 == rsrc,
+            out.0.value().1.loc() == self.loc(),
+            out.0.value().1.mode() == AtomicMode::SingleWriter,
+            out.0.value().2.loc() == self.loc(),
+            out.0.value().1.hist() == out.0.value().2.hist(),
+            out.0.value().1.hist().0 == map![out.2 => (self.value(), Some(out.1.view()))]
+        ;
 }
 
 // Atomic Points-To
+
+// AT-EXCL, AT-SW-EXCL, AT-SW-CAS-EXCL -- skip, this is taken care of by the borrow checker
+// AT-CAS-CAS-FRAC-AGREE -- skip for now, we aren't modeling the timestamp
+// AT-CAS-SPLIT -- skip, taken care of by borrowing
+// AT-SN-UNFOLD -- skip for now, only relates to race detector info
+// todo: make HistorySeen and HistorySync persistent and timeless
+
 pub enum AtomicMode {
     Concurrent,
     SingleWriter,
@@ -640,7 +709,6 @@ pub enum AtomicMode {
 }
 
 // note: skipped ghost name, single-writer timestamp
-// todo: type invariant that history is non empty
 pub struct AtomicPointsTo<T> {
     mode: AtomicMode,
     loc: CellId,
@@ -664,6 +732,124 @@ impl<T> AtomicPointsTo<T> {
     pub closed spec fn hist(&self) -> History<T> {
         self.hist
     }
+
+    // AT-SW-AGREE
+    pub axiom fn single_writer_agree(tracked &self, tracked sw: &SingleWriter<T>)
+        requires
+            self.loc() == sw.loc()
+        ensures
+            self.hist() == sw.hist()
+        ;
+
+    // AT-CAS-FRAC-AGREE
+    pub axiom fn compare_and_swap_agree(tracked &self, tracked cas: &CompareAndSwap<T>)
+        requires
+            self.loc() == cas.loc()
+        ensures
+            self.hist().contains(cas.hist())
+        ;
+
+    // AT-SN-VALID
+    // there is probably an analogous rule for history sync?
+    pub axiom fn history_seen_agree(tracked &self, tracked sn: &HistorySeen<T>)
+        requires
+            self.loc() == sn.loc()
+        ensures
+            self.hist().contains(sn.hist())
+        ;
+
+    // AT-SY
+    // todo: I interpreted this rule as not consuming the AtomicPointsTo resource. I think this is the only way that this rule makes sense
+    pub axiom fn get_history_sync(tracked &self) -> (tracked out: HistorySync<T>)
+        ensures
+            self.loc() == out.loc(),
+            self.hist() == out.hist()
+        ;
+
+    // AT-NA
+    // todo: I assumed that the NA points-to's history is exactly the last item in the atomic points-to's history
+    pub axiom fn as_nonatomic_points_to(tracked self) -> (tracked out: (NonAtomicPointsTo<T>, ViewSeen, nat))
+        ensures
+            self.hist().is_max_timestamp(out.2),
+            out.0.loc() == self.loc(),
+            out.0.timestamp() == out.2,
+            out.0.value() == self.hist().value(out.2),
+            out.0.has_view() && self.hist().has_view(out.2), // todo: is this always valid to assume?
+            out.0.view() == self.hist().view(out.2),
+            out.1.view() == self.hist().view(out.2)
+        ;
+
+    // AT-CON-SW
+    pub axiom fn concurrent_as_single_writer(tracked self) -> (tracked out: (Self, SingleWriter<T>))
+        requires
+            self.mode() == AtomicMode::Concurrent,
+        ensures
+            out.0.mode() == AtomicMode::SingleWriter,
+            out.0.loc() == self.loc(),
+            out.0.hist() == self.hist(),
+            out.1.loc() == self.loc(),
+            out.1.hist() == self.hist()
+        ;
+
+    // AT-SW-CON
+    pub axiom fn single_writer_as_concurrent(tracked self, tracked sw: SingleWriter<T>) -> (tracked out: Self)
+        requires
+            self.mode() == AtomicMode::SingleWriter,
+            self.loc() == sw.loc(),
+        ensures
+            out.mode() == AtomicMode::Concurrent,
+            out.loc() == self.loc(),
+            out.hist() == self.hist()
+        ;
+
+    // AT-CAS-SW
+    pub axiom fn compare_and_swap_as_single_writer(tracked self, tracked cas: CompareAndSwap<T>) -> (tracked out: (Self, SingleWriter<T>))
+        requires
+            self.mode() == AtomicMode::CompareAndSwap,
+            self.loc() == cas.loc(),
+        ensures
+            out.0.mode() == AtomicMode::SingleWriter,
+            out.0.loc() == self.loc(),
+            out.0.hist() == self.hist(),
+            out.1.loc() == self.loc(),
+            out.1.hist() == self.hist()
+        ;
+
+    // AT-SW-CAS
+    pub axiom fn single_writer_as_compare_and_swap(tracked self, tracked sw: SingleWriter<T>) -> (tracked out: (Self, CompareAndSwap<T>))
+        requires
+            self.mode() == AtomicMode::SingleWriter,
+            self.loc() == sw.loc(),
+        ensures
+            out.0.mode() == AtomicMode::CompareAndSwap,
+            out.0.loc() == self.loc(),
+            out.0.hist() == self.hist(),
+            out.1.loc() == self.loc(),
+            out.1.hist() == self.hist()
+        ;
+    
+    // AT-CON-CAS |-
+    pub axiom fn concurrent_as_compare_and_swap(tracked self) -> (tracked out: (Self, CompareAndSwap<T>))
+        requires
+            self.mode() == AtomicMode::Concurrent,
+        ensures
+            out.0.mode() == AtomicMode::CompareAndSwap,
+            out.0.loc() == self.loc(),
+            out.0.hist() == self.hist(),
+            out.1.loc() == self.loc(),
+            out.1.hist() == self.hist()
+        ;
+
+    // AT-CON-CAS -|
+    pub axiom fn compare_and_swap_as_concurrent(tracked self, tracked cas: CompareAndSwap<T>) -> (tracked out: Self)
+        requires
+            self.mode() == AtomicMode::CompareAndSwap,
+            self.loc() == cas.loc(),
+        ensures
+            out.mode() == AtomicMode::Concurrent,
+            out.loc() == self.loc(),
+            out.hist() == self.hist()
+        ;
 }
 
 pub struct HistorySeen<T> {
@@ -672,6 +858,11 @@ pub struct HistorySeen<T> {
 }
 
 impl<T> HistorySeen<T> {
+    #[verifier::type_invariant]
+    pub closed spec fn inv(&self) -> bool {
+        self.hist.0.dom().len() > 0
+    }
+
     pub closed spec fn loc(&self) -> CellId {
         self.loc
     }
@@ -679,6 +870,26 @@ impl<T> HistorySeen<T> {
     pub closed spec fn hist(&self) -> History<T> {
         self.hist
     }
+
+    // AT-SN-JOIN
+    // todo: was there a typo in this rule?
+    pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
+        requires
+            self.loc() == other.loc()
+        ensures
+            out.loc() == self.loc(),
+            out.hist() == self.hist().join(other.hist())
+        ;
+
+    // AT-SN-MONO
+    pub axiom fn restrict(tracked self, h: History<T>) -> (tracked out: Self)
+        requires
+            h.0.dom().len() > 0,
+            self.hist().contains(h)
+        ensures
+            self.loc() == out.loc(),
+            out.hist() == h
+        ;
 }
 
 pub struct HistorySync<T> {
@@ -687,6 +898,11 @@ pub struct HistorySync<T> {
 }
 
 impl<T> HistorySync<T> {
+    #[verifier::type_invariant]
+    pub closed spec fn inv(&self) -> bool {
+        self.hist.0.dom().len() > 0
+    }
+
     pub closed spec fn loc(&self) -> CellId {
         self.loc
     }
@@ -694,6 +910,42 @@ impl<T> HistorySync<T> {
     pub closed spec fn hist(&self) -> History<T> {
         self.hist
     }
+
+    // AT-SY-SN
+    pub axiom fn get_history_seen(tracked &self) -> (out: HistorySeen<T>)
+        ensures
+            self.loc() == out.loc(),
+            self.hist() == out.hist()
+    ;
+
+    // AT-SY-UNFOLD
+    // note: skipped view-seen with the race detector info
+    pub axiom fn get_view_seen(tracked &self, timestamp: nat) -> (out: ViewSeen)
+        requires
+            self.hist().contains_timestamp(timestamp) && self.hist().has_view(timestamp)
+        ensures
+            out.view() == self.hist().view(timestamp)
+        ;
+
+    // AT-SY-JOIN
+    // todo: was there a typo in this rule?
+    pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
+        requires
+            self.loc() == other.loc()
+        ensures
+            out.loc() == self.loc(),
+            out.hist() == self.hist().join(other.hist())
+        ;
+
+    // AT-SY-MONO
+    pub axiom fn restrict(tracked self, h: History<T>) -> (tracked out: Self)
+        requires
+            h.0.dom().len() > 0,
+            self.hist().contains(h)
+        ensures
+            self.loc() == out.loc(),
+            out.hist() == h
+        ;
 }
 
 pub struct SingleWriter<T> {
@@ -702,6 +954,11 @@ pub struct SingleWriter<T> {
 }
 
 impl<T> SingleWriter<T> {
+    #[verifier::type_invariant]
+    pub closed spec fn inv(&self) -> bool {
+        self.hist.0.dom().len() > 0
+    }
+
     pub closed spec fn loc(&self) -> CellId {
         self.loc
     }
@@ -709,6 +966,14 @@ impl<T> SingleWriter<T> {
     pub closed spec fn hist(&self) -> History<T> {
         self.hist
     }
+
+    // AT-SW-SY
+    // todo: I interpreted this rule as not consuming the SingleWriter resource.
+    pub axiom fn get_history_sync(tracked &self) -> (out: HistorySync<T>)
+        ensures
+            self.loc() == out.loc(),
+            self.hist() == out.hist()
+    ;
 }
 
 // note: skipped timestamp
@@ -718,6 +983,11 @@ pub struct CompareAndSwap<T> {
 }
 
 impl<T> CompareAndSwap<T> {
+    #[verifier::type_invariant]
+    pub closed spec fn inv(&self) -> bool {
+        self.hist.0.dom().len() > 0
+    }
+
     pub closed spec fn loc(&self) -> CellId {
         self.loc
     }
@@ -725,6 +995,24 @@ impl<T> CompareAndSwap<T> {
     pub closed spec fn hist(&self) -> History<T> {
         self.hist
     }
+
+    // AT-CAS-JOIN
+    pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
+        requires
+            self.loc() == other.loc()
+        ensures
+            out.loc() == self.loc(),
+            out.hist() == self.hist().join(other.hist())
+        ;
+    
+    // AT-CAS-SN
+    // todo: I interpreted this rule as not consuming the CompareAndSwap resource.
+    pub axiom fn get_history_seen(tracked &self) -> (out: HistorySeen<T>)
+        ensures
+            self.loc() == out.loc(),
+            self.hist() == out.hist()
+    ;
 }
+
 
 } // verus!
