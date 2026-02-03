@@ -375,6 +375,7 @@ verus! {
 
 use super::view::View;
 
+#[cfg(verus_verify_core)]
 #[cfg(feature = "alloc")]
 #[verifier::external]
 pub trait VecAdditionalExecFns<T> {
@@ -383,6 +384,7 @@ pub trait VecAdditionalExecFns<T> {
     fn set_and_swap(&mut self, i: usize, value: &mut T);
 }
 
+#[cfg(verus_verify_core)]
 #[cfg(feature = "alloc")]
 impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
     /// Replacement for `self[i] = value;` (which Verus does not support for technical reasons)

@@ -55,6 +55,7 @@ pub use super::std_specs::option::OptionAdditionalFns;
 #[cfg(verus_keep_ghost)]
 pub use super::std_specs::result::ResultAdditionalSpecFns;
 
+#[cfg(verus_verify_core)]
 #[cfg(verus_keep_ghost)]
 #[cfg(feature = "alloc")]
 pub use super::std_specs::vec::VecAdditionalSpecFns;
@@ -62,6 +63,7 @@ pub use super::std_specs::vec::VecAdditionalSpecFns;
 #[cfg(verus_keep_ghost)]
 pub use super::std_specs::maybe_uninit::MaybeUninitAdditionalSpecFns;
 
+#[cfg(verus_verify_core)]
 #[cfg(feature = "alloc")]
 pub use super::pervasive::VecAdditionalExecFns;
 

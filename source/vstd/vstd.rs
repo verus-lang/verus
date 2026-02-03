@@ -120,8 +120,10 @@ pub broadcast group group_vstd_default {
     //
     // std_specs for alloc (with or without std)
     //
+    #[cfg(verus_verify_core)]
     #[cfg(feature = "alloc")]
     std_specs::vec::group_vec_axioms,
+    #[cfg(verus_verify_core)]
     #[cfg(feature = "alloc")]
     std_specs::vecdeque::group_vec_dequeue_axioms,
     //

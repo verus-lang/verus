@@ -100,6 +100,7 @@ impl<A: DeepView> DeepView for alloc::sync::Arc<A> {
 // Note: the view for Vec is declared here, not in std_specs/vec.rs,
 // because "pub mod std_specs" is marked #[cfg(verus_keep_ghost)]
 // and we want to keep the View impl regardless of verus_keep_ghost.
+#[cfg(verus_verify_core)]
 #[cfg(all(feature = "alloc", any(verus_keep_ghost, feature = "allocator")))]
 impl<T, A: core::alloc::Allocator> View for alloc::vec::Vec<T, A> {
     type V = Seq<T>;
@@ -107,6 +108,7 @@ impl<T, A: core::alloc::Allocator> View for alloc::vec::Vec<T, A> {
     uninterp spec fn view(&self) -> Seq<T>;
 }
 
+#[cfg(verus_verify_core)]
 #[cfg(all(feature = "alloc", any(verus_keep_ghost, feature = "allocator")))]
 impl<T: DeepView, A: core::alloc::Allocator> DeepView for alloc::vec::Vec<T, A> {
     type V = Seq<T::V>;
@@ -117,6 +119,7 @@ impl<T: DeepView, A: core::alloc::Allocator> DeepView for alloc::vec::Vec<T, A> 
     }
 }
 
+#[cfg(verus_verify_core)]
 #[cfg(all(feature = "alloc", not(verus_keep_ghost), not(feature = "allocator")))]
 impl<T> View for alloc::vec::Vec<T> {
     type V = Seq<T>;
@@ -124,6 +127,7 @@ impl<T> View for alloc::vec::Vec<T> {
     uninterp spec fn view(&self) -> Seq<T>;
 }
 
+#[cfg(verus_verify_core)]
 #[cfg(all(feature = "alloc", not(verus_keep_ghost), not(feature = "allocator")))]
 impl<T: DeepView> DeepView for alloc::vec::Vec<T> {
     type V = Seq<T::V>;

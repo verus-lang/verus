@@ -282,6 +282,7 @@ impl<'a> ExecSpecIndex<'a> for &'a str {
 
 /// NOTE: can't implement [`ExecSpecType`] for [`Seq<T>`]
 /// since it conflicts with [`SpecString`] (i.e., [`Seq<char>`]).
+#[cfg(verus_verify_core)]
 impl<'a, T: DeepView> ToRef<&'a [T]> for &'a Vec<T> {
     #[inline(always)]
     fn get_ref(self) -> &'a [T] {
@@ -289,6 +290,7 @@ impl<'a, T: DeepView> ToRef<&'a [T]> for &'a Vec<T> {
     }
 }
 
+#[cfg(verus_verify_core)]
 impl<'a, T: DeepView + DeepViewClone> ToOwned<Vec<T>> for &'a [T] {
     /// TODO: verify this
     #[verifier::external_body]
@@ -298,6 +300,7 @@ impl<'a, T: DeepView + DeepViewClone> ToOwned<Vec<T>> for &'a [T] {
     }
 }
 
+#[cfg(verus_verify_core)]
 impl<T: DeepViewClone> DeepViewClone for Vec<T> {
     /// TODO: verify this
     #[verifier::external_body]
@@ -319,6 +322,7 @@ impl<'a, T: DeepView> ExecSpecEq<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Oth
     }
 }
 
+#[cfg(verus_verify_core)]
 impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Vec<T> where &'a T: ExecSpecEq<'a, Other = &'a T> {
     type Other = &'a Vec<T>;
 
