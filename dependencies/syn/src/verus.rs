@@ -715,7 +715,7 @@ pub mod parsing {
         /// Parse a `Specification` in a given context.
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             let mut exprs = Punctuated::new();
-            while !input.is_empty() && Self::is_next_condition_valid(ctx, input) {
+            while !input.is_empty() && Self::is_next_condition_valid(ctx, input)? {
                 let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
                 if !input.peek(Token![,]) {
@@ -727,10 +727,21 @@ pub mod parsing {
             Ok(Specification { exprs })
         }
 
-        fn is_next_condition_valid(ctx: Context, input: ParseStream) -> bool {
+        fn is_next_condition_valid(ctx: Context, input: ParseStream) -> Result<bool> {
+            if Self::is_next_condition_bare(input) {
+                return Ok(true);
+            }
+
             let allow_braces = matches!(ctx, Context::Item);
-            Self::is_next_condition_bare(input)
-                || allow_braces && Self::is_next_condition_in_braces(input)
+            let is_in_braces = input.peek(token::Brace);
+
+            if is_in_braces && !allow_braces {
+                return Err(input.error("This block would be parsed as the closure/loop body. If you meant it to be part of the specification, try parenthesizing it."));
+            }
+
+            let ends_in_comma = input.peek2(Token![,]);
+
+            Ok(allow_braces && is_in_braces && ends_in_comma)
         }
 
         fn is_next_condition_bare(input: ParseStream) -> bool {
@@ -748,10 +759,6 @@ pub mod parsing {
                 || input.peek(Token![when])
                 || input.peek(Token![no_unwind])
                 || input.peek(Token![opens_invariants]))
-        }
-
-        fn is_next_condition_in_braces(input: ParseStream) -> bool {
-            input.peek(token::Brace) && input.peek2(Token![,])
         }
     }
 
