@@ -772,7 +772,7 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Requires {
-        /// Parse a `requires` clause in the context of an `Expr` e.g. a closure.
+        /// Parse a `requires` clause group in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
             Requires::parse_in(Context::Expr, input)
         }
@@ -780,7 +780,7 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Requires> {
-        /// Parse an optional `requires` clause in the context of an `Expr` e.g. a closure.
+        /// Parse an optional `requires` clause group in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
             Requires::parse_optional_in(Context::Expr, input)
         }
@@ -788,7 +788,7 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Requires {
-        /// Parse a `requires` clause in a given context.
+        /// Parse a `requires` clause group in a given context.
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             Ok(Requires {
                 token: input.parse()?,
@@ -796,7 +796,7 @@ pub mod parsing {
             })
         }
 
-        /// Parse an optional `requires` clause in a given context.
+        /// Parse an optional `requires` clause group in a given context.
         pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
             if input.peek(Token![requires]) {
                 Self::parse_in(ctx, input).map(Some)
@@ -825,7 +825,7 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Ensures {
-        /// Parse an `ensures` clause in the context of an `Expr` e.g. a closure.
+        /// Parse an `ensures` clause group in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
             Ensures::parse_in(Context::Expr, input)
         }
@@ -833,7 +833,7 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Ensures> {
-        /// Parse an optional `ensures` clause in the context of an `Expr` e.g. a closure.
+        /// Parse an optional `ensures` clause group in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
             Ensures::parse_optional_in(Context::Expr, input)
         }
@@ -841,7 +841,7 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Ensures {
-        /// Parse an `ensures` clause in a given context.
+        /// Parse an `ensures` clause group in a given context.
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             let mut attrs = Vec::new();
             let token = input.parse()?;
@@ -853,7 +853,7 @@ pub mod parsing {
             })
         }
 
-        /// Parse an optional `ensures` clause in a given context.
+        /// Parse an optional `ensures` clause group in a given context.
         pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
             if input.peek(Token![ensures]) {
                 Self::parse_in(ctx, input).map(Some)
@@ -865,7 +865,7 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for DefaultEnsures {
-        /// Parse a `default_ensures` clause in the context of an `Item` e.g. a `fn` definition.
+        /// Parse a `default_ensures` clause group in the context of an `Item` e.g. `fn` definition.
         fn parse(input: ParseStream) -> Result<Self> {
             let token = input.parse()?;
             Ok(DefaultEnsures {
@@ -918,7 +918,7 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Decreases {
-        /// Parse a `decreases` clause in the context of an `Expr` e.g. a closure.
+        /// Parse a `decreases` clause group in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
             Decreases::parse_in(Context::Expr, input)
         }
@@ -926,7 +926,7 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Decreases> {
-        /// Parse an optional `decreases` clause in the context of an `Expr` e.g. a closure.
+        /// Parse an optional `decreases` clause group in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
             Decreases::parse_optional_in(Context::Expr, input)
         }
@@ -934,7 +934,7 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Decreases {
-        /// Parse a `decreases` clause in a given context.
+        /// Parse a `decreases` clause group in a given context.
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             Ok(Decreases {
                 token: input.parse()?,
@@ -942,7 +942,7 @@ pub mod parsing {
             })
         }
 
-        /// Parse an optional `decreases` clause in a given context.
+        /// Parse an optional `decreases` clause group in a given context.
         pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
             if input.peek(Token![decreases]) {
                 Self::parse_in(ctx, input).map(Some)
