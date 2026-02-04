@@ -3100,6 +3100,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                     lhs.span,
                     &bctx.types.expr_ty_adjusted(lhs),
                     true,
+                    None,
                 )?
                 .1;
                 unsupported_err_unless!(!deref_ghost, lhs.span, "assignment through Ghost/Tracked");

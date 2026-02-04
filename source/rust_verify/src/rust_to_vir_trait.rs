@@ -348,6 +348,7 @@ pub(crate) fn translate_trait<'tcx>(
                     ex_item_id_for,
                     external_info,
                     None,
+                    &mut vir.opaque_types,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);

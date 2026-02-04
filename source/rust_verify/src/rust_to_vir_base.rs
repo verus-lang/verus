@@ -21,11 +21,12 @@ use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{Ident, kw};
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
 use vir::ast::{
-    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaqueTypeX, Path,
-    PathX, Primitive, Sizedness, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr,
-    VirErrAs,
+    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaqueType,
+    OpaqueTypeX, OpaqueTypes, Path, PathX, Primitive, Sizedness, TraitId, Typ, TypDecorationArg,
+    TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -862,14 +863,33 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     span: Span,
     ty: &rustc_middle::ty::Ty<'tcx>,
     allow_mut_ref: bool,
+    assume_specification_opaque_map: Option<&HashMap<Path, Path>>,
 ) -> Result<(Typ, bool), VirErr> {
     use rustc_middle::ty::GenericArgs;
     use vir::ast::TypDecoration;
     let t_rec = |t: &rustc_middle::ty::Ty<'tcx>| {
-        mid_ty_to_vir_ghost(tcx, verus_items, None, param_env_src, span, t, allow_mut_ref)
+        mid_ty_to_vir_ghost(
+            tcx,
+            verus_items,
+            None,
+            param_env_src,
+            span,
+            t,
+            allow_mut_ref,
+            assume_specification_opaque_map,
+        )
     };
     let t_rec_flags = |t: &rustc_middle::ty::Ty<'tcx>, allow_mut_ref: bool| {
-        mid_ty_to_vir_ghost(tcx, verus_items, None, param_env_src, span, t, allow_mut_ref)
+        mid_ty_to_vir_ghost(
+            tcx,
+            verus_items,
+            None,
+            param_env_src,
+            span,
+            t,
+            allow_mut_ref,
+            assume_specification_opaque_map,
+        )
     };
     let mk_typ_args = |args: &GenericArgs<'tcx>| -> Result<Vec<(Typ, bool)>, VirErr> {
         let mut typ_args: Vec<(Typ, bool)> = Vec::new();
@@ -952,6 +972,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 span,
                 ty,
                 allow_mut_ref,
+                assume_specification_opaque_map,
             )?
             .0;
             let len = mid_ty_const_to_vir(tcx, Some(span), const_len)?;
@@ -1145,6 +1166,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                             span,
                             &ty,
                             false,
+                            None,
                         )?);
                     }
                     rustc_type_ir::GenericArgKind::Const(cnst) => {
@@ -1156,13 +1178,18 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     }
                 }
             }
-            (
-                Arc::new(TypX::Opaque {
-                    def_path: def_id_to_vir_path(tcx, verus_items, al_ty.def_id, None),
-                    args: Arc::new(args),
-                }),
-                false,
-            )
+            let def_path =
+                if let Some(assume_specification_opaque_map) = assume_specification_opaque_map {
+                    let def_path = def_id_to_vir_path(tcx, verus_items, al_ty.def_id, None);
+                    if assume_specification_opaque_map.contains_key(&def_path) {
+                        assume_specification_opaque_map[&def_path].clone()
+                    } else {
+                        def_path
+                    }
+                } else {
+                    def_id_to_vir_path(tcx, verus_items, al_ty.def_id, None)
+                };
+            (Arc::new(TypX::Opaque { def_path: def_path, args: Arc::new(args) }), false)
         }
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => {
             unsupported_err!(span, "opaque type")
@@ -1277,6 +1304,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
     span: Span,
     ty: &rustc_middle::ty::Ty<'tcx>,
     allow_mut_ref: bool,
+    assume_specification_opaque_map: Option<&HashMap<Path, Path>>,
 ) -> Result<Typ, VirErr> {
     Ok(mid_ty_to_vir_ghost(
         tcx,
@@ -1286,6 +1314,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
         span,
         ty,
         allow_mut_ref,
+        assume_specification_opaque_map,
     )?
     .0)
 }
@@ -1376,6 +1405,7 @@ pub(crate) fn typ_of_node<'tcx>(
         span,
         &bctx.types.node_type(*id),
         allow_mut_ref,
+        None,
     )
 }
 
@@ -1386,7 +1416,16 @@ pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
 ) -> Result<Typ, VirErr> {
     let ty = bctx.types.node_type(*id);
     if let TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) = ty.kind() {
-        mid_ty_to_vir(bctx.ctxt.tcx, &bctx.ctxt.verus_items, None, bctx.fun_id, span, &ty, true)
+        mid_ty_to_vir(
+            bctx.ctxt.tcx,
+            &bctx.ctxt.verus_items,
+            None,
+            bctx.fun_id,
+            span,
+            &ty,
+            true,
+            None,
+        )
     } else {
         err_span(span, "a mutable reference is expected here")
     }
@@ -1552,6 +1591,7 @@ pub(crate) fn check_generic_bound<'tcx>(
                         span,
                         &ty,
                         false,
+                        None,
                     )?);
                 }
                 GenericArgKind::Const(cnst) => {
@@ -1681,7 +1721,7 @@ where
                     continue;
                 }
                 let typ = if let Some(ty) = pred.term.as_type() {
-                    mid_ty_to_vir(tcx, verus_items, None, param_env_src, *span, &ty, false)?
+                    mid_ty_to_vir(tcx, verus_items, None, param_env_src, *span, &ty, false, None)?
                 } else {
                     return err_span(*span, "Verus does not yet support this type of bound");
                 };
@@ -1715,7 +1755,8 @@ where
             }
             ClauseKind::ConstArgHasType(cnst, ty) => {
                 let t1 = mid_ty_const_to_vir(tcx, Some(*span), &cnst)?;
-                let t2 = mid_ty_to_vir(tcx, verus_items, None, param_env_src, *span, &ty, false)?;
+                let t2 =
+                    mid_ty_to_vir(tcx, verus_items, None, param_env_src, *span, &ty, false, None)?;
                 let bound = GenericBoundX::ConstTyp(t1, t2);
                 bounds.push(Arc::new(bound));
             }
@@ -2119,22 +2160,60 @@ pub(crate) fn ty_remove_references<'tcx>(
 }
 
 /// Add the OpaqueDef to vir if the function returns an opaque type.
+/// If the opaque type is defined by assume specification,
+/// check the opaque type defined by the original assume_specification function too.
+/// Note: We have checked that the return types of the assume_specification function and
+/// assume specification match exactly.
 pub(crate) fn check_fn_opaque_ty<'tcx>(
     ctxt: &Context<'tcx>,
-    vir: &mut vir::ast::KrateX,
+    opaque_types: &mut OpaqueTypes,
     fn_def_id: &DefId,
-) -> Result<Vec<Path>, VirErr> {
+    span: Span,
+    assume_specification_def_id: Option<&DefId>,
+) -> Result<HashMap<Path, Path>, VirErr> {
+    let mut assume_specification_opaque_type_map = HashMap::new();
+    if !ctxt.tcx.def_kind(fn_def_id).is_fn_like() {
+        return Ok(assume_specification_opaque_type_map)
+    }
     let ty = ctxt.tcx.fn_sig(fn_def_id).skip_binder().output().skip_binder();
-    opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)
+    let assume_specification_ty = if let Some(assume_specification_def_id) =
+        assume_specification_def_id
+    {
+        // if ctxt.tcx.def_kind(assume_specification_def_id).is_fn_like() {
+        //     Some(ctxt.tcx.fn_sig(assume_specification_def_id).skip_binder().output().skip_binder())
+        // } else {
+        //     None
+        // }
+        Some(ctxt.tcx.fn_sig(assume_specification_def_id).skip_binder().output().skip_binder())
+    } else {
+        None
+    };
+    opaque_def_to_vir(
+        ctxt,
+        opaque_types,
+        fn_def_id,
+        &ty,
+        span,
+        assume_specification_ty.as_ref(),
+        false,
+        &mut assume_specification_opaque_type_map,
+    )?;
+    Ok(assume_specification_opaque_type_map)
 }
 
 pub(crate) fn opaque_def_to_vir<'tcx>(
     ctxt: &Context<'tcx>,
-    vir: &mut vir::ast::KrateX,
+    opaque_types: &mut OpaqueTypes,
     fn_def_id: &DefId,
     ty: &rustc_middle::ty::Ty<'tcx>,
-) -> Result<Vec<Path>, VirErr> {
-    let mut defined_opaque_types = vec![];
+    span: Span,
+    assume_specification_ty: Option<&rustc_middle::ty::Ty<'tcx>>,
+    is_assume_specification_ty: bool,
+    assume_specification_opaque_map: &mut HashMap<Path, Path>,
+) -> Result<Option<OpaqueType>, VirErr> {
+    let unmatch_err_msg = "opaque type of assume assume_specification specification does not match the opaque type of the orginal function";
+    let unmatch_err = || crate::internal_err!(span, unmatch_err_msg);
+
     match ty.kind() {
         rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) => {
             let span = ctxt.tcx.def_span(al_ty.def_id);
@@ -2154,6 +2233,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             span,
                             &ty,
                             false,
+                            None,
                         )?);
                     }
                     rustc_type_ir::GenericArgKind::Const(cnst) => {
@@ -2168,8 +2248,34 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
 
             let instantiated_bounds =
                 ctxt.tcx.item_bounds(al_ty.def_id).instantiate(ctxt.tcx, al_ty.args);
-            for bound in instantiated_bounds {
-                match bound.kind().skip_binder() {
+
+            // If the opaque type is defined by assume specification, recursively reveal the
+            // bounds of the assume_specification opaque type too.
+            let assume_specification_ty_instantiated_bounds =
+                if let Some(assume_specification_ty) = assume_specification_ty {
+                    if let rustc_middle::ty::TyKind::Alias(
+                        rustc_middle::ty::AliasTyKind::Opaque,
+                        assume_specification_al_ty,
+                    ) = assume_specification_ty.kind()
+                    {
+                        let assume_specification_span =
+                            ctxt.tcx.def_span(assume_specification_al_ty.def_id);
+
+                        Some((
+                            ctxt.tcx
+                                .item_bounds(assume_specification_al_ty.def_id)
+                                .instantiate(ctxt.tcx, assume_specification_al_ty.args),
+                            assume_specification_span,
+                        ))
+                    } else {
+                        return unmatch_err();
+                    }
+                } else {
+                    None
+                };
+
+            for i in 0..instantiated_bounds.len() {
+                match instantiated_bounds[i].kind().skip_binder() {
                     ClauseKind::Trait(TraitPredicate {
                         trait_ref,
                         polarity: rustc_middle::ty::PredicatePolarity::Positive,
@@ -2187,22 +2293,69 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                         .unwrap();
                         trait_bounds.push(generic_bound);
                     }
+
+                    // Additional opaque types can be defined in projections, recurse into them.
                     ClauseKind::Projection(pred) => {
                         let item_def_id = pred.projection_term.def_id;
 
                         if Some(item_def_id) == ctxt.tcx.lang_items().fn_once_output() {
                             continue;
                         }
-                        let typ = if let TermKind::Ty(ty) = pred.term.kind() {
-                            opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)?;
+
+                        // find the corresponding nested type in the opaque type projection, if it exists
+                        let nested_assume_specification_ty = if let Some((
+                            assume_specification_ty_instantiated_bounds,
+                            assume_specification_ty_span,
+                        )) =
+                            assume_specification_ty_instantiated_bounds
+                        {
+                            if let ClauseKind::Projection(assume_specification_pred) =
+                                assume_specification_ty_instantiated_bounds[i].kind().skip_binder()
+                            {
+                                let assume_specification_item_def_id =
+                                    assume_specification_pred.projection_term.def_id;
+
+                                if Some(assume_specification_item_def_id)
+                                    == ctxt.tcx.lang_items().fn_once_output()
+                                {
+                                    return unmatch_err();
+                                }
+
+                                if let TermKind::Ty(assume_specification_ty_kind) = assume_specification_pred.term.kind() {
+                                    Some(assume_specification_ty_kind)
+                                } else {
+                                    return err_span(
+                                        assume_specification_ty_span,
+                                        "Verus does not yet support this type of bound",
+                                    );
+                                }
+                            } else {
+                                return unmatch_err();
+                            }
+                        } else {
+                            None
+                        };
+                        // recurse. one level deeper into both the assume_specification opaque type and the current opaque type
+                        let typ = if let TermKind::Ty(nested_ty) = pred.term.kind() {
+                            opaque_def_to_vir(
+                                ctxt,
+                                opaque_types,
+                                fn_def_id,
+                                &nested_ty,
+                                span,
+                                nested_assume_specification_ty.as_ref(),
+                                is_assume_specification_ty,
+                                assume_specification_opaque_map,
+                            )?;
                             mid_ty_to_vir(
                                 ctxt.tcx,
                                 &ctxt.verus_items,
                                 None,
                                 al_ty.def_id.into(),
                                 span,
-                                &ty,
+                                &nested_ty,
                                 false,
+                                None,
                             )?
                         } else {
                             return err_span(span, "Verus does not yet support this type of bound");
@@ -2244,6 +2397,26 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                     _ => {}
                 }
             }
+
+            let assume_specification_opaque_ty_vir =
+                if let Some(assume_specification_ty) = assume_specification_ty {
+                    Some(
+                        opaque_def_to_vir(
+                            ctxt,
+                            opaque_types,
+                            fn_def_id,
+                            &assume_specification_ty,
+                            span,
+                            None,
+                            true,
+                            assume_specification_opaque_map,
+                        )?
+                        .expect(unmatch_err_msg),
+                    )
+                } else {
+                    None
+                };
+
             let opaque_ty_vir = ctxt.spanned_new(
                 span,
                 OpaqueTypeX {
@@ -2255,25 +2428,120 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                     typ_bounds: Arc::new(trait_bounds),
                 },
             );
+            if let Some(assume_specification_opaque_ty_vir) = &assume_specification_opaque_ty_vir {
+                assume_specification_opaque_map.insert(
+                    assume_specification_opaque_ty_vir.x.name.clone(),
+                    opaque_type_path.clone(),
+                );
+            }
+            if !is_assume_specification_ty {
+                opaque_types.push(opaque_ty_vir.clone());
+            }
 
-            vir.opaque_types.push(opaque_ty_vir);
-            defined_opaque_types.push(opaque_type_path.clone());
+            Ok(Some(opaque_ty_vir))
         }
         rustc_middle::ty::TyKind::Tuple(tys) => {
-            for ty in tys.iter() {
-                defined_opaque_types.extend(opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)?);
+            for i in 0..tys.len() {
+                let assume_specification_ty =
+                    if let Some(assume_specification_ty) = assume_specification_ty {
+                        if let rustc_middle::ty::TyKind::Tuple(assume_specification_tys) =
+                            assume_specification_ty.kind()
+                        {
+                            Some(assume_specification_tys.get(i).expect(unmatch_err_msg))
+                        } else {
+                            return unmatch_err();
+                        }
+                    } else {
+                        None
+                    };
+                opaque_def_to_vir(
+                    ctxt,
+                    opaque_types,
+                    fn_def_id,
+                    &tys[i],
+                    span,
+                    assume_specification_ty,
+                    false,
+                    assume_specification_opaque_map,
+                )?;
             }
+            Ok(None)
         }
         rustc_middle::ty::TyKind::Array(ty, _) => {
-            defined_opaque_types.extend(opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)?)
+            let assume_specification_ty =
+                if let Some(assume_specification_ty) = assume_specification_ty {
+                    if let rustc_middle::ty::TyKind::Array(assume_specification_ty, _) =
+                        assume_specification_ty.kind()
+                    {
+                        Some(assume_specification_ty)
+                    } else {
+                        return unmatch_err();
+                    }
+                } else {
+                    None
+                };
+            opaque_def_to_vir(
+                ctxt,
+                opaque_types,
+                fn_def_id,
+                &ty,
+                span,
+                assume_specification_ty,
+                false,
+                assume_specification_opaque_map,
+            )?;
+            Ok(None)
         }
         rustc_middle::ty::TyKind::Pat(ty, _) => {
-            defined_opaque_types.extend(opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)?)
+            let assume_specification_ty =
+                if let Some(assume_specification_ty) = assume_specification_ty {
+                    if let rustc_middle::ty::TyKind::Pat(assume_specification_ty, _) =
+                        assume_specification_ty.kind()
+                    {
+                        Some(assume_specification_ty)
+                    } else {
+                        return unmatch_err();
+                    }
+                } else {
+                    None
+                };
+            opaque_def_to_vir(
+                ctxt,
+                opaque_types,
+                fn_def_id,
+                &ty,
+                span,
+                assume_specification_ty,
+                false,
+                assume_specification_opaque_map,
+            )?;
+            Ok(None)
         }
         rustc_middle::ty::TyKind::Slice(ty) => {
-            defined_opaque_types.extend(opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)?)
+            let assume_specification_ty =
+                if let Some(assume_specification_ty) = assume_specification_ty {
+                    if let rustc_middle::ty::TyKind::Slice(assume_specification_ty) =
+                        assume_specification_ty.kind()
+                    {
+                        Some(assume_specification_ty)
+                    } else {
+                        return unmatch_err();
+                    }
+                } else {
+                    None
+                };
+            opaque_def_to_vir(
+                ctxt,
+                opaque_types,
+                fn_def_id,
+                &ty,
+                span,
+                assume_specification_ty,
+                false,
+                assume_specification_opaque_map,
+            )?;
+            Ok(None)
         }
-        _ => {}
+        _ => Ok(None),
     }
-    Ok(defined_opaque_types)
 }

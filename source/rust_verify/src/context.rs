@@ -1,3 +1,4 @@
+use crate::external;
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
 use rustc_hir::Attribute;
 use rustc_hir::def_id::LocalDefId;
@@ -54,6 +55,7 @@ pub(crate) struct BodyCtxt<'tcx> {
     // loop_isolation for the nearest enclosing loop, false otherwise
     pub(crate) loop_isolation: bool,
     pub(crate) new_mut_ref: bool,
+    pub(crate) external_opaque_type_map: Option<HashMap<Path, Path>>,
 }
 
 impl<'tcx> ContextX<'tcx> {
@@ -109,6 +111,7 @@ impl<'tcx> ContextX<'tcx> {
         span: rustc_span::Span,
         ty: &rustc_middle::ty::Ty<'tcx>,
         allow_mut_ref: bool,
+        assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
     ) -> Result<vir::ast::Typ, VirErr> {
         crate::rust_to_vir_base::mid_ty_to_vir(
             self.tcx,
@@ -118,6 +121,7 @@ impl<'tcx> ContextX<'tcx> {
             span,
             ty,
             allow_mut_ref,
+            assume_specification_opaque_type_map,
         )
     }
 
@@ -144,6 +148,12 @@ impl<'tcx> BodyCtxt<'tcx> {
         ty: &rustc_middle::ty::Ty<'tcx>,
         allow_mut_ref: bool,
     ) -> Result<vir::ast::Typ, VirErr> {
-        self.ctxt.mid_ty_to_vir(self.fun_id, span, ty, allow_mut_ref)
+        self.ctxt.mid_ty_to_vir(
+            self.fun_id,
+            span,
+            ty,
+            allow_mut_ref,
+            self.external_opaque_type_map.as_ref(),
+        )
     }
 }
