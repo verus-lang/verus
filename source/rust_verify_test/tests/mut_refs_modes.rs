@@ -1043,3 +1043,80 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot call tracked_swap with exec types")
 }
+
+test_verify_one_file_with_options! {
+    #[test] wrapped_params ["new-mut-ref"] => verus_code! {
+        fn f(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == x.view() + 1,
+        {
+            proof { *x = Ghost(x.view() + 1); }
+        }
+
+        fn f2(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == x.view() + 1,
+        {
+            f(Tracked(x));
+        }
+
+        fn f3(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == x.view() + 1,
+        {
+            f(Tracked(&mut *x));
+        }
+
+        fn f4() {
+            let mut g = Ghost(3);
+            f(Tracked(&mut g));
+            assert(g == 4);
+        }
+
+        fn f5() {
+            let mut g = Ghost(3);
+            let tg = Tracked(&mut g);
+            f(tg);
+            assert(g == 4);
+        }
+
+        fn f_fails(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == x.view() + 1,
+        {
+            proof { *x = Ghost(x.view() + 1); }
+            assert(false); // FAILS
+        }
+
+        fn f2_fails(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == x.view() + 1,
+        {
+            f(Tracked(x));
+            assert(false); // FAILS
+        }
+
+        fn f3_fails(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == x.view() + 1,
+        {
+            f(Tracked(&mut *x));
+            assert(false); // FAILS
+        }
+
+        fn f4_fails() {
+            let mut g = Ghost(3);
+            f(Tracked(&mut g));
+            assert(g == 4);
+            assert(false); // FAILS
+        }
+
+        fn f5_fails() {
+            let mut g = Ghost(3);
+            let tg = Tracked(&mut g);
+            f(tg);
+            assert(g == 4);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
