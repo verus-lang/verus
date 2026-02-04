@@ -1396,6 +1396,18 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
     }
 }
 
+pub fn place_has_deref_mut(p: &Place) -> bool {
+    match &p.x {
+        PlaceX::Local(_) => false,
+        PlaceX::DerefMut(_p) => true,
+        PlaceX::Field(_opr, p) => place_has_deref_mut(p),
+        PlaceX::Temporary(_) => false,
+        PlaceX::ModeUnwrap(p, _) => place_has_deref_mut(p),
+        PlaceX::WithExpr(_e, p) => place_has_deref_mut(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_has_deref_mut(p),
+    }
+}
+
 pub fn place_to_expr(place: &Place) -> Expr {
     let x = match &place.x {
         PlaceX::Local(var_ident) => ExprX::Var(var_ident.clone()),
