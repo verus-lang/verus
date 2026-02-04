@@ -1431,6 +1431,10 @@ fn check_place_rec_inner(
 ///  2. The type is tracked (and thus couldn't exist in an exec-mode place to begin with)
 ///
 /// For (1), we're keeping our check a little weaker,
+///
+/// It would be really nice to support `Option<T>`, but the problem is that this is a non-ZST;
+/// even if T is tracked, it's possible to create an `Option<T>` in exec-mode via `None`
+/// and prohibiting this would be difficult to do.
 fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place) -> bool {
     // Always say no if this doesn't involve a mutable reference.
     // This isn't really necessary as a restriction, but it's only for mutable references
