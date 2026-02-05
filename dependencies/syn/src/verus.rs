@@ -729,17 +729,17 @@ pub mod parsing {
                 match ctx {
                     Context::Expr => {
                         if input.peek2(token::Brace) || Self::peek2_spec_keyword(input) {
-                            // Missing parentheses.
+                            // Missing parentheses around block.
                             return Err(input.error("This block looks like the closure/loop body, but it is followed immediately by another block or clause. If you meant this block to be part of a clause, try parenthesizing it."));
                         }
                     }
                     Context::Item => {
                         if !exprs.trailing_punct() && input.peek2(Token![,]) {
-                            // Missing comma before.
+                            // Missing comma before block.
                             return Err(input.error("This block looks like it might be part of the clause. If you meant it to be part of the clause, put a comma before it."));
                         }
                         if input.peek2(token::Brace) || Self::peek2_spec_keyword(input) {
-                            // Missing comma after.
+                            // Missing comma after block.
                             return Err(input.error("This block looks like it might be part of the clause. If you meant it to be part of the clause, put a comma after it."));
                         }
                     }
