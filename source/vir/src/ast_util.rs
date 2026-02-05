@@ -784,6 +784,16 @@ impl DatatypeX {
     }
 }
 
+impl TraitX {
+    pub fn typ_param_names_with_self(&self) -> Vec<Ident> {
+        let mut typ_params = vec![crate::def::trait_self_type_param()];
+        for (x, _) in self.typ_params.iter() {
+            typ_params.push(x.clone());
+        }
+        typ_params
+    }
+}
+
 pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
     let vars: std::cell::RefCell<HashSet<VarIdent>> = std::cell::RefCell::new(HashSet::new());
     crate::ast_visitor::ast_visitor_check_with_scope_map::<(), _, _, _, _, _, _>(

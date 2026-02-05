@@ -447,6 +447,7 @@ pub(crate) fn check_termination_stm(
 
 pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
+    trait_map: &HashMap<Path, crate::ast::Trait>,
     trait_impl_map: &HashMap<(Fun, Path), Fun>,
     reveal_group_set: &HashSet<Fun>,
     call_graph: &mut GraphBuilder<Node>,
@@ -576,6 +577,7 @@ pub(crate) fn expand_call_graph(
 
                 let (callee, impl_paths) = crate::traits::redirect_calls_in_default_methods(
                     func_map,
+                    trait_map,
                     trait_impl_map,
                     function,
                     &expr.span,
