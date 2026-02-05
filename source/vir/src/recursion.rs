@@ -449,6 +449,7 @@ pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
     trait_map: &HashMap<Path, crate::ast::Trait>,
     trait_impl_map: &HashMap<(Fun, Path), Fun>,
+    trait_impl_from_extension: &HashMap<Path, Path>,
     reveal_group_set: &HashSet<Fun>,
     call_graph: &mut GraphBuilder<Node>,
     span_infos: &mut Vec<Span>,
@@ -548,32 +549,6 @@ pub(crate) fn expand_call_graph(
     // impl_paths contains the necessary impl_path to instantiate Self: T explicitly,
     // and we catch the nontermination resulting from Self: T.
     // See, for example, test_termination_1 in rust_verify_test/tests/traits.rs.
-    //
-    // However, for default methods, rustc does not provide the impl_path to us,
-    // and we use a different way of catching uses of Self: T.
-    // Specifically, we make sure there is an edge in the call graph from T to the
-    // T's default methods, and any attempt by a default method to use Self: T
-    // (say, when calling a function f<A: T>) will create an edge to someone who
-    // uses T (in this example, f), which then creates a cycle that is reported as an error.
-    // (See, for example, test_default14 in rust_verify_test/tests/traits.rs.)
-    // The one exception to this is when a default method of T calls another default method of T;
-    // this is not considered a cycle through T, but instead is treated as ordinary recursion.
-    // (See, for example, test_default17 in rust_verify_test/tests/traits.rs.)
-    //
-    // When extension trait impls are merged into their origin impls, we need to skip
-    // dependencies from a function to its own (merged) impl to avoid false cycles.
-    // We only skip if:
-    // 1. The function's impl is being merged (replaced != original)
-    // 2. The dependency is to the merged target impl
-    let self_merged_impl_node =
-        if let FunctionKind::TraitMethodImpl { impl_path: fn_impl_path, .. } = &function.x.kind {
-            let original = Node::TraitImpl(ImplPath::TraitImplPath(fn_impl_path.clone()));
-            let replaced = call_graph.replace(original.clone());
-            // Only set self_merged_impl_node if there's actual merging happening
-            if replaced != original { Some(replaced) } else { None }
-        } else {
-            None
-        };
     let add_calls = &mut |expr: &crate::ast::Expr| {
         match &expr.x {
             ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec), _, _) => {
@@ -594,6 +569,7 @@ pub(crate) fn expand_call_graph(
                     func_map,
                     trait_map,
                     trait_impl_map,
+                    trait_impl_from_extension,
                     function,
                     &expr.span,
                     callee,
@@ -602,23 +578,6 @@ pub(crate) fn expand_call_graph(
                 )?;
 
                 for impl_path in impl_paths.iter() {
-                    // Skip dependencies to the same impl (after merging) to avoid false cycles
-                    // when extension trait impls are merged into their origin impls.
-                    // However, do NOT skip if this is a self-recursive call (same method name),
-                    // because that IS a real cycle that should be detected.
-                    let impl_node = Node::TraitImpl(impl_path.clone());
-                    let replaced_impl_node = call_graph.replace(impl_node.clone());
-                    if self_merged_impl_node.as_ref() == Some(&replaced_impl_node) {
-                        // Check if this is a self-recursive call by comparing method names
-                        let caller_method = function.x.name.path.segments.last();
-                        let callee_method = callee.path.segments.last();
-                        if caller_method != callee_method {
-                            // Different methods in the same merged impl - safe to skip
-                            continue;
-                        }
-                        // Same method name - this is self-recursive, keep the dependency
-                    }
-
                     // f --> D: T
                     let expr_node = crate::recursive_types::new_span_info_node(
                         span_infos,
@@ -628,7 +587,7 @@ pub(crate) fn expand_call_graph(
                             .to_string(),
                     );
                     call_graph.add_edge(f_node.clone(), expr_node.clone());
-                    call_graph.add_edge(expr_node.clone(), impl_node);
+                    call_graph.add_edge(expr_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }
 
                 // f --> f2
@@ -638,8 +597,6 @@ pub(crate) fn expand_call_graph(
                 call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
             }
             ExprX::Call(CallTarget::BuiltinSpecFun(_bsf, _typs, impl_paths), _, _) => {
-                // Don't filter impl_paths for BuiltinSpecFun calls (e.g., call_ensures)
-                // because we can't easily determine if they create real cycles
                 for impl_path in impl_paths.iter() {
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }
