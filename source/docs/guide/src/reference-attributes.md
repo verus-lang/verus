@@ -17,6 +17,7 @@
  - [`memoize`](#verifiermemoize)
  - [`opaque`](#verifieropaque)
  - [`proof_note`](#verifierproof_notetext-and-verifierproof_notetext)
+ - [`prophetic`](#verifierprophetic)
  - `reject_recursive_types`
  - `reject_recursive_types_in_ground_variants`
  - [`rlimit`](#verifierrlimitn-and-verifierrlimitinfinity)
@@ -147,6 +148,21 @@ These attributes attach a string note to a `requires`/`ensures` clause or `assum
 When a proof obligation (`requires`/`ensures`/`assert`) fails, then the `"text"` of the note is included in the error message, as well as in the JSON output under the key `func-details`. An `assume` statement flagged by the `--no-cheating` mode is treated similarly. This can be useful for connecting informal spec requirements (say from a text description of desired properties) to obligations in the verified code.
 
 Cannot be used together with [`custom_err`](#verifiercustom_errtext-and-verifiercustom_errtext).
+
+## `#[verifier::prophetic]`
+
+This can be applied to any `spec` function to indicate that the result is _prophecy-dependent_.
+This attribute is required on any `spec` function where the body is prophecy-dependent.
+
+For example, a spec function needs to be marked with this attribute if any of the following
+are true:
+
+ * It uses the `final` operator on a mutable reference.
+ * It calls another spec function also marked `#[verifier::prophetic]`, e.g.,
+   [`ProphecyGhost::value`](https://verus-lang.github.io/verus/verusdoc/vstd/proph/struct.ProphecyGhost.html#method.value)
+
+Furthermore, if a spec function in a trait implementation is marked `#[verifier::prophetic]`,
+then it must also be marked `#[verifier::prophetic]` in the trait declaration.
 
 ## `#[verifier::custom_err("text")]` and `#![verifier::custom_err("text")]`
 
