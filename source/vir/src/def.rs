@@ -153,6 +153,7 @@ pub const RDIV: &str = "RDiv";
 pub const SNAPSHOT_CALL: &str = "CALL";
 pub const SNAPSHOT_PRE: &str = "PRE";
 pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
+pub const SNAPSHOT_LOOP: &str = "LOOP";
 pub const T_HEIGHT: &str = "Height";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";

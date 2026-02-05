@@ -13,13 +13,14 @@ use crate::context::Ctx;
 use crate::def::{
     ARCH_SIZE, CommandsWithContext, CommandsWithContextX, FUEL_BOOL, FUEL_BOOL_DEFAULT,
     FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, ProverChoice, SNAPSHOT_CALL,
-    SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
-    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, SnapPos,
-    SpanKind, Spanned, U_HI, encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid,
-    new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
-    prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type,
-    prefix_unbox, snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id,
-    suffix_typ_param_ids, variant_field_ident, variant_field_ident_internal, variant_ident,
+    SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
+    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
+    SUFFIX_SNAP_WHILE_END, SnapPos, SpanKind, Spanned, U_HI, encode_dt_as_path, fun_to_string,
+    is_variant_ident, new_internal_qid, new_user_qid_name, path_to_string, prefix_box,
+    prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv, prefix_pre_var,
+    prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident, static_name,
+    suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, variant_field_ident,
+    variant_field_ident_internal, variant_ident,
 };
 use crate::messages::{Span, error, error_with_label};
 use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
@@ -2554,9 +2555,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
             let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
             let mut hint_message = None;
+            let modified_vars = modified_vars.as_ref().unwrap();
             for inv in invs.iter() {
-                let inv_exp =
-                    crate::loop_inference::finalize_inv(modified_vars, &inv.inv, &mut hint_message);
+                let inv_exp = crate::loop_inference::finalize_inv(
+                    &modified_vars,
+                    &inv.inv,
+                    &mut hint_message,
+                );
                 let msg_opt = exp_get_custom_err(&inv_exp);
                 let expr = exp_to_expr(ctx, &inv_exp, expr_ctxt)?;
                 if cond.is_some() {
@@ -2653,18 +2658,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut air_body: Vec<Stmt> = state.static_prelude.clone();
             if !loop_isolation {
-                for x in modified_vars.iter() {
-                    air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
-                }
-                for (x, typ) in typ_inv_vars.iter() {
-                    if modified_vars.contains(x) {
-                        let typ_inv =
-                            typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                        if let Some(expr) = typ_inv {
-                            air_body.push(Arc::new(StmtX::Assume(expr)));
-                        }
-                    }
-                }
+                air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
+                modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut air_body);
             }
 
             let mut local = state.local_shared.clone();
@@ -2690,13 +2685,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 // For any variable that might have been mutated since the beginning of the
                 // function, we need to havoc it, in order to create a difference between
                 // the "current" value and the "pre-state" value.
-                for (x, typ) in pre_modified_params.iter() {
-                    air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(x))));
-                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                    if let Some(expr) = typ_inv {
-                        air_body.push(Arc::new(StmtX::Assume(expr)));
-                    }
-                }
+                let pre_modified_params = pre_modified_params.as_ref().unwrap();
+                pre_modified_params.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
             }
 
             // Assume invariants for the beginning of the loop body.
@@ -2813,18 +2803,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(loop_breakable);
             }
             if loop_isolation {
-                for x in modified_vars.iter() {
-                    stmts.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
-                }
-                for (x, typ) in typ_inv_vars.iter() {
-                    if modified_vars.contains(x) {
-                        let typ_inv =
-                            typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                        if let Some(expr) = typ_inv {
-                            stmts.push(Arc::new(StmtX::Assume(expr)));
-                        }
-                    }
-                }
+                stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
+                modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut stmts);
                 for (_, inv, _, _) in invs_exit.iter() {
                     let inv_stmt = StmtX::Assume(inv.clone());
                     stmts.push(Arc::new(inv_stmt));
