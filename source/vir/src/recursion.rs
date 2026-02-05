@@ -549,6 +549,17 @@ pub(crate) fn expand_call_graph(
     // impl_paths contains the necessary impl_path to instantiate Self: T explicitly,
     // and we catch the nontermination resulting from Self: T.
     // See, for example, test_termination_1 in rust_verify_test/tests/traits.rs.
+    //
+    // However, for default methods, rustc does not provide the impl_path to us,
+    // and we use a different way of catching uses of Self: T.
+    // Specifically, we make sure there is an edge in the call graph from T to the
+    // T's default methods, and any attempt by a default method to use Self: T
+    // (say, when calling a function f<A: T>) will create an edge to someone who
+    // uses T (in this example, f), which then creates a cycle that is reported as an error.
+    // (See, for example, test_default14 in rust_verify_test/tests/traits.rs.)
+    // The one exception to this is when a default method of T calls another default method of T;
+    // this is not considered a cycle through T, but instead is treated as ordinary recursion.
+    // (See, for example, test_default17 in rust_verify_test/tests/traits.rs.)
     let add_calls = &mut |expr: &crate::ast::Expr| {
         match &expr.x {
             ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec), _, _) => {
