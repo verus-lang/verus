@@ -109,15 +109,22 @@ pub broadcast axiom fn alloc_bound(p: Provenance)
 
 /// Since `self.alignment()` returns a `int`, `Alignment` invariants do not follow directly from the type.
 /// We bring them in as an axiom, instead.
-pub broadcast axiom fn prov_alignment(p: Provenance)
+pub broadcast axiom fn prov_alignment_properties(p: Provenance)
     ensures
-// Weaker version: is_power_2_exists(self.alignment())
+// Weaker version: is_power_2(self.alignment())
 // Taken directly from `alignment_properties`
 
         #![trigger p.alignment()]
         exists|i: nat|
             pow(2, i) == p.alignment() as int && i < isize::BITS && 0 < p.alignment() <= isize::MAX
                 + 1,
+;
+
+/// The start address of an allocation should be aligned to the allocation's alignment, 
+/// as per the postcondition of `Allocator::allocate`. 
+pub broadcast axiom fn start_addr_aligned(p: Provenance)
+    ensures
+        #[trigger] p.start_addr() as nat % #[trigger] p.alignment() == 0,
 ;
 
 /// Allocations should always start with a non-null address, even zero-sized allocations.
@@ -130,6 +137,13 @@ pub broadcast axiom fn is_nonnull(p: Provenance)
     ensures
         #[trigger] p.start_addr() != 0,
 ;
+
+pub broadcast group group_provenance_properties {
+    alloc_bound,
+    prov_alignment_properties,
+    start_addr_aligned,
+    is_nonnull,
+}
 
 /// Metadata
 ///
@@ -718,6 +732,7 @@ impl<T> MapPointsTo<T> {
     /// (By constructing the pointers this way, we ensure that the type invariant is upheld.)
     ///
     /// Note that this is more restrictive than a normal submap because we require the submap to be contiguous.
+    #[verifier::spinoff_prover]
     pub proof fn contiguous_submap(tracked &mut self, begin: nat, len: nat) -> (tracked out_map:
         Self)
         requires
@@ -1524,11 +1539,9 @@ pub tracked struct Dealloc {
 
 /// Data associated with a `Dealloc` permission.
 pub ghost struct DeallocData {
-    pub addr: usize,
+    /// The originally requested size to be allocated. May be smaller than the actual allocated size.
     pub size: nat,
-    pub align: nat,
-    /// This should probably be some kind of "allocation ID" (with "allocation ID" being
-    /// only one part of a full Provenance definition).
+    /// The provenance of the allocation.
     pub provenance: Provenance,
 }
 
@@ -1538,7 +1551,7 @@ impl Dealloc {
     /// Start address of the allocation you are allowed to deallocate.
     #[verifier::inline]
     pub open spec fn addr(self) -> usize {
-        self.view().addr
+        self.view().provenance.start_addr()
     }
 
     /// Size of the allocation you are allowed to deallocate.
@@ -1550,7 +1563,7 @@ impl Dealloc {
     /// Alignment of the allocation you are allowed to deallocate.
     #[verifier::inline]
     pub open spec fn align(self) -> nat {
-        self.view().align
+        self.view().provenance.alignment()
     }
 
     /// Provenance of the allocation you are allowed to deallocate.
@@ -1563,6 +1576,10 @@ impl Dealloc {
 /// Allocate with the global allocator.
 /// The precondition should be consistent with the [documented safety conditions on `alloc`](https://doc.rust-lang.org/alloc/alloc/trait.GlobalAlloc.html#tymethod.alloc).
 /// Returns a pointer with a corresponding [`PointsToRaw`] and [`Dealloc`] permissions.
+/// 
+/// Here we allocate exactly the size of memory requested 
+/// (shown by having both the `Dealloc` size and the `Provenance` `alloc_len` be the provided `size`)
+/// This is a stronger guarantee than `Allocator::allocate`, which may allocate a larger block of memory. 
 #[cfg(feature = "std")]
 #[verifier::external_body]
 pub fn allocate(size: usize, align: usize) -> (pt: (
@@ -1577,14 +1594,14 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
         pt.1@.is_range(pt.0.addr() as int, size as int),
         pt.0.addr() + size <= usize::MAX + 1,
         pt.2@@ == (DeallocData {
-            addr: pt.0.addr(),
             size: size as nat,
-            align: align as nat,
             provenance: pt.1@.provenance(),
         }),
         pt.0.addr() as int % align as int == 0,
         pt.0@.provenance == pt.1@.provenance(),
         pt.1@.provenance().alloc_len() == size,
+        pt.1@.provenance().start_addr() == pt.0.addr(),
+        pt.1@.provenance().alignment() == align as nat,
     opens_invariants none
 {
     // SAFETY: valid_layout is a precondition
@@ -1604,6 +1621,11 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
 /// are satisfied; by also giving up permission of the [`PointsToRaw`] permission,
 /// we ensure there can be no use-after-free bug as a result of this deallocation.
 /// In order to do so, the parameters of the [`PointsToRaw`] and [`Dealloc`] permissions must match the parameters of the deallocation.
+/// 
+/// We have two different ways to track size within `dealloc`: 
+/// `dealloc.size`, the original requested size, and `dealloc.provenance.alloc_len()`, the size of memory actually allocated. 
+/// According to the `Allocator` documentation, it's possible to have `dealloc.size <= dealloc.provenance.alloc_len()`. 
+/// Here, we restrict them to be the same. 
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub fn deallocate(
@@ -1615,7 +1637,7 @@ pub fn deallocate(
 )
     requires
         dealloc.addr() == p.addr(),
-        dealloc.size() == size,
+        dealloc.size() == size == dealloc.provenance().alloc_len(),
         dealloc.align() == align,
         dealloc.provenance() == pt.provenance(),
         pt.is_range(dealloc.addr() as int, dealloc.size() as int),
