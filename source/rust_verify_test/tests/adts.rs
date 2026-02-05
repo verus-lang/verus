@@ -1505,7 +1505,7 @@ test_verify_one_file! {
                 &&& t matches S::That { v: a }
                 &&& a > 3
                 &&& a < 5
-            }
+            },
         {
             assert(t is That);
             assert(match t {

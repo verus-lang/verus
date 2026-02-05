@@ -724,6 +724,27 @@ pub mod parsing {
                 let punct = input.parse()?;
                 exprs.push_punct(punct);
             }
+            // Detect common syntax errors that lead to premature closure termination.
+            if input.peek(token::Brace) {
+                match ctx {
+                    Context::Expr => {
+                        if input.peek2(token::Brace) || Self::peek2_spec_keyword(input) {
+                            // Missing parentheses.
+                            return Err(input.error("This block looks like the closure/loop body, but it is followed immediately by another block or clause. If you meant this block to be part of a clause, try parenthesizing it."));
+                        }
+                    }
+                    Context::Item => {
+                        if !exprs.trailing_punct() && input.peek2(Token![,]) {
+                            // Missing comma before.
+                            return Err(input.error("This block looks like it might be part of the clause. If you meant it to be part of the clause, put a comma before it."));
+                        }
+                        if input.peek2(token::Brace) || Self::peek2_spec_keyword(input) {
+                            // Missing comma after.
+                            return Err(input.error("This block looks like it might be part of the clause. If you meant it to be part of the clause, put a comma after it."));
+                        }
+                    }
+                }
+            }
             Ok(Specification { exprs })
         }
 
@@ -733,11 +754,19 @@ pub mod parsing {
                 || allow_braces && Self::is_next_condition_in_braces(input)
         }
 
+        fn is_next_condition_in_braces(input: ParseStream) -> bool {
+            input.peek(token::Brace) && input.peek2(Token![,])
+        }
+
         fn is_next_condition_bare(input: ParseStream) -> bool {
             !(input.peek(Token![,])
                 || input.peek(token::Brace)
                 || input.peek(Token![;])
-                || input.peek(Token![invariant_except_break])
+                || Self::peek_spec_keyword(input))
+        }
+
+        fn peek_spec_keyword(input: ParseStream) -> bool {
+            input.peek(Token![invariant_except_break])
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
@@ -747,11 +776,21 @@ pub mod parsing {
                 || input.peek(Token![via])
                 || input.peek(Token![when])
                 || input.peek(Token![no_unwind])
-                || input.peek(Token![opens_invariants]))
+                || input.peek(Token![opens_invariants])
         }
 
-        fn is_next_condition_in_braces(input: ParseStream) -> bool {
-            input.peek(token::Brace) && input.peek2(Token![,])
+        fn peek2_spec_keyword(input: ParseStream) -> bool {
+            input.peek2(Token![invariant_except_break])
+                || input.peek2(Token![invariant])
+                || input.peek2(Token![invariant_ensures])
+                || input.peek2(Token![ensures])
+                || input.peek2(Token![default_ensures])
+                || input.peek2(Token![returns])
+                || input.peek2(Token![decreases])
+                || input.peek2(Token![via])
+                || input.peek2(Token![when])
+                || input.peek2(Token![no_unwind])
+                || input.peek2(Token![opens_invariants])
         }
     }
 
