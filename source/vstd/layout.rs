@@ -259,9 +259,9 @@ pub broadcast axiom fn layout_of_primitives()
 ;
 
 // Adding this to the alignment broadcast group causes proofs to time out, so import as-needed
-pub broadcast proof fn alignment_of_u8()
+pub broadcast proof fn align_of_u8()
     ensures 
-        #![trigger size_of::<u8>()]
+        #![trigger align_of::<u8>()]
         align_of::<u8>() == 1,
 {
     broadcast use {
