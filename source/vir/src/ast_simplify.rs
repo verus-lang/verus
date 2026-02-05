@@ -16,7 +16,7 @@ use crate::ast::{
 };
 use crate::ast_util::{
     conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_expr, typ_args_for_datatype_typ,
-    wrap_in_trigger,
+    unit_typ, wrap_in_trigger,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
@@ -104,7 +104,7 @@ fn temp_var(state: &mut State, expr: &Expr) -> (Stmt, VarIdent) {
     let pattern = PatternX::simple_var(name, &expr.span, &expr.typ);
     let decl = StmtX::Decl {
         pattern,
-        mode: Some(Mode::Exec),
+        mode: None,
         init: Some(PlaceX::spec_temporary(expr.clone())),
         els: None,
     };
@@ -147,10 +147,10 @@ fn pattern_to_exprs(
     for pbd in pattern_bound_decls {
         let PatternBoundDecl { name, expr } = pbd;
         let pattern = PatternX::simple_var(name, &expr.span, &expr.typ);
-        // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
+        // Mode doesn't matter at this stage; arbitrarily set it to None
         let decl = StmtX::Decl {
             pattern,
-            mode: Some(Mode::Exec),
+            mode: None,
             init: Some(PlaceX::spec_temporary(expr.clone())),
             els: None,
         };
@@ -264,7 +264,7 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
                 pattern.span.clone(),
                 StmtX::Decl {
                     pattern: v_pattern,
-                    mode: Some(Mode::Exec), // mode doesn't matter anymore
+                    mode: None, // mode doesn't matter anymore
                     init: None,
                     els: None,
                 },
@@ -768,11 +768,21 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
         StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
             if ctx.new_mut_ref {
                 let (mut stmts, place) = place_to_pure_place(state, init);
-                let _pattern_check =
-                    crate::patterns::pattern_to_exprs(ctx, &place, pattern, false, &mut stmts)?;
-                if let Some(_els) = &els {
-                    todo!(); // TODO(new_mut_ref)
+                let mut stmts2: Vec<Stmt> = vec![];
+                let pattern_check =
+                    crate::patterns::pattern_to_exprs(ctx, &place, pattern, false, &mut stmts2)?;
+                if let Some(els) = &els {
+                    let checkx = ExprX::Unary(UnaryOp::Not, pattern_check.clone());
+                    let check = SpannedTyped::new(&pattern_check.span, &pattern_check.typ, checkx);
+                    let neverx = ExprX::NeverToAny(els.clone());
+                    let never = SpannedTyped::new(&els.span, &unit_typ(), neverx);
+                    let ifx = ExprX::If(check.clone(), never, None);
+                    let ife = SpannedTyped::new(&stmt.span, &unit_typ(), ifx);
+                    let ifstmtx = StmtX::Expr(ife);
+                    let ifstmt = Spanned::new(stmt.span.clone(), ifstmtx);
+                    stmts.push(ifstmt);
                 }
+                stmts.extend(stmts2);
                 Ok(stmts)
             } else {
                 let mut decls: Vec<Stmt> = Vec::new();
@@ -933,7 +943,7 @@ fn exec_closure_spec_requires(
         let tuple_field = tuple_get_field_expr(state, span, typ, &tuple_var, params.len(), i);
         let decl = StmtX::Decl {
             pattern,
-            mode: Some(Mode::Spec),
+            mode: None,
             init: Some(PlaceX::spec_temporary(tuple_field)),
             els: None,
         };
@@ -996,7 +1006,7 @@ fn exec_closure_spec_ensures(
         let tuple_field = tuple_get_field_expr(state, span, typ, &tuple_var, params.len(), i);
         let decl = StmtX::Decl {
             pattern,
-            mode: Some(Mode::Spec),
+            mode: None,
             init: Some(PlaceX::spec_temporary(tuple_field)),
             els: None,
         };

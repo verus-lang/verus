@@ -311,6 +311,12 @@ impl GlobalCtx {
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
 
+        let mut trait_map: HashMap<Path, Trait> = HashMap::new();
+        for tr in krate.traits.iter() {
+            assert!(!trait_map.contains_key(&tr.x.name));
+            trait_map.insert(tr.x.name.clone(), tr.clone());
+        }
+
         use crate::ast::TraitImpl;
         let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
         let mut trait_impl_to_extensions: HashMap<Path, Vec<Path>> = HashMap::new();
@@ -441,6 +447,7 @@ impl GlobalCtx {
 
             crate::recursion::expand_call_graph(
                 &func_map,
+                &trait_map,
                 &trait_impl_map,
                 &reveal_group_set,
                 &mut func_call_graph,

@@ -19,8 +19,7 @@ use crate::def::{
     new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
     prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type,
     prefix_unbox, snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id,
-    suffix_typ_param_ids, unique_local, variant_field_ident, variant_field_ident_internal,
-    variant_ident,
+    suffix_typ_param_ids, variant_field_ident, variant_field_ident_internal, variant_ident,
 };
 use crate::messages::{Span, error, error_with_label};
 use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
@@ -43,7 +42,7 @@ use air::ast_util::{
 };
 use air::context::SmtSolver;
 use num_bigint::BigInt;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::mem::swap;
 use std::sync::Arc;
 
@@ -774,6 +773,8 @@ fn exp_get_custom_err(exp: &Exp) -> Option<Arc<String>> {
 pub(crate) enum ExprMode {
     Spec,
     Body,
+    /// Expression from the function spec, to be injected at the beginning of the query
+    /// (e.g. assume(requires_clause) at the beginning)
     BodyPre,
 }
 
@@ -787,9 +788,11 @@ impl ExprCtxt {
     pub(crate) fn new() -> Self {
         ExprCtxt { mode: ExprMode::Body, is_singular: false }
     }
+
     pub(crate) fn new_mode(mode: ExprMode) -> Self {
         ExprCtxt { mode, is_singular: false }
     }
+
     pub(crate) fn new_mode_singular(mode: ExprMode, is_singular: bool) -> Self {
         ExprCtxt { mode, is_singular }
     }
@@ -873,8 +876,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             let expr = constant_to_expr(ctx, c);
             expr
         }
-        ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
         ExpX::VarLoc(x) => string_var(&suffix_local_unique_id(x)),
+        ExpX::Var(x) => match expr_ctxt.mode {
+            ExprMode::Spec | ExprMode::BodyPre | ExprMode::Body => {
+                string_var(&suffix_local_unique_id(x))
+            }
+        },
         ExpX::VarAt(x, VarAt::Pre) => match expr_ctxt.mode {
             ExprMode::Spec => string_var(&prefix_pre_var(&suffix_local_unique_id(x))),
             ExprMode::Body => {
@@ -1533,14 +1540,18 @@ enum UnwindAir {
 }
 
 struct State {
-    local_shared: Vec<Decl>, // shared between all queries for a single function
+    /// shared between all queries for a single function
+    local_shared: Vec<Decl>,
     local_decls_decreases_init: Stms,
-    may_be_used_in_old: HashSet<UniqueIdent>, // vars that might have a 'PRE' snapshot, needed for while loop generation
     commands: Vec<CommandsWithContext>,
-    snapshot_count: u32, // Used to ensure unique Idents for each snapshot
-    sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
-    snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
-    assign_map: AssignMap, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
+    /// Used to ensure unique Idents for each snapshot
+    snapshot_count: u32,
+    /// a stack of snapshot ids, the top one should dominate the current position in the AST
+    sids: Vec<Ident>,
+    /// Maps each statement's span to the closest dominating snapshot's ID
+    snap_map: Vec<(Span, SnapPos)>,
+    /// Maps Maps each statement's span to the assigned variables (that can potentially be queried)
+    assign_map: AssignMap,
     unwind: UnwindAir,
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
@@ -2528,6 +2539,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             decrease,
             typ_inv_vars,
             modified_vars,
+            pre_modified_params,
         } => {
             let loop_isolation = *loop_isolation;
             let (cond_stm, pos_assume, neg_assume) = if let Some((cond_stm, cond_exp)) = cond {
@@ -2666,20 +2678,23 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
                 // For any mutable param `x` to the function, we might refer to either
                 // *x or *old(x) within the loop body or invariants.
-                // Thus, we need to create a 'pre' snapshot and havoc all these variables
-                // so that we can refer to either version of the variable within the body.
+                // (This could either be because the user uses `old`, or because of expressions
+                // derived from the specification, which refer to params at input time).
+                // Thus we need to create the "pre" snapshot so that `old` has something to refer to.
                 air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+
                 for exp in state.local_decls_decreases_init.clone().iter() {
                     air_body.append(&mut stm_to_stmts(ctx, state, exp)?);
                 }
-                for (x, typ) in typ_inv_vars.iter() {
-                    if state.may_be_used_in_old.contains(x) {
-                        air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(x))));
-                        let typ_inv =
-                            typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                        if let Some(expr) = typ_inv {
-                            air_body.push(Arc::new(StmtX::Assume(expr)));
-                        }
+
+                // For any variable that might have been mutated since the beginning of the
+                // function, we need to havoc it, in order to create a difference between
+                // the "current" value and the "pre-state" value.
+                for (x, typ) in pre_modified_params.iter() {
+                    air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(x))));
+                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                    if let Some(expr) = typ_inv {
+                        air_body.push(Arc::new(StmtX::Assume(expr)));
                     }
                 }
             }
@@ -3074,21 +3089,6 @@ pub(crate) fn body_stm_to_air(
 
     set_fuel(ctx, &mut local_shared, hidden);
 
-    use indexmap::{IndexMap, IndexSet};
-    let mut declared: IndexMap<UniqueIdent, Typ> = IndexMap::new();
-    let mut assigned: IndexSet<UniqueIdent> = IndexSet::new();
-    let mut has_mut_params = false;
-    for param in params.iter() {
-        declared.insert(unique_local(&param.x.name), param.x.typ.clone());
-        assigned.insert(unique_local(&param.x.name));
-        if param.x.is_mut {
-            has_mut_params = true;
-        }
-    }
-    for decl in local_decls.iter() {
-        declared.insert(decl.ident.clone(), decl.typ.clone());
-    }
-
     let initial_sid = Arc::new("0_entry".to_string());
 
     let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
@@ -3108,13 +3108,6 @@ pub(crate) fn body_stm_to_air(
         }
     };
 
-    let mut may_be_used_in_old = HashSet::<UniqueIdent>::new();
-    for param in params.iter() {
-        if param.x.is_mut {
-            may_be_used_in_old.insert(unique_local(&param.x.name));
-        }
-    }
-
     for e in crate::traits::trait_bounds_to_air(ctx, typ_bounds) {
         // The outer query already has this in reqs, but inner queries need it separately:
         local_shared.push(Arc::new(DeclX::Axiom(air::ast::Axiom { named: None, expr: e })));
@@ -3125,7 +3118,6 @@ pub(crate) fn body_stm_to_air(
     let mut state = State {
         local_shared,
         local_decls_decreases_init: local_decls_decreases_init.clone(),
-        may_be_used_in_old,
         commands: Vec::new(),
         snapshot_count: 0,
         sids: vec![initial_sid.clone()],
@@ -3142,21 +3134,11 @@ pub(crate) fn body_stm_to_air(
         static_prelude: mk_static_prelude(ctx, statics),
     };
 
-    let mut _modified = IndexSet::new();
-
-    let stm = crate::sst_vars::stm_assign(
-        &mut state.assign_map,
-        &declared,
-        &mut assigned,
-        &mut _modified,
-        stm,
-    );
+    let stm = crate::sst_vars::compute_assign_info(&mut state.assign_map, params, local_decls, stm);
 
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm)?;
 
-    if has_mut_params {
-        stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
-    }
+    stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
     if state.static_prelude.len() > 0 {
         stmts.splice(0..0, state.static_prelude.clone());
     }

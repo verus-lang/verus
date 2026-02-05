@@ -75,6 +75,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Nondeterministic { .. }
             | ExprX::TwoPhaseBorrowMut(_)
             | ExprX::BorrowMut(_)
+            | ExprX::ImplicitReborrowOrSpecRead(..)
             | ExprX::ReadPlace(..)
             | ExprX::UseLeftWhereRightCanHaveNoAssignments(..)
             | ExprX::Block(..) => VisitorControlFlow::Recurse,

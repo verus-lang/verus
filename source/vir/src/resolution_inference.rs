@@ -1174,6 +1174,9 @@ impl<'a> Builder<'a> {
             ExprX::UseLeftWhereRightCanHaveNoAssignments(..) => {
                 panic!("UseLeftWhereRightCanHaveNoAssignments shouldn't be created yet");
             }
+            ExprX::ImplicitReborrowOrSpecRead(..) => {
+                panic!("ImplicitReborrowOrSpecRead should have been removed");
+            }
         }
     }
 
@@ -1186,12 +1189,27 @@ impl<'a> Builder<'a> {
 
                 Ok(bb)
             }
-            StmtX::Decl { pattern, mode: _, init: Some(init), els: None } => {
+            StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
                 let (cpt, bb) = self.build_place_typed(init, bb)?;
+
+                let next_bb = match els {
+                    Some(els) => {
+                        let els_bb = self.new_bb(AstPosition::Before(els.span.id), false);
+                        let next_bb = self.new_bb(AstPosition::After(stmt.span.id), false);
+                        self.basic_blocks[bb].successors.push(els_bb);
+                        self.basic_blocks[bb].successors.push(next_bb);
+                        match self.build(els, els_bb) {
+                            Ok(_) | Err(()) => {}
+                        }
+                        next_bb
+                    }
+                    None => bb,
+                };
+
                 self.append_instructions_for_pattern_moves_mutations(
                     pattern,
                     &cpt,
-                    bb,
+                    next_bb,
                     AstPosition::After(stmt.span.id),
                 );
 
@@ -1209,15 +1227,15 @@ impl<'a> Builder<'a> {
                     };
                     let fp = self.locals.add_place(&fpt);
                     self.push_instruction_propagate(
-                        bb,
+                        next_bb,
                         AstPosition::After(stmt.span.id),
                         InstructionKind::Overwrite(fp),
                     );
                 }
-                Ok(bb)
+                Ok(next_bb)
             }
-            StmtX::Decl { pattern: _, mode: _, init: _, els: Some(_) } => {
-                todo!()
+            StmtX::Decl { pattern: _, mode: _, init: None, els: Some(_) } => {
+                panic!("Unexpected let-else without an initializer");
             }
         }
     }
@@ -3459,7 +3477,7 @@ fn add_decls_for_temps(
                     expr.span.clone(),
                     StmtX::Decl {
                         pattern: PatternX::simple_var(x, &expr.span, typ),
-                        mode: Some(Mode::Exec), // doesn't matter
+                        mode: None, // doesn't matter
                         init: None,
                         els: None,
                     },

@@ -468,6 +468,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 decrease,
                 typ_inv_vars,
                 modified_vars,
+                pre_modified_params,
             } => {
                 let cond = R::map_opt(cond, &mut |(cond_stm, cond_exp)| {
                     let cond_stm = self.visit_stm(cond_stm)?;
@@ -478,6 +479,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let invs = R::map_vec(invs, &mut |inv| self.visit_loop_inv(inv))?;
                 let decrease = self.visit_exps(decrease)?;
                 let typ_inv_vars = self.visit_typ_inv_vars(typ_inv_vars)?;
+                let pre_modified_params = self.visit_typ_inv_vars(pre_modified_params)?;
                 R::ret(|| {
                     stm_new(StmX::Loop {
                         loop_isolation: *loop_isolation,
@@ -490,6 +492,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         decrease: R::get_vec_a(decrease),
                         typ_inv_vars: R::get_vec_a(typ_inv_vars),
                         modified_vars: modified_vars.clone(),
+                        pre_modified_params: R::get_vec_a(pre_modified_params),
                     })
                 })
             }
@@ -1136,4 +1139,31 @@ where
         VisitorControlFlow::Return => unreachable!(),
         VisitorControlFlow::Stop(e) => Err(e),
     }
+}
+
+struct MapExpsInStmVisitor<'a, F> {
+    fe: &'a mut F,
+}
+
+impl<'a, F> Visitor<Rewrite, VirErr, NoScoper> for MapExpsInStmVisitor<'a, F>
+where
+    F: FnMut(&Exp) -> Exp,
+{
+    fn visit_stm(&mut self, stm: &Stm) -> Result<Stm, VirErr> {
+        let stm = self.visit_stm_rec(stm)?;
+        Ok(stm)
+    }
+
+    fn visit_exp(&mut self, exp: &Exp) -> Result<Exp, VirErr> {
+        let exp = self.visit_exp_rec(exp)?;
+        Ok((self.fe)(&exp))
+    }
+}
+
+pub(crate) fn map_exps_in_stm_visitor<F>(stm: &Stm, fe: &mut F) -> Stm
+where
+    F: FnMut(&Exp) -> Exp,
+{
+    let mut visitor = MapExpsInStmVisitor { fe };
+    visitor.visit_stm(stm).unwrap()
 }
