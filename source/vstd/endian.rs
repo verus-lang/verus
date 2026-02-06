@@ -1084,6 +1084,26 @@ impl<B: Base> EndianNat<B> {
         assert(Self::to_big(Self::from_big(n1)) == n1);
         assert(Self::to_big(Self::from_big(n2)) == n2);
     }
+
+    pub proof fn to_big_single<BIG>(x: EndianNat<B>) where
+        BIG: BasePow2,
+        B: CompatibleSmallerBaseFor<BIG>,
+
+        requires
+            x.len() == Self::exp(),
+            x.len() > 0,
+        ensures
+            Self::to_big(x).len() == 1,
+            Self::to_big(x).index(0) == x.to_nat() as int,
+    {
+        broadcast use EndianNat::exp_properties;
+
+        reveal(EndianNat::to_big);
+        assert(x =~= x.take_least(Self::exp()));
+        assert(Self::to_big(x) =~= Self::to_big(x.skip_least(Self::exp())).append_least(
+            EndianNat::new(x.endian, seq![x.take_least(Self::exp()).to_nat() as int]),
+        ));
+    }
 }
 
 /***** Functions involving both little and big endian *****/
