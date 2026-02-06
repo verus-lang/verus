@@ -16,6 +16,7 @@
 #![cfg_attr(verus_keep_ghost, feature(freeze))]
 #![cfg_attr(verus_keep_ghost, feature(derive_clone_copy))]
 #![cfg_attr(verus_keep_ghost, feature(derive_eq))]
+#![cfg_attr(verus_keep_ghost, verifier::migrate_postconditions_with_mut_refs(true))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 #![cfg_attr(verus_keep_ghost, feature(new_range_api))]
 
