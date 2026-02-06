@@ -651,7 +651,7 @@ test_verify_one_file! {
                 old(t).s.a < 30,
                 old(t).s.b < 30,
             ensures
-                *t == (T { s: S { a: (old(t).s.a + 1) as usize, b: (old(t).s.b + 1) as i32 }, ..*old(t) })
+                *fin(t) == (T { s: S { a: (old(t).s.a + 1) as usize, b: (old(t).s.b + 1) as i32 }, ..*old(t) })
         {
             t.s.a = t.s.a + 1;
             t.s.b = t.s.b + 1;
@@ -679,7 +679,7 @@ test_verify_one_file! {
     #[test] test_field_update_param_2_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
         fn test(t: &mut T, v: usize)
             requires old(t).s.a < 30, v < 30
-            ensures *t == (T { s: S { a: (old(t).s.a + v) as usize, ..old(t).s }, ..*old(t) })
+            ensures *fin(t) == (T { s: S { a: (old(t).s.a + v) as usize, ..old(t).s }, ..*old(t) })
         {
             t.s.a = t.s.a + v;
         }
@@ -690,7 +690,7 @@ test_verify_one_file! {
     #[test] test_field_update_param_mut_ref_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
         fn foo(s: &mut S, v: usize)
             requires old(s).a < 30, v < 30
-            ensures *s == (S { a: (old(s).a + v) as usize, ..*old(s) })
+            ensures *fin(s) == (S { a: (old(s).a + v) as usize, ..*old(s) })
         {
             s.a = s.a + v;
         }
@@ -1809,7 +1809,7 @@ test_verify_one_file! {
 
         fn mutate_int_2(i: &mut u8)
             requires *old(i) == 19,
-            ensures *i == 30,
+            ensures *fin(i) == 30,
         {
             *i = 30;
         }
@@ -1851,7 +1851,7 @@ test_verify_one_file! {
 
         fn update_u64(a: &mut u64)
             requires *old(a) == 5,
-            ensures *a == 19,
+            ensures *fin(a) == 19,
         {
             *a = 19;
         }
@@ -1860,14 +1860,14 @@ test_verify_one_file! {
             p.0 = 5;
             p.1 = 20;
             update_u64(&mut p.0);
-            assert(p == (19u64, 20u64));
+            assert(*p == (19u64, 20u64));
         }
 
         fn test_mut_ref_fails(p: &mut (u64, u64)) {
             p.0 = 5;
             p.1 = 20;
             update_u64(&mut p.0);
-            assert(p == (19u64, 20u64));
+            assert(*p == (19u64, 20u64));
             assert(false); // FAILS
         }
 

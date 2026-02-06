@@ -441,7 +441,7 @@ test_verify_one_file! {
 
         fn test(a: &mut u64)
             requires *old(a) < 1000,
-            ensures *a == *old(a) + 30,
+            ensures *fin(a) == *old(a) + 30,
         {
             let ghost old_a = *a;
             *a = *a + 5 * 6;

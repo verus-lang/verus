@@ -58,8 +58,8 @@ test_verify_one_file! {
             old(ar)[0] == 1,
             old(ar)[2] == 2,
         ensures
-            ar[0] == 2,
-            ar[2] == 3,
+            fin(ar)[0] == 2,
+            fin(ar)[2] == 3,
         {
             ar[0] += 1;
             ar[ar[0]] += 1;
@@ -76,8 +76,8 @@ test_verify_one_file! {
         requires
             *old(i) < 10,
         ensures
-            ret == old(i),
-            *i == *old(i) + 1,
+            ret == *old(i),
+            *fin(i) == *old(i) + 1,
         {
             let oldi = *i;
             *i = *i + 1;
@@ -88,15 +88,14 @@ test_verify_one_file! {
         requires
             old(ar)[0] < 10,
         ensures
-            ar[0] == old(ar)[0] + 1,
-            ar[1] == 1,
+            fin(ar)[0] == old(ar)[0] + 1,
+            fin(ar)[1] == 1,
         {
             let mut i = 0usize;
             ar[potential_side_effect(&mut i)] += 1;
             ar[potential_side_effect(&mut i)] = 1;
         }
-
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: assign op to index_mut with tgt/idx that could have side effects")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -138,7 +137,7 @@ test_verify_one_file! {
 
         fn test(ar: &mut [u8; 20])
         ensures
-            ar[0] == 1,
+            fin(ar)[0] == 1,
         {
             ar[0] = 1;
         }
@@ -158,9 +157,9 @@ test_verify_one_file! {
 
         fn test(ar: &mut [u8; 20])
         ensures
-            ar[0] == 1,
+            fin(ar)[0] == 1,
         {
-            ar[0] = 1u64;
+            fin(ar)[0] = 1u64;
         }
     } => Err(e) => assert_rust_error_msg(e, "mismatched types")
 }
