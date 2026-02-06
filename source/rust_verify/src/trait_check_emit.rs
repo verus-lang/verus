@@ -421,8 +421,7 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
             state.write(" : ");
             let bounds_strs: Vec<_> = bares
                 .iter()
-                .map(|bound| emit_generic_bound(bound, true))
-                .flatten()
+                .filter_map(|bound| emit_generic_bound(bound, true))
                 .chain(unsize.into_iter())
                 .collect();
             state.write(bounds_strs.join("+"));

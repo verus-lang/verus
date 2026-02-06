@@ -234,12 +234,7 @@ fn postcondition_stmt(span: Span, f: Ident, pcrf: PostConditionReasonField) -> S
 }
 
 fn contains_ident(v: &Vec<Ident>, id: &Ident) -> bool {
-    for id0 in v {
-        if id0.to_string() == id.to_string() {
-            return true;
-        }
-    }
-    return false;
+    v.iter().any(|id0| id0 == id)
 }
 
 fn get_cur(field_name: &Ident) -> Expr {
@@ -256,11 +251,8 @@ fn get_cur_ident(field_name: &Ident) -> Ident {
 
 fn field_name_from_tmp(tmp_name: &Ident) -> Option<Ident> {
     let s = tmp_name.to_string();
-    if s.starts_with(UPDATE_TMP_PREFIX) {
-        Some(Ident::new(&s[UPDATE_TMP_PREFIX.len()..], tmp_name.span()))
-    } else {
-        None
-    }
+    let ident_str = s.strip_prefix(UPDATE_TMP_PREFIX)?;
+    Some(Ident::new(ident_str, tmp_name.span()))
 }
 
 // Phase 1. Give meaning to all the update, init, and special op statements.
@@ -288,7 +280,7 @@ fn simplify_ops_with_pre(ts: &TransitionStmt, sm: &SM, kind: TransitionKind) -> 
                 SimplStmt::Assign(
                     *ts.get_span(),
                     get_cur_ident(f_ident),
-                    f.get_type(),
+                    Box::new(f.get_type()),
                     Expr::Verbatim(quote! {pre.#f_ident}),
                     true,
                 )
@@ -309,7 +301,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
             }
             res
         }
-        TransitionStmt::Split(span, split_kind, es) => match split_kind {
+        TransitionStmt::Split(span, split_kind, es) => match &**split_kind {
             SplitKind::If(..) | SplitKind::Match(..) => {
                 let mut new_es: Vec<(Span, Vec<SimplStmt>)> = Vec::new();
                 for e in es {
@@ -355,7 +347,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
                         if let Some((pat1, init1)) = opt {
                             res.push(SimplStmt::Let(
                                 *span,
-                                pat1,
+                                Box::new(pat1),
                                 None,
                                 init1,
                                 all_children,
@@ -382,14 +374,20 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
 
         TransitionStmt::Initialize(span, f, e) | TransitionStmt::Update(span, f, e) => {
             let field = get_field(&sm.fields, f);
-            vec![SimplStmt::Assign(*span, get_cur_ident(f), field.get_type(), e.clone(), false)]
+            vec![SimplStmt::Assign(
+                *span,
+                get_cur_ident(f),
+                Box::new(field.get_type()),
+                e.clone(),
+                false,
+            )]
         }
         TransitionStmt::SubUpdate(span, f, subs, e) => {
             let field = get_field(&sm.fields, f);
             vec![SimplStmt::Assign(
                 *span,
                 get_cur_ident(f),
-                field.get_type(),
+                Box::new(field.get_type()),
                 update_sub_expr(&get_cur(f), subs, 0, e),
                 false,
             )]
@@ -401,7 +399,7 @@ fn simplify_special_op(
     span: Span,
     field: &Field,
     op: &SpecialOp,
-    pat_opt: &Option<Pat>,
+    pat_opt: &Option<Box<Pat>>,
     proof: &AssertProof,
 ) -> (Vec<SimplStmt>, Vec<SimplStmt>) {
     match op {
@@ -423,7 +421,7 @@ fn simplify_special_op(
                 vec![SimplStmt::Assign(
                     span,
                     get_cur_ident(&field.name),
-                    field.get_type(),
+                    Box::new(field.get_type()),
                     new_val,
                     false,
                 )],
@@ -439,7 +437,7 @@ fn simplify_special_op(
                 vec![SimplStmt::Assign(
                     span,
                     get_cur_ident(&field.name),
-                    field.get_type(),
+                    Box::new(field.get_type()),
                     new_val,
                     false,
                 )],
@@ -464,7 +462,7 @@ fn simplify_special_op(
                 vec![SimplStmt::Assign(
                     span,
                     get_cur_ident(&field.name),
-                    field.get_type(),
+                    Box::new(field.get_type()),
                     new_val,
                     false,
                 )],
@@ -480,7 +478,7 @@ fn simplify_special_op(
                 vec![SimplStmt::Assign(
                     span,
                     get_cur_ident(&field.name),
-                    field.get_type(),
+                    Box::new(field.get_type()),
                     new_val,
                     false,
                 )],
@@ -730,7 +728,7 @@ fn expr_matches(e: &Expr, pat: &Pat) -> Expr {
     })
 }
 
-fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<Pat>) -> Expr {
+fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<Box<Pat>>) -> Expr {
     // note: persistent case should always be the same as the normal case
 
     match elt {

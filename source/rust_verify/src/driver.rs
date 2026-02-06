@@ -190,7 +190,7 @@ pub struct Stats {
     pub time_rustc: Duration,
     /// time it took to verify the crate (this includes VIR generation, SMT solving, etc.)
     pub time_verify: Duration,
-    /// tiem for lifetime/borrow checking
+    /// time for lifetime/borrow checking
     pub time_trait_conflicts: Duration,
     /// compilation time
     pub time_compile: Duration,
@@ -205,7 +205,7 @@ pub(crate) fn run_with_erase_macro_compile(
         do_compile: compile,
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
     };
-    rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
+    rustc_args.extend(["--cfg", "verus_only", "--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     if matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
         rustc_args.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
     } else if vstd == Vstd::NoVstd {
@@ -311,6 +311,7 @@ pub fn run(
 
     let time0 = Instant::now();
     let mut rustc_args_verify = rustc_args.clone();
+    rustc_args_verify.extend(["--cfg", "verus_only"].map(|s| s.to_string()));
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost_body"].map(|s| s.to_string()));
     if matches!(verifier.args.vstd, Vstd::IsCore | Vstd::ImportedViaCore) {

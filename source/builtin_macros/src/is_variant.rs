@@ -80,7 +80,7 @@ fn attribute_is_variant_internal(
                         let field_ty = &f.ty;
                         let field_ident = f.ident.as_ref().expect("missing field ident");
                         let get_ident = syn::Ident::new(
-                            &format!("get_{}_{}", variant_ident_str, field_ident.to_string()),
+                            &format!("get_{variant_ident_str}_{field_ident}"),
                             v.ast().ident.span(),
                         );
                         let field_str = field_ident.to_string();

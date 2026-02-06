@@ -1028,7 +1028,7 @@ fn split_precondition(ctx: &Ctx, span: &Span, name: &Fun, typs: &Typs, args: &Ex
     // so we are also splitting pervasive::assert here.
     let params = &fun.x.pars;
     let typ_params = &fun.x.typ_params;
-    for exp in fun.x.decl.reqs.iter().cloned() {
+    for exp in fun.x.decl.reqs.iter() {
         // In requires, old(x) is really just x:
         let mut f_var_at = |e: &Exp| match &e.x {
             ExpX::VarAt(x, crate::ast::VarAt::Pre) => e.new_x(ExpX::Var(x.clone())),

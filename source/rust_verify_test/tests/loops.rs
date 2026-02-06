@@ -1593,3 +1593,19 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] loop_isolation_false_requires_allow_complex_invariants verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test1() {
+            let mut i = 0;
+            while i < 10
+                invariant_except_break i <= 9
+                invariant 0 <= i <= 10
+                decreases 10 - i
+            {
+                i = i + 1;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break or ensures, unless #[verifier::allow_complex_invariants] is used")
+}

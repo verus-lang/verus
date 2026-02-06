@@ -784,6 +784,16 @@ impl DatatypeX {
     }
 }
 
+impl TraitX {
+    pub fn typ_param_names_with_self(&self) -> Vec<Ident> {
+        let mut typ_params = vec![crate::def::trait_self_type_param()];
+        for (x, _) in self.typ_params.iter() {
+            typ_params.push(x.clone());
+        }
+        typ_params
+    }
+}
+
 pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
     let vars: std::cell::RefCell<HashSet<VarIdent>> = std::cell::RefCell::new(HashSet::new());
     crate::ast_visitor::ast_visitor_check_with_scope_map::<(), _, _, _, _, _, _>(
@@ -1250,7 +1260,7 @@ pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, boo
                             PlaceX::Local(ident) if ident == &ret.x.name => {
                                 assert!(is_unit(&undecorate_typ(&place.typ)));
                                 let e = mk_tuple(&place.span, &Arc::new(vec![]));
-                                Ok(PlaceX::temporary(e))
+                                Ok(PlaceX::spec_temporary(e))
                             }
                             _ => Ok(place.clone()),
                         },
@@ -1363,7 +1373,11 @@ impl Opaqueness {
 }
 
 impl PlaceX {
-    pub fn temporary(e: Expr) -> Place {
+    /// Wraps the given expression in a Temporary node.
+    /// Be wary of types (the type of the place is determined by the type of the Expr,
+    /// which is only correct up to decoration) and only use this for simplifications
+    /// post-resolution-analysis.
+    pub(crate) fn spec_temporary(e: Expr) -> Place {
         SpannedTyped::new(&e.span, &e.typ, PlaceX::Temporary(e.clone()))
     }
 
@@ -1389,6 +1403,18 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
         PlaceX::ModeUnwrap(p, _) => place_get_local(p),
         PlaceX::WithExpr(_e, p) => place_get_local(p),
         PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_get_local(p),
+    }
+}
+
+pub fn place_has_deref_mut(p: &Place) -> bool {
+    match &p.x {
+        PlaceX::Local(_) => false,
+        PlaceX::DerefMut(_p) => true,
+        PlaceX::Field(_opr, p) => place_has_deref_mut(p),
+        PlaceX::Temporary(_) => false,
+        PlaceX::ModeUnwrap(p, _) => place_has_deref_mut(p),
+        PlaceX::WithExpr(_e, p) => place_has_deref_mut(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_has_deref_mut(p),
     }
 }
 
@@ -1483,5 +1509,23 @@ impl MutRefFutureSourceName {
 impl ArmX {
     pub(crate) fn has_guard(&self) -> bool {
         !matches!(&self.guard.x, ExprX::Const(Constant::Bool(true)))
+    }
+}
+
+impl BinaryOp {
+    pub fn short_circuits(&self) -> bool {
+        match self {
+            BinaryOp::And | BinaryOp::Or | BinaryOp::Implies => true,
+            BinaryOp::Xor
+            | BinaryOp::HeightCompare { .. }
+            | BinaryOp::Eq(_)
+            | BinaryOp::Ne
+            | BinaryOp::Inequality(_)
+            | BinaryOp::Arith(_)
+            | BinaryOp::RealArith(_)
+            | BinaryOp::Bitwise(..)
+            | BinaryOp::StrGetChar
+            | BinaryOp::Index(..) => false,
+        }
     }
 }

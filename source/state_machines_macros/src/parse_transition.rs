@@ -98,7 +98,7 @@ fn parse_arg_typed(input: ParseStream) -> parse::Result<(Ident, Type)> {
     Ok((ident, ty))
 }
 
-struct TLet(Span, Pat, Option<Type>, LetKind, Expr);
+struct TLet(Span, Pat, Option<Box<Type>>, LetKind, Expr);
 struct TSpecial(Span, Ident, SpecialOp, AssertProof, Pat);
 
 enum StmtOrLet {
@@ -157,11 +157,11 @@ fn parse_transition_stmt(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<V
     //    require birds_eye let   (not allowed - see explanation in check_birds_eye.rs)
     //    assert birds_eye let
 
-    if ident.to_string() == "birds_eye" {
+    if ident == "birds_eye" {
         let _let_token: Token![let] = input.parse()?;
         return Ok(parse_let(ctxt, ident.span(), Refute::Exhaustive, LetKind::BirdsEye, input)?);
-    } else if ident.to_string() == "require" || ident.to_string() == "assert" {
-        let refute = if ident.to_string() == "require" { Refute::Require } else { Refute::Assert };
+    } else if ident == "require" || ident == "assert" {
+        let refute = if ident == "require" { Refute::Require } else { Refute::Assert };
         if input.peek(Token![let]) {
             let _let_token: Token![let] = input.parse()?;
             Ok(parse_let(ctxt, ident.span(), refute, LetKind::Normal, input)?)
@@ -171,27 +171,27 @@ fn parse_transition_stmt(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<V
             Ok(parse_let(ctxt, ident.span(), refute, LetKind::BirdsEye, input)?)
         } else {
             // Normal require/assert
-            if ident.to_string() == "require" {
+            if ident == "require" {
                 Ok(vec![StmtOrLet::Stmt(parse_require(ident, input)?)])
             } else {
                 Ok(vec![StmtOrLet::Stmt(parse_assert(ident, input)?)])
             }
         }
-    } else if ident.to_string() == "update" {
+    } else if ident == "update" {
         Ok(vec![StmtOrLet::Stmt(parse_update(ident, input)?)])
-    } else if ident.to_string() == "init" {
+    } else if ident == "init" {
         Ok(vec![StmtOrLet::Stmt(parse_init(ident, input)?)])
-    } else if ident.to_string() == "have" {
+    } else if ident == "have" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Have)?])
-    } else if ident.to_string() == "add" {
+    } else if ident == "add" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Add(false))?])
-    } else if ident.to_string() == "remove" {
+    } else if ident == "remove" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Remove)?])
-    } else if ident.to_string() == "guard" {
+    } else if ident == "guard" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Guard)?])
-    } else if ident.to_string() == "deposit" {
+    } else if ident == "deposit" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Deposit)?])
-    } else if ident.to_string() == "withdraw" {
+    } else if ident == "withdraw" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Withdraw)?])
     } else {
         Err(Error::new(ident.span(), "expected transition stmt"))
@@ -238,14 +238,14 @@ fn stmts_or_lets_to_block(span: Span, tstmts: Vec<StmtOrLet>) -> TransitionStmt 
             StmtOrLet::Let(TLet(span, pat, ty, lk, lv)) => {
                 cur_block = vec![TransitionStmt::Split(
                     span,
-                    SplitKind::Let(pat, ty, lk, lv),
+                    Box::new(SplitKind::Let(Box::new(pat), ty, lk, lv)),
                     vec![TransitionStmt::Block(span, cur_block.into_iter().rev().collect())],
                 )];
             }
             StmtOrLet::Special(TSpecial(span, ident, op, proof, pat)) => {
                 cur_block = vec![TransitionStmt::Split(
                     span,
-                    SplitKind::Special(ident, op, proof, Some(pat)),
+                    Box::new(SplitKind::Special(ident, op, proof, Some(Box::new(pat)))),
                     vec![TransitionStmt::Block(span, cur_block.into_iter().rev().collect())],
                 )];
             }
@@ -344,7 +344,7 @@ fn parse_monoid_stmt(
             let kind = SplitKind::Special(field, op, proof, None);
             Ok(StmtOrLet::Stmt(TransitionStmt::Split(
                 stmt_span,
-                kind,
+                Box::new(kind),
                 vec![TransitionStmt::Block(stmt_span, vec![])],
             )))
         }
@@ -384,7 +384,7 @@ fn parse_monoid_elt(
             Ok((MonoidElt::SingletonKV(key, None), Some(pat)))
         } else {
             let val: Expr = content.parse()?;
-            Ok((MonoidElt::SingletonKV(key, Some(val)), None))
+            Ok((MonoidElt::SingletonKV(key, Some(Box::new(val))), None))
         }
     } else if peek_keyword(input.cursor(), "Some") {
         let _ = keyword(input, "Some");
@@ -436,12 +436,12 @@ fn parse_conditional(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<Trans
         let els = parse_else_block(ctxt, input)?;
         let span = if_token.span.join(*els.get_span()).unwrap_or(if_token.span);
         error_on_if_let(&cond)?;
-        Ok(TransitionStmt::Split(span, SplitKind::If(cond), vec![thn, els]))
+        Ok(TransitionStmt::Split(span, Box::new(SplitKind::If(cond)), vec![thn, els]))
     } else {
         let span = if_token.span.join(*thn.get_span()).unwrap_or(if_token.span);
         let els = TransitionStmt::Block(if_token.span, vec![]);
         error_on_if_let(&cond)?;
-        Ok(TransitionStmt::Split(span, SplitKind::If(cond), vec![thn, els]))
+        Ok(TransitionStmt::Split(span, Box::new(SplitKind::If(cond)), vec![thn, els]))
     }
 }
 
@@ -476,7 +476,7 @@ fn parse_let(
 
     match &pat {
         Pat::Ident(PatIdent { ident, .. }) => {
-            if ident.to_string() == "birds_eye" {
+            if ident == "birds_eye" {
                 return Err(Error::new(
                     pat.span(),
                     "keywords in the wrong order: use `birds_eye let` instead",
@@ -489,7 +489,7 @@ fn parse_let(
     let ty = if input.peek(Token![:]) {
         let _t: Token![:] = input.parse()?;
         let ty: Type = input.parse()?;
-        Some(ty)
+        Some(Box::new(ty))
     } else {
         None
     };
@@ -585,7 +585,7 @@ fn parse_update(kw: Ident, input: ParseStream) -> parse::Result<TransitionStmt> 
             let content;
             let _ = bracketed!(content in input);
             let idx_expr: Expr = content.parse()?;
-            subs.push(SubIdx::Idx(idx_expr));
+            subs.push(SubIdx::Idx(Box::new(idx_expr)));
         } else {
             break;
         }
@@ -665,7 +665,7 @@ fn parse_match(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<TransitionS
 
     let span = match_token.span.join(brace_token.span.join()).unwrap_or(match_token.span);
 
-    Ok(TransitionStmt::Split(span, SplitKind::Match(expr, arms), stmts))
+    Ok(TransitionStmt::Split(span, Box::new(SplitKind::Match(expr, arms)), stmts))
 }
 
 /// Parse an arm of a match statement. Based on `impl Parse for syn::Arm`

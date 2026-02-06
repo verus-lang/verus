@@ -64,7 +64,22 @@ vstd = "=0.0.0-2026-01-25-0057"
 
 [package.metadata.verus]
 verify = true
-"#
+
+[lints.rust]
+# Verus supports ghost code, code that is used for proofs but erased during compilation.
+# This means that ghost items that are imported via `use` will not exist during a normal
+# `cargo build`, leading to compilation errors. These errors can be prevented by guarding the
+# use statements with the feature flag `verus_only`, which Verus turns on during
+# verification.
+#
+# WARNING: this flag should only be used on import statements and setting config attributes,
+# see the documentation (https://verus-lang.github.io/verus/guide/erasure.html) for more details.
+#
+# This lint suppression prevents cargo from complaining about the
+# `verus_only` feature flag being undeclared.
+unexpected_cfgs = {{ level = "warn", check-cfg = [
+  'cfg(verus_only)',
+] }}"#
     );
 
     let project_dir = PathBuf::from(name);
@@ -270,7 +285,7 @@ fn make_cargo_command(
     // TODO: use the "+ ... toolchain" argument?
     let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
-    cmd.arg(subcommand.to_owned()).args(cargo_args);
+    cmd.arg(subcommand).args(cargo_args);
 
     cmd.env("RUSTC_WRAPPER", get_verus_driver_path());
 
@@ -357,7 +372,7 @@ fn make_cargo_command(
 }
 
 fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -> String {
-    args.map(|arg| [VERUS_DRIVER_ARGS_SEP.to_owned(), arg.as_ref().to_owned()]).flatten().collect()
+    args.flat_map(|arg| [VERUS_DRIVER_ARGS_SEP.to_owned(), arg.as_ref().to_owned()]).collect()
 }
 
 fn get_verus_driver_path() -> PathBuf {

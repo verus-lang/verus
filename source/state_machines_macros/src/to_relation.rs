@@ -209,35 +209,37 @@ fn annotate_extractions_stmt(sop: &mut SimplStmt, used_ids: &mut IndexSet<String
             annotate_extractions_vec(inner, used_ids);
             add_used_ids_from_expr(used_ids, e);
         }
-        SimplStmt::Split(_span, SplitKind::If(cond), inners, _) => {
-            let mut union = IndexSet::<String>::new();
-            for inner in inners.iter_mut() {
-                let mut inner_used_ids: IndexSet<String> = used_ids.clone();
-                annotate_extractions_vec(&mut inner.1, &mut inner_used_ids);
+        SimplStmt::Split(_span, split_kind, inners, _) => match &mut **split_kind {
+            SplitKind::If(cond) => {
+                let mut union = IndexSet::<String>::new();
+                for inner in inners.iter_mut() {
+                    let mut inner_used_ids: IndexSet<String> = used_ids.clone();
+                    annotate_extractions_vec(&mut inner.1, &mut inner_used_ids);
 
-                set_union(&mut union, inner_used_ids);
-            }
-            *used_ids = union;
-            add_used_ids_from_expr(used_ids, cond);
-        }
-        SimplStmt::Split(_span, SplitKind::Match(m, arms), inners, _) => {
-            let mut union = IndexSet::<String>::new();
-            for (i, inner) in inners.iter_mut().enumerate() {
-                let mut inner_used_ids: IndexSet<String> = used_ids.clone();
-                annotate_extractions_vec(&mut inner.1, &mut inner_used_ids);
-
-                if let Some(g) = &arms[i].guard {
-                    add_used_ids_from_expr(&mut inner_used_ids, &*g.1);
+                    set_union(&mut union, inner_used_ids);
                 }
-
-                set_union(&mut union, inner_used_ids);
+                *used_ids = union;
+                add_used_ids_from_expr(used_ids, cond);
             }
-            *used_ids = union;
-            add_used_ids_from_expr(used_ids, m);
-        }
-        SimplStmt::Split(..) => {
-            panic!("unexpected SplitKind here");
-        }
+            SplitKind::Match(m, arms) => {
+                let mut union = IndexSet::<String>::new();
+                for (i, inner) in inners.iter_mut().enumerate() {
+                    let mut inner_used_ids: IndexSet<String> = used_ids.clone();
+                    annotate_extractions_vec(&mut inner.1, &mut inner_used_ids);
+
+                    if let Some(g) = &arms[i].guard {
+                        add_used_ids_from_expr(&mut inner_used_ids, &*g.1);
+                    }
+
+                    set_union(&mut union, inner_used_ids);
+                }
+                *used_ids = union;
+                add_used_ids_from_expr(used_ids, m);
+            }
+            _ => {
+                panic!("unexpected SplitKind here");
+            }
+        },
         SimplStmt::Require(_span, e) => {
             add_used_ids_from_expr(used_ids, e);
         }
@@ -304,47 +306,49 @@ fn simpl_conjunct_stmt(
             let l = get_extraction_decl_stmt(sop);
             conjunct_opt(t, prepend_let_stmt(*span, l, p))
         }
-        SimplStmt::Split(span, SplitKind::If(cond), es, _) => {
-            assert!(es.len() == 2);
-            let x1 = simpl_conjunct_vec(&es[0].1, None);
-            let x2 = simpl_conjunct_vec(&es[1].1, None);
-            let t = match (x1, x2) {
-                (None, None) => None,
-                (Some(e1), None) => {
-                    Some(quote_vstd! { vstd => #vstd::prelude::imply(#cond, {#e1}) })
-                }
-                (None, Some(e2)) => {
-                    Some(quote_vstd! { vstd => #vstd::prelude::imply(!(#cond), {#e2}) })
-                }
-                (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
-            };
+        SimplStmt::Split(span, split_kind, es, _) => match &**split_kind {
+            SplitKind::If(cond) => {
+                assert!(es.len() == 2);
+                let x1 = simpl_conjunct_vec(&es[0].1, None);
+                let x2 = simpl_conjunct_vec(&es[1].1, None);
+                let t = match (x1, x2) {
+                    (None, None) => None,
+                    (Some(e1), None) => {
+                        Some(quote_vstd! { vstd => #vstd::prelude::imply(#cond, {#e1}) })
+                    }
+                    (None, Some(e2)) => {
+                        Some(quote_vstd! { vstd => #vstd::prelude::imply(!(#cond), {#e2}) })
+                    }
+                    (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
+                };
 
-            let l = get_extraction_decl_stmt(sop);
-            conjunct_opt(t, prepend_let_stmt(*span, l, p))
-        }
-        SimplStmt::Split(span, SplitKind::Match(match_e, arms), es, _) => {
-            let opts: Vec<Option<TokenStream>> =
-                es.iter().map(|e| simpl_conjunct_vec(&e.1, None)).collect();
-            let t = if opts.iter().any(|o| o.is_some()) {
-                let cases: Vec<Expr> = opts
-                    .into_iter()
-                    .map(|o| match o {
-                        None => Expr::Verbatim(quote! {true}),
-                        Some(tokens) => Expr::Verbatim(tokens),
-                    })
-                    .collect();
-                let m = emit_match(*span, match_e, arms, &cases);
-                Some(quote! {#m})
-            } else {
-                None
-            };
+                let l = get_extraction_decl_stmt(sop);
+                conjunct_opt(t, prepend_let_stmt(*span, l, p))
+            }
+            SplitKind::Match(match_e, arms) => {
+                let opts: Vec<Option<TokenStream>> =
+                    es.iter().map(|e| simpl_conjunct_vec(&e.1, None)).collect();
+                let t = if opts.iter().any(|o| o.is_some()) {
+                    let cases: Vec<Expr> = opts
+                        .into_iter()
+                        .map(|o| match o {
+                            None => Expr::Verbatim(quote! {true}),
+                            Some(tokens) => Expr::Verbatim(tokens),
+                        })
+                        .collect();
+                    let m = emit_match(*span, match_e, arms, &cases);
+                    Some(quote! {#m})
+                } else {
+                    None
+                };
 
-            let l = get_extraction_decl_stmt(sop);
-            conjunct_opt(t, prepend_let_stmt(*span, l, p))
-        }
-        SimplStmt::Split(..) => {
-            panic!("this SplitKind should have been translated out");
-        }
+                let l = get_extraction_decl_stmt(sop);
+                conjunct_opt(t, prepend_let_stmt(*span, l, p))
+            }
+            _ => {
+                panic!("this SplitKind should have been translated out");
+            }
+        },
         SimplStmt::PostCondition(_span, e, reason) => prepend_conjunct(e, p, &reason.to_err_msg()),
         SimplStmt::Require(_span, e) => prepend_conjunct(e, p, "cannot prove this condition holds"),
         SimplStmt::Assert(_span, e, _) => {
@@ -376,44 +380,49 @@ fn get_extraction_decl_stmt(sop: &SimplStmt) -> Option<TokenStream> {
                 });
             })
         }
-        SimplStmt::Split(span, SplitKind::If(cond), es, extractions) => {
-            if extractions.len() == 0 {
-                return None;
-            }
-            let extup = get_extup(extractions);
+        SimplStmt::Split(span, split_kind, es, extractions) => match &**split_kind {
+            SplitKind::If(cond) => {
+                if extractions.len() == 0 {
+                    return None;
+                }
+                let extup = get_extup(extractions);
 
-            assert!(es.len() == 2);
-            let c1 = extr_vec(&es[0].1);
-            let c2 = extr_vec(&es[1].1);
+                assert!(es.len() == 2);
+                let c1 = extr_vec(&es[0].1);
+                let c2 = extr_vec(&es[1].1);
 
-            Some(quote_spanned! { *span =>
-                let #extup = (if (#cond) {
-                    #c1 #extup
-                } else {
-                    #c2 #extup
-                });
-            })
-        }
-        SimplStmt::Split(span, SplitKind::Match(match_e, arms), es, extractions) => {
-            if extractions.len() == 0 {
-                return None;
-            }
-            let extup = get_extup(extractions);
-
-            let cases = es
-                .iter()
-                .map(|e| {
-                    let c = extr_vec(&e.1);
-                    Expr::Verbatim(quote_spanned! { *span => #c #extup })
+                Some(quote_spanned! { *span =>
+                    let #extup = (if (#cond) {
+                        #c1 #extup
+                    } else {
+                        #c2 #extup
+                    });
                 })
-                .collect();
+            }
+            SplitKind::Match(match_e, arms) => {
+                if extractions.len() == 0 {
+                    return None;
+                }
+                let extup = get_extup(extractions);
 
-            let m = emit_match(*span, match_e, arms, &cases);
+                let cases = es
+                    .iter()
+                    .map(|e| {
+                        let c = extr_vec(&e.1);
+                        Expr::Verbatim(quote_spanned! { *span => #c #extup })
+                    })
+                    .collect();
 
-            Some(quote_spanned! { *span =>
-                let #extup = (#m);
-            })
-        }
+                let m = emit_match(*span, match_e, arms, &cases);
+
+                Some(quote_spanned! { *span =>
+                    let #extup = (#m);
+                })
+            }
+            _ => {
+                panic!("get_extraction_decl_stmt got unexpected stmt");
+            }
+        },
         _ => {
             panic!("get_extraction_decl_stmt got unexpected stmt");
         }

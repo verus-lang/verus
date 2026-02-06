@@ -45,28 +45,6 @@ pub struct ContextX<'tcx> {
     pub(crate) next_read_kind_id: AtomicU64,
 }
 
-impl<'tcx> Clone for ContextX<'tcx> {
-    fn clone(&self) -> Self {
-        ContextX {
-            cmd_line_args: self.cmd_line_args.clone(),
-            tcx: self.tcx.clone(),
-            krate: self.krate,
-            erasure_info: self.erasure_info.clone(),
-            spans: self.spans.clone(),
-            verus_items: self.verus_items.clone(),
-            diagnostics: self.diagnostics.clone(),
-            no_vstd: self.no_vstd.clone(),
-            arch_word_bits: self.arch_word_bits.clone(),
-            crate_name: self.crate_name.clone(),
-            vstd_crate_name: self.vstd_crate_name.clone(),
-            name_def_id_map: self.name_def_id_map.clone(),
-            next_read_kind_id: AtomicU64::new(
-                self.next_read_kind_id.load(std::sync::atomic::Ordering::SeqCst),
-            ),
-        }
-    }
-}
-
 #[derive(Clone)]
 pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) ctxt: Context<'tcx>,
@@ -79,10 +57,12 @@ pub(crate) struct BodyCtxt<'tcx> {
     // loop_isolation for the nearest enclosing loop, false otherwise
     pub(crate) loop_isolation: bool,
     pub(crate) new_mut_ref: bool,
+    pub(crate) migrate_postcondition_vars: Option<std::collections::HashSet<vir::ast::VarIdent>>,
+    pub(crate) in_postcondition: bool,
 }
 
 impl<'tcx> ContextX<'tcx> {
-    fn new(
+    pub(crate) fn new(
         cmd_line_args: crate::config::Args,
         tcx: TyCtxt<'tcx>,
         erasure_info: ErasureInfoRef,
@@ -107,28 +87,6 @@ impl<'tcx> ContextX<'tcx> {
             name_def_id_map: Rc::new(RefCell::new(HashMap::new())),
             next_read_kind_id: AtomicU64::new(0),
         }
-    }
-
-    pub(crate) fn new_rc(
-        cmd_line_args: crate::config::Args,
-        tcx: TyCtxt<'tcx>,
-        erasure_info: ErasureInfoRef,
-        spans: crate::spans::SpanContext,
-        verus_items: Arc<VerusItems>,
-        no_vstd: bool,
-        crate_name: Ident,
-        vstd_crate_name: Ident,
-    ) -> Rc<Self> {
-        Rc::new(Self::new(
-            cmd_line_args,
-            tcx,
-            erasure_info,
-            spans,
-            verus_items,
-            no_vstd,
-            crate_name,
-            vstd_crate_name,
-        ))
     }
 
     pub(crate) fn get_verus_item(&self, def_id: DefId) -> Option<&crate::verus_items::VerusItem> {

@@ -27,12 +27,7 @@ pub fn get_transition<'a>(
     transitions: &'a Vec<Transition>,
     name: &String,
 ) -> Option<&'a Transition> {
-    for t in transitions.iter() {
-        if t.name.to_string() == *name {
-            return Some(t);
-        }
-    }
-    None
+    transitions.iter().find(|t| t.name == *name)
 }
 
 /// Check that each lemma is valid by making sure it has the right arguments.
@@ -231,7 +226,7 @@ fn pat_is_ident(pat: &Pat, ident: &Ident) -> bool {
             mutability: None,
             ident: id0,
             subpat: None,
-        }) if attrs.len() == 0 && id0.to_string() == ident.to_string() => true,
+        }) if attrs.len() == 0 && id0 == ident => true,
         _ => false,
     }
 }

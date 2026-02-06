@@ -1227,7 +1227,7 @@ test_verify_one_file! {
             };
         }
     //} => Err(err) => assert_one_fails(err)
-    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and an if-guard")
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: match arm containing both an or-pattern (|) and a match-guard")
 }
 
 test_verify_one_file! {

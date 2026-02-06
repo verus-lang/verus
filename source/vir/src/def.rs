@@ -538,13 +538,7 @@ pub fn impl_ident(disambiguator: u32) -> Ident {
 
 pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
     let proj = if decoration { PREFIX_PROJECT_DECORATION } else { PREFIX_PROJECT };
-    Arc::new(format!(
-        "{}{}{}{}",
-        proj,
-        path_to_string(trait_path),
-        PROJECT_SEPARATOR,
-        name.to_string()
-    ))
+    Arc::new(format!("{}{}{}{}", proj, path_to_string(trait_path), PROJECT_SEPARATOR, name))
 }
 
 pub fn projection_pointee_metadata(decoration: bool) -> Ident {

@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, Ident,
     InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Quant, SpannedTyped,
-    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarBinders,
+    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
@@ -12,7 +12,7 @@ use crate::sst::{
     BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDeclKind, Stm, Trig, Trigs, UniqueIdent,
 };
 use air::scope_map::ScopeMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 fn free_vars_exp_scope(
@@ -479,7 +479,9 @@ impl ExpX {
                 UnaryOp::MutRefFuture(_) => {
                     (format!("mut_ref_future({})", exp.x.to_string_prec(global, 99)), 0)
                 }
-                UnaryOp::MutRefFinal => (format!("fin({})", exp.x.to_string_prec(global, 99)), 0),
+                UnaryOp::MutRefFinal(_) => {
+                    (format!("fin({})", exp.x.to_string_prec(global, 99)), 0)
+                }
                 UnaryOp::Length(_kind) => {
                     (format!("length({})", exp.x.to_string_prec(global, 99)), 0)
                 }
@@ -859,6 +861,7 @@ impl LocalDeclKind {
         match self {
             LocalDeclKind::Param { mutable } => *mutable,
             LocalDeclKind::StmtLet { mutable } => *mutable,
+            LocalDeclKind::ExecClosureParam { mutable } => *mutable,
             LocalDeclKind::Return
             | LocalDeclKind::TempViaAssign
             | LocalDeclKind::Decreases
@@ -870,7 +873,6 @@ impl LocalDeclKind {
             | LocalDeclKind::ChooseBinder
             | LocalDeclKind::ClosureBinder
             | LocalDeclKind::ExecClosureId
-            | LocalDeclKind::ExecClosureParam
             | LocalDeclKind::ExecClosureRet
             | LocalDeclKind::Nondeterministic
             | LocalDeclKind::OpenInvariantInnerTemp
@@ -1007,4 +1009,18 @@ pub(crate) fn sst_call_ensures(
         Arc::new(vec![fndef_value, args_tuple, return_value]),
     );
     SpannedTyped::new(span, &Arc::new(TypX::Bool), expx)
+}
+
+pub(crate) fn exp_with_vars_at_pre_state(exp: &Exp, vars: &HashSet<UniqueIdent>) -> Exp {
+    crate::sst_visitor::map_exp_visitor(exp, &mut |e| match &e.x {
+        ExpX::Var(uid) if vars.contains(uid) => e.new_x(ExpX::VarAt(uid.clone(), VarAt::Pre)),
+        _ => e.clone(),
+    })
+}
+
+pub(crate) fn stm_with_vars_at_pre_state(stm: &Stm, vars: &HashSet<UniqueIdent>) -> Stm {
+    crate::sst_visitor::map_exps_in_stm_visitor(stm, &mut |e| match &e.x {
+        ExpX::Var(uid) if vars.contains(uid) => e.new_x(ExpX::VarAt(uid.clone(), VarAt::Pre)),
+        _ => e.clone(),
+    })
 }

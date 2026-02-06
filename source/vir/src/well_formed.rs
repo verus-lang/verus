@@ -685,14 +685,18 @@ fn check_one_expr<Emit: EmitError>(
                 ),
             ));
         }
-        ExprX::Unary(UnaryOp::MutRefFinal, _) => {
+        ExprX::Unary(UnaryOp::MutRefFinal(migrated), _) => {
             return Err(error(
                 &expr.span,
-                "The result of `fin` must be dereferenced (e.g., `*fin(x)`)",
+                if *migrated {
+                    "This `&mut` parameter must be dereferenced (either explicitly, as in `*x`, or implicitly, as in `x.field`). For more flexible mutable reference support, disable the backwards-compatability (add #[verifier::migrate_postcondition_with_mut_refs(false)] to the function)"
+                } else {
+                    "The result of `fin` must be dereferenced (either explicitly, as in `*fin(x)`, or implicitly, as in `fin(x).field`)"
+                },
             ));
         }
         ExprX::Match(_place, arms) => {
-            for arm in arms.iter() {
+            for (i, arm) in arms.iter().enumerate() {
                 // Error if the arm contains more than 1 of these 3 nontrivial features:
                 let has_guard = !matches!(&arm.x.guard.x, ExprX::Const(Constant::Bool(true)));
                 let has_or = crate::patterns::pattern_has_or(&arm.x.pattern);
@@ -702,12 +706,12 @@ fn check_one_expr<Emit: EmitError>(
                     // This is nontrivial because we might need to evaluate the guard condition more than once
                     return Err(error(
                         &arm.x.pattern.span,
-                        "Not supported: pattern containing both an or-pattern (|) and an if-guard",
+                        "Not supported: match arm containing both an or-pattern (|) and a match-guard",
                     ));
                 }
                 if let Some(span) = has_ref_mut_binding {
                     if has_or {
-                        // This probably isn't that bad
+                        // This probably isn't that bad to support
                         return Err(error(
                             &span,
                             "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
@@ -718,9 +722,17 @@ fn check_one_expr<Emit: EmitError>(
                         // the test condition, but the mutable borrow is immutable until it ends
                         return Err(error(
                             &span,
-                            "Not supported: pattern containing both an if-guard and a binding by mutable reference",
+                            "Not supported: match arm containing both a match-guard and a binding by mutable reference",
                         ));
                     }
+                }
+
+                // Error if the last arm has a guard (this would just be a warning from Rust)
+                if i == arms.len() - 1 && has_guard {
+                    return Err(error(
+                        &arm.x.guard.span,
+                        "Not supported: match where the last arm has a match guard (this would necessarily mean the entire arm is unreachable)",
+                    ));
                 }
             }
         }

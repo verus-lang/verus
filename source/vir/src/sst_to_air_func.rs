@@ -89,7 +89,7 @@ fn func_def_typs_args(
     params: &Pars,
 ) -> Vec<Expr> {
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
-    let mut f_args: Vec<Expr> = typ_args.iter().map(typ_to_ids).flatten().collect();
+    let mut f_args: Vec<Expr> = typ_args.iter().flat_map(typ_to_ids).collect();
     for param in params.iter() {
         let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
             prefix_pre_var(&param.x.name.lower())
@@ -792,8 +792,7 @@ pub fn func_axioms_to_air(
                         Arc::make_mut(&mut trait_typ_args)
                             .push(Arc::new(TypX::TypParam(x.clone())));
                     }
-                    let mut args: Vec<Expr> =
-                        trait_typ_args.iter().map(typ_to_ids).flatten().collect();
+                    let mut args: Vec<Expr> = trait_typ_args.iter().flat_map(typ_to_ids).collect();
                     for p in function.x.pars.iter() {
                         args.push(ident_var(&p.x.name.lower()));
                     }

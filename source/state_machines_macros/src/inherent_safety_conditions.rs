@@ -162,7 +162,7 @@ pub fn check_inherent_conditions(sm: &SM, ts: &mut TransitionStmt, errors: &mut 
             }
         }
         TransitionStmt::Split(span, kind, splits) => {
-            match kind {
+            match &mut **kind {
                 SplitKind::Special(ident, op, proof, _) => {
                     let field = crate::transitions::get_field(&sm.fields, ident);
                     let checked = check_inherent_condition_for_special_op(
