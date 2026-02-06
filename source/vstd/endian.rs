@@ -539,6 +539,37 @@ impl<B: Base> EndianNat<B> {
         }
     }
 
+    pub broadcast proof fn to_nat_injective(n1: Self, n2: Self)
+        requires
+            n1.wf(),
+            n2.wf(),
+            n1.endian == endianness(),
+            n2.endian == endianness(),
+            n1.len() == n2.len(),
+            #[trigger] n1.to_nat() == #[trigger] n2.to_nat(),
+        ensures
+            n1 == n2,
+    {
+        broadcast use EndianNat::to_nat_from_nat;
+
+        assert(Self::from_nat(n1.to_nat(), n1.len()) == n1);
+        assert(Self::from_nat(n2.to_nat(), n2.len()) == n2);
+    }
+
+    pub broadcast proof fn from_nat_injective(n1: nat, len1: nat, n2: nat, len2: nat)
+        requires
+            n1 < base_upper_bound_excl::<B>(len1),
+            n2 < base_upper_bound_excl::<B>(len2),
+            #[trigger] Self::from_nat(n1, len1) == #[trigger] Self::from_nat(n2, len2),
+        ensures
+            n1 == n2,
+    {
+        broadcast use EndianNat::from_nat_to_nat;
+
+        assert(Self::from_nat(n1, len1).to_nat() == n1);
+        assert(Self::from_nat(n2, len2).to_nat() == n2);
+    }
+
     /// Converts an `EndianNat` to the natural number that it represents, processing the digits from most significant to least significant, hiding the details of endianness.
     #[verifier::opaque]
     pub open spec fn to_nat_most(self) -> nat
@@ -554,15 +585,15 @@ impl<B: Base> EndianNat<B> {
         }
     }
 
-    /// Ensures that [`to_nat`] and [`to_nat_most`].
+    /// Ensures that [`to_nat`] and [`to_nat_most`] agree.
     ///
     /// [`to_nat`]: EndianNat::to_nat
     /// [`to_nat_most`]: EndianNat::to_nat_most
-    pub proof fn to_nat_eq_to_nat_most(self)
+    pub broadcast proof fn to_nat_eq_to_nat_most(self)
         requires
             self.wf(),
         ensures
-            self.to_nat() == self.to_nat_most(),
+            #[trigger] self.to_nat() == #[trigger] self.to_nat_most(),
         decreases self.len(),
     {
         reveal(EndianNat::to_nat);
@@ -581,6 +612,12 @@ impl<B: Base> EndianNat<B> {
                     }
                     (self.most() * pow(B::base() as int, (self.len() - 1) as nat)) as nat; {
                         reveal(pow);
+                        assert((self.most() * pow(B::base() as int, (self.len() - 1) as nat))
+                            == self.most()) by (nonlinear_arith)
+                            requires
+                                pow(B::base() as int, (self.len() - 1) as nat) == 1,
+                                self.most() >= 0,
+                        ;
                     }
                     self.most(); {}
                     self.least(); {
@@ -1007,6 +1044,46 @@ impl<B: Base> EndianNat<B> {
             ;
         }
     }
+
+    pub broadcast proof fn to_big_injective<BIG>(n1: EndianNat<B>, n2: EndianNat<B>) where
+        BIG: BasePow2,
+        B: CompatibleSmallerBaseFor<BIG>,
+
+        requires
+            n1.wf(),
+            n2.wf(),
+            n1.endian == endianness(),
+            n2.endian == endianness(),
+            n1.len() % Self::exp() == 0,
+            n2.len() % Self::exp() == 0,
+            #[trigger] Self::to_big(n1) == #[trigger] Self::to_big(n2),
+        ensures
+            n1 == n2,
+    {
+        broadcast use EndianNat::to_big_from_big;
+
+        assert(Self::from_big(Self::to_big(n1)) == n1);
+        assert(Self::from_big(Self::to_big(n2)) == n2);
+    }
+
+    pub broadcast proof fn from_big_injective<BIG>(n1: EndianNat<BIG>, n2: EndianNat<BIG>) where
+        BIG: BasePow2,
+        B: CompatibleSmallerBaseFor<BIG>,
+
+        requires
+            n1.wf(),
+            n2.wf(),
+            n1.endian == endianness(),
+            n2.endian == endianness(),
+            #[trigger] Self::from_big(n1) == #[trigger] Self::from_big(n2),
+        ensures
+            n1 == n2,
+    {
+        broadcast use EndianNat::from_big_to_big;
+
+        assert(Self::to_big(Self::from_big(n1)) == n1);
+        assert(Self::to_big(Self::from_big(n2)) == n2);
+    }
 }
 
 /***** Functions involving both little and big endian *****/
@@ -1093,11 +1170,16 @@ pub broadcast group group_endian_nat_axioms {
     EndianNat::to_nat_properties,
     EndianNat::from_nat_to_nat,
     EndianNat::to_nat_from_nat,
+    EndianNat::to_nat_injective,
+    EndianNat::from_nat_injective,
+    EndianNat::to_nat_eq_to_nat_most,
     EndianNat::exp_properties,
     EndianNat::to_big_properties,
     EndianNat::from_big_properties,
     EndianNat::from_big_to_big,
     EndianNat::to_big_from_big,
+    EndianNat::to_big_injective,
+    EndianNat::from_big_injective,
 }
 
 } // verus!
