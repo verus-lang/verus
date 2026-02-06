@@ -1,15 +1,22 @@
 use super::prelude::*;
 
+pub mod agree;
 pub mod algebra;
+pub mod auth;
+pub mod exclusive;
 pub mod frac;
+pub mod frac_opt;
+pub mod ghost_var;
 mod lib;
 pub mod map;
 pub mod option;
 pub mod pcm;
+pub mod product;
 pub mod relations;
 pub mod seq;
 pub mod set;
 pub mod storage_protocol;
+pub mod sum;
 
 pub use lib::*;
 
