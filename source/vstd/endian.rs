@@ -316,7 +316,7 @@ impl<B: Base> EndianNat<B> {
         }
     }
 
-    /// Converts an `EndianNat` to the natural number that it represents, hiding the details of endianness.
+    /// Converts an `EndianNat` to the natural number that it represents, processing the digits from least significant to most significant, hiding the details of endianness.
     #[verifier::opaque]
     pub open spec fn to_nat(self) -> nat
         decreases self.len(),
@@ -539,151 +539,94 @@ impl<B: Base> EndianNat<B> {
         }
     }
 
-    /// Converts an `EndianNat` to the natural number that it represents, working from "left to right" in the per-digit representation.
+    /// Converts an `EndianNat` to the natural number that it represents, processing the digits from most significant to least significant, hiding the details of endianness.
     #[verifier::opaque]
-    pub open spec fn to_nat_right(self) -> nat
+    pub open spec fn to_nat_most(self) -> nat
         decreases self.len(),
     {
         if self.len() == 0 {
             0
         } else {
-            match self.endian {
-                Endian::Little => self.drop_first().to_nat_right() * B::base() + self.first(),
-                Endian::Big => {
-                    (self.drop_first().to_nat_right() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    )) as nat
-                },
-            }
+            (self.drop_most().to_nat_most() + self.most() * pow(
+                B::base() as int,
+                (self.len() - 1) as nat,
+            )) as nat
         }
     }
 
-    /// Converts an `EndianNat` to the natural number that it represents, working from "right to left" in the per-digit representation.
-    #[verifier::opaque]
-    pub open spec fn to_nat_left(self) -> nat
-        decreases self.len(),
-    {
-        if self.len() == 0 {
-            0
-        } else {
-            match self.endian {
-                Endian::Little => {
-                    (self.drop_last().to_nat_left() + self.last() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    )) as nat
-                },
-                Endian::Big => self.drop_last().to_nat_left() * B::base() + self.last(),
-            }
-        }
-    }
-
-    /// Ensures that [`to_nat`], [`to_nat_right`], and [`to_nat_left`] agree.
+    /// Ensures that [`to_nat`] and [`to_nat_most`].
     ///
     /// [`to_nat`]: EndianNat::to_nat
-    /// [`to_nat_right`]: EndianNat::to_nat_right
-    /// [`to_nat_left`]: EndianNat::to_nat_left
-    pub proof fn to_nat_left_right_eq(self)
+    /// [`to_nat_most`]: EndianNat::to_nat_most
+    pub proof fn to_nat_eq_to_nat_most(self)
         requires
             self.wf(),
         ensures
-            self.to_nat() == self.to_nat_right() == self.to_nat_left(),
-    {
-        self.to_nat_big_left_little_right_eq();
-        match self.endian {
-            Endian::Little => self.nat_left_eq_nat_right_little(),
-            Endian::Big => self.nat_left_eq_nat_right_big(),
-        }
-    }
-
-    proof fn to_nat_big_left_little_right_eq(self)
-        requires
-            self.wf(),
-        ensures
-            self.endian == Endian::Little ==> self.to_nat() == self.to_nat_right(),
-            self.endian == Endian::Big ==> self.to_nat() == self.to_nat_left(),
+            self.to_nat() == self.to_nat_most(),
         decreases self.len(),
     {
-        reveal(EndianNat::to_nat_right);
-        reveal(EndianNat::to_nat_left);
         reveal(EndianNat::to_nat);
-
+        reveal(EndianNat::to_nat_most);
         if self.len() == 0 {
         } else {
-            self.drop_least().to_nat_big_left_little_right_eq();
-        }
-    }
-
-    proof fn nat_left_eq_nat_right_little(self)
-        requires
-            self.wf(),
-            self.endian == Endian::Little,
-        ensures
-            self.to_nat_left() == self.to_nat_right(),
-        decreases self.len(),
-    {
-        reveal(EndianNat::to_nat_left);
-        reveal(EndianNat::to_nat_right);
-        if self.len() == 0 {
-        } else {
-            if self.drop_last().len() == 0 {
+            if self.drop_most().len() == 0 {
                 calc! {
                     (==)
-                    self.to_nat_left(); {
-                        assert(self.drop_last().to_nat_left() == 0);
+                    self.to_nat_most(); {
+                        assert(self.drop_most().to_nat_most() == 0);
+                        assert(self.to_nat_most() == (self.most() * pow(
+                            B::base() as int,
+                            (self.len() - 1) as nat,
+                        )) as nat);
                     }
-                    (self.last() * pow(B::base() as int, (self.len() - 1) as nat)) as nat; {
+                    (self.most() * pow(B::base() as int, (self.len() - 1) as nat)) as nat; {
                         reveal(pow);
                     }
-                    self.last(); {}
-                    self.first(); {
-                        assert(self.drop_first().to_nat_right() == 0);
+                    self.most(); {}
+                    self.least(); {
+                        assert(self.drop_least().to_nat() == 0);
                         assert(0 * B::base() == 0);
                     }
-                    self.to_nat_right();
+                    self.to_nat();
                 };
             } else {
                 calc! {
                     (==)
-                    self.to_nat_left() as int; {}
-                    ((self.drop_last().to_nat_left() + self.last() * pow(
+                    self.to_nat_most() as int; {}
+                    ((self.drop_most().to_nat_most() + self.most() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
                     )) as nat) as int; {
-                        assert(self.last() >= 0);
+                        assert(self.most() >= 0);
                         assert(self.len() > 1);
                         lemma_pow_positive(B::base() as int, (self.len() - 1) as nat);
                         assert(pow(B::base() as int, (self.len() - 1) as nat) >= 0);
                     }
-                    self.drop_last().to_nat_left() + self.last() * pow(
+                    self.drop_most().to_nat_most() + self.most() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
                     ); {
-                        self.drop_last().nat_left_eq_nat_right_little();
+                        self.drop_most().to_nat_eq_to_nat_most();
                     }
-                    self.drop_last().to_nat_right() + self.last() * pow(
+                    self.drop_most().to_nat() + self.most() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
                     ); {}
-                    self.drop_last().drop_first().to_nat_right() * B::base()
-                        + self.drop_last().first() + self.last() * pow(
+                    self.drop_most().drop_least().to_nat() * B::base() + self.drop_most().least()
+                        + self.most() * pow(B::base() as int, (self.len() - 1) as nat); {
+                        self.drop_most().drop_least().to_nat_eq_to_nat_most();
+                    }
+                    self.drop_most().drop_least().to_nat_most() * B::base()
+                        + self.drop_most().least() + self.most() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
                     ); {
-                        self.drop_last().drop_first().nat_left_eq_nat_right_little();
+                        assert(self.drop_most().drop_least() == self.drop_least().drop_most());
                     }
-                    self.drop_last().drop_first().to_nat_left() * B::base()
-                        + self.drop_last().first() + self.last() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    ); {
-                        assert(self.drop_last().drop_first() == self.drop_first().drop_last());
-                    }
-                    self.drop_first().drop_last().to_nat_left() * B::base() + self.first()
-                        + self.last() * pow(B::base() as int, (self.len() - 1) as nat); {
-                        assert(self.last() * pow(B::base() as int, (self.len() - 2) as nat)
-                            * B::base() == self.last() * (pow(
+                    self.drop_least().drop_most().to_nat_most() * B::base() + self.least()
+                        + self.most() * pow(B::base() as int, (self.len() - 1) as nat); {
+                        assert(self.most() * pow(B::base() as int, (self.len() - 2) as nat)
+                            * B::base() == self.most() * (pow(
                             B::base() as int,
                             (self.len() - 2) as nat,
                         ) * B::base())) by {
@@ -700,145 +643,31 @@ impl<B: Base> EndianNat<B> {
                             lemma_pow_adds(B::base() as int, (self.len() - 2) as nat, 1);
                         }
                     }
-                    self.drop_first().drop_last().to_nat_left() * B::base() + (self.last() * pow(
+                    self.drop_least().drop_most().to_nat_most() * B::base() + (self.most() * pow(
                         B::base() as int,
                         (self.len() - 2) as nat,
-                    )) * B::base() + self.first(); {
+                    )) * B::base() + self.least(); {
                         lemma_mul_is_distributive_add_other_way(
                             B::base() as int,
-                            self.drop_first().drop_last().to_nat_left() as int,
-                            self.last() * pow(B::base() as int, (self.len() - 2) as nat),
+                            self.drop_least().drop_most().to_nat_most() as int,
+                            self.most() * pow(B::base() as int, (self.len() - 2) as nat),
                         );
                     }
-                    (self.drop_first().drop_last().to_nat_left() + self.last() * pow(
+                    (self.drop_least().drop_most().to_nat_most() + self.most() * pow(
                         B::base() as int,
                         (self.len() - 2) as nat,
-                    )) * B::base() + self.first(); {
-                        assert((self.drop_first().drop_last().to_nat_left() + self.last() * pow(
+                    )) * B::base() + self.least(); {
+                        assert((self.drop_least().drop_most().to_nat_most() + self.most() * pow(
                             B::base() as int,
                             (self.len() - 2) as nat,
-                        )) == self.drop_first().to_nat_left()) by {
+                        )) == self.drop_least().to_nat_most()) by {
                             lemma_pow_positive(B::base() as int, (self.len() - 2) as nat);
                         };
                     }
-                    (self.drop_first().to_nat_left() * B::base() + self.first()) as int; {
-                        self.drop_first().nat_left_eq_nat_right_little();
+                    (self.drop_least().to_nat_most() * B::base() + self.least()) as int; {
+                        self.drop_least().to_nat_eq_to_nat_most();
                     }
-                    self.to_nat_right() as int;
-                }
-            }
-        }
-    }
-
-    proof fn nat_left_eq_nat_right_big(self)
-        requires
-            self.wf(),
-            self.endian == Endian::Big,
-        ensures
-            self.to_nat_left() == self.to_nat_right(),
-        decreases self.len(),
-    {
-        reveal(EndianNat::to_nat_left);
-        reveal(EndianNat::to_nat_right);
-        reveal(pow);
-        if self.len() == 0 {
-        } else {
-            if self.drop_first().len() == 0 {
-                calc! {
-                    (==)
-                    self.to_nat_right(); {
-                        assert(self.drop_first().to_nat_right() == 0);
-                    }
-                    (self.first() * pow(B::base() as int, (self.len() - 1) as nat)) as nat; {}
-                    self.first(); {}
-                    self.last(); {
-                        assert(self.drop_last().to_nat_left() == 0);
-                        assert(0 * B::base() == 0);
-                    }
-                    self.to_nat_left();
-                };
-            } else {
-                calc! {
-                    (==)
-                    self.to_nat_right() as int; {}
-                    ((self.drop_first().to_nat_right() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    )) as nat) as int; {
-                        assert(self.first() >= 0);
-                        assert(self.len() > 1);
-                        lemma_pow_positive(B::base() as int, (self.len() - 1) as nat);
-                        assert(pow(B::base() as int, (self.len() - 1) as nat) >= 0);
-                    }
-                    self.drop_first().to_nat_right() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    ); {
-                        self.drop_first().nat_left_eq_nat_right_big();
-                    }
-                    self.drop_first().to_nat_left() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    ); {}
-                    self.drop_first().drop_last().to_nat_left() * B::base()
-                        + self.drop_first().last() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    ); {
-                        self.drop_first().drop_last().nat_left_eq_nat_right_big();
-                    }
-                    self.drop_first().drop_last().to_nat_right() * B::base()
-                        + self.drop_first().last() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    ); {
-                        assert(self.drop_first().drop_last() == self.drop_last().drop_first());
-                    }
-                    self.drop_last().drop_first().to_nat_right() * B::base() + self.last()
-                        + self.first() * pow(B::base() as int, (self.len() - 1) as nat); {
-                        assert(self.first() * pow(B::base() as int, (self.len() - 2) as nat)
-                            * B::base() == self.first() * (pow(
-                            B::base() as int,
-                            (self.len() - 2) as nat,
-                        ) * B::base())) by {
-                            broadcast use crate::vstd::arithmetic::mul::lemma_mul_is_associative;
-
-                        }
-                        assert(pow(B::base() as int, (self.len() - 1) as nat) == pow(
-                            B::base() as int,
-                            (self.len() - 2) as nat,
-                        ) * B::base()) by {
-                            assert(B::base() == pow(B::base() as int, 1)) by {
-                                lemma_pow1(B::base() as int);
-                            }
-                            lemma_pow_adds(B::base() as int, (self.len() - 2) as nat, 1);
-                        }
-                    }
-                    self.drop_last().drop_first().to_nat_right() * B::base() + (self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 2) as nat,
-                    )) * B::base() + self.last(); {
-                        lemma_mul_is_distributive_add_other_way(
-                            B::base() as int,
-                            self.drop_last().drop_first().to_nat_right() as int,
-                            self.first() * pow(B::base() as int, (self.len() - 2) as nat),
-                        );
-                    }
-                    (self.drop_last().drop_first().to_nat_right() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 2) as nat,
-                    )) * B::base() + self.last(); {
-                        assert((self.drop_last().drop_first().to_nat_right() + self.first() * pow(
-                            B::base() as int,
-                            (self.len() - 2) as nat,
-                        )) == self.drop_last().to_nat_right()) by {
-                            lemma_pow_positive(B::base() as int, (self.len() - 2) as nat);
-                        };
-                    }
-                    (self.drop_last().to_nat_right() * B::base() + self.last()) as int; {
-                        self.drop_last().nat_left_eq_nat_right_big();
-                    }
-                    self.to_nat_left() as int;
+                    self.to_nat() as int;
                 }
             }
         }
