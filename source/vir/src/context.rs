@@ -320,6 +320,7 @@ impl GlobalCtx {
         use crate::ast::TraitImpl;
         let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
         let mut trait_impl_to_extensions: HashMap<Path, Vec<Path>> = HashMap::new();
+        let mut trait_impl_from_extension: HashMap<Path, Path> = HashMap::new();
         let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
         let mut replace_with: HashMap<Node, Node> = HashMap::new();
         for t in &krate.traits {
@@ -362,6 +363,9 @@ impl GlobalCtx {
                     Node::TraitImpl(ImplPath::TraitImplPath(origin_impl.x.impl_path.clone()));
                 assert!(!replace_with.contains_key(&extension_node));
                 replace_with.insert(extension_node, origin_node);
+                assert!(!trait_impl_from_extension.contains_key(&trait_impl.x.impl_path));
+                trait_impl_from_extension
+                    .insert(trait_impl.x.impl_path.clone(), origin_impl.x.impl_path.clone());
                 trait_impl_to_extensions
                     .entry(origin_impl.x.impl_path.clone())
                     .or_default()
@@ -449,6 +453,7 @@ impl GlobalCtx {
                 &func_map,
                 &trait_map,
                 &trait_impl_map,
+                &trait_impl_from_extension,
                 &reveal_group_set,
                 &mut func_call_graph,
                 &mut span_infos,
@@ -527,6 +532,7 @@ impl GlobalCtx {
                         if let Some(trait_impl) = method_impl_map.get(f1) {
                             let impl_path = ImplPath::TraitImplPath(trait_impl.clone());
                             let trait_impl = Node::TraitImpl(impl_path);
+                            let trait_impl = func_call_graph.replace(trait_impl);
                             // Do we already have f4 --> trait_impl?
                             for ti in get_edges_from(&func_call_graph.graph, &node_f4) {
                                 if *ti == trait_impl {
