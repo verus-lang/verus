@@ -431,7 +431,7 @@ test_verify_one_file! {
                 !TSpec::<u8>::s(self, q, a, b, x)
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -466,6 +466,29 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_cycle3 verus_code! {
+        #[verifier::external]
+        trait T {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait Ex {
+        type ExternalTraitSpecificationFor: T;
+            spec fn s1() -> bool;
+            spec fn s2() -> bool;
+        }
+
+        impl T for u32 {
+        }
+
+        impl TSpecImpl for u32 {
+            spec fn s1() -> bool { <u32 as TSpec>::s2() }
+            spec fn s2() -> bool { !<u32 as TSpec>::s1() }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -705,5 +728,38 @@ test_verify_one_file! {
             }
         }
 
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_external_trait_impl_issue2047 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        trait T {
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait Ex {
+            type ExternalTraitSpecificationFor: T;
+
+            spec fn seq(&self) -> Seq<bool>;
+
+            spec fn initial_value_inv(&self) -> bool;
+        }
+
+        impl T for bool {
+        }
+
+        impl TSpecImpl for bool {
+            closed spec fn seq(&self) -> Seq<bool> {
+                seq![true]
+            }
+
+            spec fn initial_value_inv(&self) -> bool {
+                TSpec::seq(self).len() > 1
+            }
+        }
     } => Ok(())
 }
