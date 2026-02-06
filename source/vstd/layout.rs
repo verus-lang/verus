@@ -30,7 +30,9 @@ pub open spec fn is_power_2_exists(m: int) -> bool {
 
 pub broadcast proof fn is_power_2_equiv(n: int)
     ensures
-        #[trigger] is_power_2(n) <==> #[trigger] is_power_2_exists(n),
+        #![trigger is_power_2(n)]
+        #![trigger is_power_2_exists(n)]
+        is_power_2(n) <==> is_power_2_exists(n),
 {
     if is_power_2(n) {
         assert(is_power_2_exists(n)) by {
