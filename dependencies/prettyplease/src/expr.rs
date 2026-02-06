@@ -89,9 +89,7 @@ impl Printer {
             Expr::GetField(expr) => self.expr_get_field(expr),
             Expr::Matches(m) => self.expr_matches(m),
 
-            Expr::Assume(_) | Expr::Assert(_) | Expr::AssertForall(_) | Expr::RevealHide(_) => {
-                unimplemented!("unknown Expr {:?}", expr)
-            }
+            Expr::Assume(_) | Expr::Assert(_) | Expr::AssertForall(_) | Expr::RevealHide(_) => {}
         }
 
         if needs_paren {
