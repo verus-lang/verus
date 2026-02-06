@@ -10,6 +10,17 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# Cancel a workflow iff the branch for the pull request got updated
+#
+# How:
+#   - This creates a concurrency group for workflow runs;
+#   - When the workflow runs, it cancels in-progress runs if the concurrency group is the same
+#   - The group names are ci-<pr number> (in the case of PRs) and ci-<SHA> for main
+#   - This means that we still run CI for every commit on main (but those runs don't get updated anyway)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.push.after }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
