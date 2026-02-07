@@ -3100,24 +3100,26 @@ pub(crate) fn expr_to_stm_opt(
                 Default::default(),
             ));
 
-            let call_inner_mask = ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::inner_mask"),
-                au_typ_args.clone(),
-                Arc::new(vec![au_var_exp.clone()]),
-            );
-
-            let inner_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_inner_mask);
-            let inner_mask = MaskSet::arbitrary(&inner_mask_exp);
-
-            if state.checking_recommends(ctx) {
-                let call_outer_mask = ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::outer_mask"),
+            let inner_mask = MaskSet::arbitrary(&SpannedTyped::new(
+                &expr.span,
+                &int_set_typ,
+                ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::inner_mask"),
                     au_typ_args.clone(),
                     Arc::new(vec![au_var_exp.clone()]),
-                );
+                ),
+            ));
 
-                let outer_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_outer_mask);
-                let outer_mask = MaskSet::arbitrary(&outer_mask_exp);
+            if state.checking_recommends(ctx) {
+                let outer_mask = MaskSet::arbitrary(&SpannedTyped::new(
+                    &expr.span,
+                    &int_set_typ,
+                    ExpX::Call(
+                        ctx.fn_from_path("#vstd::atomic::AtomicUpdate::outer_mask"),
+                        au_typ_args.clone(),
+                        Arc::new(vec![au_var_exp.clone()]),
+                    ),
+                ));
 
                 for assertion in inner_mask.subset_of(
                     ctx,
