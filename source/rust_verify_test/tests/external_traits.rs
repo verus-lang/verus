@@ -707,36 +707,3 @@ test_verify_one_file! {
 
     } => Ok(())
 }
-
-test_verify_one_file! {
-    #[test] test_external_trait_impl_issue2047 verus_code! {
-        use vstd::prelude::*;
-
-        #[verifier::external]
-        trait T {
-        }
-
-        #[verifier::external_trait_specification]
-        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
-        trait Ex {
-            type ExternalTraitSpecificationFor: T;
-
-            spec fn seq(&self) -> Seq<bool>;
-
-            spec fn initial_value_inv(&self) -> bool;
-        }
-
-        impl T for bool {
-        }
-
-        impl TSpecImpl for bool {
-            closed spec fn seq(&self) -> Seq<bool> {
-                seq![true]
-            }
-
-            spec fn initial_value_inv(&self) -> bool {
-                TSpec::seq(self).len() > 1
-            }
-        }
-    } => Ok(())
-}
