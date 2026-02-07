@@ -436,6 +436,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] type_recursion_is_handled verus_code! {
+        use vstd::std_specs::alloc::ExGlobal;
         #[verifier(external_type_specification)]
         #[verifier::reject_recursive_types(U)]
         pub struct ExOption<U>(core::option::Option<U>);
