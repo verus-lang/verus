@@ -129,11 +129,13 @@ impl <A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl f
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
         init matches Some(v) ==> {
-            IteratorSpec::seq(self) ==
-            Seq::new(
-                v.start.spec_steps_between_int(v.end) as nat,
-                |i: int| v.start.spec_forward_checked_int(i).unwrap(),
-            )
+            &&& self.start == v.start 
+            &&& self.end == v.end
+            &&& IteratorSpec::seq(self) ==
+                Seq::new(
+                    v.start.spec_steps_between_int(v.end) as nat,
+                    |i: int| v.start.spec_forward_checked_int(i).unwrap(),
+                )
         }
     }
 
