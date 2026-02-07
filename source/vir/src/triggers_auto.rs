@@ -513,6 +513,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
     if let TermX::Var(..) = *term {
         return (is_pure, term);
     }
+    if let TermX::App(App::VarAt(..), _) = *term {
+        return (is_pure, term);
+    }
     if let TermX::App(App::Tuple, _) = *term {
         return (is_pure, term);
     }
@@ -545,7 +548,11 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
 // Second bool: is the instantiation potentially bigger than the original template?
 fn structure_matches(ctxt: &Ctxt, template: &Term, term: &Term) -> (bool, bool) {
     match (&**template, &**term) {
-        (TermX::Var(x1), TermX::App(_, _)) if ctxt.trigger_vars.contains(x1) => (true, true),
+        (TermX::Var(x1), TermX::App(app, _))
+            if ctxt.trigger_vars.contains(x1) && !matches!(app, App::VarAt(..)) =>
+        {
+            (true, true)
+        }
         (TermX::Var(x1), _) if ctxt.trigger_vars.contains(x1) => (true, false),
         (TermX::Var(x1), TermX::Var(x2)) => (x1 == x2, false),
         (TermX::App(a1, args1), TermX::App(a2, args2))
@@ -569,7 +576,9 @@ fn remove_obvious_potential_loops(ctxt: &mut Ctxt, timer: &mut Timer) -> Result<
     // REVIEW: we could attempt more sophisticated cycle detection
     let mut remove: Vec<Term> = Vec::new();
     for pure in ctxt.pure_terms.keys() {
-        if let TermX::App(app, _) = &**pure {
+        if let TermX::App(app, _) = &**pure
+            && !matches!(app, App::VarAt(..))
+        {
             if ctxt.all_terms_by_app.contains_key(app) {
                 for term in ctxt.all_terms_by_app[app].keys() {
                     check_timeout(timer)?;

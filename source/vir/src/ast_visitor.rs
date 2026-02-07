@@ -389,7 +389,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
 
                 self.push_scope();
                 for b in R::get_vec_or(&params, p).iter() {
-                    self.insert_binding(&b.name, ScopeEntry::new(&b.a, Some(false), true));
+                    self.insert_binding(&b.name, ScopeEntry::new(&b.a, Some(true), true));
                 }
 
                 let requires = self.visit_exprs(requires)?;
@@ -644,6 +644,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::TwoPhaseBorrowMut(p) => {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::TwoPhaseBorrowMut(R::get(p))))
+            }
+            ExprX::ImplicitReborrowOrSpecRead(p, two_phase, span) => {
+                let p = self.visit_place(p)?;
+                R::ret(|| {
+                    expr_new(ExprX::ImplicitReborrowOrSpecRead(R::get(p), *two_phase, span.clone()))
+                })
             }
             ExprX::ReadPlace(p, read_type) => {
                 let p = self.visit_place(p)?;

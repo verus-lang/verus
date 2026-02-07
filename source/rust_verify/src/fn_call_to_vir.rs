@@ -1054,7 +1054,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             {
                 let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
                 let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
-                let vir_arg = vir_args[0].clone();
+                let vir_arg = strip_two_phase(&vir_args[0]);
                 match (compilable_opr, get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(arg.hir_id))) {
                     (CompilableOprItem::GhostExec, Some(GhostBlockAttr::GhostWrapped)) => {
                         let exprx = ExprX::Ghost {
@@ -1078,7 +1078,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
             } else {
                 let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
-                let vir_arg = vir_args[0].clone();
+                let vir_arg = strip_two_phase(&vir_args[0]);
                 if matches!(verus_item, VerusItem::CompilableOpr(CompilableOprItem::GhostExec)) {
                     let op = UnaryOp::CoerceMode {
                         op_mode: Mode::Exec,
@@ -2672,4 +2672,19 @@ fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: Resolved
     };
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+}
+
+/// Remove two-phaseness from the root node of the given expression, if applicable.
+/// This is helpful because VIR will complain if there are unexpected two-phase borrows.
+///
+/// This is only safe to call if removing two-phaseness can't affect lifetime checking.
+/// For example, if the node is the only argument to the given call.
+fn strip_two_phase(e: &vir::ast::Expr) -> vir::ast::Expr {
+    match &e.x {
+        ExprX::TwoPhaseBorrowMut(p) => e.new_x(ExprX::BorrowMut(p.clone())),
+        ExprX::ImplicitReborrowOrSpecRead(p, true, s) => {
+            e.new_x(ExprX::ImplicitReborrowOrSpecRead(p.clone(), false, s.clone()))
+        }
+        _ => e.clone(),
+    }
 }

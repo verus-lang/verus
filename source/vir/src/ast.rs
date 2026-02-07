@@ -1126,6 +1126,10 @@ pub enum ExprX {
     ///
     /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
+    /// In exec/tracked code ExprX::BorrowMut(PlaceX::DerefMut(place))
+    /// (with bool true = TwoPhaseBorrowMut)
+    /// In spec code, it's just a spec snapshot of the place without a borrow
+    ImplicitReborrowOrSpecRead(Place, bool, Span),
     /// Indicates a move or a copy from the given place.
     /// These over-approximate the actual set of copies/moves.
     /// (That is, many reads marked Move or Copy should really be marked Spec).
@@ -1193,12 +1197,27 @@ pub type Places = Arc<Vec<Place>>;
 pub enum PlaceX {
     /// Place of the given field. May have a precondition if VariantCheck is set to Union
     Field(FieldOpr, Place),
-    /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
+    /// Place pointed to by the given mutable reference.
+    /// (i.e., `*` operator in Rust when applied to a mutable reference).
+    /// Encoding-wise, this is conceptually like Field, if you think of mutable references
+    /// as a struct with MutRefCurrent as a field.
     DerefMut(Place),
     /// Unwrap a Ghost or a Tracked
     ModeUnwrap(Place, ModeWrapperMode),
-    /// Index into an array or slice (`place[expr]`)
-    /// The bool = needs bounds check
+    /// Index into an array or slice (`place[expr]`).
+    /// May have a precondition if BoundsCheck is set.
+    ///
+    /// Note: typically, the index operator [] in Rust is lowered to an `index` or `index_mut`
+    /// call, which can handle via a Call node. However, indexing into a slice or array is
+    /// treated specially in a way which is more permissive with respect to borrow checking,
+    /// and in particular, two-phase borrows, than it otherwise would be if it were just treated
+    /// as a call. (See, for example, the `two_phase_arrays_slices` test cases in mut_refs.rs).
+    ///
+    /// Therefore, to properly handle programs with are admitted due to these special
+    /// cases, we also need to treat array indexing and slice indexing via a Place node.
+    /// That's why `PlaceX::Index` exists.
+    /// It is _not_ necessary to handle other types (like Vec indexing) in this way
+    /// (although it wouldn't hurt, either).
     Index(Place, Expr, ArrayKind, BoundsCheck),
     /// Named local variable.
     Local(VarIdent),

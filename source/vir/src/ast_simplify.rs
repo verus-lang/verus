@@ -16,7 +16,7 @@ use crate::ast::{
 };
 use crate::ast_util::{
     conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_expr, typ_args_for_datatype_typ,
-    wrap_in_trigger,
+    unit_typ, wrap_in_trigger,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
@@ -768,11 +768,21 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
         StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
             if ctx.new_mut_ref {
                 let (mut stmts, place) = place_to_pure_place(state, init);
-                let _pattern_check =
-                    crate::patterns::pattern_to_exprs(ctx, &place, pattern, false, &mut stmts)?;
-                if let Some(_els) = &els {
-                    todo!(); // TODO(new_mut_ref)
+                let mut stmts2: Vec<Stmt> = vec![];
+                let pattern_check =
+                    crate::patterns::pattern_to_exprs(ctx, &place, pattern, false, &mut stmts2)?;
+                if let Some(els) = &els {
+                    let checkx = ExprX::Unary(UnaryOp::Not, pattern_check.clone());
+                    let check = SpannedTyped::new(&pattern_check.span, &pattern_check.typ, checkx);
+                    let neverx = ExprX::NeverToAny(els.clone());
+                    let never = SpannedTyped::new(&els.span, &unit_typ(), neverx);
+                    let ifx = ExprX::If(check.clone(), never, None);
+                    let ife = SpannedTyped::new(&stmt.span, &unit_typ(), ifx);
+                    let ifstmtx = StmtX::Expr(ife);
+                    let ifstmt = Spanned::new(stmt.span.clone(), ifstmtx);
+                    stmts.push(ifstmt);
                 }
+                stmts.extend(stmts2);
                 Ok(stmts)
             } else {
                 let mut decls: Vec<Stmt> = Vec::new();

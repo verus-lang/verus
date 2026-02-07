@@ -355,3 +355,51 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_rust_error_msg(e, "`Foo` cannot be sent between threads safely")
 }
+
+test_verify_one_file_with_options! {
+    #[test] cell_borrow_mut ["new-mut-ref"] => IMPORTS.to_string() + code_str! {
+        verus!{
+
+        fn cell_test() {
+            let (c, Tracked(points_to)) = PCell::<u64>::new(0);
+
+            let r = c.borrow_mut(Tracked(&mut points_to));
+            *r = 20;
+
+            let x = c.into_inner(Tracked(points_to));
+            assert(x == 20);
+        }
+
+        fn cell_test2() {
+            let (c, Tracked(points_to)) = PCell::<u64>::new(0);
+
+            *c.borrow_mut(Tracked(&mut points_to)) = 20;
+
+            let x = c.into_inner(Tracked(points_to));
+            assert(x == 20);
+        }
+
+        fn fails_cell_test() {
+            let (c, Tracked(points_to)) = PCell::<u64>::new(0);
+
+            let r = c.borrow_mut(Tracked(&mut points_to));
+            *r = 20;
+
+            let x = c.into_inner(Tracked(points_to));
+            assert(x == 20);
+            assert(false); // FAILS
+        }
+
+        fn fails_cell_test2() {
+            let (c, Tracked(points_to)) = PCell::<u64>::new(0);
+
+            *c.borrow_mut(Tracked(&mut points_to)) = 20;
+
+            let x = c.into_inner(Tracked(points_to));
+            assert(x == 20);
+            assert(false); // FAILS
+        }
+
+        }
+    } => Err(e) => assert_fails(e, 2)
+}

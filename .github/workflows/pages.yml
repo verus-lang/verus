@@ -11,6 +11,7 @@ permissions:
   pages: write
   id-token: write
 
+# Cancel previous pages workflows if a new one comes in
 concurrency:
   group: "pages"
   cancel-in-progress: true
