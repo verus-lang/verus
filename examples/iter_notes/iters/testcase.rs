@@ -3,14 +3,59 @@ use vstd::std_specs::iter::IteratorSpecImpl;
 
 verus! {
 
-fn exec_for_loop() {
-    let mut n: u64 = 0;
-    for x in iter: 0..10
-        invariant n == iter.index@ * 3,
+//fn exec_for_loop() {
+//    let mut n: u64 = 0;
+//    for x in iter: 0..10
+//        invariant n == iter.index@ * 3,
+//    {
+//        n += 3;
+//    }
+//}
+
+//fn exec_for_loop2() {
+//    let mut n: u64 = 0;
+//    for x in iter: 0..10
+//        invariant 
+////            x == iter.index@,
+////            n == iter.index@ * 3,
+//            n == x * 3,
+//    {
+//        //assume(iter.index@ + 1 < iter.seq().len());
+//        n += 3;
+//    }
+//    assert(n == 30);
+//}
+
+fn test_basic() {
+    let v: Vec<u8> = vec![1, 2, 3];
+    assert(v@ == seq![1u8, 2, 3]);
+    let mut sum: u64; 
+
+    for x in y: v 
+        invariant
+            true,
+        decreases
+            3 - x
+//            v@ == seq![1u8, 2, 3],
+//            x < 5,
     {
-        n += 3;
+        //assume(y.index@ + 1 < y.seq().len());
     }
 }
+
+
+/*
+fn a() {
+    let mut i: i8 = 0;
+    for x in 0..10
+        invariant i == x * 3,
+        decreases 10 - x
+    {
+        i += 3;
+    }
+}
+*/
+
 /*
 fn test_basic() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
