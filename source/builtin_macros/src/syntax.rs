@@ -3748,7 +3748,7 @@ impl Visitor {
         let invariant_for = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
-                    let #pat = #x_iter_name.snapshot.view().peek(#x_iter_name.index.view())
+                    let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
                         .unwrap_or(vstd::pervasive::arbitrary());
                     #inv
                 }));
@@ -3771,7 +3771,7 @@ impl Visitor {
         let inv_except_break = if let Some(mut invariant_except_break) = invariant_except_break {
             for inv in &mut invariant_except_break.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
-                    let #pat = #x_iter_name.snapshot.view().peek(#x_iter_name.index.view())
+                    let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
                         .unwrap_or(vstd::pervasive::arbitrary());
                     #inv
                 }));
@@ -3788,7 +3788,7 @@ impl Visitor {
         if let Some(decreases) = &mut decreases {
             for expr in &mut decreases.exprs.exprs {
                 *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() => {
-                    let #pat = #x_iter_name.snapshot.view().peek(#x_iter_name.index.view())
+                    let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
                         .unwrap_or(vstd::pervasive::arbitrary());
                     #expr
                 }));
