@@ -7,12 +7,16 @@ use alloc::str::Chars;
 use alloc::string::{self, String, ToString};
 
 #[cfg(feature = "alloc")]
+use super::utf8::*;
 use super::pervasive::{ForLoopGhostIterator, ForLoopGhostIteratorNew};
 use super::prelude::*;
 use super::seq::Seq;
+use super::slice::*;
 use super::view::*;
 
 verus! {
+
+broadcast use crate::seq::group_seq_axioms;
 
 impl View for str {
     type V = Seq<char>;
@@ -28,12 +32,59 @@ impl DeepView for str {
     }
 }
 
-pub uninterp spec fn str_slice_is_ascii(s: &str) -> bool;
+// todos -
+// we can actually impl is_ascii    
 
-#[verifier::when_used_as_spec(str_slice_is_ascii)]
+pub trait StringSliceAdditionalSpecFns {
+    spec fn spec_bytes(&self) -> Seq<u8>;
+}
+
+impl StringSliceAdditionalSpecFns for str {
+    open spec fn spec_bytes(&self) -> Seq<u8> {
+        encode_utf8(self@)
+    }
+}
+
+pub open spec fn is_ascii(s: &str) -> bool {
+    is_ascii_chars(s@)
+}
+
+pub open spec fn is_ascii_chars(chars: Seq<char>) -> bool {
+    forall |i| 0 <= i < chars.len() ==> '\0' <= #[trigger] chars[i] <= '\x7f'
+}
+
+pub proof fn is_ascii_spec_bytes(s: &str)
+    ensures
+        is_ascii(s) ==> s.spec_bytes() =~= Seq::new(s@.len(), |i| s@.index(i) as u8)
+{
+    if (is_ascii(s)) {
+        is_ascii_chars_encode_utf8(s@);
+    }
+}
+
+proof fn is_ascii_chars_encode_utf8(chars: Seq<char>)
+    requires
+        is_ascii_chars(chars)
+    ensures
+        chars.len() == encode_utf8(chars).len(),
+        forall |i| #![trigger chars[i]] #![trigger encode_utf8(chars)[i]] 0 <= i < chars.len() ==> chars[i] as u8 == encode_utf8(chars)[i]
+    decreases
+        chars.len()
+{
+    if chars.len() == 0 {
+    } else {
+        let c0 = chars[0] as u32;
+        assert(c0 as u8 == first_byte_1_byte_codepoint(c0)) by (bit_vector)
+            requires
+                is_1_byte_codepoint(c0);
+        is_ascii_chars_encode_utf8(chars.drop_first());
+    }
+}
+
+#[verifier::when_used_as_spec(is_ascii)]
 pub assume_specification[ str::is_ascii ](s: &str) -> (b: bool)
     ensures
-        b == str_slice_is_ascii(s),
+        b == is_ascii(s),
 ;
 
 pub open spec fn new_strlit_spec(s: &str) -> &str {
@@ -48,6 +99,13 @@ pub assume_specification[ str::to_owned ](s: &str) -> (res: String)
     ensures
         s@ == res@,
         s.is_ascii() == res.is_ascii(),
+;
+
+// todo - should this be in std_specs instead?
+#[cfg(feature = "alloc")]
+pub assume_specification[ str::as_bytes ](s: &str) -> (b: &[u8])
+    ensures
+        b@ == s.spec_bytes(),
 ;
 
 #[cfg(feature = "alloc")]
@@ -161,32 +219,34 @@ impl StrSliceExecFns for str {
         &self[byte_start..byte_end]
     }
 
-    #[verifier::external_body]
+    //#[verifier::external_body]
     fn get_ascii(&self, i: usize) -> (b: u8)
         requires
-            self.is_ascii(),
+            0 <= i < self.spec_bytes().len() || (self.is_ascii() && 0 <= i < self.view().len()) // NEW
         ensures
-            self.view().index(i as int) as u8 == b,
+            self.spec_bytes().index(i as int) == b,
+            self.is_ascii() ==> self.view().index(i as int) as u8 == b,
     {
+        proof {
+            is_ascii_spec_bytes(self);
+        }
         self.as_bytes()[i]
     }
 
     // TODO:This should be the as_bytes function after
     // slice support is added
     // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
+    //#[verifier::external_body]
     #[cfg(feature = "alloc")]
-    #[verifier::external_body]
     fn as_bytes_vec(&self) -> (ret: alloc::vec::Vec<u8>)
-        requires
-            self.is_ascii(),
         ensures
-            ret.view() == Seq::new(self.view().len(), |i| self.view().index(i) as u8),
+            ret.view() == self.spec_bytes(),
+            self.is_ascii() ==> ret.view() == Seq::new(self.view().len(), |i| self.view().index(i) as u8),
     {
-        let mut v = alloc::vec::Vec::new();
-        for c in self.as_bytes().iter() {
-            v.push(*c);
+        proof {
+            is_ascii_spec_bytes(self);
         }
-        v
+        slice_to_vec(self.as_bytes())
     }
 }
 
