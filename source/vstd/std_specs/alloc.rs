@@ -1,4 +1,4 @@
-use super::super::prelude::*;
+use verus_builtin_macros::verus;
 
 verus! {
 
