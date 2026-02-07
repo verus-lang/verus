@@ -302,20 +302,15 @@ impl DeepView for String {
 pub struct ExString(String);
 
 #[cfg(feature = "alloc")]
-pub uninterp spec fn string_is_ascii(s: &String) -> bool;
-
-#[cfg(feature = "alloc")]
-#[verifier::when_used_as_spec(string_is_ascii)]
-pub assume_specification[ String::is_ascii ](s: &String) -> (b: bool)
-    ensures
-        b == string_is_ascii(s),
-;
+pub open spec fn string_is_ascii(s: &String) -> bool {
+    is_ascii_chars(s@)
+}
 
 #[cfg(feature = "alloc")]
 pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
-        s.is_ascii() == res.is_ascii(),
+        //s.is_ascii() == res.is_ascii(), // this is trivial now
 ;
 
 // same as above
@@ -323,7 +318,7 @@ pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
 pub assume_specification<'a>[ <String as core::ops::Deref>::deref ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
-        s.is_ascii() == res.is_ascii(),
+        //s.is_ascii() == res.is_ascii(), // this is trivial now
 ;
 
 #[cfg(feature = "alloc")]
@@ -342,26 +337,27 @@ pub assume_specification[ <String as PartialEq>::eq ](s: &String, other: &String
 pub assume_specification[ String::new ]() -> (res: String)
     ensures
         res@ == Seq::<char>::empty(),
-        string_is_ascii(&res),
+        //string_is_ascii(&res), // this is trivial now
 ;
 
 #[cfg(feature = "alloc")]
 pub assume_specification[ <String as core::default::Default>::default ]() -> (r: String)
     ensures
         r@ == Seq::<char>::empty(),
-        string_is_ascii(&r),
+        //string_is_ascii(&r), this is trivial now
 ;
 
 #[cfg(feature = "alloc")]
-#[verifier::external]
+//#[verifier::external]
 pub trait StringExecFnsIsAscii: Sized {
     fn is_ascii(&self) -> bool;
 }
 
 #[cfg(feature = "alloc")]
-#[verifier::external]
+//#[verifier::external]
 impl StringExecFnsIsAscii for String {
     #[inline(always)]
+    #[verifier::when_used_as_spec(string_is_ascii)]
     fn is_ascii(&self) -> bool {
         self.as_str().is_ascii()
     }
@@ -383,7 +379,7 @@ impl StringExecFns for String {
     fn from_str<'a>(s: &'a str) -> (ret: String)
         ensures
             s@ == ret@,
-            s.is_ascii() == ret.is_ascii(),
+            //s.is_ascii() == ret.is_ascii(), // now trivial
     {
         s.to_string()
     }
@@ -392,7 +388,7 @@ impl StringExecFns for String {
     fn append<'a, 'b>(&'a mut self, other: &'b str)
         ensures
             self@ == old(self)@ + other@,
-            self.is_ascii() == old(self).is_ascii() && other.is_ascii(),
+            //self.is_ascii() == old(self).is_ascii() && other.is_ascii(), // todo - keep this? it is now easily derivable
     {
         *self += other;
     }
@@ -401,7 +397,7 @@ impl StringExecFns for String {
     fn concat<'b>(self, other: &'b str) -> (ret: String)
         ensures
             ret@ == self@ + other@,
-            ret.is_ascii() == self.is_ascii() && other.is_ascii(),
+            //ret.is_ascii() == self.is_ascii() && other.is_ascii(), // todo - keep this? it is now easily derivable
     {
         self + other
     }
