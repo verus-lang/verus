@@ -357,6 +357,10 @@ impl<T: super::cmp::PartialEqSpec<U>, U, A1: Allocator, A2: Allocator> super::cm
 #[verifier::reject_recursive_types(A)]
 pub struct ExIntoIter<T, A: Allocator>(IntoIter<T, A>);
 
+// To allow reasoning about the "contents" of the Vec iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original vec.
+pub uninterp spec fn into_iter_elts<T, A: Allocator>(i: IntoIter<T, A>) -> Seq<T>;
+
 impl <T, A: Allocator> crate::std_specs::iter::IteratorSpecImpl for IntoIter<T, A> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
@@ -372,9 +376,18 @@ impl <T, A: Allocator> crate::std_specs::iter::IteratorSpecImpl for IntoIter<T, 
         //&&& into_iter_elts(*self) == crate::std_specs::iter::IteratorSpecImpl::seq(self) //self.seq() //crate::std_specs::iter::IteratorSpecImpl::seq(self) //.map_values(|v: &T| *v)
         //&&& init matches Some(v) && into_iter_elts(*v) == into_iter_elts(*self)
         &&& init matches Some(v) && IteratorSpec::seq(v) == IteratorSpec::seq(self)
+        &&& into_iter_elts(*self) == IteratorSpec::seq(self)
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
+    
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_elts(*self).len() {
+            Some(into_iter_elts(*self)[index])
+        } else {
+            None
+        }
+    }
 }
 
 // This is used by `vec![x; n]`

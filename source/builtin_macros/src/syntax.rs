@@ -3319,9 +3319,8 @@ impl Visitor {
         //                     y.wf(),
         //                     ({ 
         //                         // Grab the next val for (possible) use in the user-provided inv
-        //                         let x = if y.index.view() < y.seq().len() { 
-        //                                     y.seq()[y.index.view()] 
-        //                                 } else { vstd::pervasive::arbitrary() };
+        //                         let x = y.snapshot.view().peek(y.index.view())
+        //                                  .unwrap_or(vstd::pervasive::arbitrary());
         //                         inv
         //                     }),
         //                  ensures
@@ -3469,11 +3468,8 @@ impl Visitor {
         let invariant_for = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
-                    let #pat = if #x_iter_name.index.view().spec_lt(#x_iter_name.seq().len()) {
-                        #x_iter_name.seq().spec_index(#x_iter_name.index.view())
-                    } else {
-                        #vstd::pervasive::arbitrary()
-                    };
+                    let #pat = #x_iter_name.snapshot.view().peek(#x_iter_name.index.view())
+                        .unwrap_or(vstd::pervasive::arbitrary());
                     #inv
                 }));
             }
@@ -3495,11 +3491,8 @@ impl Visitor {
         let inv_except_break = if let Some(mut invariant_except_break) = invariant_except_break {
             for inv in &mut invariant_except_break.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
-                    let #pat = if #x_iter_name.index.view().spec_le(#x_iter_name.seq().len()) {
-                        #x_iter_name.seq().spec_index(#x_iter_name.index.view())
-                    } else {
-                        #vstd::pervasive::arbitrary()
-                    };
+                    let #pat = #x_iter_name.snapshot.view().peek(#x_iter_name.index.view())
+                        .unwrap_or(vstd::pervasive::arbitrary());
                     #inv
                 }));
             }
@@ -3515,11 +3508,8 @@ impl Visitor {
         if let Some(decreases) = &mut decreases {
             for expr in &mut decreases.exprs.exprs {
                 *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() => {
-                    let #pat = if #x_iter_name.index.view().spec_lt(#x_iter_name.seq().len()) {
-                        #x_iter_name.seq().spec_index(#x_iter_name.index.view())
-                    } else {
-                        #vstd::pervasive::arbitrary()
-                    };
+                    let #pat = #x_iter_name.snapshot.view().peek(#x_iter_name.index.view())
+                        .unwrap_or(vstd::pervasive::arbitrary());
                     #expr
                 }));
             }

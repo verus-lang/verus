@@ -65,6 +65,7 @@ impl<Idx> View for RangeInclusive<Idx> {
 
 pub trait StepSpec where Self: Sized {
     // REVIEW: it would be nice to be able to use SpecOrd::spec_lt (not yet supported)
+    // TODO: We should now be able to use cmp_spec or partial_cmp_spec here. 
     spec fn spec_is_lt(self, other: Self) -> bool;
 
     spec fn spec_steps_between(self, end: Self) -> Option<usize>;
@@ -138,6 +139,14 @@ impl <A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl f
 
     open spec fn decrease(&self) -> Option<nat> {
         Some(self.start.spec_steps_between_int(self.end) as nat)
+    }
+    
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index <= self.start.spec_steps_between_int(self.end) {
+            Some(self.start.spec_forward_checked_int(index).unwrap())
+        } else {
+            None
+        }
     }
 }
 

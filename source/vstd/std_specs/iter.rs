@@ -75,8 +75,12 @@ pub trait ExIterator {
     /// (e.g., `my_vec.iter()`).  This allows for more ergonomic/intuitive invariants.
     /// When the analysis can infer a spec initial value (by discovering a `when_used_as_spec`
     /// annotation), the analysis places the value in init.
-    #[verifier::prophetic]  // TODO: This shouldn't need to be prophetic.  Added for now due to: https://github.com/verus-lang/verus/issues/2047
+    #[verifier::prophetic]
     spec fn initial_value_inv(&self, init: Option<&Self>) -> bool;
+
+    // If we can make a useful guess as to what the i-th value will be, return it.  
+    // Otherwise, return None. 
+    spec fn peek(&self, index: int) -> Option<Self::Item>;
 }
 
 /// REVIEW: Despite the name, VerusForLoopWrapper doesn't implement Iterator.
