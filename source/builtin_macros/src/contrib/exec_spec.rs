@@ -210,7 +210,7 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
 
 /// Compiles a struct item.
 fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
-    // note: types of fields are effectively constrained to those whose compiled types impl DeepView, DeepViewClone, and ExecSpecEq.
+    // note: types of struct fields are effectively constrained to those whose compiled types impl DeepView, DeepViewClone, and ExecSpecEq.
     if !item_struct.generics.params.is_empty() {
         return Err(Error::new_spanned(&item_struct.generics, "generics not supported"));
     }
@@ -1423,7 +1423,7 @@ const UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type
 Within the exec_spec! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char. Note: int and nat are not allowed.";
 
 fn get_single_guard(guard: &Box<Expr>, quant_var: &Ident) -> Result<GuardBounds, Error> {
-    // <guard> == <lower> <= x < <upper>
+    // <guard> == <lower> <op> x <op> <upper>
     let Expr::Binary(ExprBinary { left: lower_guard, op: upper_op, right: upper, .. }) =
         guard.as_ref()
     else {
@@ -1501,8 +1501,7 @@ fn get_guarded_range_quant(closure: &ExprClosure, ) -> Result<GuardedQuantifier,
         Ok((quant_var, quant_type))
     }).collect::<Result<Vec<_>, Error>>()?;
 
-    // |x| <guard> ==>/&& <body>
-    // todo(nneamtu) - update comment
+    // |x| <guard> <guard_op> <body>
     let mut guarded_vars = Vec::new();
     let Expr::Binary(ExprBinary { left, op: guard_op, right: body, .. }) =
         closure.body.as_ref()
@@ -1526,6 +1525,7 @@ fn get_guarded_range_quant(closure: &ExprClosure, ) -> Result<GuardedQuantifier,
             single_guard = remaining;
         }
 
+        // <guard> == <lower> <= x < <upper>
         let bounds = get_single_guard(single_guard, &quant_vars[quant_vars.len() - 1 - i].0)?;
         guarded_vars.insert(0, GuardedQuantVar {
             bounds,
@@ -1533,8 +1533,6 @@ fn get_guarded_range_quant(closure: &ExprClosure, ) -> Result<GuardedQuantifier,
             quant_type: quant_vars[quant_vars.len() - 1 - i].1.clone()
         });
     }
-
-    // <guard> == <lower> <= x < <upper>
 
     Ok(GuardedQuantifier {
         guard_op: guard_op.clone(),
@@ -1600,16 +1598,12 @@ fn compile_guarded_quant_loops(ctx: &LocalCtx, op: &UnOp, expr: &Expr, guard_op:
         compiled_body = match op {
             UnOp::Forall(..) => quote! {
                 if !(#compiled_body_expr) {
-                    //proof { let _ = #trigger_fn_name(#quant_var); }
-                    //assert(#assert_trigger);
                     _res = false;
                     break;
                 }
             },
             UnOp::Exists(..) => quote! {
                 if #compiled_body_expr {
-                    //proof { let _ = #trigger_fn_name(#quant_var); }
-                    //assert(#assert_trigger);
                     _res = true;
                     break;
                 }
@@ -1643,61 +1637,32 @@ fn compile_guarded_quant_loops(ctx: &LocalCtx, op: &UnOp, expr: &Expr, guard_op:
 
     match (op, guard_op) {
         (UnOp::Forall(..), BinOp::Imply(..)) => {
-            // Generate some pieces separately so that we can attach spans to them
-            /*let inv = quote_spanned! { expr_span => _res == {
-                let _upper = #quant_var;
-                #(#local_view)*
-                forall |#quant_var: #quant_type|
-                    #![trigger #trigger_fn_name(#quant_var)]
-                    #(#quant_attrs)*  !(_lower <= #quant_var < _upper) || (#body)
-            }};
-            let assert_trigger = quote_spanned! { expr_span => { #(#local_view)* !(#body) } };*/
-
             Ok(quote! {
                 {
                     #init
 
                     if #init_cond {
                         while #while_cond
-                            //invariant #inv_bound, #inv,
-                            //decreases #decreases,
                         {
                             #compiled_body
                             #update
                         }
                     }
-                    //proof { let _ = #trigger_fn_name(_lower); }
-                    //assert(#final_assert);
-                    //_res
                 }
             })
         }
         (UnOp::Exists(..), BinOp::And(..)) => {
-            /*let inv = quote_spanned! { expr_span => _res == {
-                let _upper = #quant_var;
-                #(#local_view)*
-                exists |#quant_var: #quant_type|
-                    #![trigger #trigger_fn_name(#quant_var)]
-                    #(#quant_attrs)*
-                    (_lower <= #quant_var < _upper) && (#body)
-            }};
-            let assert_trigger = quote_spanned! { expr_span => { #(#local_view)* (#body) } };*/
-
             Ok(quote! {
                 {
                     #init
 
                     if #init_cond {
                         while #while_cond
-                            /*invariant #inv_bound, #inv,
-                            decreases #decreases,*/
                         {
                             #compiled_body
                             #update
                         }
                     }
-                    // proof { let _ = #trigger_fn_name(_lower); }
-                    // assert(#final_assert);
                 }
             })
         },
@@ -1726,8 +1691,6 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr, trusted: bool) 
 
                     #loops
 
-                    //proof { let _ = #trigger_fn_name(_lower); }
-                    //assert(#final_assert);
                     _res
                 }
             }),
@@ -1738,8 +1701,6 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr, trusted: bool) 
 
                     #loops
 
-                    //proof { let _ = #trigger_fn_name(_lower); }
-                    //assert(#final_assert);
                     _res
                 }
             }),
@@ -2064,8 +2025,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
                 }
                 
             },
-            // skip compilation of proof blocks
-            // todo(nneamtu) - is this the best approach?
+            // skip all compilation of proof blocks
+            // todo(nneamtu) - would proof blocks ever be needed?
             UnOp::Proof(..) => {
                 return Ok(TokenStream2::new())
             }
