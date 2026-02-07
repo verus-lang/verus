@@ -120,8 +120,8 @@ pub broadcast axiom fn prov_alignment_properties(p: Provenance)
                 + 1,
 ;
 
-/// The start address of an allocation should be aligned to the allocation's alignment, 
-/// as per the postcondition of `Allocator::allocate`. 
+/// The start address of an allocation should be aligned to the allocation's alignment,
+/// as per the postcondition of `Allocator::allocate`.
 pub broadcast axiom fn start_addr_aligned(p: Provenance)
     ensures
         #[trigger] p.start_addr() as nat % #[trigger] p.alignment() == 0,
@@ -1576,10 +1576,10 @@ impl Dealloc {
 /// Allocate with the global allocator.
 /// The precondition should be consistent with the [documented safety conditions on `alloc`](https://doc.rust-lang.org/alloc/alloc/trait.GlobalAlloc.html#tymethod.alloc).
 /// Returns a pointer with a corresponding [`PointsToRaw`] and [`Dealloc`] permissions.
-/// 
-/// Here we allocate exactly the size of memory requested 
+///
+/// Here we allocate exactly the size of memory requested
 /// (shown by having both the `Dealloc` size and the `Provenance` `alloc_len` be the provided `size`)
-/// This is a stronger guarantee than `Allocator::allocate`, which may allocate a larger block of memory. 
+/// This is a stronger guarantee than `Allocator::allocate`, which may allocate a larger block of memory.
 #[cfg(feature = "std")]
 #[verifier::external_body]
 pub fn allocate(size: usize, align: usize) -> (pt: (
@@ -1593,10 +1593,7 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
     ensures
         pt.1@.is_range(pt.0.addr() as int, size as int),
         pt.0.addr() + size <= usize::MAX + 1,
-        pt.2@@ == (DeallocData {
-            size: size as nat,
-            provenance: pt.1@.provenance(),
-        }),
+        pt.2@@ == (DeallocData { size: size as nat, provenance: pt.1@.provenance() }),
         pt.0.addr() as int % align as int == 0,
         pt.0@.provenance == pt.1@.provenance(),
         pt.1@.provenance().alloc_len() == size,
@@ -1621,11 +1618,11 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
 /// are satisfied; by also giving up permission of the [`PointsToRaw`] permission,
 /// we ensure there can be no use-after-free bug as a result of this deallocation.
 /// In order to do so, the parameters of the [`PointsToRaw`] and [`Dealloc`] permissions must match the parameters of the deallocation.
-/// 
-/// We have two different ways to track size within `dealloc`: 
-/// `dealloc.size`, the original requested size, and `dealloc.provenance.alloc_len()`, the size of memory actually allocated. 
-/// According to the `Allocator` documentation, it's possible to have `dealloc.size <= dealloc.provenance.alloc_len()`. 
-/// Here, we restrict them to be the same. 
+///
+/// We have two different ways to track size within `dealloc`:
+/// `dealloc.size`, the original requested size, and `dealloc.provenance.alloc_len()`, the size of memory actually allocated.
+/// According to the `Allocator` documentation, it's possible to have `dealloc.size <= dealloc.provenance.alloc_len()`.
+/// Here, we restrict them to be the same.
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub fn deallocate(
