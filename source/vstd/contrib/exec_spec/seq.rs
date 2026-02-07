@@ -180,7 +180,7 @@ pub trait ExecSpecSeqLast<'a>: Sized + DeepView<V = Seq<<Self::Elem as DeepView>
     ;
 }
 
-/// Spec for executable version of [`Seq::last`].
+/// Spec for executable version of [`Seq::first`].
 pub trait ExecSpecSeqFirst<'a>: Sized + DeepView<V = Seq<<Self::Elem as DeepView>::V>> {
     type Elem: DeepView;
 

@@ -107,8 +107,8 @@ pub trait ExecSpecMapEmpty: Sized {
     fn exec_empty() -> Self;
 }
 
+// todo: this only works for primtive key types right now
 /// Spec for executable version of [`Map`] indexing.
-/// todo(nneamtu): this only works for primtive key types right now
 pub trait ExecSpecMapIndex<'a>: Sized + DeepView<
     V = Map<<Self::Key as DeepView>::V, <Self::Value as DeepView>::V>,
 > {
@@ -145,7 +145,7 @@ pub trait ExecSpecMapDom<'a>: Sized + DeepView {
     fn exec_dom(self) -> HashSet<Self::Key>;
 }
 
-/// Spec for executable version of [`Set::get`].
+/// Spec for executable version of [`Map::get`].
 pub trait ExecSpecMapGet<'a>: Sized + DeepView {
     type Key: DeepView + DeepViewClone;
 
