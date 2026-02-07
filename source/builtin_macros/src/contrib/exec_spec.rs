@@ -1354,13 +1354,20 @@ fn compile_guarded_quant_untrusted(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Re
     // Some common pieces
     let expr_span = expr.span();
     let bound_expr = match (quant.lower_op, quant.upper_op) {
+        (BinOp::Lt(..), BinOp::Lt(..)) => quote! { _lower < #quant_var < _upper },
+        (BinOp::Le(..), BinOp::Lt(..)) => quote! { _lower <= #quant_var < _upper },
+        (BinOp::Lt(..), BinOp::Le(..)) => quote! { _lower < #quant_var <= _upper },
+        (BinOp::Le(..), BinOp::Le(..)) => quote! { _lower <= #quant_var <= _upper },
+        (_, _) => return Err(Error::new_spanned(expr, "Ill-formed quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG))
+    };
+    //let inv_bound = quote_spanned! { expr_span => _lower <= #quant_var <= _upper };
+    let inv_bound = match (quant.lower_op, quant.upper_op) {
         (BinOp::Lt(..), BinOp::Lt(..)) => quote! { _lower < #quant_var <= _upper },
         (BinOp::Le(..), BinOp::Lt(..)) => quote! { _lower <= #quant_var <= _upper },
         (BinOp::Lt(..), BinOp::Le(..)) => quote! { _lower < #quant_var <= _upper + 1 },
         (BinOp::Le(..), BinOp::Le(..)) => quote! { _lower <= #quant_var <= _upper + 1 },
         (_, _) => return Err(Error::new_spanned(expr, "Ill-formed quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG))
     };
-    let inv_bound = quote_spanned! { expr_span => #bound_expr };
     let decreases = if is_char { 
         quote_spanned! { expr_span => _upper as u32 - #quant_var as u32 }
     } else {
