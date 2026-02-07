@@ -82,14 +82,6 @@ pub trait StepSpec where Self: Sized {
 
 pub uninterp spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
 
-/*
-pub assume_specification<A: core::iter::Step>[ Range::<A>::next ](range: &mut Range<A>) -> (r:
-    Option<A>)
-    ensures
-        (*range, r) == spec_range_next(*old(range)),
-;
-*/
-
 /// Range::contains method is valid and safe to use only when cmp operations are implemented to satisfy
 /// obeys_partial_cmp_spec. Specifically, the comparison must be deterministic, and `lt` (less than)
 /// and `le` (less than or equal to) must define total orders.
@@ -119,13 +111,18 @@ pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx
         ret@.exhausted == false,
 ;
 
-
 impl <A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl for Range<A> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
 
-    uninterp spec fn seq(&self) -> Seq<Self::Item>;
+    open spec fn seq(&self) -> Seq<Self::Item> {
+        Seq::new(
+            self.start.spec_steps_between_int(self.end) as nat,
+            |i: int| self.start.spec_forward_checked_int(i).unwrap(),
+        )
+    }
+
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
@@ -136,114 +133,13 @@ impl <A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl f
                 v.start.spec_steps_between_int(v.end) as nat,
                 |i: int| v.start.spec_forward_checked_int(i).unwrap(),
             )
-            // // v == self
-            // let (num_steps, _) = self.spec_steps_between(v.start, v.end);
-            // Seq::new(num_steps, |i| ) == IteratorSpec::seq(self)
-            // //Seq::new(num_steps, |i| /* This is going to be a nasty recurisve defn */) == IteratorSpec::seq(self)
         }
     }
 
-    uninterp spec fn decrease(&self) -> Option<nat>;
-}
-
-// To allow reasoning about the ghost iterator when the executable
-// function `into_iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: [1..10] { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_into_iter)` to the specification for
-// the executable `into_iter` method and define that spec function here.
-//pub uninterp spec fn spec_into_iter<A: core::iter::Step>(a: Range<A>) -> (iter: <Range<A> as core::iter::IntoIterator>::IntoIter);
-
-pub uninterp spec fn spec_into_iter<A>(a: Range<A>) -> Range<A> {
-    a
-}
-
-// pub broadcast proof fn axiom_spec_into_iter<A: core::iter::Step>(a: Range<A>)
-//     ensures
-//         #[trigger] spec_into_iter(a) == a,
-// {
-//     admit();
-// }
-
-#[verifier::when_used_as_spec(spec_into_iter)]
-pub assume_specification<A>[ Range::<A>::into_iter ](a: Range<A>) -> (iter: Range<A>)
-    ensures
-        iter == spec_into_iter(a),
-        crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
-        crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, Some(&iter)),
-;
-/*
-pub struct RangeGhostIterator<A> {
-    pub start: A,
-    pub cur: A,
-    pub end: A,
-}
-
-impl<A: StepSpec> super::super::pervasive::ForLoopGhostIteratorNew for Range<A> {
-    type GhostIter = RangeGhostIterator<A>;
-
-    open spec fn ghost_iter(&self) -> RangeGhostIterator<A> {
-        RangeGhostIterator { start: self.start, cur: self.start, end: self.end }
+    open spec fn decrease(&self) -> Option<nat> {
+        Some(self.start.spec_steps_between_int(self.end) as nat)
     }
 }
-
-impl<
-    A: StepSpec + core::iter::Step,
-> super::super::pervasive::ForLoopGhostIterator for RangeGhostIterator<A> {
-    type ExecIter = Range<A>;
-
-    type Item = A;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &Range<A>) -> bool {
-        &&& self.cur == exec_iter.start
-        &&& self.end == exec_iter.end
-    }
-
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        &&& self.start.spec_is_lt(self.cur) || self.start == self.cur
-        &&& self.cur.spec_is_lt(self.end) || self.cur
-            == self.end
-        // TODO (not important): use new "matches ==>" syntax here
-        &&& if let Some(init) = init {
-            &&& init.start == init.cur
-            &&& init.start == self.start
-            &&& init.end == self.end
-        } else {
-            true
-        }
-    }
-
-    open spec fn ghost_ensures(&self) -> bool {
-        !self.cur.spec_is_lt(self.end)
-    }
-
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.cur.spec_steps_between_int(self.end))
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<A> {
-        Some(self.cur)
-    }
-
-    open spec fn ghost_advance(&self, _exec_iter: &Range<A>) -> RangeGhostIterator<A> {
-        RangeGhostIterator { cur: self.cur.spec_forward_checked(1).unwrap(), ..*self }
-    }
-}
-
-impl<A: StepSpec + core::iter::Step> View for RangeGhostIterator<A> {
-    type V = Seq<A>;
-
-    // generate seq![start, start + 1, start + 2, ..., cur - 1]
-    open spec fn view(&self) -> Seq<A> {
-        Seq::new(
-            self.start.spec_steps_between_int(self.cur) as nat,
-            |i: int| self.start.spec_forward_checked_int(i).unwrap(),
-        )
-    }
-}
-*/
 
 } // verus!
 macro_rules! step_specs {
