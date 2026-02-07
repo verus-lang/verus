@@ -1289,9 +1289,7 @@ pub(crate) fn check_item_fn<'tcx>(
     };
 
     let mut migrate_postcondition_vars: HashSet<VarIdent> = HashSet::new();
-    let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
-    let mut mut_params_redecl: Vec<vir::ast::Stmt> = Vec::new();
     assert!(params.len() == inputs.len());
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
         let param_mode = if let Some(hir_id) = hir_id {
@@ -1339,13 +1337,7 @@ pub(crate) fn check_item_fn<'tcx>(
             },
         );
 
-        // TODO(new_mut_ref): be more precise here
         // TODO(new_mut_ref): should probably error for mutable references in the dual exec/spec cases
-        let is_mut_var = if new_mut_ref {
-            is_mut_var || (param_mode != Mode::Spec && mode != Mode::Spec)
-        } else {
-            is_mut_var
-        };
 
         if is_mut_var {
             if mode == Mode::Spec {
@@ -1359,38 +1351,8 @@ pub(crate) fn check_item_fn<'tcx>(
                 // declaring and assigning to a variable of type `&mut T` is not implemented yet.
                 unsupported_err!(span, "mut parameters of &mut types")
             }
-            vir_mut_params
-                .push((vir_param.clone(), is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
-
-            // TODO(new_mut_ref): resolve_inference expects no shadowing
-            let new_binding_pat = ctxt.spanned_typed_new(
-                span,
-                &typ,
-                vir::ast::PatternX::Var(vir::ast::PatternBinding {
-                    name: name.clone(),
-                    user_mut: Some(true),
-                    by_ref: vir::ast::ByRef::No,
-                    typ: typ.clone(),
-                    copy: false,
-                }),
-            );
-            let new_init_expr =
-                ctxt.spanned_typed_new(span, &typ, vir::ast::PlaceX::Local(name.clone()));
-            if let Some(hir_id) = hir_id {
-                ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_binding_pat.span.id));
-                ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_init_expr.span.id));
-            }
-            let redecl = ctxt.spanned_new(
-                span,
-                vir::ast::StmtX::Decl {
-                    pattern: new_binding_pat,
-                    mode: Some((mode, vir::ast::DeclProph::Default)),
-                    init: Some(new_init_expr),
-                    els: None,
-                },
-            );
-            mut_params_redecl.push(redecl);
         }
+
         vir_params.push((vir_param, is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
     }
 
@@ -1666,21 +1628,6 @@ pub(crate) fn check_item_fn<'tcx>(
             visibility.restricted_to = None;
         }
     }
-
-    // Given a func named 'f' which has mut parameters 'x_0', ..., 'x_n' and body
-    // 'f_body', we rewrite it to a function without mut params and body
-    // 'let mut x_0 = x_0; ...; let mut x_n = x_n; f_body'.
-    let body = if vir_mut_params.is_empty() {
-        body
-    } else {
-        body.map(move |body| {
-            ctxt.spanned_typed_new_vir(
-                &body.span,
-                &body.typ,
-                vir::ast::ExprX::Block(Arc::new(mut_params_redecl), Some(body.clone())),
-            )
-        })
-    };
 
     // Note: ens_has_return isn't final; it may need to be changed later to make
     // sure it's in sync for trait method impls and trait method decls.

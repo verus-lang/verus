@@ -64,7 +64,22 @@ vstd = "=0.0.0-2026-01-25-0057"
 
 [package.metadata.verus]
 verify = true
-"#
+
+[lints.rust]
+# Verus supports ghost code, code that is used for proofs but erased during compilation.
+# This means that ghost items that are imported via `use` will not exist during a normal
+# `cargo build`, leading to compilation errors. These errors can be prevented by guarding the
+# use statements with the feature flag `verus_only`, which Verus turns on during
+# verification.
+#
+# WARNING: this flag should only be used on import statements and setting config attributes,
+# see the documentation (https://verus-lang.github.io/verus/guide/erasure.html) for more details.
+#
+# This lint suppression prevents cargo from complaining about the
+# `verus_only` feature flag being undeclared.
+unexpected_cfgs = {{ level = "warn", check-cfg = [
+  'cfg(verus_only)',
+] }}"#
     );
 
     let project_dir = PathBuf::from(name);

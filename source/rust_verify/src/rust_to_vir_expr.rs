@@ -1282,8 +1282,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 // Rust often inserts &mut* adjustments in argument positions.
                 // e.g., `foo(a)` where `a: &mut T` really becomes `foo(&mut *a)`.
                 // (This is done to force a reborrow.)
-                // We actually don't want this in spec contexts, so we detect this
-                // case and skip it.
+                // We actually don't want this in spec contexts, but we *do* want it in
+                // exec/tracked contexts. So we need to handle this case specially.
                 if adjustment_idx >= 2
                     && matches!(&adjustments[adjustment_idx - 2].kind, Adjust::Deref(None))
                 {
@@ -1297,13 +1297,26 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                         }
                         // TODO(new_mut_ref): we need to improve this condition to work for tracked code
                         if bctx.in_ghost {
-                            return expr_to_vir_with_adjustments(
+                            let p = expr_to_vir_with_adjustments(
                                 bctx,
                                 expr,
                                 current_modifier,
                                 adjustments,
                                 adjustment_idx - 2,
+                            )?
+                            .to_place();
+                            let b = match allow_two_phase_borrow {
+                                AllowTwoPhase::Yes => true,
+                                AllowTwoPhase::No => false,
+                            };
+                            let x = ExprX::ImplicitReborrowOrSpecRead(
+                                p.clone(),
+                                b,
+                                bctx.ctxt.spans.to_air_span(expr.span),
                             );
+                            let typ = bctx.mid_ty_to_vir(expr.span, &adjustment.target, false)?;
+                            let e = bctx.spanned_typed_new(expr.span, &typ, x);
+                            return Ok(ExprOrPlace::Expr(e));
                         }
                     }
                 }
@@ -3525,10 +3538,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                     return err_span(x.span, "closures only accept exec-mode parameters");
                 }
 
-                let (is_mut, name) = pat_to_mut_var(x.pat)?;
-                if is_mut {
-                    return err_span(x.span, "Verus does not support 'mut' params for closures");
-                }
+                let (_is_mut, name) = pat_to_mut_var(x.pat)?;
                 Ok(Arc::new(VarBinderX { name, a: t }))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -3883,6 +3893,16 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
 
     match &place.x {
         PlaceX::Temporary(e) => match &e.x {
+            ExprX::ImplicitReborrowOrSpecRead(inner_place, false, _inner_span) => {
+                // There's the case where the ImplicitReborrowOrSpecRead is ignored, and the
+                // case where it's not ignored.
+                // If it's not ignored, then
+                //      ImplicitReborrow(x) --> &mut *x
+                // and,
+                //      * &mut *x --> *x
+                // So this is a convenient way to remove unneeded ImplicitReborrowOrSpecRead nodes
+                return deref_mut(bctx, span, inner_place);
+            }
             ExprX::BorrowMut(place) => {
                 return place.clone();
             }
@@ -3917,6 +3937,9 @@ pub(crate) fn deref_mut_allow_cancelling_two_phase(
 ) -> Place {
     match &place.x {
         PlaceX::Temporary(e) => match &e.x {
+            ExprX::ImplicitReborrowOrSpecRead(inner_place, false | true, _inner_span) => {
+                return deref_mut(bctx, span, inner_place);
+            }
             ExprX::BorrowMut(place) => {
                 return place.clone();
             }
