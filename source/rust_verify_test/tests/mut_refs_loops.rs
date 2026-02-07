@@ -1158,3 +1158,661 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] future_preserved_in_loop ["new-mut-ref"] => verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test(a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 5;
+                return;
+            }
+        }
+
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test2(a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            *a = 5;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test3(a: &mut (u64, u64))
+            ensures *fin(a) === (5, 6),
+        {
+            loop {
+                a.0 = 20;
+                if cond() { break; }
+            }
+
+            a.0 = 5;
+            a.1 = 6;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] future_preserved_in_loop_nested ["new-mut-ref"] => verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test(a: (&mut u64, &mut u64))
+            ensures *fin(a.0) == 5,
+        {
+            loop {
+                *a.0 = 5;
+                // our analysis isn't precise enough to get this:
+                return; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] future_preserved_in_loop_fails1 ["new-mut-ref"] => verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        fn leak_ref<'a>() -> &'a mut u64 { loop{} }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            a = leak_ref();
+            loop {
+                *a = 5;
+                return; // FAILS
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test2(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                *a = 5;
+                return; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] future_preserved_in_loop_needs_inv ["new-mut-ref"] => verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        fn leak_ref<'a>() -> &'a mut u64 { loop{} }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test3(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 5;
+                a = leak_ref();
+
+                // this would be okay but doesn't work without an invariant
+                // because our analyis isn't precise enough
+                return; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] future_preserved_in_loop_fails2 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn leak_ref<'a>() -> &'a mut u64 { loop{} }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_fails(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return; // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_fails2(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            a = leak_ref();
+
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return; // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_fails3(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                *a = 20;
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] future_preserved_in_loop_fails3 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn leak_ref<'a>() -> &'a mut u64 { loop{} }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test1(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+            }
+
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return; // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test2(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return;  // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test3(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+            }
+
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return;  // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] future_preserved_in_loop_fails4 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn leak_ref<'a>() -> &'a mut u64 { loop{} }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 20;
+                if cond() { break; }
+
+                loop {
+                    *a = 20;
+                    if cond() { break; }
+                }
+            }
+
+            *a = 5;
+            return;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test1(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+
+                loop {
+                    *a = 20;
+                    if cond() { break; }
+                }
+            }
+
+            *a = 5;
+            return; // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test2(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 20;
+                if cond() { break; }
+
+                loop {
+                    a = leak_ref();
+                    if cond() { break; }
+                }
+            }
+
+            *a = 5;
+            return;  // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test3(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+
+                loop {
+                    a = leak_ref();
+                    if cond() { break; }
+                }
+            }
+
+            *a = 5;
+            return;  // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] no_iso_future_preserved_in_loop_nested ["new-mut-ref"] => verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test(a: (&mut u64, &mut u64))
+            ensures *fin(a.0) == 5,
+        {
+            loop {
+                *a.0 = 5;
+                // our analysis isn't precise enough to get this:
+                return; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] no_iso_future_preserved_in_loop_fails1 ["new-mut-ref"] => verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        fn leak_ref<'a>() -> &'a mut u64 { loop{} }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            a = leak_ref();
+            loop {
+                *a = 5;
+                return; // FAILS
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test2(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                *a = 5;
+                return; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] no_iso_future_preserved_in_loop_needs_inv ["new-mut-ref"] => verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        fn leak_ref<'a>() -> &'a mut u64 { loop{} }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test3(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 5;
+                a = leak_ref();
+
+                // this would be okay but doesn't work without an invariant
+                // because our analyis isn't precise enough
+                return; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] no_iso_future_preserved_in_loop_fails2 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn leak_ref<'a>() -> &'a mut u64 { loop{} }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test_fails(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return; // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test_fails2(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            a = leak_ref();
+
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return; // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test_fails3(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                *a = 20;
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] no_iso_future_preserved_in_loop_fails3 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn leak_ref<'a>() -> &'a mut u64 { loop{} }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test1(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+            }
+
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return; // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test2(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 20;
+                if cond() { break; }
+            }
+
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return;  // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test3(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+            }
+
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+            }
+
+            *a = 5;
+            return;  // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] no_iso_future_preserved_in_loop_fails4 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn leak_ref<'a>() -> &'a mut u64 { loop{} }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 20;
+                if cond() { break; }
+
+                loop {
+                    *a = 20;
+                    if cond() { break; }
+                }
+            }
+
+            *a = 5;
+            return;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test1(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+
+                loop {
+                    *a = 20;
+                    if cond() { break; }
+                }
+            }
+
+            *a = 5;
+            return; // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test2(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                *a = 20;
+                if cond() { break; }
+
+                loop {
+                    a = leak_ref();
+                    if cond() { break; }
+                }
+            }
+
+            *a = 5;
+            return;  // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test3(mut a: &mut u64)
+            ensures *fin(a) == 5,
+        {
+            loop {
+                a = leak_ref();
+                if cond() { break; }
+
+                loop {
+                    a = leak_ref();
+                    if cond() { break; }
+                }
+            }
+
+            *a = 5;
+            return;  // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
