@@ -1,11 +1,10 @@
-use crate::prelude::*;
 use crate::contrib::exec_spec::*;
+use crate::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 verus! {
 
 /// Impls for shared traits
-
 impl<'a, T: Sized + DeepView> ToRef<&'a Option<T>> for &'a Option<T> {
     #[inline(always)]
     fn get_ref(self) -> &'a Option<T> {
@@ -44,7 +43,6 @@ impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Option<T> where &'a T: ExecSpecEq<'
 }
 
 /// Traits for Option methods
-
 /// Spec for executable version of [`Option::unwrap`].
 pub trait ExecSpecOptionUnwrap<'a>: Sized + DeepView {
     type Elem: DeepView + DeepViewClone;
@@ -53,14 +51,12 @@ pub trait ExecSpecOptionUnwrap<'a>: Sized + DeepView {
 
     fn exec_unwrap(self) -> Self::Elem
         requires
-            self.is_some_spec()
+            self.is_some_spec(),
     ;
 }
 
-
 /// Impls for Option methods
-
-impl<'a,T> ExecSpecOptionUnwrap<'a> for &'a Option<T> where T: DeepView + DeepViewClone {
+impl<'a, T> ExecSpecOptionUnwrap<'a> for &'a Option<T> where T: DeepView + DeepViewClone {
     type Elem = T;
 
     closed spec fn is_some_spec(&self) -> bool {
@@ -76,5 +72,4 @@ impl<'a,T> ExecSpecOptionUnwrap<'a> for &'a Option<T> where T: DeepView + DeepVi
     }
 }
 
-
-}
+} // verus!

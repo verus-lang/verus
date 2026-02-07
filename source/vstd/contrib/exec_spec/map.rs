@@ -1,21 +1,35 @@
 //! This module contains [`Map`]-specific method implementations.
-
-use crate::prelude::*;
 use crate::contrib::exec_spec::*;
+use crate::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 verus! {
 
-/// Impls for shared traits
+// Note: many of the exec translations are currently unverified, even though the exec functions have specs in vstd.
+// This is because HashMap<K, V>::deep_view() is quite hard to work with.
+// E.g., the correctness of the translations requires reasoning that K::deep_view() does not create collisions.
+broadcast use {
+    crate::group_vstd_default,
+    crate::std_specs::hash::group_hash_axioms,
+};
 
-impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepView + DeepViewClone> ToRef<&'a HashMap<K, V>> for &'a HashMap<K, V> {
+/// Impls for shared traits
+impl<
+    'a,
+    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    V: DeepView + DeepViewClone,
+> ToRef<&'a HashMap<K, V>> for &'a HashMap<K, V> {
     #[inline(always)]
     fn get_ref(self) -> &'a HashMap<K, V> {
         &self
     }
 }
 
-impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepView + DeepViewClone> ToOwned<HashMap<K, V>> for &'a HashMap<K, V> {
+impl<
+    'a,
+    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    V: DeepView + DeepViewClone,
+> ToOwned<HashMap<K, V>> for &'a HashMap<K, V> {
     #[verifier::external_body]
     #[inline(always)]
     fn get_owned(self) -> HashMap<K, V> {
@@ -27,7 +41,10 @@ impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepVi
     }
 }
 
-impl<K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepView + DeepViewClone> DeepViewClone for HashMap<K, V> {
+impl<
+    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    V: DeepView + DeepViewClone,
+> DeepViewClone for HashMap<K, V> {
     #[verifier::external_body]
     #[inline(always)]
     fn deep_clone(&self) -> Self {
@@ -39,9 +56,14 @@ impl<K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepView +
     }
 }
 
-impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepView + DeepViewClone> ExecSpecEq<'a> for &'a HashMap<K, V> 
-    where &'a K: ExecSpecEq<'a, Other = &'a K>, &'a V: ExecSpecEq<'a, Other = &'a V> 
-{
+impl<
+    'a,
+    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    V: DeepView + DeepViewClone,
+> ExecSpecEq<'a> for &'a HashMap<K, V> where
+    &'a K: ExecSpecEq<'a, Other = &'a K>,
+    &'a V: ExecSpecEq<'a, Other = &'a V>,
+ {
     type Other = &'a HashMap<K, V>;
 
     #[verifier::external_body]
@@ -64,7 +86,11 @@ impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepVi
     }
 }
 
-impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepView + DeepViewClone> ExecSpecLen for &'a HashMap<K, V> {
+impl<
+    'a,
+    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    V: DeepView + DeepViewClone,
+> ExecSpecLen for &'a HashMap<K, V> {
     #[inline(always)]
     #[verifier::external_body]
     fn exec_len(self) -> (res: usize)
@@ -76,7 +102,6 @@ impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepVi
 }
 
 /// Traits for Map methods
-
 /// Spec for executable version of [`Map::empty`].
 pub trait ExecSpecMapEmpty: Sized {
     fn exec_empty() -> Self;
@@ -84,8 +109,11 @@ pub trait ExecSpecMapEmpty: Sized {
 
 /// Spec for executable version of [`Map`] indexing.
 /// todo(nneamtu): this only works for primtive key types right now
-pub trait ExecSpecMapIndex<'a>: Sized + DeepView<V = Map<<Self::Key as DeepView>::V, <Self::Value as DeepView>::V>> {
+pub trait ExecSpecMapIndex<'a>: Sized + DeepView<
+    V = Map<<Self::Key as DeepView>::V, <Self::Value as DeepView>::V>,
+> {
     type Key: DeepView;
+
     type Value: DeepView;
 
     fn exec_index(self, key: Self::Key) -> Self::Value
@@ -97,6 +125,7 @@ pub trait ExecSpecMapIndex<'a>: Sized + DeepView<V = Map<<Self::Key as DeepView>
 /// Spec for executable version of [`Map::insert`].
 pub trait ExecSpecMapInsert<'a, Out: Sized + DeepView>: Sized + DeepView + ToOwned<Out> {
     type Key: DeepView + DeepViewClone;
+
     type Value: DeepView + DeepViewClone;
 
     fn exec_insert(self, key: Self::Key, value: Self::Value) -> Out;
@@ -110,7 +139,7 @@ pub trait ExecSpecMapRemove<'a, Out: Sized + DeepView>: Sized + DeepView + ToOwn
 }
 
 /// Spec for executable version of [`Map::dom`].
-pub trait ExecSpecMapDom<'a>: Sized + DeepView  {
+pub trait ExecSpecMapDom<'a>: Sized + DeepView {
     type Key: DeepView + DeepViewClone;
 
     fn exec_dom(self) -> HashSet<Self::Key>;
@@ -119,15 +148,14 @@ pub trait ExecSpecMapDom<'a>: Sized + DeepView  {
 /// Spec for executable version of [`Set::get`].
 pub trait ExecSpecMapGet<'a>: Sized + DeepView {
     type Key: DeepView + DeepViewClone;
+
     type Value: DeepView + DeepViewClone;
 
     fn exec_get(self, k: Self::Key) -> Option<Self::Value>;
 }
 
 /// Impls for executable versions of Map methods
-
 impl<K: DeepView + std::hash::Hash + std::cmp::Eq, V: DeepView> ExecSpecMapEmpty for HashMap<K, V> {
-    #[verifier::external_body]
     #[inline(always)]
     fn exec_empty() -> (res: Self)
         ensures
@@ -137,8 +165,11 @@ impl<K: DeepView + std::hash::Hash + std::cmp::Eq, V: DeepView> ExecSpecMapEmpty
     }
 }
 
-impl<'a, K: DeepView + std::hash::Hash + std::cmp::Eq, V: DeepView> ExecSpecMapIndex<'a> for &'a HashMap<K, V> {
+impl<'a, K: DeepView + std::hash::Hash + std::cmp::Eq, V: DeepView> ExecSpecMapIndex<
+    'a,
+> for &'a HashMap<K, V> {
     type Key = K;
+
     type Value = &'a V;
 
     #[verifier::external_body]
@@ -151,10 +182,12 @@ impl<'a, K: DeepView + std::hash::Hash + std::cmp::Eq, V: DeepView> ExecSpecMapI
     }
 }
 
-impl<'a, K, V> ExecSpecMapInsert<'a, HashMap<K, V>> for &'a HashMap<K, V> 
-    where K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepView + DeepViewClone
-{
+impl<'a, K, V> ExecSpecMapInsert<'a, HashMap<K, V>> for &'a HashMap<K, V> where
+    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    V: DeepView + DeepViewClone,
+ {
     type Key = K;
+
     type Value = V;
 
     #[verifier::external_body]
@@ -169,9 +202,10 @@ impl<'a, K, V> ExecSpecMapInsert<'a, HashMap<K, V>> for &'a HashMap<K, V>
     }
 }
 
-impl<'a, K, V> ExecSpecMapRemove<'a, HashMap<K, V>> for &'a HashMap<K, V> 
-    where K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepView + DeepViewClone
-{
+impl<'a, K, V> ExecSpecMapRemove<'a, HashMap<K, V>> for &'a HashMap<K, V> where
+    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    V: DeepView + DeepViewClone,
+ {
     type Key = K;
 
     #[verifier::external_body]
@@ -186,9 +220,10 @@ impl<'a, K, V> ExecSpecMapRemove<'a, HashMap<K, V>> for &'a HashMap<K, V>
     }
 }
 
-impl<'a, K, V> ExecSpecMapDom<'a> for &'a HashMap<K, V> 
-    where K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepView + DeepViewClone
-{
+impl<'a, K, V> ExecSpecMapDom<'a> for &'a HashMap<K, V> where
+    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    V: DeepView + DeepViewClone,
+ {
     type Key = K;
 
     #[verifier::external_body]
@@ -205,10 +240,12 @@ impl<'a, K, V> ExecSpecMapDom<'a> for &'a HashMap<K, V>
     }
 }
 
-impl<'a, K, V> ExecSpecMapGet<'a> for &'a HashMap<K, V> 
-    where K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepView + DeepViewClone
-{
+impl<'a, K, V> ExecSpecMapGet<'a> for &'a HashMap<K, V> where
+    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    V: DeepView + DeepViewClone,
+ {
     type Key = K;
+
     type Value = V;
 
     #[verifier::external_body]
@@ -219,9 +256,10 @@ impl<'a, K, V> ExecSpecMapGet<'a> for &'a HashMap<K, V>
                 (Some(v1), Some(v2)) => v1.deep_view() == v2,
                 (None, None) => true,
                 (_, _) => false,
-            }
+            },
     {
         self.get(&k).map(|v| v.deep_clone())
     }
 }
-}
+
+} // verus!

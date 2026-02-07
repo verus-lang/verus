@@ -1,14 +1,89 @@
 //! This module contains [`Seq`]-specific method implementations.
-
-use crate::prelude::*;
 use crate::contrib::exec_spec::*;
+use crate::prelude::*;
 
 verus! {
+
+// Note: the exec translations which use iterators are unverified.
+broadcast use crate::group_vstd_default;
+
+/// Impls for shared traits
+/// NOTE: can't implement [`ExecSpecType`] for [`Seq<T>`]
+/// since it conflicts with [`SpecString`] (i.e., [`Seq<char>`]).
+impl<'a, T: DeepView> ToRef<&'a [T]> for &'a Vec<T> {
+    #[inline(always)]
+    fn get_ref(self) -> &'a [T] {
+        self.as_slice()
+    }
+}
+
+impl<'a, T: DeepView + DeepViewClone> ToOwned<Vec<T>> for &'a [T] {
+    /// TODO: verify this
+    #[verifier::external_body]
+    #[inline(always)]
+    fn get_owned(self) -> Vec<T> {
+        self.iter().map(|x| x.deep_clone()).collect()
+    }
+}
+
+impl<T: DeepViewClone> DeepViewClone for Vec<T> {
+    /// TODO: verify this
+    #[verifier::external_body]
+    #[inline(always)]
+    fn deep_clone(&self) -> Self {
+        self.iter().map(|x| x.deep_clone()).collect()
+    }
+}
+
+impl<'a, T: DeepView> ExecSpecEq<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
+    type Other = &'a [T];
+
+    #[verifier::external_body]
+    #[inline(always)]
+    fn exec_eq(this: Self, other: Self::Other) -> bool {
+        this.len() == other.len() && this.iter().zip(other.iter()).all(
+            |(a, b)| <&'a T>::exec_eq(a, b),
+        )
+    }
+}
+
+impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Vec<T> where &'a T: ExecSpecEq<'a, Other = &'a T> {
+    type Other = &'a Vec<T>;
+
+    #[verifier::external_body]
+    #[inline(always)]
+    fn exec_eq(this: Self, other: Self::Other) -> bool {
+        this.len() == other.len() && this.iter().zip(other.iter()).all(
+            |(a, b)| <&'a T>::exec_eq(a, b),
+        )
+    }
+}
+
+impl<'a, T: DeepView> ExecSpecLen for &'a [T] {
+    #[inline(always)]
+    fn exec_len(self) -> (res: usize)
+        ensures
+            res == self.deep_view().len(),
+    {
+        self.len()
+    }
+}
+
+impl<'a, T: DeepView> ExecSpecIndex<'a> for &'a [T] {
+    type Elem = &'a T;
+
+    #[inline(always)]
+    fn exec_index(self, index: usize) -> (res: Self::Elem)
+        ensures
+            res.deep_view() == self.deep_view()[index as int],
+    {
+        self.get(index).unwrap()
+    }
+}
 
 //
 // Trait definitions for methods
 //
-
 /// Spec for executable version of [`Seq::add`].
 pub trait ExecSpecSeqAdd<'a, Out: Sized + DeepView>: Sized + DeepView + ToOwned<Out> {
     fn exec_add(self, rhs: Self) -> Out;
@@ -55,14 +130,13 @@ pub trait ExecSpecSeqToMultiset<'a>: Sized {
 // Currently, I am coping the spec definition and translating it to the exec version by hand.
 // This is because the exec_spec! macro does not support methods right now (it only supports functions).
 // A more concise approach would be to apply the exec_spec! macro directly to the spec fns on Seq.
-
 /// Spec for executable version of [`Seq::drop_first`].
 pub trait ExecSpecSeqDropFirst<'a>: Sized + DeepView<V = Seq<<Self::Elem as DeepView>::V>> {
     type Elem: DeepView;
 
     fn exec_drop_first(self) -> Self
         requires
-            self.deep_view().len() >= 1
+            self.deep_view().len() >= 1,
     ;
 }
 
@@ -72,7 +146,7 @@ pub trait ExecSpecSeqDropLast<'a>: Sized + DeepView<V = Seq<<Self::Elem as DeepV
 
     fn exec_drop_last(self) -> Self
         requires
-            self.deep_view().len() >= 1
+            self.deep_view().len() >= 1,
     ;
 }
 
@@ -161,7 +235,6 @@ pub trait ExecSpecSeqIndexOfLast<'a>: Sized + DeepView {
 //
 // Implementations for Vec and slices
 //
-
 impl<'a, T: DeepView + DeepViewClone> ExecSpecSeqAdd<'a, Vec<T>> for &'a [T] {
     #[verifier::external_body]
     #[inline(always)]
@@ -169,7 +242,7 @@ impl<'a, T: DeepView + DeepViewClone> ExecSpecSeqAdd<'a, Vec<T>> for &'a [T] {
         ensures
             res.deep_view() =~= self.deep_view().add(rhs.deep_view()),
     {
-        self.iter().map(|x| x.deep_clone()).chain(rhs.iter().map(|x| x.deep_clone())).collect()
+        self.get_owned().into_iter().chain(rhs.get_owned()).collect()
     }
 }
 
@@ -183,7 +256,7 @@ impl<'a, T: DeepView + DeepViewClone> ExecSpecSeqPush<'a, Vec<T>> for &'a [T] {
             res.deep_view() =~= self.deep_view().push(a.deep_view()),
     {
         let v = vec![a];
-        self.iter().map(|x| x.deep_clone()).chain(v.iter().map(|x| x.deep_clone())).collect()
+        self.get_owned().into_iter().chain(v).collect()
     }
 }
 
@@ -196,7 +269,7 @@ impl<'a, T: DeepView + DeepViewClone> ExecSpecSeqUpdate<'a, Vec<T>> for &'a [T] 
         ensures
             res.deep_view() =~= self.deep_view().update(i as int, a.deep_view()),
     {
-        let mut v: Vec<T> = self.iter().map(|x| x.deep_clone()).collect();
+        let mut v: Vec<T> = self.get_owned();
         v[i] = a.deep_clone();
         v
     }
@@ -209,14 +282,16 @@ impl<'a, T: DeepView> ExecSpecSeqSubrange<'a> for &'a [T] {
     #[inline(always)]
     fn exec_subrange(self, start_inclusive: usize, end_exclusive: usize) -> (res: Self)
         ensures
-            res.deep_view() =~= self.deep_view().subrange(start_inclusive as int, end_exclusive as int),
+            res.deep_view() =~= self.deep_view().subrange(
+                start_inclusive as int,
+                end_exclusive as int,
+            ),
     {
         &self[start_inclusive..end_exclusive]
     }
 }
 
 impl<T: DeepView> ExecSpecSeqEmpty for Vec<T> {
-    #[verifier::external_body]
     #[inline(always)]
     fn exec_empty() -> (res: Self)
         ensures
@@ -226,7 +301,9 @@ impl<T: DeepView> ExecSpecSeqEmpty for Vec<T> {
     }
 }
 
-impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecSeqToMultiset<'a> for &'a [T] {
+impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecSeqToMultiset<
+    'a,
+> for &'a [T] {
     type Elem = T;
 
     #[verifier::external_body]
@@ -243,7 +320,7 @@ impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecS
                 },
                 None => {
                     mset.m.insert(e.deep_clone(), 1);
-                }
+                },
             }
         }
         mset
@@ -253,7 +330,6 @@ impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecS
 impl<'a, T: DeepView> ExecSpecSeqDropFirst<'a> for &'a [T] {
     type Elem = &'a T;
 
-    #[verifier::external_body]
     #[inline(always)]
     fn exec_drop_first(self) -> (res: Self)
         ensures
@@ -266,7 +342,6 @@ impl<'a, T: DeepView> ExecSpecSeqDropFirst<'a> for &'a [T] {
 impl<'a, T: DeepView> ExecSpecSeqDropLast<'a> for &'a [T] {
     type Elem = &'a T;
 
-    #[verifier::external_body]
     #[inline(always)]
     fn exec_drop_last(self) -> (res: Self)
         ensures
@@ -279,7 +354,6 @@ impl<'a, T: DeepView> ExecSpecSeqDropLast<'a> for &'a [T] {
 impl<'a, T: DeepView> ExecSpecSeqTake<'a> for &'a [T] {
     type Elem = &'a T;
 
-    #[verifier::external_body]
     #[inline(always)]
     fn exec_take(self, n: usize) -> (res: Self)
         ensures
@@ -292,7 +366,6 @@ impl<'a, T: DeepView> ExecSpecSeqTake<'a> for &'a [T] {
 impl<'a, T: DeepView> ExecSpecSeqSkip<'a> for &'a [T] {
     type Elem = &'a T;
 
-    #[verifier::external_body]
     #[inline(always)]
     fn exec_skip(self, n: usize) -> (res: Self)
         ensures
@@ -305,56 +378,67 @@ impl<'a, T: DeepView> ExecSpecSeqSkip<'a> for &'a [T] {
 impl<'a, T: DeepView> ExecSpecSeqLast<'a> for &'a [T] {
     type Elem = &'a T;
 
-    #[verifier::external_body]
     #[inline(always)]
     fn exec_last(self) -> (res: Self::Elem)
         ensures
             res.deep_view() == self.deep_view().last(),
     {
-        &self[self.len() - 1]
+        &self.exec_index(self.len() - 1)
     }
 }
 
 impl<'a, T: DeepView> ExecSpecSeqFirst<'a> for &'a [T] {
     type Elem = &'a T;
 
-    #[verifier::external_body]
     #[inline(always)]
     fn exec_first(self) -> (res: Self::Elem)
         ensures
             res.deep_view() == self.deep_view().first(),
     {
-        &self[0]
+        &self.exec_index(0)
     }
 }
 
-impl<'a, T: DeepView> ExecSpecSeqIsPrefixOf<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
+impl<'a, T: DeepView> ExecSpecSeqIsPrefixOf<'a> for &'a [T] where
+    &'a T: ExecSpecEq<'a, Other = &'a T>,
+    &'a [T]: DeepView<V = Seq<<&'a T as DeepView>::V>>,
+ {
     type Other = &'a [T];
 
     #[verifier::external_body]
     #[inline(always)]
-    fn exec_is_prefix_of(self, other: Self::Other) -> (res: bool) 
+    fn exec_is_prefix_of(self, other: Self::Other) -> (res: bool)
         ensures
             res == self.deep_view().is_prefix_of(other.deep_view()),
     {
-        self.exec_len() <= other.exec_len() && (<&[T]>::exec_eq(self, &other[0..self.exec_len()]))
+        self.exec_len() <= other.exec_len() && (<&[T]>::exec_eq(
+            self,
+            other.exec_subrange(0, self.exec_len()),
+        ))
     }
 }
 
-impl<'a, T: DeepView> ExecSpecSeqIsSuffixOf<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
+impl<'a, T: DeepView> ExecSpecSeqIsSuffixOf<'a> for &'a [T] where
+    &'a T: ExecSpecEq<'a, Other = &'a T>,
+    &'a [T]: DeepView<V = Seq<<&'a T as DeepView>::V>>,
+ {
     type Other = &'a [T];
 
-    #[verifier::external_body]
     #[inline(always)]
-    fn exec_is_suffix_of(self, other: Self::Other) -> (res: bool) 
+    fn exec_is_suffix_of(self, other: Self::Other) -> (res: bool)
         ensures
             res == self.deep_view().is_suffix_of(other.deep_view()),
     {
-        self.exec_len() <= other.exec_len() && (<&[T]>::exec_eq(self, &other[(other.exec_len() - self.exec_len())..other.exec_len()]))
+        self.exec_len() <= other.exec_len() && (<&[T]>::exec_eq(
+            self,
+            other.exec_subrange(other.exec_len() - self.exec_len(), other.exec_len()),
+        ))
     }
 }
 
-impl<'a, T: DeepView + PartialEq> ExecSpecSeqContains<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
+impl<'a, T: DeepView + PartialEq> ExecSpecSeqContains<'a> for &'a [T] where
+    &'a T: ExecSpecEq<'a, Other = &'a T>,
+ {
     type Elem = T;
 
     #[verifier::external_body]
@@ -368,9 +452,12 @@ impl<'a, T: DeepView + PartialEq> ExecSpecSeqContains<'a> for &'a [T] where &'a 
     }
 }
 
-impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOf<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
+impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOf<'a> for &'a [T] where
+    &'a T: ExecSpecEq<'a, Other = &'a T>,
+ {
     type Elem = T;
 
+    // hard to verify - index_of contains a choose operator
     #[verifier::external_body]
     #[inline(always)]
     fn exec_index_of(self, needle: Self::Elem) -> (res: usize)
@@ -378,6 +465,7 @@ impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOf<'a> for &'a [T] where &'a T
             0 <= res < self.len() ==> res as int == self.deep_view().index_of(needle.deep_view()),
     {
         // todo(nneamtu): should this use <&T>::exec_eq to do the equality check instead?
+        // hard to convert to correct type for argument, e.g. if Self::Elem is Vec
         for i in 0..self.exec_len() {
             if self[i] == needle {
                 return i;
@@ -387,7 +475,9 @@ impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOf<'a> for &'a [T] where &'a T
     }
 }
 
-impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOfFirst<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
+impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOfFirst<'a> for &'a [T] where
+    &'a T: ExecSpecEq<'a, Other = &'a T>,
+ {
     type Elem = T;
 
     #[verifier::external_body]
@@ -409,7 +499,9 @@ impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOfFirst<'a> for &'a [T] where 
     }
 }
 
-impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOfLast<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
+impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOfLast<'a> for &'a [T] where
+    &'a T: ExecSpecEq<'a, Other = &'a T>,
+ {
     type Elem = T;
 
     #[verifier::external_body]
@@ -430,4 +522,5 @@ impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOfLast<'a> for &'a [T] where &
         None
     }
 }
-}
+
+} // verus!

@@ -1,19 +1,25 @@
 //! This module contains [`Multiset`]-specific method implementations.
-
-use crate::prelude::*;
 use crate::contrib::exec_spec::*;
+use crate::prelude::*;
 use std::collections::HashMap;
 
 verus! {
 
+// Note: all of the exec translations are currently unverified.
+// Some will require axiomatization because their corresponding specs are uninterp.
+broadcast use {
+    crate::group_vstd_default,
+    crate::std_specs::hash::group_hash_axioms,
+    crate::std_specs::hash::lemma_hashmap_deepview_dom,
+};
+
 /// Multiset<T> is compiled to ExecMultiset<T>.
 #[derive(Eq, PartialEq, Debug)]
 pub struct ExecMultiset<T: std::hash::Hash + std::cmp::Eq> {
-    pub m: HashMap<T, usize>
+    pub m: HashMap<T, usize>,
 }
 
 /// Implementations for shared traits
-
 /*
 trouble implementing this - complains about lifetime of T
 impl<T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecType for Multiset<T> {
@@ -21,7 +27,6 @@ impl<T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecType 
 
     type ExecRefType<'a> = &'a ExecMultiset<T>;
 }*/
-
 impl<T: DeepView + std::hash::Hash + std::cmp::Eq> DeepView for ExecMultiset<T> {
     type V = Multiset<<T as DeepView>::V>;
 
@@ -30,14 +35,18 @@ impl<T: DeepView + std::hash::Hash + std::cmp::Eq> DeepView for ExecMultiset<T> 
     }
 }
 
-impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToRef<&'a ExecMultiset<T>> for &'a ExecMultiset<T> {
+impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToRef<
+    &'a ExecMultiset<T>,
+> for &'a ExecMultiset<T> {
     #[inline(always)]
     fn get_ref(self) -> &'a ExecMultiset<T> {
         &self
     }
 }
 
-impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToOwned<ExecMultiset<T>> for &'a ExecMultiset<T> {
+impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToOwned<
+    ExecMultiset<T>,
+> for &'a ExecMultiset<T> {
     #[verifier::external_body]
     #[inline(always)]
     fn get_owned(self) -> ExecMultiset<T> {
@@ -49,7 +58,9 @@ impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToOwned<E
     }
 }
 
-impl<T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> DeepViewClone for ExecMultiset<T> {
+impl<T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> DeepViewClone for ExecMultiset<
+    T,
+> {
     #[verifier::external_body]
     #[inline(always)]
     fn deep_clone(&self) -> Self {
@@ -61,7 +72,9 @@ impl<T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> DeepViewClone
     }
 }
 
-impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecEq<'a> for &'a ExecMultiset<T> where &'a T: ExecSpecEq<'a, Other = &'a T> {
+impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecEq<
+    'a,
+> for &'a ExecMultiset<T> where &'a T: ExecSpecEq<'a, Other = &'a T> {
     type Other = &'a ExecMultiset<T>;
 
     #[verifier::external_body]
@@ -84,7 +97,10 @@ impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecE
     }
 }
 
-impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecLen for &'a ExecMultiset<T> {
+impl<
+    'a,
+    T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+> ExecSpecLen for &'a ExecMultiset<T> {
     #[inline(always)]
     #[verifier::external_body]
     fn exec_len(self) -> (res: usize)
@@ -102,7 +118,6 @@ impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecL
 //
 // Trait definitions for methods
 //
-
 /// Spec for executable version of [`Multiset::count`].
 pub trait ExecSpecMultisetCount: Sized + DeepView {
     type Elem;
@@ -135,8 +150,10 @@ pub trait ExecSpecMultisetSub<'a, Out: Sized + DeepView>: Sized + DeepView + ToO
 //
 // Implementations for ExecMultiset
 //
-
-impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecMultisetCount for &'a ExecMultiset<T> {
+impl<
+    'a,
+    T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+> ExecSpecMultisetCount for &'a ExecMultiset<T> {
     type Elem = T;
 
     #[inline(always)]
@@ -147,7 +164,7 @@ impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecM
     {
         match self.m.get(&value) {
             Some(v) => v.deep_clone(),
-            None => 0
+            None => 0,
         }
     }
 }
@@ -163,7 +180,9 @@ impl<T: DeepView + std::hash::Hash + std::cmp::Eq> ExecSpecMultisetEmpty for Exe
     }
 }
 
-impl<T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecMultisetSingleton for ExecMultiset<T> {
+impl<
+    T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+> ExecSpecMultisetSingleton for ExecMultiset<T> {
     type Elem = T;
 
     #[verifier::external_body]
@@ -178,9 +197,9 @@ impl<T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecMulti
     }
 }
 
-impl<'a, T> ExecSpecMultisetAdd<'a, ExecMultiset<T>> for &'a ExecMultiset<T> 
-    where T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq
-{
+impl<'a, T> ExecSpecMultisetAdd<'a, ExecMultiset<T>> for &'a ExecMultiset<T> where
+    T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+ {
     #[verifier::external_body]
     #[inline(always)]
     fn exec_add(self, m2: Self) -> (res: ExecMultiset<T>)
@@ -200,9 +219,9 @@ impl<'a, T> ExecSpecMultisetAdd<'a, ExecMultiset<T>> for &'a ExecMultiset<T>
     }
 }
 
-impl<'a, T> ExecSpecMultisetSub<'a, ExecMultiset<T>> for &'a ExecMultiset<T> 
-    where T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq
-{
+impl<'a, T> ExecSpecMultisetSub<'a, ExecMultiset<T>> for &'a ExecMultiset<T> where
+    T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+ {
     #[verifier::external_body]
     #[inline(always)]
     fn exec_sub(self, m2: Self) -> (res: ExecMultiset<T>)
@@ -224,4 +243,4 @@ impl<'a, T> ExecSpecMultisetSub<'a, ExecMultiset<T>> for &'a ExecMultiset<T>
     }
 }
 
-}
+} // verus!

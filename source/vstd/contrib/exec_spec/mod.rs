@@ -2,22 +2,25 @@
 //! executable code of [`verus_builtin_macros::exec_spec`].
 #![cfg(all(feature = "alloc", feature = "std"))]
 
-use crate::prelude::*;
 use crate::multiset::*;
+use crate::prelude::*;
+use std::collections::HashMap;
 pub use verus_builtin_macros::exec_spec;
 pub use verus_builtin_macros::exec_spec_trusted;
-use std::collections::HashMap;
 
+mod map;
+pub use map::*;
+mod multiset;
+pub use multiset::*;
 mod option;
 pub use option::*;
 mod seq;
 pub use seq::*;
-mod multiset;
-pub use multiset::*;
-mod map;
-pub use map::*;
 mod set;
 pub use set::*;
+mod string;
+pub use string::*;
+
 pub use crate::multiset::*;
 
 verus! {
@@ -70,7 +73,7 @@ pub trait ExecSpecEq<'a>: DeepView + Sized {
     ;
 }
 
-/// Spec for executable version of [`Seq`] indexing.
+/// Spec for executable version of [`Seq`] and [`str`] indexing.
 pub trait ExecSpecIndex<'a>: Sized + DeepView<V = Seq<<Self::Elem as DeepView>::V>> {
     type Elem: DeepView;
 
@@ -80,7 +83,7 @@ pub trait ExecSpecIndex<'a>: Sized + DeepView<V = Seq<<Self::Elem as DeepView>::
     ;
 }
 
-/// Spec for executable version of [`Seq::len`].
+/// Spec for executable version of `len`.
 pub trait ExecSpecLen {
     fn exec_len(self) -> usize;
 }
@@ -145,17 +148,15 @@ impl_primitives! {
     i8, i16, i32, i64, i128, isize,
     bool, char,
 }
+// impl on tuples up to size 4, to match the impls of View in vstd
 
-// note: practical limitation on tuple length is effectively 12 for impls of some common traits: 
-// https://github.com/WebAssembly/component-model/issues/373
-// https://users.rust-lang.org/t/why-can-tuples-only-handle-12-elements-at-max/29715
-// todo(nneamtu): why ToRef impled on a reference?
+
 macro_rules! impl_exec_spec_tuple {
     ([$(
         ($T:ident, $n:tt)
     ),*])=> {
         verus! {
-        
+
             impl<'a, $($T: Sized + DeepView),*> ToRef<&'a ($($T,)*)> for &'a ($($T,)*) {
                 #[inline(always)]
                 fn get_ref(self) -> &'a ($($T,)*) {
@@ -178,7 +179,7 @@ macro_rules! impl_exec_spec_tuple {
                 }
             }
 
-            impl<'a, $($T: DeepView),*> ExecSpecEq<'a> for &'a ($($T,)*) 
+            impl<'a, $($T: DeepView),*> ExecSpecEq<'a> for &'a ($($T,)*)
             where
                 $( &'a $T: ExecSpecEq<'a, Other = &'a $T>, )*
             {
@@ -196,158 +197,11 @@ macro_rules! impl_exec_spec_tuple {
 }
 
 impl_exec_spec_tuple!([(T0, 0)]);
+
 impl_exec_spec_tuple!([(T0, 0), (T1, 1)]);
+
 impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2)]);
+
 impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3)]);
-
-/// We use this special alias to tell the `exec_spec` macro to
-/// compile [`Seq<char>`] to [`String`] instead of [`Vec<char>`].
-pub type SpecString = Seq<char>;
-
-impl ExecSpecType for SpecString {
-    type ExecOwnedType = String;
-
-    type ExecRefType<'a> = &'a str;
-}
-
-impl<'a> ToRef<&'a str> for &'a String {
-    #[inline(always)]
-    fn get_ref(self) -> &'a str {
-        self.as_str()
-    }
-}
-
-impl<'a> ToOwned<String> for &'a str {
-    #[verifier::external_body]
-    #[inline(always)]
-    fn get_owned(self) -> String {
-        self.to_string()
-    }
-}
-
-impl DeepViewClone for String {
-    #[inline(always)]
-    fn deep_clone(&self) -> Self {
-        self.clone()
-    }
-}
-
-impl<'a> ExecSpecEq<'a> for &'a str {
-    type Other = &'a str;
-
-    #[verifier::external_body]
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        this == other
-    }
-}
-
-/// Required for comparing, e.g., [`Vec<String>`]s.
-impl<'a> ExecSpecEq<'a> for &'a String {
-    type Other = &'a String;
-
-    #[verifier::external_body]
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        this == other
-    }
-}
-
-impl<'a> ExecSpecLen for &'a str {
-    #[inline(always)]
-    fn exec_len(self) -> (res: usize)
-        ensures
-            res == self.deep_view().len(),
-    {
-        self.unicode_len()
-    }
-}
-
-impl<'a> ExecSpecIndex<'a> for &'a str {
-    type Elem = char;
-
-    #[inline(always)]
-    fn exec_index(self, index: usize) -> (res: Self::Elem)
-        ensures
-            res == self.deep_view()[index as int],
-    {
-        self.get_char(index)
-    }
-}
-
-/// NOTE: can't implement [`ExecSpecType`] for [`Seq<T>`]
-/// since it conflicts with [`SpecString`] (i.e., [`Seq<char>`]).
-impl<'a, T: DeepView> ToRef<&'a [T]> for &'a Vec<T> {
-    #[inline(always)]
-    fn get_ref(self) -> &'a [T] {
-        self.as_slice()
-    }
-}
-
-impl<'a, T: DeepView + DeepViewClone> ToOwned<Vec<T>> for &'a [T] {
-    /// TODO: verify this
-    #[verifier::external_body]
-    #[inline(always)]
-    fn get_owned(self) -> Vec<T> {
-        self.iter().map(|x| x.deep_clone()).collect()
-    }
-}
-
-impl<T: DeepViewClone> DeepViewClone for Vec<T> {
-    /// TODO: verify this
-    #[verifier::external_body]
-    #[inline(always)]
-    fn deep_clone(&self) -> Self {
-        self.iter().map(|x| x.deep_clone()).collect()
-    }
-}
-
-impl<'a, T: DeepView> ExecSpecEq<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
-    type Other = &'a [T];
-
-    #[verifier::external_body]
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        this.len() == other.len() && this.iter().zip(other.iter()).all(
-            |(a, b)| <&'a T>::exec_eq(a, b),
-        )
-    }
-}
-
-impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Vec<T> where &'a T: ExecSpecEq<'a, Other = &'a T> {
-    type Other = &'a Vec<T>;
-
-    #[verifier::external_body]
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        this.len() == other.len() && this.iter().zip(other.iter()).all(
-            |(a, b)| <&'a T>::exec_eq(a, b),
-        )
-    }
-}
-
-impl<'a, T: DeepView> ExecSpecLen for &'a [T] {
-    #[verifier::external_body]
-    #[inline(always)]
-    fn exec_len(self) -> (res: usize)
-        ensures
-            res == self.deep_view().len(),
-    {
-        self.len()
-    }
-}
-
-impl<'a, T: DeepView> ExecSpecIndex<'a> for &'a [T] {
-    type Elem = &'a T;
-
-    #[verifier::external_body]
-    #[inline(always)]
-    fn exec_index(self, index: usize) -> (res: Self::Elem)
-        ensures
-            res.deep_view() == self.deep_view()[index as int],
-    {
-        self.get(index).unwrap()
-    }
-}
 
 } // verus!
