@@ -1144,6 +1144,10 @@ pub enum ExprX {
     ///
     /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
+    /// In exec/tracked code ExprX::BorrowMut(PlaceX::DerefMut(place))
+    /// (with bool true = TwoPhaseBorrowMut)
+    /// In spec code, it's just a spec snapshot of the place without a borrow
+    ImplicitReborrowOrSpecRead(Place, bool, Span),
     /// Indicates a move or a copy from the given place.
     /// These over-approximate the actual set of copies/moves.
     /// (That is, many reads marked Move or Copy should really be marked Spec).

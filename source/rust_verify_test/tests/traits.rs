@@ -3609,6 +3609,40 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_default11c verus_code! {
+        trait T {
+            proof fn f<A>() ensures false { Self::g() }
+            proof fn g() ensures false;
+        }
+
+        proof fn h() ensures false {
+            <bool as T>::f::<u8>();
+        }
+
+        impl T for bool {
+            proof fn g() { h(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] test_default11d verus_code! {
+        trait T {
+            proof fn f() ensures false { Self::g::<u8>() }
+            proof fn g<A>() ensures false;
+        }
+
+        proof fn h() ensures false {
+            <bool as T>::f();
+        }
+
+        impl T for bool {
+            proof fn g<A>() { h(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
     #[test] test_default12 verus_code! {
         trait T1 {
             proof fn f() ensures false;
