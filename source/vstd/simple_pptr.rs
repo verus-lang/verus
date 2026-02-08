@@ -233,7 +233,7 @@ impl<V> PointsTo<V> {
         &&& match self.dealloc {
             Some(dealloc) => {
                 &&& dealloc.addr() == self.points_to.ptr().addr()
-                &&& dealloc.size() == size_of::<V>()
+                &&& dealloc.size() == size_of::<V>() == dealloc.provenance().alloc_len()
                 &&& dealloc.align() == align_of::<V>()
                 &&& dealloc.provenance() == self.points_to.ptr()@.provenance
                 &&& size_of::<V>() > 0
