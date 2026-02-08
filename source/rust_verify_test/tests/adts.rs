@@ -236,6 +236,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_founded1 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List {
             Cons(int, Box<List>)
         }
@@ -244,6 +245,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_founded2 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List {
             Cons1(int, Box<List>),
             Cons2(int, Box<List>),
@@ -253,6 +255,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_founded3 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List1 {
             Cons(int, Box<List2>)
         }
@@ -264,6 +267,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_founded4 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List {
             Cons(int, (Box<List>, bool))
         }
@@ -272,6 +276,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_field_unbox verus_code! {
+        use vstd::std_specs::alloc::*;
         struct B { b: bool }
         fn foo(s1: Box<B>, s2: &Box<B>, s3: Box<&B>, s4: Box<(bool, bool)>) {
             let z1 = s1.b;
