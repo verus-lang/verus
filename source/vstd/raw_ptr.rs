@@ -307,12 +307,14 @@ impl<T> PointsTo<T> {
     ///
     // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
     // See https://doc.rust-lang.org/std/ptr/#safety
-    pub axiom fn is_nonnull(tracked &self)
+    pub proof fn is_nonnull(tracked &self)
         requires
             size_of::<T>() != 0,
         ensures
             self.ptr()@.addr != 0,
-    ;
+    {
+        self.as_unaligned().is_nonnull()
+    }
 
     // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
     // https://doc.rust-lang.org/std/ptr/index.html#alignment
@@ -329,6 +331,8 @@ impl<T> PointsTo<T> {
     /// Note that this is a `proof` function, i.e.,
     /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
     /// Only the proof-code representation changes.
+    ///
+    /// Must be axiomitized, as Verus does not yet support passing around mutable references
     pub axiom fn leak_contents(tracked &mut self)
         ensures
             self.ptr() == old(self).ptr(),
@@ -336,14 +340,16 @@ impl<T> PointsTo<T> {
     ;
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
-    pub axiom fn ptr_bounds(tracked &self)
+    pub proof fn ptr_bounds(tracked &self)
         requires
             size_of::<T>() != 0,
         ensures
             self.ptr()@.addr as int >= self.ptr()@.provenance.start_addr(),
             self.ptr()@.addr as int + size_of::<T>() as int <= self.ptr()@.provenance.start_addr()
                 + self.ptr()@.provenance.alloc_len(),
-    ;
+    {
+        self.as_unaligned().ptr_bounds()
+    }
 
     /// Guarantees that the memory ranges associated with two permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
@@ -423,6 +429,16 @@ impl<T> PointsToUnaligned<T> {
         ensures
             self.ptr() == old(self).ptr(),
             self.is_uninit(),
+    ;
+
+    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
+    pub axiom fn ptr_bounds(tracked &self)
+        requires
+            size_of::<T>() != 0,
+        ensures
+            self.ptr()@.addr as int >= self.ptr()@.provenance.start_addr(),
+            self.ptr()@.addr as int + size_of::<T>() as int <= self.ptr()@.provenance.start_addr()
+                + self.ptr()@.provenance.alloc_len(),
     ;
 
     /// Guarantees that the memory ranges associated with two permissions will not overlap.
@@ -527,25 +543,31 @@ impl<T> PointsTo<[T]> {
     // https://doc.rust-lang.org/reference/type-layout.html#slice-layout
     // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
     // See https://doc.rust-lang.org/std/ptr/#safety
-    pub axiom fn is_nonnull(tracked &self)
+    pub proof fn is_nonnull(tracked &self)
         requires
             self.mem_contents_seq().len() * size_of::<T>() != 0,
         ensures
             self.ptr()@.addr != 0,
-    ;
+    {
+        self.ptr_bounds();
+        broadcast use is_nonnull;
+    }
 
     // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
     // https://doc.rust-lang.org/std/ptr/index.html#alignment
     /// Guarantee that the `PointsTo` points to an aligned address.
     ///
     // Note that even for ZSTs, pointers need to be aligned.
-    pub axiom fn is_aligned(tracked &self)
+    pub proof fn is_aligned(tracked &self)
         ensures
             self.ptr()@.addr as nat % align_of::<T>() == 0,
-    ;
+    {
+        let tracked m = self.as_map();
+        use_type_invariant(m);
+    }
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
-    pub axiom fn ptr_bounds(
+    pub proof fn ptr_bounds(
         tracked &self,
     )
     // Q: do I need this requires? When the memory is zero-sized, is it true that we don't expect it to be "in bounds"?
@@ -556,7 +578,11 @@ impl<T> PointsTo<[T]> {
             self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
             self.ptr()@.addr + self.mem_contents_seq().len() * size_of::<T>()
                 <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
-    ;
+    {
+        broadcast use pt_slice_len;
+        let tracked m = self.as_map();
+        use_type_invariant(m);
+    }
 
     /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
     pub axiom fn subrange(tracked &self, start_index: nat, len: nat) -> (tracked sub_points_to:
@@ -589,13 +615,51 @@ impl<T> PointsTo<[T]> {
     /// (3) The pointer's address is aligned to `V`.
     ///
     /// (4) `self.value().len() * size_of::<T>() == size_of::<V>()`.
-    pub axiom fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>) where
+    pub proof fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>) where
         T: CompatibleSmallerBaseFor<V> + Integer,
         V: BasePow2 + Integer,
 
         requires
             self.is_init(),
             self.ptr()@.addr as int % align_of::<V>() as int == 0,
+            self.value().len() * size_of::<T>() == size_of::<V>(),
+        ensures
+            points_to.ptr() == ptr_mut_from_data::<V>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (),
+                },
+            ),
+            points_to.is_init(),
+            points_to.value() as int == to_big_ne::<V, T>(self.value()).index(0),
+    {
+        broadcast use axiom_ptr_mut_from_data;
+        let tracked pt_unaligned = self.cast_points_to_unaligned::<V>();
+        pt_unaligned.as_aligned()
+    }
+
+    /// Like [`cast_points_to`], but does not require alignment,
+    /// producing a `PointsToUnaligned<V>` instead of a `PointsTo<V>`.
+    ///
+    /// We can cast a `[T]` permission to an unaligned `V` permission under the following conditions:
+    ///
+    /// (1) `T` and `V` are integer types where `V` is a power of 2
+    /// and the bit encoding of a `V` can be viewed as
+    /// the bit encoding for multiple `T`s
+    /// (as defined precisely in the trait `CompatibleSmallerBaseFor<V>`).
+    ///
+    /// (2) Memory is initialized.
+    ///
+    /// (3) `self.value().len() * size_of::<T>() == size_of::<V>()`.
+    ///
+    /// Note: unlike `cast_points_to`, there is no alignment precondition.
+    pub axiom fn cast_points_to_unaligned<V>(tracked &self) -> (tracked points_to: &PointsToUnaligned<V>) where
+        T: CompatibleSmallerBaseFor<V> + Integer,
+        V: BasePow2 + Integer,
+
+        requires
+            self.is_init(),
             self.value().len() * size_of::<T>() == size_of::<V>(),
         ensures
             points_to.ptr() == ptr_mut_from_data::<V>(
@@ -641,6 +705,24 @@ impl<T> PointsTo<[T]> {
     /// whose keys are the valid slice indices
     /// and whose values are individual `PointsTo<T>` with the same memory contents.
     pub axiom fn into_map(tracked self) -> (tracked m: MapPointsTo<T>)
+        ensures
+            m.indices() == bounded_set(self.mem_contents_seq().len()),
+            forall|i|
+                #![trigger m.indices().contains(i)]
+                #![trigger self.mem_contents_seq()[i as int]]
+                #![trigger m[i].mem_contents()]
+                m.indices().contains(i) ==> m[i].mem_contents()
+                    == self.mem_contents_seq()[i as int],
+            m.ptr() == self.ptr(),
+    ;
+
+    /// Borrow a slice PointsTo as a MapPointsTo.
+    /// This is always safe since a slice permission is strictly more restrictive
+    /// than a map permission over the same indices.
+    ///
+    /// Ensures pointer locations remain the same, and memory
+    /// contents at each index remain the same.
+    pub axiom fn as_map(tracked &self) -> (tracked m: &MapPointsTo<T>)
         ensures
             m.indices() == bounded_set(self.mem_contents_seq().len()),
             forall|i|

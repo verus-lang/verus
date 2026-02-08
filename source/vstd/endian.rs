@@ -1022,6 +1022,30 @@ impl CompatibleSmallerBaseFor<usize> for u8 {
     }
 }
 
+impl Base for u32 {
+    open spec fn base() -> nat {
+        u32::MAX as nat + 1
+    }
+
+    proof fn base_min() {
+    }
+}
+
+impl BasePow2 for u32 {
+    open spec fn bits() -> nat {
+        32
+    }
+
+    proof fn bits_to_base() {
+        crate::vstd::arithmetic::power2::lemma2_to64();
+    }
+}
+
+impl CompatibleSmallerBaseFor<u32> for u8 {
+    proof fn compatible() {
+    }
+}
+
 // proof fn test(x: EndianNat<u64>, y: EndianNat<u8>)
 //     requires y.len() % 8 == 0,
 // {
