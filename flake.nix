@@ -18,6 +18,11 @@
       ];
       eachDefaultSystem = f: builtins.foldl' lib.attrsets.recursiveUpdate { }
         (map f systems);
+
+      # Set Z3_SOURCE_BUILD=1 or CVC5_SOURCE_BUILD=1 to build from source.
+      # Requires --impure flag: nix build --impure .#verus
+      z3SourceBuild = (builtins.getEnv "Z3_SOURCE_BUILD") == "1";
+      cvc5SourceBuild = (builtins.getEnv "CVC5_SOURCE_BUILD") == "1";
     in
     eachDefaultSystem (system:
       let
@@ -77,8 +82,12 @@
           inherit version;
           srcs = [ ./source ./tools ./dependencies ];
           sourceRoot = "source";
-          # cargoHash = "sha256-hxEH8qurjEDiXX2GGfZF4FTKaMz2e7O1rKHsb+ywnvc=";
-          cargoHash = "sha256-y3wfW3a8A/bfCYklV0DcOODvzcBuzXh1i8U14quW1xY=";
+          cargoLock = {
+            lockFile = ./source/Cargo.lock;
+            outputHashes = {
+              "getopts-0.2.21" = "sha256-N/QJvyOmLoU5TabrXi8i0a5s23ldeupmBUzP8waVOiU=";
+            };
+          };
           nativeBuildInputs = [ pkgs.makeBinaryWrapper rust-bin rustup vargo z3 ];
           buildInputs = [ rustup z3 ];
           buildPhase = ''
@@ -137,25 +146,128 @@
           };
         });
 
-        # EXPECTED_Z3_VERSION in tools/common/consts.rs
-        z3 = pkgs.z3.overrideAttrs (finalAttrs: previousAttrs: {
-          version = "4.12.5";
+        # --- z3 ---
+
+        z3Version = "4.12.5";
+
+        z3Filename = {
+          x86_64-linux = "z3-${z3Version}-x64-glibc-2.31";
+          aarch64-linux = "z3-${z3Version}-arm64-glibc-2.35";
+          x86_64-darwin = "z3-${z3Version}-x64-osx-11.7.10";
+          aarch64-darwin = "z3-${z3Version}-arm64-osx-11.0";
+          # x86_64-windows = "z3-${z3Version}-x64-win";
+        }.${system} or (throw "Unsupported system for prebuilt z3: ${system}");
+
+        z3PrebuiltHash = {
+          x86_64-linux = "sha256-kHWanLxL180OPiDSvrxXjgyd/sKFHVgX5/SFfL+pJJs=";
+          aarch64-linux = "sha256-+kPQBHmKI7HyCp7oSFNAm321hXwyonSSVXTTvo4tVSA=";
+          x86_64-darwin = "sha256-SfDKEz5p75HGM4lkyQUNPBnQZKtU9cTch6KkTeN94+E=";
+          aarch64-darwin = "sha256-Dkrqjn56UIZcNYKDFZkn2QVLWou4Vf0NjKIITSsweeU=";
+        }.${system} or "sha256-kHWanLxL180OPiDSvrxXjgyd/sKFHVgX5/SFfL+pJJs="; # default to x86_64-linux
+
+        z3Prebuilt = pkgs.stdenvNoCC.mkDerivation {
+          pname = "z3";
+          version = z3Version;
+          src = pkgs.fetchzip {
+            url = "https://github.com/Z3Prover/z3/releases/download/z3-${z3Version}/${z3Filename}.zip";
+            hash = z3PrebuiltHash;
+          };
+          dontBuild = true;
+          installPhase = ''
+            runHook preInstall
+            mkdir -p $out/bin
+            cp bin/z3 $out/bin/z3
+            chmod +x $out/bin/z3
+            runHook postInstall
+          '' + lib.optionalString pkgs.stdenvNoCC.isLinux ''
+            patchelf --set-interpreter "$(cat ${pkgs.stdenv.cc}/nix-support/dynamic-linker)" $out/bin/z3 || true
+          '';
+          nativeBuildInputs = lib.optionals pkgs.stdenvNoCC.isLinux [ pkgs.patchelf pkgs.autoPatchelfHook ];
+          buildInputs = lib.optionals pkgs.stdenvNoCC.isLinux [ pkgs.stdenv.cc.cc.lib ];
+          meta = {
+            description = "Z3 theorem prover (prebuilt binary)";
+            mainProgram = "z3";
+            platforms = systems;
+          };
+        };
+
+        z3Source = pkgs.z3.overrideAttrs (finalAttrs: previousAttrs: {
+          version = z3Version;
           src = pkgs.fetchFromGitHub {
             owner = "Z3Prover";
             repo = "z3";
             tag = "z3-${finalAttrs.version}";
             sha256 = "sha256-Qj9w5s02OSMQ2qA7HG7xNqQGaUacA1d4zbOHynq5k+A=";
           };
-          # NIX_CFLAGS_COMPILE = "-Wno-error=maybe-uninitialized -Wno-error=uninitialized";
-          # GCC 14 fixes: suppress template body checks and uninitialized warnings
+          patches = [];
           NIX_CFLAGS_COMPILE = "-Wno-template-body -Wno-error=maybe-uninitialized -Wno-error=uninitialized";
+          # to fix error at InstallCheck time
+          postFixup = (previousAttrs.postFixup or "") + ''
+            if [ -f $dev/lib/pkgconfig/z3.pc ]; then
+              sed -i 's|''${exec_prefix}//|/|g' $dev/lib/pkgconfig/z3.pc
+            fi
+          '';
         });
-        cvc5' = pkgs.cvc5.override {
-          cadical = pkgs.cadical.override { version = "2.0.0"; };
+
+        z3 = if z3SourceBuild then z3Source else z3Prebuilt;
+
+        # --- cvc5 ---
+
+        cvc5Version = "1.1.2";
+
+        cvc5Filename = {
+          x86_64-linux = "cvc5-Linux-static";
+          aarch64-linux = "cvc5-Linux-static";
+          x86_64-darwin = "cvc5-macOS-static";
+          aarch64-darwin = "cvc5-macOS-arm64-static";
+        }.${system} or (throw "Unsupported system for prebuilt cvc5: ${system}");
+
+        cvc5PrebuiltHash = {
+          x86_64-linux = "sha256-BLJHO87BFnjBctzla/W2VSJtXBHv7WvC7/RsksIxE2Q=";
+          aarch64-linux = "sha256-NR9F9IQK7z6y/NKnshofzxH2V6vMU2glP0KudKw+fTo=";
+          x86_64-darwin = "sha256-Cg/K89SL2c3G/wPco8T5yL0BlLar0gQtpgikcsWewX8=";
+          aarch64-darwin = "sha256-Cg/K89SL2c3G/wPco8T5yL0BlLar0gQtpgikcsWewX8=";
+        }.${system} or "sha256-BLJHO87BFnjBctzla/W2VSJtXBHv7WvC7/RsksIxE2Q="; # default to x86_64-linux
+
+        cvc5Prebuilt = pkgs.stdenvNoCC.mkDerivation {
+          pname = "cvc5";
+          version = cvc5Version;
+          src = pkgs.fetchzip {
+            url = "https://github.com/cvc5/cvc5/releases/download/cvc5-${cvc5Version}/${cvc5Filename}.zip";
+            hash = cvc5PrebuiltHash;
+          };
+          dontBuild = true;
+          installPhase = ''
+            runHook preInstall
+            mkdir -p $out/bin
+            cp bin/cvc5 $out/bin/cvc5
+            chmod +x $out/bin/cvc5
+            runHook postInstall
+          '' + lib.optionalString pkgs.stdenvNoCC.isLinux ''
+            patchelf --set-interpreter "$(cat ${pkgs.stdenv.cc}/nix-support/dynamic-linker)" $out/bin/cvc5 || true
+          '';
+          nativeBuildInputs = lib.optionals pkgs.stdenvNoCC.isLinux [ pkgs.patchelf pkgs.autoPatchelfHook ];
+          buildInputs = lib.optionals pkgs.stdenvNoCC.isLinux [ pkgs.stdenv.cc.cc.lib ];
+          meta = {
+            description = "cvc5 SMT solver (prebuilt binary)";
+            mainProgram = "cvc5";
+            platforms = systems;
+          };
         };
-        # EXPECTED_CVC5_VERSION in tools/common/consts.rs
-        cvc5 = cvc5'.overrideAttrs (finalAttrs: previousAttrs: {
-          version = "1.1.2";
+
+        cvc5' = pkgs.cvc5.override {
+          cadical = pkgs.cadical.overrideAttrs (old: rec {
+            version = "2.0.0";
+            src = pkgs.fetchFromGitHub {
+              owner = "arminbiere";
+              repo = "cadical";
+              tag = "rel-${version}";
+              hash = "sha256-qoeEM9SdpuFuBPeQlCzuhPLcJ+bMQkTUTGiT8QdU8rc=";
+            };
+          });
+        };
+        cvc5Source = cvc5'.overrideAttrs (finalAttrs: previousAttrs: {
+          version = cvc5Version;
           src = pkgs.fetchFromGitHub {
             owner = "cvc5";
             repo = "cvc5";
@@ -163,6 +275,8 @@
             hash = "sha256-v+3/2IUslQOySxFDYgTBWJIDnyjbU2RPdpfLcIkEtgQ=";
           };
         });
+
+        cvc5 = if cvc5SourceBuild then cvc5Source else cvc5Prebuilt;
       in
       {
         packages.${system} = rec {
@@ -174,7 +288,7 @@
           runtimeInputs = [ verusfmt ] ++ lib.singleton formatter;
           text = ''
             nixpkgs-fmt "$@"
-            find vstd -name \*.rs -print0 | xargs -0 -n1 verusfmt
+            vargo fmt
           '';
         };
         checks.${system}.lint = pkgs.stdenvNoCC.mkDerivation {
@@ -183,22 +297,10 @@
           doCheck = true;
           nativeCheckInputs = linters ++ lib.singleton formatter;
           checkPhase = ''
-            nixpkgs-fmt --check .
             statix check
+            vargo fmt -- --check
           '';
           installPhase = "touch $out";
-        };
-        apps.${system} = {
-          update = {
-            type = "app";
-            program = lib.getExe (pkgs.writeShellApplication {
-              name = "update";
-              runtimeInputs = [ pkgs.nix-update ];
-              text = lib.concatMapStringsSep "\n"
-                (package: "nix-update --flake ${package} || true")
-                (builtins.attrNames self.packages.${system});
-            });
-          };
         };
         devShells.${system}.default = (pkgs.mkShellNoCC.override {
           stdenv = pkgs.stdenvNoCC.override {
