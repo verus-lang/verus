@@ -191,6 +191,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    //todo(nneamtu) - add new types here
     /// Tests equality.
     #[test] test_exec_spec_equality IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
@@ -278,6 +279,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    //todo(nneamtu) - add unwrap
     /// Tests support for built-in [`Option`] type.
     #[test] test_exec_spec_option IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
@@ -300,6 +302,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    //todo(nneamtu) - add more tuples
     /// Tests support for built-in tuple types.
     #[test] test_exec_spec_tuple IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
@@ -315,6 +318,8 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+//todo(nneamtu) - add Seq, Set, Map, Multiset functions here
 
 test_verify_one_file! {
     /// Tests struct/enum constructors.
@@ -723,6 +728,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    //todo(nneamtu) - add quantifier over char, and new bound exprs
     /// Tests basic `forall` expressions.
     #[test] test_exec_spec_basic_forall IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
