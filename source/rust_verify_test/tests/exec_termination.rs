@@ -190,7 +190,7 @@ test_verify_one_file! {
         fn a() {
             let mut i: i8 = 0;
             for x in iter: 0..10
-                invariant i == iter.index@ * 3,
+                invariant i == x * 3,
                 decreases 10 - iter.index@
             {
                 i += 3;
@@ -222,7 +222,7 @@ test_verify_one_file! {
             let mut i: i8 = 0;
             // syntax macro inserts decreases clause automatically
             for x in iter: 0..10
-                invariant i == iter.index@ * 3,
+                invariant i == x * 3,
             {
                 i += 3;
             }

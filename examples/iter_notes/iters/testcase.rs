@@ -3,6 +3,70 @@ use vstd::std_specs::iter::IteratorSpecImpl;
 
 verus! {
 
+//fn test_loop() {
+//    let mut n: u64 = 0;
+//    let mut end = 10;
+//    for x in iter: 0..end
+//        invariant
+//            n == x * 3,
+//            end == 10,
+//    {
+//        assert(x < 10);
+//        assert(x == iter.index@);
+//        n += 3;
+//    }
+//    assert(n == 30);
+//}
+
+fn test_loop_fail() {
+    let mut n: u64 = 0;
+    let mut end = 10;
+//    let r = 0..end;
+//    let i = ::core::iter::IntoIterator::into_iter(r);
+//    let v = ::vstd::std_specs::iter::VerusForLoopWrapper::new(i, Ghost(Some(&i)));
+//    assert(v.init@ == Some(&::core::iter::IntoIterator::into_iter(0..end)));
+//
+//    let mut i = 5;
+//    loop 
+//        invariant 
+//            v.init@ == Some(&::core::iter::IntoIterator::into_iter(0..end)),
+//        decreases i
+//    {
+//        assume(false);
+//        i -= 1;
+//    }
+
+    //#[verifier::loop_isolation(false)]
+    for x in iter: 0..end
+        invariant
+            n == x * 3,
+            end == 10,
+    {
+        //assert(x < 10); // FAILS
+        assert(x == iter.index@);
+        n += 3;
+        end = end + 0; // causes end to be non-constant, so loop needs more invariants
+    }
+}
+
+/*
+fn non_spec() {}
+
+fn test_loop_modes_transient_state() {
+    let mut n: u64 = 0;
+    let mut end = 10;
+    // test Typing::snapshot_transient_state
+    for x in iter: 0..({let z = end; non_spec(); z})
+        invariant
+            n == x * 3,
+            end == 10,
+    {
+        n += 3;
+        end = end + 0; // causes end to be non-constant
+    }
+}
+
+
 fn exec_for_loop() {
     let mut n: u64 = 0;
     for x in iter: 0..10
@@ -220,6 +284,7 @@ fn test_no_termination(n: NoTerminate) {
         //w.push(x);
     }
 }
+*/
 */
 }
 

@@ -1124,10 +1124,10 @@ test_verify_one_file_with_options! {
         fn test_loop() {
             let mut n: u64 = 0;
             for x in iter: 0..10
-                invariant n == iter.cur * 3,
+                invariant n == x * 3,
             {
                 assert(x < 10);
-                assert(x == iter.cur);
+                assert(x == iter.index@);
                 n += 3;
             }
             assert(n == 30);
@@ -1147,10 +1147,10 @@ test_verify_one_file_with_options! {
         fn test_loop_fail() {
             let mut n: u64 = 0;
             for x in iter: 0..10
-                invariant n == iter.cur * 3,
+                invariant n == x * 3,
             {
                 assert(x < 9); // FAILS
-                assert(x == iter.cur);
+                assert(x == iter.index@);
                 n += 3;
             }
             assert(n == 30);
@@ -1166,11 +1166,11 @@ test_verify_one_file_with_options! {
             let mut end = 10;
             for x in iter: 0..end
                 invariant
-                    n == iter.cur * 3,
+                    n == x * 3,
                     end == 10,
             {
                 assert(x < 10);
-                assert(x == iter.cur);
+                assert(x == iter.index@);
                 n += 3;
             }
             assert(n == 30);
@@ -1181,11 +1181,11 @@ test_verify_one_file_with_options! {
             let mut end = 10;
             for x in iter: 0..end
                 invariant
-                    n == iter.cur * 3,
+                    n == x * 3,
                     end == 10,
             {
                 assert(x < 10); // FAILS
-                assert(x == iter.cur);
+                assert(x == iter.index@);
                 n += 3;
                 end = end + 0; // causes end to be non-constant, so loop needs more invariants
             }
@@ -1199,7 +1199,7 @@ test_verify_one_file_with_options! {
             // test Typing::snapshot_transient_state
             for x in iter: 0..({let z = end; non_spec(); z})
                 invariant
-                    n == iter.cur * 3,
+                    n == x * 3,
                     end == 10,
             {
                 n += 3;
