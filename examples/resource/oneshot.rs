@@ -69,26 +69,30 @@ use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::prelude::*;
 use vstd::resource;
+use vstd::resource::agree::AgreementRA;
+use vstd::resource::algebra;
 use vstd::resource::algebra::ResourceAlgebra;
-use vstd::resource::pcm::Resource;
+use vstd::resource::frac::FractionRA;
+use vstd::resource::pcm;
 use vstd::resource::pcm::PCM;
+use vstd::resource::product::ProductRA;
 use vstd::resource::update_and_redistribute;
 use vstd::resource::update_mut;
 use vstd::resource::Loc;
 
 verus! {
 
-// A one-shot resource represents one of the following four resources:
-//
-// `FullRightToComplete` -- the authority to complete the one-shot;
-//
-// `HalfRightToComplete` -- half of the authority to complete the
-// one-shot, which can be combined with another half to make a full
-// authority; or
-//
-// `Complete` -- knowledge that the one-shot has completed.
-//
-// `Empty` - no permission at all.
+/// A one-shot resource represents one of the following four resources:
+///
+/// `FullRightToComplete` -- the authority to complete the one-shot;
+///
+/// `HalfRightToComplete` -- half of the authority to complete the
+/// one-shot, which can be combined with another half to make a full
+/// authority; or
+///
+/// `Complete` -- knowledge that the one-shot has completed.
+///
+/// `Empty` - no permission at all.
 pub enum OneShotResourceValue {
     FullRightToComplete,
     HalfRightToComplete,
@@ -142,7 +146,7 @@ impl PCM for OneShotResourceValue {
 }
 
 pub struct OneShotResource {
-    r: Resource<OneShotResourceValue>,
+    r: pcm::Resource<OneShotResourceValue>,
 }
 
 impl OneShotResource {
@@ -162,7 +166,7 @@ impl OneShotResource {
             resource@ is FullRightToComplete,
     {
         let v = OneShotResourceValue::FullRightToComplete {  };
-        let tracked mut r = Resource::<OneShotResourceValue>::alloc(v);
+        let tracked mut r = pcm::Resource::<OneShotResourceValue>::alloc(v);
         OneShotResource { r }
     }
 
@@ -266,8 +270,161 @@ impl OneShotResource {
     }
 }
 
+/// A one-shot resource represents one of the following four resources:
+///
+/// `FullRightToComplete` -- the authority to complete the one-shot;
+///
+/// `HalfRightToComplete` -- half of the authority to complete the
+/// one-shot, which can be combined with another half to make a full
+/// authority; or
+///
+/// `Complete` -- knowledge that the one-shot has completed.
+///
+/// `Empty` - no permission at all.
+pub type OneShotCarrier<T> = ProductRA<FractionRA, Option<AgreementRA<T>>>;
+
+pub struct OneShotResource2<T> {
+    r: algebra::Resource<OneShotCarrier<T>>,
+}
+
+impl<T> OneShotResource2<T> {
+    pub closed spec fn loc(self) -> Loc {
+        self.r.loc()
+    }
+
+    /// The view of the underlying resource
+    pub closed spec fn view(self) -> Option<T> {
+        match self.r.value().right {
+            Some(AgreementRA::Agree(x)) => Some(x),
+            _ => None
+        }
+    }
+
+    pub closed spec fn fraction(self) -> real {
+        self.r.value().left.frac()
+    }
+
+    pub proof fn alloc() -> (tracked resource: Self)
+        ensures
+            resource@ is None,
+            resource.fraction() == 1real,
+    {
+        let v = OneShotCarrier { left: FractionRA::new(1real), right: None };
+        let tracked r = algebra::Resource::<OneShotCarrier<T>>::alloc(v);
+        OneShotResource2 { r }
+    }
+
+    /// This function splits full authority to perform a one-shot
+    /// into two half authorities to perform it.
+    // TODO(bsdinis): make this using shared ref
+    pub proof fn split(tracked self) -> (tracked r: (Self, Self))
+        requires
+            self@ is None,
+            self.fraction() == 1real,
+        ensures
+            ({
+                let (half1, half2) = r;
+                &&& half1@ is None
+                &&& half2@ is None
+                &&& half1.fraction() == 0.5real
+                &&& half2.fraction() == 0.5real
+                &&& half1.loc() == self.loc()
+                &&& half2.loc() == self.loc()
+            }),
+    {
+        self.r.validate();
+        assert(self.r.value().right is None);
+        let half = OneShotCarrier { left: FractionRA::new(0.5real), right: self.r.value().right };
+        assert(self.r.value().left == FractionRA::op(half.left, half.left));
+        assert(self.r.value().right == Option::op(half.right, half.right));
+        let tracked (r1, r2) = self.r.split(half, half);
+        (OneShotResource2 { r: r1 }, OneShotResource2 { r: r2 })
+    }
+
+    // This function performs a one-shot given a resource representing
+    // full authority to complete the one-shot.
+    //
+    // Upon return, the passed-in resource will have been transformed
+    // into knowledge that the one-shot has been performed.
+    pub proof fn shoot(tracked &mut self, v: T)
+        requires
+            old(self)@ is None,
+            old(self).fraction() == 1real,
+        ensures
+            self@ == Some(v)
+    {
+        let new_carrier = OneShotCarrier { left: self.r.value().left, right: Some(AgreementRA::Agree(v)) };
+        // TODO(bsdinis): need the resource lib
+        // update_mut(&mut self.r, new_carrier);
+        admit()
+    }
+
+    // This function performs a one-shot given two resources, the
+    // first of which represents an incomplete one-shot (and half the
+    // authority needed to perform it). The resources must have the
+    // same `loc()`, meaning they're talking about the same one-shot.
+    //
+    // Upon return, the passed-in resources will have both been
+    // transformed into knowledge that the one-shot has been
+    // performed.
+    //
+    // The caller of this function only needs to know that `self`
+    // provides half authority and that `other` isn't `Empty`. Upon
+    // return the caller will learn that *both* the resources had
+    // provided half authority at call time. However, those resources
+    // were transformed so they don't provide that authority anymore.
+    pub proof fn shoot_with_two_halves(tracked &mut self, tracked other: &mut Self, v: T)
+        requires
+            old(other).loc() == old(self).loc(),
+            old(self)@ is None,
+            old(self).fraction() + old(other).fraction() == 1real,
+        ensures
+            old(other)@ is None,
+            self.loc() == old(self).loc(),
+            other.loc() == old(self).loc(),
+            self.fraction() == old(self).fraction(),
+            other.fraction() == old(other).fraction(),
+            self@ == Some(v),
+            other@ == Some(v),
+    {
+        self.r.validate_2(&other.r.as_ref());
+        let new_self_carrier = OneShotCarrier { left: self.r.value().left, right: Some(AgreementRA::Agree(v)) };
+        let new_other_carrier = OneShotCarrier { left: other.r.value().left, right: Some(AgreementRA::Agree(v)) };
+        // TODO(bsdinis): we want the full lib for ras too
+        // update_and_redistribute(&mut self.r, &mut other.r, v, v);
+        admit()
+    }
+
+    // This function duplicates a one-shot resource representing knowledge of completion.
+    pub proof fn duplicate(tracked self) -> (tracked r: (Self, Self))
+        requires
+            self@ is Some,
+        ensures
+            r.0.loc() == self.loc(),
+            r.1.loc() == self.loc(),
+            r.0@ == self@,
+            r.1@ == self@,
+    {
+        self.r.validate();
+        let half = OneShotCarrier { left: FractionRA::new(self.fraction()/2real), right: self.r.value().right };
+        let tracked (r1, r2) = self.r.split(half, half);
+        (OneShotResource2 { r: r1 }, OneShotResource2 { r: r2 })
+    }
+
+    pub proof fn lemma_agree(tracked &mut self, tracked other: &Self)
+        requires
+            other.loc() == old(self).loc(),
+            other@ is Some,
+        ensures
+            self.loc() == old(self).loc(),
+            self@ == old(self)@,
+    {
+        self.r.validate_2(&other.r.as_ref());
+    }
+}
+
 // This example illustrates some uses of the one-shot functions.
-fn main() {
+fn test_manual() {
     let tracked full = OneShotResource::alloc();
     proof {
         full.perform();
@@ -290,6 +447,35 @@ fn main() {
     assert(knowledge.id() == id);
     assert(half1.id() == id);
     assert(knowledge@ is Complete);
+}
+
+fn test_combinator() {
+    let tracked full = OneShotResource2::<int>::alloc();
+    proof {
+        full.shoot(2);
+    }
+    assert(full@ == Some(2int));
+    let tracked different_oneshot = OneShotResource2::<int>::alloc();
+    let tracked (mut half1, mut half2) = different_oneshot.split();
+    let ghost id = half1.loc();
+    assert(half1.loc() == half2.loc());
+    assert(half1@ is None);
+    assert(half2@ is None);
+    assert(half1.fraction() == 0.5real);
+    assert(half2.fraction() == 0.5real);
+    proof {
+        half1.shoot_with_two_halves(&mut half2, 3);
+    }
+    assert(half1.loc() == id);
+    assert(half2.loc() == id);
+    assert(half1@ == Some(3int));
+    assert(half2@ == Some(3int));
+    /* TODO(bsdinis): need shared refs
+    let tracked knowledge = half1.duplicate();
+    assert(knowledge.loc() == id);
+    assert(half1.loc() == id);
+    assert(knowledge@ is Complete);
+    */
 }
 
 } // verus!
