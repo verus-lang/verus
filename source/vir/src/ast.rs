@@ -1227,6 +1227,11 @@ pub enum PlaceX {
     /// `WithExpr({ tmp = expr; }, Local(tmp))`.
     /// Without this node, such a transformation would be significantly more complicated.
     WithExpr(Expr, Place),
+    /// Establish a type obligation to restore the type invariant.
+    /// This node can appear in any Place that is used in assignment or mutable ref.
+    ///
+    /// These nodes are inserted by resolution analysis.
+    UserDefinedTypInvariantObligation(Place, Fun),
 }
 
 /// Statement, similar to rustc_hir::Stmt

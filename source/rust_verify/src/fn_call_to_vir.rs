@@ -1959,6 +1959,7 @@ fn is_place_ok_for_spec_after_borrow(place: &Place) -> bool {
         PlaceX::ModeUnwrap(p, _) => is_place_ok_for_spec_after_borrow(p),
         PlaceX::WithExpr(..) => false,
         PlaceX::Index(..) => false,
+        PlaceX::UserDefinedTypInvariantObligation(..) => false,
     }
 }
 

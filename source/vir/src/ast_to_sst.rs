@@ -3,7 +3,7 @@ use crate::ast::{
     ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Expr, ExprX, FieldOpr, Fun, Function,
     Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode, OverflowBehavior,
     PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
+    UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
@@ -758,6 +758,8 @@ struct ReturnedCall {
     typs: Typs,
     has_return: bool,
     args: Exps,
+    obligations: Vec<Obligation>,
+    may_unwind: bool,
 }
 
 fn expr_get_call(
@@ -816,6 +818,7 @@ fn expr_get_call(
 
                 // delayed "phase2" Stms
                 let mut second_phase: Vec<Stm> = Vec::new();
+                let mut all_obligations: Vec<Obligation> = Vec::new();
 
                 for arg in args.iter() {
                     let poly =
@@ -824,10 +827,12 @@ fn expr_get_call(
 
                     match &arg.x {
                         ExprX::TwoPhaseBorrowMut(_) => {
+                            // TODO(new_mut_ref): need to handle obligations for
+                            // normal BorrowMut too
                             let (phase1_stms, bor_sst) = borrow_mut_to_sst(ctx, state, arg)?;
                             let mut_ref_exp = match &bor_sst {
                                 Maybe::Never => Maybe::Never,
-                                Maybe::Some(bor_sst) => {
+                                Maybe::Some((bor_sst, _obligations)) => {
                                     Maybe::Some(Value::Exp(bor_sst.mut_ref_exp.clone()))
                                 }
                             };
@@ -837,8 +842,11 @@ fn expr_get_call(
                                 return Ok(Some((stms, Maybe::Never)));
                             }
 
-                            let Maybe::Some(bor_sst) = bor_sst else { unreachable!() };
+                            let Maybe::Some((bor_sst, obligations)) = bor_sst else {
+                                unreachable!()
+                            };
                             second_phase.push(bor_sst.phase2_stm);
+                            all_obligations.extend(obligations);
                         }
                         _ => {
                             let (stms0, e0) = expr_to_stm_opt(ctx, state, &arg)?;
@@ -884,6 +892,11 @@ fn expr_get_call(
                         typs: typs.clone(),
                         has_return: has_ret,
                         args: Arc::new(exps),
+                        obligations: all_obligations,
+                        may_unwind: !matches!(
+                            function.x.unwind_spec_or_default(),
+                            UnwindSpec::NoUnwind
+                        ),
                     }),
                 )))
             }
@@ -1398,7 +1411,7 @@ pub(crate) fn expr_to_stm_opt(
             let e_r = to_exp_or_return_never!(e_r, stms_r);
 
             let (stms_l, exps) = place_to_exp_pair(ctx, state, place)?;
-            let (lhs_exp, e_l) = unwrap_or_return_never!(exps, stms_r, stms_l);
+            let (lhs_exp, e_l, obligations) = unwrap_or_return_never!(exps, stms_r, stms_l);
 
             let mut sequr = Sequencer::new();
             push_or_return_never!(sequr.push(
@@ -1420,6 +1433,8 @@ pub(crate) fn expr_to_stm_opt(
             let assign = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: bin };
             stms.push(Spanned::new(expr.span.clone(), assign));
 
+            typ_inv_obligations(ctx, state, &mut stms, obligations, TypInv::Assign)?;
+
             Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
         ExprX::AssignToPlace { place, rhs, op: None, resolve } => {
@@ -1427,7 +1442,7 @@ pub(crate) fn expr_to_stm_opt(
             let e_r = to_exp_or_return_never!(e_r, stms_r);
 
             let (stms_l, exps) = place_to_exp_pair(ctx, state, place)?;
-            let (lhs_exp, e_l) = unwrap_or_return_never!(exps, stms_r, stms_l);
+            let (lhs_exp, e_l, obligations) = unwrap_or_return_never!(exps, stms_r, stms_l);
 
             let mut sequr = Sequencer::new();
             push_or_return_never!(sequr.push(
@@ -1453,6 +1468,8 @@ pub(crate) fn expr_to_stm_opt(
             let assign = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: e_r };
             stms.push(Spanned::new(expr.span.clone(), assign));
 
+            typ_inv_obligations(ctx, state, &mut stms, obligations, TypInv::Assign)?;
+
             Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
         ExprX::Assign { lhs: lhs_expr, rhs: expr2, op } => {
@@ -1477,6 +1494,8 @@ pub(crate) fn expr_to_stm_opt(
                         typs,
                         has_return: _,
                         args,
+                        obligations,
+                        may_unwind,
                     }),
                 )) => {
                     // make a Call
@@ -1519,6 +1538,8 @@ pub(crate) fn expr_to_stm_opt(
                     // special-case for recommends here, or replace this logic with a recursive call
                     // to handle the right-hand-side, if possible.
                     stms.extend(assign.into_iter());
+                    let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call };
+                    typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
                     Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
                 }
                 None => {
@@ -1586,6 +1607,8 @@ pub(crate) fn expr_to_stm_opt(
                         typs,
                         has_return: ret,
                         args,
+                        obligations,
+                        may_unwind,
                     }),
                 ) => {
                     if function_can_be_exp(ctx, state, expr, &x, &resolved_method)? {
@@ -1637,6 +1660,8 @@ pub(crate) fn expr_to_stm_opt(
                                 stms.push(init_var(&expr.span, &temp_ident, &call));
                             }
                         }
+                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call };
+                        typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
                         // tmp
                         Ok((stms, Maybe::Some(Value::Exp(temp_var))))
                     } else {
@@ -1652,6 +1677,8 @@ pub(crate) fn expr_to_stm_opt(
                             args,
                             None,
                         )?);
+                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call };
+                        typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
                         Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
                     }
                 }
@@ -1662,6 +1689,7 @@ pub(crate) fn expr_to_stm_opt(
 
             // Handle two-phase borrow; see the explanation in expr_get_call
             let mut second_phase: Vec<Stm> = Vec::new();
+            let mut all_obligations: Vec<Obligation> = Vec::new();
 
             let mut sequr = Sequencer::new();
             for binder in binders.iter() {
@@ -1672,13 +1700,14 @@ pub(crate) fn expr_to_stm_opt(
                         let (phase1_stms, bor_sst) = borrow_mut_to_sst(ctx, state, arg)?;
                         let mut_ref_exp = match &bor_sst {
                             Maybe::Never => Maybe::Never,
-                            Maybe::Some(bor_sst) => {
+                            Maybe::Some((bor_sst, _obligations)) => {
                                 Maybe::Some(Value::Exp(bor_sst.mut_ref_exp.clone()))
                             }
                         };
                         push_or_return_never!(sequr.push(phase1_stms, mut_ref_exp, kind));
-                        let Maybe::Some(bor_sst) = bor_sst else { unreachable!() };
+                        let Maybe::Some((bor_sst, obligations)) = bor_sst else { unreachable!() };
                         second_phase.push(bor_sst.phase2_stm);
+                        all_obligations.extend(obligations);
                     }
                     _ => {
                         let (stms0, e0) = expr_to_stm_opt(ctx, state, &binder.a)?;
@@ -1686,7 +1715,7 @@ pub(crate) fn expr_to_stm_opt(
                     }
                 }
             }
-            let (stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase);
+            let (mut stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase);
 
             let mut args: Vec<Binder<Exp>> = Vec::new();
             for (binder, e1) in binders.iter().zip(exps.into_iter()) {
@@ -1694,6 +1723,9 @@ pub(crate) fn expr_to_stm_opt(
                 args.push(Arc::new(arg));
             }
             let ctor = ExpX::Ctor(p.clone(), i.clone(), Arc::new(args));
+
+            typ_inv_obligations(ctx, state, &mut stms, all_obligations, TypInv::BareMutRefError)?;
+
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ctor)))))
         }
         ExprX::NullaryOpr(op) => {
@@ -2046,9 +2078,10 @@ pub(crate) fn expr_to_stm_opt(
             let exp = to_exp_or_return_never!(exp, stms);
 
             let tmp = state.make_tmp_var_for_exp(&mut stms, exp);
+            let ti = if *is_assume { TypInv::Assume } else { TypInv::Constructed };
             assert_assume_satisfies_user_defined_type_invariant(
-                ctx, state, &tmp, &mut stms, fun, *is_assume,
-            );
+                ctx, state, &tmp, &mut stms, fun, ti,
+            )?;
             Ok((stms, Maybe::Some(Value::Exp(tmp))))
         }
         ExprX::AssertBy { vars, require, ensure, proof } => {
@@ -2763,9 +2796,16 @@ pub(crate) fn expr_to_stm_opt(
             let (mut stms, bor_sst) = borrow_mut_to_sst(ctx, state, expr)?;
             match bor_sst {
                 Maybe::Never => Ok((stms, Maybe::Never)),
-                Maybe::Some(bor_sst) => {
+                Maybe::Some((bor_sst, obligations)) => {
                     let BorrowMutSst { phase2_stm, mut_ref_exp } = bor_sst;
                     stms.push(phase2_stm);
+                    typ_inv_obligations(
+                        ctx,
+                        state,
+                        &mut stms,
+                        obligations,
+                        TypInv::BareMutRefError,
+                    )?;
                     Ok((stms, Maybe::Some(Value::Exp(mut_ref_exp))))
                 }
             }
@@ -2956,7 +2996,7 @@ fn borrow_mut_to_sst(
     ctx: &Ctx,
     state: &mut State,
     expr: &Expr,
-) -> Result<(Vec<Stm>, Maybe<BorrowMutSst>), VirErr> {
+) -> Result<(Vec<Stm>, Maybe<(BorrowMutSst, Vec<Obligation>)>), VirErr> {
     let place = match &expr.x {
         ExprX::BorrowMut(p) => p,
         ExprX::TwoPhaseBorrowMut(p) => p,
@@ -2964,7 +3004,7 @@ fn borrow_mut_to_sst(
     };
 
     let (stms, exps) = place_to_exp_pair(ctx, state, place)?;
-    let (lhs_exp, normal_exp) = unwrap_or_return_never!(exps, stms);
+    let (lhs_exp, normal_exp, obligations) = unwrap_or_return_never!(exps, stms);
 
     // phase 1
     let (var_ident, mut_ref_exp) = state.declare_temp_var_stm(
@@ -2995,27 +3035,35 @@ fn borrow_mut_to_sst(
     let assignx = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: future_exp };
     let assign = Spanned::new(expr.span.clone(), assignx);
 
-    Ok((phase1_stms, Maybe::Some(BorrowMutSst { phase2_stm: assign, mut_ref_exp })))
+    Ok((phase1_stms, Maybe::Some((BorrowMutSst { phase2_stm: assign, mut_ref_exp }, obligations))))
+}
+
+#[derive(Clone)]
+struct Obligation {
+    fun: Fun,
+    exp: Exp,
 }
 
 /// Use this when you need to both read and write to a given place
 ///
-/// Returns two expressions:
+/// Returns:
 /// (i) the place as sst "loc" (l-value) which MUST NOT depend on any mutable vars.
 /// (ii) the evaluation of the place (by definition, this is dependent
 /// on the mutable var in question, but it must not depend on any other mutable vars)
+/// (iii) a vector of expressions that need to have their type invariants re-asserted after
+/// after the mutation is complete.
 fn place_to_exp_pair(
     ctx: &Ctx,
     state: &mut State,
     place: &Place,
-) -> Result<(Vec<Stm>, Maybe<(Exp, Exp)>), VirErr> {
+) -> Result<(Vec<Stm>, Maybe<(Exp, Exp, Vec<Obligation>)>), VirErr> {
     let mk_exp = |expx: ExpX| SpannedTyped::new(&place.span, &place.typ, expx);
     let (stms, exps) = place_to_exp_pair_rec(ctx, state, place)?;
     let exps = match exps {
         Maybe::Never => Maybe::Never,
-        Maybe::Some((e1, e2)) => {
+        Maybe::Some((e1, e2, obligations)) => {
             let e1 = mk_exp(ExpX::Loc(e1));
-            Maybe::Some((e1, e2))
+            Maybe::Some((e1, e2, obligations))
         }
     };
     Ok((stms, exps))
@@ -3025,12 +3073,12 @@ fn place_to_exp_pair_rec(
     ctx: &Ctx,
     state: &mut State,
     place: &Place,
-) -> Result<(Vec<Stm>, Maybe<(Exp, Exp)>), VirErr> {
+) -> Result<(Vec<Stm>, Maybe<(Exp, Exp, Vec<Obligation>)>), VirErr> {
     let mk_exp = |expx: ExpX| SpannedTyped::new(&place.span, &place.typ, expx);
     match &place.x {
         PlaceX::Field(field_opr, p) => {
             let (mut stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
-            let (e1, e2) = unwrap_or_return_never!(exps, stms);
+            let (e1, e2, obligations) = unwrap_or_return_never!(exps, stms);
 
             let check = match field_opr.check {
                 VariantCheck::Union => {
@@ -3055,21 +3103,21 @@ fn place_to_exp_pair_rec(
 
             let e1 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e1));
             let e2 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr), e2));
-            Ok((stms, Maybe::Some((e1, e2))))
+            Ok((stms, Maybe::Some((e1, e2, obligations))))
         }
         PlaceX::DerefMut(p) => {
             let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
-            let (e1, e2) = unwrap_or_return_never!(exps, stms);
+            let (e1, e2, obligations) = unwrap_or_return_never!(exps, stms);
             let e1 = mk_exp(ExpX::Unary(UnaryOp::MutRefCurrent, e1));
             let e2 = mk_exp(ExpX::Unary(UnaryOp::MutRefCurrent, e2));
-            Ok((stms, Maybe::Some((e1, e2))))
+            Ok((stms, Maybe::Some((e1, e2, obligations))))
         }
         PlaceX::Local(x) => {
             let unique_id = state.get_var_unique_id(&x);
             let e_l = mk_exp(ExpX::VarLoc(unique_id.clone()));
             let e_r = mk_exp(ExpX::Var(unique_id));
             let e_r = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_r));
-            Ok((vec![], Maybe::Some((e_l, e_r))))
+            Ok((vec![], Maybe::Some((e_l, e_r, vec![]))))
         }
         PlaceX::Temporary(e) => {
             let (mut stms, v) = expr_to_stm_opt(ctx, state, e)?;
@@ -3081,7 +3129,7 @@ fn place_to_exp_pair_rec(
 
             let e_l = mk_exp(ExpX::VarLoc(temp_id.clone()));
 
-            Ok((stms, Maybe::Some((e_l, temp_var))))
+            Ok((stms, Maybe::Some((e_l, temp_var, vec![]))))
         }
         PlaceX::WithExpr(e, p) => {
             let (mut stms, v) = expr_to_stm_opt(ctx, state, e)?;
@@ -3127,8 +3175,16 @@ fn place_to_exp_pair_rec(
             let op = BinaryOp::Index(*kind, BoundsCheck::Allow);
             let e_l = mk_exp(ExpX::Binary(op, exps.0, idx_exp.clone()));
             let e_r = mk_exp(ExpX::Binary(op, exps.1, idx_exp));
+            let obligations = exps.2;
 
-            Ok((stms, Maybe::Some((e_l, e_r))))
+            Ok((stms, Maybe::Some((e_l, e_r, obligations))))
+        }
+        PlaceX::UserDefinedTypInvariantObligation(p, fun) => {
+            let (stms, mut exps) = place_to_exp_pair_rec(ctx, state, p)?;
+            if let Maybe::Some((_e1, e2, obligations)) = &mut exps {
+                obligations.push(Obligation { fun: fun.clone(), exp: e2.clone() });
+            }
+            Ok((stms, exps))
         }
     }
 }
@@ -3190,6 +3246,8 @@ fn stmt_to_stm(
                             typs,
                             has_return: _,
                             args,
+                            obligations,
+                            may_unwind,
                         }),
                     )) => {
                         // Special case: convert to a Call
@@ -3216,6 +3274,10 @@ fn stmt_to_stm(
                         // special-case for recommends here, or replace this logic with a recursive call
                         // to handle the right-hand-side, if possible.
                         let ret = Maybe::Some(Value::ImplicitUnit(stmt.span.clone()));
+
+                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call };
+                        typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
+
                         return Ok((stms, ret, Some((name.clone(), decl, None))));
                     }
                     None => {}
@@ -3395,14 +3457,38 @@ fn call_namespace(ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicity
     SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
 }
 
-pub fn assert_assume_satisfies_user_defined_type_invariant(
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum TypInv {
+    UnwindError,
+    BareMutRefError,
+    Assign,
+    Call,
+    Constructed,
+    Assume,
+}
+
+fn typ_inv_obligations(
+    ctx: &Ctx,
+    state: &mut State,
+    stms: &mut Vec<Stm>,
+    obligations: Vec<Obligation>,
+    typ_inv: TypInv,
+) -> Result<(), VirErr> {
+    for obligation in obligations.into_iter().rev() {
+        let Obligation { fun, exp } = obligation;
+        assert_assume_satisfies_user_defined_type_invariant(ctx, state, &exp, stms, &fun, typ_inv)?;
+    }
+    Ok(())
+}
+
+fn assert_assume_satisfies_user_defined_type_invariant(
     ctx: &Ctx,
     state: &mut State,
     exp: &Exp,
     stms: &mut Vec<Stm>,
     fun: &Fun,
-    is_assume: bool,
-) {
+    typ_inv: TypInv,
+) -> Result<(), VirErr> {
     let typs = match &*undecorate_typ(&exp.typ) {
         TypX::Datatype(_path, typs, ..) => typs.clone(),
         _ => panic!("assert_assume_satisfies_user_defined_type_invariant: expected datatype"),
@@ -3411,18 +3497,41 @@ pub fn assert_assume_satisfies_user_defined_type_invariant(
     let expx = ExpX::Call(call_fun, typs, Arc::new(vec![exp.clone()]));
     let exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
 
+    let function = ctx.func_map.get(fun).unwrap();
+
+    if typ_inv == TypInv::UnwindError {
+        return Err(crate::messages::error_with_label(
+            &exp.span,
+            "this function call takes a &mut ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked no_unwind (note: this check is currently implemented overly-conservatively and requires the function to be marked no_unwind in its signature)",
+            "mutable reference to this place",
+        ).secondary_label(&function.span, "type invariant declared here"));
+    }
+    if typ_inv == TypInv::BareMutRefError {
+        return Err(crate::messages::error_with_label(
+            &exp.span,
+            "not supported: taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)",
+            "mutable reference to this place",
+        ).secondary_label(&function.span, "type invariant declared here"));
+    }
+
     if state.checking_recommends(ctx) {
         stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
     } else {
         let exp = state.make_tmp_var_for_exp(stms, exp);
-
-        let function = ctx.func_map.get(fun).unwrap();
-        let error = crate::messages::error(
-            &exp.span,
-            "constructed value may fail to meet its declared type invariant",
-        )
-        .secondary_label(&function.span, "type invariant declared here");
-        if !is_assume {
+        if typ_inv != TypInv::Assume {
+            let error = crate::messages::error(
+                &exp.span,
+                match &typ_inv {
+                    TypInv::Constructed =>
+                        "constructed value may fail to meet its declared type invariant",
+                    TypInv::Call =>
+                        "value may fail to meet its declared type invariant upon end of function call",
+                    TypInv::Assign =>
+                        "value may fail to meet its declared type invariant after assignment",
+                    TypInv::Assume | TypInv::UnwindError | TypInv::BareMutRefError => unreachable!(),
+                }
+            )
+            .secondary_label(&function.span, "type invariant declared here");
             stms.push(Spanned::new(
                 exp.span.clone(),
                 StmX::Assert(state.next_assert_id(), Some(error), exp.clone()),
@@ -3430,4 +3539,5 @@ pub fn assert_assume_satisfies_user_defined_type_invariant(
         }
         stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
     }
+    Ok(())
 }
