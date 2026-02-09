@@ -16,16 +16,16 @@
 //!
 //! ```
 //! let tracked r2 = r1.duplicate();
-//! assert(r2.id() == r1.id());
+//! assert(r2.loc() == r1.loc());
 //! assert(r2@ == r1@);
 //! ```
 //!
-//! Any two agreement resources with the same `id()` are guaranteed to
+//! Any two agreement resources with the same `loc()` are guaranteed to
 //! have equal values. You can establish this by calling
 //! `lemma_agreement`, as in the following example:
 //!
 //! ```
-//! assert(r2.id() == r1.id());
+//! assert(r2.loc() == r1.loc());
 //! proof { r1.lemma_agreement(&mut r2); }
 //! assert(r2@ == r1@);
 //! ```
@@ -35,130 +35,56 @@ use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::prelude::*;
 use vstd::resource;
+use vstd::resource::agree::lemma_agree;
+use vstd::resource::agree::AgreementRA;
+use vstd::resource::algebra::Resource;
 use vstd::resource::algebra::ResourceAlgebra;
-use vstd::resource::pcm::Resource;
-use vstd::resource::pcm::PCM;
 use vstd::resource::Loc;
 
 verus! {
 
-pub enum AgreementResourceValue<T> {
-    Empty,
-    Chosen { c: T },
-    Invalid,
-}
-
-impl<T> AgreementResourceValue<T> {
-    pub open spec fn new(c: T) -> Self {
-        AgreementResourceValue::<T>::Chosen { c }
-    }
-}
-
-impl<T> ResourceAlgebra for AgreementResourceValue<T> {
-    open spec fn valid(self) -> bool {
-        !(self is Invalid)
-    }
-
-    open spec fn op(a: Self, b: Self) -> Self {
-        match (a, b) {
-            (AgreementResourceValue::<T>::Empty, _) => b,
-            (_, AgreementResourceValue::<T>::Empty) => a,
-            (AgreementResourceValue::<T>::Invalid, _) => AgreementResourceValue::<T>::Invalid {  },
-            (_, AgreementResourceValue::<T>::Invalid) => AgreementResourceValue::<T>::Invalid {  },
-            (
-                AgreementResourceValue::<T>::Chosen { c: c1 },
-                AgreementResourceValue::<T>::Chosen { c: c2 },
-            ) => if c1 == c2 {
-                a
-            } else {
-                AgreementResourceValue::<T>::Invalid {  }
-            },
-        }
-    }
-
-    proof fn valid_op(a: Self, b: Self) {
-    }
-
-    proof fn commutative(a: Self, b: Self) {
-    }
-
-    proof fn associative(a: Self, b: Self, c: Self) {
-    }
-}
-
-
-impl<T> PCM for AgreementResourceValue<T> {
-    open spec fn unit() -> Self {
-        AgreementResourceValue::<T>::Empty {  }
-    }
-
-    proof fn op_unit(self) {
-    }
-
-    proof fn unit_valid() {
-    }
-}
-
 pub struct AgreementResource<T> {
-    r: Resource<AgreementResourceValue<T>>,
+    r: Resource<AgreementRA<T>>,
 }
 
 impl<T> AgreementResource<T> {
-    pub closed spec fn inv(self) -> bool {
-        self.r.value() is Chosen
-    }
-
-    pub closed spec fn id(self) -> Loc {
+    pub closed spec fn loc(self) -> Loc {
         self.r.loc()
     }
 
     pub closed spec fn view(self) -> T
-        recommends
-            self.inv(),
     {
-        self.r.value()->c
+        self.r.value()@
     }
 
     pub proof fn alloc(c: T) -> (tracked result: AgreementResource<T>)
         ensures
-            result.inv(),
             result@ == c,
     {
-        let r_value = AgreementResourceValue::<T>::new(c);
-        let tracked r = Resource::<AgreementResourceValue::<T>>::alloc(r_value);
+        let carrier = AgreementRA::Agree(c);
+        let tracked r = Resource::alloc(carrier);
         AgreementResource::<T> { r }
     }
 
-    pub proof fn duplicate(tracked self: &mut AgreementResource<T>) -> (tracked result:
-        AgreementResource<T>)
-        requires
-            old(self).inv(),
+    pub proof fn duplicate(tracked self: &AgreementResource<T>) -> (tracked result: AgreementResource<T>)
         ensures
-            self.inv(),
-            result.inv(),
-            self.id() == old(self).id(),
-            result.id() == old(self).id(),
+            result.loc() == self.loc(),
             self@ == result@,
-            self@ == old(self)@,
     {
-        let tracked r = resource::duplicate(&self.r);
+        let tracked r = self.r.as_ref().duplicate_previous(self.r.value());
         AgreementResource::<T> { r }
     }
 
     pub proof fn lemma_agreement(
-        tracked self: &mut AgreementResource<T>,
+        tracked self: &AgreementResource<T>,
         tracked other: &AgreementResource<T>,
     )
         requires
-            old(self).inv(),
-            other.inv(),
-            old(self).id() == other.id(),
+            self.loc() == other.loc(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
             self@ == other@,
     {
-        self.r.validate_2(&other.r);
+        lemma_agree(&self.r, &other.r);
     }
 }
 
