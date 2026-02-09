@@ -3310,12 +3310,14 @@ impl Visitor {
         //                  invariant
         //                     // We track the continuitiy of the snapshot and the initial iterator-creation expression
         //                     ::vstd::prelude::spec_eq(y.snapshot, VERUS_old_snap),
-        //                     ::vstd::prelude::spec_eq(y.init, 
-        //                          Ghost(verus_builtin::infer_spec_for_loop_iter(
-        //                                  &::core::iter::IntoIterator::into_iter(VERUS_iter_init),
-        //                                  &::core::iter::IntoIterator::into_iter(e),
+        //                     match verus_builtin::infer_spec_for_loop_iter(
+        //                              &::core::iter::IntoIterator::into_iter(VERUS_iter_init),
+        //                              &::core::iter::IntoIterator::into_iter(e),
         //                              print_hint,
-        //                          ))),
+        //                          ) {
+        //                         Some(v) => ::vstd::prelude::spec_eq(y.init, Ghost(Some(v))),
+        //                         None => true,
+        //                     },
         //                     y.wf(),
         //                     ({ 
         //                         // Grab the next val for (possible) use in the user-provided inv
@@ -3451,14 +3453,17 @@ impl Visitor {
         ));
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
-            #vstd::prelude::spec_eq(#x_iter_name.init,
-                #vstd::prelude::Ghost::new(
-                    verus_builtin::infer_spec_for_loop_iter(
-                        &::core::iter::IntoIterator::into_iter(#x_verus_iter_init),
-                        &::core::iter::IntoIterator::into_iter(#expr_inv),
-                        #print_hint,
-                    ))
-            )
+            match verus_builtin::infer_spec_for_loop_iter(
+                &::core::iter::IntoIterator::into_iter(#x_verus_iter_init),
+                &::core::iter::IntoIterator::into_iter(#expr_inv),
+                #print_hint,
+            ) {
+                ::core::option::Option::Some(VERUS_tmp_infer) => #vstd::prelude::spec_eq(
+                    #x_iter_name.init,
+                    #vstd::prelude::Ghost::new(::core::option::Option::Some(VERUS_tmp_infer))
+                ),
+                ::core::option::Option::None => true,
+            }
         ));
         let some_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#decrease_is_some_msg)]
