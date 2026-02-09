@@ -3,6 +3,29 @@ use vstd::std_specs::iter::IteratorSpecImpl;
 
 verus! {
 
+fn test_loop() {
+    let mut n: u64 = 0;
+    let mut iter = (0..10).into_iter();
+    loop
+        invariant
+            iter.start <= 10,
+            iter.end == 10,
+            n == iter.start * 3,
+        ensures
+            iter.start == 10,
+    {
+        if let Some(x) = iter.next() {
+            assert(x < 10);
+            assert(x == iter.start - 1);
+            n += 3;
+        } else {
+            break;
+        }
+    }
+    assert(iter.start == 10);
+    assert(n == 30);
+}
+
 //fn test_loop() {
 //    let mut n: u64 = 0;
 //    let mut end = 10;
@@ -18,36 +41,84 @@ verus! {
 //    assert(n == 30);
 //}
 
-fn test_loop_fail() {
-    let mut n: u64 = 0;
-    let mut end = 10;
-//    let r = 0..end;
-//    let i = ::core::iter::IntoIterator::into_iter(r);
-//    let v = ::vstd::std_specs::iter::VerusForLoopWrapper::new(i, Ghost(Some(&i)));
-//    assert(v.init@ == Some(&::core::iter::IntoIterator::into_iter(0..end)));
+//fn test_loop_fail() {
+//    let mut n: u64 = 0;
+//    let mut end = 10;
+////    let r = 0..end;
+////    let i = ::core::iter::IntoIterator::into_iter(r);
+////    let v = ::vstd::std_specs::iter::VerusForLoopWrapper::new(i, Ghost(Some(&i)));
+////    assert(v.init@ == Some(&::core::iter::IntoIterator::into_iter(0..end)));
+////
+////    let mut i = 5;
+////    loop 
+////        invariant 
+////            v.init@ == Some(&::core::iter::IntoIterator::into_iter(0..end)),
+////        decreases i
+////    {
+////        assume(false);
+////        i -= 1;
+////    }
 //
-//    let mut i = 5;
-//    loop 
-//        invariant 
-//            v.init@ == Some(&::core::iter::IntoIterator::into_iter(0..end)),
-//        decreases i
+//    //#[verifier::loop_isolation(false)]
+//    for x in iter: 0..end
+//        invariant
+//            n == iter.index@ * 3,
+//            end == 10,
 //    {
-//        assume(false);
-//        i -= 1;
+//        assert(x < 10); // FAILS
+//        n += 3;
+//        end = end + 0; // causes end to be non-constant, so loop needs more invariants
 //    }
+//}
 
-    //#[verifier::loop_isolation(false)]
-    for x in iter: 0..end
-        invariant
-            n == x * 3,
-            end == 10,
-    {
-        //assert(x < 10); // FAILS
-        assert(x == iter.index@);
-        n += 3;
-        end = end + 0; // causes end to be non-constant, so loop needs more invariants
-    }
-}
+
+//fn non_spec() {}
+//
+//fn test_loop_modes_transient_state() {
+//    let mut n: u64 = 0;
+//    let mut end = 10;
+//    // test Typing::snapshot_transient_state
+//    for x in iter: 0..({let z = end; non_spec(); z})
+//        invariant
+//            n == x * 3,
+//            end == 10,
+//    {
+//        n += 3;
+//        end = end + 0; // causes end to be non-constant
+//    }
+//}
+//
+//        fn test_loop(n: u32) -> (v: Vec<u32>)
+//            ensures
+//                v.len() == n,
+//                forall|i: int| 0 <= i < n ==> v[i] == i,
+//        {
+//            let mut v: Vec<u32> = Vec::new();
+//            for i in iter: 0..n
+//                invariant
+//                    v.len() == iter.index@,
+//                    forall |i| 0 <= i < v.len() ==> v[i] == iter.seq()[i],
+//            {
+//                v.push(i);
+//            }
+//            v
+//        }
+//
+//        fn test_loop_fail(n: u32) -> (v: Vec<u32>)
+//            ensures
+//                v.len() == n,
+//                forall|i: int| 0 <= i < n ==> v[i] == i,
+//        {
+//            let mut v: Vec<u32> = Vec::new();
+//            for i in iter: 0..n
+//                invariant
+//                    v.len() == iter.index@,
+//                    forall |i| 0 <= i < v.len() ==> v[i] == iter.seq()[i],
+//            {
+//                v.push(0);
+//            }
+//            v
+//        }
 
 /*
 fn non_spec() {}
