@@ -260,8 +260,8 @@ impl MonotonicCounterResource {
         requires
             old(self)@ is FullRightToAdvance,
         ensures
-            final(self).id() == old(self).id(),
-            final(self)@ == (MonotonicCounterResourceValue::FullRightToAdvance {
+            self.id() == old(self).id(),
+            self@ == (MonotonicCounterResourceValue::FullRightToAdvance {
                 value: old(self)@->FullRightToAdvance_value + 1,
             }),
     {
@@ -284,10 +284,10 @@ impl MonotonicCounterResource {
             old(other)@ is HalfRightToAdvance,
         ensures
             old(self)@ == old(other)@,
-            final(self).id() == old(self).id(),
-            final(other).id() == old(self).id(),
-            final(other)@ == final(self)@,
-            final(self)@ == (MonotonicCounterResourceValue::HalfRightToAdvance {
+            self.id() == old(self).id(),
+            other.id() == old(self).id(),
+            other@ == self@,
+            self@ == (MonotonicCounterResourceValue::HalfRightToAdvance {
                 value: old(self)@->HalfRightToAdvance_value + 1,
             }),
     {
@@ -313,11 +313,11 @@ impl MonotonicCounterResource {
         requires
             old(self).id() == other.id(),
         ensures
-            final(self)@ == old(self)@,
-            final(self)@ is LowerBound && other@ is FullRightToAdvance ==> final(self)@.n() <= other@.n(),
-            other@ is LowerBound && final(self)@ is FullRightToAdvance ==> other@.n() <= final(self)@.n(),
-            final(self)@ is LowerBound && other@ is HalfRightToAdvance ==> final(self)@.n() <= other@.n(),
-            other@ is LowerBound && final(self)@ is HalfRightToAdvance ==> other@.n() <= final(self)@.n(),
+            self@ == old(self)@,
+            self@ is LowerBound && other@ is FullRightToAdvance ==> self@.n() <= other@.n(),
+            other@ is LowerBound && self@ is FullRightToAdvance ==> other@.n() <= self@.n(),
+            self@ is LowerBound && other@ is HalfRightToAdvance ==> self@.n() <= other@.n(),
+            other@ is LowerBound && self@ is HalfRightToAdvance ==> other@.n() <= self@.n(),
     {
         self.r.validate_2(&other.r)
     }

@@ -194,7 +194,7 @@ impl OneShotResource {
         requires
             old(self)@ is FullRightToComplete,
         ensures
-            final(self)@ is Complete,
+            self@ is Complete,
     {
         let v = OneShotResourceValue::Complete {  };
         update_mut(&mut self.r, v);
@@ -221,10 +221,10 @@ impl OneShotResource {
             !(old(other)@ is Empty),
         ensures
             old(other)@ is HalfRightToComplete,
-            final(self)@ is Complete,
-            final(other)@ is Complete,
-            final(self).id() == old(self).id(),
-            final(other).id() == old(self).id(),
+            self@ is Complete,
+            other@ is Complete,
+            self.id() == old(self).id(),
+            other.id() == old(self).id(),
     {
         self.r.validate();
         other.r.validate();
@@ -258,9 +258,9 @@ impl OneShotResource {
             other@ is Complete,
             !(old(self)@ is Empty),
         ensures
-            final(self).id() == old(self).id(),
-            final(self)@ == old(self)@,
-            final(self)@ is Complete,
+            self.id() == old(self).id(),
+            self@ == old(self)@,
+            self@ is Complete,
     {
         self.r.validate_2(&other.r);
     }

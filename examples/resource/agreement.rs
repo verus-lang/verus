@@ -134,12 +134,12 @@ impl<T> AgreementResource<T> {
         requires
             old(self).inv(),
         ensures
-            final(self).inv(),
+            self.inv(),
             result.inv(),
-            final(self).id() == old(self).id(),
+            self.id() == old(self).id(),
             result.id() == old(self).id(),
-            final(self)@ == result@,
-            final(self)@ == old(self)@,
+            self@ == result@,
+            self@ == old(self)@,
     {
         let tracked r = resource::duplicate(&self.r);
         AgreementResource::<T> { r }
@@ -154,9 +154,9 @@ impl<T> AgreementResource<T> {
             other.inv(),
             old(self).id() == other.id(),
         ensures
-            final(self).id() == old(self).id(),
-            final(self)@ == old(self)@,
-            final(self)@ == other@,
+            self.id() == old(self).id(),
+            self@ == old(self)@,
+            self@ == other@,
     {
         self.r.validate_2(&other.r);
     }
