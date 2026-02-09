@@ -222,9 +222,9 @@ impl<T> LogResource<T> {
         requires
             old(self)@ is FullAuthority,
         ensures
-            final(self)@ is FullAuthority,
-            final(self).id() == old(self).id(),
-            final(self)@.log() == old(self)@.log() + seq![v],
+            self@ is FullAuthority,
+            self.id() == old(self).id(),
+            self@.log() == old(self)@.log() + seq![v],
     {
         let value = LogResourceValue::<T>::FullAuthority { log: self@.log() + seq![v] };
         update_mut(&mut self.r, value);
@@ -236,11 +236,11 @@ impl<T> LogResource<T> {
             old(other)@ is HalfAuthority,
             old(self).id() == old(other).id(),
         ensures
-            final(self)@ is HalfAuthority,
-            final(self).id() == old(self).id(),
-            final(other).id() == old(self).id(),
-            final(self)@.log() == old(self)@.log() + seq![v],
-            final(other)@ == final(self)@,
+            self@ is HalfAuthority,
+            self.id() == old(self).id(),
+            other.id() == old(self).id(),
+            self@.log() == old(self)@.log() + seq![v],
+            other@ == self@,
     {
         self.r.validate_2(&other.r);
         let new_log = self@.log() + seq![v];
@@ -263,12 +263,12 @@ impl<T> LogResource<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            final(self)@ == old(self)@,
-            is_prefix(final(self)@.log(), other@.log()) || is_prefix(other@.log(), final(self)@.log()),
-            final(self)@ is HalfAuthority ==> is_prefix(other@.log(), final(self)@.log()),
-            final(self)@ is FullAuthority ==> is_prefix(other@.log(), final(self)@.log()),
-            other@ is HalfAuthority ==> is_prefix(final(self)@.log(), other@.log()),
-            other@ is FullAuthority ==> is_prefix(final(self)@.log(), other@.log()),
+            self@ == old(self)@,
+            is_prefix(self@.log(), other@.log()) || is_prefix(other@.log(), self@.log()),
+            self@ is HalfAuthority ==> is_prefix(other@.log(), self@.log()),
+            self@ is FullAuthority ==> is_prefix(other@.log(), self@.log()),
+            other@ is HalfAuthority ==> is_prefix(self@.log(), other@.log()),
+            other@ is FullAuthority ==> is_prefix(self@.log(), other@.log()),
     {
         self.r.validate_2(&other.r)
     }
