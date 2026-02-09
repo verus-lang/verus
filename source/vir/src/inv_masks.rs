@@ -32,7 +32,6 @@ pub enum MaskQueryKind {
     OpenInvariant,
     FunctionCall,
     OpenAtomicUpdate,
-    AtomicFunctionCall,
     UpdateFunctionCall,
     AtomicUpdateWellFormed,
 }
@@ -74,9 +73,7 @@ impl MaskQueryKind {
         match self {
             MaskQueryKind::OpenInvariant => base_err(),
 
-            MaskQueryKind::FunctionCall
-            | MaskQueryKind::AtomicFunctionCall
-            | MaskQueryKind::UpdateFunctionCall => {
+            MaskQueryKind::FunctionCall | MaskQueryKind::UpdateFunctionCall => {
                 base_err().primary_label(primary, "at this call-site")
             }
 
@@ -100,9 +97,7 @@ impl MaskQueryKind {
                 "invariant opened here",
             ),
 
-            MaskQueryKind::FunctionCall
-            | MaskQueryKind::AtomicFunctionCall
-            | MaskQueryKind::UpdateFunctionCall => error_with_label(
+            MaskQueryKind::FunctionCall | MaskQueryKind::UpdateFunctionCall => error_with_label(
                 elem,
                 "cannot show this invariant namespace is allowed to be opened",
                 "function might open this invariant namespace",
@@ -128,9 +123,7 @@ impl MaskQueryKind {
         match self {
             MaskQueryKind::OpenInvariant => unreachable!(),
 
-            MaskQueryKind::FunctionCall
-            | MaskQueryKind::AtomicFunctionCall
-            | MaskQueryKind::UpdateFunctionCall => error_with_label(
+            MaskQueryKind::FunctionCall | MaskQueryKind::UpdateFunctionCall => error_with_label(
                 &removed_elem,
                 "callee may open invariants disallowed at call-site",
                 "invariant opened here",
@@ -152,9 +145,7 @@ impl MaskQueryKind {
         match self {
             MaskQueryKind::OpenInvariant => unreachable!(),
 
-            MaskQueryKind::FunctionCall
-            | MaskQueryKind::AtomicFunctionCall
-            | MaskQueryKind::UpdateFunctionCall => error_with_label(
+            MaskQueryKind::FunctionCall | MaskQueryKind::UpdateFunctionCall => error_with_label(
                 primary,
                 "callee may open invariants that caller cannot",
                 "at this call-site",

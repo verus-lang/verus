@@ -5,6 +5,7 @@ use vstd::prelude::*;
 use vstd::atomic::*;
 use vstd::invariant::*;
 use vstd::tokens::frac::*;
+use vstd::set::Set;
 
 verus! {
 
@@ -45,6 +46,7 @@ type K = (int, int, int, int);
 type V = (PermissionBool, PermissionU32, GhostVarAuth<bool>, GhostVar<Option<FlipAU>>, Protocol);
 
 pub struct FlagInv;
+pub open spec const FLAG_INV: int = 2;
 impl InvariantPredicate<K, V> for FlagInv {
     open spec fn inv(k: K, v: V) -> bool {
         let (value_id, pend_id, state_id, gv_id) = k;
@@ -97,6 +99,7 @@ impl Flag {
     pub open spec fn wf(self) -> bool {
         &&& self.inv@.constant().0 == self.value.id()
         &&& self.inv@.constant().1 == self.pending.id()
+        &&& self.inv@.namespace() == FLAG_INV
     }
 
     pub open spec fn token_id(self) -> int {
@@ -116,7 +119,7 @@ impl Flag {
         let tracked inv = AtomicInvariant::new(
             (value.id(), pending.id(), state_auth.id(), au_auth.id()),
             (value_perm, pending_perm, state_auth, au_var, Empty(au_auth)),
-            2
+            FLAG_INV,
         );
 
         let this = Self { value, pending, inv: Tracked(inv) };
@@ -128,9 +131,12 @@ impl Flag {
         atomically (atomic_update) {
             type ReadPred,
             (old_token: FlagToken) -> (new_token: I<FlagToken>),
-            requires old_token.id() == self.token_id(),
-            ensures new_token@ == old_token,
-            outer_mask any,
+            requires
+                old_token.id() == self.token_id(),
+            ensures
+                new_token@ == old_token,
+
+            outer_mask Set::<int>::full().remove(FLAG_INV),
             inner_mask none,
         },
         requires self.wf(),
@@ -164,7 +170,8 @@ impl Flag {
             ensures
                 new_token@.value@ == !old_token.value@,
                 new_token@.id() == old_token.id(),
-            outer_mask any,
+
+            outer_mask Set::<int>::full().remove(FLAG_INV),
             inner_mask none,
         },
         requires self.wf(),
@@ -406,6 +413,7 @@ impl Flag {
 }
 
 pub struct UserInv;
+pub open spec const USER_INV: int = 5;
 impl InvariantPredicate<int, FlagToken> for UserInv {
     open spec fn inv(id: int, token: FlagToken) -> bool {
         &&& token.id() == id
@@ -416,7 +424,9 @@ fn main() {
     let (flag, Tracked(token)) = Flag::new(false);
     assert(token.value@ == false);
 
-    let tracked inv = AtomicInvariant::<int, FlagToken, UserInv>::new(token.id(), token, 5);
+    let tracked inv = AtomicInvariant::<int, FlagToken, UserInv>::new(
+        token.id(), token, USER_INV
+    );
 
     let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
     flag.flip() atomically |update| -> FlipAU {

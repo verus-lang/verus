@@ -624,7 +624,31 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Update(i, R::get(e))))
             }
-            ExprX::InvMask(_m) => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::InvMask(m) => match m {
+                MaskSpec::InvariantOpens(span, es) => {
+                    let span = span.clone();
+                    let es = self.visit_exprs(es)?;
+                    R::ret(|| {
+                        let m = MaskSpec::InvariantOpens(span, R::get_vec_a(es));
+                        expr_new(ExprX::InvMask(m))
+                    })
+                }
+                MaskSpec::InvariantOpensExcept(span, es) => {
+                    let span = span.clone();
+                    let es = self.visit_exprs(es)?;
+                    R::ret(|| {
+                        let m = MaskSpec::InvariantOpensExcept(span, R::get_vec_a(es));
+                        expr_new(ExprX::InvMask(m))
+                    })
+                }
+                MaskSpec::InvariantOpensSet(e) => {
+                    let e = self.visit_expr(e)?;
+                    R::ret(|| {
+                        let m = MaskSpec::InvariantOpensSet(R::get(e));
+                        expr_new(ExprX::InvMask(m))
+                    })
+                }
+            },
             ExprX::Return(e) => {
                 let e = self.visit_opt_expr(e)?;
                 R::ret(|| expr_new(ExprX::Return(R::get_opt(e))))

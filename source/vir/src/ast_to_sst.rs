@@ -2702,10 +2702,13 @@ pub(crate) fn expr_to_stm_opt(
             // let x = new existential;
             //
             // assume(req(au, x));
-            // assert(inner_mask(au) ⊆ state.mask);
+            // assert(outer_mask(au) ⊆ state.mask);
             //
-            // let $mut $x = x;
-            // let y = $body;
+            // let y;
+            // with state.mask = inner_mask(au) {
+            //     let $mut $x = x;
+            //     y = $body;
+            // }
             //
             // assert(ens(au, x, y));
             //
@@ -2768,18 +2771,29 @@ pub(crate) fn expr_to_stm_opt(
                 Default::default(),
             ));
 
-            let call_inner_mask = ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::inner_mask"),
-                typ_args.clone(),
-                Arc::new(vec![au_var_exp.clone()]),
-            );
+            let outer_mask = MaskSet::arbitrary(&SpannedTyped::new(
+                &expr.span,
+                &int_set_typ,
+                ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::outer_mask"),
+                    typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                ),
+            ));
 
-            let inner_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_inner_mask);
-            let inner_mask = MaskSet::arbitrary(&inner_mask_exp);
+            let inner_mask = MaskSet::arbitrary(&SpannedTyped::new(
+                &expr.span,
+                &int_set_typ,
+                ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::inner_mask"),
+                    typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                ),
+            ));
 
             if !state.checking_recommends(ctx) {
                 let state_mask = state.mask.as_ref().unwrap();
-                for assertion in inner_mask.subset_of(
+                for assertion in outer_mask.subset_of(
                     ctx,
                     state_mask,
                     &expr.span,
@@ -2811,11 +2825,11 @@ pub(crate) fn expr_to_stm_opt(
             let (body_stms, body_exp) = expr_to_stm_opt(ctx, state, body)?;
             stms.extend(body_stms);
 
-            state.mask = backup_mask;
-            state.pop_scope();
-
             let body_exp = to_exp_or_return_never!(body_exp, stms);
             let y_var_exp = state.make_tmp_var_for_exp(&mut stms, body_exp);
+
+            state.mask = backup_mask;
+            state.pop_scope();
 
             // assert atomic ensures
 
@@ -2929,9 +2943,9 @@ pub(crate) fn expr_to_stm_opt(
             // let au = new existential;
             // assume(pred(au) == pred);
             //
-            // assert(outer_mask(au) ⊆ state.mask);
-            //
-            // () = $body;
+            // with state.mask = outer_mask(au) {
+            //     () = $body;
+            // }
             //
             // au
             // ```
@@ -3021,21 +3035,6 @@ pub(crate) fn expr_to_stm_opt(
                     Arc::new(vec![au_var_exp.clone()]),
                 ),
             ));
-
-            if !state.checking_recommends(ctx) {
-                let state_mask = state.mask.as_ref().unwrap();
-                for assertion in outer_mask.subset_of(
-                    ctx,
-                    state_mask,
-                    &expr.span,
-                    MaskQueryKind::AtomicFunctionCall,
-                ) {
-                    stms.push(Spanned::new(
-                        expr.span.clone(),
-                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
-                    ))
-                }
-            }
 
             // generate body
 
