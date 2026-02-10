@@ -193,7 +193,11 @@ pub enum StmX {
     /// Assertion checked by verification-time computation/interpretation
     AssertCompute(Option<AssertId>, Exp, crate::ast::ComputeMode),
     /// Add assumption to verification context (trusted, not checked)
-    Assume(Exp),
+    Assume(
+        Exp,
+        /// The label from a `proof_note` attribute.
+        Option<String>,
+    ),
     /// Assignment to a mutable variable or location
     Assign { lhs: Dest, rhs: Exp },
     /// Set fuel level for a recursive function (controls unrolling depth)

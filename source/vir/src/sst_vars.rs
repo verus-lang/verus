@@ -170,7 +170,7 @@ fn stm_assign(
         StmX::Assert(..)
         | StmX::AssertBitVector { .. }
         | StmX::AssertCompute(..)
-        | StmX::Assume(_)
+        | StmX::Assume(..)
         | StmX::Fuel(..)
         | StmX::RevealString(_)
         | StmX::Return { .. }
@@ -321,7 +321,7 @@ fn stm_mutations(
         StmX::Assert(..)
         | StmX::AssertBitVector { .. }
         | StmX::AssertCompute(..)
-        | StmX::Assume(_)
+        | StmX::Assume(..)
         | StmX::Fuel(..)
         | StmX::RevealString(_)
         | StmX::Return { .. }

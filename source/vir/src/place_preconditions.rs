@@ -19,7 +19,12 @@ pub(crate) fn index_bound(span: &Span, e1: &Expr, e2: &Expr, kind: ArrayKind) ->
     let assert_expr = SpannedTyped::new(
         span,
         &unit_typ(),
-        ExprX::AssertAssume { is_assume: false, expr: condition, msg: Some(index_msg(span)) },
+        ExprX::AssertAssume {
+            is_assume: false,
+            expr: condition,
+            msg: Some(index_msg(span)),
+            proof_note: None,
+        },
     );
     Spanned::new(span.clone(), StmtX::Expr(assert_expr))
 }
@@ -50,7 +55,12 @@ pub(crate) fn field_check(span: &Span, e1: &Expr, field_opr: &FieldOpr) -> Stmt 
     let assert_expr = SpannedTyped::new(
         span,
         &unit_typ(),
-        ExprX::AssertAssume { is_assume: false, expr: condition, msg: Some(field_msg(span)) },
+        ExprX::AssertAssume {
+            is_assume: false,
+            expr: condition,
+            msg: Some(field_msg(span)),
+            proof_note: None,
+        },
     );
     Spanned::new(span.clone(), StmtX::Expr(assert_expr))
 }

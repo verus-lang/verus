@@ -475,13 +475,14 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 // don't descend into Headers
                 R::ret(|| expr_new(expr.x.clone()))
             }
-            ExprX::AssertAssume { is_assume, expr, msg } => {
+            ExprX::AssertAssume { is_assume, expr, msg, proof_note } => {
                 let expr = self.visit_expr(expr)?;
                 R::ret(|| {
                     expr_new(ExprX::AssertAssume {
                         is_assume: *is_assume,
                         expr: R::get(expr),
                         msg: msg.clone(),
+                        proof_note: proof_note.clone(),
                     })
                 })
             }

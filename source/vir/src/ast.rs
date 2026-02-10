@@ -1063,7 +1063,7 @@ pub enum ExprX {
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
     Header(HeaderExpr),
     /// Assert or assume
-    AssertAssume { is_assume: bool, expr: Expr, msg: Option<Message> },
+    AssertAssume { is_assume: bool, expr: Expr, msg: Option<Message>, proof_note: Option<String> },
     /// Assert or assume user-defined type invariant for `expr` and return `expr`
     /// These are added in user_defined_type_invariants.rs
     AssertAssumeUserDefinedTypeInvariant { is_assume: bool, expr: Expr, fun: Fun },

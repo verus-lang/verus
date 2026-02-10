@@ -1615,7 +1615,7 @@ pub(crate) fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     let x_var = SpannedTyped::new(&span, &exp.typ, ExpX::Var(x.clone()));
     let eqx = ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone());
     let eq = SpannedTyped::new(&span, &Arc::new(TypX::Bool), eqx);
-    Spanned::new(span.clone(), StmX::Assume(eq))
+    Spanned::new(span.clone(), StmX::Assume(eq, None))
 }
 
 pub(crate) fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
@@ -2305,7 +2305,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             vec![]
         }
-        StmX::Assume(expr) => {
+        StmX::Assume(expr, _) => {
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
             }

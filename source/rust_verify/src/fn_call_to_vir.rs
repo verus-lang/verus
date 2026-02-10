@@ -606,12 +606,22 @@ fn verus_item_to_vir<'tcx, 'a>(
                     &Arc::new(TypX::Bool),
                     ExprX::Const(Constant::Bool(false)),
                 );
-                mk_expr(ExprX::AssertAssume { is_assume: true, expr: f, msg: None })
+                mk_expr(ExprX::AssertAssume {
+                    is_assume: true,
+                    expr: f,
+                    msg: None,
+                    proof_note: None,
+                })
             }
             SpecItem::Assume => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg, msg: None })
+                mk_expr(ExprX::AssertAssume {
+                    is_assume: true,
+                    expr: arg,
+                    msg: None,
+                    proof_note: None,
+                })
             }
         },
         VerusItem::Quant(quant_item) => {
@@ -1096,7 +1106,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 AssertItem::Assert => {
                     unsupported_err_unless!(args_len == 1, expr.span, "expected assert", &args);
                     let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
-                    mk_expr(ExprX::AssertAssume { is_assume: false, expr: exp, msg: None })
+                    mk_expr(ExprX::AssertAssume {
+                        is_assume: false,
+                        expr: exp,
+                        msg: None,
+                        proof_note: None,
+                    })
                 }
                 AssertItem::AssertBy => {
                     unsupported_err_unless!(args_len == 2, expr.span, "expected assert_by", &args);

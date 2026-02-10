@@ -189,7 +189,12 @@ fn func_body_to_sst(
         let mut reqs = crate::traits::trait_bounds_to_ast(ctx, &req.span, &function.x.typ_bounds);
         reqs.push(req.clone());
         for expr in reqs {
-            let assumex = ExprX::AssertAssume { is_assume: true, expr: expr.clone(), msg: None };
+            let assumex = ExprX::AssertAssume {
+                is_assume: true,
+                expr: expr.clone(),
+                msg: None,
+                proof_note: None,
+            };
             proof_body.push(SpannedTyped::new(&req.span, &unit_typ(), assumex));
         }
         proof_body.push(req.clone()); // check spec preconditions
@@ -781,7 +786,7 @@ pub fn func_def_to_sst(
     for r in requires.iter() {
         let r = lo_specs.lower_pure(ctx, &mut state, r, &mut req_stms)?;
         if ctx.checking_spec_preconditions() {
-            req_stms.push(Spanned::new(r.span.clone(), StmX::Assume(r)));
+            req_stms.push(Spanned::new(r.span.clone(), StmX::Assume(r, None)));
         } else {
             reqs.push(r);
         }

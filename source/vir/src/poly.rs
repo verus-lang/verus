@@ -886,9 +886,9 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             })
         }
         StmX::AssertCompute(..) => panic!("AssertCompute should be removed by sst_elaborate"),
-        StmX::Assume(e1) => {
+        StmX::Assume(e1, _) => {
             let e1 = visit_exp_native(ctx, state, e1);
-            mk_stm(StmX::Assume(e1))
+            mk_stm(StmX::Assume(e1, None))
         }
         StmX::Assign { lhs, rhs } => {
             let (e1, rhs) = if let Some(x) = take_temp(state, lhs) {

@@ -622,7 +622,7 @@ pub fn mk_assume(span: &Span, e1: &Expr) -> Expr {
     SpannedTyped::new(
         span,
         &unit_typ(),
-        ExprX::AssertAssume { is_assume: true, expr: e1.clone(), msg: None },
+        ExprX::AssertAssume { is_assume: true, expr: e1.clone(), msg: None, proof_note: None },
     )
 }
 

@@ -584,7 +584,7 @@ fn function_can_be_exp(
 pub fn assume_false(span: &Span) -> Stm {
     let expx = ExpX::Const(Constant::Bool(false));
     let exp = SpannedTyped::new(&span, &Arc::new(TypX::Bool), expx);
-    Spanned::new(span.clone(), StmX::Assume(exp))
+    Spanned::new(span.clone(), StmX::Assume(exp, None))
 }
 
 pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
@@ -593,7 +593,7 @@ pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
     let xvar = SpannedTyped::new(span, &Arc::new(TypX::Bool), xvarx);
     let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(typ.clone()), xvar);
     let has_typ = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_typx);
-    Spanned::new(span.clone(), StmX::Assume(has_typ))
+    Spanned::new(span.clone(), StmX::Assume(has_typ, None))
 }
 
 fn loop_body_find_break(
@@ -1446,7 +1446,7 @@ pub(crate) fn expr_to_stm_opt(
             if let Some(t) = resolve {
                 let resx = ExpX::UnaryOpr(UnaryOpr::HasResolved(t.clone()), e_l.clone());
                 let res = SpannedTyped::new(&expr.span, &bool_typ(), resx);
-                let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(res));
+                let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(res, None));
                 stms.push(assume_stm);
             }
 
@@ -1745,7 +1745,7 @@ pub(crate) fn expr_to_stm_opt(
                     let assert = Spanned::new(expr.span.clone(), assert);
                     stms.push(assert);
                 }
-                let assume = StmX::Assume(condition);
+                let assume = StmX::Assume(condition, None);
                 let assume = Spanned::new(expr.span.clone(), assume);
                 stms.push(assume);
             }
@@ -1890,7 +1890,7 @@ pub(crate) fn expr_to_stm_opt(
             let cexp = expr_to_pure_exp_skip_checks(ctx, state, &cexpr)?;
             state.pop_scope();
 
-            all_stms.push(Spanned::new(expr.span.clone(), StmX::Assume(cexp)));
+            all_stms.push(Spanned::new(expr.span.clone(), StmX::Assume(cexp, None)));
 
             let v = mk_exp(ExpX::Var(uid));
 
@@ -1998,10 +1998,10 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Header(_) => {
             return Err(error(&expr.span, "header expression not allowed here"));
         }
-        ExprX::AssertAssume { is_assume: false, expr: e, msg } => {
+        ExprX::AssertAssume { is_assume: false, expr: e, msg, proof_note: _ } => {
             if state.checking_recommends(ctx) {
                 let (mut stms, exp) = expr_to_stm_or_error(ctx, state, e)?;
-                let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
+                let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp, None));
                 stms.push(stm);
                 Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
             } else {
@@ -2025,15 +2025,15 @@ pub(crate) fn expr_to_stm_opt(
                     e.span.clone(),
                     StmX::Assert(state.next_assert_id(), msg.clone(), exp.clone()),
                 ));
-                stms.push(Spanned::new(e.span.clone(), StmX::Assume(exp)));
+                stms.push(Spanned::new(e.span.clone(), StmX::Assume(exp, None)));
                 Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
             }
         }
-        ExprX::AssertAssume { is_assume: true, expr: e, msg: _ } => {
+        ExprX::AssertAssume { is_assume: true, expr: e, msg: _, proof_note: _ } => {
             // Use expr_to_pure_exp_skip_checks,
             // because the goal of assume is to add an assumption, not to perform checks
             let exp = expr_to_pure_exp_skip_checks(ctx, state, e)?;
-            let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
+            let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp, None));
             Ok((vec![stm], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
         ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume, expr, fun } => {
@@ -2083,7 +2083,7 @@ pub(crate) fn expr_to_stm_opt(
             }
             let (require_checks, require_exp) = expr_to_pure_exp_check(ctx, state, &require)?;
             body.extend(require_checks);
-            let assume = Spanned::new(require.span.clone(), StmX::Assume(require_exp));
+            let assume = Spanned::new(require.span.clone(), StmX::Assume(require_exp, None));
             body.push(assume);
             body.append(&mut proof_stms);
             if state.checking_spec_preconditions(ctx) {
@@ -2121,7 +2121,7 @@ pub(crate) fn expr_to_stm_opt(
             let bnd = Spanned::new(ensure.span.clone(), bndx);
             let forall_exp = mk_exp(ExpX::Bind(bnd, imply_exp));
             let forall_exp = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, forall_exp));
-            let assume = Spanned::new(ensure.span.clone(), StmX::Assume(forall_exp));
+            let assume = Spanned::new(ensure.span.clone(), StmX::Assume(forall_exp, None));
             stms.push(assume);
             Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
@@ -2139,7 +2139,7 @@ pub(crate) fn expr_to_stm_opt(
                         let (require_check_recommends, require_exp) =
                             expr_to_pure_exp_check(ctx, state, &r)?;
                         inner_body.extend(require_check_recommends);
-                        let assume = Spanned::new(r.span.clone(), StmX::Assume(require_exp));
+                        let assume = Spanned::new(r.span.clone(), StmX::Assume(require_exp, None));
                         inner_body.push(assume);
                     }
 
@@ -2202,7 +2202,7 @@ pub(crate) fn expr_to_stm_opt(
                         // Use expr_to_pure_exp_skip_checks,
                         // because we already checked spec preconditions above with check_pure_expr
                         let ensure_exp = expr_to_pure_exp_skip_checks(ctx, state, &e)?;
-                        let assume = Spanned::new(e.span.clone(), StmX::Assume(ensure_exp));
+                        let assume = Spanned::new(e.span.clone(), StmX::Assume(ensure_exp, None));
                         outer.push(assume);
                     }
 
@@ -2289,7 +2289,7 @@ pub(crate) fn expr_to_stm_opt(
                         // Use expr_to_pure_exp_skip_checks,
                         // because we checked spec preconditions above with expr_to_pure_exp_check
                         let ensure_exp = expr_to_pure_exp_skip_checks(ctx, state, &e)?;
-                        let assume = Spanned::new(e.span.clone(), StmX::Assume(ensure_exp));
+                        let assume = Spanned::new(e.span.clone(), StmX::Assume(ensure_exp, None));
                         outer.push(assume);
                     }
                     let outer_block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(outer)));
@@ -2326,7 +2326,7 @@ pub(crate) fn expr_to_stm_opt(
                     Spanned::new(exp.span.clone(), StmX::AssertCompute(id, exp.clone(), *compute));
                 stms.push(assert);
             }
-            let assume = Spanned::new(exp.span.clone(), StmX::Assume(exp));
+            let assume = Spanned::new(exp.span.clone(), StmX::Assume(exp, None));
             stms.push(assume);
             Ok((stms, ret))
         }
@@ -2571,7 +2571,7 @@ pub(crate) fn expr_to_stm_opt(
 
             // Assume the invariant
             let main_inv = call_inv(ctx, &inv_tmp_var, &inner_var, &typ_args, *atomicity);
-            stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(main_inv.clone())));
+            stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(main_inv.clone(), None)));
 
             // Process the body
 
@@ -2887,7 +2887,7 @@ fn binary_op_exp(
             stms.push(assert);
         }
 
-        let assume = StmX::Assume(assert_exp);
+        let assume = StmX::Assume(assert_exp, None);
         let assume = Spanned::new(span.clone(), assume);
         stms.push(assume);
     }
@@ -2975,7 +2975,7 @@ fn borrow_mut_to_sst(
 
     let cur_exp = sst_mut_ref_current(&expr.span, &mut_ref_exp);
     let equal = sst_equal(&expr.span, &cur_exp, &normal_exp);
-    let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(equal));
+    let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(equal, None));
 
     let mut phase1_stms = stms;
     phase1_stms.push(has_typ_stm);
@@ -3045,7 +3045,7 @@ fn place_to_exp_pair_rec(
                     let assert = Spanned::new(place.span.clone(), assert);
                     stms.push(assert);
                 }
-                let assume = StmX::Assume(condition);
+                let assume = StmX::Assume(condition, None);
                 let assume = Spanned::new(place.span.clone(), assume);
                 stms.push(assume);
             }
@@ -3118,7 +3118,7 @@ fn place_to_exp_pair_rec(
                         );
                         stms.push(stm);
                     }
-                    let stm = Spanned::new(place.span.clone(), StmX::Assume(condition));
+                    let stm = Spanned::new(place.span.clone(), StmX::Assume(condition, None));
                     stms.push(stm);
                 }
             }
@@ -3294,7 +3294,7 @@ fn exec_closure_body_stms(
     for req in requires.iter() {
         let (check_stms, exp) = expr_to_pure_exp_check(ctx, state, req)?;
         stms.extend(check_stms);
-        let stm = Spanned::new(req.span.clone(), StmX::Assume(exp));
+        let stm = Spanned::new(req.span.clone(), StmX::Assume(exp, None));
         stms.push(stm);
     }
 
@@ -3411,7 +3411,7 @@ pub fn assert_assume_satisfies_user_defined_type_invariant(
     let exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
 
     if state.checking_recommends(ctx) {
-        stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
+        stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp, None)));
     } else {
         let exp = state.make_tmp_var_for_exp(stms, exp);
 
@@ -3427,6 +3427,6 @@ pub fn assert_assume_satisfies_user_defined_type_invariant(
                 StmX::Assert(state.next_assert_id(), Some(error), exp.clone()),
             ));
         }
-        stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
+        stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp, None)));
     }
 }

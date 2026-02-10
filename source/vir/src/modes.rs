@@ -2402,7 +2402,7 @@ fn check_expr_handle_mut_arg(
         ExprX::AssertAssumeUserDefinedTypeInvariant { .. } => {
             panic!("internal error: AssertAssumeUserDefinedTypeInvariant shouldn't exist here")
         }
-        ExprX::AssertAssume { is_assume: _, expr: e, msg: _ } => {
+        ExprX::AssertAssume { is_assume: _, expr: e, msg: _, proof_note: _ } => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use assert or assume in exec mode"));
             }

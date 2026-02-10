@@ -394,7 +394,7 @@ fn check_termination<'a>(
                     let has_typx =
                         ExpX::UnaryOpr(UnaryOpr::HasType(dest.typ.clone()), dest.clone());
                     let has_typ = SpannedTyped::new(&s.span, &Arc::new(TypX::Bool), has_typx);
-                    let has_typ_assume = Spanned::new(s.span.clone(), StmX::Assume(has_typ));
+                    let has_typ_assume = Spanned::new(s.span.clone(), StmX::Assume(has_typ, None));
                     stms.push(has_typ_assume);
                 }
             }
