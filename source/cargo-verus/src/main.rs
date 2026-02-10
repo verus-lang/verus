@@ -20,9 +20,27 @@ mod subcommands;
 pub mod test_utils;
 
 use crate::{
-    cli::{CargoVerusCli, VerusSubcommand},
+    cli::{CargoOptions, CargoVerusCli, VerusSubcommand},
     subcommands::CargoRunConfig,
 };
+
+fn contains_late_verus_command_line_argument_that_will_be_ignored(opts: &CargoOptions) -> bool {
+    for arg in opts.cargo_args.iter().skip(1) {
+        if arg == "-p"
+            || arg == "--package"
+            || arg == "--no-default-features"
+            || arg == "--features"
+        {
+            println!(
+                "The Verus-relevant command-line argument {0} can't follow the Verus-irrelevant argument {1} because that will cause the Verus-relevant argument to be ignored",
+                arg, opts.cargo_args[0]
+            );
+            return true;
+        }
+    }
+
+    return false;
+}
 
 pub fn main() -> Result<ExitCode> {
     let normalized_args: Vec<_> = normalize_args(env::args()).collect();
@@ -38,20 +56,32 @@ pub fn main() -> Result<ExitCode> {
             }
             return Ok(ExitCode::SUCCESS);
         }
-        VerusSubcommand::Verify(options) => CargoRunConfig {
-            subcommand: "build",
-            options,
-            compile_primary: false,
-            verify_deps: true,
-            warn_if_nothing_verified: true,
-        },
-        VerusSubcommand::Focus(options) => CargoRunConfig {
-            subcommand: "build",
-            options,
-            compile_primary: false,
-            verify_deps: false,
-            warn_if_nothing_verified: true,
-        },
+        VerusSubcommand::Verify(options) => {
+            if contains_late_verus_command_line_argument_that_will_be_ignored(&options.cargo_opts) {
+                return Ok(ExitCode::from(2));
+            } else {
+                CargoRunConfig {
+                    subcommand: "build",
+                    options,
+                    compile_primary: false,
+                    verify_deps: true,
+                    warn_if_nothing_verified: true,
+                }
+            }
+        }
+        VerusSubcommand::Focus(options) => {
+            if contains_late_verus_command_line_argument_that_will_be_ignored(&options.cargo_opts) {
+                return Ok(ExitCode::from(2));
+            } else {
+                CargoRunConfig {
+                    subcommand: "build",
+                    options,
+                    compile_primary: false,
+                    verify_deps: false,
+                    warn_if_nothing_verified: true,
+                }
+            }
+        }
         VerusSubcommand::Build(options) => CargoRunConfig {
             subcommand: "build",
             options,
