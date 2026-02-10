@@ -733,6 +733,7 @@ impl<'a> Builder<'a> {
             | ExprX::AssertCompute(..)
             | ExprX::ProofInSpec(..)
             | ExprX::AirStmt(..)
+            | ExprX::Old(..)
             | ExprX::Nondeterministic => Ok(bb),
             ExprX::Call(call_target, es, post_args) => {
                 assert!(post_args.is_none());

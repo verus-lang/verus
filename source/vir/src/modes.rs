@@ -275,6 +275,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::ImplicitReborrowOrSpecRead(..)
             | ExprX::BorrowMut(..)
             | ExprX::TwoPhaseBorrowMut(..)
+            | ExprX::Old(..)
         => None,
         ExprX::NonSpecClosure { .. } => Some(OuterProphReason::NonSpecClosure),
         ExprX::Loop { .. } => Some(OuterProphReason::Loop),
@@ -3211,6 +3212,11 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::UseLeftWhereRightCanHaveNoAssignments(..) => {
             panic!("UseLeftWhereRightCanHaveNoAssignments shouldn't be created yet");
+        }
+        ExprX::Old(e) => {
+            let proph =
+                check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
+            Ok((Mode::Spec, proph))
         }
     };
     let (mode, proph) = mode_proph?;

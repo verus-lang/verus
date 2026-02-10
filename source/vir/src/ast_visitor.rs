@@ -662,6 +662,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     expr_new(ExprX::UseLeftWhereRightCanHaveNoAssignments(R::get(e1), R::get(e2)))
                 })
             }
+            ExprX::Old(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Old(R::get(e))))
+            }
         }
     }
 

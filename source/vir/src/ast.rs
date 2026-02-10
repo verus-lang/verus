@@ -1138,6 +1138,8 @@ pub enum ExprX {
     /// The right side MUST NOT have any assigns it, this lets us avoid creating temporary
     /// vars that would clutter everything up.
     UseLeftWhereRightCanHaveNoAssignments(Expr, Expr),
+    /// The `old` node
+    Old(Expr),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
