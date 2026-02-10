@@ -2487,3 +2487,51 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails_type_invariant_error(err, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] with_tracked_wrapper ["new-mut-ref"] => verus_code! {
+        struct X {
+            i: (u64, u64),
+            j: (u64, u64),
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i.0
+                  <= self.i.1
+                  <= self.j.0
+                  <= self.j.1
+            }
+        }
+
+        fn set_to(Tracked(a): Tracked<&mut u64>, b: u64)
+            ensures *fin(a) == b
+            no_unwind
+        {
+            assume(false);
+        }
+
+        fn test() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            let x_ref = &mut x;
+            set_to(Tracked(&mut x_ref.i.0), 5);
+        }
+
+        fn test_fails() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            let x_ref = &mut x;
+            set_to(Tracked(&mut x_ref.i.0), 15); // FAILS
+        }
+
+        fn test2() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            set_to(Tracked(&mut x.i.0), 5);
+        }
+
+        fn test2_fails() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            set_to(Tracked(&mut x.i.0), 15); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+}
