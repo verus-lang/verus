@@ -1205,7 +1205,7 @@ Where <guard> is one of:
 
 const UNTRUSTED_UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type. 
 
-Within the exec_spec! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char. Note: int and nat are not allowed.";
+Within the exec_spec! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize. Note: int and nat are not allowed.";
 
 /// Matches the closure to the form
 ///   `|x| <guard> ==> <body>`
@@ -1245,7 +1245,7 @@ fn get_guarded_range_quant_untrusted(closure: &ExprClosure) -> Result<GuardedQua
         return Err(Error::new_spanned(closure, "Unsupported quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG));
     };
 
-    // <guard> == <lower> <= x < <upper>
+    // <guard> == <lower> <op> x <op> <upper>
     let Expr::Binary(ExprBinary { left: lower_guard, op: upper_op, right: upper, .. }) =
         guard.as_ref()
     else {
@@ -1320,13 +1320,6 @@ fn compile_guarded_quant_untrusted(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Re
         compiled_upper = quote! { #compiled_upper + 1 };
     };
 
-    let is_char = match &**quant_type {
-        Type::Path(type_path) => {
-            type_path.path.segments.len() == 1 && type_path.path.segments.first().unwrap().ident == "char"
-        }
-        _ => false,
-    };
-
     let mut body_ctx = ctx.clone();
     body_ctx.add(quant_var.clone(), VarMode::Owned);
     let compiled_body = compile_expr(&body_ctx, &quant.body, VarMode::Ref, false)?;
@@ -1354,30 +1347,22 @@ fn compile_guarded_quant_untrusted(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Re
     // Some common pieces
     let expr_span = expr.span();
     let bound_expr = match (quant.lower_op, quant.upper_op) {
-        (BinOp::Lt(..), BinOp::Lt(..)) => quote! { _lower < #quant_var < _upper },
-        (BinOp::Le(..), BinOp::Lt(..)) => quote! { _lower <= #quant_var < _upper },
-        (BinOp::Lt(..), BinOp::Le(..)) => quote! { _lower < #quant_var <= _upper },
-        (BinOp::Le(..), BinOp::Le(..)) => quote! { _lower <= #quant_var <= _upper },
+        | (BinOp::Lt(..), BinOp::Lt(..))
+        | (BinOp::Le(..), BinOp::Lt(..))
+        | (BinOp::Lt(..), BinOp::Le(..))
+        | (BinOp::Le(..), BinOp::Le(..)) => quote! { _lower <= #quant_var < _upper },
         (_, _) => return Err(Error::new_spanned(expr, "Ill-formed quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG))
     };
     //let inv_bound = quote_spanned! { expr_span => _lower <= #quant_var <= _upper };
     let inv_bound = match (quant.lower_op, quant.upper_op) {
-        (BinOp::Lt(..), BinOp::Lt(..)) => quote! { _lower < #quant_var <= _upper },
-        (BinOp::Le(..), BinOp::Lt(..)) => quote! { _lower <= #quant_var <= _upper },
-        (BinOp::Lt(..), BinOp::Le(..)) => quote! { _lower < #quant_var <= _upper + 1 },
-        (BinOp::Le(..), BinOp::Le(..)) => quote! { _lower <= #quant_var <= _upper + 1 },
+        | (BinOp::Lt(..), BinOp::Lt(..)) 
+        | (BinOp::Le(..), BinOp::Lt(..)) 
+        | (BinOp::Lt(..), BinOp::Le(..)) 
+        | (BinOp::Le(..), BinOp::Le(..)) => quote! { _lower <= #quant_var <= _upper },
         (_, _) => return Err(Error::new_spanned(expr, "Ill-formed quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG))
     };
-    let decreases = if is_char { 
-        quote_spanned! { expr_span => _upper as u32 - #quant_var as u32 }
-    } else {
-        quote_spanned! { expr_span => _upper - #quant_var }
-    };
-    let quant_var_update = if is_char {
-        quote! { #quant_var = char::from_u32(#quant_var as u32 + 1).unwrap(); }
-    } else {
-        quote! { #quant_var += 1; }
-    };
+    let decreases = quote_spanned! { expr_span => _upper - #quant_var };
+    let quant_var_update = quote! { #quant_var += 1; };
     let final_assert = quote_spanned! { expr_span => _res == { #(#local_view)* #op #expr } };
 
     // Generate a fresh trigger function
@@ -1452,7 +1437,7 @@ fn compile_guarded_quant_untrusted(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Re
                                 _res = true;
                                 break;
                             }
-                            #quant_var += 1;
+                            #quant_var_update
                         }
                     }
                     proof { let _ = #trigger_fn_name(_lower); }
@@ -1621,20 +1606,28 @@ fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, E
 fn compile_single_quant_var(ctx: &LocalCtx, var: &GuardedQuantVar) -> Result<(TokenStream2, TokenStream2, TokenStream2, TokenStream2), Error> {
     let quant_var = &var.quant_var;
     let quant_type = &var.quant_type;
-    let mut compiled_lower = compile_expr(ctx, &var.bounds.lower, VarMode::Owned, true)?;
-    if let BinOp::Lt(..) = var.bounds.lower_op {
-        compiled_lower = quote! { #compiled_lower + 1 };
-    };
-    let mut compiled_upper = compile_expr(ctx, &var.bounds.upper, VarMode::Owned, true)?;
-    if let BinOp::Le(..) = var.bounds.upper_op {
-        compiled_upper = quote! { #compiled_upper + 1 };
-    };
-
     let is_char = match &**quant_type {
         Type::Path(type_path) => {
             type_path.path.segments.len() == 1 && type_path.path.segments.first().unwrap().ident == "char"
         }
         _ => false,
+    };
+
+    let mut compiled_lower = compile_expr(ctx, &var.bounds.lower, VarMode::Owned, true)?;
+    if let BinOp::Lt(..) = var.bounds.lower_op {
+        compiled_lower = if is_char { 
+            quote! { char::from_u32(#compiled_lower as u32 + 1).unwrap(); } 
+        } else { 
+            quote! { #compiled_lower + 1 } 
+        };
+    };
+    let mut compiled_upper = compile_expr(ctx, &var.bounds.upper, VarMode::Owned, true)?;
+    if let BinOp::Le(..) = var.bounds.upper_op {
+        compiled_upper = if is_char { 
+            quote! { char::from_u32(#compiled_upper as u32 + 1).unwrap(); } 
+        } else { 
+            quote! { #compiled_upper + 1 } 
+        };
     };
 
     let lower = Ident::new(&format!("_lower_{}", quant_var), quant_var.span());
