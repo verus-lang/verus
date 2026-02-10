@@ -24,7 +24,7 @@ pub trait ExIterator {
 
     type Item;
 
-    /// This iterator obeys the specifications below on `next`, 
+    /// This iterator obeys the specifications below on `next`,
     /// expressed in terms of prophetic spec functions.
     /// Only iterators that terminate (i.e., eventually return None
     /// and then continue to return None) should use this interface.
@@ -49,7 +49,7 @@ pub trait ExIterator {
             self.obeys_prophetic_iter_laws() ==> self.completes() == old(self).completes(),
             self.obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
             // `next` pops the head of the prophesized seq(), or returns None
-            self.obeys_prophetic_iter_laws() ==> 
+            self.obeys_prophetic_iter_laws() ==>
             ({
                 if old(self).seq().len() > 0 {
                     &&& self.seq() == old(self).seq().drop_first()
@@ -59,7 +59,7 @@ pub trait ExIterator {
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
-            self.obeys_prophetic_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
+            self.obeys_prophetic_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==>
                 decreases_to!(old(self).decrease()->0 => self.decrease()->0),
     ;
 
@@ -70,16 +70,16 @@ pub trait ExIterator {
     /// If there's no appropriate metric to decrease, this can return None,
     /// and the user will have to provide an explicit decreases clause.
     spec fn decrease(&self) -> Option<nat>;
-    
-    /// Invariant relating the iterator to the initial expression that created it 
+
+    /// Invariant relating the iterator to the initial expression that created it
     /// (e.g., `my_vec.iter()`).  This allows for more ergonomic/intuitive invariants.
     /// When the analysis can infer a spec initial value (by discovering a `when_used_as_spec`
     /// annotation), the analysis places the value in init.
     #[verifier::prophetic]
     spec fn initial_value_inv(&self, init: Option<&Self>) -> bool;
 
-    // If we can make a useful guess as to what the i-th value will be, return it.  
-    // Otherwise, return None. 
+    // If we can make a useful guess as to what the i-th value will be, return it.
+    // Otherwise, return None.
     spec fn peek(&self, index: int) -> Option<Self::Item>;
 }
 
@@ -89,7 +89,7 @@ pub struct VerusForLoopWrapper<'a, I: Iterator> {
     pub index: Ghost<int>,
     pub snapshot: Ghost<I>,
     pub init: Ghost<Option<&'a I>>,
-    pub iter: I 
+    pub iter: I
 }
 
 impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
@@ -99,7 +99,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     }
 
     /// These properties help maintain the properties in wf,
-    /// but they don't need to be exposed to the client 
+    /// but they don't need to be exposed to the client
     #[verifier::prophetic]
     pub closed spec fn wf_inner(self) -> bool {
         &&& self.iter.seq().len() == self.seq().len() - self.index@
@@ -137,7 +137,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     /// Advance the underlying (real) iterator and prove
     /// that the loop invariants are preserved.
     pub fn next(&mut self) -> (ret: Option<I::Item>)
-        requires 
+        requires
             old(self).wf(),
         ensures
             self.seq() == old(self).seq(),
@@ -154,7 +154,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             self.iter.obeys_prophetic_iter_laws() == old(self).iter.obeys_prophetic_iter_laws(),
             self.iter.obeys_prophetic_iter_laws() ==> self.iter.completes() == old(self).iter.completes(),
             self.iter.obeys_prophetic_iter_laws() ==> (old(self).iter.decrease() is Some <==> self.iter.decrease() is Some),
-            self.iter.obeys_prophetic_iter_laws() ==> 
+            self.iter.obeys_prophetic_iter_laws() ==>
             ({
                 if old(self).iter.seq().len() > 0 {
                     &&& self.iter.seq() == old(self).iter.seq().drop_first()
@@ -163,7 +163,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
                     self.iter.seq() === old(self).iter.seq() && ret === None && self.iter.completes()
                 }
             }),
-            self.iter.obeys_prophetic_iter_laws() && old(self).iter.seq().len() > 0 && self.iter.decrease() is Some ==> 
+            self.iter.obeys_prophetic_iter_laws() && old(self).iter.seq().len() > 0 && self.iter.decrease() is Some ==>
                 decreases_to!(old(self).iter.decrease()->0 => self.iter.decrease()->0),
     {
         let ret = self.iter.next();
@@ -172,7 +172,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
                 self.index@ = self.index@ + 1;
                 // These aren't automatically broadcasted but are needed to prove self.wf_inner()
                 broadcast use {axiom_seq_subrange_len, axiom_seq_subrange_index};
-            } 
+            }
         }
         ret
     }

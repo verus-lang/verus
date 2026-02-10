@@ -3291,13 +3291,13 @@ impl Visitor {
         //       #[allow(non_snake_case)]
         //       let VERUS_iter = VerusForLoopWrapper::new(
         //          // Real iterator
-        //          ::core::iter::IntoIterator::into_iter(VERUS_iter_init), 
+        //          ::core::iter::IntoIterator::into_iter(VERUS_iter_init),
         //          // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
         //          Ghost(Some(&::core::iter::IntoIterator::into_iter(VERUS_iter_init))),
-        //      ); 
+        //      );
         //      // Hold on to the initial value so that after the loop, we know it didn't change
         //      #[allow(non_snake_case)]
-        //      #[verus::internal(spec)] 
+        //      #[verus::internal(spec)]
         //      let y = VERUS_OLD_y.snapshot.view();
         //      #[allow(non_snake_case)]
         //      let VERUS_loop_result = match VERUS_iter {
@@ -3319,7 +3319,7 @@ impl Visitor {
         //                         None => true,
         //                     },
         //                     y.wf(),
-        //                     ({ 
+        //                     ({
         //                         // Grab the next val for (possible) use in the user-provided inv
         //                         let x = y.snapshot.view().peek(y.index.view())
         //                                  .unwrap_or(vstd::pervasive::arbitrary());
@@ -3360,7 +3360,7 @@ impl Visitor {
             pat, // x
             in_token,
             expr_name, // y
-            expr, // e
+            expr,      // e
             invariant_except_break,
             invariant,
             ensures,
@@ -3438,7 +3438,7 @@ impl Visitor {
         let x_wrapped_iter = Ident::new("VERUS_iter", span);
         // Name that "remembers" the initial snapshot
         let x_snapshot = Ident::new("VERUS_old_snap", span);
-        // Name that "remembers" the initial iterator at the start of the loop body 
+        // Name that "remembers" the initial iterator at the start of the loop body
         let x_iter_body_old = Ident::new("VERUS_old_iter", span);
 
         let mut stmts: Vec<Stmt> = Vec::new();
@@ -3504,7 +3504,10 @@ impl Visitor {
             if no_loop_invariant.is_none() {
                 invariant_except_break.exprs.exprs.insert(0, some_inv);
             }
-            Some(InvariantExceptBreak { token: Token![invariant_except_break](span), exprs: invariant_except_break.exprs })
+            Some(InvariantExceptBreak {
+                token: Token![invariant_except_break](span),
+                exprs: invariant_except_break.exprs,
+            })
         } else if no_loop_invariant.is_none() {
             Some(parse_quote_spanned!(span => invariant_except_break #some_inv,))
         } else {
@@ -3550,7 +3553,7 @@ impl Visitor {
         };
         self.add_loop_specs(&mut stmts, inv_except_break, invariant_for, None, ensure, decreases);
         let body_exec = Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
-            #[verus::internal(spec)] 
+            #[verus::internal(spec)]
             #[verus::internal(unwrapped_binding)]
             let mut #x_iter_body_old; // REVIEW: We appear to need this to be mut so we can initialize it in a separate proof block
             #[verifier::proof_block]
@@ -3566,7 +3569,7 @@ impl Visitor {
                 ::core::option::Option::None => break,
             };
             let #pat = VERUS_loop_next;
-            #[verus::internal(spec)] 
+            #[verus::internal(spec)]
             #[verus::internal(unwrapped_binding)] // REVIEW: We appear to need this to be mut so we can initialize it in a separate proof block
             let mut #x_iter_name;
             #[verifier::proof_block]
@@ -3591,11 +3594,11 @@ impl Visitor {
                 // Real iterator
                 #x_exec_iter,
                 // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
-                #[verifier::ghost_wrapper] 
+                #[verifier::ghost_wrapper]
                 ::vstd::prelude::ghost_exec(#[verifier::ghost_block_wrapped] Some(&#x_exec_iter)),
-            ); 
+            );
             // Hold on to the initial snapshot value so that after the loop, we know it didn't change
-            #[allow(non_snake_case)] 
+            #[allow(non_snake_case)]
             #[verus::internal(spec)]
             #[verus::internal(unwrapped_binding)]
             let mut #x_snapshot;    // REVIEW: We appear to need this to be mut so we can initialize it in a separate proof block
@@ -3606,7 +3609,7 @@ impl Visitor {
             #[allow(non_snake_case)]
             let VERUS_loop_result = match #x_wrapped_iter {
                 #[allow(non_snake_case)]
-                mut #x_iter_name => 
+                mut #x_iter_name =>
                     #[verifier::allow_complex_invariants]
                     #loop_expr
             };
@@ -5101,7 +5104,14 @@ pub(crate) fn for_loop_spec_attr(
     };
     let mut spec_attr = spec_attr;
     visitor.visit_loop_spec(&mut spec_attr);
-    let verus_syn::LoopSpec { iter_name, invariants: invariant, invariant_except_breaks: invariant_except_break, ensures, decreases, .. } = spec_attr;
+    let verus_syn::LoopSpec {
+        iter_name,
+        invariants: invariant,
+        invariant_except_breaks: invariant_except_break,
+        ensures,
+        decreases,
+        ..
+    } = spec_attr;
     let syn::ExprForLoop { attrs, label, for_token, pat, in_token, expr, body, .. } = forloop;
     let verus_forloop = ExprForLoop {
         attrs: attrs.into_iter().map(|a| parse_quote_spanned! {a.span() => #a}).collect(),

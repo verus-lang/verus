@@ -1,7 +1,7 @@
 use super::super::prelude::*;
-use crate::std_specs::iter::IteratorSpec;
 use super::super::view::View;
 use super::cmp::{PartialOrdIs, PartialOrdSpec};
+use crate::std_specs::iter::IteratorSpec;
 use core::ops::{Range, RangeInclusive};
 
 verus! {
@@ -65,7 +65,7 @@ impl<Idx> View for RangeInclusive<Idx> {
 
 pub trait StepSpec where Self: Sized {
     // REVIEW: it would be nice to be able to use SpecOrd::spec_lt (not yet supported)
-    // TODO: We should now be able to use cmp_spec or partial_cmp_spec here. 
+    // TODO: We should now be able to use cmp_spec or partial_cmp_spec here.
     spec fn spec_is_lt(self, other: Self) -> bool;
 
     spec fn spec_steps_between(self, end: Self) -> Option<usize>;
@@ -112,7 +112,7 @@ pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx
         ret@.exhausted == false,
 ;
 
-impl <A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl for Range<A> {
+impl<A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl for Range<A> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
@@ -128,26 +128,24 @@ impl <A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl f
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
-        &&& IteratorSpec::seq(self) ==
-            Seq::new(
-                self.start.spec_steps_between_int(self.end) as nat,
-                |i: int| self.start.spec_forward_checked_int(i).unwrap(),
-            )
+        &&& IteratorSpec::seq(self) == Seq::new(
+            self.start.spec_steps_between_int(self.end) as nat,
+            |i: int| self.start.spec_forward_checked_int(i).unwrap(),
+        )
         &&& init matches Some(v) ==> {
-                &&& self.start == v.start 
-                &&& self.end == v.end
-                &&& IteratorSpec::seq(self) ==
-                    Seq::new(
-                        v.start.spec_steps_between_int(v.end) as nat,
-                        |i: int| v.start.spec_forward_checked_int(i).unwrap(),
-                    )
+            &&& self.start == v.start
+            &&& self.end == v.end
+            &&& IteratorSpec::seq(self) == Seq::new(
+                v.start.spec_steps_between_int(v.end) as nat,
+                |i: int| v.start.spec_forward_checked_int(i).unwrap(),
+            )
         }
     }
 
     open spec fn decrease(&self) -> Option<nat> {
         Some(self.start.spec_steps_between_int(self.end) as nat)
     }
-    
+
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         //Some(self.start.spec_forward_checked_int(index).unwrap())
         if 0 <= index <= self.start.spec_steps_between_int(self.end) {
@@ -158,8 +156,10 @@ impl <A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl f
     }
 }
 
-pub assume_specification<A: std::iter::Step> [<Range<A> as Iterator>::next] (range: &mut Range<A>) -> (r: Option<A>)
-    ensures 
+pub assume_specification<A: std::iter::Step>[ <Range<A> as Iterator>::next ](
+    range: &mut Range<A>,
+) -> (r: Option<A>)
+    ensures
         (*range, r) == spec_range_next(*old(range)),
 ;
 
@@ -251,7 +251,7 @@ pub broadcast group group_range_axioms {
     axiom_spec_range_next_i64,
     axiom_spec_range_next_i128,
     axiom_spec_range_next_isize,
-//    axiom_spec_into_iter,
+    //    axiom_spec_into_iter,
 }
 
 } // verus!

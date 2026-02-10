@@ -380,7 +380,7 @@ impl <T, A: Allocator> crate::std_specs::iter::IteratorSpecImpl for IntoIter<T, 
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
-    
+
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         if 0 <= index < into_iter_elts(*self).len() {
             Some(into_iter_elts(*self)[index])

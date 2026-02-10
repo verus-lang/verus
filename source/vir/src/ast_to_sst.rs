@@ -627,7 +627,7 @@ fn loop_body_find_breaks(
 fn loop_body_has_breaks(loop_label: &Option<String>, body: &Expr) -> usize {
     let mut num_breaks = 0;
     loop_body_find_breaks(loop_label, false, &mut num_breaks, body);
-    num_breaks 
+    num_breaks
 }
 
 /// Determine if it's possible for control flow to reach the statement after the loop exit.
@@ -2410,7 +2410,7 @@ pub(crate) fn expr_to_stm_opt(
                 invs.clone()
             };
             let num_breaks = loop_body_has_breaks(label, body);
-            let has_user_break = num_breaks > if is_for_loop { 1 } else { 0 } ;
+            let has_user_break = num_breaks > if is_for_loop { 1 } else { 0 };
             let invs = if is_for_loop && has_user_break {
                 // If the user added a break statement, then we need to remove the auto-generated ensures
                 // clauses (since they typically don't apply any more)
@@ -2420,7 +2420,8 @@ pub(crate) fn expr_to_stm_opt(
                             LoopInvariantKind::InvariantExceptBreak => Some(inv.clone()),
                             LoopInvariantKind::InvariantAndEnsures => Some(inv.clone()),
                             LoopInvariantKind::Ensures => {
-                                if matches!(inv.inv.x, ExprX::UnaryOpr(UnaryOpr::AutoDecreases, _)) {
+                                if matches!(inv.inv.x, ExprX::UnaryOpr(UnaryOpr::AutoDecreases, _))
+                                {
                                     None
                                 } else {
                                     Some(inv.clone())
@@ -2489,7 +2490,10 @@ pub(crate) fn expr_to_stm_opt(
             for inv in invs.iter() {
                 // Ensures clauses are unnecessary if loop_isolation is true,
                 // since the weakest precondition already tracks all the paths through the breaks into the code after the loop
-                if !loop_isolation && allow_complex_invariants && inv.kind == LoopInvariantKind::Ensures {
+                if !loop_isolation
+                    && allow_complex_invariants
+                    && inv.kind == LoopInvariantKind::Ensures
+                {
                     continue;
                 }
 
@@ -2498,7 +2502,8 @@ pub(crate) fn expr_to_stm_opt(
                     crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.invariant);
                 check_recommends.extend(rec);
 
-                let (at_entry, at_exit) = if !loop_isolation && allow_complex_invariants
+                let (at_entry, at_exit) = if !loop_isolation
+                    && allow_complex_invariants
                     && inv.kind == LoopInvariantKind::InvariantExceptBreak
                 {
                     // With loop_isolation disabled, an invariant_except_break simply becomes an invariant

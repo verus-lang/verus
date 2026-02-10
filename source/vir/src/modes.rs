@@ -1998,7 +1998,10 @@ fn check_expr_handle_mut_arg(
                 if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
                     return Err(error(
                         &expr.span,
-                        format!("cannot perform operation with mode {}, {:?},\n{:?}", op_mode, &expr.x, &e1),
+                        format!(
+                            "cannot perform operation with mode {}, {:?},\n{:?}",
+                            op_mode, &expr.x, &e1
+                        ),
                     ));
                 }
             }
@@ -2155,7 +2158,8 @@ fn check_expr_handle_mut_arg(
             Ok((Mode::Spec, p))
         }
         ExprX::UnaryOpr(UnaryOpr::AutoDecreases, e1) => {
-            let p = check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
+            let p =
+                check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
             Ok((Mode::Spec, p))
         }
         ExprX::Loc(e) => {
