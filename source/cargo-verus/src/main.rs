@@ -25,6 +25,15 @@ use crate::{
 };
 
 fn has_late_verus_arg(opts: &CargoOptions) -> bool {
+    for arg in opts.cargo_args.iter() {
+        if arg.starts_with("-Z") && arg.len() > 2 {
+            eprintln!(
+                "Break the command-line argument {0} into two, by using a space after -Z, so that Verus sees it.",
+                arg
+            );
+            return true;
+        }
+    }
     for arg in opts.cargo_args.iter().skip(1) {
         if arg.starts_with("-p")
             || arg == "--package"
@@ -39,6 +48,11 @@ fn has_late_verus_arg(opts: &CargoOptions) -> bool {
             || arg == "--no-default-features"
             || arg == "--features"
             || arg.starts_with("--features=")
+            || arg == "--frozen"
+            || arg == "--locked"
+            || arg == "--offline"
+            || arg.starts_with("--config=")
+            || arg.starts_with("-Z")
         {
             eprintln!(
                 "The Verus-relevant command-line argument {0} can't follow the Verus-irrelevant argument {1} because that will cause the Verus-relevant argument to be ignored",
