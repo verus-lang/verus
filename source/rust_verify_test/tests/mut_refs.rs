@@ -2419,6 +2419,31 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] two_phase_proof_code ["new-mut-ref"] => verus_code! {
+        proof fn set_to(tracked a: &mut Ghost<int>, tracked b: Ghost<int>)
+            ensures *fin(a) == b
+        {
+            *a = b;
+        }
+
+        proof fn two_phase() {
+            let tracked mut x: Ghost<int> = Ghost(0);
+            let tracked x_ref = &mut x;
+            set_to(x_ref, Ghost(x_ref@ + 1));
+            assert(x == 1);
+        }
+
+        proof fn two_phase_fail() {
+            let tracked mut x: Ghost<int> = Ghost(0);
+            let tracked x_ref = &mut x;
+            set_to(x_ref, Ghost(x_ref@ + 1));
+            assert(x == 1);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file_with_options! {
     #[test] struct_mut_ref_pair_immut_ref ["new-mut-ref"] => verus_code! {
         struct BigStruct<'a, 'b>(&'a mut (u64, &'b (u64, u64)));
 

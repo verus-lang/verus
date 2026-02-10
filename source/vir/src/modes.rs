@@ -3584,7 +3584,7 @@ fn check_function(
                             )))
                         } else {
                             match &place.x {
-                                PlaceX::Temporary(e) => {
+                                PlaceX::Temporary(e) if !*two_phase => {
                                     // &mut * Temporary(e) simplifies to e
                                     Ok(e.clone())
                                 }
@@ -3593,11 +3593,22 @@ fn check_function(
                                         TypX::MutRef(t) => t,
                                         _ => panic!("expected MutRef type"),
                                     };
-                                    let deref_e = SpannedTyped::new(
-                                        &inner_span,
-                                        dtyp,
-                                        PlaceX::DerefMut(place.clone()),
-                                    );
+                                    let deref_e = match &place.x {
+                                        PlaceX::Temporary(e)
+                                            if matches!(&e.x, ExprX::BorrowMut(_)) =>
+                                        {
+                                            // * &mut P simplifies to P
+                                            let ExprX::BorrowMut(inner) = &e.x else {
+                                                unreachable!();
+                                            };
+                                            inner.clone()
+                                        }
+                                        _ => SpannedTyped::new(
+                                            &inner_span,
+                                            dtyp,
+                                            PlaceX::DerefMut(place.clone()),
+                                        ),
+                                    };
                                     let borrowx = if *two_phase {
                                         ExprX::TwoPhaseBorrowMut(deref_e)
                                     } else {
