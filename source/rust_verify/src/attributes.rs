@@ -5,9 +5,15 @@ use rustc_hir::{AttrArgs, Attribute};
 use rustc_span::Span;
 use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};
 
+/// The syntax tree of an attribute.
+///
+/// For example, `#[trigger(42)]` would be encoded as follows:
+/// `Fun(span, "trigger", [Lit(LitKind::Integer, "42")])`
 #[derive(Debug)]
 enum AttrTree {
+    /// Similar to a function call, e.g. `trigger(42)`
     Fun(Span, String, Option<Box<[AttrTree]>>),
+    /// A literal, e.g. `42`, `42.0`, `"forty-two"`, etc.
     Lit(LitKind, String),
     //Eq(Span, String, String), // TODO(main_new)
 }
