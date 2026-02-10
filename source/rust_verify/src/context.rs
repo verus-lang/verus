@@ -59,6 +59,9 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) new_mut_ref: bool,
     pub(crate) migrate_postcondition_vars: Option<std::collections::HashSet<vir::ast::VarIdent>>,
     pub(crate) in_postcondition: bool,
+    pub(crate) in_old: bool,
+    // params for the enclosing function and all enclosing non-spec-closures
+    pub(crate) params: Rc<Vec<Vec<vir::ast::VarIdent>>>,
 }
 
 impl<'tcx> ContextX<'tcx> {
@@ -177,5 +180,9 @@ impl<'tcx> BodyCtxt<'tcx> {
         allow_mut_ref: bool,
     ) -> Result<vir::ast::Typ, VirErr> {
         self.ctxt.mid_ty_to_vir(self.fun_id, span, ty, allow_mut_ref)
+    }
+
+    pub(crate) fn is_param_for_fn_or_non_spec_closure(&self, ident: &vir::ast::VarIdent) -> bool {
+        self.params.iter().any(|params| params.iter().any(|param| param == ident))
     }
 }

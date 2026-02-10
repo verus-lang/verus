@@ -9,7 +9,7 @@ use crate::rust_to_vir_base::{
     typ_of_expr_adjusted, typ_of_node_unadjusted, typ_of_node_unadjusted_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
-    ExprModifier, ExprOrPlace, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir,
+    ExprModifier, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir,
     expr_to_vir_consume, extract_array, extract_tuple, get_fn_path, is_expr_typ_mut_ref,
     mk_ty_clip, pat_to_var,
 };
@@ -530,6 +530,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             SpecItem::Ensures => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected ensures", &args);
+                // TODO(new_mut_ref): setting in_postcondition is not necessarily correct
+                // because ensures could be in a loop body instead
                 let bctx = &BodyCtxt {
                     external_body: false,
                     in_ghost: true,
@@ -709,6 +711,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                 unsupported_err_unless!(args_len == 1, expr.span, "expected choose", &args);
                 extract_choose(bctx, expr.span, args[0], true, expr_typ()?)
             }
+            ExprItem::Old if bctx.new_mut_ref => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                // TODO(new_mut_ref): restrict to form like `old(x)` or `old(x.field)`?
+                let bctx = &BodyCtxt { in_old: true, ..bctx.clone() };
+                let arg = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+                mk_expr(ExprX::Old(arg))
+            }
             ExprItem::Old => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 if let ExprKind::Path(QPath::Resolved(
@@ -723,25 +732,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                             &expr.hir_id,
                         )?;
                         let name = pat_to_var(pat)?;
-                        if bctx.new_mut_ref {
-                            // TODO(new_mut_ref): fix old
-                            //  1. check that the use of old is appropriate
-                            //  2. type checking issues (adjustments are skipped)
-                            //  3. old needs to be applicable in the body
-                            let place =
-                                bctx.spanned_typed_new(expr.span, &typ, PlaceX::Local(name));
-                            {
-                                let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                                erasure_info.hir_vir_ids.push((args[0].hir_id, place.span.id));
-                            }
-                            return Ok(ExprOrPlace::Place(place).to_spec_expr(bctx));
-                        } else {
-                            return Ok(bctx.spanned_typed_new(
-                                expr.span,
-                                &typ,
-                                ExprX::VarAt(name, VarAt::Pre),
-                            ));
-                        }
+                        return Ok(bctx.spanned_typed_new(
+                            expr.span,
+                            &typ,
+                            ExprX::VarAt(name, VarAt::Pre),
+                        ));
                     }
                 }
                 err_span(expr.span, "only a variable binding is allowed as the argument to old")

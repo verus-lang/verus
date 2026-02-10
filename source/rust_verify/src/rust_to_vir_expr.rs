@@ -2296,7 +2296,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let typ = &expr_typ()?;
                         let place = bctx.spanned_typed_new(expr.span, typ, x);
                         match &bctx.migrate_postcondition_vars {
-                            Some(vars) if bctx.in_postcondition && vars.contains(&name) => {
+                            Some(vars)
+                                if bctx.in_postcondition
+                                    && !bctx.in_old
+                                    && vars.contains(&name) =>
+                            {
                                 {
                                     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                                     erasure_info.hir_vir_ids.push((expr.hir_id, place.span.id));
@@ -2306,7 +2310,26 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 let e = bctx.spanned_typed_new(expr.span, typ, x);
                                 Ok(ExprOrPlace::Expr(e))
                             }
-                            _ => Ok(ExprOrPlace::Place(place)),
+                            _ => {
+                                // old(x) should create a VarAt if we're in the body of a function
+                                // with x as a param.
+                                // In signatures (like requires/ensures) the VarAt is meaningless
+                                // and is later replaced with a normal var
+                                if bctx.in_old {
+                                    if bctx.is_param_for_fn_or_non_spec_closure(&name) {
+                                        let x = ExprX::VarAt(name, vir::ast::VarAt::Pre);
+                                        let e = bctx.spanned_typed_new(expr.span, typ, x);
+                                        Ok(ExprOrPlace::Expr(e))
+                                    } else {
+                                        unsupported_err!(
+                                            expr.span,
+                                            "`old` for a local variable that isn't a parameter"
+                                        )
+                                    }
+                                } else {
+                                    Ok(ExprOrPlace::Place(place))
+                                }
+                            }
                         }
                     }
                     node => unsupported_err!(expr.span, format!("Path {:?}", node)),
@@ -3539,7 +3562,16 @@ pub(crate) fn closure_to_vir<'tcx>(
                 Ok(Arc::new(VarBinderX { name, a: t }))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let mut body = expr_to_vir_consume(bctx, &body.value, modifier)?;
+
+        let body_bctx = if is_spec_fn {
+            bctx
+        } else {
+            let mut all_params = (*bctx.params).clone();
+            all_params.push(params.iter().map(|p| p.name.clone()).collect());
+            &BodyCtxt { params: std::rc::Rc::new(all_params), ..bctx.clone() }
+        };
+
+        let mut body = expr_to_vir_consume(body_bctx, &body.value, modifier)?;
 
         let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
         let vir::headers::Header { require, ensure, ensure_id_typ, .. } = header;

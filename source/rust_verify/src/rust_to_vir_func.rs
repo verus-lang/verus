@@ -223,6 +223,7 @@ fn body_to_vir<'tcx>(
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     new_mut_ref: bool,
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
+    param_names: Vec<VarIdent>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let types = body_id_to_types(ctxt.tcx, id);
     let bctx = BodyCtxt {
@@ -237,6 +238,8 @@ fn body_to_vir<'tcx>(
         new_mut_ref,
         migrate_postcondition_vars,
         in_postcondition: false,
+        in_old: false,
+        params: std::rc::Rc::new(vec![param_names]),
     };
     let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
 
@@ -1375,6 +1378,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 &external_trait_from_to,
                 new_mut_ref,
                 migrate_postcondition_vars,
+                vir_params.iter().map(|p| p.0.x.name.clone()).collect(),
             )?;
             let header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
@@ -2361,6 +2365,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         &None,
         new_mut_ref,
         None,
+        vec![],
     )?;
     let header = vir::headers::read_header(
         &mut vir_body,
