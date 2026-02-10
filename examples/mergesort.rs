@@ -16,6 +16,7 @@ fn extend_from_idx(r: &mut Vec<u64>, v: &Vec<u64>, start: usize)
 {
     for i in start..v.len()
         invariant
+            start <= i <= v.len(),  // REVIEW: We didn't need this previously
             r@ =~= old(r)@ + v@.subrange(start as int, i as int),
     {
         r.push(v[i]);
