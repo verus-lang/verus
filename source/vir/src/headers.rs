@@ -3,7 +3,7 @@ use crate::ast::{
     LoopInvariants, MaskSpec, Sizedness, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent,
     VirErr, Visibility,
 };
-use crate::ast_util::{air_unique_var, params_equal_opt};
+use crate::ast_util::{air_unique_var, expr_replace_pre, exprs_replace_pre, params_equal_opt};
 use crate::def::VERUS_SPEC;
 use crate::messages::error;
 use crate::messages::multiple_errors;
@@ -81,7 +81,11 @@ pub struct Header {
     pub open_visibility_qualifier: Option<Visibility>,
 }
 
-pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result<Header, VirErr> {
+pub fn read_header_block(
+    block: &mut Vec<Stmt>,
+    allows: &HeaderAllows,
+    param_names: Option<&[VarIdent]>,
+) -> Result<Header, VirErr> {
     let mut unwrap_parameters: Vec<UnwrapParameter> = Vec::new();
     let mut hidden: Vec<Fun> = Vec::new();
     let mut extra_dependencies: Vec<Fun> = Vec::new();
@@ -119,6 +123,11 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         ));
                     }
                     HeaderExprX::Requires(es) => {
+                        let mut es = es.clone();
+                        if let Some(param_names) = param_names {
+                            es = exprs_replace_pre(&es, param_names);
+                        }
+
                         if require.is_some() {
                             return Err(error(
                                 &stmt.span,
@@ -126,7 +135,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                             ));
                         }
                         allowed = allows.require();
-                        require = Some(es.clone());
+                        require = Some(es);
                     }
                     HeaderExprX::Recommends(es) => {
                         if recommend.is_some() {
@@ -144,6 +153,13 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                                 "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
                             ));
                         }
+
+                        let mut es = es.clone();
+                        if let Some(param_names) = param_names {
+                            es.0 = exprs_replace_pre(&es.0, param_names);
+                            es.1 = exprs_replace_pre(&es.1, param_names);
+                        }
+
                         if es.1.len() == 0 {
                             allowed = allows.ensure();
                         } else if !allows.all() {
@@ -152,10 +168,15 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         ensure = Some((id_typ.clone(), es.clone()));
                     }
                     HeaderExprX::Returns(e) => {
+                        let mut e = e.clone();
+                        if let Some(param_names) = param_names {
+                            e = expr_replace_pre(&e, param_names);
+                        }
+
                         if returns.is_some() {
                             return Err(error(&stmt.span, "only one call to returns allowed"));
                         }
-                        returns = Some(e.clone());
+                        returns = Some(e);
                     }
                     HeaderExprX::InvariantExceptBreak(es) => {
                         if invariant_except_break.is_some() {
@@ -178,6 +199,11 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         invariant = Some(es.clone());
                     }
                     HeaderExprX::Decreases(es) => {
+                        let mut es = es.clone();
+                        if let Some(param_names) = param_names {
+                            es = exprs_replace_pre(&es, param_names);
+                        }
+
                         if decrease.is_some() {
                             return Err(error(
                                 &stmt.span,
@@ -212,6 +238,11 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         extra_dependencies.push(x.clone());
                     }
                     HeaderExprX::InvariantOpens(span, es) => {
+                        let mut es = es.clone();
+                        if let Some(param_names) = param_names {
+                            es = exprs_replace_pre(&es, param_names);
+                        }
+
                         match invariant_mask {
                             None => {}
                             _ => {
@@ -224,6 +255,11 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         invariant_mask = Some(MaskSpec::InvariantOpens(span.clone(), es.clone()));
                     }
                     HeaderExprX::InvariantOpensExcept(span, es) => {
+                        let mut es = es.clone();
+                        if let Some(param_names) = param_names {
+                            es = exprs_replace_pre(&es, param_names);
+                        }
+
                         match invariant_mask {
                             None => {}
                             _ => {
@@ -237,6 +273,11 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                             Some(MaskSpec::InvariantOpensExcept(span.clone(), es.clone()));
                     }
                     HeaderExprX::InvariantOpensSet(e) => {
+                        let mut e = e.clone();
+                        if let Some(param_names) = param_names {
+                            e = expr_replace_pre(&e, param_names);
+                        }
+
                         match invariant_mask {
                             None => {}
                             _ => {
@@ -257,8 +298,13 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         }
                         unwind_spec = match &**header {
                             HeaderExprX::NoUnwind => Some(UnwindSpec::NoUnwind),
-                            HeaderExprX::NoUnwindWhen(expr) => {
-                                Some(UnwindSpec::NoUnwindWhen(expr.clone()))
+                            HeaderExprX::NoUnwindWhen(e) => {
+                                let mut e = e.clone();
+                                if let Some(param_names) = param_names {
+                                    e = expr_replace_pre(&e, param_names);
+                                }
+
+                                Some(UnwindSpec::NoUnwindWhen(e))
                             }
                             _ => unreachable!(),
                         };
@@ -288,6 +334,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
         }
         n += 1;
     }
+
     *block = block[n..].to_vec();
     let require = require.unwrap_or(Arc::new(vec![]));
     let recommend = recommend.unwrap_or(Arc::new(vec![]));
@@ -319,7 +366,11 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
     })
 }
 
-pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, VirErr> {
+pub fn read_header(
+    body: &mut Expr,
+    allows: &HeaderAllows,
+    param_names: Option<&[VarIdent]>,
+) -> Result<Header, VirErr> {
     let body = peel_mut(body);
 
     #[derive(Clone, Copy)]
@@ -386,7 +437,7 @@ pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, Vir
                     }
                 }
             }
-            let mut header = read_header_block(&mut block, allows)?;
+            let mut header = read_header_block(&mut block, allows, param_names)?;
             if let Some(e) = &expr {
                 if let ExprX::Header(h) = &peel(e).x {
                     if let HeaderExprX::NoMethodBody = **h {
@@ -406,7 +457,7 @@ pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, Vir
             *body = body.new_x(ExprX::Block(Arc::new(block), expr));
             Ok(header)
         }
-        _ => read_header_block(&mut vec![], allows),
+        _ => read_header_block(&mut vec![], allows, param_names),
     }
 }
 

@@ -1233,7 +1233,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             if bctx.new_mut_ref {
                 if matches!(inner_ty.kind(), TyKind::Ref(_, _, rustc_ast::Mutability::Mut)) {
                     let inner_place = inner_expr.to_place();
-                    let place = deref_mut(bctx, expr.span, &inner_place);
+                    let place = deref_mut(bctx, expr.span, &inner_place)?;
                     Ok(ExprOrPlace::Place(place))
                 } else {
                     // TODO(new_mut_ref): should check types here
@@ -1290,7 +1290,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 // (This is done to force a reborrow.)
                 // We actually don't want this in spec contexts, but we *do* want it in
                 // exec/tracked contexts. So we need to handle this case specially.
-                if adjustment_idx >= 2
+                if bctx.in_ghost
+                    && adjustment_idx >= 2
                     && matches!(&adjustments[adjustment_idx - 2].kind, Adjust::Deref(None))
                 {
                     let inner_inner_ty = get_inner2_ty();
@@ -1301,16 +1302,19 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                         if inner_inner_ty != adjustment.target {
                             panic!("Verus Internal Error: Implicit &mut * expected the same type");
                         }
-                        // TODO(new_mut_ref): we need to improve this condition to work for tracked code
-                        if bctx.in_ghost {
-                            let p = expr_to_vir_with_adjustments(
-                                bctx,
-                                expr,
-                                current_modifier,
-                                adjustments,
-                                adjustment_idx - 2,
-                            )?
-                            .to_place();
+                        let inner_inner = expr_to_vir_with_adjustments(
+                            bctx,
+                            expr,
+                            current_modifier,
+                            adjustments,
+                            adjustment_idx - 2,
+                        )?;
+                        if bctx.in_postcondition || bctx.in_old {
+                            // In some cases, we already know we can elide the reborrow
+                            return Ok(inner_inner);
+                        } else {
+                            // In other cases, we need to delay the decision until mode checking
+                            let p = inner_inner.to_place();
                             let b = match allow_two_phase_borrow {
                                 AllowTwoPhase::Yes => true,
                                 AllowTwoPhase::No => false,
@@ -2563,7 +2567,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
             let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id, false)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
-            let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
+            let header =
+                vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop, None)?;
             let label = label.map(|l| l.ident.to_string());
             use crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents;
             let allow_no_decreases =
@@ -2635,7 +2640,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             assert!(modifier == ExprModifier::REGULAR);
             let cond = Some(expr_to_vir_consume(bctx, cond, ExprModifier::REGULAR)?);
             let mut body = expr_to_vir_consume(bctx, body, ExprModifier::REGULAR)?;
-            let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
+            let header =
+                vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop, None)?;
             let label = label.map(|l| l.ident.to_string());
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
                 *header_span,
@@ -2816,7 +2822,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let e = bctx.spanned_typed_new(expr.span, &call_ret_typ, x);
                 let mut p = bctx.spanned_typed_new(expr.span, &call_ret_typ, PlaceX::Temporary(e));
                 if mutbl {
-                    p = deref_mut(bctx, expr.span, &p);
+                    p = deref_mut(bctx, expr.span, &p)?;
                 }
                 Ok(ExprOrPlace::Place(p))
             } else {
@@ -3573,7 +3579,11 @@ pub(crate) fn closure_to_vir<'tcx>(
 
         let mut body = expr_to_vir_consume(body_bctx, &body.value, modifier)?;
 
-        let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
+        let header = vir::headers::read_header(
+            &mut body,
+            &vir::headers::HeaderAllows::Closure,
+            Some(body_bctx.params.last().unwrap()),
+        )?;
         let vir::headers::Header { require, ensure, ensure_id_typ, .. } = header;
         assert!(ensure.1.len() == 0);
 
@@ -3793,7 +3803,7 @@ fn deref_expr_to_vir<'tcx>(
         if bctx.new_mut_ref {
             if matches!(arg_ty.kind(), TyKind::Ref(_, _, rustc_ast::Mutability::Mut)) {
                 let place = inner_expr.to_place();
-                let place = deref_mut(bctx, expr.span, &place);
+                let place = deref_mut(bctx, expr.span, &place)?;
                 Ok(ExprOrPlace::Place(place))
             } else {
                 // TODO(new_mut_ref): should check types here
@@ -3916,7 +3926,20 @@ pub(crate) fn expr_to_loc_coerce_modes(expr: &vir::ast::Expr) -> Result<vir::ast
     Ok(SpannedTyped::new(&expr.span, &expr.typ, x))
 }
 
-pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
+pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Result<Place, VirErr> {
+    if bctx.in_postcondition && !bctx.in_old {
+        if let Some(local_place) = vir::ast_util::place_get_local(place) {
+            let PlaceX::Local(name) = &local_place.x else { unreachable!() };
+            if bctx.is_param_for_innermost_fn_or_non_spec_closure(name) {
+                // TODO(new_mut_ref): link to documentation or something
+                return Err(vir::messages::error(
+                    &place.span,
+                    "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it either `old` or `final`",
+                ));
+            }
+        }
+    }
+
     // `* &mut x` cancels out and we can just use x
     // This shows up a lot (in part due to adjustments) so we make the simplification
     // to avoid cluttering the encoding.
@@ -3936,7 +3959,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
                 return deref_mut(bctx, span, inner_place);
             }
             ExprX::BorrowMut(place) => {
-                return place.clone();
+                return Ok(place.clone());
             }
             ExprX::Unary(UnaryOp::MutRefFinal(_), arg) => {
                 let t = match &*undecorate_typ(&place.typ) {
@@ -3946,7 +3969,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
 
                 let op = UnaryOp::MutRefFuture(vir::ast::MutRefFutureSourceName::Final);
                 let e = bctx.spanned_typed_new(span, &t, ExprX::Unary(op, arg.clone()));
-                return bctx.spanned_typed_new(span, &t, PlaceX::Temporary(e));
+                return Ok(bctx.spanned_typed_new(span, &t, PlaceX::Temporary(e)));
             }
             _ => {}
         },
@@ -3957,7 +3980,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
         TypX::MutRef(t) => t.clone(),
         _ => panic!("expected mut ref"),
     };
-    bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
+    Ok(bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone())))
 }
 
 /// Like the above, but also cancels with two-phase borrows
@@ -3966,17 +3989,17 @@ pub(crate) fn deref_mut_allow_cancelling_two_phase(
     bctx: &BodyCtxt,
     span: Span,
     place: &Place,
-) -> Place {
+) -> Result<Place, VirErr> {
     match &place.x {
         PlaceX::Temporary(e) => match &e.x {
             ExprX::ImplicitReborrowOrSpecRead(inner_place, false | true, _inner_span) => {
                 return deref_mut(bctx, span, inner_place);
             }
             ExprX::BorrowMut(place) => {
-                return place.clone();
+                return Ok(place.clone());
             }
             ExprX::TwoPhaseBorrowMut(place) => {
-                return place.clone();
+                return Ok(place.clone());
             }
             _ => {}
         },
@@ -3987,7 +4010,7 @@ pub(crate) fn deref_mut_allow_cancelling_two_phase(
         TypX::MutRef(t) => t.clone(),
         _ => panic!("expected mut ref"),
     };
-    bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
+    Ok(bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone())))
 }
 
 pub(crate) fn borrow_mut_vir(

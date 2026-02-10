@@ -185,4 +185,11 @@ impl<'tcx> BodyCtxt<'tcx> {
     pub(crate) fn is_param_for_fn_or_non_spec_closure(&self, ident: &vir::ast::VarIdent) -> bool {
         self.params.iter().any(|params| params.iter().any(|param| param == ident))
     }
+
+    pub(crate) fn is_param_for_innermost_fn_or_non_spec_closure(
+        &self,
+        ident: &vir::ast::VarIdent,
+    ) -> bool {
+        self.params.last().unwrap().iter().any(|param| param == ident)
+    }
 }

@@ -1549,3 +1549,17 @@ impl BinaryOp {
         }
     }
 }
+
+pub fn expr_replace_pre(expr: &Expr, params: &[VarIdent]) -> Expr {
+    crate::ast_visitor::map_expr_visitor(expr, &|e: &Expr| match &e.x {
+        ExprX::VarAt(name, VarAt::Pre) if params.contains(name) => {
+            Ok(e.new_x(ExprX::Var(name.clone())))
+        }
+        _ => Ok(e.clone()),
+    })
+    .unwrap()
+}
+
+pub fn exprs_replace_pre(exprs: &Exprs, params: &[VarIdent]) -> Exprs {
+    Arc::new(exprs.iter().map(|e| expr_replace_pre(e, params)).collect())
+}

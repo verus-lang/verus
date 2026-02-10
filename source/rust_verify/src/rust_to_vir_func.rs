@@ -1368,6 +1368,7 @@ pub(crate) fn check_item_fn<'tcx>(
         CheckItemFnEither::BodyId(body_id) => {
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
+            let param_names = vir_params.iter().map(|p| p.0.x.name.clone()).collect::<Vec<_>>();
             let mut vir_body = body_to_vir(
                 ctxt,
                 id,
@@ -1378,15 +1379,21 @@ pub(crate) fn check_item_fn<'tcx>(
                 &external_trait_from_to,
                 new_mut_ref,
                 migrate_postcondition_vars,
-                vir_params.iter().map(|p| p.0.x.name.clone()).collect(),
+                param_names.clone(),
             )?;
-            let header =
-                vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
+            let header = vir::headers::read_header(
+                &mut vir_body,
+                &vir::headers::HeaderAllows::All,
+                if new_mut_ref { Some(&param_names) } else { None },
+            )?;
             (Some(vir_body), header, Some(body.value.hir_id))
         }
         CheckItemFnEither::ParamNames(_params) => {
-            let header =
-                vir::headers::read_header_block(&mut vec![], &vir::headers::HeaderAllows::All)?;
+            let header = vir::headers::read_header_block(
+                &mut vec![],
+                &vir::headers::HeaderAllows::All,
+                None,
+            )?;
             (None, header, None)
         }
     };
@@ -2370,6 +2377,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     let header = vir::headers::read_header(
         &mut vir_body,
         &vir::headers::HeaderAllows::Some(vec![vir::headers::HeaderAllow::Ensure]),
+        None,
     )?;
     if header.require.len() + header.recommend.len() > 0 {
         return err_span(span, "consts cannot have requires/recommends");

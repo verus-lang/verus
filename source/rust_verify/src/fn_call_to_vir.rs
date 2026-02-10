@@ -714,6 +714,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             ExprItem::Old if bctx.new_mut_ref => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 // TODO(new_mut_ref): restrict to form like `old(x)` or `old(x.field)`?
+                // TODO(new_mut_ref): old type signature should accept any type
                 let bctx = &BodyCtxt { in_old: true, ..bctx.clone() };
                 let arg = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
                 mk_expr(ExprX::Old(arg))
@@ -1137,6 +1138,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let header = vir::headers::read_header(
                         &mut vir_expr,
                         &HeaderAllows::Some(vec![HeaderAllow::Require, HeaderAllow::Ensure]),
+                        None,
                     )?;
                     let requires = if header.require.len() >= 1 {
                         header.require
@@ -1572,7 +1574,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             let p = crate::rust_to_vir_expr::deref_mut_allow_cancelling_two_phase(
                 bctx, expr.span, &vir_arg,
-            );
+            )?;
             let typ = match &*p.typ {
                 TypX::Decorate(TypDecoration::Ghost | TypDecoration::Tracked, None, t) => t.clone(),
                 _ => p.typ.clone(),
@@ -2076,6 +2078,7 @@ fn extract_quant<'tcx>(
             let _ = vir::headers::read_header(
                 &mut vir_expr,
                 &vir::headers::HeaderAllows::Some(vec![]),
+                None,
             )?;
             let typ = Arc::new(TypX::Bool);
             if !matches!(bctx.types.expr_ty_adjusted(expr).kind(), TyKind::Bool) {
@@ -2139,6 +2142,7 @@ fn extract_assert_forall_by<'tcx>(
             let header = vir::headers::read_header(
                 &mut vir_expr,
                 &HeaderAllows::Some(vec![HeaderAllow::Require, HeaderAllow::Ensure]),
+                None,
             )?;
             assert!(header.ensure.1.len() == 0);
             if header.require.len() > 1 {
