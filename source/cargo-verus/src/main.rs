@@ -68,53 +68,49 @@ pub fn main() -> Result<ExitCode> {
         VerusSubcommand::Verify(options) => {
             if has_late_verus_arg(&options.cargo_opts) {
                 return Ok(ExitCode::from(2));
-            } else {
-                CargoRunConfig {
-                    subcommand: "build",
-                    options,
-                    compile_primary: false,
-                    verify_deps: true,
-                    warn_if_nothing_verified: true,
-                }
+            }
+            CargoRunConfig {
+                subcommand: "build",
+                options,
+                compile_primary: false,
+                verify_deps: true,
+                warn_if_nothing_verified: true,
             }
         }
         VerusSubcommand::Focus(options) => {
             if has_late_verus_arg(&options.cargo_opts) {
                 return Ok(ExitCode::from(2));
-            } else {
-                CargoRunConfig {
-                    subcommand: "build",
-                    options,
-                    compile_primary: false,
-                    verify_deps: false,
-                    warn_if_nothing_verified: true,
-                }
+            }
+            CargoRunConfig {
+                subcommand: "build",
+                options,
+                compile_primary: false,
+                verify_deps: false,
+                warn_if_nothing_verified: true,
             }
         }
         VerusSubcommand::Build(options) => {
             if has_late_verus_arg(&options.cargo_opts) {
                 return Ok(ExitCode::from(2));
-            } else {
-                CargoRunConfig {
-                    subcommand: "build",
-                    options,
-                    compile_primary: true,
-                    verify_deps: true,
-                    warn_if_nothing_verified: false,
-                }
+            }
+            CargoRunConfig {
+                subcommand: "build",
+                options,
+                compile_primary: true,
+                verify_deps: true,
+                warn_if_nothing_verified: false,
             }
         }
         VerusSubcommand::Check(options) => {
             if has_late_verus_arg(&options.cargo_opts) {
                 return Ok(ExitCode::from(2));
-            } else {
-                CargoRunConfig {
-                    subcommand: "check",
-                    options,
-                    compile_primary: false,
-                    verify_deps: true,
-                    warn_if_nothing_verified: true,
-                }
+            }
+            CargoRunConfig {
+                subcommand: "check",
+                options,
+                compile_primary: false,
+                verify_deps: true,
+                warn_if_nothing_verified: true,
             }
         }
     };
