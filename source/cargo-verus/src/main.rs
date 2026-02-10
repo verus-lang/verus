@@ -51,6 +51,8 @@ fn has_late_verus_arg(opts: &CargoOptions) -> bool {
             || arg == "--frozen"
             || arg == "--locked"
             || arg == "--offline"
+            || arg == "--target-dir"
+            || arg.starts_with("--target-dir=")
             || arg == "--config"
             || arg.starts_with("--config=")
             || arg.starts_with("-Z")
