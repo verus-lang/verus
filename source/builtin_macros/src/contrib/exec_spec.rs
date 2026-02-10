@@ -9,10 +9,10 @@ use verus_syn::parse::{Parse, ParseStream};
 use verus_syn::spanned::Spanned;
 use verus_syn::token::Comma;
 use verus_syn::{
-    Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary, ExprClosure, ExprMatches,
-    ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index, Item, ItemEnum, ItemFn,
-    ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat, PatType, Path,
-    PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility, parse_macro_input,
+    parse_macro_input, Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary,
+    ExprClosure, ExprMatches, ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index,
+    Item, ItemEnum, ItemFn, ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat,
+    PatType, Path, PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility,
 };
 
 /// Checks if the given path is of the form
@@ -143,8 +143,12 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                     let val_type_arg = get_seg_type_arg(&type_path.path.segments[0], 1)?;
                     let val_param = compile_type(val_type_arg, TypeKind::Owned)?;
                     return match ctx {
-                        TypeKind::Owned => Ok(quote_spanned! { span => HashMap<#key_param, #val_param> }),
-                        TypeKind::Ref => Ok(quote_spanned! { span => &HashMap<#key_param, #val_param> }),
+                        TypeKind::Owned => {
+                            Ok(quote_spanned! { span => HashMap<#key_param, #val_param> })
+                        }
+                        TypeKind::Ref => {
+                            Ok(quote_spanned! { span => &HashMap<#key_param, #val_param> })
+                        }
                     };
                 } else if type_path.path.segments[0].ident.to_string() == "Set" {
                     // todo(nneamtu):
@@ -165,7 +169,7 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                         TypeKind::Ref => Ok(quote_spanned! { span => &Option<#param> }),
                     };
                 // Special cases for common types to throw more informative errors
-                } else if type_path.path.segments[0].ident.to_string() == "Vec" 
+                } else if type_path.path.segments[0].ident.to_string() == "Vec"
                     || type_path.path.segments[0].ident.to_string() == "HashMap"
                     || type_path.path.segments[0].ident.to_string() == "HashSet"
                     || type_path.path.segments[0].ident.to_string() == "ExecMultiset"
@@ -349,11 +353,13 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
     // Only open the view if the struct and all fields are public
     let span = item_struct.vis.span();
     let open_or_close = if let Visibility::Public(..) = item_struct.vis {
-        if item_struct
-            .fields
-            .iter()
-            .all(|field| if let Visibility::Public(..) = field.vis { true } else { false })
-        {
+        if item_struct.fields.iter().all(|field| {
+            if let Visibility::Public(..) = field.vis {
+                true
+            } else {
+                false
+            }
+        }) {
             quote_spanned! { span => open }
         } else {
             quote_spanned! { span => closed }
@@ -800,7 +806,7 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn, trusted: bool) -> Result<To
     let ext_eq = BinOp::ExtDeepEq(Default::default());
 
     let span = item_fn.sig.span();
-    let sig = if trusted { 
+    let sig = if trusted {
         quote_spanned! { span =>
             #[verifier::external_body]
             #vis fn #exec_name(
@@ -962,9 +968,17 @@ fn infer_expr_path_kind(ctx: &LocalCtx, path: &Path) -> ExprPathKind {
         path.segments.iter().any(|seg| seg.ident.to_string().chars().any(|c| c.is_uppercase()));
 
     if has_capital {
-        if path.segments.len() <= 2 { ExprPathKind::StructOrEnum } else { ExprPathKind::Unknown }
+        if path.segments.len() <= 2 {
+            ExprPathKind::StructOrEnum
+        } else {
+            ExprPathKind::Unknown
+        }
     } else {
-        if path.segments.len() != 0 { ExprPathKind::FnName } else { ExprPathKind::Unknown }
+        if path.segments.len() != 0 {
+            ExprPathKind::FnName
+        } else {
+            ExprPathKind::Unknown
+        }
     }
 }
 
@@ -986,8 +1000,7 @@ fn compile_expr_path(
 
     // Special case: convert Seq and other vstd types to their exec type
     // todo(nneamtu): this part is quite brittle, only seems to work with return type of StructOrEnum
-    if path.segments.len() >= 1 && path.segments[0].ident == "Seq"
-    {
+    if path.segments.len() >= 1 && path.segments[0].ident == "Seq" {
         let seg = &path.segments[0];
         let mut new_path = path.clone();
 
@@ -1193,17 +1206,18 @@ struct GuardedQuantifierUntrusted {
     body: Box<Expr>,
 }
 
-const UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG: &str = "Within the exec_spec! macro, quantifiers must have one of these forms:
+const UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG: &str =
+    "Within the exec_spec! macro, quantifiers must have one of these forms:
 - forall |x: <type>| <guard> ==> <body>
 - exists |x: <type>| <guard> && <body>
-    
+
 Where <guard> is one of:
 - <lower> <= x < <upper>
 - <lower> <= x <= <upper>
 - <lower> < x < <upper>
 - <lower> < x <= <upper>";
 
-const UNTRUSTED_UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type. 
+const UNTRUSTED_UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type.
 
 Within the exec_spec! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize. Note: int and nat are not allowed.";
 
@@ -1216,13 +1230,18 @@ Within the exec_spec! macro, quantified variables must have one of the following
 ///   `<lower> <= x <= <upper>`
 ///   `<lower> < x < <upper>`
 ///   `<lower> < x <= <upper>`
-fn get_guarded_range_quant_untrusted(closure: &ExprClosure) -> Result<GuardedQuantifierUntrusted, Error> {
+fn get_guarded_range_quant_untrusted(
+    closure: &ExprClosure,
+) -> Result<GuardedQuantifierUntrusted, Error> {
     if closure.inputs.len() != 1 {
         return Err(Error::new_spanned(closure, "The exec_spec! macro only supports single variable per quantifier. If multiple quantified variables are needed, use nested quantifiers instead."));
     }
 
     let (quant_var, Some(quant_type)) = get_simple_pat(&closure.inputs[0].pat)? else {
-        return Err(Error::new_spanned(closure, "The exec_spec! macro only supports typed quantified variables."));
+        return Err(Error::new_spanned(
+            closure,
+            "The exec_spec! macro only supports typed quantified variables.",
+        ));
     };
 
     // check for commonly used unsupported types to provide a more informative error message
@@ -1231,10 +1250,13 @@ fn get_guarded_range_quant_untrusted(closure: &ExprClosure) -> Result<GuardedQua
             if type_path.path.segments.len() == 1 {
                 let ident = &type_path.path.segments.first().unwrap().ident;
                 if ident == "int" || ident == "nat" {
-                    return Err(Error::new_spanned(quant_type, UNTRUSTED_UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG));
+                    return Err(Error::new_spanned(
+                        quant_type,
+                        UNTRUSTED_UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG,
+                    ));
                 }
             }
-        },
+        }
         _ => {}
     };
 
@@ -1242,28 +1264,52 @@ fn get_guarded_range_quant_untrusted(closure: &ExprClosure) -> Result<GuardedQua
     let Expr::Binary(ExprBinary { left: guard, op: guard_op, right: body, .. }) =
         closure.body.as_ref()
     else {
-        return Err(Error::new_spanned(closure, "Unsupported quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+        return Err(Error::new_spanned(
+            closure,
+            "Unsupported quantified expression.\n".to_owned()
+                + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        ));
     };
 
     // <guard> == <lower> <op> x <op> <upper>
     let Expr::Binary(ExprBinary { left: lower_guard, op: upper_op, right: upper, .. }) =
         guard.as_ref()
     else {
-        return Err(Error::new_spanned(guard, "Unsupported quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+        return Err(Error::new_spanned(
+            guard,
+            "Unsupported quantified expression.\n".to_owned()
+                + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        ));
     };
     let _ = match upper_op {
-        BinOp::Lt(..) | BinOp::Le(..) => {},
-        _ => return Err(Error::new_spanned(upper_op, "Unsupported quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG))
+        BinOp::Lt(..) | BinOp::Le(..) => {}
+        _ => {
+            return Err(Error::new_spanned(
+                upper_op,
+                "Unsupported quantified expression.\n".to_owned()
+                    + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+            ))
+        }
     };
 
     let Expr::Binary(ExprBinary { left: lower, op: lower_op, right: guard_var, .. }) =
         lower_guard.as_ref()
     else {
-        return Err(Error::new_spanned(lower_guard, "Unsupported quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+        return Err(Error::new_spanned(
+            lower_guard,
+            "Unsupported quantified expression.\n".to_owned()
+                + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        ));
     };
     let _ = match lower_op {
         BinOp::Lt(..) | BinOp::Le(..) => (),
-        _ => return Err(Error::new_spanned(lower_op, "Unsupported quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG))
+        _ => {
+            return Err(Error::new_spanned(
+                lower_op,
+                "Unsupported quantified expression.\n".to_owned()
+                    + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+            ))
+        }
     };
 
     // Parses the guard variable as a one-component path
@@ -1272,10 +1318,18 @@ fn get_guarded_range_quant_untrusted(closure: &ExprClosure) -> Result<GuardedQua
         if segments.len() == 1 {
             &segments[0].ident
         } else {
-            return Err(Error::new_spanned(guard_var, "Unsupported quantified expression: expected a simple variable.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+            return Err(Error::new_spanned(
+                guard_var,
+                "Unsupported quantified expression: expected a simple variable.\n".to_owned()
+                    + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+            ));
         }
     } else {
-        return Err(Error::new_spanned(guard_var, "Unsupported quantified expression: expected a simple variable.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+        return Err(Error::new_spanned(
+            guard_var,
+            "Unsupported quantified expression: expected a simple variable.\n".to_owned()
+                + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        ));
     };
 
     if guard_var != quant_var {
@@ -1298,11 +1352,19 @@ fn get_guarded_range_quant_untrusted(closure: &ExprClosure) -> Result<GuardedQua
 }
 
 /// Compiles some forms of forall/exists quantifiers to loops.
-fn compile_guarded_quant_untrusted(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<TokenStream2, Error> {
+fn compile_guarded_quant_untrusted(
+    ctx: &LocalCtx,
+    op: &UnOp,
+    expr: &Expr,
+) -> Result<TokenStream2, Error> {
     // Quantified variables and the body of the quantified expression
     // is expected to be described as a closure.
     let Expr::Closure(closure) = expr else {
-        return Err(Error::new_spanned(expr, "Ill-formed quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+        return Err(Error::new_spanned(
+            expr,
+            "Ill-formed quantified expression.\n".to_owned()
+                + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        ));
     };
 
     // TODO: support other forms of quantifiers
@@ -1347,19 +1409,31 @@ fn compile_guarded_quant_untrusted(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Re
     // Some common pieces
     let expr_span = expr.span();
     let bound_expr = match (quant.lower_op, quant.upper_op) {
-        | (BinOp::Lt(..), BinOp::Lt(..))
+        (BinOp::Lt(..), BinOp::Lt(..))
         | (BinOp::Le(..), BinOp::Lt(..))
         | (BinOp::Lt(..), BinOp::Le(..))
         | (BinOp::Le(..), BinOp::Le(..)) => quote! { _lower <= #quant_var < _upper },
-        (_, _) => return Err(Error::new_spanned(expr, "Ill-formed quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG))
+        (_, _) => {
+            return Err(Error::new_spanned(
+                expr,
+                "Ill-formed quantified expression.\n".to_owned()
+                    + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+            ))
+        }
     };
     //let inv_bound = quote_spanned! { expr_span => _lower <= #quant_var <= _upper };
     let inv_bound = match (quant.lower_op, quant.upper_op) {
-        | (BinOp::Lt(..), BinOp::Lt(..)) 
-        | (BinOp::Le(..), BinOp::Lt(..)) 
-        | (BinOp::Lt(..), BinOp::Le(..)) 
+        (BinOp::Lt(..), BinOp::Lt(..))
+        | (BinOp::Le(..), BinOp::Lt(..))
+        | (BinOp::Lt(..), BinOp::Le(..))
         | (BinOp::Le(..), BinOp::Le(..)) => quote! { _lower <= #quant_var <= _upper },
-        (_, _) => return Err(Error::new_spanned(expr, "Ill-formed quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG))
+        (_, _) => {
+            return Err(Error::new_spanned(
+                expr,
+                "Ill-formed quantified expression.\n".to_owned()
+                    + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+            ))
+        }
     };
     let decreases = quote_spanned! { expr_span => _upper - #quant_var };
     let quant_var_update = quote! { #quant_var += 1; };
@@ -1447,7 +1521,11 @@ fn compile_guarded_quant_untrusted(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Re
             })
         }
 
-        _ => Err(Error::new_spanned(expr, "Unsupported quantified expression.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG)),
+        _ => Err(Error::new_spanned(
+            expr,
+            "Unsupported quantified expression.\n".to_owned()
+                + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        )),
     }
 }
 
@@ -1469,13 +1547,13 @@ struct GuardedQuantVar {
 struct GuardedQuantifier {
     guard_op: BinOp,
     body: Box<Expr>,
-    guarded_vars: Vec<GuardedQuantVar>
+    guarded_vars: Vec<GuardedQuantVar>,
 }
 
 const UNSUPPORTED_QUANTIFIER_ERROR_MSG: &str = "Within the exec_spec! macro, quantifier expressions must match one of these forms:
 - forall |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> ==> <body>
 - exists |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> && <body>
-    
+
 Where <guardI> is one of:
 - <lowerI> <= xI < <upperI>
 - <lowerI> <= xI <= <upperI>
@@ -1483,31 +1561,48 @@ Where <guardI> is one of:
 - <lowerI> < xI <= <upperI>
 And <lowerI> and <upperI> may mention xJ for all J < I.";
 
-const UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type. 
+const UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type.
 
 Within the exec_spec! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char. Note: int and nat are not allowed.";
 
 /// Extracts a single guard expression
 fn get_single_guard(guard: &Expr, quant_var: &Ident) -> Result<GuardBounds, Error> {
     // <guard> == <lower> <op> x <op> <upper>
-    let Expr::Binary(ExprBinary { left: lower_guard, op: upper_op, right: upper, .. }) =
-        guard
+    let Expr::Binary(ExprBinary { left: lower_guard, op: upper_op, right: upper, .. }) = guard
     else {
-        return Err(Error::new_spanned(guard, "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+        return Err(Error::new_spanned(
+            guard,
+            "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        ));
     };
     let _ = match upper_op {
-        BinOp::Lt(..) | BinOp::Le(..) => {},
-        _ => return Err(Error::new_spanned(upper_op, "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG))
+        BinOp::Lt(..) | BinOp::Le(..) => {}
+        _ => {
+            return Err(Error::new_spanned(
+                upper_op,
+                "Unsupported quantifier expression.\n".to_owned()
+                    + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+            ))
+        }
     };
 
     let Expr::Binary(ExprBinary { left: lower, op: lower_op, right: guard_var, .. }) =
         lower_guard.as_ref()
     else {
-        return Err(Error::new_spanned(lower_guard, "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+        return Err(Error::new_spanned(
+            lower_guard,
+            "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        ));
     };
     let _ = match lower_op {
         BinOp::Lt(..) | BinOp::Le(..) => (),
-        _ => return Err(Error::new_spanned(lower_op, "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG))
+        _ => {
+            return Err(Error::new_spanned(
+                lower_op,
+                "Unsupported quantifier expression.\n".to_owned()
+                    + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+            ))
+        }
     };
 
     // Parses the guard variable as a one-component path
@@ -1516,10 +1611,18 @@ fn get_single_guard(guard: &Expr, quant_var: &Ident) -> Result<GuardBounds, Erro
         if segments.len() == 1 {
             &segments[0].ident
         } else {
-            return Err(Error::new_spanned(guard_var, "Unsupported quantifier expression: expected a simple variable.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+            return Err(Error::new_spanned(
+                guard_var,
+                "Unsupported quantifier expression: expected a simple variable.\n".to_owned()
+                    + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+            ));
         }
     } else {
-        return Err(Error::new_spanned(guard_var, "Unsupported quantifier expression: expected a simple variable.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+        return Err(Error::new_spanned(
+            guard_var,
+            "Unsupported quantifier expression: expected a simple variable.\n".to_owned()
+                + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        ));
     };
 
     if guard_var != quant_var {
@@ -1530,10 +1633,10 @@ fn get_single_guard(guard: &Expr, quant_var: &Ident) -> Result<GuardBounds, Erro
     }
 
     Ok(GuardBounds {
-        lower_op: lower_op.clone(), 
-        upper_op: upper_op.clone(), 
-        lower: lower.clone(), 
-        upper: upper.clone()
+        lower_op: lower_op.clone(),
+        upper_op: upper_op.clone(),
+        lower: lower.clone(),
+        upper: upper.clone(),
     })
 }
 
@@ -1564,10 +1667,12 @@ fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, E
 
     // |x| <guard> <guard_op> <body>
     let mut guarded_vars = Vec::new();
-    let Expr::Binary(ExprBinary { left, op: guard_op, right: body, .. }) =
-        closure.body.as_ref()
+    let Expr::Binary(ExprBinary { left, op: guard_op, right: body, .. }) = closure.body.as_ref()
     else {
-        return Err(Error::new_spanned(closure, "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+        return Err(Error::new_spanned(
+            closure,
+            "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        ));
     };
 
     // process <guard1> && <guard2> && ... && <guardN> left-to-right
@@ -1578,7 +1683,11 @@ fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, E
             let Expr::Binary(ExprBinary { left: head, op: BinOp::And(..), right: tail, .. }) =
                 remaining.as_ref()
             else {
-                return Err(Error::new_spanned(remaining, "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+                return Err(Error::new_spanned(
+                    remaining,
+                    "Unsupported quantifier expression.\n".to_owned()
+                        + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+                ));
             };
             single_guard = tail;
             remaining = head;
@@ -1588,45 +1697,48 @@ fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, E
 
         // <guard> == <lower> <= x < <upper>
         let bounds = get_single_guard(&single_guard, &quant_vars[quant_vars.len() - 1 - i].0)?;
-        guarded_vars.insert(0, GuardedQuantVar {
-            bounds,
-            quant_var: quant_vars[quant_vars.len() - 1 - i].0.clone(),
-            quant_type: quant_vars[quant_vars.len() - 1 - i].1.clone()
-        });
+        guarded_vars.insert(
+            0,
+            GuardedQuantVar {
+                bounds,
+                quant_var: quant_vars[quant_vars.len() - 1 - i].0.clone(),
+                quant_type: quant_vars[quant_vars.len() - 1 - i].1.clone(),
+            },
+        );
     }
 
-    Ok(GuardedQuantifier {
-        guard_op: guard_op.clone(),
-        body: body.clone(),
-        guarded_vars
-    })
+    Ok(GuardedQuantifier { guard_op: guard_op.clone(), body: body.clone(), guarded_vars })
 }
 
 /// Compiles the initialization, update statement, initial condition, and while loop condition for a single variable
-fn compile_single_quant_var(ctx: &LocalCtx, var: &GuardedQuantVar) -> Result<(TokenStream2, TokenStream2, TokenStream2, TokenStream2), Error> {
+fn compile_single_quant_var(
+    ctx: &LocalCtx,
+    var: &GuardedQuantVar,
+) -> Result<(TokenStream2, TokenStream2, TokenStream2, TokenStream2), Error> {
     let quant_var = &var.quant_var;
     let quant_type = &var.quant_type;
     let is_char = match &**quant_type {
         Type::Path(type_path) => {
-            type_path.path.segments.len() == 1 && type_path.path.segments.first().unwrap().ident == "char"
+            type_path.path.segments.len() == 1
+                && type_path.path.segments.first().unwrap().ident == "char"
         }
         _ => false,
     };
 
     let mut compiled_lower = compile_expr(ctx, &var.bounds.lower, VarMode::Owned, true)?;
     if let BinOp::Lt(..) = var.bounds.lower_op {
-        compiled_lower = if is_char { 
-            quote! { char::from_u32(#compiled_lower as u32 + 1).unwrap(); } 
-        } else { 
-            quote! { #compiled_lower + 1 } 
+        compiled_lower = if is_char {
+            quote! { char::from_u32(#compiled_lower as u32 + 1).unwrap(); }
+        } else {
+            quote! { #compiled_lower + 1 }
         };
     };
     let mut compiled_upper = compile_expr(ctx, &var.bounds.upper, VarMode::Owned, true)?;
     if let BinOp::Le(..) = var.bounds.upper_op {
-        compiled_upper = if is_char { 
-            quote! { char::from_u32(#compiled_upper as u32 + 1).unwrap(); } 
-        } else { 
-            quote! { #compiled_upper + 1 } 
+        compiled_upper = if is_char {
+            quote! { char::from_u32(#compiled_upper as u32 + 1).unwrap(); }
+        } else {
+            quote! { #compiled_upper + 1 }
         };
     };
 
@@ -1658,7 +1770,14 @@ fn compile_single_quant_var(ctx: &LocalCtx, var: &GuardedQuantVar) -> Result<(To
 }
 
 /// Compiles nested loops for the guarded variables, given the quantifier op (exists/forall), body expression, and guard operator (&&/==>)
-fn compile_guarded_quant_loops(ctx: &LocalCtx, op: &UnOp, expr: &Expr, guard_op: &BinOp, body: &Expr, guarded_vars: &Vec<GuardedQuantVar>) -> Result<TokenStream2, Error> {
+fn compile_guarded_quant_loops(
+    ctx: &LocalCtx,
+    op: &UnOp,
+    expr: &Expr,
+    guard_op: &BinOp,
+    body: &Expr,
+    guarded_vars: &Vec<GuardedQuantVar>,
+) -> Result<TokenStream2, Error> {
     let (init, update, init_cond, while_cond) = compile_single_quant_var(ctx, &guarded_vars[0])?;
 
     let mut body_ctx = ctx.clone();
@@ -1680,13 +1799,18 @@ fn compile_guarded_quant_loops(ctx: &LocalCtx, op: &UnOp, expr: &Expr, guard_op:
                 }
             },
             _ => {
-                return Err(Error::new_spanned(expr, "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
-            },
+                return Err(Error::new_spanned(
+                    expr,
+                    "Unsupported quantifier expression.\n".to_owned()
+                        + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+                ));
+            }
         }
     } else {
         let mut next_vars = guarded_vars.clone();
         next_vars.remove(0);
-        let compiled_inner = compile_guarded_quant_loops(&body_ctx, op, expr, guard_op, body, &next_vars)?;
+        let compiled_inner =
+            compile_guarded_quant_loops(&body_ctx, op, expr, guard_op, body, &next_vars)?;
         compiled_body = match op {
             UnOp::Forall(..) => quote! {
                 #compiled_inner
@@ -1701,43 +1825,46 @@ fn compile_guarded_quant_loops(ctx: &LocalCtx, op: &UnOp, expr: &Expr, guard_op:
                 }
             },
             _ => {
-                return Err(Error::new_spanned(expr, "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
-            },
+                return Err(Error::new_spanned(
+                    expr,
+                    "Unsupported quantifier expression.\n".to_owned()
+                        + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+                ));
+            }
         }
     }
 
     match (op, guard_op) {
-        (UnOp::Forall(..), BinOp::Imply(..)) => {
-            Ok(quote! {
-                {
-                    #init
+        (UnOp::Forall(..), BinOp::Imply(..)) => Ok(quote! {
+            {
+                #init
 
-                    if #init_cond {
-                        while #while_cond
-                        {
-                            #compiled_body
-                            #update
-                        }
+                if #init_cond {
+                    while #while_cond
+                    {
+                        #compiled_body
+                        #update
                     }
                 }
-            })
-        }
-        (UnOp::Exists(..), BinOp::And(..)) => {
-            Ok(quote! {
-                {
-                    #init
+            }
+        }),
+        (UnOp::Exists(..), BinOp::And(..)) => Ok(quote! {
+            {
+                #init
 
-                    if #init_cond {
-                        while #while_cond
-                        {
-                            #compiled_body
-                            #update
-                        }
+                if #init_cond {
+                    while #while_cond
+                    {
+                        #compiled_body
+                        #update
                     }
                 }
-            })
-        },
-        _ => Err(Error::new_spanned(expr, "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG)),
+            }
+        }),
+        _ => Err(Error::new_spanned(
+            expr,
+            "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        )),
     }
 }
 
@@ -1746,36 +1873,47 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
     // Quantified variables and the body of the quantifier expression
     // is expected to be described as a closure.
     let Expr::Closure(closure) = expr else {
-        return Err(Error::new_spanned(expr, "Ill-formed quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+        return Err(Error::new_spanned(
+            expr,
+            "Ill-formed quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        ));
     };
 
     // TODO: support other forms of quantifiers
     let quant = get_guarded_range_quant(closure)?;
 
-    let loops = compile_guarded_quant_loops(ctx, op, expr, &quant.guard_op, &quant.body, &quant.guarded_vars)?;
+    let loops = compile_guarded_quant_loops(
+        ctx,
+        op,
+        expr,
+        &quant.guard_op,
+        &quant.body,
+        &quant.guarded_vars,
+    )?;
 
     match op {
-        UnOp::Forall(..) => 
-            Ok(quote! {
-                {
-                    let mut _res = true;
+        UnOp::Forall(..) => Ok(quote! {
+            {
+                let mut _res = true;
 
-                    #loops
+                #loops
 
-                    _res
-                }
-            }),
-        UnOp::Exists(..) => 
-            Ok(quote! {
-                {
-                    let mut _res = false;
+                _res
+            }
+        }),
+        UnOp::Exists(..) => Ok(quote! {
+            {
+                let mut _res = false;
 
-                    #loops
+                #loops
 
-                    _res
-                }
-            }),
-        _ => Err(Error::new_spanned(expr, "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG)),
+                _res
+            }
+        }),
+        _ => Err(Error::new_spanned(
+            expr,
+            "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
+        )),
     }
 }
 
@@ -1786,7 +1924,12 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
 /// have the type
 /// - `T::ExecRefType<'_>` if mode is `VarMode::Ref`
 /// - `T::ExecOwnedType` if mode is `VarMode::Owned`
-fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Result<TokenStream2, Error> {
+fn compile_expr(
+    ctx: &LocalCtx,
+    expr: &Expr,
+    mode: VarMode,
+    trusted: bool,
+) -> Result<TokenStream2, Error> {
     let expr_ts = match expr {
         Expr::Lit(lit) => match &lit.lit {
             Lit::Str(..) => match mode {
@@ -2088,19 +2231,17 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
                         VarMode::Owned => compiled,
                     }
                 } else {
-                    let compiled = compile_guarded_quant_untrusted(ctx, &expr_unary.op, &expr_unary.expr)?;
+                    let compiled =
+                        compile_guarded_quant_untrusted(ctx, &expr_unary.op, &expr_unary.expr)?;
                     match mode {
                         VarMode::Ref => quote! { #compiled.get_ref() },
                         VarMode::Owned => compiled,
                     }
                 }
-                
-            },
+            }
             // skip all compilation of proof blocks
             // todo(nneamtu) - would proof blocks ever be needed?
-            UnOp::Proof(..) => {
-                return Ok(TokenStream2::new())
-            }
+            UnOp::Proof(..) => return Ok(TokenStream2::new()),
             _ => return Err(Error::new_spanned(expr_unary, "unsupported unary operator")),
         },
 
@@ -2129,7 +2270,6 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
         //
         // TODO: this assumption might be a bit brittle
         Expr::Call(expr_call) => {
-
             // Assume that the function is a path
             let Expr::Path(fn_path) = expr_call.func.as_ref() else {
                 return Err(Error::new_spanned(expr_call, "unsupported callee"));
@@ -2169,295 +2309,461 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
         // We only permit a limited set of method calls
         Expr::MethodCall(expr_method_call) => match expr_method_call.method.to_string().as_str() {
             "len" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
                 quote! { #receiver.exec_len() }
-            },
+            }
 
             "dom" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_dom().get_ref() },
 
                     // Clone to avoid partial moves
                     VarMode::Owned => quote! { #receiver.exec_dom().get_ref().get_owned() },
                 }
-            },
+            }
 
             "index" => {
                 let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let index = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref, trusted)?;
+                let index = compile_expr(
+                    ctx,
+                    &expr_method_call.args.last().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #base.exec_index(#index).get_ref() },
                     VarMode::Owned => quote! { #base.exec_index(#index).get_ref().get_owned() },
                 }
-            },
+            }
 
             "drop_first" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_drop_first() },
                     VarMode::Owned => quote! { #receiver.exec_drop_first().get_owned() },
                 }
-            },
+            }
 
             "drop_last" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_drop_last() },
                     VarMode::Owned => quote! { #receiver.exec_drop_last().get_owned() },
                 }
-            },
+            }
 
             "add" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.last().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_add(#arg).get_ref() },
                     VarMode::Owned => quote! { #receiver.exec_add(#arg).get_ref().get_owned() },
                 }
-            },
+            }
 
             "push" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Owned, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.last().unwrap(),
+                    VarMode::Owned,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_push(#arg).get_ref() },
                     VarMode::Owned => quote! { #receiver.exec_push(#arg).get_ref().get_owned() },
                 }
-            },
+            }
 
             "update" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let index = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Owned, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let index = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.last().unwrap(),
+                    VarMode::Owned,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_update(#index, #arg).get_ref() },
-                    VarMode::Owned => quote! { #receiver.exec_update(#index, #arg).get_ref().get_owned() },
+                    VarMode::Owned => {
+                        quote! { #receiver.exec_update(#index, #arg).get_ref().get_owned() }
+                    }
                 }
-            },
+            }
 
             "subrange" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg1 = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
-                let arg2 = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg1 = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
+                let arg2 = compile_expr(
+                    ctx,
+                    &expr_method_call.args.last().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_subrange(#arg1, #arg2) },
                     VarMode::Owned => quote! { #receiver.exec_subrange(#arg1, #arg2).get_owned() },
                 }
-            },
+            }
 
             "to_multiset" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_to_multiset().get_ref() },
                     VarMode::Owned => quote! { #receiver.exec_to_multiset().get_ref().get_owned() },
                 }
-            },
+            }
 
             "take" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_take(#arg) },
                     VarMode::Owned => quote! { #receiver.exec_take(#arg).get_owned() },
                 }
-            },
+            }
 
             "skip" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_skip(#arg) },
                     VarMode::Owned => quote! { #receiver.exec_skip(#arg).get_owned() },
                 }
-            },
+            }
 
             "last" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_last().get_ref() },
                     VarMode::Owned => quote! { #receiver.exec_last().get_ref().get_owned() },
                 }
-            },
+            }
 
             "first" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_first().get_ref() },
                     VarMode::Owned => quote! { #receiver.exec_first().get_ref().get_owned() },
                 }
-            },
+            }
 
             "count" => {
                 let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let value = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
+                let value = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Owned,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #base.exec_count(#value) },
                     VarMode::Owned => quote! { #base.exec_count(#value) },
                 }
-            },
+            }
 
             "is_prefix_of" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_is_prefix_of(#arg) },
                     VarMode::Owned => quote! { #receiver.exec_is_prefix_of(#arg) },
                 }
-            },
+            }
 
             "is_suffix_of" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_is_suffix_of(#arg) },
                     VarMode::Owned => quote! { #receiver.exec_is_suffix_of(#arg) },
                 }
-            },
+            }
 
             "contains" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Owned,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_contains(#arg) },
                     VarMode::Owned => quote! { #receiver.exec_contains(#arg) },
                 }
-            },
+            }
 
             "get" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Owned,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_get(#arg).get_ref() },
                     VarMode::Owned => quote! { #receiver.exec_get(#arg).get_ref().get_owned() },
                 }
-            },
+            }
 
             "index_of" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Owned,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_index_of(#arg) },
                     VarMode::Owned => quote! { #receiver.exec_index_of(#arg) },
                 }
-            },
+            }
 
             "index_of_first" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Owned,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_index_of_first(#arg).get_ref() },
-                    VarMode::Owned => quote! { #receiver.exec_index_of_first(#arg).get_ref().get_owned() },
+                    VarMode::Owned => {
+                        quote! { #receiver.exec_index_of_first(#arg).get_ref().get_owned() }
+                    }
                 }
-            },
+            }
 
             "index_of_last" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Owned,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_index_of_last(#arg).get_ref() },
-                    VarMode::Owned => quote! { #receiver.exec_index_of_last(#arg).get_ref().get_owned() },
+                    VarMode::Owned => {
+                        quote! { #receiver.exec_index_of_last(#arg).get_ref().get_owned() }
+                    }
                 }
-            },
+            }
 
             "insert" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
                 if expr_method_call.args.len() == 2 {
-                    let arg1 = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
-                    let arg2 = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Owned, trusted)?;
+                    let arg1 = compile_expr(
+                        ctx,
+                        &expr_method_call.args.first().unwrap(),
+                        VarMode::Owned,
+                        trusted,
+                    )?;
+                    let arg2 = compile_expr(
+                        ctx,
+                        &expr_method_call.args.last().unwrap(),
+                        VarMode::Owned,
+                        trusted,
+                    )?;
 
                     match mode {
                         VarMode::Ref => quote! { #receiver.exec_insert(#arg1, #arg2).get_ref() },
-                        VarMode::Owned => quote! { #receiver.exec_insert(#arg1, #arg2).get_ref().get_owned() },
+                        VarMode::Owned => {
+                            quote! { #receiver.exec_insert(#arg1, #arg2).get_ref().get_owned() }
+                        }
                     }
                 } else {
-                    let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
+                    let arg = compile_expr(
+                        ctx,
+                        &expr_method_call.args.first().unwrap(),
+                        VarMode::Owned,
+                        trusted,
+                    )?;
 
                     match mode {
                         VarMode::Ref => quote! { #receiver.exec_insert(#arg).get_ref() },
-                        VarMode::Owned => quote! { #receiver.exec_insert(#arg).get_ref().get_owned() },
+                        VarMode::Owned => {
+                            quote! { #receiver.exec_insert(#arg).get_ref().get_owned() }
+                        }
                     }
                 }
-            },
+            }
 
             "remove" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Owned,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_remove(#arg).get_ref() },
                     VarMode::Owned => quote! { #receiver.exec_remove(#arg).get_ref().get_owned() },
                 }
-            },
+            }
 
             "intersect" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.last().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_intersect(#arg).get_ref() },
-                    VarMode::Owned => quote! { #receiver.exec_intersect(#arg).get_ref().get_owned() },
+                    VarMode::Owned => {
+                        quote! { #receiver.exec_intersect(#arg).get_ref().get_owned() }
+                    }
                 }
-            },
+            }
 
             "union" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.last().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_union(#arg).get_ref() },
                     VarMode::Owned => quote! { #receiver.exec_union(#arg).get_ref().get_owned() },
                 }
-            },
+            }
 
             "difference" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.last().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_difference(#arg).get_ref() },
-                    VarMode::Owned => quote! { #receiver.exec_difference(#arg).get_ref().get_owned() },
+                    VarMode::Owned => {
+                        quote! { #receiver.exec_difference(#arg).get_ref().get_owned() }
+                    }
                 }
-            },
+            }
 
             "sub" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(
+                    ctx,
+                    &expr_method_call.args.first().unwrap(),
+                    VarMode::Ref,
+                    trusted,
+                )?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_sub(#arg).get_ref() },
                     VarMode::Owned => quote! { #receiver.exec_sub(#arg).get_ref().get_owned() },
                 }
-            },
+            }
 
             "unwrap" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_unwrap().get_ref() },
                     VarMode::Owned => quote! { #receiver.exec_unwrap().get_ref().get_owned() },
                 }
-            },
+            }
 
             _ => return Err(Error::new_spanned(expr_method_call, "unsupported method call")),
         },
@@ -2568,7 +2874,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
                 VarMode::Ref => quote! { #owned.get_ref() },
                 VarMode::Owned => owned,
             }
-        },
+        }
 
         // TODOs:
         // Expr::Let(expr_let) => todo!(),
