@@ -364,7 +364,7 @@ fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
     }
 }
 
-/// Get the `String` label out of a `#[verifier::proof_note("Label")]` attribute
+/// Get the `"label"` part out of an attribute like `#[verifier::proof_note("label")]`
 fn get_proof_note_label(span: Span, attrs: &Option<Box<[AttrTree]>>) -> Result<&String, VirErr> {
     let Some([AttrTree::Lit(LitKind::Str, label)]) = attrs.as_deref() else {
         return err_span(span, "expected exactly one argument, a string literal");
@@ -372,7 +372,7 @@ fn get_proof_note_label(span: Span, attrs: &Option<Box<[AttrTree]>>) -> Result<&
     Ok(label)
 }
 
-/// Get the argument of the `#[rlimit]` attribute
+/// Get the `42` part out of an attribute like `#[rlimit(42)]`
 fn get_rlimit_arg(span: Span, attrs: &Option<Box<[AttrTree]>>) -> Result<f32, VirErr> {
     let err_fn = || err_span(span, "expected number, or `infinity` for rlimit");
     match attrs.as_deref() {
