@@ -1488,10 +1488,10 @@ const UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type
 Within the exec_spec! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char. Note: int and nat are not allowed.";
 
 /// Extracts a single guard expression
-fn get_single_guard(guard: &Box<Expr>, quant_var: &Ident) -> Result<GuardBounds, Error> {
+fn get_single_guard(guard: &Expr, quant_var: &Ident) -> Result<GuardBounds, Error> {
     // <guard> == <lower> <op> x <op> <upper>
     let Expr::Binary(ExprBinary { left: lower_guard, op: upper_op, right: upper, .. }) =
-        guard.as_ref()
+        guard
     else {
         return Err(Error::new_spanned(guard, "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
     };
@@ -1587,7 +1587,7 @@ fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, E
         }
 
         // <guard> == <lower> <= x < <upper>
-        let bounds = get_single_guard(single_guard, &quant_vars[quant_vars.len() - 1 - i].0)?;
+        let bounds = get_single_guard(&single_guard, &quant_vars[quant_vars.len() - 1 - i].0)?;
         guarded_vars.insert(0, GuardedQuantVar {
             bounds,
             quant_var: quant_vars[quant_vars.len() - 1 - i].0.clone(),

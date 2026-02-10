@@ -330,7 +330,7 @@ test_verify_one_file! {
                 &&& s == Some("yes"@)
             }
 
-            spec fn test_option3(s: Option<SpecString>) -> bool 
+            spec fn test_option3(s: Option<SpecString>) -> bool
                 recommends s.is_some()
             {
                 s.unwrap() == "yes"@
@@ -389,145 +389,145 @@ test_verify_one_file! {
                 z: (u8, u8, Inner),
             }
 
-            pub open spec fn add_eq(s1: Seq<u8>, s2: Seq<u8>, s3: Seq<u8>) -> bool 
+            spec fn add_eq(s1: Seq<u8>, s2: Seq<u8>, s3: Seq<u8>) -> bool
             {
                 s1.add(s2) == s3
             }
 
-            pub open spec fn add_nested(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>, s3: Seq<Seq<u8>>) -> bool 
+            spec fn add_nested(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>, s3: Seq<Seq<u8>>) -> bool
             {
                 s1.add(s2) == s3
             }
 
-            pub open spec fn add_struct(s1: Seq<Data>, s2: Seq<Data>, s3: Seq<Data>) -> bool
+            spec fn add_struct(s1: Seq<Data>, s2: Seq<Data>, s3: Seq<Data>) -> bool
             {
                 s1.add(s2) == s3
             }
 
-            pub open spec fn contains_eq(s1: Seq<u8>, x: u8) -> bool 
+            spec fn contains_eq(s1: Seq<u8>, x: u8) -> bool
             {
                 s1.contains(x)
             }
 
-            pub open spec fn contains_nested(s1: Seq<Seq<u8>>, x: Seq<u8>) -> bool
+            spec fn contains_nested(s1: Seq<Seq<u8>>, x: Seq<u8>) -> bool
             {
                 s1.contains(x)
             }
 
-            pub open spec fn contains_struct(s1: Seq<Data>, x: Data) -> bool
+            spec fn contains_struct(s1: Seq<Data>, x: Data) -> bool
             {
                 s1.contains(x)
             }
 
-            pub open spec fn drop_first_eq(s1: Seq<u8>, s2: Seq<u8>) -> bool 
+            spec fn drop_first_eq(s1: Seq<u8>, s2: Seq<u8>) -> bool
                 recommends
                     s1.len() >= 1
             {
                 s1.drop_first() == s2
             }
 
-            pub open spec fn drop_first_nested(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) -> bool
+            spec fn drop_first_nested(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) -> bool
                 recommends
                     s1.len() >= 1
             {
                 s1.drop_first() == s2
             }
 
-            pub open spec fn drop_first_struct(s1: Seq<Data>, s2: Seq<Data>) -> bool
+            spec fn drop_first_struct(s1: Seq<Data>, s2: Seq<Data>) -> bool
                 recommends
                     s1.len() >= 1
             {
                 s1.drop_first() == s2
             }
 
-            pub open spec fn drop_last_eq(s1: Seq<u8>, s2: Seq<u8>) -> bool 
+            spec fn drop_last_eq(s1: Seq<u8>, s2: Seq<u8>) -> bool
                 recommends
                     s1.len() >= 1
             {
                 s1.drop_last() == s2
             }
 
-            pub open spec fn drop_last_nested(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) -> bool
+            spec fn drop_last_nested(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) -> bool
                 recommends
                     s1.len() >= 1
             {
                 s1.drop_last() == s2
             }
 
-            pub open spec fn drop_last_struct(s1: Seq<Data>, s2: Seq<Data>) -> bool
+            spec fn drop_last_struct(s1: Seq<Data>, s2: Seq<Data>) -> bool
                 recommends
                     s1.len() >= 1
             {
                 s1.drop_last() == s2
             }
 
-            pub open spec fn empty_seq() -> Seq<u8> 
+            spec fn empty_seq() -> Seq<u8>
             {
                 Seq::empty()
             }
 
-            pub open spec fn empty_seq_length_zero() -> bool {
+            spec fn empty_seq_length_zero() -> bool {
                 empty_seq().len() == 0
             }
 
-            pub open spec fn first_element(s: Seq<u8>, x: u8) -> bool 
+            spec fn first_element(s: Seq<u8>, x: u8) -> bool
                 recommends
                     0 < s.len()
             {
                 s.first() == x
             }
 
-            pub open spec fn first_nested(s: Seq<Seq<u8>>, x: Seq<u8>) -> bool 
+            spec fn first_nested(s: Seq<Seq<u8>>, x: Seq<u8>) -> bool
                 recommends
                     0 < s.len()
             {
                 s.first() == x
             }
 
-            pub open spec fn first_struct(s: Seq<Data>, x: Data) -> bool
+            spec fn first_struct(s: Seq<Data>, x: Data) -> bool
                 recommends
                     0 < s.len()
             {
                 s.first() == x
             }
 
-            pub open spec fn index_eq(s: Seq<u8>, i: usize, x: u8) -> bool 
+            spec fn index_eq(s: Seq<u8>, i: usize, x: u8) -> bool
                 recommends
                     0 <= i < s.len()
             {
                 s.index(i as int) == x
             }
 
-            pub open spec fn index_nested(s: Seq<Seq<u8>>, i: usize, x: Seq<u8>) -> bool 
+            spec fn index_nested(s: Seq<Seq<u8>>, i: usize, x: Seq<u8>) -> bool
                 recommends
                     0 <= i < s.len()
             {
                 s.index(i as int) == x
             }
 
-            pub open spec fn index_struct(s: Seq<Data>, i: usize, x: Data) -> bool
+            spec fn index_struct(s: Seq<Data>, i: usize, x: Data) -> bool
                 recommends
                     0 <= i < s.len()
             {
                 s.index(i as int) == x
             }
 
-            pub open spec fn index_of_eq(s1: Seq<u8>, x: u8, i: usize) -> bool 
+            spec fn index_of_eq(s1: Seq<u8>, x: u8, i: usize) -> bool
             {
                 s1.index_of(x) == i
             }
 
-            pub open spec fn index_of_nested(s1: Seq<Seq<u8>>, x: Seq<u8>, i: usize) -> bool
+            spec fn index_of_nested(s1: Seq<Seq<u8>>, x: Seq<u8>, i: usize) -> bool
             {
                 s1.index_of(x) == i
             }
 
-            pub open spec fn index_of_struct(s1: Seq<Data>, x: Data, i: usize) -> bool
+            spec fn index_of_struct(s1: Seq<Data>, x: Data, i: usize) -> bool
             {
                 s1.index_of(x) == i
             }
 
-            pub open spec fn index_of_first_eq(s1: Seq<u8>, x: u8, i: Option<usize>) -> bool 
+            spec fn index_of_first_eq(s1: Seq<u8>, x: u8, i: Option<usize>) -> bool
             {
                 match s1.index_of_first(x) {
                     Some(n) => true,
@@ -535,7 +535,7 @@ test_verify_one_file! {
                 }
             }
 
-            pub open spec fn index_of_first_nested(s1: Seq<Seq<u8>>, x: Seq<u8>, i: Option<usize>) -> bool
+            spec fn index_of_first_nested(s1: Seq<Seq<u8>>, x: Seq<u8>, i: Option<usize>) -> bool
             {
                 s1.index_of_first(x) == match i {
                     None => None,
@@ -543,7 +543,7 @@ test_verify_one_file! {
                 }
             }
 
-            pub open spec fn index_of_first_struct(s1: Seq<Data>, x: Data, i: Option<usize>) -> bool
+            spec fn index_of_first_struct(s1: Seq<Data>, x: Data, i: Option<usize>) -> bool
             {
                 s1.index_of_first(x) == match i {
                     None => None,
@@ -551,7 +551,7 @@ test_verify_one_file! {
                 }
             }
 
-            pub open spec fn index_of_last_eq(s1: Seq<u8>, x: u8, i: Option<usize>) -> bool 
+            spec fn index_of_last_eq(s1: Seq<u8>, x: u8, i: Option<usize>) -> bool
             {
                 s1.index_of_last(x) == match i {
                     None => None,
@@ -559,7 +559,7 @@ test_verify_one_file! {
                 }
             }
 
-            pub open spec fn index_of_last_nested(s1: Seq<Seq<u8>>, x: Seq<u8>, i: Option<usize>) -> bool
+            spec fn index_of_last_nested(s1: Seq<Seq<u8>>, x: Seq<u8>, i: Option<usize>) -> bool
             {
                 s1.index_of_last(x) == match i {
                     None => None,
@@ -567,7 +567,7 @@ test_verify_one_file! {
                 }
             }
 
-            pub open spec fn index_of_last_struct(s1: Seq<Data>, x: Data, i: Option<usize>) -> bool
+            spec fn index_of_last_struct(s1: Seq<Data>, x: Data, i: Option<usize>) -> bool
             {
                 s1.index_of_last(x) == match i {
                     None => None,
@@ -575,156 +575,156 @@ test_verify_one_file! {
                 }
             }
 
-            pub open spec fn is_prefix_of_eq(s1: Seq<u8>, s2: Seq<u8>) -> bool 
+            spec fn is_prefix_of_eq(s1: Seq<u8>, s2: Seq<u8>) -> bool
             {
                 s1.is_prefix_of(s2)
             }
 
-            pub open spec fn is_prefix_of_nested(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) -> bool 
+            spec fn is_prefix_of_nested(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) -> bool
             {
                 s1.is_prefix_of(s2)
             }
 
-            pub open spec fn is_prefix_of_struct(s1: Seq<Data>, s2: Seq<Data>) -> bool
+            spec fn is_prefix_of_struct(s1: Seq<Data>, s2: Seq<Data>) -> bool
             {
                 s1.is_prefix_of(s2)
             }
 
-            pub open spec fn is_suffix_of_eq(s1: Seq<u8>, s2: Seq<u8>) -> bool 
+            spec fn is_suffix_of_eq(s1: Seq<u8>, s2: Seq<u8>) -> bool
             {
                 s1.is_suffix_of(s2)
             }
 
-            pub open spec fn is_suffix_of_nested(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) -> bool 
+            spec fn is_suffix_of_nested(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) -> bool
             {
                 s1.is_suffix_of(s2)
             }
 
-            pub open spec fn is_suffix_of_struct(s1: Seq<Data>, s2: Seq<Data>) -> bool
+            spec fn is_suffix_of_struct(s1: Seq<Data>, s2: Seq<Data>) -> bool
             {
                 s1.is_suffix_of(s2)
             }
 
-            pub open spec fn last_element(s: Seq<u8>, x: u8) -> bool 
+            spec fn last_element(s: Seq<u8>, x: u8) -> bool
                 recommends
                     0 < s.len()
             {
                 s.last() == x
             }
 
-            pub open spec fn last_nested(s: Seq<Seq<u8>>, x: Seq<u8>) -> bool 
+            spec fn last_nested(s: Seq<Seq<u8>>, x: Seq<u8>) -> bool
                 recommends
                     0 < s.len()
             {
                 s.last() == x
             }
 
-            pub open spec fn last_struct(s: Seq<Data>, x: Data) -> bool
+            spec fn last_struct(s: Seq<Data>, x: Data) -> bool
                 recommends
                     0 < s.len()
             {
                 s.last() == x
             }
 
-            pub open spec fn push_element(s1: Seq<u8>, x: u8, s2: Seq<u8>) -> bool 
+            spec fn push_element(s1: Seq<u8>, x: u8, s2: Seq<u8>) -> bool
             {
                 s1.push(x) == s2
             }
 
-            pub open spec fn push_nested(s1: Seq<Seq<u8>>, x: Seq<u8>, s2: Seq<Seq<u8>>) -> bool
+            spec fn push_nested(s1: Seq<Seq<u8>>, x: Seq<u8>, s2: Seq<Seq<u8>>) -> bool
             {
                 s1.push(x) == s2
             }
 
-            pub open spec fn push_struct(s1: Seq<Data>, x: Data, s2: Seq<Data>) -> bool
+            spec fn push_struct(s1: Seq<Data>, x: Data, s2: Seq<Data>) -> bool
             {
                 s1.push(x) == s2
             }
 
-            pub open spec fn skip_eq(s1: Seq<u8>, n: usize, s2: Seq<u8>) -> bool 
+            spec fn skip_eq(s1: Seq<u8>, n: usize, s2: Seq<u8>) -> bool
                 recommends
                     0 <= n <= s1.len()
             {
                 s1.skip(n as int) == s2
             }
 
-            pub open spec fn skip_nested(s1: Seq<Seq<u8>>, n: usize, s2: Seq<Seq<u8>>) -> bool 
+            spec fn skip_nested(s1: Seq<Seq<u8>>, n: usize, s2: Seq<Seq<u8>>) -> bool
                 recommends
                     0 <= n <= s1.len()
             {
                 s1.skip(n as int) == s2
             }
 
-            pub open spec fn skip_struct(s1: Seq<Data>, n: usize, s2: Seq<Data>) -> bool
+            spec fn skip_struct(s1: Seq<Data>, n: usize, s2: Seq<Data>) -> bool
                 recommends
                     0 <= n <= s1.len()
             {
                 s1.skip(n as int) == s2
             }
 
-            pub open spec fn subrange_eq(s1: Seq<u8>, s: usize, e: usize, s2: Seq<u8>) -> bool 
+            spec fn subrange_eq(s1: Seq<u8>, s: usize, e: usize, s2: Seq<u8>) -> bool
                 recommends
                     0 <= s <= e <= s1.len()
             {
                 s1.subrange(s as int, e as int) == s2
             }
 
-            pub open spec fn subrange_nested(s1: Seq<Seq<u8>>, s: usize, e: usize, s2: Seq<Seq<u8>>) -> bool 
+            spec fn subrange_nested(s1: Seq<Seq<u8>>, s: usize, e: usize, s2: Seq<Seq<u8>>) -> bool
                 recommends
                     0 <= s <= e <= s1.len()
             {
                 s1.subrange(s as int, e as int) == s2
             }
 
-            pub open spec fn subrange_struct(s1: Seq<Data>, s: usize, e: usize, s2: Seq<Data>) -> bool
+            spec fn subrange_struct(s1: Seq<Data>, s: usize, e: usize, s2: Seq<Data>) -> bool
                 recommends
                     0 <= s <= e <= s1.len()
             {
                 s1.subrange(s as int, e as int) == s2
             }
 
-            pub open spec fn take_eq(s1: Seq<u8>, n: usize, s2: Seq<u8>) -> bool 
+            spec fn take_eq(s1: Seq<u8>, n: usize, s2: Seq<u8>) -> bool
                 recommends
                     0 <= n <= s1.len()
             {
                 s1.take(n as int) == s2
             }
 
-            pub open spec fn take_nested(s1: Seq<Seq<u8>>, n: usize, s2: Seq<Seq<u8>>) -> bool 
+            spec fn take_nested(s1: Seq<Seq<u8>>, n: usize, s2: Seq<Seq<u8>>) -> bool
                 recommends
                     0 <= n <= s1.len()
             {
                 s1.take(n as int) == s2
             }
 
-            pub open spec fn take_struct(s1: Seq<Data>, n: usize, s2: Seq<Data>) -> bool
+            spec fn take_struct(s1: Seq<Data>, n: usize, s2: Seq<Data>) -> bool
                 recommends
                     0 <= n <= s1.len()
             {
                 s1.take(n as int) == s2
             }
 
-            pub open spec fn to_multiset_eq(s: Seq<u8>, m: Multiset<u8>) -> bool
+            spec fn to_multiset_eq(s: Seq<u8>, m: Multiset<u8>) -> bool
             {
                 s.to_multiset() == m
             }
 
-            pub open spec fn seq_to_multiset_count(s: Seq<u8>, m: Multiset<u8>, e: u8) -> bool
+            spec fn seq_to_multiset_count(s: Seq<u8>, m: Multiset<u8>, e: u8) -> bool
             {
                 s.to_multiset().count(e) == m.count(e)
             }
 
-            pub open spec fn update_eq(s1: Seq<u8>, i: usize, x: u8, s2: Seq<u8>) -> bool 
+            spec fn update_eq(s1: Seq<u8>, i: usize, x: u8, s2: Seq<u8>) -> bool
             {
                 s1.update(i as int, x) == s2
             }
 
-            pub open spec fn update_nested(s1: Seq<Seq<u8>>, i: usize, x: Seq<u8>, s2: Seq<Seq<u8>>) -> bool
+            spec fn update_nested(s1: Seq<Seq<u8>>, i: usize, x: Seq<u8>, s2: Seq<Seq<u8>>) -> bool
             {
                 s1.update(i as int, x) == s2
             }
 
-            pub open spec fn update_struct(s1: Seq<Data>, i: usize, x: Data, s2: Seq<Data>) -> bool
+            spec fn update_struct(s1: Seq<Data>, i: usize, x: Data, s2: Seq<Data>) -> bool
             {
                 s1.update(i as int, x) == s2
             }
@@ -746,111 +746,111 @@ test_verify_one_file! {
                 z: (u8, u8, Inner),
             }
 
-            pub open spec fn contains_eq(m1: Set<u8>, k: u8) -> bool 
+            spec fn contains_eq(m1: Set<u8>, k: u8) -> bool
             {
                 m1.contains(k)
             }
 
-            pub open spec fn contains_nested(m1: Set<Seq<u8>>, k: Seq<u8>) -> bool 
+            spec fn contains_nested(m1: Set<Seq<u8>>, k: Seq<u8>) -> bool
             {
                 m1.contains(k)
             }
 
-            pub open spec fn contains_struct(m1: Set<Data>, k: Data) -> bool 
+            spec fn contains_struct(m1: Set<Data>, k: Data) -> bool
             {
                 m1.contains(k)
             }
 
-            pub open spec fn difference_eq(m1: Set<u8>, m2: Set<u8>, m3: Set<u8>) -> bool 
+            spec fn difference_eq(m1: Set<u8>, m2: Set<u8>, m3: Set<u8>) -> bool
             {
                 m1.difference(m2) == m3
             }
 
-            pub open spec fn difference_nested(m1: Set<Seq<u8>>, m2: Set<Seq<u8>>, m3: Set<Seq<u8>>) -> bool 
+            spec fn difference_nested(m1: Set<Seq<u8>>, m2: Set<Seq<u8>>, m3: Set<Seq<u8>>) -> bool
             {
                 m1.difference(m2) == m3
             }
 
-            pub open spec fn difference_struct(m1: Set<Data>, m2: Set<Data>, m3: Set<Data>) -> bool 
+            spec fn difference_struct(m1: Set<Data>, m2: Set<Data>, m3: Set<Data>) -> bool
             {
                 m1.difference(m2) == m3
             }
 
-            pub open spec fn empty_set() -> Set<u8> 
+            spec fn empty_set() -> Set<u8>
             {
                 Set::empty()
             }
 
-            pub open spec fn empty_set_length_zero() -> bool {
+            spec fn empty_set_length_zero() -> bool {
                 empty_set().len() == 0
             }
 
-            pub open spec fn insert_eq(m1: Set<u8>, k: u8, m2: Set<u8>) -> bool 
+            spec fn insert_eq(m1: Set<u8>, k: u8, m2: Set<u8>) -> bool
             {
                 m1.insert(k) == m2
             }
 
-            pub open spec fn insert_nested(m1: Set<Seq<u8>>, k: Seq<u8>, m2: Set<Seq<u8>>) -> bool 
+            spec fn insert_nested(m1: Set<Seq<u8>>, k: Seq<u8>, m2: Set<Seq<u8>>) -> bool
             {
                 m1.insert(k) == m2
             }
 
-            pub open spec fn insert_struct(m1: Set<Data>, k: Data, m3: Set<Data>) -> bool 
+            spec fn insert_struct(m1: Set<Data>, k: Data, m3: Set<Data>) -> bool
             {
                 m1.insert(k) == m3
             }
 
-            pub open spec fn intersect_eq(m1: Set<u8>, m2: Set<u8>, m3: Set<u8>) -> bool 
+            spec fn intersect_eq(m1: Set<u8>, m2: Set<u8>, m3: Set<u8>) -> bool
             {
                 m1.intersect(m2) == m3
             }
 
-            pub open spec fn intersect_nested(m1: Set<Seq<u8>>, m2: Set<Seq<u8>>, m3: Set<Seq<u8>>) -> bool 
+            spec fn intersect_nested(m1: Set<Seq<u8>>, m2: Set<Seq<u8>>, m3: Set<Seq<u8>>) -> bool
             {
                 m1.intersect(m2) == m3
             }
 
-            pub open spec fn intersect_struct(m1: Set<Data>, m2: Set<Data>, m3: Set<Data>) -> bool 
+            spec fn intersect_struct(m1: Set<Data>, m2: Set<Data>, m3: Set<Data>) -> bool
             {
                 m1.intersect(m2) == m3
             }
 
-            pub open spec fn len_eq(m1: Set<u8>, n: usize) -> bool 
+            spec fn len_eq(m1: Set<u8>, n: usize) -> bool
             {
                 m1.len() == n as int
             }
 
-            pub open spec fn len_struct(m1: Set<Data>, n: usize) -> bool 
+            spec fn len_struct(m1: Set<Data>, n: usize) -> bool
             {
                 m1.len() == n as int
             }
 
-            pub open spec fn remove_eq(m1: Set<u8>, k: u8, m2: Set<u8>) -> bool 
+            spec fn remove_eq(m1: Set<u8>, k: u8, m2: Set<u8>) -> bool
             {
                 m1.remove(k) == m2
             }
 
-            pub open spec fn remove_nested(m1: Set<Seq<u8>>, k: Seq<u8>, m2: Set<Seq<u8>>) -> bool 
+            spec fn remove_nested(m1: Set<Seq<u8>>, k: Seq<u8>, m2: Set<Seq<u8>>) -> bool
             {
                 m1.remove(k) == m2
             }
 
-            pub open spec fn remove_struct(m1: Set<Data>, k: Data, m2: Set<Data>) -> bool 
+            spec fn remove_struct(m1: Set<Data>, k: Data, m2: Set<Data>) -> bool
             {
                 m1.remove(k) == m2
             }
 
-            pub open spec fn union_eq(m1: Set<u8>, m2: Set<u8>, m3: Set<u8>) -> bool 
+            spec fn union_eq(m1: Set<u8>, m2: Set<u8>, m3: Set<u8>) -> bool
             {
                 m1.union(m2) == m3
             }
 
-            pub open spec fn union_nested(m1: Set<Seq<u8>>, m2: Set<Seq<u8>>, m3: Set<Seq<u8>>) -> bool 
+            spec fn union_nested(m1: Set<Seq<u8>>, m2: Set<Seq<u8>>, m3: Set<Seq<u8>>) -> bool
             {
                 m1.union(m2) == m3
             }
 
-            pub open spec fn union_struct(m1: Set<Data>, m2: Set<Data>, m3: Set<Data>) -> bool 
+            spec fn union_struct(m1: Set<Data>, m2: Set<Data>, m3: Set<Data>) -> bool
             {
                 m1.union(m2) == m3
             }
@@ -872,93 +872,93 @@ test_verify_one_file! {
                 z: (u8, u8, Inner),
             }
 
-            pub open spec fn dom_eq(m1: Map<u8, u8>, s: Set<u8>) -> bool 
+            spec fn dom_eq(m1: Map<u8, u8>, s: Set<u8>) -> bool
             {
                 m1.dom() == s
             }
 
-            pub open spec fn dom_struct(m1: Map<Data, u8>, s: Set<Data>) -> bool 
+            spec fn dom_struct(m1: Map<Data, u8>, s: Set<Data>) -> bool
             {
                 m1.dom() == s
             }
 
-            pub open spec fn empty_map() -> Map<u8, u8> 
+            spec fn empty_map() -> Map<u8, u8>
             {
                 Map::empty()
             }
 
-            pub open spec fn empty_map_length_zero() -> bool {
+            spec fn empty_map_length_zero() -> bool {
                 empty_map().len() == 0
             }
 
-            pub open spec fn get_eq(m1: Map<u8, u8>, k: u8, v: u8) -> bool 
+            spec fn get_eq(m1: Map<u8, u8>, k: u8, v: u8) -> bool
             {
                 m1.get(k) == Some(v)
             }
 
-            pub open spec fn get_nested(m1: Map<Seq<u8>, u8>, k: Seq<u8>, v: u8) -> bool 
+            spec fn get_nested(m1: Map<Seq<u8>, u8>, k: Seq<u8>, v: u8) -> bool
             {
                 m1.get(k) == Some(v)
             }
 
-            pub open spec fn get_struct(m1: Map<Data, u8>, k: Data, v: u8) -> bool
+            spec fn get_struct(m1: Map<Data, u8>, k: Data, v: u8) -> bool
             {
                 m1.get(k) == Some(v)
             }
 
-            pub open spec fn index_eq(m1: Map<u8, u8>, k: u8, v: u8) -> bool 
+            spec fn index_eq(m1: Map<u8, u8>, k: u8, v: u8) -> bool
                 recommends m1.dom().contains(k)
             {
                 m1[k] == v
             }
 
-            pub open spec fn index_method_eq(m1: Map<u8, u8>, k: u8, v: u8) -> bool 
+            spec fn index_method_eq(m1: Map<u8, u8>, k: u8, v: u8) -> bool
                 recommends m1.dom().contains(k)
             {
                 m1.index(k) == v
             }
 
-            pub open spec fn insert_eq(m1: Map<u8, u8>, k: u8, v: u8, m2: Map<u8, u8>) -> bool 
+            spec fn insert_eq(m1: Map<u8, u8>, k: u8, v: u8, m2: Map<u8, u8>) -> bool
             {
                 m1.insert(k, v) == m2
             }
 
-            pub open spec fn insert_nested(m1: Map<Seq<u8>, u8>, k: Seq<u8>, v: u8, m2: Map<Seq<u8>, u8>) -> bool 
+            spec fn insert_nested(m1: Map<Seq<u8>, u8>, k: Seq<u8>, v: u8, m2: Map<Seq<u8>, u8>) -> bool
             {
                 m1.insert(k, v) == m2
             }
 
-            pub open spec fn insert_nested_key(m1: Map<Seq<u8>, Seq<u8>>, k: Seq<u8>, v: Seq<u8>, m2: Map<Seq<u8>, Seq<u8>>) -> bool 
+            spec fn insert_nested_key(m1: Map<Seq<u8>, Seq<u8>>, k: Seq<u8>, v: Seq<u8>, m2: Map<Seq<u8>, Seq<u8>>) -> bool
             {
                 m1.insert(k, v) == m2
             }
 
-            pub open spec fn insert_struct(m1: Map<Data, u8>, k: Data, v: u8, m2: Map<Data, u8>) -> bool 
+            spec fn insert_struct(m1: Map<Data, u8>, k: Data, v: u8, m2: Map<Data, u8>) -> bool
             {
                 m1.insert(k, v) == m2
             }
 
-            pub open spec fn len_eq(m1: Map<u8, u8>, n: usize) -> bool 
+            spec fn len_eq(m1: Map<u8, u8>, n: usize) -> bool
             {
                 m1.len() == n as int
             }
 
-            pub open spec fn len_struct(m1: Map<u8, Data>, n: usize) -> bool 
+            spec fn len_struct(m1: Map<u8, Data>, n: usize) -> bool
             {
                 m1.len() == n as int
             }
 
-            pub open spec fn remove_eq(m1: Map<u8, u8>, k: u8, m2: Map<u8, u8>) -> bool 
+            spec fn remove_eq(m1: Map<u8, u8>, k: u8, m2: Map<u8, u8>) -> bool
             {
                 m1.remove(k) == m2
             }
 
-            pub open spec fn remove_nested(m1: Map<Seq<u8>, u8>, k: Seq<u8>, m2: Map<Seq<u8>, u8>) -> bool 
+            spec fn remove_nested(m1: Map<Seq<u8>, u8>, k: Seq<u8>, m2: Map<Seq<u8>, u8>) -> bool
             {
                 m1.remove(k) == m2
             }
 
-            pub open spec fn remove_struct(m1: Map<Data, u8>, k: Data, m2: Map<Data, u8>) -> bool 
+            spec fn remove_struct(m1: Map<Data, u8>, k: Data, m2: Map<Data, u8>) -> bool
             {
                 m1.remove(k) == m2
             }
@@ -980,76 +980,76 @@ test_verify_one_file! {
                 z: (u8, u8, Inner),
             }
 
-            pub open spec fn add_eq(m1: Multiset<u8>, m2: Multiset<u8>, m3: Multiset<u8>) -> bool 
+            spec fn add_eq(m1: Multiset<u8>, m2: Multiset<u8>, m3: Multiset<u8>) -> bool
             {
                 m1.add(m2) == m3
             }
 
-            pub open spec fn add_nested(m1: Multiset<Seq<u8>>, m2: Multiset<Seq<u8>>, m3: Multiset<Seq<u8>>) -> bool {
+            spec fn add_nested(m1: Multiset<Seq<u8>>, m2: Multiset<Seq<u8>>, m3: Multiset<Seq<u8>>) -> bool {
                 m1.add(m2) == m3
             }
 
-            pub open spec fn add_struct(m1: Multiset<Data>, m2: Multiset<Data>, m3: Multiset<Data>) -> bool {
+            spec fn add_struct(m1: Multiset<Data>, m2: Multiset<Data>, m3: Multiset<Data>) -> bool {
                 m1.add(m2) == m3
             }
 
-            pub open spec fn count_eq(s: Multiset<u8>, value: u8, c: usize) -> bool 
+            spec fn count_eq(s: Multiset<u8>, value: u8, c: usize) -> bool
             {
                 s.count(value) == c as nat
             }
 
-            pub open spec fn count_nested(s: Multiset<Seq<Seq<u8>>>, value: Seq<Seq<u8>>, c: usize) -> bool 
+            spec fn count_nested(s: Multiset<Seq<Seq<u8>>>, value: Seq<Seq<u8>>, c: usize) -> bool
             {
                 s.count(value) == c as nat
             }
 
-            pub open spec fn count_struct(s: Multiset<Data>, value: Data, c: usize) -> bool 
+            spec fn count_struct(s: Multiset<Data>, value: Data, c: usize) -> bool
             {
                 s.count(value) == c as nat
             }
 
-            pub open spec fn empty_multiset() -> Multiset<u8> 
+            spec fn empty_multiset() -> Multiset<u8>
             {
                 Multiset::empty()
             }
 
-            pub open spec fn empty_multiset_length_zero() -> bool {
+            spec fn empty_multiset_length_zero() -> bool {
                 empty_multiset().len() == 0
             }
 
-            pub open spec fn test(s: Multiset<u8>, i: usize) -> bool 
+            spec fn test(s: Multiset<u8>, i: usize) -> bool
             {
                 s.len() == i as nat
             }
 
-            pub open spec fn test_struct(s: Multiset<Data>, i: usize) -> bool 
+            spec fn test_struct(s: Multiset<Data>, i: usize) -> bool
             {
                 s.len() == i as nat
             }
 
-            pub open spec fn singleton_eq(v: u8, m: Multiset<u8>) -> bool 
+            spec fn singleton_eq(v: u8, m: Multiset<u8>) -> bool
             {
                 Multiset::singleton(v) == m
             }
 
-            pub open spec fn singleton_nested(v: Seq<u8>, m: Multiset<Seq<u8>>) -> bool {
+            spec fn singleton_nested(v: Seq<u8>, m: Multiset<Seq<u8>>) -> bool {
                 Multiset::singleton(v) == m
             }
 
-            pub open spec fn singleton_struct(v: Data, m: Multiset<Data>) -> bool {
+            spec fn singleton_struct(v: Data, m: Multiset<Data>) -> bool {
                 Multiset::singleton(v) == m
             }
 
-            pub open spec fn sub_eq(m1: Multiset<u8>, m2: Multiset<u8>, m3: Multiset<u8>) -> bool 
+            spec fn sub_eq(m1: Multiset<u8>, m2: Multiset<u8>, m3: Multiset<u8>) -> bool
             {
                 m1.sub(m2) == m3
             }
 
-            pub open spec fn sub_nested(m1: Multiset<Seq<u8>>, m2: Multiset<Seq<u8>>, m3: Multiset<Seq<u8>>) -> bool {
+            spec fn sub_nested(m1: Multiset<Seq<u8>>, m2: Multiset<Seq<u8>>, m3: Multiset<Seq<u8>>) -> bool {
                 m1.sub(m2) == m3
             }
 
-            pub open spec fn sub_struct(m1: Multiset<Data>, m2: Multiset<Data>, m3: Multiset<Data>) -> bool {
+            spec fn sub_struct(m1: Multiset<Data>, m2: Multiset<Data>, m3: Multiset<Data>) -> bool {
                 m1.sub(m2) == m3
             }
         }
@@ -1523,7 +1523,7 @@ test_verify_one_file! {
                 0 <= i && i <= 10
             }
 
-            spec fn lt_lt_forall() -> bool 
+            spec fn lt_lt_forall() -> bool
             {
                 forall |i: usize| 0 < i < 10 ==> neq_0(i) && neq_10(i)
             }
@@ -1540,7 +1540,7 @@ test_verify_one_file! {
                 forall |i: usize| 0 <= i <= 10 ==> le_le_0_10(i)
             }
 
-            spec fn lt_lt_exists() -> bool 
+            spec fn lt_lt_exists() -> bool
             {
                 !(exists |i: usize| 0 < i < 10 && (eq_0(i) || eq_10(i)))
             }

@@ -462,7 +462,7 @@ impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOf<'a> for &'a [T] where
     #[inline(always)]
     fn exec_index_of(self, needle: Self::Elem) -> (res: usize)
         ensures
-            res == self.deep_view().index_of(needle.deep_view())
+            res == self.deep_view().index_of(needle.deep_view()),
     {
         // todo(nneamtu): should this use <&T>::exec_eq to do the equality check instead?
         // hard to convert to correct type for argument, e.g. if Self::Elem is Vec
@@ -484,7 +484,8 @@ impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOfFirst<'a> for &'a [T] where
     fn exec_index_of_first(self, needle: Self::Elem) -> (res: Option<usize>)
         ensures
             match res {
-                Some(i) => self.deep_view().index_of_first(needle.deep_view()).is_some() && i as int == self.deep_view().index_of_first(needle.deep_view())->0,
+                Some(i) => self.deep_view().index_of_first(needle.deep_view()).is_some() && i as int
+                    == self.deep_view().index_of_first(needle.deep_view())->0,
                 None => self.deep_view().index_of_first(needle.deep_view()) == None::<int>,
             },
     {
@@ -508,7 +509,8 @@ impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOfLast<'a> for &'a [T] where
     fn exec_index_of_last(self, needle: Self::Elem) -> (res: Option<usize>)
         ensures
             match res {
-                Some(i) => self.deep_view().index_of_last(needle.deep_view()).is_some() && i as int == self.deep_view().index_of_last(needle.deep_view())->0,
+                Some(i) => self.deep_view().index_of_last(needle.deep_view()).is_some() && i as int
+                    == self.deep_view().index_of_last(needle.deep_view())->0,
                 None => self.deep_view().index_of_last(needle.deep_view()) == None::<int>,
             },
     {
