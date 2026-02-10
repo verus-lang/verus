@@ -2106,3 +2106,432 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_not_supported ["new-mut-ref"] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            let x = &mut a.i;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_not_supported2 ["new-mut-ref"] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        struct Ctor<'a>(&'a mut u64, &'a mut u64);
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            let x = Ctor(&mut a.i, &mut a.j);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_not_supported_match1 ["new-mut-ref"] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            match a.i {
+                ref mut x => {
+                    *x = 1;
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_not_supported_match2 ["new-mut-ref"] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            match a {
+                A { i: ref mut x, j: _ } => {
+                    *x = 1;
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_not_supported_let1 ["new-mut-ref"] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            let ref mut x = a.i;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_not_supported_let2 ["new-mut-ref"] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            let A { i: ref mut x, j: _ } = a;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] use_type_invariant_in_arg ["new-mut-ref"] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn set_to_20(x: &mut u64, y: u64)
+            ensures *fin(x) == 20
+            no_unwind
+        {
+            *x = 20;
+        }
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            set_to_20(&mut a.i, ({ proof { use_type_invariant(&a) } 0 }));
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `a` as immutable because it is also borrowed as mutable")
+}
+
+test_verify_one_file_with_options! {
+    #[test] use_type_invariant_in_arg_no_lifetime ["new-mut-ref", "--no-lifetime"] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn set_to_20(x: &mut u64, y: u64)
+            ensures *fin(x) == 20
+            no_unwind
+        {
+            *x = 20;
+        }
+
+        // This test uses --no-lifetime, so we don't really need it to fail.
+        // However, Verus (unlike Rust) treats the borrow as two-phase due to the way
+        // internal simplifications work, as a result the use_type_invariant is emitted
+        // pre-update. Thus, I do expect this code to be sound (i.e., to fail)
+        // even in the presence in --no-lifetime.
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            set_to_20(&mut a.i, ({ proof { use_type_invariant(&a) } 0 })); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] array_of_structs ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        pub(crate) struct A {
+            pub(crate) i: u64,
+            pub(crate) j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn set_to(a: &mut u64, b: u64)
+            ensures *fin(a) == b
+            no_unwind
+        {
+            *a = b;
+        }
+
+        fn test1() {
+            let mut x = [
+                A { i: 0, j: 10 },
+                A { i: 20, j: 30 },
+            ];
+            x[0].i = 1;
+        }
+
+        fn fails1() {
+            let mut x = [
+                A { i: 0, j: 10 },
+                A { i: 20, j: 30 },
+            ];
+            x[0].i = 15; // FAILS
+        }
+
+        fn test2() {
+            let mut x = [
+                A { i: 0, j: 10 },
+                A { i: 20, j: 30 },
+            ];
+            set_to(&mut x[0].i, 1);
+        }
+
+        fn fails2() {
+            let mut x = [
+                A { i: 0, j: 10 },
+                A { i: 20, j: 30 },
+            ];
+            set_to(&mut x[0].i, 15); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] struct_of_array ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        pub(crate) struct A {
+            pub(crate) array: [u64; 2],
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.array[0] <= a.array[1]
+        }
+
+        fn set_to(a: &mut u64, b: u64)
+            ensures *fin(a) == b
+            no_unwind
+        {
+            *a = b;
+        }
+
+        fn test1() {
+            let mut x = A { array: [0, 10] };
+            x.array[0] = 1;
+        }
+
+        fn fails1() {
+            let mut x = A { array: [0, 10] };
+            x.array[0] = 15; // FAILS
+        }
+
+        fn test2() {
+            let mut x = A { array: [0, 10] };
+            set_to(&mut x.array[0], 1);
+        }
+
+        fn fails2() {
+            let mut x = A { array: [0, 10] };
+            set_to(&mut x.array[0], 15); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] struct_of_vec ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        // this is currently unsupported since Vec doesn't get the same special treatment
+        // as slices/arrays do
+
+        pub(crate) struct A {
+            pub(crate) vec: Vec<u64>,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.vec.len() == 2 &&
+                a.vec[0] <= a.vec[1]
+        }
+
+        fn set_to(a: &mut u64, b: u64)
+            ensures *fin(a) == b
+            no_unwind
+        {
+            *a = b;
+        }
+
+        fn test1() {
+            let mut x = A { vec: vec![0, 10] };
+            x.vec[0] = 1;
+        }
+
+        fn fails1() {
+            let mut x = A { vec: vec![0, 10] };
+            x.vec[0] = 15; // FAILS
+        }
+
+        fn test2() {
+            let mut x = A { vec: vec![0, 10] };
+            set_to(&mut x.vec[0], 1);
+        }
+
+        fn fails2() {
+            let mut x = A { vec: vec![0, 10] };
+            set_to(&mut x.vec[0], 15); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: taking a mutable reference to a field of a datatype with a user-defined type invariant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] with_reborrow ["new-mut-ref"] => verus_code! {
+        struct X {
+            i: (u64, u64),
+            j: (u64, u64),
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i.0
+                  <= self.i.1
+                  <= self.j.0
+                  <= self.j.1
+            }
+        }
+
+        fn set_to(a: &mut u64, b: u64)
+            ensures *fin(a) == b
+            no_unwind
+        {
+            *a = b;
+        }
+
+        fn test() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            let x_ref = &mut x;
+            set_to(&mut x_ref.i.0, 5);
+        }
+
+        fn test_fails() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            let x_ref = &mut x;
+            set_to(&mut x_ref.i.0, 15); // FAILS
+        }
+
+        proof fn tra_set_to(tracked a: &mut u64, b: u64)
+            ensures *fin(a) == b
+        {
+            assume(false);
+        }
+
+        proof fn tra_test() {
+            let tracked mut x = X { i: (0, 10), j: (20, 30) };
+            let tracked x_ref = &mut x;
+            tra_set_to(&mut x_ref.i.0, 5);
+        }
+
+        proof fn tra_test_fails() {
+            let tracked mut x = X { i: (0, 10), j: (20, 30) };
+            let tracked x_ref = &mut x;
+            tra_set_to(&mut x_ref.i.0, 15); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] with_tracked_wrapper ["new-mut-ref"] => verus_code! {
+        struct X {
+            i: (u64, u64),
+            j: (u64, u64),
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i.0
+                  <= self.i.1
+                  <= self.j.0
+                  <= self.j.1
+            }
+        }
+
+        fn set_to(Tracked(a): Tracked<&mut u64>, b: u64)
+            ensures *fin(a) == b
+            no_unwind
+        {
+            assume(false);
+        }
+
+        fn test() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            let x_ref = &mut x;
+            set_to(Tracked(&mut x_ref.i.0), 5);
+        }
+
+        fn test_fails() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            let x_ref = &mut x;
+            set_to(Tracked(&mut x_ref.i.0), 15); // FAILS
+        }
+
+        fn test2() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            set_to(Tracked(&mut x.i.0), 5);
+        }
+
+        fn test2_fails() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            set_to(Tracked(&mut x.i.0), 15); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+}

@@ -3847,6 +3847,9 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
         PlaceX::Index(..) => {
             panic!("Verus Internal Error: PlaceX::Index should not be created outside new-mut-ref")
         }
+        PlaceX::UserDefinedTypInvariantObligation(..) => {
+            panic!("Verus Internal Error: unexpected PlaceX::UserDefinedTypInvariantObligation")
+        }
     };
     Ok(SpannedTyped::new(&place.span, &place.typ, x))
 }

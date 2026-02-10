@@ -2419,6 +2419,31 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] two_phase_proof_code ["new-mut-ref"] => verus_code! {
+        proof fn set_to(tracked a: &mut Ghost<int>, tracked b: Ghost<int>)
+            ensures *fin(a) == b
+        {
+            *a = b;
+        }
+
+        proof fn two_phase() {
+            let tracked mut x: Ghost<int> = Ghost(0);
+            let tracked x_ref = &mut x;
+            set_to(x_ref, Ghost(x_ref@ + 1));
+            assert(x == 1);
+        }
+
+        proof fn two_phase_fail() {
+            let tracked mut x: Ghost<int> = Ghost(0);
+            let tracked x_ref = &mut x;
+            set_to(x_ref, Ghost(x_ref@ + 1));
+            assert(x == 1);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file_with_options! {
     #[test] struct_mut_ref_pair_immut_ref ["new-mut-ref"] => verus_code! {
         struct BigStruct<'a, 'b>(&'a mut (u64, &'b (u64, u64)));
 
@@ -3171,4 +3196,50 @@ test_verify_one_file_with_options! {
             test(a);
         }
     } => Err(err) => assert_vir_error_msg(err, "For more flexible mutable reference support, disable the backwards-compatability")
+}
+
+// TODO(new_mut_ref): un-ignore after paradox-checking
+test_verify_one_file_with_options! {
+    #[ignore] #[test] false_two_phase ["new-mut-ref"] => verus_code! {
+        fn set_to(Tracked(a): Tracked<&mut Ghost<int>>, Tracked(b): Tracked<Ghost<int>>)
+            ensures *fin(a) == b
+        {
+            proof { *a = b; }
+        }
+
+        fn test() {
+            let tracked mut x: Ghost<int> = Ghost(0);
+            let tracked x_ref = &mut x;
+            set_to(Tracked(x_ref), Tracked(Ghost(x_ref@ + 1)));
+            assert(x == 1);
+        }
+
+        fn test_fail() {
+            let tracked mut x: Ghost<int> = Ghost(0);
+            let tracked x_ref = &mut x;
+            // The x_ref here is two-phase with respect to `Tracked` rather than to
+            // the `set_to` call.
+            set_to(Tracked(x_ref), Tracked(Ghost(x_ref@ + 1)));
+            assert(x == 1);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot use `*x_ref` because it was mutably borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] false_two_phase2 ["new-mut-ref"] => verus_code! {
+        fn set_to(Tracked(a): Tracked<&mut Tracked<int>>, Tracked(b): Tracked<int>)
+            ensures *fin(a) == b
+        {
+            proof { *a = Tracked(b); }
+        }
+
+        fn test_fail() {
+            let tracked mut x: Tracked<int> = Tracked(0);
+            let tracked x_ref = &mut x;
+            set_to(Tracked(x_ref), Tracked(x_ref.get() + 1));
+            assert(x == 1);
+            assert(false);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot use `*x_ref` because it was mutably borrowed")
 }

@@ -22,14 +22,13 @@ use std::sync::Arc;
 //  3. For any call that takes &mut args to fields, add an assertion that
 //     after the call the struct meets the type invariant again.
 //
-// NOTE: we may need to revisit after more general &mut support lands.
+// NOTE: much of this is obsolete in new-mut-ref.
 
 pub(crate) fn annotate_user_defined_invariants(
     functionx: &mut FunctionX,
     info: &TypeInvInfo,
     functions: &HashMap<Fun, Function>,
     datatypes: &HashMap<Path, Datatype>,
-    new_mut_ref: bool,
 ) -> Result<(), VirErr> {
     let module = functionx.owning_module.as_ref().unwrap();
     let id_cell = Cell::<u64>::new(0);
@@ -37,7 +36,7 @@ pub(crate) fn annotate_user_defined_invariants(
         functionx.body.as_ref().unwrap(),
         &|expr: &Expr| {
             match &expr.x {
-                ExprX::Ctor(Dt::Path(_), ..) if !new_mut_ref => {
+                ExprX::Ctor(Dt::Path(_), ..) => {
                     if info.ctor_needs_check[&expr.span.id]
                         && typ_has_user_defined_type_invariant(datatypes, &expr.typ)
                     {
@@ -49,7 +48,7 @@ pub(crate) fn annotate_user_defined_invariants(
                         Ok(expr.clone())
                     }
                 }
-                ExprX::Assign { lhs, .. } if !new_mut_ref => {
+                ExprX::Assign { lhs, .. } => {
                     let new_asserts = asserts_for_lhs(info, functions, datatypes, module, lhs)?;
                     if new_asserts.len() > 0 {
                         Ok(expr_followed_by_stmts(expr, new_asserts, &id_cell))
@@ -57,7 +56,7 @@ pub(crate) fn annotate_user_defined_invariants(
                         Ok(expr.clone())
                     }
                 }
-                ExprX::Call(CallTarget::Fun(_, fun, _, _, _), args, _post_args) if !new_mut_ref => {
+                ExprX::Call(CallTarget::Fun(_, fun, _, _, _), args, _post_args) => {
                     let function = &functions.get(fun).unwrap();
                     let mut all_asserts = vec![];
                     for (arg, param) in args.iter().zip(function.x.params.iter()) {
@@ -116,6 +115,59 @@ pub(crate) fn annotate_user_defined_invariants(
     Ok(())
 }
 
+/// Called by resolution_inference
+pub(crate) fn annotate_one(
+    expr: &Expr,
+    info: &TypeInvInfo,
+    functions: &HashMap<Fun, Function>,
+    datatypes: &HashMap<Path, Datatype>,
+    module: &Path,
+) -> Result<Expr, VirErr> {
+    match &expr.x {
+        ExprX::Ctor(Dt::Path(_), ..) => {
+            if info.ctor_needs_check[&expr.span.id]
+                && typ_has_user_defined_type_invariant(datatypes, &expr.typ)
+            {
+                let fun = typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
+                let function = functions.get(&fun).unwrap();
+                Ok(assert_and_return(&expr, function, module)?)
+            } else {
+                Ok(expr.clone())
+            }
+        }
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: true, expr, fun: _ } => {
+            // Check that this is fine, and fill in the correct 'fun'
+
+            let typ = undecorate_typ(&expr.typ);
+            if !matches!(&*typ, TypX::Datatype(..)) {
+                return Err(error(&expr.span, "this type is not a datatype"));
+            }
+            if let Some(fun) = typ_get_user_defined_type_invariant(datatypes, &typ) {
+                let function = functions.get(&fun).unwrap();
+                if !crate::ast_util::is_visible_to(&function.x.visibility, module) {
+                    return Err(error(
+                        &expr.span,
+                        "type invariant function is not visible to this program point",
+                    )
+                    .secondary_span(&function.span));
+                }
+                Ok(SpannedTyped::new(
+                    &expr.span,
+                    &expr.typ,
+                    ExprX::AssertAssumeUserDefinedTypeInvariant {
+                        is_assume: true,
+                        expr: expr.clone(),
+                        fun,
+                    },
+                ))
+            } else {
+                return Err(error(&expr.span, "this type does not have any type invariant"));
+            }
+        }
+        _ => Ok(expr.clone()),
+    }
+}
+
 fn check_func_is_no_unwind(
     span: &Span,
     functions: &HashMap<Fun, Function>,
@@ -167,13 +219,18 @@ fn expr_followed_by_stmts(expr: &Expr, stmts: Vec<Stmt>, id_cell: &Cell<u64>) ->
     }
 }
 
-fn assert_and_return(e: &Expr, function: &Function, module: &Path) -> Result<Expr, VirErr> {
+pub(crate) fn check_vis(span: &Span, function: &Function, module: &Path) -> Result<(), VirErr> {
     if !crate::ast_util::is_visible_to(&function.x.visibility, module) {
         return Err(error(
-            &e.span,
+            span,
             "type invariant function is not visible to this program point, which requires us to prove the invariant is preserved",
         ).secondary_span(&function.span));
     }
+    Ok(())
+}
+
+fn assert_and_return(e: &Expr, function: &Function, module: &Path) -> Result<Expr, VirErr> {
+    check_vis(&e.span, function, module)?;
     Ok(SpannedTyped::new(
         &e.span,
         &e.typ,
