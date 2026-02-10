@@ -3,29 +3,43 @@ use vstd::std_specs::iter::IteratorSpecImpl;
 
 verus! {
 
-#[verifier::exec_allows_no_decreases_clause]
-fn test_loop() {
+fn test_loop_fail() {
     let mut n: u64 = 0;
-    let mut iter: std::ops::Range<u64> = (0..10).into_iter();
-    loop
+    let mut end = 10;
+    for x in iter: 0..end
         invariant
-            iter.start <= 10,
-            iter.end == 10,
-            n == iter.start * 3,
-        ensures
-            iter.start == 10,
+            n == x * 3, // FAILS
+            end == 10,
     {
-        if let Some(x) = iter.next() {
-            assert(x < 10);
-            assert(x == iter.start - 1);
-            n += 3;
-        } else {
-            break;
-        }
+        assert(x < 10); // FAILS
+        n += 3;
+        end = end + 0; // causes end to be non-constant, so loop needs more invariants
     }
-    assert(iter.start == 10);
-    assert(n == 30);
 }
+
+//#[verifier::exec_allows_no_decreases_clause]
+//fn test_loop() {
+//    let mut n: u64 = 0;
+//    let mut iter: std::ops::Range<u64> = (0..10).into_iter();
+//    loop
+//        invariant
+//            iter.start <= 10,
+//            iter.end == 10,
+//            n == iter.start * 3,
+//        ensures
+//            iter.start == 10,
+//    {
+//        if let Some(x) = iter.next() {
+//            assert(x < 10);
+//            assert(x == iter.start - 1);
+//            n += 3;
+//        } else {
+//            break;
+//        }
+//    }
+//    assert(iter.start == 10);
+//    assert(n == 30);
+//}
 
 //fn test_loop() {
 //    let mut n: u64 = 0;

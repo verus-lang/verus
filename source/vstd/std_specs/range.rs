@@ -149,6 +149,7 @@ impl <A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl f
     }
     
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        //Some(self.start.spec_forward_checked_int(index).unwrap())
         if 0 <= index <= self.start.spec_steps_between_int(self.end) {
             Some(self.start.spec_forward_checked_int(index).unwrap())
         } else {
