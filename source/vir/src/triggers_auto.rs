@@ -811,4 +811,4 @@ pub(crate) fn build_triggers(
             "Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.",
         ))
     }
-} 
+}
