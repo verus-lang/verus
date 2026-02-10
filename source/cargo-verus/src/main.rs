@@ -24,14 +24,23 @@ use crate::{
     subcommands::CargoRunConfig,
 };
 
-fn contains_late_verus_command_line_argument_that_will_be_ignored(opts: &CargoOptions) -> bool {
+fn has_late_verus_arg(opts: &CargoOptions) -> bool {
     for arg in opts.cargo_args.iter().skip(1) {
-        if arg == "-p"
+        if arg.starts_with("-p")
             || arg == "--package"
+            || arg.starts_with("--package=")
+            || arg == "--workspace"
+            || arg == "--all"
+            || arg == "--exclude"
+            || arg.starts_with("--exclude=")
+            || arg == "--manifest-path"
+            || arg.starts_with("--manifest-path=")
+            || arg == "--all-features"
             || arg == "--no-default-features"
             || arg == "--features"
+            || arg.starts_with("--features=")
         {
-            println!(
+            eprintln!(
                 "The Verus-relevant command-line argument {0} can't follow the Verus-irrelevant argument {1} because that will cause the Verus-relevant argument to be ignored",
                 arg, opts.cargo_args[0]
             );
@@ -39,7 +48,7 @@ fn contains_late_verus_command_line_argument_that_will_be_ignored(opts: &CargoOp
         }
     }
 
-    return false;
+    false
 }
 
 pub fn main() -> Result<ExitCode> {
@@ -57,7 +66,7 @@ pub fn main() -> Result<ExitCode> {
             return Ok(ExitCode::SUCCESS);
         }
         VerusSubcommand::Verify(options) => {
-            if contains_late_verus_command_line_argument_that_will_be_ignored(&options.cargo_opts) {
+            if has_late_verus_arg(&options.cargo_opts) {
                 return Ok(ExitCode::from(2));
             } else {
                 CargoRunConfig {
@@ -70,7 +79,7 @@ pub fn main() -> Result<ExitCode> {
             }
         }
         VerusSubcommand::Focus(options) => {
-            if contains_late_verus_command_line_argument_that_will_be_ignored(&options.cargo_opts) {
+            if has_late_verus_arg(&options.cargo_opts) {
                 return Ok(ExitCode::from(2));
             } else {
                 CargoRunConfig {
@@ -82,20 +91,32 @@ pub fn main() -> Result<ExitCode> {
                 }
             }
         }
-        VerusSubcommand::Build(options) => CargoRunConfig {
-            subcommand: "build",
-            options,
-            compile_primary: true,
-            verify_deps: true,
-            warn_if_nothing_verified: false,
-        },
-        VerusSubcommand::Check(options) => CargoRunConfig {
-            subcommand: "check",
-            options,
-            compile_primary: false,
-            verify_deps: true,
-            warn_if_nothing_verified: true,
-        },
+        VerusSubcommand::Build(options) => {
+            if has_late_verus_arg(&options.cargo_opts) {
+                return Ok(ExitCode::from(2));
+            } else {
+                CargoRunConfig {
+                    subcommand: "build",
+                    options,
+                    compile_primary: true,
+                    verify_deps: true,
+                    warn_if_nothing_verified: false,
+                }
+            }
+        }
+        VerusSubcommand::Check(options) => {
+            if has_late_verus_arg(&options.cargo_opts) {
+                return Ok(ExitCode::from(2));
+            } else {
+                CargoRunConfig {
+                    subcommand: "check",
+                    options,
+                    compile_primary: false,
+                    verify_deps: true,
+                    warn_if_nothing_verified: true,
+                }
+            }
+        }
     };
 
     subcommands::run_cargo(cfg)
