@@ -1961,6 +1961,13 @@ pub(crate) fn expr_to_stm_opt(
             let (check_stms, body_exp) = expr_to_pure_exp_check(ctx, state, body)?;
             Ok((check_stms, Maybe::Some(Value::Exp(mk_exp(ExpX::WithTriggers(trigs, body_exp))))))
         }
+        ExprX::WithProofNote { label, body } => {
+            let (check_stms, body_exp) = expr_to_pure_exp_check(ctx, state, body)?;
+            Ok((
+                check_stms,
+                Maybe::Some(Value::Exp(mk_exp(ExpX::WithProofNote(label.clone(), body_exp)))),
+            ))
+        }
         ExprX::Fuel(x, fuel, is_broadcast_use) => {
             // It's possible that the function may have pruned out of the crate
             // because there are no transitive dependencies.

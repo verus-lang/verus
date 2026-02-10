@@ -105,6 +105,8 @@ pub enum ExpX {
     BinaryOpr(crate::ast::BinaryOpr, Exp, Exp),
     /// Conditional expression (if-then-else); all three branches are pure
     If(Exp, Exp, Exp),
+    /// Attaches a `proof_note` label to an expression; transparent for evaluation
+    WithProofNote(String, Exp),
     /// Attaches trigger annotations to a quantified expression
     WithTriggers(Trigs, Exp),
     /// Binding construct: let, forall, exists, lambda, or choose

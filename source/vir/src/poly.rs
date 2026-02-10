@@ -703,6 +703,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
             };
             mk_exp_typ(&t, ExpX::If(e0, e1, e2))
         }
+        ExpX::WithProofNote(label, body) => {
+            let body = visit_exp(ctx, state, body);
+            mk_exp_typ(&body.clone().typ, ExpX::WithProofNote(label.clone(), body))
+        }
         ExpX::WithTriggers(trigs, body) => {
             let trigs = visit_trigs(ctx, state, trigs);
             let body = visit_exp(ctx, state, body);

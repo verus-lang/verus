@@ -176,6 +176,7 @@ fn subst_exp_rec(ctxt: &SubstCtxt, state: &mut SubstState, exp: &Exp) -> Exp {
         | ExpX::If(..)
         | ExpX::ExecFnByName(..)
         | ExpX::FuelConst(..)
+        | ExpX::WithProofNote(..)
         | ExpX::WithTriggers(..) => crate::sst_visitor::map_shallow_exp(
             exp,
             state,
@@ -727,7 +728,7 @@ impl ExpX {
                 }
             }
             FuelConst(i) => (format!("fuel({i:})"), 99),
-            Old(..) | WithTriggers(..) => ("".to_string(), 99), // We don't show the user these internal expressions
+            Old(..) | WithProofNote(..) | WithTriggers(..) => ("".to_string(), 99), // We don't show the user these internal expressions
         };
         if precedence <= inner_precedence { s } else { format!("({})", s) }
     }

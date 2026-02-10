@@ -685,6 +685,7 @@ impl<'a> Builder<'a> {
             | ExprX::Closure(..)
             | ExprX::ExecFnByName(..)
             | ExprX::Choose { .. }
+            | ExprX::WithProofNote { .. }
             | ExprX::WithTriggers { .. }
             | ExprX::Assign { .. }
             | ExprX::Fuel(..)

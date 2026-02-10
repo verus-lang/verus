@@ -1034,6 +1034,8 @@ pub enum ExprX {
     ExecFnByName(Fun),
     /// Choose specification values satisfying a condition, compute body
     Choose { params: VarBinders<Typ>, cond: Expr, body: Expr },
+    /// Attach a `proof_note` label to an expression; transparent for evaluation
+    WithProofNote { label: String, body: Expr },
     /// Manually supply triggers for body of quantifier
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable

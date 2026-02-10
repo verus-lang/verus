@@ -443,6 +443,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
+            ExprX::WithProofNote { label, body } => {
+                let body = self.visit_expr(body)?;
+                R::ret(|| {
+                    expr_new(ExprX::WithProofNote { label: label.clone(), body: R::get(body) })
+                })
+            }
             ExprX::WithTriggers { triggers, body } => {
                 let triggers = self.visit_exprs_vec(triggers)?;
                 let body = self.visit_expr(body)?;

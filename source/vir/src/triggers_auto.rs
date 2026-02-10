@@ -329,6 +329,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             (true, Arc::new(TermX::App(App::ExecFnByName(fun.clone()), Arc::new(vec![]))))
         }
         ExpX::Old(_, _) => panic!("internal error: Old"),
+        ExpX::WithProofNote(_, body) => gather_terms(ctxt, ctx, body, depth + 1),
         ExpX::Call(x, typs, args) => {
             use crate::sst::InternalFun;
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =

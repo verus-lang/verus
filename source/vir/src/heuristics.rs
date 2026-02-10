@@ -113,6 +113,10 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             let e3 = insert_auto_ext_equal(ctx, e3);
             exp.new_x(ExpX::If(e1.clone(), e2, e3))
         }
+        ExpX::WithProofNote(label, e) => {
+            let e = insert_auto_ext_equal(ctx, e);
+            exp.new_x(ExpX::WithProofNote(label.clone(), e))
+        }
         ExpX::WithTriggers(trigs, e) => {
             let e = insert_auto_ext_equal(ctx, e);
             exp.new_x(ExpX::WithTriggers(trigs.clone(), e.clone()))

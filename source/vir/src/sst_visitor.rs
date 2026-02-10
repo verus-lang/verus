@@ -309,6 +309,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let e3 = self.visit_exp(e3)?;
                 R::ret(|| exp_new(ExpX::If(R::get(e1), R::get(e2), R::get(e3))))
             }
+            ExpX::WithProofNote(label, body) => {
+                let body = self.visit_exp(body)?;
+                R::ret(|| exp_new(ExpX::WithProofNote(label.clone(), R::get(body))))
+            }
             ExpX::WithTriggers(triggers, body) => {
                 let triggers = self.visit_triggers(triggers)?;
                 let body = self.visit_exp(body)?;

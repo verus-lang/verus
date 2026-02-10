@@ -250,6 +250,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::ArrayLiteral(_)
             | ExprX::ExecFnByName(_)
             | ExprX::Choose { .. }
+            | ExprX::WithProofNote { .. }
             | ExprX::WithTriggers { .. }
             | ExprX::Assign { .. } // requires more complex checks
             | ExprX::AssignToPlace { .. } // requires more complex checks
@@ -2197,6 +2198,18 @@ fn check_expr_handle_mut_arg(
                 &outer_proph,
             )?;
             let proph = proph1.join(proph2);
+            Ok((Mode::Spec, proph))
+        }
+        ExprX::WithProofNote { body, .. } => {
+            let proph = check_expr_has_mode(
+                ctxt,
+                record,
+                typing,
+                Mode::Spec,
+                body,
+                Mode::Spec,
+                outer_proph,
+            )?;
             Ok((Mode::Spec, proph))
         }
         ExprX::WithTriggers { triggers, body } => {

@@ -1407,6 +1407,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             &exp_to_expr(ctx, e2, expr_ctxt)?,
             &exp_to_expr(ctx, e3, expr_ctxt)?,
         ),
+        ExpX::WithProofNote(_, body) => exp_to_expr(ctx, body, expr_ctxt)?,
         ExpX::WithTriggers(_triggers, body) => exp_to_expr(ctx, body, expr_ctxt)?,
         ExpX::Bind(bnd, e) => match &bnd.x {
             BndX::Let(binders) => {

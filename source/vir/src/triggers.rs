@@ -231,6 +231,10 @@ fn check_trigger_expr(
             }
             ExpX::Loc(..) | ExpX::VarLoc(..) => Ok(()),
             ExpX::ExecFnByName(..) => Ok(()),
+            ExpX::WithProofNote(_, body) => {
+                check_trigger_expr_arg(state, body);
+                Ok(())
+            }
             ExpX::Call(_, _typs, args) => {
                 check_trigger_expr_args(state, args);
                 Ok(())

@@ -554,6 +554,7 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
         Binary(op, e1, e2) => dohash!(11, op; hash_exp(e1), hash_exp(e2)),
         BinaryOpr(op, e1, e2) => dohash!(111, op; hash_exp(e1), hash_exp(e2)),
         If(e1, e2, e3) => dohash!(12; hash_exp(e1), hash_exp(e2), hash_exp(e3)),
+        WithProofNote(label, e) => dohash!(120, label; hash_exp(e)),
         WithTriggers(trigs, e) => dohash!(13; hash_trigs(trigs), hash_exp(e)),
         Bind(bnd, e) => dohash!(14; hash_bnd(bnd), hash_exp(e)),
         Interp(e) => {
@@ -1844,6 +1845,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             InterpExp::Closure(_, _) => ok,
             InterpExp::Array(_) => ok,
         },
+        WithProofNote(label, body) => {
+            let body = eval_expr_internal(ctx, state, body)?;
+            exp_new(WithProofNote(label.clone(), body))
+        }
         WithTriggers(triggers, body) => {
             let body = eval_expr_internal(ctx, state, body)?;
             exp_new(WithTriggers(triggers.clone(), body))
