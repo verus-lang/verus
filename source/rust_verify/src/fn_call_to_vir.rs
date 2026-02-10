@@ -1,6 +1,6 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
 use crate::config::Vstd;
-use crate::context::BodyCtxt;
+use crate::context::{BodyCtxt, HeaderSetting};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
 use crate::reveal_hide::RevealHideResult;
@@ -9,7 +9,7 @@ use crate::rust_to_vir_base::{
     typ_of_expr_adjusted, typ_of_node_unadjusted, typ_of_node_unadjusted_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
-    ExprModifier, ExprOrPlace, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir,
+    ExprModifier, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir,
     expr_to_vir_consume, extract_array, extract_tuple, get_fn_path, is_expr_typ_mut_ref,
     mk_ty_clip, pat_to_var,
 };
@@ -481,193 +481,226 @@ fn verus_item_to_vir<'tcx, 'a>(
                 err_span(arg.span, "spec_literal_* requires a string literal")
             }
         }
-        VerusItem::Spec(spec_item) => match spec_item {
-            SpecItem::NoMethodBody => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
-            }
-            SpecItem::Requires
-            | SpecItem::Recommends
-            | SpecItem::OpensInvariants
-            | SpecItem::Returns => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                unsupported_err_unless!(
-                    args_len == 1,
-                    expr.span,
-                    "expected requires/recommends",
-                    &args
-                );
-                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let subargs = extract_array(args[0]);
+        VerusItem::Spec(spec_item) => {
+            // Update the in_fn_sig and in_postcondition fields of bctx if necessary
+            let bctx = if bctx.header_setting == HeaderSetting::Fn {
+                let (sig, postcondition) = match spec_item {
+                    SpecItem::Admit
+                    | SpecItem::Assume
+                    | SpecItem::NoMethodBody
+                    | SpecItem::Recommends
+                    | SpecItem::DecreasesWhen
+                    | SpecItem::DecreasesBy
+                    | SpecItem::RecommendsBy
+                    | SpecItem::InvariantExceptBreak
+                    | SpecItem::Invariant => (false, false),
 
-                let vir_args = vec_map_result(&subargs, |arg| {
-                    expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
-                })?;
+                    SpecItem::Requires
+                    | SpecItem::Decreases
+                    | SpecItem::OpensInvariantsNone
+                    | SpecItem::OpensInvariantsAny
+                    | SpecItem::OpensInvariants
+                    | SpecItem::OpensInvariantsExcept
+                    | SpecItem::OpensInvariantsSet
+                    | SpecItem::NoUnwind
+                    | SpecItem::NoUnwindWhen => (true, false),
 
-                if matches!(spec_item, SpecItem::Returns) && subargs.len() != 1 {
-                    return err_span(
+                    SpecItem::Ensures | SpecItem::Returns => (true, true),
+                };
+                if sig {
+                    &BodyCtxt { in_fn_sig: sig, in_postcondition: postcondition, ..bctx.clone() }
+                } else {
+                    bctx
+                }
+            } else {
+                bctx
+            };
+
+            match spec_item {
+                SpecItem::NoMethodBody => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
+                }
+                SpecItem::Requires
+                | SpecItem::Recommends
+                | SpecItem::OpensInvariants
+                | SpecItem::Returns => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    unsupported_err_unless!(
+                        args_len == 1,
                         expr.span,
-                        "`returns` clause should have exactly 1 expression",
+                        "expected requires/recommends",
+                        &args
                     );
-                }
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let subargs = extract_array(args[0]);
 
-                for (arg, vir_arg) in subargs.iter().zip(vir_args.iter()) {
-                    let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
-                    match spec_item {
-                        SpecItem::Requires | SpecItem::Recommends => match &*typ {
-                            TypX::Bool => {}
-                            _ => {
-                                return err_span(
-                                    arg.span,
-                                    "requires/recommends needs a bool expression",
-                                );
+                    let vir_args = vec_map_result(&subargs, |arg| {
+                        expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
+                    })?;
+
+                    if matches!(spec_item, SpecItem::Returns) && subargs.len() != 1 {
+                        return err_span(
+                            expr.span,
+                            "`returns` clause should have exactly 1 expression",
+                        );
+                    }
+
+                    for (arg, vir_arg) in subargs.iter().zip(vir_args.iter()) {
+                        let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
+                        match spec_item {
+                            SpecItem::Requires | SpecItem::Recommends => match &*typ {
+                                TypX::Bool => {}
+                                _ => {
+                                    return err_span(
+                                        arg.span,
+                                        "requires/recommends needs a bool expression",
+                                    );
+                                }
+                            },
+                            SpecItem::OpensInvariants => match &*typ {
+                                TypX::Int(_) => {}
+                                _ => {
+                                    return err_span(
+                                        arg.span,
+                                        "opens_invariants needs an int expression",
+                                    );
+                                }
+                            },
+                            SpecItem::Returns => {
+                                // type is checked in well_formed.rs
                             }
-                        },
-                        SpecItem::OpensInvariants => match &*typ {
-                            TypX::Int(_) => {}
-                            _ => {
-                                return err_span(
-                                    arg.span,
-                                    "opens_invariants needs an int expression",
-                                );
-                            }
-                        },
-                        SpecItem::Returns => {
-                            // type is checked in well_formed.rs
+                            _ => unreachable!(),
                         }
-                        _ => unreachable!(),
                     }
-                }
 
-                let header = match spec_item {
-                    SpecItem::Requires => Arc::new(HeaderExprX::Requires(Arc::new(vir_args))),
-                    SpecItem::Recommends => Arc::new(HeaderExprX::Recommends(Arc::new(vir_args))),
-                    SpecItem::OpensInvariants => Arc::new(HeaderExprX::InvariantOpens(
-                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
-                        Arc::new(vir_args),
-                    )),
-                    SpecItem::Returns => Arc::new(HeaderExprX::Returns(vir_args[0].clone())),
-                    _ => unreachable!(),
-                };
-                mk_expr(ExprX::Header(header))
-            }
-            SpecItem::OpensInvariantsExcept => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                err_span(
-                    expr.span,
-                    "'is_opens_invariants' and 'is_opens_invariants_except' are not yet implemented",
-                )
-            }
-            SpecItem::OpensInvariantsNone => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                let header = Arc::new(HeaderExprX::InvariantOpens(
-                    bctx.ctxt.spans.to_air_span(expr.span.clone()),
-                    Arc::new(Vec::new()),
-                ));
-                mk_expr(ExprX::Header(header))
-            }
-            SpecItem::OpensInvariantsAny => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                let header = Arc::new(HeaderExprX::InvariantOpensExcept(
-                    bctx.ctxt.spans.to_air_span(expr.span.clone()),
-                    Arc::new(Vec::new()),
-                ));
-                mk_expr(ExprX::Header(header))
-            }
-            SpecItem::OpensInvariantsSet => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                let header = Arc::new(HeaderExprX::InvariantOpensSet(arg));
-                mk_expr(ExprX::Header(header))
-            }
-            SpecItem::Ensures => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                unsupported_err_unless!(args_len == 1, expr.span, "expected ensures", &args);
-                let bctx = &BodyCtxt {
-                    external_body: false,
-                    in_ghost: true,
-                    in_postcondition: true,
-                    ..bctx.clone()
-                };
-                let header = extract_ensures(&bctx, args[0])?;
-                // extract_ensures does most of the necessary work, so we can return at this point
-                mk_expr_span(args[0].span, ExprX::Header(header))
-            }
-            SpecItem::Decreases => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                unsupported_err_unless!(args_len == 1, expr.span, "expected decreases", &args);
-                let subargs = extract_tuple(args[0]);
-                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let vir_args = vec_map_result(&subargs, |arg| {
-                    expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
-                })?;
-                let header = Arc::new(HeaderExprX::Decreases(Arc::new(vir_args)));
-                mk_expr(ExprX::Header(header))
-            }
-            SpecItem::InvariantExceptBreak | SpecItem::Invariant => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                unsupported_err_unless!(args_len == 1, expr.span, "expected invariant", &args);
-                let subargs = extract_array(args[0]);
-                for arg in &subargs {
-                    if !matches!(bctx.types.expr_ty_adjusted(arg).kind(), TyKind::Bool) {
-                        return err_span(arg.span, "invariant needs a bool expression");
-                    }
+                    let header = match spec_item {
+                        SpecItem::Requires => Arc::new(HeaderExprX::Requires(Arc::new(vir_args))),
+                        SpecItem::Recommends => {
+                            Arc::new(HeaderExprX::Recommends(Arc::new(vir_args)))
+                        }
+                        SpecItem::OpensInvariants => Arc::new(HeaderExprX::InvariantOpens(
+                            bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                            Arc::new(vir_args),
+                        )),
+                        SpecItem::Returns => Arc::new(HeaderExprX::Returns(vir_args[0].clone())),
+                        _ => unreachable!(),
+                    };
+                    mk_expr(ExprX::Header(header))
                 }
-                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let vir_args = vec_map_result(&subargs, |arg| {
-                    expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
-                })?;
-                let header = match spec_item {
-                    SpecItem::InvariantExceptBreak => {
-                        Arc::new(HeaderExprX::InvariantExceptBreak(Arc::new(vir_args)))
+                SpecItem::OpensInvariantsExcept => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    err_span(
+                        expr.span,
+                        "'is_opens_invariants' and 'is_opens_invariants_except' are not yet implemented",
+                    )
+                }
+                SpecItem::OpensInvariantsNone => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    let header = Arc::new(HeaderExprX::InvariantOpens(
+                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                        Arc::new(Vec::new()),
+                    ));
+                    mk_expr(ExprX::Header(header))
+                }
+                SpecItem::OpensInvariantsAny => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    let header = Arc::new(HeaderExprX::InvariantOpensExcept(
+                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                        Arc::new(Vec::new()),
+                    ));
+                    mk_expr(ExprX::Header(header))
+                }
+                SpecItem::OpensInvariantsSet => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                    let header = Arc::new(HeaderExprX::InvariantOpensSet(arg));
+                    mk_expr(ExprX::Header(header))
+                }
+                SpecItem::Ensures => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    unsupported_err_unless!(args_len == 1, expr.span, "expected ensures", &args);
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let header = extract_ensures(&bctx, args[0])?;
+                    // extract_ensures does most of the necessary work, so we can return at this point
+                    mk_expr_span(args[0].span, ExprX::Header(header))
+                }
+                SpecItem::Decreases => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    unsupported_err_unless!(args_len == 1, expr.span, "expected decreases", &args);
+                    let subargs = extract_tuple(args[0]);
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let vir_args = vec_map_result(&subargs, |arg| {
+                        expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
+                    })?;
+                    let header = Arc::new(HeaderExprX::Decreases(Arc::new(vir_args)));
+                    mk_expr(ExprX::Header(header))
+                }
+                SpecItem::InvariantExceptBreak | SpecItem::Invariant => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    unsupported_err_unless!(args_len == 1, expr.span, "expected invariant", &args);
+                    let subargs = extract_array(args[0]);
+                    for arg in &subargs {
+                        if !matches!(bctx.types.expr_ty_adjusted(arg).kind(), TyKind::Bool) {
+                            return err_span(arg.span, "invariant needs a bool expression");
+                        }
                     }
-                    SpecItem::Invariant => Arc::new(HeaderExprX::Invariant(Arc::new(vir_args))),
-                    _ => unreachable!(),
-                };
-                mk_expr(ExprX::Header(header))
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let vir_args = vec_map_result(&subargs, |arg| {
+                        expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
+                    })?;
+                    let header = match spec_item {
+                        SpecItem::InvariantExceptBreak => {
+                            Arc::new(HeaderExprX::InvariantExceptBreak(Arc::new(vir_args)))
+                        }
+                        SpecItem::Invariant => Arc::new(HeaderExprX::Invariant(Arc::new(vir_args))),
+                        _ => unreachable!(),
+                    };
+                    mk_expr(ExprX::Header(header))
+                }
+                SpecItem::DecreasesBy | SpecItem::RecommendsBy => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    unsupported_err_unless!(args_len == 1, expr.span, "expected function", &args);
+                    let x = get_fn_path(bctx, &args[0])?;
+                    let header = Arc::new(HeaderExprX::DecreasesBy(x));
+                    mk_expr(ExprX::Header(header))
+                }
+                SpecItem::DecreasesWhen => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                    let header = Arc::new(HeaderExprX::DecreasesWhen(arg));
+                    mk_expr(ExprX::Header(header))
+                }
+                SpecItem::NoUnwind => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    let header = Arc::new(HeaderExprX::NoUnwind);
+                    mk_expr(ExprX::Header(header))
+                }
+                SpecItem::NoUnwindWhen => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                    let header = Arc::new(HeaderExprX::NoUnwindWhen(arg));
+                    mk_expr(ExprX::Header(header))
+                }
+                SpecItem::Admit => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    unsupported_err_unless!(args_len == 0, expr.span, "expected admit", args);
+                    let f = bctx.spanned_typed_new(
+                        expr.span,
+                        &Arc::new(TypX::Bool),
+                        ExprX::Const(Constant::Bool(false)),
+                    );
+                    mk_expr(ExprX::AssertAssume { is_assume: true, expr: f, msg: None })
+                }
+                SpecItem::Assume => {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                    mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg, msg: None })
+                }
             }
-            SpecItem::DecreasesBy | SpecItem::RecommendsBy => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                unsupported_err_unless!(args_len == 1, expr.span, "expected function", &args);
-                let x = get_fn_path(bctx, &args[0])?;
-                let header = Arc::new(HeaderExprX::DecreasesBy(x));
-                mk_expr(ExprX::Header(header))
-            }
-            SpecItem::DecreasesWhen => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                let header = Arc::new(HeaderExprX::DecreasesWhen(arg));
-                mk_expr(ExprX::Header(header))
-            }
-            SpecItem::NoUnwind => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                let header = Arc::new(HeaderExprX::NoUnwind);
-                mk_expr(ExprX::Header(header))
-            }
-            SpecItem::NoUnwindWhen => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                let header = Arc::new(HeaderExprX::NoUnwindWhen(arg));
-                mk_expr(ExprX::Header(header))
-            }
-            SpecItem::Admit => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                unsupported_err_unless!(args_len == 0, expr.span, "expected admit", args);
-                let f = bctx.spanned_typed_new(
-                    expr.span,
-                    &Arc::new(TypX::Bool),
-                    ExprX::Const(Constant::Bool(false)),
-                );
-                mk_expr(ExprX::AssertAssume { is_assume: true, expr: f, msg: None })
-            }
-            SpecItem::Assume => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg, msg: None })
-            }
-        },
+        }
         VerusItem::Quant(quant_item) => {
             record_spec_fn_no_proof_args(bctx, expr);
             unsupported_err_unless!(args_len == 1, expr.span, "expected forall/exists", &args);
@@ -763,6 +796,14 @@ fn verus_item_to_vir<'tcx, 'a>(
                 unsupported_err_unless!(args_len == 1, expr.span, "expected choose", &args);
                 extract_choose(bctx, expr.span, args[0], true, expr_typ()?)
             }
+            ExprItem::Old if bctx.new_mut_ref => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                // TODO(new_mut_ref): restrict to form like `old(x)` or `old(x.field)`?
+                // TODO(new_mut_ref): old type signature should accept any type
+                let bctx = &BodyCtxt { in_old: true, ..bctx.clone() };
+                let arg = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+                mk_expr(ExprX::Old(arg))
+            }
             ExprItem::Old => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 if let ExprKind::Path(QPath::Resolved(
@@ -777,25 +818,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                             &expr.hir_id,
                         )?;
                         let name = pat_to_var(pat)?;
-                        if bctx.new_mut_ref {
-                            // TODO(new_mut_ref): fix old
-                            //  1. check that the use of old is appropriate
-                            //  2. type checking issues (adjustments are skipped)
-                            //  3. old needs to be applicable in the body
-                            let place =
-                                bctx.spanned_typed_new(expr.span, &typ, PlaceX::Local(name));
-                            {
-                                let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                                erasure_info.hir_vir_ids.push((args[0].hir_id, place.span.id));
-                            }
-                            return Ok(ExprOrPlace::Place(place).to_spec_expr(bctx));
-                        } else {
-                            return Ok(bctx.spanned_typed_new(
-                                expr.span,
-                                &typ,
-                                ExprX::VarAt(name, VarAt::Pre),
-                            ));
-                        }
+                        return Ok(bctx.spanned_typed_new(
+                            expr.span,
+                            &typ,
+                            ExprX::VarAt(name, VarAt::Pre),
+                        ));
                     }
                 }
                 err_span(expr.span, "only a variable binding is allowed as the argument to old")
@@ -1191,7 +1218,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                         "expected assert_nonlinear_by/assert_bitvector_by with one argument",
                         &args
                     );
-                    let mut vir_expr = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+                    let bctx = bctx.set_header_setting(HeaderSetting::Assert);
+                    let mut vir_expr = expr_to_vir_consume(&bctx, &args[0], ExprModifier::REGULAR)?;
                     use vir::headers::{HeaderAllow, HeaderAllows};
                     let header = vir::headers::read_header(
                         &mut vir_expr,
@@ -1631,7 +1659,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             let p = crate::rust_to_vir_expr::deref_mut_allow_cancelling_two_phase(
                 bctx, expr.span, &vir_arg,
-            );
+            )?;
             let typ = match &*p.typ {
                 TypX::Decorate(TypDecoration::Ghost | TypDecoration::Tracked, None, t) => t.clone(),
                 _ => p.typ.clone(),
@@ -2201,6 +2229,7 @@ fn extract_assert_forall_by<'tcx>(
                 binders.push(Arc::new(VarBinderX { name: pat_to_var(x.pat)?, a: t }));
             }
             let expr = &body.value;
+            let bctx = &bctx.set_header_setting(HeaderSetting::Assert);
             let mut vir_expr = expr_to_vir_consume(bctx, expr, ExprModifier::REGULAR)?;
             use vir::headers::{HeaderAllow, HeaderAllows};
             let header = vir::headers::read_header(

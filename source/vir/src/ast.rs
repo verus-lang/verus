@@ -1141,6 +1141,8 @@ pub enum ExprX {
     /// The right side should only contain `assume(has_resolved(...))` statements
     /// emitted by the resolution analysis.
     EvalAndResolve(Expr, Expr),
+    /// The `old` node
+    Old(Expr),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]

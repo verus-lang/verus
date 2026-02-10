@@ -661,6 +661,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e2 = self.visit_expr(e2)?;
                 R::ret(|| expr_new(ExprX::EvalAndResolve(R::get(e1), R::get(e2))))
             }
+            ExprX::Old(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Old(R::get(e))))
+            }
         }
     }
 

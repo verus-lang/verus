@@ -1,7 +1,7 @@
 use crate::attributes::{AttrPublish, VerifierAttrs, get_mode, get_ret_mode, get_var_mode};
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::config::Vstd;
-use crate::context::{BodyCtxt, Context, ContextX};
+use crate::context::{BodyCtxt, Context, ContextX, HeaderSetting};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
@@ -286,6 +286,7 @@ fn body_to_vir<'tcx>(
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     new_mut_ref: bool,
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
+    param_names: Vec<VarIdent>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let types = body_id_to_types(ctxt.tcx, id);
     let bctx = BodyCtxt {
@@ -299,7 +300,11 @@ fn body_to_vir<'tcx>(
         loop_isolation: false,
         new_mut_ref,
         migrate_postcondition_vars,
+        in_fn_sig: false,
         in_postcondition: false,
+        in_old: false,
+        params: std::rc::Rc::new(vec![param_names]),
+        header_setting: HeaderSetting::Fn,
     };
     let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
 
@@ -1436,6 +1441,7 @@ pub(crate) fn check_item_fn<'tcx>(
         CheckItemFnEither::BodyId(body_id) => {
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
+            let param_names = vir_params.iter().map(|p| p.0.x.name.clone()).collect::<Vec<_>>();
             let mut vir_body = body_to_vir(
                 ctxt,
                 id,
@@ -1446,6 +1452,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 &external_trait_from_to,
                 new_mut_ref,
                 migrate_postcondition_vars,
+                param_names,
             )?;
             let header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
@@ -2430,6 +2437,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         &None,
         new_mut_ref,
         None,
+        vec![],
     )?;
     let header = vir::headers::read_header(
         &mut vir_body,
