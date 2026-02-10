@@ -696,7 +696,7 @@ impl<T> HistorySeen<T> {
     }
 
     // AT-SN-JOIN
-    // todo: was there a typo in this rule?
+    // note: there was a typo in Hai's thesis: https://gitlab.mpi-sws.org/iris/gpfsl/-/blob/master/gpfsl/logic/atomic_preds.v#L624
     pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
         requires
             self.loc() == other.loc()
@@ -756,7 +756,7 @@ impl<T> HistorySync<T> {
         ;
 
     // AT-SY-JOIN
-    // todo: was there a typo in this rule?
+    // note: there was a typo in Hai's thesis: https://gitlab.mpi-sws.org/iris/gpfsl/-/blob/master/gpfsl/logic/atomic_preds.v#L742
     pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
         requires
             self.loc() == other.loc()
