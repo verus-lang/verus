@@ -1325,7 +1325,9 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::Memoize => vs.memoize = true,
             Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),
             Attr::Truncate => vs.truncate = true,
-            Attr::ProofNote(_) => {}
+            Attr::ProofNote(_) => {
+                // TODO: https://github.com/verus-lang/verus/issues/2152
+            }
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
             Attr::Mode(_) => vs.sets_mode = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
