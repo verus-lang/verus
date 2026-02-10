@@ -85,6 +85,7 @@
           cargoLock = {
             lockFile = ./source/Cargo.lock;
             outputHashes = {
+              "smt2parser-0.6.1" = "";
               "getopts-0.2.21" = "sha256-N/QJvyOmLoU5TabrXi8i0a5s23ldeupmBUzP8waVOiU=";
             };
           };
