@@ -119,6 +119,7 @@ const TEST_REQUIRES1: &str = verus_code_str! {
     proof fn test_requires1(a: int, b: int, c: int)
         requires
             a <= b,
+            #[verifier::proof_note("Test label #1")]
             b <= c,
     {
         assert(a <= c);
@@ -140,6 +141,7 @@ test_verify_one_file! {
     #[test] test_requires3 TEST_REQUIRES1.to_string() + verus_code_str! {
         fn test_requires3(a: int, b: int, c: int) {
             assume(a <= b);
+            #[verifier::proof_note("Test label #2")]
             assume(b <= c);
             proof {
                 test_requires1(a + a, b + b, c + c);
@@ -154,6 +156,7 @@ const TEST_RET: &str = verus_code_str! {
         requires
             a <= b,
         ensures
+            #[verifier::proof_note("Test label #3")]
             ret <= a + b,
             ret <= a + a, // FAILS
             ret <= b + b,
