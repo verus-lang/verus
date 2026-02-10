@@ -157,6 +157,11 @@ impl <A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl f
     }
 }
 
+pub assume_specification<A: std::iter::Step> [<Range<A> as Iterator>::next] (range: &mut Range<A>) -> (r: Option<A>)
+    ensures 
+        (*range, r) == spec_range_next(*old(range)),
+;
+
 } // verus!
 macro_rules! step_specs {
     ($t: ty, $axiom: ident) => {

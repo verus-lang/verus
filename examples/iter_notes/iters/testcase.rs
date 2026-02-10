@@ -3,9 +3,10 @@ use vstd::std_specs::iter::IteratorSpecImpl;
 
 verus! {
 
+#[verifier::exec_allows_no_decreases_clause]
 fn test_loop() {
     let mut n: u64 = 0;
-    let mut iter = (0..10).into_iter();
+    let mut iter: std::ops::Range<u64> = (0..10).into_iter();
     loop
         invariant
             iter.start <= 10,
