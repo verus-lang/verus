@@ -56,7 +56,7 @@ fn has_late_verus_arg(opts: &CargoOptions) -> bool {
             || arg.starts_with("-Z")
         {
             eprintln!(
-                "The Verus-relevant command-line argument {0} can't follow the Verus-irrelevant argument {1} because that will cause the Verus-relevant argument to be ignored",
+                "The Verus-relevant command-line argument {0} can't follow the Verus-irrelevant argument {1} because that will cause the Verus-relevant argument to be ignored. To fix this, place Verus-relevant cargo options (like --package, --features, --manifest-path) before any Verus-irrelevant ones.",
                 arg, opts.cargo_args[0]
             );
             return true;
