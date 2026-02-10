@@ -3370,8 +3370,8 @@ impl Visitor {
 
         let no_loop_invariant = attrs.iter().position(|attr| {
             attr.path().segments.len() == 2
-                && attr.path().segments[0].ident.to_string() == "verifier"
-                && attr.path().segments[1].ident.to_string() == "no_loop_invariant"
+                && attr.path().segments[0].ident == "verifier"
+                && attr.path().segments[1].ident == "no_loop_invariant"
         });
         if let Some(i) = no_loop_invariant {
             attrs.remove(i);
@@ -3381,8 +3381,8 @@ impl Visitor {
         // give people a reasonable way to disable it:
         let no_auto_loop_invariant = attrs.iter().position(|attr| {
             attr.path().segments.len() == 2
-                && attr.path().segments[0].ident.to_string() == "verifier"
-                && attr.path().segments[1].ident.to_string() == "no_auto_loop_invariant"
+                && attr.path().segments[0].ident == "verifier"
+                && attr.path().segments[1].ident == "no_auto_loop_invariant"
         });
         if let Some(i) = no_auto_loop_invariant {
             attrs.remove(i);
