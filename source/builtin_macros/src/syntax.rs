@@ -3286,49 +3286,64 @@ impl Visitor {
         //  'label: for x in y: e invariant inv { body }
         // into:
         //  {
+        //       #[allow(non_snake_case)]
+        //       let VERUS_iter_init = e;
+        //       #[allow(non_snake_case)]
+        //       let VERUS_iter = VerusForLoopWrapper::new(
+        //          // Real iterator
+        //          ::core::iter::IntoIterator::into_iter(VERUS_iter_init),
+        //          // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
+        //          Ghost(Some(&::core::iter::IntoIterator::into_iter(VERUS_iter_init))),
+        //      );
+        //      // Hold on to the initial value so that after the loop, we know it didn't change
         //      #[allow(non_snake_case)]
-        //      let VERUS_iter = e;
+        //      #[verus::internal(spec)]
+        //      let y = VERUS_OLD_y.snapshot.view();
         //      #[allow(non_snake_case)]
-        //      let VERUS_loop_result = match ::core::iter::IntoIterator::into_iter(VERUS_iter) {
-        //          #[allow(non_snake_case)]
-        //          mut VERUS_exec_iter => {
-        //              #[allow(non_snake_case)]
-        //              let ghost mut y = ::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                  &VERUS_exec_iter);
-        //              'label: loop
+        //      let VERUS_loop_result = match VERUS_iter {
+        //         mut y => {
+        //             #[verifier::allow_complex_invariants]
+        //             'label: loop
+        //                  invariant_except_break
+        //                     #[verus::internal(auto_decreases)]
+        //                     y.iter.decrease().is_Some(),
         //                  invariant
-        //                      ::vstd::pervasive::ForLoopGhostIterator::exec_invariant(&y,
-        //                          &VERUS_exec_iter),
-        //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
-        //                          verus_builtin::infer_spec_for_loop_iter(
-        //                              &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                                  &::core::iter::IntoIterator::into_iter(VERUS_iter)),
-        //                              &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                                  &::core::iter::IntoIterator::into_iter(e)),
-        //                          )),
-        //                      { let x =
-        //                          ::vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&y)
-        //                          .unwrap_or(vstd::pervasive::arbitrary());
-        //                        inv },
+        //                     // We track the continuitiy of the snapshot and the initial iterator-creation expression
+        //                     ::vstd::prelude::spec_eq(y.snapshot, VERUS_old_snap),
+        //                     match verus_builtin::infer_spec_for_loop_iter(
+        //                              &::core::iter::IntoIterator::into_iter(VERUS_iter_init),
+        //                              &::core::iter::IntoIterator::into_iter(e),
+        //                              print_hint,
+        //                          ) {
+        //                         Some(v) => ::vstd::prelude::spec_eq(y.init, Ghost(Some(v))),
+        //                         None => true,
+        //                     },
+        //                     y.wf(),
+        //                     ({
+        //                         // Grab the next val for (possible) use in the user-provided inv
+        //                         let x = y.snapshot.view().peek(y.index.view())
+        //                                  .unwrap_or(vstd::pervasive::arbitrary());
+        //                         inv
+        //                     }),
         //                  ensures
-        //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_ensures(&y),
+        //                     y.snapshot.view().completes(),
+        //                     y.index.view() == y.seq().len(),
         //                  decreases
-        //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_decrease(&y)
+        //                     y.iter.decrease(),
         //                      .unwrap_or(vstd::pervasive::arbitrary()),
-        //
         //              {
-        //                  #[allow(non_snake_case)]
-        //                  let mut VERUS_loop_next;
-        //                  match ::core::iter::Iterator::next(&mut VERUS_exec_iter) {
-        //                      ::core::option::Option::Some(VERUS_loop_val) => {
-        //                          VERUS_loop_next = VERUS_loop_val;
-        //                      }
-        //                      ::core::option::Option::None => break,
-        //                  };
-        //                  let x = VERUS_loop_next;
-        //                  let () = { body };
-        //                  proof { y = ::vstd::pervasive::ForLoopGhostIterator::ghost_advance(
-        //                      &y, &VERUS_exec_iter); }
+        //                 let ghost VERUS_OLD_y = y;
+        //                 #[allow(non_snake_case)]
+        //                 let mut VERUS_loop_next;
+        //                 match y.next() {
+        //                     Some(VERUS_loop_val) => VERUS_loop_next = VERUS_loop_val,
+        //                     None => { break }
+        //                 }
+        //                 let x = VERUS_loop_next;
+        //                 // We only let the user-provided body access an immutable ghost version of the iterator
+        //                 // We use the "old" version, so that the index lines up with the loop invariant
+        //                 let ghost y = VERUS_OLD_y;
+        //                 let () = { body };
         //              }
         //          }
         //      };
@@ -3342,11 +3357,13 @@ impl Visitor {
             mut attrs,
             label,
             for_token,
-            pat,
+            pat, // x
             in_token,
-            expr_name,
-            expr,
+            expr_name, // y
+            expr,      // e
+            invariant_except_break,
             invariant,
+            ensures,
             mut decreases,
             body,
         } = for_loop;
@@ -3370,7 +3387,6 @@ impl Visitor {
         if let Some(i) = no_auto_loop_invariant {
             attrs.remove(i);
         }
-
         if !self.erase_ghost.keep() || self.inside_external_code > 0 {
             return Expr::ForLoop(verus_syn::ExprForLoop {
                 attrs,
@@ -3380,15 +3396,20 @@ impl Visitor {
                 in_token,
                 expr_name: None,
                 expr,
+                invariant_except_break: None,
                 invariant: None,
+                ensures: None,
                 decreases: None,
                 body,
             });
         }
 
         attrs.push(mk_verus_attr(span, quote! { for_loop }));
+        let decrease_is_some_msg = "Failed to prove that the iterator always returns a decreases metric.
+            If you don't expect the iterator to provide such a metric, try adding #[verifier::exec_allows_no_decreases_clause].
+            You might also try using a `loop` instead of a `for`.";
         let exec_inv_msg = "For-loop iterator invariant failed. \
-            This may indicate a bug in the definition of the ForLoopGhostIterator. \
+            This may indicate a bug in the definition of the VerusForLoopWrapper. \
             You might try using a `loop` instead of a `for`.";
         let ghost_inv_msg = "Automatically generated loop invariant failed. \
             You can disable the automatic generation by adding \
@@ -3402,67 +3423,101 @@ impl Visitor {
             Expr::Verbatim(quote_spanned!(expr.span() => true))
         };
 
-        let x_exec_iter = Ident::new("VERUS_exec_iter", span);
-        let x_ghost_iter = if let Some(x_ghost_iter_box) = expr_name {
+        // Initial value of the expression (e)
+        let x_verus_iter_init = Ident::new("VERUS_iter_init", span);
+        // Name for the iterator (y)
+        let x_iter_name = if let Some(x_ghost_iter_box) = expr_name {
             let (x_ghost_iter, _) = *x_ghost_iter_box;
             x_ghost_iter
         } else {
             Ident::new("VERUS_ghost_iter", span)
         };
+        // Name for the exec iterator we create from `e`
+        let x_exec_iter = Ident::new("VERUS_iter", span);
+        // Name for the result of wrapping the original iterator in a VerusForLoopWrapper
+        let x_wrapped_iter = Ident::new("VERUS_iter", span);
+        // Name that "remembers" the initial snapshot
+        let x_snapshot = Ident::new("VERUS_old_snap", span);
+        // Name that "remembers" the initial iterator at the start of the loop body
+        let x_iter_body_old = Ident::new("VERUS_old_iter", span);
+
         let mut stmts: Vec<Stmt> = Vec::new();
         let expr_inv = expr.clone();
-        //              ::vstd::pervasive::ForLoopGhostIterator::exec_invariant(&y, &VERUS_exec_iter),
-        //              ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
-        //                  verus_builtin::infer_spec_for_loop_iter(
-        //                      &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                          &::core::iter::IntoIterator::into_iter(VERUS_iter)),
-        //                      &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                          &::core::iter::IntoIterator::into_iter(e)),
-        //                  )),
-        let exec_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
+        let init_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#exec_inv_msg)]
-            #vstd::pervasive::ForLoopGhostIterator::exec_invariant(&#x_ghost_iter, &#x_exec_iter)
+            #vstd::prelude::spec_eq(#x_iter_name.snapshot.view(), #x_snapshot)
+        ));
+        let wf_inv: Expr = Expr::Verbatim(quote_spanned!( expr.span() =>
+            #[verifier::custom_err(#exec_inv_msg)]
+            #x_iter_name.wf()
         ));
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
-            #vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
-                #vstd::prelude::infer_spec_for_loop_iter(
-                    &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-                        &::core::iter::IntoIterator::into_iter(VERUS_iter)),
-                    &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-                        &::core::iter::IntoIterator::into_iter(#expr_inv)),
-                    #print_hint,
-                ))
+            match verus_builtin::infer_spec_for_loop_iter(
+                &::core::iter::IntoIterator::into_iter(#x_verus_iter_init),
+                &::core::iter::IntoIterator::into_iter(#expr_inv),
+                #print_hint,
+            ) {
+                ::core::option::Option::Some(VERUS_tmp_infer) => #vstd::prelude::spec_eq(
+                    #x_iter_name.init,
+                    #vstd::prelude::Ghost::new(::core::option::Option::Some(VERUS_tmp_infer))
+                ),
+                ::core::option::Option::None => true,
+            }
+        ));
+        let some_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
+            #[verifier::custom_err(#decrease_is_some_msg)]
+            #[verus::internal(auto_decreases)]
+            #vstd::prelude::is_variant(#vstd::std_specs::iter::IteratorSpec::decrease(&#x_iter_name.iter), "Some")
         ));
         let invariant_for = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
-                    let #pat =
-                        #vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter)
-                        .unwrap_or(#vstd::pervasive::arbitrary());
+                    let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
+                        .unwrap_or(vstd::pervasive::arbitrary());
                     #inv
                 }));
             }
             if no_loop_invariant.is_none() {
-                invariant.exprs.exprs.insert(0, exec_inv);
+                invariant.exprs.exprs.insert(0, init_inv);
+                invariant.exprs.exprs.insert(1, wf_inv);
                 if no_auto_loop_invariant.is_none() {
-                    invariant.exprs.exprs.insert(1, ghost_inv);
+                    invariant.exprs.exprs.insert(2, ghost_inv);
                 }
             }
             Some(Invariant { token: Token![invariant](span), exprs: invariant.exprs })
         } else if no_loop_invariant.is_none() && no_auto_loop_invariant.is_none() {
-            Some(parse_quote_spanned!(span => invariant #exec_inv, #ghost_inv,))
+            Some(parse_quote_spanned!(span => invariant #init_inv, #wf_inv, #ghost_inv,))
         } else if no_loop_invariant.is_none() && no_auto_loop_invariant.is_some() {
-            Some(parse_quote_spanned!(span => invariant #exec_inv,))
+            Some(parse_quote_spanned!(span => invariant #init_inv, #wf_inv,))
+        } else {
+            None
+        };
+        let inv_except_break = if let Some(mut invariant_except_break) = invariant_except_break {
+            for inv in &mut invariant_except_break.exprs.exprs {
+                *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
+                    let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
+                        .unwrap_or(vstd::pervasive::arbitrary());
+                    #inv
+                }));
+            }
+            if no_loop_invariant.is_none() {
+                invariant_except_break.exprs.exprs.insert(0, some_inv);
+            }
+            Some(InvariantExceptBreak {
+                token: Token![invariant_except_break](span),
+                exprs: invariant_except_break.exprs,
+            })
+        } else if no_loop_invariant.is_none() {
+            Some(parse_quote_spanned!(span => invariant_except_break #some_inv,))
         } else {
             None
         };
         if let Some(decreases) = &mut decreases {
             for expr in &mut decreases.exprs.exprs {
                 *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() => {
-                    let #pat =
-                        #vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter)
-                        .unwrap_or(#vstd::pervasive::arbitrary());
+                    let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
+                        .unwrap_or(vstd::pervasive::arbitrary());
                     #expr
                 }));
             }
@@ -3470,76 +3525,98 @@ impl Visitor {
             attrs.push(mk_verus_attr(span, quote! { auto_decreases }));
             decreases = Some(parse_quote_spanned_vstd!(vstd, span =>
                 decreases
-                    #vstd::pervasive::ForLoopGhostIterator::ghost_decrease(&#x_ghost_iter)
+                    #vstd::std_specs::iter::IteratorSpec::decrease(&#x_iter_name.iter)
+                    //#x_iter_name.iter.decrease()
                     .unwrap_or(#vstd::pervasive::arbitrary()),
             ))
         }
         // REVIEW: we might also want no_auto_loop_invariant to suppress the ensures,
         // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.
         let ensure = if no_loop_invariant.is_none() {
-            Some(parse_quote_spanned_vstd!(vstd, span =>
-                ensures #vstd::pervasive::ForLoopGhostIterator::ghost_ensures(&#x_ghost_iter),
-            ))
+            let mut auto_ensures: Ensures = parse_quote_spanned_vstd!(vstd, span =>
+                ensures
+                    #[verus::internal(auto_decreases)]
+                    #vstd::std_specs::iter::IteratorSpec::completes(&#x_iter_name.snapshot.view()),
+                    #[verus::internal(auto_decreases)]
+                    #vstd::prelude::spec_eq(#x_iter_name.index.view(), #x_iter_name.seq().len()),
+                    true,
+            );
+            // REVIEW: Do we need to combine user_ensures.attrs?
+            if let Some(user_ensures) = ensures {
+                for expr in user_ensures.exprs.exprs {
+                    auto_ensures.exprs.exprs.insert(0, expr);
+                }
+            }
+            Some(auto_ensures)
         } else {
             None
         };
-        self.add_loop_specs(&mut stmts, None, invariant_for, None, ensure, decreases);
-        let body_exec = Expr::Verbatim(quote_spanned!(span => {
+        self.add_loop_specs(&mut stmts, inv_except_break, invariant_for, None, ensure, decreases);
+        let body_exec = Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
+            #[verus::internal(spec)]
+            #[verus::internal(unwrapped_binding)]
+            let mut #x_iter_body_old; // REVIEW: We appear to need this to be mut so we can initialize it in a separate proof block
+            #[verifier::proof_block]
+            {
+                #x_iter_body_old = #x_iter_name;
+            }
             #[allow(non_snake_case)]
             let mut VERUS_loop_next;
-            match ::core::iter::Iterator::next(&mut #x_exec_iter) {
+            match #vstd::std_specs::iter::VerusForLoopWrapper::next(&mut #x_iter_name) {
                 ::core::option::Option::Some(VERUS_loop_val) => {
                     VERUS_loop_next = VERUS_loop_val;
                 }
                 ::core::option::Option::None => break,
             };
             let #pat = VERUS_loop_next;
+            #[verus::internal(spec)]
+            #[verus::internal(unwrapped_binding)] // REVIEW: We appear to need this to be mut so we can initialize it in a separate proof block
+            let mut #x_iter_name;
+            #[verifier::proof_block]
+            {
+                #x_iter_name = #x_iter_body_old;
+            }
             let () = #body;
         }));
-        let mut body: Block = if no_loop_invariant.is_none() {
-            let body_ghost = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
-                #[verifier::proof_block] {
-                    #x_ghost_iter = #vstd::pervasive::ForLoopGhostIterator::ghost_advance(
-                        &#x_ghost_iter, &#x_exec_iter);
-                }
-            ));
-            parse_quote_spanned!(span => {
-                #body_exec
-                #body_ghost
-            })
-        } else {
-            parse_quote_spanned!(span => {
-                #body_exec
-            })
-        };
+        let mut body: Block = parse_quote_spanned!(span => { #body_exec });
         body.stmts.splice(0..0, stmts);
+
         let mut loop_expr: ExprLoop = parse_quote_spanned!(span => loop #body);
         loop_expr.label = label;
         loop_expr.attrs = attrs;
-        let full_loop: Expr = if no_loop_invariant.is_none() {
-            Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
-                #[allow(non_snake_case)]
-                #[verus::internal(spec)]
-                let mut #x_ghost_iter;
-                #[verifier::proof_block] {
-                    #x_ghost_iter =
-                        #vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(&#x_exec_iter);
-                }
-                #loop_expr
-            }))
-        } else {
-            Expr::Verbatim(quote_spanned!(span => { #loop_expr }))
-        };
-        Expr::Verbatim(quote_spanned!(span => {
+        let f = Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
             #[allow(non_snake_case)]
-            let VERUS_iter = #expr;
+            let #x_verus_iter_init = #expr;
             #[allow(non_snake_case)]
-            let VERUS_loop_result = match ::core::iter::IntoIterator::into_iter(VERUS_iter) {
+            let #x_exec_iter = ::core::iter::IntoIterator::into_iter(#x_verus_iter_init);
+            #[allow(non_snake_case)]
+            let #x_wrapped_iter = #vstd::std_specs::iter::VerusForLoopWrapper::new(
+                // Real iterator
+                #x_exec_iter,
+                // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
+                #[verifier::ghost_wrapper]
+                ::vstd::prelude::ghost_exec(#[verifier::ghost_block_wrapped] Some(&#x_exec_iter)),
+            );
+            // Hold on to the initial snapshot value so that after the loop, we know it didn't change
+            #[allow(non_snake_case)]
+            #[verus::internal(spec)]
+            #[verus::internal(unwrapped_binding)]
+            let mut #x_snapshot;    // REVIEW: We appear to need this to be mut so we can initialize it in a separate proof block
+            #[verifier::proof_block]
+            {
+                #x_snapshot = #x_wrapped_iter.snapshot.view();
+            }
+            #[allow(non_snake_case)]
+            let VERUS_loop_result = match #x_wrapped_iter {
                 #[allow(non_snake_case)]
-                mut #x_exec_iter => #full_loop
+                mut #x_iter_name =>
+                    #[verifier::allow_complex_invariants]
+                    #loop_expr
             };
             VERUS_loop_result
-        }))
+        }));
+        //eprintln!("{}", verus_prettyplease::unparse_expr(&f));
+        f
     }
 
     fn extract_quant_triggers(
@@ -5027,7 +5104,14 @@ pub(crate) fn for_loop_spec_attr(
     };
     let mut spec_attr = spec_attr;
     visitor.visit_loop_spec(&mut spec_attr);
-    let verus_syn::LoopSpec { iter_name, invariants: invariant, decreases, .. } = spec_attr;
+    let verus_syn::LoopSpec {
+        iter_name,
+        invariants: invariant,
+        invariant_except_breaks: invariant_except_break,
+        ensures,
+        decreases,
+        ..
+    } = spec_attr;
     let syn::ExprForLoop { attrs, label, for_token, pat, in_token, expr, body, .. } = forloop;
     let verus_forloop = ExprForLoop {
         attrs: attrs.into_iter().map(|a| parse_quote_spanned! {a.span() => #a}).collect(),
@@ -5040,7 +5124,9 @@ pub(crate) fn for_loop_spec_attr(
         in_token: Token![in](in_token.span),
         expr_name: iter_name.map(|(name, token)| Box::new((name, Token![:](token.span())))),
         expr: Box::new(Expr::Verbatim(quote_spanned! {expr.span() => #expr})),
+        invariant_except_break,
         invariant,
+        ensures,
         decreases,
         body: Block {
             brace_token: Brace(body.brace_token.span),

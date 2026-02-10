@@ -1019,7 +1019,9 @@ impl crate::ExprForLoop {
         formatter.field("in_token", &self.in_token);
         formatter.field("expr_name", &self.expr_name);
         formatter.field("expr", &self.expr);
+        formatter.field("invariant_except_break", &self.invariant_except_break);
         formatter.field("invariant", &self.invariant);
+        formatter.field("ensures", &self.ensures);
         formatter.field("decreases", &self.decreases);
         formatter.field("body", &self.body);
         formatter.finish()

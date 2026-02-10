@@ -972,7 +972,9 @@ impl Hash for crate::ExprForLoop {
         self.pat.hash(state);
         self.expr_name.hash(state);
         self.expr.hash(state);
+        self.invariant_except_break.hash(state);
         self.invariant.hash(state);
+        self.ensures.hash(state);
         self.decreases.hash(state);
         self.body.hash(state);
     }

@@ -1,4 +1,5 @@
 use super::super::prelude::*;
+use crate::std_specs::iter::IteratorSpec;
 use verus_builtin::*;
 
 use alloc::collections::TryReserveError;
@@ -356,45 +357,36 @@ impl<T: super::cmp::PartialEqSpec<U>, U, A1: Allocator, A2: Allocator> super::cm
 #[verifier::reject_recursive_types(A)]
 pub struct ExIntoIter<T, A: Allocator>(IntoIter<T, A>);
 
-impl<T, A: Allocator> View for IntoIter<T, A> {
-    type V = (int, Seq<T>);
+// To allow reasoning about the "contents" of the Vec iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original vec.
+pub uninterp spec fn into_iter_elts<T, A: Allocator>(i: IntoIter<T, A>) -> Seq<T>;
 
-    uninterp spec fn view(self: &IntoIter<T, A>) -> (int, Seq<T>);
-}
+impl <T, A: Allocator> crate::std_specs::iter::IteratorSpecImpl for IntoIter<T, A> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
 
-pub assume_specification<T, A: Allocator>[ IntoIter::<T, A>::next ](
-    elements: &mut IntoIter<T, A>,
-) -> (r: Option<T>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(elements)@;
-            match r {
-                None => {
-                    &&& elements@ == old(elements)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(element) => {
-                    let (new_index, new_seq) = elements@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
-                },
-            }
-        }),
-;
+    uninterp spec fn seq(&self) -> Seq<Self::Item>;
+    uninterp spec fn completes(&self) -> bool;
 
-pub struct IntoIterGhostIterator<T, A: Allocator> {
-    pub pos: int,
-    pub elements: Seq<T>,
-    pub _marker: PhantomData<A>,
-}
+    #[verifier::prophetic]
+    open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
+        // &&& self.elts() == self.seq().map_values(|v: &T| *v)
+        // &&& init matches Some(v) && v.elts() == self.elts()
+        //&&& into_iter_elts(*self) == crate::std_specs::iter::IteratorSpecImpl::seq(self) //self.seq() //crate::std_specs::iter::IteratorSpecImpl::seq(self) //.map_values(|v: &T| *v)
+        //&&& init matches Some(v) && into_iter_elts(*v) == into_iter_elts(*self)
+        &&& init matches Some(v) && IteratorSpec::seq(v) == IteratorSpec::seq(self)
+        &&& into_iter_elts(*self) == IteratorSpec::seq(self)
+    }
 
-impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIteratorNew for IntoIter<T, A> {
-    type GhostIter = IntoIterGhostIterator<T, A>;
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_iter(&self) -> IntoIterGhostIterator<T, A> {
-        IntoIterGhostIterator { pos: self@.0, elements: self@.1, _marker: PhantomData }
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_elts(*self).len() {
+            Some(into_iter_elts(*self)[index])
+        } else {
+            None
+        }
     }
 }
 
@@ -403,58 +395,6 @@ pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -
     ensures
         v.len() == n,
         forall |i| 0 <= i < n ==> cloned(elem, #[trigger] v@[i]);
-
-impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIterator for IntoIterGhostIterator<
-    T,
-    A,
-> {
-    type ExecIter = IntoIter<T, A>;
-
-    type Item = T;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &IntoIter<T, A>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.elements == exec_iter@.1
-    }
-
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.elements == self.elements
-            &&& 0 <= self.pos <= self.elements.len()
-        }
-    }
-
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.elements.len()
-    }
-
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.elements.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<T> {
-        if 0 <= self.pos < self.elements.len() {
-            Some(self.elements[self.pos])
-        } else {
-            None
-        }
-    }
-
-    open spec fn ghost_advance(&self, _exec_iter: &IntoIter<T, A>) -> IntoIterGhostIterator<T, A> {
-        Self { pos: self.pos + 1, ..*self }
-    }
-}
-
-impl<T, A: Allocator> View for IntoIterGhostIterator<T, A> {
-    type V = Seq<T>;
-
-    open spec fn view(&self) -> Seq<T> {
-        self.elements.take(self.pos)
-    }
-}
 
 // To allow reasoning about the ghost iterator when the executable
 // function `into_iter()` is invoked in a `for` loop header (e.g., in
@@ -469,7 +409,7 @@ pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Ve
 
 pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
     ensures
-        (#[trigger] spec_into_iter(v))@ == (0int, v@),
+        #[trigger] spec_into_iter(v).seq() == v@,
 {
     admit();
 }
@@ -480,7 +420,9 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
     A,
 > as core::iter::IntoIterator>::IntoIter)
     ensures
-        iter@ == (0int, vec@),
+        iter == spec_into_iter(vec),
+        crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
+        crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, Some(&iter)),
 ;
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()

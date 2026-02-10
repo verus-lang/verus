@@ -2133,8 +2133,14 @@ where
         skip!((* * it).1);
     }
     v.visit_expr(&*node.expr);
+    if let Some(it) = &node.invariant_except_break {
+        v.visit_invariant_except_break(it);
+    }
     if let Some(it) = &node.invariant {
         v.visit_invariant(it);
+    }
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
     }
     if let Some(it) = &node.decreases {
         v.visit_decreases(it);

@@ -1015,14 +1015,14 @@ fn get_var_loc_mode(
                 if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
                     return Err(error(
                         &expr.span,
-                        format!("cannot perform operation with mode {}", op_mode),
+                        format!("cannot perform operation with mode {}, {:?}", op_mode, &expr.x),
                     ));
                 }
             }
             if outer_mode != *op_mode {
                 return Err(error(
                     &expr.span,
-                    format!("cannot perform operation with mode {}", op_mode),
+                    format!("cannot perform operation with mode {}, {:?}", op_mode, &expr.x),
                 ));
             }
             let (mode1, proph1) =
@@ -1998,14 +1998,17 @@ fn check_expr_handle_mut_arg(
                 if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
                     return Err(error(
                         &expr.span,
-                        format!("cannot perform operation with mode {}", op_mode),
+                        format!(
+                            "cannot perform operation with mode {}, {:?},\n{:?}",
+                            op_mode, &expr.x, &e1
+                        ),
                     ));
                 }
             }
             if !mode_le(outer_mode, *op_mode) {
                 return Err(error(
                     &expr.span,
-                    format!("cannot perform operation with mode {}", op_mode),
+                    format!("cannot perform operation with mode {}, {:?}", op_mode, &expr.x),
                 ));
             }
             let param_mode = mode_join(outer_mode, *from_mode);
@@ -2150,6 +2153,11 @@ fn check_expr_handle_mut_arg(
             Ok((mode_join(*min_mode, mode), proph))
         }
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => {
+            let p =
+                check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
+            Ok((Mode::Spec, p))
+        }
+        ExprX::UnaryOpr(UnaryOpr::AutoDecreases, e1) => {
             let p =
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
             Ok((Mode::Spec, p))

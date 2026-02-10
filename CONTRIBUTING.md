@@ -184,3 +184,7 @@ vargo build --vstd-no-verify
 # for tests
 vargo test --vstd-no-verify -p rust_verify_test --test <test file> <test name>
 ```
+
+If you modify the syntax parsing inside of the `dependencies/syn/src` directory,
+be sure to regenerate the auto-generated files in the `dependencies/syn/src/gen` directory.
+See `dependencies/syn/README.md` for details.

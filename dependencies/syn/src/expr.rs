@@ -450,7 +450,9 @@ ast_struct! {
         pub in_token: Token![in],
         pub expr_name: Option<Box<(Ident, Token![:])>>,
         pub expr: Box<Expr>,
+        pub invariant_except_break: Option<InvariantExceptBreak>,
         pub invariant: Option<Invariant>,
+        pub ensures: Option<Ensures>,
         pub decreases: Option<Decreases>,
         pub body: Block,
     }
@@ -2534,7 +2536,9 @@ pub(crate) mod parsing {
                     None
                 };
             let expr: Expr = input.call(Expr::parse_without_eager_brace)?;
+            let invariant_except_break = input.parse()?;
             let invariant = input.parse()?;
+            let ensures = input.parse()?;
             let decreases = input.parse()?;
 
             let content;
@@ -2550,7 +2554,9 @@ pub(crate) mod parsing {
                 in_token,
                 expr_name,
                 expr: Box::new(expr),
+                invariant_except_break,
                 invariant,
+                ensures,
                 decreases,
                 body: Block { brace_token, stmts },
             })
@@ -3936,7 +3942,9 @@ pub(crate) mod printing {
                 colon.to_tokens(tokens);
             }
             print_expr(&self.expr, tokens, FixupContext::new_condition());
+            self.invariant_except_break.to_tokens(tokens);
             self.invariant.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
             self.decreases.to_tokens(tokens);
             self.body.brace_token.surround(tokens, |tokens| {
                 inner_attrs_to_tokens(&self.attrs, tokens);

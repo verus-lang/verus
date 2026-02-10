@@ -70,7 +70,7 @@ verus! {
     fn exec_for_loop() {
         let mut n: u64 = 0;
         for x in iter: 0..10
-            invariant n == iter.cur * 3,
+            invariant n == x * 3,
             // You can write a `decreases` if you want, but it's not needed
             // because Verus inserts a decreases automatically for `for` loops:
             //   decreases 10 - iter.cur,
@@ -84,7 +84,7 @@ verus! {
         let mut end = 10;
         for x in iter: 0..end 
             invariant 
-                n == iter.cur * 3,
+                n == x * 3,
                 end == 10,
             // You can write a `decreases` if you want, but it's not needed
             // because Verus inserts a decreases automatically for `for` loops:
