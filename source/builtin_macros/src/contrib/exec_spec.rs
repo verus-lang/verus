@@ -9,10 +9,10 @@ use verus_syn::parse::{Parse, ParseStream};
 use verus_syn::spanned::Spanned;
 use verus_syn::token::Comma;
 use verus_syn::{
-    parse_macro_input, Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary,
-    ExprClosure, ExprMatches, ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index,
-    Item, ItemEnum, ItemFn, ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat,
-    PatType, Path, PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility,
+    Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary, ExprClosure, ExprMatches,
+    ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index, Item, ItemEnum, ItemFn,
+    ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat, PatType, Path,
+    PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility, parse_macro_input,
 };
 
 /// Checks if the given path is of the form
@@ -178,7 +178,10 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                     || type_path.path.segments[0].ident.to_string() == "nat"
                     || type_path.path.segments[0].ident.to_string() == "int"
                 {
-                    return Err(Error::new_spanned(&typ, "Type cannot be compiled from spec code to exec code. Hint: supported types are primitive integers (uN, usize, iN, isize), bool, char, Seq<char> (for strings), Seq, Multiset, Map, Set."));
+                    return Err(Error::new_spanned(
+                        &typ,
+                        "Type cannot be compiled from spec code to exec code. Hint: supported types are primitive integers (uN, usize, iN, isize), bool, char, Seq<char> (for strings), Seq, Multiset, Map, Set.",
+                    ));
                 }
             }
         }
@@ -353,13 +356,11 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
     // Only open the view if the struct and all fields are public
     let span = item_struct.vis.span();
     let open_or_close = if let Visibility::Public(..) = item_struct.vis {
-        if item_struct.fields.iter().all(|field| {
-            if let Visibility::Public(..) = field.vis {
-                true
-            } else {
-                false
-            }
-        }) {
+        if item_struct
+            .fields
+            .iter()
+            .all(|field| if let Visibility::Public(..) = field.vis { true } else { false })
+        {
             quote_spanned! { span => open }
         } else {
             quote_spanned! { span => closed }
@@ -968,17 +969,9 @@ fn infer_expr_path_kind(ctx: &LocalCtx, path: &Path) -> ExprPathKind {
         path.segments.iter().any(|seg| seg.ident.to_string().chars().any(|c| c.is_uppercase()));
 
     if has_capital {
-        if path.segments.len() <= 2 {
-            ExprPathKind::StructOrEnum
-        } else {
-            ExprPathKind::Unknown
-        }
+        if path.segments.len() <= 2 { ExprPathKind::StructOrEnum } else { ExprPathKind::Unknown }
     } else {
-        if path.segments.len() != 0 {
-            ExprPathKind::FnName
-        } else {
-            ExprPathKind::Unknown
-        }
+        if path.segments.len() != 0 { ExprPathKind::FnName } else { ExprPathKind::Unknown }
     }
 }
 
@@ -1234,7 +1227,10 @@ fn get_guarded_range_quant_untrusted(
     closure: &ExprClosure,
 ) -> Result<GuardedQuantifierUntrusted, Error> {
     if closure.inputs.len() != 1 {
-        return Err(Error::new_spanned(closure, "The exec_spec! macro only supports single variable per quantifier. If multiple quantified variables are needed, use nested quantifiers instead."));
+        return Err(Error::new_spanned(
+            closure,
+            "The exec_spec! macro only supports single variable per quantifier. If multiple quantified variables are needed, use nested quantifiers instead.",
+        ));
     }
 
     let (quant_var, Some(quant_type)) = get_simple_pat(&closure.inputs[0].pat)? else {
@@ -1288,7 +1284,7 @@ fn get_guarded_range_quant_untrusted(
                 upper_op,
                 "Unsupported quantified expression.\n".to_owned()
                     + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ))
+            ));
         }
     };
 
@@ -1308,7 +1304,7 @@ fn get_guarded_range_quant_untrusted(
                 lower_op,
                 "Unsupported quantified expression.\n".to_owned()
                     + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ))
+            ));
         }
     };
 
@@ -1418,7 +1414,7 @@ fn compile_guarded_quant_untrusted(
                 expr,
                 "Ill-formed quantified expression.\n".to_owned()
                     + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ))
+            ));
         }
     };
     //let inv_bound = quote_spanned! { expr_span => _lower <= #quant_var <= _upper };
@@ -1432,7 +1428,7 @@ fn compile_guarded_quant_untrusted(
                 expr,
                 "Ill-formed quantified expression.\n".to_owned()
                     + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ))
+            ));
         }
     };
     let decreases = quote_spanned! { expr_span => _upper - #quant_var };
@@ -1582,7 +1578,7 @@ fn get_single_guard(guard: &Expr, quant_var: &Ident) -> Result<GuardBounds, Erro
                 upper_op,
                 "Unsupported quantifier expression.\n".to_owned()
                     + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ))
+            ));
         }
     };
 
@@ -1601,7 +1597,7 @@ fn get_single_guard(guard: &Expr, quant_var: &Ident) -> Result<GuardBounds, Erro
                 lower_op,
                 "Unsupported quantifier expression.\n".to_owned()
                     + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ))
+            ));
         }
     };
 
