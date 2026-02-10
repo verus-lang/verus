@@ -59,7 +59,7 @@ pub trait ExecSpecOptionUnwrap<'a>: Sized + DeepView {
 impl<'a, T> ExecSpecOptionUnwrap<'a> for &'a Option<T> where T: DeepView + DeepViewClone {
     type Elem = T;
 
-    closed spec fn is_some_spec(&self) -> bool {
+    open spec fn is_some_spec(&self) -> bool {
         self.is_some()
     }
 

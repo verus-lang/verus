@@ -4,7 +4,6 @@
 
 use crate::multiset::*;
 use crate::prelude::*;
-use std::collections::HashMap;
 pub use verus_builtin_macros::exec_spec;
 pub use verus_builtin_macros::exec_spec_trusted;
 
@@ -22,6 +21,8 @@ mod string;
 pub use string::*;
 
 pub use crate::multiset::*;
+pub use std::collections::HashMap;
+pub use std::collections::HashSet;
 
 verus! {
 
