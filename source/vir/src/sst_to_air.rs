@@ -1208,6 +1208,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 // ignore it here.
                 return exp_to_expr(ctx, exp, expr_ctxt);
             }
+            UnaryOpr::ProofNote(_) => {
+                // A `proof_note` label is metadata and has no effect otherwise.
+                return exp_to_expr(ctx, exp, expr_ctxt);
+            }
             UnaryOpr::HasResolved(t) => {
                 let mut exprs: Vec<Expr> = typ_to_ids(t);
                 exprs.push(exp_to_expr(ctx, exp, expr_ctxt)?);

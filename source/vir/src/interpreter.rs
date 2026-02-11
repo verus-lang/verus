@@ -1363,6 +1363,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     }
                 }
                 CustomErr(_) => Ok(e),
+                ProofNote(_) => Ok(e),
                 HasResolved(_) => Ok(e),
             }
         }

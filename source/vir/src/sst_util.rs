@@ -517,6 +517,9 @@ impl ExpX {
                     CustomErr(_msg) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }
+                    ProofNote(_label) => {
+                        (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
+                    }
                 }
             }
             Binary(op, e1, e2) => {
