@@ -29,7 +29,7 @@ pub fn main() -> Result<ExitCode> {
     let parsed_cli =
         CargoVerusCli::parse_from(normalized_args.iter().cloned()).clap_trailing_args_hotfix();
 
-    if parsed_cli.has_late_verus_argument() {
+    if parsed_cli.has_inadvisable_verus_arg() {
         return Ok(ExitCode::from(2));
     }
 

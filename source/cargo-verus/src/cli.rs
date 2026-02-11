@@ -102,7 +102,7 @@ pub struct CargoOptions {
     pub cargo_args: Vec<String>,
 }
 
-fn has_late_verus_arg(opts: &CargoOptions) -> bool {
+fn has_flag_arg_without_space(opts: &CargoOptions) -> bool {
     for arg in opts.cargo_args.iter() {
         if arg.starts_with("-Z") && arg.len() > 2 {
             eprintln!(
@@ -112,6 +112,11 @@ fn has_late_verus_arg(opts: &CargoOptions) -> bool {
             return true;
         }
     }
+
+    false
+}
+
+fn has_late_verus_arg(opts: &CargoOptions) -> bool {
     for arg in opts.cargo_args.iter().skip(1) {
         if arg.starts_with("-p")
             || arg == "--package"
@@ -168,12 +173,14 @@ impl CargoVerusCli {
         self
     }
 
-    pub fn has_late_verus_argument(&self) -> bool {
+    pub fn has_inadvisable_verus_arg(&self) -> bool {
         match &self.command {
             VerusSubcommand::Verify(cmd)
             | VerusSubcommand::Focus(cmd)
             | VerusSubcommand::Build(cmd)
-            | VerusSubcommand::Check(cmd) => has_late_verus_arg(&cmd.cargo_opts),
+            | VerusSubcommand::Check(cmd) => {
+                has_flag_arg_without_space(&cmd.cargo_opts) || has_late_verus_arg(&cmd.cargo_opts)
+            }
             VerusSubcommand::New(_) => false,
         }
     }
