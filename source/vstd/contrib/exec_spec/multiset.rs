@@ -13,7 +13,7 @@ broadcast use {
     crate::std_specs::hash::lemma_hashmap_deepview_dom,
 };
 
-/// Multiset<T> is compiled to ExecMultiset<T>.
+/// `Multiset<T>` is compiled to `ExecMultiset<T>`.
 #[derive(Eq, PartialEq, Debug)]
 pub struct ExecMultiset<T: std::hash::Hash + std::cmp::Eq> {
     pub m: HashMap<T, usize>,
