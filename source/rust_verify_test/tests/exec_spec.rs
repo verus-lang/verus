@@ -6,6 +6,9 @@ use common::*;
 const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use vstd::prelude::*;
     #[allow(unused_imports)] use vstd::contrib::exec_spec::*;
+    #[allow(unused_imports)] use vstd::multiset::*;
+    #[allow(unused_imports)] use std::collections::HashSet;
+    #[allow(unused_imports)] use std::collections::HashMap;
 };
 
 test_verify_one_file! {
