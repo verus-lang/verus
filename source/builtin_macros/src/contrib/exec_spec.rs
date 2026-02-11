@@ -179,7 +179,7 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                 {
                     return Err(Error::new_spanned(
                         &typ,
-                        "Type cannot be compiled from spec code to exec code. Hint: supported types are primitive integers (uN, usize, iN, isize), bool, char, Seq<char> (for strings), Seq, Multiset, Map, Set.",
+                        "Type cannot be compiled from spec code to exec code. Hint: supported types are primitive integers (uN, usize, iN, isize), bool, char, SpecString (for strings), Seq, Multiset, Map, Set.",
                     ));
                 }
             }
@@ -806,24 +806,23 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn, trusted: bool) -> Result<To
     let ext_eq = BinOp::ExtDeepEq(Default::default());
 
     let span = item_fn.sig.span();
+    let sig_common = quote! {
+        #vis fn #exec_name(
+            #(#params,)*
+        ) -> (res: #ret_type)
+            requires #requires
+            ensures res.deep_view() #ext_eq #spec_name(#(#args_deep_view),*)
+            #decreases
+    };
+
     let sig = if trusted {
         quote_spanned! { span =>
             #[verifier::external_body]
-            #vis fn #exec_name(
-                #(#params,)*
-            ) -> (res: #ret_type)
-                requires #requires
-                ensures res.deep_view() #ext_eq #spec_name(#(#args_deep_view),*)
-                #decreases
+            #sig_common
         }
     } else {
         quote_spanned! { span =>
-            #vis fn #exec_name(
-                #(#params,)*
-            ) -> (res: #ret_type)
-                requires #requires
-                ensures res.deep_view() #ext_eq #spec_name(#(#args_deep_view),*)
-                #decreases
+            #sig_common
         }
     };
 
@@ -1188,13 +1187,8 @@ fn compile_match_arm(ctx: &LocalCtx, arm: &Arm, trusted: bool) -> Result<TokenSt
 }
 
 struct GuardedQuantifierUntrusted {
-    quant_var: Ident,
-    quant_type: Box<Type>,
-    lower: Box<Expr>,
-    upper: Box<Expr>,
+    quant_var: GuardedQuantifierVar,
     guard_op: BinOp,
-    lower_op: BinOp,
-    upper_op: BinOp,
     body: Box<Expr>,
 }
 
@@ -1335,13 +1329,17 @@ fn get_guarded_range_quant_untrusted(
     }
 
     Ok(GuardedQuantifierUntrusted {
-        quant_var: quant_var.clone(),
-        quant_type,
-        lower: lower.clone(),
-        upper: upper.clone(),
+        quant_var: GuardedQuantifierVar {
+            quant_var: quant_var.clone(),
+            quant_type,
+            bounds: GuardedQuantifierBounds {
+                lower: lower.clone(),
+                upper: upper.clone(),
+                lower_op: lower_op.clone(),
+                upper_op: upper_op.clone(),
+            },
+        },
         guard_op: guard_op.clone(),
-        lower_op: lower_op.clone(),
-        upper_op: upper_op.clone(),
         body: body.clone(),
     })
 }
@@ -1365,21 +1363,26 @@ fn compile_guarded_quant_untrusted(
     // TODO: support other forms of quantifiers
     let quant = get_guarded_range_quant_untrusted(closure)?;
 
-    let quant_var = &quant.quant_var;
-    let quant_type = &quant.quant_type;
+    let quant_var = &quant.quant_var.quant_var;
+    let quant_type = &quant.quant_var.quant_type;
+    let lower = &quant.quant_var.bounds.lower;
+    let upper = &quant.quant_var.bounds.upper;
+    let lower_op = &quant.quant_var.bounds.lower_op;
+    let upper_op = &quant.quant_var.bounds.upper_op;
+    let guard_op = &quant.guard_op;
     let body = &quant.body;
-    let mut compiled_lower = compile_expr(ctx, &quant.lower, VarMode::Owned, false)?;
-    if let BinOp::Lt(..) = quant.lower_op {
+    let mut compiled_lower = compile_expr(ctx, lower, VarMode::Owned, false)?;
+    if let BinOp::Lt(..) = lower_op {
         compiled_lower = quote! { #compiled_lower + 1 };
     };
-    let mut compiled_upper = compile_expr(ctx, &quant.upper, VarMode::Owned, false)?;
-    if let BinOp::Le(..) = quant.upper_op {
+    let mut compiled_upper = compile_expr(ctx, upper, VarMode::Owned, false)?;
+    if let BinOp::Le(..) = upper_op {
         compiled_upper = quote! { #compiled_upper + 1 };
     };
 
     let mut body_ctx = ctx.clone();
     body_ctx.add(quant_var.clone(), VarMode::Owned);
-    let compiled_body = compile_expr(&body_ctx, &quant.body, VarMode::Ref, false)?;
+    let compiled_body = compile_expr(&body_ctx, body, VarMode::Ref, false)?;
     let mut quant_attrs = closure.inner_attrs.clone();
 
     if quant_attrs.len() == 0 {
@@ -1403,7 +1406,7 @@ fn compile_guarded_quant_untrusted(
 
     // Some common pieces
     let expr_span = expr.span();
-    let bound_expr = match (quant.lower_op, quant.upper_op) {
+    let bound_expr = match (lower_op, upper_op) {
         (BinOp::Lt(..), BinOp::Lt(..))
         | (BinOp::Le(..), BinOp::Lt(..))
         | (BinOp::Lt(..), BinOp::Le(..))
@@ -1417,7 +1420,7 @@ fn compile_guarded_quant_untrusted(
         }
     };
     //let inv_bound = quote_spanned! { expr_span => _lower <= #quant_var <= _upper };
-    let inv_bound = match (quant.lower_op, quant.upper_op) {
+    let inv_bound = match (lower_op, upper_op) {
         (BinOp::Lt(..), BinOp::Lt(..))
         | (BinOp::Le(..), BinOp::Lt(..))
         | (BinOp::Lt(..), BinOp::Le(..))
@@ -1435,9 +1438,9 @@ fn compile_guarded_quant_untrusted(
     let final_assert = quote_spanned! { expr_span => _res == { #(#local_view)* #op #expr } };
 
     // Generate a fresh trigger function
-    let trigger_fn_name = ctx.gen_fresh_trigger_fn(&quant.quant_type);
+    let trigger_fn_name = ctx.gen_fresh_trigger_fn(quant_type);
 
-    match (op, &quant.guard_op) {
+    match (op, guard_op) {
         (UnOp::Forall(..), BinOp::Imply(..)) => {
             // Generate some pieces separately so that we can attach spans to them
             let inv = quote_spanned! { expr_span => _res == {
@@ -1524,25 +1527,25 @@ fn compile_guarded_quant_untrusted(
     }
 }
 
-#[derive(Debug, Clone)]
-struct GuardBounds {
+#[derive(Clone)]
+struct GuardedQuantifierBounds {
     lower: Box<Expr>,
     upper: Box<Expr>,
     lower_op: BinOp,
     upper_op: BinOp,
 }
 
-#[derive(Debug, Clone)]
-struct GuardedQuantVar {
-    bounds: GuardBounds,
+#[derive(Clone)]
+struct GuardedQuantifierVar {
     quant_var: Ident,
     quant_type: Box<Type>,
+    bounds: GuardedQuantifierBounds,
 }
 
 struct GuardedQuantifier {
     guard_op: BinOp,
     body: Box<Expr>,
-    guarded_vars: Vec<GuardedQuantVar>,
+    guarded_vars: Vec<GuardedQuantifierVar>,
 }
 
 const UNSUPPORTED_QUANTIFIER_ERROR_MSG: &str = "Within the exec_spec! macro, quantifier expressions must match one of these forms:
@@ -1561,7 +1564,7 @@ const UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type
 Within the exec_spec! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char. Note: int and nat are not allowed.";
 
 /// Extracts a single guard expression
-fn get_single_guard(guard: &Expr, quant_var: &Ident) -> Result<GuardBounds, Error> {
+fn get_single_guard(guard: &Expr, quant_var: &Ident) -> Result<GuardedQuantifierBounds, Error> {
     // <guard> == <lower> <op> x <op> <upper>
     let Expr::Binary(ExprBinary { left: lower_guard, op: upper_op, right: upper, .. }) = guard
     else {
@@ -1627,7 +1630,7 @@ fn get_single_guard(guard: &Expr, quant_var: &Ident) -> Result<GuardBounds, Erro
         ));
     }
 
-    Ok(GuardBounds {
+    Ok(GuardedQuantifierBounds {
         lower_op: lower_op.clone(),
         upper_op: upper_op.clone(),
         lower: lower.clone(),
@@ -1694,7 +1697,7 @@ fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, E
         let bounds = get_single_guard(&single_guard, &quant_vars[quant_vars.len() - 1 - i].0)?;
         guarded_vars.insert(
             0,
-            GuardedQuantVar {
+            GuardedQuantifierVar {
                 bounds,
                 quant_var: quant_vars[quant_vars.len() - 1 - i].0.clone(),
                 quant_type: quant_vars[quant_vars.len() - 1 - i].1.clone(),
@@ -1708,7 +1711,7 @@ fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, E
 /// Compiles the initialization, update statement, initial condition, and while loop condition for a single variable
 fn compile_single_quant_var(
     ctx: &LocalCtx,
-    var: &GuardedQuantVar,
+    var: &GuardedQuantifierVar,
 ) -> Result<(TokenStream2, TokenStream2, TokenStream2, TokenStream2), Error> {
     let quant_var = &var.quant_var;
     let quant_type = &var.quant_type;
@@ -1771,7 +1774,7 @@ fn compile_guarded_quant_loops(
     expr: &Expr,
     guard_op: &BinOp,
     body: &Expr,
-    guarded_vars: &Vec<GuardedQuantVar>,
+    guarded_vars: &Vec<GuardedQuantifierVar>,
 ) -> Result<TokenStream2, Error> {
     let (init, update, init_cond, while_cond) = compile_single_quant_var(ctx, &guarded_vars[0])?;
 
