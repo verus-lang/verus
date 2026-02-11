@@ -134,12 +134,14 @@ impl<T: DeepView> DeepView for alloc::vec::Vec<T> {
     }
 }
 
+#[cfg(all(feature = "alloc", feature = "std"))]
 impl<Key, Value, S> View for std::collections::HashMap<Key, Value, S> {
     type V = Map<Key, Value>;
 
     uninterp spec fn view(&self) -> Map<Key, Value>;
 }
 
+#[cfg(all(feature = "alloc", feature = "std"))]
 impl<Key: DeepView, Value: DeepView, S> DeepView for std::collections::HashMap<Key, Value, S> {
     type V = Map<Key::V, Value::V>;
 
@@ -148,12 +150,14 @@ impl<Key: DeepView, Value: DeepView, S> DeepView for std::collections::HashMap<K
     }
 }
 
+#[cfg(all(feature = "alloc", feature = "std"))]
 impl<Key, S> View for std::collections::HashSet<Key, S> {
     type V = Set<Key>;
 
     uninterp spec fn view(&self) -> Set<Key>;
 }
 
+#[cfg(all(feature = "alloc", feature = "std"))]
 impl<Key: DeepView, S> DeepView for std::collections::HashSet<Key, S> {
     type V = Set<Key::V>;
 
