@@ -106,7 +106,7 @@ fn has_flag_arg_without_space(opts: &CargoOptions) -> bool {
     for arg in opts.cargo_args.iter() {
         if arg.starts_with("-Z") && arg.len() > 2 {
             eprintln!(
-                "Break the command-line argument {0} into two by using a space after -Z (i.e., use -Z {1}) so that cargo verus can correctly parse and forward the flag.",
+                "Split the command-line argument {0} into two by using a space after -Z (i.e., use -Z {1}) so that cargo verus can correctly parse and forward the flag.",
                 arg,
                 &arg[2..],
             );
