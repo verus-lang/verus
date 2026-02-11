@@ -1,4 +1,4 @@
-// Tests for additional features in the exec_spec_trusted! macro. These tests only check that the code compiles.
+// Tests for additional features in the exec_spec_trusted! macro.
 #![feature(rustc_private)]
 #[macro_use]
 mod common;
@@ -9,9 +9,9 @@ const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use vstd::contrib::exec_spec::*;
 };
 
-test_verify_one_file_with_options! {
+test_verify_one_file! {
     // Test quantifiers with multiple variables
-    #[test] test_exec_spec_trusted_multivar_quant ["--compile"] => IMPORTS.to_string() + verus_code_str! {
+    #[test] test_exec_spec_trusted_multivar_quant IMPORTS.to_string() + verus_code_str! {
         exec_spec_trusted! {
             spec fn spec_five(x1: u8, x2: u8, x3: u8, x4: u8, x5: u8) -> bool {
                 x1 == x2 && x3 != x4 && x3 != x5 && x5 != x2
@@ -52,9 +52,9 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
-test_verify_one_file_with_options! {
+test_verify_one_file! {
     // Test quantifiers over char
-    #[test] test_exec_spec_trusted_char_quant ["--compile"] => IMPORTS.to_string() + verus_code_str! {
+    #[test] test_exec_spec_trusted_char_quant IMPORTS.to_string() + verus_code_str! {
         exec_spec_trusted! {
             spec fn forall_char_le_le() -> bool {
                 forall |c: char| #![trigger c as u32] 'A' <= c <= 'Z' ==> c != '!'
@@ -86,6 +86,36 @@ test_verify_one_file_with_options! {
 
             spec fn exists_char_lt_lt() -> bool {
                 exists |c: char| #![trigger c as u32] 'A' < c < 'Z' && c == 'K'
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Test using exec_spec! and exec_spec_trusted! macros together
+    #[test] test_exec_spec_mixed_modes IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            struct X {
+                a: u32,
+                b: bool
+            }
+
+            spec fn x_test1(x1: X, x2: X) -> bool {
+                x1 == x2 && !x1.b
+            }
+        }
+
+        exec_spec_trusted! {
+            spec fn forall_char_le_le() -> bool {
+                forall |c: char| #![trigger c as u32] 'A' <= c <= 'Z' ==> c != '!'
+            }
+
+            spec fn x_test2(x: X) -> u32 {
+                x.a
+            }
+
+            spec fn x_test3(x1: X, x2: X) -> bool {
+                x_test1(x1, x2)
             }
         }
     } => Ok(())
