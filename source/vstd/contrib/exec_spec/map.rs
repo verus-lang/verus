@@ -11,7 +11,7 @@ verus! {
 broadcast use {
     crate::group_vstd_default,
     crate::std_specs::hash::group_hash_axioms,
-    crate::std_specs::hash::lemma_hashmap_deepview_dom
+    crate::std_specs::hash::lemma_hashmap_deepview_dom,
 };
 
 /// Impls for shared traits
