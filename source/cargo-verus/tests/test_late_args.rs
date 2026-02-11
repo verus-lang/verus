@@ -88,9 +88,8 @@ fn late_no_default_features_arg_after_release() {
 #[test]
 fn late_workspace_arg_after_release() {
     // --workspace appearing after --release should be detected
-    let workspace_dir = MockWorkspace::new()
-        .members([MockPackage::new("foo").lib().verify(true)])
-        .materialize();
+    let workspace_dir =
+        MockWorkspace::new().members([MockPackage::new("foo").lib().verify(true)]).materialize();
 
     let status = run_cargo_verus_expect_early_failure(|cmd| {
         cmd.current_dir(&workspace_dir).arg("verify");
