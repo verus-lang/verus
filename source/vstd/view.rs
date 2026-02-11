@@ -134,6 +134,34 @@ impl<T: DeepView> DeepView for alloc::vec::Vec<T> {
     }
 }
 
+impl<Key, Value, S> View for std::collections::HashMap<Key, Value, S> {
+    type V = Map<Key, Value>;
+
+    uninterp spec fn view(&self) -> Map<Key, Value>;
+}
+
+impl<Key: DeepView, Value: DeepView, S> DeepView for std::collections::HashMap<Key, Value, S> {
+    type V = Map<Key::V, Value::V>;
+
+    open spec fn deep_view(&self) -> Map<Key::V, Value::V> {
+        crate::std_specs::hash::hash_map_deep_view_impl(*self)
+    }
+}
+
+impl<Key, S> View for std::collections::HashSet<Key, S> {
+    type V = Set<Key>;
+
+    uninterp spec fn view(&self) -> Set<Key>;
+}
+
+impl<Key: DeepView, S> DeepView for std::collections::HashSet<Key, S> {
+    type V = Set<Key::V>;
+
+    open spec fn deep_view(&self) -> Set<Key::V> {
+        self@.map(|x: Key| x.deep_view())
+    }
+}
+
 impl<T> View for Option<T> {
     type V = Option<T>;
 

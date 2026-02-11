@@ -668,20 +668,6 @@ impl<Key, Value, S> HashMapAdditionalSpecFns<Key, Value> for HashMap<Key, Value,
     }
 }
 
-impl<Key, Value, S> View for HashMap<Key, Value, S> {
-    type V = Map<Key, Value>;
-
-    uninterp spec fn view(&self) -> Map<Key, Value>;
-}
-
-impl<Key: DeepView, Value: DeepView, S> DeepView for HashMap<Key, Value, S> {
-    type V = Map<Key::V, Value::V>;
-
-    open spec fn deep_view(&self) -> Map<Key::V, Value::V> {
-        hash_map_deep_view_impl(*self)
-    }
-}
-
 /// The actual definition of `HashMap::deep_view`.
 ///
 /// This is a separate function since it introduces a lot of quantifiers and revealing an opaque trait
@@ -1196,20 +1182,6 @@ impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
 #[verifier::accept_recursive_types(Key)]
 #[verifier::reject_recursive_types(S)]
 pub struct ExHashSet<Key, S>(HashSet<Key, S>);
-
-impl<Key, S> View for HashSet<Key, S> {
-    type V = Set<Key>;
-
-    uninterp spec fn view(&self) -> Set<Key>;
-}
-
-impl<Key: DeepView, S> DeepView for HashSet<Key, S> {
-    type V = Set<Key::V>;
-
-    open spec fn deep_view(&self) -> Set<Key::V> {
-        self@.map(|x: Key| x.deep_view())
-    }
-}
 
 pub uninterp spec fn spec_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> usize;
 
