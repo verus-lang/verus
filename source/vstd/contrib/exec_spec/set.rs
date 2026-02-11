@@ -8,10 +8,7 @@ verus! {
 // Note: many of the exec translations are currently unverified, even though the exec functions have specs in vstd.
 // This is because HashSet<K>::deep_view() is quite hard to work with.
 // E.g., the correctness of the translations requires reasoning that K::deep_view does not create collisions.
-broadcast use {
-    crate::group_vstd_default,
-    crate::std_specs::hash::group_hash_axioms,
-};
+broadcast use {crate::group_vstd_default, crate::std_specs::hash::group_hash_axioms};
 
 /// Impls for shared traits
 impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToRef<
