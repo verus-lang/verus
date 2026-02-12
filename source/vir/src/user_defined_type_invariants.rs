@@ -42,7 +42,12 @@ pub(crate) fn annotate_user_defined_invariants(
                     {
                         let fun =
                             typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
-                        let function = functions.get(&fun).unwrap();
+                        let Some(function) = functions.get(&fun) else {
+                            return Err(internal_error(
+                                &expr.span,
+                                "missing type invariant function",
+                            ));
+                        };
                         Ok(assert_and_return(&expr, function, module)?)
                     } else {
                         Ok(expr.clone())
@@ -84,7 +89,12 @@ pub(crate) fn annotate_user_defined_invariants(
                         return Err(error(&expr.span, "this type is not a datatype"));
                     }
                     if let Some(fun) = typ_get_user_defined_type_invariant(datatypes, &typ) {
-                        let function = functions.get(&fun).unwrap();
+                        let Some(function) = functions.get(&fun) else {
+                            return Err(internal_error(
+                                &expr.span,
+                                "missing type invariant function",
+                            ));
+                        };
                         if !crate::ast_util::is_visible_to(&function.x.visibility, module) {
                             return Err(error(
                                 &expr.span,
@@ -129,7 +139,9 @@ pub(crate) fn annotate_one(
                 && typ_has_user_defined_type_invariant(datatypes, &expr.typ)
             {
                 let fun = typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
-                let function = functions.get(&fun).unwrap();
+                let Some(function) = functions.get(&fun) else {
+                    return Err(internal_error(&expr.span, "missing type invariant function"));
+                };
                 Ok(assert_and_return(&expr, function, module)?)
             } else {
                 Ok(expr.clone())
@@ -143,7 +155,9 @@ pub(crate) fn annotate_one(
                 return Err(error(&expr.span, "this type is not a datatype"));
             }
             if let Some(fun) = typ_get_user_defined_type_invariant(datatypes, &typ) {
-                let function = functions.get(&fun).unwrap();
+                let Some(function) = functions.get(&fun) else {
+                    return Err(internal_error(&expr.span, "missing type invariant function"));
+                };
                 if !crate::ast_util::is_visible_to(&function.x.visibility, module) {
                     return Err(error(
                         &expr.span,
@@ -288,7 +302,12 @@ fn asserts_for_lhs(
                 if info.field_loc_needs_check[&cur.span.id] {
                     if let Some(fun) = typ_get_user_defined_type_invariant(datatypes, &inner.typ) {
                         let expr = loc_to_normal_expr(inner);
-                        let function = functions.get(&fun).unwrap();
+                        let Some(function) = functions.get(&fun) else {
+                            return Err(internal_error(
+                                &inner.span,
+                                "missing type invariant function",
+                            ));
+                        };
                         stmts.push(mk_assert_stmt(&expr, function, module)?);
                     }
                 }
