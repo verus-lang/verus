@@ -204,8 +204,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_proof_note_on_assert verus_code! {
         fn caller() {
-            #[verifier::proof_note("Statement known to be false")]
-            assert(1 > 2); // assertion fails
+            assert(
+                #[verifier::proof_note("Statement known to be false")]
+                (1 > 2)
+            ); // assertion fails
         }
     } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
 }

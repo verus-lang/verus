@@ -2135,7 +2135,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::Assert(assert_id, error, expr) => {
             let air_expr = exp_to_expr(ctx, &expr, expr_ctxt)?;
-            let error = match error {
+            let mut error = match error {
                 Some(error) => error.clone(),
                 None => error_with_label(
                     &stm.span,
@@ -2143,6 +2143,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     "assertion failed".to_string(),
                 ),
             };
+            if let Some(label) = exp_get_proof_note(expr) {
+                error = error.secondary_label(&stm.span, format!("note: {label}"));
+            }
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
             }
