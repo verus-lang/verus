@@ -180,7 +180,7 @@ test_verify_one_file! {
         }
 
         fn caller() {
-            example(1, 2); // precondition fails
+            let _ = example(1, 2); // precondition fails
         }
     } => Err(err) => assert_help_error_msg(err, "note: Property 732")
 }
@@ -196,7 +196,7 @@ test_verify_one_file! {
         }
 
         fn caller() {
-            example(1, 2); // postcondition fails
+            let _ = example(1, 2); // postcondition fails
         }
     } => Err(err) => assert_help_error_msg(err, "note: Property 732")
 }
