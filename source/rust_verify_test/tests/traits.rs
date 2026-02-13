@@ -4144,6 +4144,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_recursion_through_sync_impl_is_checked verus_code! {
+        use vstd::std_specs::alloc::*;
         trait Tr {
             proof fn tr_g() {
             }
@@ -4192,6 +4193,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_recursion_through_send_impl_is_checked verus_code! {
+        use vstd::std_specs::alloc::*;
         trait Tr {
             proof fn tr_g() {
             }
