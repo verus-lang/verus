@@ -4,42 +4,38 @@ use verus_builtin::*;
 use verus_builtin_macros::*;
 
 // ANCHOR: basic_trait
-// Suppose we have an external trait (e.g., from a Rust library crate):
 #[verifier::external]
-trait Formatter {
-    fn format_value(&self, x: u64) -> u64;
+trait Encoder {
+    fn encode_value(&self, x: u64) -> u64;
 }
 // ANCHOR_END: basic_trait
 
 verus! {
 
 // ANCHOR: basic_spec
-// We can add specifications to it using external_trait_specification:
 #[verifier::external_trait_specification]
-trait ExFormatter {
+trait ExEncoder {
     // This associated type names the trait being specified:
-    type ExternalTraitSpecificationFor: Formatter;
+    type ExternalTraitSpecificationFor: Encoder;
 
-    fn format_value(&self, x: u64) -> (result: u64)
+    fn encode_value(&self, x: u64) -> (result: u64)
         ensures
             result >= x;
 }
 // ANCHOR_END: basic_spec
 
 // ANCHOR: basic_use
-// Now verified code can use the trait with its specification:
-fn use_formatter<F: Formatter>(f: &F, val: u64) -> (result: u64)
+fn use_encoder<E: Encoder>(f: &E, val: u64) -> (result: u64)
     ensures
         result >= val,
 {
-    f.format_value(val)
+    f.encode_value(val)
 }
 // ANCHOR_END: basic_use
 
 } // verus!
 
 // ANCHOR: extension_trait
-// Suppose we have another external trait:
 #[verifier::external]
 trait Hasher {
     fn finish(&self) -> u64;
@@ -50,46 +46,41 @@ trait Hasher {
 verus! {
 
 // ANCHOR: extension_spec
-// external_trait_extension adds spec helper functions to a trait.
-// The syntax is: #[verifier::external_trait_extension(SpecTrait via SpecImplTrait)]
-//   - SpecTrait: the name for spec-mode functions on the trait
-//   - SpecImplTrait: the trait that concrete types implement
-
 #[verifier::external_trait_specification]
-#[verifier::external_trait_extension(HasherSpec via HasherSpecImpl)]
-trait ExHasher {
-    type ExternalTraitSpecificationFor: Hasher;
+#[verifier::external_trait_extension(SummarizerSpec via SummarizerSpecImpl)]
+trait ExSummarizer {
+    type ExternalTraitSpecificationFor: Summarizer;
 
     // A spec helper function (not part of the original trait):
-    spec fn spec_finish(&self) -> u64;
+    spec fn spec_summary(&self) -> u64;
 
-    fn finish(&self) -> (result: u64)
+    fn summary(&self) -> (result: u64)
         ensures
-            result == self.spec_finish();
-
-    fn write(&mut self, bytes: &[u8]);
+            result == self.spec_summary();
 }
 // ANCHOR_END: extension_spec
 
 // ANCHOR: extension_impl
-// Concrete types implement SpecImplTrait to define the spec helpers:
-struct MyHasher { value: u64 }
+struct MyCustomStruct { value: u64 }
 
-impl Hasher for MyHasher {
-    #[verifier::external_body]
-    fn finish(&self) -> u64 { self.value }
-    #[verifier::external_body]
-    fn write(&mut self, bytes: &[u8]) { }
+// Implement the concrete external Summarizer trait
+impl Summarizer for MyCustomStruct {
+    fn summary(&self) -> u64 {
+        // Prove that our overly complicated implementation satisfies the spec_summary
+        assert(self.value & 0xffff_ffff_ffff_ffff == self.value) by (bit_vector);
+        self.value & 0xffff_ffff_ffff_ffff
+    }
 }
 
-impl HasherSpecImpl for MyHasher {
-    spec fn spec_finish(&self) -> u64 {
+// Implement the additional spec functions
+impl SummarizerSpecImpl for MyCustomStruct {
+    spec fn spec_summary(&self) -> u64 {
         self.value
     }
 }
 
-fn test_hasher(h: &MyHasher) {
-    let v = h.finish();
+fn test_hasher(h: &MyCustomStruct) {
+    let v = h.summary();
     assert(v == h.value);
 }
 // ANCHOR_END: extension_impl
