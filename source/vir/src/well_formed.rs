@@ -4,6 +4,7 @@ use crate::ast::{
     Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec,
     VarIdent, VirErr, VirErrAs, Visibility,
 };
+use crate::ast_to_sst::expr_get_proof_note;
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
     path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
@@ -577,9 +578,13 @@ fn check_one_expr<Emit: EmitError>(
                 },
             )?;
         }
-        ExprX::AssertAssume { is_assume, .. } => {
+        ExprX::AssertAssume { is_assume, expr: inner_expr, .. } => {
             if ctxt.no_cheating && *is_assume {
-                return Err(error(&expr.span, "assume/admit not allowed with --no-cheating"));
+                let mut msg = error(&expr.span, "assume/admit not allowed with --no-cheating");
+                if let Some(label) = expr_get_proof_note(inner_expr) {
+                    msg = msg.secondary_label(&expr.span, format!("note: {label}"));
+                }
+                return Err(msg);
             }
         }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
