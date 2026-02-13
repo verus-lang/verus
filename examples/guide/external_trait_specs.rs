@@ -35,15 +35,12 @@ fn use_encoder<E: Encoder>(f: &E, val: u64) -> (result: u64)
 
 } // verus!
 
-// ANCHOR: extension_trait
-#[verifier::external]
-trait Hasher {
-    fn finish(&self) -> u64;
-    fn write(&mut self, bytes: &[u8]);
-}
-// ANCHOR_END: extension_trait
-
 verus! {
+
+#[verifier::external]
+trait Summarizer {
+    fn summary(&self) -> (result: u64);
+}
 
 // ANCHOR: extension_spec
 #[verifier::external_trait_specification]
@@ -67,8 +64,9 @@ struct MyCustomStruct { value: u64 }
 impl Summarizer for MyCustomStruct {
     fn summary(&self) -> u64 {
         // Prove that our overly complicated implementation satisfies the spec_summary
-        assert(self.value & 0xffff_ffff_ffff_ffff == self.value) by (bit_vector);
-        self.value & 0xffff_ffff_ffff_ffff
+        let v = self.value;
+        assert(v & 0xffff_ffff_ffff_ffff == v) by (bit_vector);
+        v & 0xffff_ffff_ffff_ffff
     }
 }
 
