@@ -212,6 +212,17 @@ test_verify_one_file! {
     } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
 }
 
+test_verify_one_file_with_options! {
+    #[test] test_proof_note_on_assume_with_no_cheating ["--no-cheating"] => verus_code! {
+        fn caller() {
+            assume(
+                #[verifier::proof_note("Statement known to be false")]
+                (1 > 2)
+            ); // assumption fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
+}
+
 test_verify_one_file! {
     #[test] test_ret2 TEST_RET.to_string() + verus_code_str! {
         proof fn test_ret2(a: int, b: int) -> (ret: int)
