@@ -212,13 +212,19 @@ you to follow these best practices.
    of your proof (e.g., what you may have assumed about other libraries), so that
    consumers of your crate are not disappointed when something breaks.  Err on the
    side of under-promising and over-delivering.
-3. If your crate contains verified executable Rust code that uses any of Verus's
-   wrappers around unsafe primitives (e.g., raw pointers), then we encourage you 
-   to run the [safe API checker](https://verus-lang.github.io/verus/guide/calling-verified-from-unverified.html),
-   which can detect places where your external interface relies on Verus-checked
-   preconditions to ensure safety.   It's important to remember that unverified 
-   consumers are not subject to these checks, so providing such an
-   interface may lead to undefined behavior.  The [guide](https://verus-lang.github.io/verus/guide/calling-verified-from-unverified.html)
+3. If your crate contains verified executable Rust code that uses any of
+   Verus's unsafe primitives ([raw
+   pointers](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html),
+   [PPtr](https://verus-lang.github.io/verus/verusdoc/vstd/simple_pptr/struct.PPtr.html),
+   or
+   [PCell](https://verus-lang.github.io/verus/verusdoc/vstd/cell/pcell/struct.PCell.html))
+   or uses explicit `unsafe` blocks, then we encourage you to run the [safe API
+   checker](https://verus-lang.github.io/verus/guide/calling-verified-from-unverified.html),
+   which can detect places where your external interface relies on
+   Verus-checked preconditions to ensure safety.   It's important to remember
+   that unverified consumers are not subject to these checks, so providing such
+   an interface may lead to undefined behavior.  The
+   [guide](https://verus-lang.github.io/verus/guide/calling-verified-from-unverified.html)
    offers some tips on how to improve such an interface.
 4. We encourage you to apply [verusdoc](https://verus-lang.github.io/verus/guide/verusdoc.html)
    to your crate.  Like `rustdoc`, `verusdoc` will automatically generate nice
