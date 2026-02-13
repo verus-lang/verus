@@ -438,7 +438,7 @@ test_verify_one_file! {
     #[test] type_recursion_is_handled verus_code! {
         use vstd::std_specs::alloc::*;
         #[verifier(external)]
-        pub enum SomeStruct<T> { 
+        pub enum SomeStruct<T> {
             No,
             Yes(T),
         }
