@@ -16,4 +16,9 @@ pub assume_specification<T>[ alloc::boxed::box_new ](x: T) -> (result: alloc::bo
         *result == x,
 ;
 
+#[verifier::external_trait_specification]
+pub trait ExAllocator {
+    type ExternalTraitSpecificationFor: core::alloc::Allocator;
+}
+
 } // verus!
