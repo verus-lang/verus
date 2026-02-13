@@ -170,6 +170,38 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_proof_note_on_requires verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            requires
+                #[verifier::proof_note("Property 732")]
+                (x == y),
+        {
+            x + y
+        }
+
+        fn caller() {
+            example(1, 2); // precondition fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Property 732")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_on_ensures verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            ensures
+                #[verifier::proof_note("Property 732")]
+                (z == x + y),
+        {
+            x
+        }
+
+        fn caller() {
+            example(1, 2); // postcondition fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Property 732")
+}
+
+test_verify_one_file! {
     #[test] test_ret2 TEST_RET.to_string() + verus_code_str! {
         proof fn test_ret2(a: int, b: int) -> (ret: int)
             requires

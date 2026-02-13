@@ -51,7 +51,8 @@ pub struct PostConditionInfo {
     /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
     pub dest: Option<VarIdent>,
     /// Post-conditions (only used in non-recommends-checking mode)
-    pub ens_exprs: Vec<(Span, Expr)>,
+    /// Each entry carries the span, the AIR expression, and an optional `proof_note` label.
+    pub ens_exprs: Vec<(Span, Expr, Option<Arc<String>>)>,
     /// Recommends checks (only used in recommends-checking mode)
     pub ens_spec_precondition_stms: Stms,
     /// Extra info about PostCondition for error reporting
@@ -764,7 +765,18 @@ fn exp_get_custom_err(exp: &Exp) -> Option<Arc<String>> {
     match &exp.x {
         ExpX::UnaryOpr(UnaryOpr::Box(_), e) => exp_get_custom_err(e),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => exp_get_custom_err(e),
+        ExpX::UnaryOpr(UnaryOpr::ProofNote(_), e) => exp_get_custom_err(e),
         ExpX::UnaryOpr(UnaryOpr::CustomErr(s), _) => Some(s.clone()),
+        _ => None,
+    }
+}
+
+pub(crate) fn exp_get_proof_note(exp: &Exp) -> Option<Arc<String>> {
+    match &exp.x {
+        ExpX::UnaryOpr(UnaryOpr::Box(_), e) => exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e) => exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
         _ => None,
     }
 }
@@ -2190,13 +2202,22 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         stmts.append(&mut new_stmts);
                     }
                 } else {
-                    for (span, ens) in state.post_condition_info.ens_exprs.clone().iter() {
+                    for (span, ens, proof_note) in
+                        state.post_condition_info.ens_exprs.clone().iter()
+                    {
                         // The base_error should point to the return-statement or
                         // return-expression. Augment with an additional label pointing
                         // to the 'ensures' clause that fails.
                         let error = match state.post_condition_info.kind {
-                            PostConditionKind::Ensures => base_error
-                                .primary_label(&span, crate::def::THIS_POST_FAILED.to_string()),
+                            PostConditionKind::Ensures => {
+                                let new_error = base_error
+                                    .primary_label(&span, crate::def::THIS_POST_FAILED.to_string());
+                                if let Some(label) = proof_note {
+                                    new_error.secondary_label(span, format!("note: {label}"))
+                                } else {
+                                    new_error
+                                }
+                            }
                             PostConditionKind::DecreasesImplicitLemma => {
                                 base_error.ensure_primary_label()
                             }
@@ -3095,11 +3116,12 @@ pub(crate) fn body_stm_to_air(
 
     let initial_sid = Arc::new("0_entry".to_string());
 
-    let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
+    let mut ens_exprs: Vec<(Span, Expr, Option<Arc<String>>)> = Vec::new();
     for ens in post_condition.ens_exps.iter() {
         let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+        let note = exp_get_proof_note(ens);
         let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
-        ens_exprs.push((ens.span.clone(), e));
+        ens_exprs.push((ens.span.clone(), e, note));
     }
 
     let unwind_air = match unwind {

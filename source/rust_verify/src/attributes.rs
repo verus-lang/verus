@@ -1008,6 +1008,20 @@ pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<Stri
     Ok(v)
 }
 
+pub(crate) fn get_proof_note_annotation(attrs: &[Attribute]) -> Result<Option<String>, VirErr> {
+    let mut label = None;
+    for attr in parse_attrs(attrs, None)? {
+        if let Attr::ProofNote(s) = attr {
+            if label.is_some() {
+                // TODO: improve this error
+                panic!("at most one `proof_note` attribute is allowed");
+            }
+            label = Some(s);
+        }
+    }
+    Ok(label)
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum AutoDerivesAttr {
     Regular,
@@ -1325,9 +1339,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::Memoize => vs.memoize = true,
             Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),
             Attr::Truncate => vs.truncate = true,
-            Attr::ProofNote(_) => {
-                // TODO: https://github.com/verus-lang/verus/issues/2152
-            }
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
             Attr::Mode(_) => vs.sets_mode = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
