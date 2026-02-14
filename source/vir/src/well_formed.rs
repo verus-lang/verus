@@ -4,11 +4,10 @@ use crate::ast::{
     Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec,
     VarIdent, VirErr, VirErrAs, Visibility,
 };
-use crate::ast_to_sst::expr_get_proof_note;
 use crate::ast_util::{
-    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
-    path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
-    undecorate_typ,
+    dt_as_friendly_rust_name, expr_get_proof_note, fun_as_friendly_rust_name, is_body_visible_to,
+    is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str,
+    types_equal, undecorate_typ,
 };
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;

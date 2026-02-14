@@ -549,16 +549,6 @@ pub(crate) fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     )
 }
 
-pub(crate) fn expr_get_proof_note(expr: &Expr) -> Option<Arc<String>> {
-    match &expr.x {
-        ExprX::UnaryOpr(UnaryOpr::Box(_), e) => expr_get_proof_note(e),
-        ExprX::UnaryOpr(UnaryOpr::Unbox(_), e) => expr_get_proof_note(e),
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => expr_get_proof_note(e),
-        ExprX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
-        _ => None,
-    }
-}
-
 pub(crate) fn get_function(ctx: &Ctx, span: &Span, name: &Fun) -> Result<Function, VirErr> {
     match ctx.func_map.get(name) {
         None => Err(error(span, format!("could not find function {:?}", &name))),
