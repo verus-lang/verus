@@ -110,23 +110,12 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         self.m.insert(k, v);
     }
 
-    /// Removes the given key from the map. If the key is not present in the map, the map is unmodified.
-    ///
-    /// See Rust's [`HashMap::remove()`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.remove) for implementation details.
-    #[verifier::external_body]
-    pub fn remove(&mut self, k: &Key)
-        ensures
-            self@ == old(self)@.remove(k@),
-    {
-        self.m.remove(k);
-    }
-
     /// Removes the given key from the map and returns the value. If the key is not present in the map, returns `None`
     /// and the map is unmodified.
     ///
     /// See Rust's [`HashMap::remove()`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.remove) for implementation details.
     #[verifier::external_body]
-    pub fn remove_take(&mut self, k: &Key) -> (out: Option<Value>)
+    pub fn remove(&mut self, k: &Key) -> (out: Option<Value>)
         ensures
             match out {
                 Some(v) => old(self)@.contains_key(k@) && v == old(self)@[k@] && self@ == old(self)@.remove(k@),
