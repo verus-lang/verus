@@ -2154,6 +2154,11 @@ fn check_expr_handle_mut_arg(
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
             Ok((Mode::Spec, p))
         }
+        ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1) => {
+            let proph =
+                check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
+            Ok((Mode::Spec, proph))
+        }
         ExprX::Loc(e) => {
             return check_expr_handle_mut_arg(
                 ctxt,

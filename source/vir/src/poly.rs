@@ -620,7 +620,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp(ExpX::UnaryOpr(op.clone(), e1))
                 }
-                UnaryOpr::CustomErr(_) => {
+                UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) => {
                     mk_exp_typ(&e1.typ, ExpX::UnaryOpr(op.clone(), e1.clone()))
                 }
                 UnaryOpr::Field(FieldOpr {

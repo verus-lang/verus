@@ -261,7 +261,7 @@ pub(crate) enum Attr {
     // specify list of places where == is promoted to =~=
     AutoExtEqual(vir::ast::AutoExtEqual),
     /// Label for a proof obligation, i.e. the attribute `#[verifier::proof_note("label")]`
-    ProofNote(String),
+    ProofNote(Span, String),
     // add manual trigger to expression inside quantifier
     Trigger(Option<Vec<u64>>),
     // custom error string to report for precondition failures
@@ -413,7 +413,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
                 AttrTree::Fun(span, name, attrs) if name == "proof_note" => {
                     let label = get_proof_note_label(*span, attrs)?;
-                    v.push(Attr::ProofNote(label.clone()))
+                    v.push(Attr::ProofNote(*span, label.clone()))
                 }
                 AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
                 AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
@@ -1008,6 +1008,19 @@ pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<Stri
     Ok(v)
 }
 
+pub(crate) fn get_proof_note_annotation(attrs: &[Attribute]) -> Result<Option<String>, VirErr> {
+    let mut label = None;
+    for attr in parse_attrs(attrs, None)? {
+        if let Attr::ProofNote(span, text) = attr {
+            if label.is_some() {
+                return err_span(span, "at most one `proof_note` attribute is allowed");
+            }
+            label = Some(text);
+        }
+    }
+    Ok(label)
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum AutoDerivesAttr {
     Regular,
@@ -1325,9 +1338,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::Memoize => vs.memoize = true,
             Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),
             Attr::Truncate => vs.truncate = true,
-            Attr::ProofNote(_) => {
-                // TODO: https://github.com/verus-lang/verus/issues/2152
-            }
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
             Attr::Mode(_) => vs.sets_mode = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,

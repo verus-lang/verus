@@ -120,7 +120,7 @@ const TEST_REQUIRES1: &str = verus_code_str! {
         requires
             a <= b,
             #[verifier::proof_note("Test label #1")]
-            b <= c,
+            (b <= c),
     {
         assert(a <= c);
     }
@@ -134,15 +134,17 @@ test_verify_one_file! {
             test_requires1(a + a, b + b, c + c);
             test_requires1(a + a, b + b, a + c); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_help_error_msg(err, "note: Test label #1")
 }
 
 test_verify_one_file! {
     #[test] test_requires3 TEST_REQUIRES1.to_string() + verus_code_str! {
         fn test_requires3(a: int, b: int, c: int) {
             assume(a <= b);
-            #[verifier::proof_note("Test label #2")]
-            assume(b <= c);
+            assume(
+                #[verifier::proof_note("Test label #2")]
+                (b <= c)
+            );
             proof {
                 test_requires1(a + a, b + b, c + c);
                 test_requires1(a + c, b + b, c + c); // FAILS
@@ -157,7 +159,7 @@ const TEST_RET: &str = verus_code_str! {
             a <= b,
         ensures
             #[verifier::proof_note("Test label #3")]
-            ret <= a + b,
+            (ret <= a + b),
             ret <= a + a, // FAILS
             ret <= b + b,
     {
@@ -167,6 +169,60 @@ const TEST_RET: &str = verus_code_str! {
 
 test_verify_one_file! {
     #[test] test_ret TEST_RET.to_string() => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_on_requires verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            requires
+                #[verifier::proof_note("Property 732")]
+                (x == y),
+        {
+            x + y
+        }
+
+        fn caller() {
+            let _ = example(1, 2); // precondition fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Property 732")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_on_ensures verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            ensures
+                #[verifier::proof_note("Property 732")]
+                (z == x + y),
+        {
+            x
+        }
+
+        fn caller() {
+            let _ = example(1, 2); // postcondition fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Property 732")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_on_assert verus_code! {
+        fn caller() {
+            assert(
+                #[verifier::proof_note("Statement known to be false")]
+                (1 > 2)
+            ); // assertion fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_note_on_assume_with_no_cheating ["--no-cheating"] => verus_code! {
+        fn caller() {
+            assume(
+                #[verifier::proof_note("Statement known to be false")]
+                (1 > 2)
+            ); // assumption fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
 }
 
 test_verify_one_file! {
