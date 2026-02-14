@@ -7,7 +7,7 @@ use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
-use crate::util::error;
+use crate::util::{HashMapAbsorbWith, error};
 use crate::verus_items::VerusItems;
 use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
@@ -335,12 +335,18 @@ pub struct Verifier {
 }
 
 pub struct FuncDetails {
-    pub failed_proof_notes: Vec<()>,
+    pub failed_proof_notes: HashSet<String>,
 }
 
 impl Default for FuncDetails {
     fn default() -> Self {
         Self { failed_proof_notes: Default::default() }
+    }
+}
+
+impl FuncDetails {
+    fn absorb(&mut self, other: Self) {
+        self.failed_proof_notes.extend(other.failed_proof_notes);
     }
 }
 
@@ -555,6 +561,7 @@ impl Verifier {
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
         self.bucket_stats.extend(other.bucket_stats);
         self.func_times.extend(other.func_times);
+        self.func_details.absorb_with(other.func_details, |lhs, rhs| lhs.absorb(rhs));
     }
 
     fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
