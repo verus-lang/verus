@@ -736,6 +736,16 @@ impl ExpX {
     }
 }
 
+pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<Arc<String>> {
+    match &exp.x {
+        ExpX::UnaryOpr(UnaryOpr::Box(_), e) => sst_exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => sst_exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e) => sst_exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
+        _ => None,
+    }
+}
+
 pub fn sst_arch_word_bits(span: &Span) -> Exp {
     SpannedTyped::new(
         span,

@@ -903,10 +903,10 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
     )
 }
 
-pub(crate) fn expr_get_proof_note(expr: &Expr) -> Option<Arc<String>> {
+pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<Arc<String>> {
     match &expr.x {
         // NOTE: `UnaryOpr::Box` and `Unbox` are not used here; only in `ast_to_sst`.
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => expr_get_proof_note(e),
+        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => ast_expr_get_proof_note(e),
         ExprX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
         _ => None,
     }

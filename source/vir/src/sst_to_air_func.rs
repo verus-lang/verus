@@ -14,9 +14,9 @@ use crate::messages::{MessageLabel, Span};
 use crate::sst::FuncCheckSst;
 use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParPurpose, ParX, Pars};
 use crate::sst_to_air::{
-    ExprCtxt, ExprMode, exp_get_proof_note, exp_to_expr, fun_to_air_ident, typ_invariant,
-    typ_to_air, typ_to_ids,
+    ExprCtxt, ExprMode, exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids,
 };
+use crate::sst_util::sst_exp_get_proof_note;
 use crate::util::vec_map;
 use air::ast::{
     Axiom, BinaryOp, Bind, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant, Trigger,
@@ -455,7 +455,7 @@ fn req_ens_to_air(
             if let Some(msg) = msg {
                 labels.push(Arc::new(MessageLabel { span: exp.span.clone(), note: msg.clone() }));
             }
-            if let Some(label) = exp_get_proof_note(exp) {
+            if let Some(label) = sst_exp_get_proof_note(exp) {
                 labels.push(Arc::new(MessageLabel {
                     span: exp.span.clone(),
                     note: format!("note: {label}"),
