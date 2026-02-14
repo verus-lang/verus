@@ -334,6 +334,7 @@ pub struct Verifier {
     error_format: Option<ErrorOutputType>,
 }
 
+#[derive(serde::Serialize)]
 pub struct FuncDetails {
     pub failed_proof_notes: HashSet<String>,
 }
@@ -347,6 +348,10 @@ impl Default for FuncDetails {
 impl FuncDetails {
     fn absorb(&mut self, other: Self) {
         self.failed_proof_notes.extend(other.failed_proof_notes);
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap()
     }
 }
 
