@@ -895,6 +895,15 @@ impl Verifier {
                         }
                     }
 
+                    // Collect `proof_note` labels related to this failure.
+                    let mut proof_notes = vec![];
+                    for label in &error.labels {
+                        if label.note.starts_with("note: ") {
+                            proof_notes.push(label.note[6..].to_owned());
+                        }
+                    }
+                    self.record_func_failed_proof_notes(context.fun.clone(), proof_notes);
+
                     if level == Some(MessageLevel::Error) {
                         if self.args.expand_errors {
                             assert!(!self.expand_flag);
@@ -2907,6 +2916,21 @@ impl Verifier {
                 .find(|function| function.x.name == *f)
                 .map(|function| &function.x.mode)
         })
+    }
+
+    fn record_func_failed_proof_notes(&mut self, func: Fun, failed_proof_notes: Vec<String>) {
+        use std::collections::hash_map::Entry;
+        match self.func_details.entry(func) {
+            Entry::Occupied(mut occupied_entry) => {
+                occupied_entry.get_mut().failed_proof_notes.extend(failed_proof_notes);
+            }
+            Entry::Vacant(vacant_entry) => {
+                let _ = vacant_entry.insert(FuncDetails {
+                    failed_proof_notes: HashSet::from_iter(failed_proof_notes),
+                    ..Default::default()
+                });
+            }
+        }
     }
 }
 
