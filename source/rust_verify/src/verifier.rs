@@ -306,6 +306,9 @@ pub struct Verifier {
     /// smt runtimes for each function per bucket
     pub func_times: HashMap<BucketId, HashMap<Fun, FunctionSmtStats>>,
 
+    /// Details about each function
+    pub func_details: HashMap<Fun, FuncDetails>,
+
     pub via_cargo_args: Option<CargoVerusArgs>,
     // Some(DepTracker) if via_cargo_args.is_some(), None otherwise
     // In both cases, is set to None when VerifierCallbacksEraseMacro.config finishes with it
@@ -329,6 +332,16 @@ pub struct Verifier {
     expand_flag: bool,
 
     error_format: Option<ErrorOutputType>,
+}
+
+pub struct FuncDetails {
+    pub failed_proof_notes: Vec<()>,
+}
+
+impl Default for FuncDetails {
+    fn default() -> Self {
+        Self { failed_proof_notes: Default::default() }
+    }
 }
 
 fn report_chosen_triggers(
@@ -462,6 +475,8 @@ impl Verifier {
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
 
+            func_details: HashMap::new(),
+
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
             via_cargo_args,
             import_virs_via_cargo: None,
@@ -507,6 +522,8 @@ impl Verifier {
             time_vir_rust_to_vir: Duration::new(0, 0),
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
+
+            func_details: HashMap::new(),
 
             via_cargo_args: self.via_cargo_args.clone(),
             dep_tracker: None,
