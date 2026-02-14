@@ -2932,7 +2932,6 @@ impl Verifier {
             Entry::Vacant(vacant_entry) => {
                 let _ = vacant_entry.insert(FuncDetails {
                     failed_proof_notes: HashSet::from_iter(failed_proof_notes),
-                    ..Default::default()
                 });
             }
         }
