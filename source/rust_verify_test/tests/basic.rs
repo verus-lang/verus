@@ -134,7 +134,7 @@ test_verify_one_file! {
             test_requires1(a + a, b + b, c + c);
             test_requires1(a + a, b + b, a + c); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_help_error_msg(err, "note: Test label #1")
 }
 
 test_verify_one_file! {
