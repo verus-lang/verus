@@ -2682,7 +2682,7 @@ version = "0.0.0-2026-02-08-0120"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-02-08-0120"
+version = "0.0.0-2026-02-15-0106"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2694,7 +2694,7 @@ dependencies = [
 
 [[package]]
 name = "verus_prettyplease"
-version = "0.0.0-2026-01-25-0057"
+version = "0.0.0-2026-02-15-0106"
 dependencies = [
  "proc-macro2",
  "verus_syn",
@@ -2702,7 +2702,7 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-02-08-0120"
+version = "0.0.0-2026-02-15-0106"
 dependencies = [
  "indexmap 1.9.3",
  "proc-macro2",
@@ -2712,7 +2712,7 @@ dependencies = [
 
 [[package]]
 name = "verus_syn"
-version = "0.0.0-2026-01-25-0057"
+version = "0.0.0-2026-02-15-0106"
 dependencies = [
  "proc-macro2",
  "quote",
