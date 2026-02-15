@@ -150,10 +150,10 @@ impl StrSliceExecFns for str {
     #[verifier::external_body]
     fn get_char(&self, i: usize) -> (c: char)
         requires
-            i < self@.len(),
+            0 <= i < self@.len(),
         ensures
             self@.index(i as int) == c,
-            self.is_ascii() ==> forall|i: int| i < self@.len() ==> (self@.index(i) as nat) < 256,
+            //self.is_ascii() ==> forall|i: int| i < self@.len() ==> (self@.index(i) as nat) < 256, // what was this for?
     {
         self.chars().nth(i).unwrap()
     }
@@ -162,11 +162,10 @@ impl StrSliceExecFns for str {
     fn substring_ascii<'a>(&'a self, from: usize, to: usize) -> (ret: &'a str)
         requires
             self.is_ascii(),
-            from < self@.len(),
-            to <= self@.len(),
+            from <= to <= self@.len(), // MODIFIED
         ensures
             ret@ == self@.subrange(from as int, to as int),
-            ret.is_ascii() == self.is_ascii(),
+            ret.is_ascii(),
     {
         &self[from..to]
     }
@@ -174,11 +173,9 @@ impl StrSliceExecFns for str {
     #[verifier::external_body]
     fn substring_char<'a>(&'a self, from: usize, to: usize) -> (ret: &'a str)
         requires
-            from < self@.len(),
-            to <= self@.len(),
+            from <= to <= self@.len(), // MODIFIED
         ensures
             ret@ == self@.subrange(from as int, to as int),
-            ret.is_ascii() == self.is_ascii(),
     {
         let mut char_pos = 0;
         let mut byte_start = None;
@@ -208,10 +205,10 @@ impl StrSliceExecFns for str {
     //#[verifier::external_body]
     fn get_ascii(&self, i: usize) -> (b: u8)
         requires
-            0 <= i < self.spec_bytes().len() || (self.is_ascii() && 0 <= i < self.view().len()) // NEW
+            self.is_ascii(),
+            0 <= i < self@.len() // NEW
         ensures
-            self.spec_bytes().index(i as int) == b,
-            self.is_ascii() ==> self.view().index(i as int) as u8 == b,
+            self@.index(i as int) as u8 == b,
     {
         proof {
             is_ascii_spec_bytes(self);
@@ -224,8 +221,8 @@ impl StrSliceExecFns for str {
     // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
     fn as_bytes_vec(&self) -> (ret: alloc::vec::Vec<u8>)
         ensures
-            ret.view() == self.spec_bytes(),
-            self.is_ascii() ==> ret.view() == Seq::new(self.view().len(), |i| self.view().index(i) as u8),
+            ret@ == self.spec_bytes(),
+            self.is_ascii() ==> ret@ == Seq::new(self@.len(), |i| self@.index(i) as u8),
     {
         proof {
             is_ascii_spec_bytes(self);
