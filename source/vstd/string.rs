@@ -291,6 +291,13 @@ pub open spec fn string_is_ascii(s: &String) -> bool {
 }
 
 #[cfg(feature = "alloc")]
+#[verifier::when_used_as_spec(string_is_ascii)]
+pub assume_specification[ String::is_ascii ](s: &String) -> (b: bool)
+    ensures
+        b == string_is_ascii(s),
+;
+
+#[cfg(feature = "alloc")]
 pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
