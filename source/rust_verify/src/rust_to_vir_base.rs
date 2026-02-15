@@ -2276,9 +2276,12 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             span,
                             trait_def_id,
                             substs,
-                        )?
-                        .unwrap();
-                        trait_bounds.push(generic_bound);
+                        )?;
+                        if let Some(generic_bound) = generic_bound {
+                            trait_bounds.push(generic_bound);
+                        } else {
+                            unsupported_err!(span, "this type of bound");
+                        }
                     }
                     ClauseKind::Projection(pred) => {
                         let item_def_id = pred.projection_term.def_id;
