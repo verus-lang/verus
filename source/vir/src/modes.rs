@@ -7,7 +7,7 @@ use crate::ast::{
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_str};
 use crate::def::user_local_name;
-use crate::messages::{Span, error};
+use crate::messages::{Span, error, internal_error};
 use crate::messages::{error_bare, error_with_label};
 use crate::util::vec_map_result;
 use air::scope_map::ScopeMap;
@@ -2888,7 +2888,7 @@ fn check_expr_handle_mut_arg(
             match (e1, typing.ret_mode) {
                 (None, _) => {}
                 (Some(v), None) if is_unit(&v.typ) => {}
-                (_, None) => panic!("internal error: missing return type"),
+                (_, None) => return Err(internal_error(&expr.span, "missing return type")),
                 (Some(e1), Some(ret_mode)) => {
                     let proph = check_expr_has_mode(
                         ctxt,
