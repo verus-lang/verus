@@ -32,10 +32,7 @@ impl DeepView for str {
     open spec fn deep_view(&self) -> Seq<char> {
         self.view()
     }
-}
-
-// todos -
-// we can actually impl is_ascii    
+}  
 
 #[cfg(feature = "alloc")]
 pub trait StringSliceAdditionalSpecFns {
@@ -83,10 +80,9 @@ use crate::alloc::borrow::ToOwned;
 pub assume_specification[ str::to_owned ](s: &str) -> (res: String)
     ensures
         s@ == res@,
-        s.is_ascii() == res.is_ascii(),
+        // s.is_ascii() == res.is_ascii(), // this is trivial now
 ;
 
-// todo - should this be in std_specs instead?
 #[cfg(feature = "alloc")]
 pub assume_specification[ str::as_bytes ](s: &str) -> (b: &[u8])
     ensures
@@ -202,7 +198,6 @@ impl StrSliceExecFns for str {
         &self[byte_start..byte_end]
     }
 
-    //#[verifier::external_body]
     fn get_ascii(&self, i: usize) -> (b: u8)
         requires
             self.is_ascii(),
@@ -291,13 +286,6 @@ pub open spec fn string_is_ascii(s: &String) -> bool {
 }
 
 #[cfg(feature = "alloc")]
-#[verifier::when_used_as_spec(string_is_ascii)]
-pub assume_specification[ String::is_ascii ](s: &String) -> (b: bool)
-    ensures
-        b == string_is_ascii(s),
-;
-
-#[cfg(feature = "alloc")]
 pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
@@ -339,17 +327,18 @@ pub assume_specification[ <String as core::default::Default>::default ]() -> (r:
 ;
 
 #[cfg(feature = "alloc")]
-//#[verifier::external]
 pub trait StringExecFnsIsAscii: Sized {
     fn is_ascii(&self) -> bool;
 }
 
 #[cfg(feature = "alloc")]
-//#[verifier::external]
 impl StringExecFnsIsAscii for String {
     #[inline(always)]
     #[verifier::when_used_as_spec(string_is_ascii)]
-    fn is_ascii(&self) -> bool {
+    fn is_ascii(&self) -> (ret: bool) 
+        ensures
+            ret == string_is_ascii(self)
+    {
         self.as_str().is_ascii()
     }
 }
