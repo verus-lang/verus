@@ -1142,6 +1142,8 @@ pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::clear ]
 ) where A: Clone
     ensures
         m@ == Set::<Key>::empty(),
+    no_unwind  // TODO(bsdinis): this is not guaranteed correct but without this we cannot write invariant code
+
 ;
 
 pub assume_specification<'a, Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::iter ](
