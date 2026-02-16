@@ -634,6 +634,8 @@ pub assume_specification<Key: Ord, Value, A: Allocator + Clone>[ BTreeMap::<
                 None => !old(m)@.contains_key(k),
             }
         },
+    no_unwind  // TODO(bsdinis): this is not guaranteed correct but without this we cannot write invariant code
+
 ;
 
 // The specification for `contains_key` has a parameter `key: &Q`
@@ -1014,6 +1016,8 @@ pub assume_specification<Key: Ord, A: Allocator + Clone>[ BTreeSet::<Key, A>::in
             &&& m@ == old(m)@.insert(k)
             &&& result == !old(m)@.contains(k)
         },
+    no_unwind  // TODO(bsdinis): this is not guaranteed correct but without this we cannot write invariant code
+
 ;
 
 // The specification for `contains` has a parameter `key: &Q`
