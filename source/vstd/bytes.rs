@@ -86,7 +86,6 @@ pub exec fn u16_from_le_bytes(s: &[u8]) -> (x: u16)
     u16::from_le_bytes(s.try_into().unwrap())
 }
 
-#[cfg(verus_verify_core)]
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub exec fn u16_to_le_bytes(x: u16) -> (s: alloc::vec::Vec<u8>)
@@ -182,7 +181,6 @@ pub exec fn u32_from_le_bytes(s: &[u8]) -> (x: u32)
     u32::from_le_bytes(s.try_into().unwrap())
 }
 
-#[cfg(verus_verify_core)]
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub exec fn u32_to_le_bytes(x: u32) -> (s: alloc::vec::Vec<u8>)
@@ -340,7 +338,6 @@ pub exec fn u64_from_le_bytes(s: &[u8]) -> (x: u64)
     u64::from_le_bytes(s.try_into().unwrap())
 }
 
-#[cfg(verus_verify_core)]
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub exec fn u64_to_le_bytes(x: u64) -> (s: alloc::vec::Vec<u8>)
@@ -528,7 +525,6 @@ pub exec fn u128_from_le_bytes(s: &[u8]) -> (x: u128)
     u128::from_le_bytes(s.try_into().unwrap())
 }
 
-#[cfg(verus_verify_core)]
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub exec fn u128_to_le_bytes(x: u128) -> (s: alloc::vec::Vec<u8>)

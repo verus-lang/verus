@@ -3,7 +3,6 @@ pub mod alloc;
 
 pub mod atomic;
 pub mod bits;
-#[cfg(verus_verify_core)]
 pub mod borrow;
 pub mod clone;
 pub mod cmp;
@@ -25,11 +24,9 @@ pub mod result;
 
 pub mod slice;
 
-#[cfg(verus_verify_core)]
 #[cfg(feature = "alloc")]
 pub mod vec;
 
-#[cfg(verus_verify_core)]
 #[cfg(feature = "alloc")]
 pub mod vecdeque;
 

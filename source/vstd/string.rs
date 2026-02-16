@@ -85,7 +85,6 @@ pub trait StrSliceExecFns {
 
     fn get_ascii(&self, i: usize) -> u8;
 
-    #[cfg(verus_verify_core)]
     #[cfg(feature = "alloc")]
     fn as_bytes_vec(&self) -> alloc::vec::Vec<u8>;
 }
@@ -175,7 +174,6 @@ impl StrSliceExecFns for str {
     // TODO:This should be the as_bytes function after
     // slice support is added
     // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
-    #[cfg(verus_verify_core)]
     #[cfg(feature = "alloc")]
     #[verifier::external_body]
     fn as_bytes_vec(&self) -> (ret: alloc::vec::Vec<u8>)
