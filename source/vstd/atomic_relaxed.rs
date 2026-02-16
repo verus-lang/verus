@@ -17,6 +17,21 @@ impl View {
         other.0.submap_of(self.0)
     }
 
+    pub open spec fn join(self, other: Self) -> Self {
+        View(Map::new(
+            |k: CellId| self.0.dom().contains(k) || other.0.dom().contains(k),
+            |k: CellId| if self.0.dom().contains(k) {
+                if other.0.dom().contains(k) {
+                    if self.0[k] >= other.0[k] { self.0[k] } else { other.0[k] }
+                } else {
+                    self.0[k]
+                }
+            } else {
+                other.0[k]
+            },
+        ))
+    }
+
     pub open spec fn empty() -> Self {
         Self ( Map::<CellId, nat>::empty() )
     }
@@ -324,6 +339,29 @@ impl ViewSeen {
         ensures
             out.view() == View::empty(),
     ;
+
+    // VS-JOIN |-
+    pub axiom fn split(tracked self, v1: View, v2: View) -> (tracked out: (Self, Self))
+        requires
+            self.view() == v1.join(v2)
+        ensures
+            out.0.view() == v1,
+            out.1.view() == v2
+        ;
+    
+    // VS-JOIN -|
+    pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
+        ensures
+            out.view() == self.view().join(other.view())
+        ;
+
+    // VS-MONO
+    pub axiom fn restrict(tracked self, v: View) -> (tracked out: Self)
+        requires
+            self.view().contains(v)
+        ensures
+            out.view() == v
+        ;
 }
 
 #[derive(Clone, Copy)]
@@ -343,14 +381,46 @@ impl EmptyViewSeen {
         ;
 }
 
+// ViewAt<T> is persistent when T is persistent
+// the #[derive] attribute will ensure that ViewAt<T>: Copy only when T: Copy
+#[derive(Copy)]
 pub tracked struct ViewAt<T> {
     _phantom: PhantomData<T>,
 }
+
+impl<T: Clone> Clone for ViewAt<T> {
+    #[verifier::external_body]
+    fn clone(&self) -> Self { unimplemented!() }
+}
+
+unsafe impl<T> Objective for ViewAt<T> {}
 
 impl<T> ViewAt<T> {
     pub uninterp spec fn view(&self) -> View;
 
     pub uninterp spec fn value(&self) -> T;
+
+    // this is encoding view monotonicity
+    pub axiom fn weaken(tracked self, v: View) -> (tracked out: Self)
+        requires
+            self.view().contains(v)
+        ensures
+            out.view() == v,
+            out.value() == self.value()
+        ;
+
+    // VA-MONO, VA-WAND, VA-UNOPS with update -- we are encoding all of these as the below rule.
+    // strictly speaking, this rule models a wand update.
+    pub axiom fn apply_fn<U>(
+        tracked self,
+        tracked f: ViewAt<proof_fn[Once](tracked v1: T) -> tracked U>,
+    ) -> (tracked out: ViewAt<U>)
+            requires
+                f.value().requires((self.value(),))
+            ensures
+                f.value().ensures((self.value(),), out.value()),
+                out.view() == self.view()
+        ;
 }
 
 pub tracked struct ViewJoin<T> {
