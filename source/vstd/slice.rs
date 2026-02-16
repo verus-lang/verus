@@ -82,7 +82,6 @@ pub assume_specification<T>[ <[T]>::len ](slice: &[T]) -> (len: usize)
         len == spec_slice_len(slice),
 ;
 
-// #[cfg(not(verus_verify_core))]
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub exec fn slice_to_vec<T: Copy>(slice: &[T]) -> (out: alloc::vec::Vec<T>)
