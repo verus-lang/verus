@@ -404,7 +404,6 @@ impl<'a, T: DeepView> ExecSpecSeqIsPrefixOf<'a> for &'a [T] where
  {
     type Other = &'a [T];
 
-    #[verifier::external_body]
     #[inline(always)]
     fn exec_is_prefix_of(self, other: Self::Other) -> (res: bool)
         ensures
