@@ -1186,11 +1186,47 @@ fn compile_match_arm(ctx: &LocalCtx, arm: &Arm, trusted: bool) -> Result<TokenSt
     })
 }
 
+#[derive(Clone)]
+struct GuardedQuantifierBounds {
+    lower: Box<Expr>,
+    upper: Box<Expr>,
+    lower_op: BinOp,
+    upper_op: BinOp,
+}
+
+#[derive(Clone)]
+struct GuardedQuantifierVar {
+    quant_var: Ident,
+    quant_type: Box<Type>,
+    bounds: GuardedQuantifierBounds,
+}
+
 struct GuardedQuantifierUntrusted {
     quant_var: GuardedQuantifierVar,
     guard_op: BinOp,
     body: Box<Expr>,
 }
+
+struct GuardedQuantifier {
+    guard_op: BinOp,
+    body: Box<Expr>,
+    guarded_vars: Vec<GuardedQuantifierVar>,
+}
+
+const UNSUPPORTED_QUANTIFIER_ERROR_MSG: &str = "Within the exec_spec_trusted! macro, quantifier expressions must match one of these forms:
+- forall |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> ==> <body>
+- exists |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> && <body>
+
+Where <guardI> is one of:
+- <lowerI> <= xI < <upperI>
+- <lowerI> <= xI <= <upperI>
+- <lowerI> < xI < <upperI>
+- <lowerI> < xI <= <upperI>
+And <lowerI> and <upperI> may mention xJ for all J < I.";
+
+const UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type.
+
+Within the exec_spec_trusted! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char. Note: int and nat are not allowed.";
 
 const UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG: &str =
     "Within the exec_spec! macro, quantifiers must have one of these forms:
@@ -1206,6 +1242,173 @@ Where <guard> is one of:
 const UNTRUSTED_UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type.
 
 Within the exec_spec! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize. Note: int and nat are not allowed.";
+
+/// Extracts a single guard expression
+fn get_single_guard(
+    guard: &Expr,
+    quant_var: &Ident,
+    trusted: bool,
+) -> Result<GuardedQuantifierBounds, Error> {
+    // <guard> == <lower> <op> x <op> <upper>
+    let Expr::Binary(ExprBinary { left: lower_guard, op: upper_op, right: upper, .. }) = guard
+    else {
+        return Err(Error::new_spanned(
+            guard,
+            "Unsupported quantifier expression.\n".to_owned()
+                + (if trusted {
+                    UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                } else {
+                    UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                }),
+        ));
+    };
+    let _ = match upper_op {
+        BinOp::Lt(..) | BinOp::Le(..) => {}
+        _ => {
+            return Err(Error::new_spanned(
+                upper_op,
+                "Unsupported quantifier expression.\n".to_owned()
+                    + (if trusted {
+                        UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                    } else {
+                        UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                    }),
+            ));
+        }
+    };
+
+    let Expr::Binary(ExprBinary { left: lower, op: lower_op, right: guard_var, .. }) =
+        lower_guard.as_ref()
+    else {
+        return Err(Error::new_spanned(
+            lower_guard,
+            "Unsupported quantifier expression.\n".to_owned()
+                + (if trusted {
+                    UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                } else {
+                    UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                }),
+        ));
+    };
+    let _ = match lower_op {
+        BinOp::Lt(..) | BinOp::Le(..) => (),
+        _ => {
+            return Err(Error::new_spanned(
+                lower_op,
+                "Unsupported quantifier expression.\n".to_owned()
+                    + (if trusted {
+                        UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                    } else {
+                        UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                    }),
+            ));
+        }
+    };
+
+    // Parses the guard variable as a one-component path
+    let guard_var = if let Expr::Path(ExprPath { path, .. }) = guard_var.as_ref() {
+        let segments: Vec<_> = path.segments.iter().collect();
+        if segments.len() == 1 {
+            &segments[0].ident
+        } else {
+            return Err(Error::new_spanned(
+                guard_var,
+                "Unsupported quantifier expression: expected a simple variable.\n".to_owned()
+                    + (if trusted {
+                        UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                    } else {
+                        UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                    }),
+            ));
+        }
+    } else {
+        return Err(Error::new_spanned(
+            guard_var,
+            "Unsupported quantifier expression: expected a simple variable.\n".to_owned()
+                + (if trusted {
+                    UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                } else {
+                    UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                }),
+        ));
+    };
+
+    if guard_var != quant_var {
+        return Err(Error::new_spanned(
+            guard_var,
+            "Unsupported quantifier expression: quantified variable does not match the guard variable.\n".to_owned() + (if trusted { UNSUPPORTED_QUANTIFIER_ERROR_MSG } else { UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG })
+        ));
+    }
+
+    Ok(GuardedQuantifierBounds {
+        lower_op: lower_op.clone(),
+        upper_op: upper_op.clone(),
+        lower: lower.clone(),
+        upper: upper.clone(),
+    })
+}
+
+/// Returns true when the given type is supported in a quantified expression for the given mode
+fn check_quant_type(quant_type: &Type, trusted: bool) -> Result<(), Error> {
+    match quant_type {
+        Type::Path(type_path) => {
+            if type_path.path.segments.len() == 1 {
+                let ident = &type_path.path.segments.first().unwrap().ident;
+                if trusted {
+                    if !(ident == "u8"
+                        || ident == "u16"
+                        || ident == "u32"
+                        || ident == "u64"
+                        || ident == "u128"
+                        || ident == "usize"
+                        || ident == "i8"
+                        || ident == "i16"
+                        || ident == "i32"
+                        || ident == "i64"
+                        || ident == "i128"
+                        || ident == "isize"
+                        || ident == "char")
+                    {
+                        return Err(Error::new_spanned(
+                            quant_type,
+                            UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG,
+                        ));
+                    }
+                } else {
+                    if !(ident == "u8"
+                        || ident == "u16"
+                        || ident == "u32"
+                        || ident == "u64"
+                        || ident == "u128"
+                        || ident == "usize"
+                        || ident == "i8"
+                        || ident == "i16"
+                        || ident == "i32"
+                        || ident == "i64"
+                        || ident == "i128"
+                        || ident == "isize")
+                    {
+                        return Err(Error::new_spanned(
+                            quant_type,
+                            UNTRUSTED_UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG,
+                        ));
+                    }
+                }
+            }
+        }
+        _ => {
+            return Err(Error::new_spanned(
+                quant_type,
+                if trusted {
+                    UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG
+                } else {
+                    UNTRUSTED_UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG
+                },
+            ));
+        }
+    };
+    Ok(())
+}
 
 /// Matches the closure to the form
 ///   `|x| <guard> ==> <body>`
@@ -1234,20 +1437,7 @@ fn get_guarded_range_quant_untrusted(
     };
 
     // check for commonly used unsupported types to provide a more informative error message
-    match &*quant_type {
-        Type::Path(type_path) => {
-            if type_path.path.segments.len() == 1 {
-                let ident = &type_path.path.segments.first().unwrap().ident;
-                if ident == "int" || ident == "nat" {
-                    return Err(Error::new_spanned(
-                        quant_type,
-                        UNTRUSTED_UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG,
-                    ));
-                }
-            }
-        }
-        _ => {}
-    };
+    let _ = check_quant_type(&*quant_type, false)?;
 
     // |x| <guard> ==>/&& <body>
     let Expr::Binary(ExprBinary { left: guard, op: guard_op, right: body, .. }) =
@@ -1261,84 +1451,10 @@ fn get_guarded_range_quant_untrusted(
     };
 
     // <guard> == <lower> <op> x <op> <upper>
-    let Expr::Binary(ExprBinary { left: lower_guard, op: upper_op, right: upper, .. }) =
-        guard.as_ref()
-    else {
-        return Err(Error::new_spanned(
-            guard,
-            "Unsupported quantified expression.\n".to_owned()
-                + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-        ));
-    };
-    let _ = match upper_op {
-        BinOp::Lt(..) | BinOp::Le(..) => {}
-        _ => {
-            return Err(Error::new_spanned(
-                upper_op,
-                "Unsupported quantified expression.\n".to_owned()
-                    + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ));
-        }
-    };
-
-    let Expr::Binary(ExprBinary { left: lower, op: lower_op, right: guard_var, .. }) =
-        lower_guard.as_ref()
-    else {
-        return Err(Error::new_spanned(
-            lower_guard,
-            "Unsupported quantified expression.\n".to_owned()
-                + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-        ));
-    };
-    let _ = match lower_op {
-        BinOp::Lt(..) | BinOp::Le(..) => (),
-        _ => {
-            return Err(Error::new_spanned(
-                lower_op,
-                "Unsupported quantified expression.\n".to_owned()
-                    + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ));
-        }
-    };
-
-    // Parses the guard variable as a one-component path
-    let guard_var = if let Expr::Path(ExprPath { path, .. }) = guard_var.as_ref() {
-        let segments: Vec<_> = path.segments.iter().collect();
-        if segments.len() == 1 {
-            &segments[0].ident
-        } else {
-            return Err(Error::new_spanned(
-                guard_var,
-                "Unsupported quantified expression: expected a simple variable.\n".to_owned()
-                    + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ));
-        }
-    } else {
-        return Err(Error::new_spanned(
-            guard_var,
-            "Unsupported quantified expression: expected a simple variable.\n".to_owned()
-                + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-        ));
-    };
-
-    if guard_var != quant_var {
-        return Err(Error::new_spanned(
-            guard_var,
-            "Unsupported quantified expression: quantified variable does not match the guard variable.\n".to_owned() + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-        ));
-    }
+    let bounds = get_single_guard(&guard, &quant_var, false)?;
 
     Ok(GuardedQuantifierUntrusted {
-        quant_var: GuardedQuantifierVar {
-            quant_var: quant_var.clone(),
-            quant_type,
-            bounds: GuardedQuantifierBounds {
-                lower: lower.clone(),
-                upper: upper.clone(),
-                lower_op: lower_op.clone(),
-                upper_op: upper_op.clone(),
-            },
-        },
+        quant_var: GuardedQuantifierVar { quant_var: quant_var.clone(), quant_type, bounds },
         guard_op: guard_op.clone(),
         body: body.clone(),
     })
@@ -1527,117 +1643,6 @@ fn compile_guarded_quant_untrusted(
     }
 }
 
-#[derive(Clone)]
-struct GuardedQuantifierBounds {
-    lower: Box<Expr>,
-    upper: Box<Expr>,
-    lower_op: BinOp,
-    upper_op: BinOp,
-}
-
-#[derive(Clone)]
-struct GuardedQuantifierVar {
-    quant_var: Ident,
-    quant_type: Box<Type>,
-    bounds: GuardedQuantifierBounds,
-}
-
-struct GuardedQuantifier {
-    guard_op: BinOp,
-    body: Box<Expr>,
-    guarded_vars: Vec<GuardedQuantifierVar>,
-}
-
-const UNSUPPORTED_QUANTIFIER_ERROR_MSG: &str = "Within the exec_spec! macro, quantifier expressions must match one of these forms:
-- forall |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> ==> <body>
-- exists |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> && <body>
-
-Where <guardI> is one of:
-- <lowerI> <= xI < <upperI>
-- <lowerI> <= xI <= <upperI>
-- <lowerI> < xI < <upperI>
-- <lowerI> < xI <= <upperI>
-And <lowerI> and <upperI> may mention xJ for all J < I.";
-
-const UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type.
-
-Within the exec_spec! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char. Note: int and nat are not allowed.";
-
-/// Extracts a single guard expression
-fn get_single_guard(guard: &Expr, quant_var: &Ident) -> Result<GuardedQuantifierBounds, Error> {
-    // <guard> == <lower> <op> x <op> <upper>
-    let Expr::Binary(ExprBinary { left: lower_guard, op: upper_op, right: upper, .. }) = guard
-    else {
-        return Err(Error::new_spanned(
-            guard,
-            "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-        ));
-    };
-    let _ = match upper_op {
-        BinOp::Lt(..) | BinOp::Le(..) => {}
-        _ => {
-            return Err(Error::new_spanned(
-                upper_op,
-                "Unsupported quantifier expression.\n".to_owned()
-                    + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ));
-        }
-    };
-
-    let Expr::Binary(ExprBinary { left: lower, op: lower_op, right: guard_var, .. }) =
-        lower_guard.as_ref()
-    else {
-        return Err(Error::new_spanned(
-            lower_guard,
-            "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-        ));
-    };
-    let _ = match lower_op {
-        BinOp::Lt(..) | BinOp::Le(..) => (),
-        _ => {
-            return Err(Error::new_spanned(
-                lower_op,
-                "Unsupported quantifier expression.\n".to_owned()
-                    + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ));
-        }
-    };
-
-    // Parses the guard variable as a one-component path
-    let guard_var = if let Expr::Path(ExprPath { path, .. }) = guard_var.as_ref() {
-        let segments: Vec<_> = path.segments.iter().collect();
-        if segments.len() == 1 {
-            &segments[0].ident
-        } else {
-            return Err(Error::new_spanned(
-                guard_var,
-                "Unsupported quantifier expression: expected a simple variable.\n".to_owned()
-                    + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ));
-        }
-    } else {
-        return Err(Error::new_spanned(
-            guard_var,
-            "Unsupported quantifier expression: expected a simple variable.\n".to_owned()
-                + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-        ));
-    };
-
-    if guard_var != quant_var {
-        return Err(Error::new_spanned(
-            guard_var,
-            "Unsupported quantifier expression: quantified variable does not match the guard variable.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-        ));
-    }
-
-    Ok(GuardedQuantifierBounds {
-        lower_op: lower_op.clone(),
-        upper_op: upper_op.clone(),
-        lower: lower.clone(),
-        upper: upper.clone(),
-    })
-}
-
 /// Matches the closure to the form
 /// |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> ==> <body>
 /// or
@@ -1645,21 +1650,12 @@ fn get_single_guard(guard: &Expr, quant_var: &Ident) -> Result<GuardedQuantifier
 fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, Error> {
     let quant_vars = closure.inputs.iter().map(|input| {
         let (quant_var, Some(quant_type)) = get_simple_pat(&input.pat)? else {
-            return Err(Error::new_spanned(closure, "Missing type on quantified variable. The exec_spec! macro only supports typed quantified variables: forall/exists |x: <type>|."));
+            return Err(Error::new_spanned(closure, "Missing type on quantified variable. The exec_spec_trusted! macro only supports typed quantified variables: forall/exists |x: <type>|."));
         };
 
         // check that the type is supported
-        match &*quant_type {
-            Type::Path(type_path) => {
-                if type_path.path.segments.len() == 1 {
-                    let ident = &type_path.path.segments.first().unwrap().ident;
-                    if !(ident == "u8" || ident == "u16" || ident == "u32" || ident == "u64" || ident == "u128" || ident == "usize" || ident == "i8" || ident == "i16" || ident == "i32" || ident == "i64" || ident == "i128" || ident == "isize" || ident == "char") {
-                        return Err(Error::new_spanned(quant_type, UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG));
-                    }
-                }
-            },
-            _ => { return Err(Error::new_spanned(quant_type, UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG)); }
-        };
+        let _ = check_quant_type(&*quant_type, true)?;
+        
         Ok((quant_var, quant_type))
     }).collect::<Result<Vec<_>, Error>>()?;
 
@@ -1694,7 +1690,8 @@ fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, E
         }
 
         // <guard> == <lower> <= x < <upper>
-        let bounds = get_single_guard(&single_guard, &quant_vars[quant_vars.len() - 1 - i].0)?;
+        let bounds =
+            get_single_guard(&single_guard, &quant_vars[quant_vars.len() - 1 - i].0, true)?;
         guarded_vars.insert(
             0,
             GuardedQuantifierVar {
