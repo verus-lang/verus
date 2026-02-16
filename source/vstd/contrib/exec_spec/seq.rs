@@ -125,9 +125,8 @@ pub trait ExecSpecSeqToMultiset<'a>: Sized {
     fn exec_to_multiset(self) -> ExecMultiset<Self::Elem>;
 }
 
-// todo(nneamtu):
 // The implementations here for interp Seq methods (e.g. take) could be streamlined.
-// Currently, I am coping the spec definition and translating it to the exec version by hand.
+// Currently, the spec fn definition is copied and translated to the exec version by hand.
 // This is because the exec_spec! macro does not support methods right now (it only supports functions).
 // A more concise approach would be to apply the exec_spec! macro directly to the spec fns on Seq.
 /// Spec for executable version of [`Seq::drop_first`].
@@ -447,7 +446,6 @@ impl<'a, T: DeepView + PartialEq> ExecSpecSeqContains<'a> for &'a [T] where
         ensures
             res == self.deep_view().contains(needle.deep_view()),
     {
-        // todo(nneamtu): should this use <&T>::exec_eq to do the equality check instead?
         self.contains(&needle)
     }
 }
@@ -464,8 +462,6 @@ impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOf<'a> for &'a [T] where
         ensures
             res == self.deep_view().index_of(needle.deep_view()),
     {
-        // todo(nneamtu): should this use <&T>::exec_eq to do the equality check instead?
-        // hard to convert to correct type for argument, e.g. if Self::Elem is Vec
         for i in 0..self.exec_len() {
             if self[i] == needle {
                 return i;
@@ -489,7 +485,6 @@ impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOfFirst<'a> for &'a [T] where
                 None => self.deep_view().index_of_first(needle.deep_view()) == None::<int>,
             },
     {
-        // todo(nneamtu): should this use <&T>::exec_eq to do the equality check instead?
         for i in 0..self.exec_len() {
             if self[i] == needle {
                 return Some(i);
@@ -514,7 +509,6 @@ impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOfLast<'a> for &'a [T] where
                 None => self.deep_view().index_of_last(needle.deep_view()) == None::<int>,
             },
     {
-        // todo(nneamtu): should this use <&T>::exec_eq to do the equality check instead?
         for i in (0..self.exec_len()).rev() {
             if self[i] == needle {
                 return Some(i);

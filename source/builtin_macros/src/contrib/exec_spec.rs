@@ -126,7 +126,7 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                         TypeKind::Ref => Ok(quote_spanned! { span => &[#param] }),
                     };
                 } else if type_path.path.segments[0].ident.to_string() == "Multiset" {
-                    // todo(nneamtu):
+                    // todo:
                     // impl ExecSpecType for Multiset to avoid this special case
                     let type_arg = get_seg_type_arg(&type_path.path.segments[0], 0)?;
                     let param = compile_type(type_arg, TypeKind::Owned)?;
@@ -135,7 +135,7 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                         TypeKind::Ref => Ok(quote_spanned! { span => &ExecMultiset<#param> }),
                     };
                 } else if type_path.path.segments[0].ident.to_string() == "Map" {
-                    // todo(nneamtu):
+                    // todo:
                     // impl ExecSpecType for Map to avoid this special case
                     let key_type_arg = get_seg_type_arg(&type_path.path.segments[0], 0)?;
                     let key_param = compile_type(key_type_arg, TypeKind::Owned)?;
@@ -150,7 +150,7 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                         }
                     };
                 } else if type_path.path.segments[0].ident.to_string() == "Set" {
-                    // todo(nneamtu):
+                    // todo:
                     // impl ExecSpecType for Map to avoid this special case
                     let key_type_arg = get_seg_type_arg(&type_path.path.segments[0], 0)?;
                     let key_param = compile_type(key_type_arg, TypeKind::Owned)?;
@@ -990,7 +990,7 @@ fn compile_expr_path(
     }
 
     // Special case: convert Seq and other vstd types to their exec type
-    // todo(nneamtu): this part is quite brittle, only seems to work with return type of StructOrEnum
+    // this part is quite brittle, only seems to work with return type of StructOrEnum
     if path.segments.len() >= 1 && path.segments[0].ident == "Seq" {
         let seg = &path.segments[0];
         let mut new_path = path.clone();
@@ -2218,7 +2218,7 @@ fn compile_expr(
                 quote! { #op #expr }
             }
             UnOp::Forall(..) | UnOp::Exists(..) => {
-                // todo(nneamtu) - should support all features in both modes
+                // todo - should support all features in both modes
                 if trusted {
                     let compiled = compile_guarded_quant(ctx, &expr_unary.op, &expr_unary.expr)?;
                     match mode {
@@ -2235,7 +2235,7 @@ fn compile_expr(
                 }
             }
             // skip all compilation of proof blocks
-            // todo(nneamtu) - would proof blocks ever be needed?
+            // todo - would proof blocks ever be needed?
             UnOp::Proof(..) => return Ok(TokenStream2::new()),
             _ => return Err(Error::new_spanned(expr_unary, "unsupported unary operator")),
         },
