@@ -9,7 +9,6 @@ use core::alloc::Allocator;
 verus! {
 
 // TODO
-#[cfg(verus_verify_core)]
 pub assume_specification<T, A: Allocator>[ <[T]>::into_vec ](b: Box<[T], A>) -> (v: Vec<T, A>)
     ensures
         v@ == b@,
@@ -30,7 +29,6 @@ pub assume_specification<T>[ Arc::<T>::new ](t: T) -> (v: Arc<T>)
         v == t,
 ;
 
-#[cfg(verus_verify_core)]
 pub assume_specification<T: Clone, A: Allocator + Clone>[ <Box<T, A> as Clone>::clone ](
     b: &Box<T, A>,
 ) -> (res: Box<T, A>)
@@ -38,7 +36,6 @@ pub assume_specification<T: Clone, A: Allocator + Clone>[ <Box<T, A> as Clone>::
         cloned::<T>(**b, *res),
 ;
 
-#[cfg(verus_verify_core)]
 pub assume_specification<T, A: Allocator>[ Rc::<T, A>::try_unwrap ](v: Rc<T, A>) -> (result: Result<
     T,
     Rc<T, A>,
@@ -50,7 +47,6 @@ pub assume_specification<T, A: Allocator>[ Rc::<T, A>::try_unwrap ](v: Rc<T, A>)
         },
 ;
 
-#[cfg(verus_verify_core)]
 pub assume_specification<T, A: Allocator>[ Rc::<T, A>::into_inner ](v: Rc<T, A>) -> (result: Option<
     T,
 >)

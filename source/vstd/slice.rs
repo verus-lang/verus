@@ -3,7 +3,6 @@ use super::prelude::*;
 use super::seq::*;
 use super::view::*;
 
-#[cfg(verus_verify_core)]
 #[cfg(verus_keep_ghost)]
 #[cfg(feature = "alloc")]
 pub use super::std_specs::vec::VecAdditionalSpecFns;
@@ -83,7 +82,7 @@ pub assume_specification<T>[ <[T]>::len ](slice: &[T]) -> (len: usize)
         len == spec_slice_len(slice),
 ;
 
-#[cfg(verus_verify_core)]
+// #[cfg(not(verus_verify_core))]
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub exec fn slice_to_vec<T: Copy>(slice: &[T]) -> (out: alloc::vec::Vec<T>)
