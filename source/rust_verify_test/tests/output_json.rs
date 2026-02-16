@@ -10,7 +10,7 @@ test_verify_one_file_with_options! {
             requires
                 #[verifier::proof_note("Property 732")]
                 (x == y),
-                #[verifier::proof_note("Label 732")]
+                #[verifier::proof_note("Label 451")]
                 (x != y),
         {
             x + y
@@ -18,14 +18,14 @@ test_verify_one_file_with_options! {
 
         fn caller() {
             let _ = example(1, 2); // precondition "Property 732" fails
-            let _ = example(3, 3); // precondition "Label 732" fails
+            let _ = example(3, 3); // precondition "Label 451" fails
         }
     } => Err(err) => {
         assert_help_error_msg(err.clone(), "note: Property 732");
-        assert_help_error_msg(err.clone(), "note: Label 732");
+        assert_help_error_msg(err.clone(), "note: Label 451");
         with_json_func_details(&err, "crate::caller", |details| {
             assert!(details.failed_proof_notes.contains("Property 732"));
-            assert!(details.failed_proof_notes.contains("Label 732"));
+            assert!(details.failed_proof_notes.contains("Label 451"));
         });
     }
 }
