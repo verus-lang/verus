@@ -120,3 +120,28 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // Test ensuring that no specification is generated on code compiled from exec_spec_trusted!
+    #[test] test_exec_spec_trusted_no_spec IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            spec fn test1() -> bool {
+                true
+            }
+        }
+
+        exec_spec_trusted! {
+            spec fn test2() -> bool {
+                true
+            }
+        }
+
+        fn exc() {
+            let res1 = exec_test1();
+            assert(res1);
+
+            let res2 = exec_test2();
+            assert(res2);
+        }
+    } => Err(_)
+}

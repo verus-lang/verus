@@ -810,9 +810,6 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn, trusted: bool) -> Result<To
         #vis fn #exec_name(
             #(#params,)*
         ) -> (res: #ret_type)
-            requires #requires
-            ensures res.deep_view() #ext_eq #spec_name(#(#args_deep_view),*)
-            #decreases
     };
 
     let sig = if trusted {
@@ -823,6 +820,9 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn, trusted: bool) -> Result<To
     } else {
         quote_spanned! { span =>
             #sig_common
+            requires #requires
+            ensures res.deep_view() #ext_eq #spec_name(#(#args_deep_view),*)
+            #decreases
         }
     };
 
@@ -1652,10 +1652,8 @@ fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, E
         let (quant_var, Some(quant_type)) = get_simple_pat(&input.pat)? else {
             return Err(Error::new_spanned(closure, "Missing type on quantified variable. The exec_spec_trusted! macro only supports typed quantified variables: forall/exists |x: <type>|."));
         };
-
         // check that the type is supported
         let _ = check_quant_type(&*quant_type, true)?;
-        
         Ok((quant_var, quant_type))
     }).collect::<Result<Vec<_>, Error>>()?;
 
