@@ -266,7 +266,7 @@ pub broadcast proof fn align_nonzero<T>()
 /// so it must be imported directly as needed.
 pub broadcast proof fn align_of_u8()
     ensures
-        #![trigger size_of::<u8>()]
+        #![trigger align_of::<u8>()]
         align_of::<u8>() == 1,
 {
     broadcast use {
