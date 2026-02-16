@@ -127,7 +127,6 @@ pub trait ExecSpecSeqToMultiset<'a>: Sized {
 
 // The implementations here for interp Seq methods (e.g. take) could be streamlined.
 // Currently, the spec fn definition is copied and translated to the exec version by hand.
-// This is because the exec_spec! macro does not support methods right now (it only supports functions).
 // A more concise approach would be to apply the exec_spec! macro directly to the spec fns on Seq.
 /// Spec for executable version of [`Seq::drop_first`].
 pub trait ExecSpecSeqDropFirst<'a>: Sized + DeepView<V = Seq<<Self::Elem as DeepView>::V>> {
