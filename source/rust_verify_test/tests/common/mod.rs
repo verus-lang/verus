@@ -144,7 +144,7 @@ pub fn verify_files_vstd_all_diags(
     let run =
         run_verus(options, &test_input_dir, &test_input_dir.join(&entry_file), import_vstd, true);
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
-    let json_summary = if options.contains(&"--output-json") {
+    let json_output = if options.contains(&"--output-json") {
         let stdout_str = std::str::from_utf8(&run.stdout[..]).unwrap_or("").trim();
         serde_json::from_str(stdout_str).ok()
     } else {
@@ -181,9 +181,9 @@ pub fn verify_files_vstd_all_diags(
     }
 
     if is_failure {
-        Err(TestErr { errors, warnings, notes, expand_errors_notes, json_output: json_summary })
+        Err(TestErr { errors, warnings, notes, expand_errors_notes, json_output })
     } else {
-        Ok(TestErr { errors, warnings, notes, expand_errors_notes, json_output: json_summary })
+        Ok(TestErr { errors, warnings, notes, expand_errors_notes, json_output })
     }
 }
 
