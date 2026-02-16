@@ -94,9 +94,10 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         let mut multispan = MultiSpan::from_spans(v);
 
-        for MessageLabel { note, span: sp } in &msg.labels {
+        for MessageLabel { note, span: sp, is_proof_note } in &msg.labels {
+            let note = if *is_proof_note { format!("note: {}", note) } else { note.clone() };
             if let Some(span) = self.spans.from_air_span(&sp, Some(self.source_map)) {
-                multispan.push_span_label(span, note.clone());
+                multispan.push_span_label(span, note);
             } else {
                 dbg!(&note, &sp.as_string);
             }
@@ -903,8 +904,8 @@ impl Verifier {
                     // Collect `proof_note` labels related to this failure.
                     let mut proof_notes = vec![];
                     for label in &error.labels {
-                        if label.note.starts_with("note: ") {
-                            proof_notes.push(label.note[6..].to_owned());
+                        if label.is_proof_note {
+                            proof_notes.push(label.note.clone());
                         }
                     }
                     self.record_func_failed_proof_notes(context.fun.clone(), proof_notes);

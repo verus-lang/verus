@@ -2134,7 +2134,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 ),
             };
             if let Some(label) = sst_exp_get_proof_note(expr) {
-                error = error.secondary_label(&stm.span, format!("note: {label}"));
+                error = error.proof_note_label(&stm.span, label.to_string());
             }
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
@@ -2206,7 +2206,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                                 let new_error = base_error
                                     .primary_label(&span, crate::def::THIS_POST_FAILED.to_string());
                                 if let Some(label) = proof_note {
-                                    new_error.secondary_label(span, format!("note: {label}"))
+                                    new_error.proof_note_label(span, label.to_string())
                                 } else {
                                     new_error
                                 }

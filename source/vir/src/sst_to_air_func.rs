@@ -453,12 +453,17 @@ fn req_ens_to_air(
             }
             let mut labels: Vec<ArcDynMessageLabel> = Vec::new();
             if let Some(msg) = msg {
-                labels.push(Arc::new(MessageLabel { span: exp.span.clone(), note: msg.clone() }));
+                labels.push(Arc::new(MessageLabel {
+                    span: exp.span.clone(),
+                    note: msg.clone(),
+                    is_proof_note: false,
+                }));
             }
             if let Some(label) = sst_exp_get_proof_note(exp) {
                 labels.push(Arc::new(MessageLabel {
                     span: exp.span.clone(),
-                    note: format!("note: {label}"),
+                    note: label.to_string(),
+                    is_proof_note: true,
                 }));
             }
             let labeled_expr = if labels.is_empty() {

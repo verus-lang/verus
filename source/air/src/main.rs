@@ -173,7 +173,9 @@ pub fn main() {
                 let err: &AirMessage =
                     err.downcast_ref().expect("unexpected value in Any -> Message conversion");
                 println!("Error at {}", err.note);
-                for AirMessageLabel { note, .. } in &err.labels {
+                for AirMessageLabel { note, is_proof_note, .. } in &err.labels {
+                    let note =
+                        if *is_proof_note { format!("note: {}", note) } else { note.clone() };
                     println!("Additional error detail at {}", note);
                 }
             }
