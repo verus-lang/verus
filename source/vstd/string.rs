@@ -6,12 +6,12 @@ use alloc::str::Chars;
 #[cfg(feature = "alloc")]
 use alloc::string::{self, String, ToString};
 
-use super::utf8::*;
 #[cfg(feature = "alloc")]
 use super::pervasive::{ForLoopGhostIterator, ForLoopGhostIteratorNew};
 use super::prelude::*;
 use super::seq::Seq;
 use super::slice::*;
+use super::utf8::*;
 use super::view::*;
 
 verus! {
