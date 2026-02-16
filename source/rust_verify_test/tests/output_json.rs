@@ -10,17 +10,22 @@ test_verify_one_file_with_options! {
             requires
                 #[verifier::proof_note("Property 732")]
                 (x == y),
+                #[verifier::proof_note("Label 732")]
+                (x != y),
         {
             x + y
         }
 
         fn caller() {
-            let _ = example(1, 2); // precondition fails
+            let _ = example(1, 2); // precondition "Property 732" fails
+            let _ = example(3, 3); // precondition "Label 732" fails
         }
     } => Err(err) => {
         assert_help_error_msg(err.clone(), "note: Property 732");
-        assert_json_func_details(&err, "crate::caller", |details| {
-            details.failed_proof_notes.contains("Property 732")
+        assert_help_error_msg(err.clone(), "note: Label 732");
+        with_json_func_details(&err, "crate::caller", |details| {
+            assert!(details.failed_proof_notes.contains("Property 732"));
+            assert!(details.failed_proof_notes.contains("Label 732"));
         });
     }
 }
@@ -32,17 +37,21 @@ test_verify_one_file_with_options! {
             ensures
                 #[verifier::proof_note("Property 732")]
                 (z == x + y),
+                #[verifier::proof_note("Label 451")]
+                (z == x - y),
         {
             x
         }
 
         fn caller() {
-            let _ = example(1, 2); // postcondition fails
+            let _ = example(1, 2); // postconditions fail
         }
     } => Err(err) => {
         assert_help_error_msg(err.clone(), "note: Property 732");
-        assert_json_func_details(&err, "crate::example", |details| {
-            details.failed_proof_notes.contains("Property 732")
+        assert_help_error_msg(err.clone(), "note: Label 451");
+        with_json_func_details(&err, "crate::example", |details| {
+            assert!(details.failed_proof_notes.contains("Property 732"));
+            assert!(details.failed_proof_notes.contains("Label 451"));
         });
     }
 }
@@ -58,8 +67,8 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => {
         assert_help_error_msg(err.clone(), "note: Statement known to be false");
-        assert_json_func_details(&err, "crate::caller", |details| {
-            details.failed_proof_notes.contains("Statement known to be false")
+        with_json_func_details(&err, "crate::caller", |details| {
+            assert!(details.failed_proof_notes.contains("Statement known to be false"));
         });
     }
 }
@@ -77,13 +86,13 @@ test_verify_one_file_with_options! {
     } => Err(err) => {
         assert_help_error_msg(err.clone(), "note: Statement known to be false");
         // TODO: This doesn't work, because `--no-cheating` mode prevents JSON output.
-        // assert_json_func_details(&err, "crate::caller", |details| {
-        //     details.failed_proof_notes.contains("Statement known to be false")
+        // with_json_func_details(&err, "crate::caller", |details| {
+        //     assert!(details.failed_proof_notes.contains("Statement known to be false"))
         // });
     }
 }
 
-fn assert_json_func_details(err: &TestErr, func: &str, predicate: impl Fn(&FuncDetails) -> bool) {
+fn with_json_func_details(err: &TestErr, func: &str, body: impl Fn(&FuncDetails)) {
     let json = err.json_output.as_ref().expect("expected JSON summary output");
 
     dbg!(json);
@@ -99,7 +108,7 @@ fn assert_json_func_details(err: &TestErr, func: &str, predicate: impl Fn(&FuncD
     let details =
         serde_json::from_value(details_json.clone()).expect("failed to deserialize FuncDetails");
 
-    assert!(predicate(&details));
+    body(&details);
 }
 
 #[derive(serde::Deserialize)]
