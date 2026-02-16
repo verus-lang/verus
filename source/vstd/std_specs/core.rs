@@ -37,11 +37,6 @@ pub trait ExSpecOrd<Rhs> {
 }
 
 #[verifier::external_trait_specification]
-pub trait ExAllocator {
-    type ExternalTraitSpecificationFor: core::alloc::Allocator;
-}
-
-#[verifier::external_trait_specification]
 pub trait ExFreeze: PointeeSized {
     type ExternalTraitSpecificationFor: core::marker::Freeze;
 }
