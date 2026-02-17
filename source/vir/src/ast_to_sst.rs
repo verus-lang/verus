@@ -2544,8 +2544,8 @@ pub(crate) fn expr_to_stm_opt(
                     decrease: Arc::new(decrease1),
                     // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
-                    modified_vars: Arc::new(vec![]),
-                    pre_modified_params: Arc::new(vec![]),
+                    modified_vars: None,
+                    pre_modified_params: None,
                 },
             );
             if can_control_flow_reach_after_loop(expr) {
