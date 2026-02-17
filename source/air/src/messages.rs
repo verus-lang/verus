@@ -59,7 +59,6 @@ pub struct AirSpan {
 pub struct AirMessageLabel {
     pub span: AirSpan,
     pub note: String,
-    pub is_proof_note: bool,
 }
 
 /// Very simple implementation of Diagnostics for use in AIR
@@ -132,7 +131,6 @@ impl MessageInterface for AirMessageInterface {
         Arc::new(AirMessageLabel {
             span: AirSpan { as_string: air_span.to_owned() },
             note: note.to_owned(),
-            is_proof_note: false,
         })
     }
 
@@ -145,7 +143,7 @@ impl MessageInterface for AirMessageInterface {
                 span: None,
             })
         } else {
-            let AirMessageLabel { span, note, is_proof_note: _ } =
+            let AirMessageLabel { span, note } =
                 labels[0].downcast_ref::<AirMessageLabel>().unwrap().clone();
             Arc::new(AirMessage {
                 span: Some(span),
