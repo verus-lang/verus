@@ -35,6 +35,7 @@ test_verify_one_file_with_options! {
     test_json_proof_note_on_ensures ["--output-json"] => verus_code! {
         fn example(x: u64, y: u64) -> (z: u64)
             ensures
+                // both postconditions fail
                 #[verifier::proof_note("Property 732")]
                 (z == x + y),
                 #[verifier::proof_note("Label 451")]
@@ -44,7 +45,7 @@ test_verify_one_file_with_options! {
         }
 
         fn caller() {
-            let _ = example(1, 2); // postconditions fail
+            let _ = example(1, 2);
         }
     } => Err(err) => {
         assert_help_error_msg(err.clone(), "note: Property 732");
