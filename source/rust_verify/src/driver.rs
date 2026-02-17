@@ -154,6 +154,8 @@ struct CompilerCallbacksEraseMacro {
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
+    // Adding `override_stability` and `stable_attr` functions is a hacky solution specifically for verifying core,
+    // to fix an issue with stability attributes.
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         if self.override_stability {
             config.override_queries = Some(|_session, providers| {
@@ -434,17 +436,6 @@ fn add_stable_attr<'tcx>(
 
     m.map.insert(hir_id.local_id, Box::leak(attrs.into_boxed_slice()));
     Box::leak(Box::new(m))
-
-    /*
-    let max_id = 0;
-    for (id, _) in attrmap.map.iter() {
-        let max_id = std::cmp::max(max_id, id.as_u32());
-    }
-    let local_id = ItemLocalId::from_u32(max_id + 1);
-    let span = tcx.hir_span(owner_id.hir_id);
-    m.map.insert(local_id, stable_attr(span));
-    Box::leak(Box::new(m))
-    */
 }
 
 fn needs_stable_attr<'tcx>(tcx: TyCtxt<'tcx>, owner_id: OwnerId) -> bool {
