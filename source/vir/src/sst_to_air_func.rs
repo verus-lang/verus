@@ -16,6 +16,7 @@ use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParPurpose, ParX, Pars};
 use crate::sst_to_air::{
     ExprCtxt, ExprMode, exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids,
 };
+use crate::sst_util::sst_exp_get_proof_note;
 use crate::util::vec_map;
 use air::ast::{
     Axiom, BinaryOp, Bind, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant, Trigger,
@@ -89,7 +90,7 @@ fn func_def_typs_args(
     params: &Pars,
 ) -> Vec<Expr> {
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
-    let mut f_args: Vec<Expr> = typ_args.iter().map(typ_to_ids).flatten().collect();
+    let mut f_args: Vec<Expr> = typ_args.iter().flat_map(typ_to_ids).collect();
     for param in params.iter() {
         let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
             prefix_pre_var(&param.x.name.lower())
@@ -450,15 +451,27 @@ fn req_ens_to_air(
                     ));
                 }
             }
-            let loc_expr = match msg {
-                None => expr,
-                Some(msg) => {
-                    let l = MessageLabel { span: exp.span.clone(), note: msg.clone() };
-                    let ls: Vec<ArcDynMessageLabel> = vec![Arc::new(l)];
-                    Arc::new(ExprX::LabeledAxiom(ls, filter.clone(), expr))
-                }
+            let mut labels: Vec<ArcDynMessageLabel> = Vec::new();
+            if let Some(msg) = msg {
+                labels.push(Arc::new(MessageLabel {
+                    span: exp.span.clone(),
+                    note: msg.clone(),
+                    is_proof_note: false,
+                }));
+            }
+            if let Some(label) = sst_exp_get_proof_note(exp) {
+                labels.push(Arc::new(MessageLabel {
+                    span: exp.span.clone(),
+                    note: label.to_string(),
+                    is_proof_note: true,
+                }));
+            }
+            let labeled_expr = if labels.is_empty() {
+                expr
+            } else {
+                Arc::new(ExprX::LabeledAxiom(labels, filter.clone(), expr))
             };
-            exprs.push(loc_expr);
+            exprs.push(labeled_expr);
         }
         let body = mk_and(&exprs);
         let e_forall = func_def_quant(
@@ -749,7 +762,6 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
 /// (This may include the proof content of a decreases_by function.)
 /// (Note: this means that you shouldn't call func_axioms_to_air with a decreases_by function
 /// on its own.)
-
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
     function: &FunctionSst,
@@ -793,8 +805,7 @@ pub fn func_axioms_to_air(
                         Arc::make_mut(&mut trait_typ_args)
                             .push(Arc::new(TypX::TypParam(x.clone())));
                     }
-                    let mut args: Vec<Expr> =
-                        trait_typ_args.iter().map(typ_to_ids).flatten().collect();
+                    let mut args: Vec<Expr> = trait_typ_args.iter().flat_map(typ_to_ids).collect();
                     for p in function.x.pars.iter() {
                         args.push(ident_var(&p.x.name.lower()));
                     }

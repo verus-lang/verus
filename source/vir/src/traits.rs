@@ -519,13 +519,9 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                 let tr = trait_map[&trait_impl.x.trait_path];
                 let mut subst_map: HashMap<Ident, Typ> = HashMap::new();
                 assert!(trait_impl.x.trait_typ_args.len() == tr.x.typ_params.len() + 1);
-                let tr_params = tr.x.typ_params.iter().map(|(x, _)| x);
-                let n_outer = 1 + tr_params.len(); // Self + trait params
-                for (x, t) in vec![crate::def::trait_self_type_param()]
-                    .iter()
-                    .chain(tr_params)
-                    .zip(trait_impl.x.trait_typ_args.iter())
-                {
+                let tr_params = tr.x.typ_param_names_with_self();
+                let n_outer = tr_params.len(); // Self + trait params
+                for (x, t) in tr_params.iter().zip(trait_impl.x.trait_typ_args.iter()) {
                     assert!(!subst_map.contains_key(x));
                     subst_map.insert(x.clone(), t.clone());
                 }
@@ -620,7 +616,9 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
 
 pub(crate) fn redirect_calls_in_default_methods(
     func_map: &HashMap<Fun, Function>,
+    trait_map: &HashMap<Path, Trait>,
     trait_impl_map: &HashMap<(Fun, Path), Fun>,
+    trait_impl_from_extension: &HashMap<Path, Path>,
     function: &Function,
     span: &Span,
     callee: Fun,
@@ -632,6 +630,7 @@ pub(crate) fn redirect_calls_in_default_methods(
         FunctionKind::TraitMethodImpl {
             trait_path: caller_trait,
             impl_path: caller_impl,
+            trait_typ_args: caller_trait_typ_args,
             inherit_body_from,
             ..
         },
@@ -641,13 +640,22 @@ pub(crate) fn redirect_calls_in_default_methods(
         if callee_trait == caller_trait {
             if let Some(f_trait) = inherit_body_from {
                 let f_trait = &func_map[f_trait];
-                let trait_typ_args = f_trait
-                    .x
-                    .typ_params
-                    .iter()
-                    .map(|x| Arc::new(TypX::TypParam(x.clone())))
-                    .collect();
-                if crate::ast_util::n_types_equal(&ts, &Arc::new(trait_typ_args)) {
+                match &f_trait.x.kind {
+                    FunctionKind::TraitMethodDecl { trait_path, has_default: true } => {
+                        assert!(trait_path == caller_trait);
+                    }
+                    _ => panic!("unexpected trait default method"),
+                }
+                let tr = &trait_map[caller_trait];
+                let trait_typ_params = tr.x.typ_param_names_with_self();
+                for i in 0..trait_typ_params.len() {
+                    assert!(trait_typ_params[i] == f_trait.x.typ_params[i]);
+                }
+                let trait_typ_args: Vec<Typ> =
+                    trait_typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
+                assert!(ts.len() >= trait_typ_args.len());
+                let ts: Vec<Typ> = ts.iter().take(trait_typ_args.len()).cloned().collect();
+                if crate::ast_util::n_types_equal(&Arc::new(ts), &Arc::new(trait_typ_args)) {
                     // Since we don't have a copy of the default method body
                     // specialized to our impl, we need to do extra work to
                     // redirect calls from the inherited body back to our own impl.
@@ -678,7 +686,8 @@ pub(crate) fn redirect_calls_in_default_methods(
                             true
                         }
                     };
-                    let impl_paths = Arc::new(impl_paths.iter().cloned().filter(filter).collect());
+                    let impl_paths =
+                        Arc::new(impl_paths.iter().filter(|p| filter(*p)).cloned().collect());
 
                     return Ok((callee, impl_paths));
                 } else {
@@ -692,6 +701,45 @@ pub(crate) fn redirect_calls_in_default_methods(
                         span,
                         "call from trait default method to same trait with different type arguments is not allowed",
                     ));
+                }
+            }
+
+            // Similar to default methods, we also have a special case to allow
+            // calls within an impl of a trait extension, for which we don't have precise
+            // impl_paths from rustc in general.
+            // (By default, demote_one_expr replaces these calls with Dynamic, which is sound
+            // but imprecise.)
+            if let Some(origin_impl) = trait_impl_from_extension.get(caller_impl) {
+                // We handle only the case where the traits and trait args are the same
+                if callee_trait != caller_trait {
+                    return Ok((callee, impl_paths));
+                }
+                for i in 0..caller_trait_typ_args.len() {
+                    if !crate::ast_util::types_equal(&caller_trait_typ_args[i], &ts[i]) {
+                        return Ok((callee, impl_paths));
+                    }
+                }
+
+                let key = (callee.clone(), caller_impl.clone());
+                if let Some(callee) = trait_impl_map.get(&key) {
+                    let f2 = &func_map[callee];
+                    let FunctionKind::TraitMethodImpl {
+                        trait_path: callee_trait,
+                        impl_path: callee_impl,
+                        ..
+                    } = &f2.x.kind
+                    else {
+                        panic!("expected TraitMethodImpl")
+                    };
+                    assert!(callee_trait == caller_trait);
+                    assert!(caller_impl == callee_impl);
+                    // This is a call within a single impl of the trait extension;
+                    // we can compute more precise impl_paths and callee for this case
+                    let origin_trail_impl = ImplPath::TraitImplPath(origin_impl.clone());
+                    let filter = |p: &ImplPath| p != &origin_trail_impl;
+                    let impl_paths =
+                        Arc::new(impl_paths.iter().filter(|p| filter(*p)).cloned().collect());
+                    return Ok((callee.clone(), impl_paths));
                 }
             }
         }
@@ -811,10 +859,9 @@ pub(crate) fn typ_equality_bound_to_air(
 pub(crate) fn const_typ_bound_to_air(ctx: &Ctx, c: &Typ, t: &Typ) -> air::ast::Expr {
     let f = crate::ast_util::const_generic_to_primitive(t);
     let expr = air::ast_util::str_apply(f, &vec![crate::sst_to_air::typ_to_id(ctx, c)]);
-    if let Some(inv) = crate::sst_to_air::typ_invariant(ctx, t, &expr) {
-        inv
-    } else {
-        air::ast_util::mk_true()
+    match crate::sst_to_air::typ_invariant(ctx, t, &expr) {
+        Some(inv) => inv,
+        _ => air::ast_util::mk_true(),
     }
 }
 
@@ -894,9 +941,7 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
     //   forall Self, A. tr_bound%T(Self, A) ==> tr_bound%U(A) && tr_bound%Q(Self, A)
     let mut commands: Vec<Command> = Vec::new();
     for tr in traits {
-        let mut typ_params: Vec<crate::ast::Ident> =
-            (*tr.x.typ_params).iter().map(|(x, _)| x.clone()).collect();
-        typ_params.insert(0, crate::def::trait_self_type_param());
+        let typ_params = tr.x.typ_param_names_with_self();
         let typ_args: Vec<Typ> =
             typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
         if let Some(tr_bound) =
@@ -1043,13 +1088,13 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     let (trait_typ_args, holes) = crate::traits::hide_projections(&imp.x.trait_typ_args);
     let (typ_params, eqs) =
         crate::sst_to_air_func::hide_projections_air(ctx, &imp.x.typ_params, holes);
-    let tr_bound = if let Some(tr_bound) =
-        trait_bound_to_air(ctx, &TraitId::Path(imp.x.trait_path.clone()), &trait_typ_args)
-    {
-        tr_bound
-    } else {
-        return Arc::new(vec![]);
-    };
+    let tr_bound =
+        match trait_bound_to_air(ctx, &TraitId::Path(imp.x.trait_path.clone()), &trait_typ_args) {
+            Some(tr_bound) => tr_bound,
+            _ => {
+                return Arc::new(vec![]);
+            }
+        };
     let name =
         format!("{}_{}", path_as_friendly_rust_name(&imp.x.impl_path), crate::def::QID_TRAIT_IMPL);
     let trigs = vec![tr_bound.clone()];

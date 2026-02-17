@@ -519,25 +519,22 @@ test_verify_one_file! {
             }
             assert(a@ == 4);
         }
-    } => Err(err) => assert_vir_error_msg(err, "variable `a` is not marked mutable")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `a` as mutable, as it is not declared as mutable")
 }
 
-// TODO Currently this causes a panic. However, it definitely needs to error,
-// so we should fix the test and un-ignore it.
-
 test_verify_one_file! {
-    #[ignore] #[test] test_ghost_at_assignment_double_assignment verus_code! {
+    #[test] test_ghost_at_assignment_double_assignment verus_code! {
         fn foo() {
             let a: Ghost<nat>;
             proof {
                 a@ = 4;
                 a@ = 7;
             }
-            assert(a@ == 4);
+            assert(a@ == 4); // FAILS
             assert(a@ == 7);
             assert(false);
         }
-    } => Err(err) => assert_rust_error_msg(err, "variable `a` is not marked mutable")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `a` isn't initialized")
 }
 
 test_verify_one_file! {
@@ -559,9 +556,9 @@ test_verify_one_file_with_options! {
             let x: u8;
             x = 5;
             x = 7;
-            assert(false);
+            assert(false); // FAILS
         }
-    } => Ok(())
+    } => Err(err) => assert_fails(err, 1)
 }
 
 test_verify_one_file! {
@@ -1640,4 +1637,92 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot move out of `x` because it is borrowed")
+}
+
+test_verify_one_file! {
+    #[test] assign_to_ghost_place_of_nonghost_local verus_code! {
+        struct X {
+            a: Ghost<u64>,
+        }
+
+        fn consume<T>(t: T) { }
+
+        fn test() {
+            let mut x = X { a: Ghost(3u64) };
+            consume(x);
+
+            proof {
+                x.a@ = 30;
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "borrow of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] assign_to_ghost_place_of_nonghost_local2 verus_code! {
+        struct X {
+            a: Ghost<(u64, u64)>,
+        }
+
+        fn consume<T>(t: T) { }
+
+        fn test() {
+            let mut x = X { a: Ghost((3u64, 3u64)) };
+            consume(x);
+
+            proof {
+                x.a@.0 = 30;
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "borrow of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] assign_to_ghost_place_of_nonghost_local3 verus_code! {
+        tracked struct Y {
+            ghost a: u64,
+        }
+
+        proof fn trk_consume<T>(tracked t: T) { }
+
+        proof fn test2() {
+            let tracked mut x = Y { a: 30 };
+            trk_consume(x);
+
+            x.a = 30;
+        }
+    } => Err(err) => assert_rust_error_msg(err, "assign to part of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] assign_to_ghost_place_of_nonghost_local4_issue1298 verus_code! {
+        tracked struct Z {
+        }
+
+        tracked struct Y {
+            tracked z: Z,
+        }
+
+        tracked struct X {
+            tracked y: Y,
+            ghost a: int,
+        }
+
+        proof fn borrower<'a>(tracked x: &'a mut X) -> (tracked y: &'a Y) {
+            &x.y
+        }
+
+        proof fn take_z_ref(tracked z: &Z) {
+        }
+
+        fn stuff() {
+            let tracked mut x = X { y: Y { z: Z { } }, a: 0 };
+            let tracked y_ref = borrower(&mut x);
+
+            proof {
+                x.a = 5;
+                take_z_ref(&y_ref.z);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x.a` because it is borrowed")
 }

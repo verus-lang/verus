@@ -103,7 +103,6 @@ pub struct ArgsX {
     pub profile_all: bool,
     pub capture_profiles: bool,
     pub spinoff_all: bool,
-    pub use_internal_profiler: bool,
     pub vstd: Vstd,
     pub compile: bool,
     pub solver_version_check: bool,
@@ -151,7 +150,6 @@ impl ArgsX {
             profile_all: Default::default(),
             capture_profiles: Default::default(),
             spinoff_all: Default::default(),
-            use_internal_profiler: Default::default(),
             vstd: Vstd::Imported,
             compile: Default::default(),
             solver_version_check: Default::default(),
@@ -395,7 +393,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
-    const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
     const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
@@ -414,10 +411,6 @@ pub fn parse_args_with_imports(
         (
             EXTENDED_CAPTURE_PROFILES,
             "Always collect prover performance data, but don't generate output reports",
-        ),
-        (
-            EXTENDED_USE_INTERNAL_PROFILER,
-            "Use an internal profiler that shows internal quantifier instantiations",
         ),
         (EXTENDED_CVC5, "Use the cvc5 SMT solver, rather than the default (Z3)"),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
@@ -718,10 +711,10 @@ pub fn parse_args_with_imports(
         log_dir: matches.opt_str(OPT_LOG_DIR),
         log_all: matches.opt_present(OPT_LOG_ALL),
         log_args: LogArgs {
-            log_vir: log.get(LOG_VIR).is_some(),
-            log_vir_simple: log.get(LOG_VIR_SIMPLE).is_some(),
-            log_vir_poly: log.get(LOG_VIR_POLY).is_some(),
-            log_vir_sst: log.get(LOG_VIR_SST).is_some(),
+            log_vir: log.contains_key(LOG_VIR),
+            log_vir_simple: log.contains_key(LOG_VIR_SIMPLE),
+            log_vir_poly: log.contains_key(LOG_VIR_POLY),
+            log_vir_sst: log.contains_key(LOG_VIR_SST),
             vir_log_option: {
                 if let Some(oo) = log.get(LOG_VIR_OPTION) {
                     let Some(oo) = oo else {
@@ -742,14 +735,14 @@ pub fn parse_args_with_imports(
                     Default::default()
                 }
             },
-            log_trait_conflicts: log.get(LOG_TRAIT_CONFLICTS).is_some(),
-            log_interpreter: log.get(LOG_INTERPRETER).is_some(),
-            log_air_initial: log.get(LOG_AIR).is_some(),
-            log_air_final: log.get(LOG_AIR_FINAL).is_some(),
-            log_smt: log.get(LOG_SMT).is_some(),
-            log_smt_transcript: log.get(LOG_SMT_TRANSCRIPT).is_some(),
-            log_triggers: log.get(LOG_TRIGGERS).is_some(),
-            log_call_graph: log.get(LOG_CALL_GRAPH).is_some(),
+            log_trait_conflicts: log.contains_key(LOG_TRAIT_CONFLICTS),
+            log_interpreter: log.contains_key(LOG_INTERPRETER),
+            log_air_initial: log.contains_key(LOG_AIR),
+            log_air_final: log.contains_key(LOG_AIR_FINAL),
+            log_smt: log.contains_key(LOG_SMT),
+            log_smt_transcript: log.contains_key(LOG_SMT_TRANSCRIPT),
+            log_triggers: log.contains_key(LOG_TRIGGERS),
+            log_call_graph: log.contains_key(LOG_CALL_GRAPH),
         },
         show_triggers: if matches.opt_present(OPT_TRIGGERS) {
             if matches.opt_present(OPT_TRIGGERS_MODE) {
@@ -768,9 +761,9 @@ pub fn parse_args_with_imports(
         } else {
             ShowTriggers::default()
         },
-        ignore_unexpected_smt: extended.get(EXTENDED_IGNORE_UNEXPECTED_SMT).is_some(),
-        allow_inline_air: extended.get(EXTENDED_ALLOW_INLINE_AIR).is_some(),
-        debugger: extended.get(EXTENDED_DEBUG).is_some(),
+        ignore_unexpected_smt: extended.contains_key(EXTENDED_IGNORE_UNEXPECTED_SMT),
+        allow_inline_air: extended.contains_key(EXTENDED_ALLOW_INLINE_AIR),
+        debugger: extended.contains_key(EXTENDED_DEBUG),
         profile: {
             if matches.opt_present(OPT_PROFILE) {
                 if matches.opt_present(OPT_PROFILE_ALL) {
@@ -802,18 +795,17 @@ pub fn parse_args_with_imports(
             matches.opt_present(OPT_PROFILE_ALL)
         },
         capture_profiles: {
-            if extended.get(EXTENDED_CAPTURE_PROFILES).is_some() {
+            if extended.contains_key(EXTENDED_CAPTURE_PROFILES) {
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --capture-profiles are mutually exclusive".to_string())
                 }
             };
-            extended.get(EXTENDED_CAPTURE_PROFILES).is_some()
+            extended.contains_key(EXTENDED_CAPTURE_PROFILES)
         },
-        spinoff_all: extended.get(EXTENDED_SPINOFF_ALL).is_some(),
-        use_internal_profiler: extended.get(EXTENDED_USE_INTERNAL_PROFILER).is_some(),
+        spinoff_all: extended.contains_key(EXTENDED_SPINOFF_ALL),
         compile: matches.opt_present(OPT_COMPILE),
         vstd,
-        solver_version_check: !extended.get(EXTENDED_NO_SOLVER_VERSION_CHECK).is_some(),
+        solver_version_check: !extended.contains_key(EXTENDED_NO_SOLVER_VERSION_CHECK),
         version: matches.opt_present(OPT_VERSION),
         num_threads: matches
             .opt_get::<usize>(OPT_NUM_THREADS)
@@ -821,12 +813,12 @@ pub fn parse_args_with_imports(
             .unwrap_or(default_num_threads),
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
-        use_crate_name: extended.get(EXTENDED_USE_CRATE_NAME).is_some(),
-        solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
-        axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
-        check_api_safety: extended.get(EXTENDED_CHECK_API_SAFETY).is_some(),
-        new_mut_ref: extended.get(EXTENDED_NEW_MUT_REF).is_some(),
-        no_bv_simplify: extended.get(EXTENDED_NO_BV_SIMPLIFY).is_some(),
+        use_crate_name: extended.contains_key(EXTENDED_USE_CRATE_NAME),
+        solver: if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
+        axiom_usage_info: extended.contains_key(EXTENDED_AXIOM_USAGE_INFO),
+        check_api_safety: extended.contains_key(EXTENDED_CHECK_API_SAFETY),
+        new_mut_ref: extended.contains_key(EXTENDED_NEW_MUT_REF),
+        no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
     };
 
     if args.new_mut_ref {
@@ -836,7 +828,8 @@ pub fn parse_args_with_imports(
     (Arc::new(args), unmatched)
 }
 
-static NEW_MUT_REF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub(crate) static NEW_MUT_REF: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 pub(crate) fn new_mut_ref() -> bool {
     NEW_MUT_REF.load(std::sync::atomic::Ordering::SeqCst)

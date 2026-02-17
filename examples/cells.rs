@@ -16,4 +16,7 @@ fn main() {
     assert(token.mem_contents() === MemContents::Init(X { i: 5 }));
 }
 
+fn pcell_example() {
+}
+
 } // verus!

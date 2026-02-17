@@ -124,17 +124,20 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::Clip { .. }
             | UnaryOp::FloatToBits
             | UnaryOp::IntToReal
+            | UnaryOp::RealToInt
             | UnaryOp::BitNot(_)
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
             | UnaryOp::CastToInteger
             | UnaryOp::MutRefCurrent
-            | UnaryOp::MutRefFuture
+            | UnaryOp::MutRefFuture(_)
+            | UnaryOp::MutRefFinal(_)
+            | UnaryOp::Length(_)
             | UnaryOp::InferSpecForLoopIter { .. } => {}
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-            UnaryOpr::CustomErr(_) => {
+            UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) => {
                 // recurse inside coercions
                 check_trigger_expr_arg(state, arg)
             }
@@ -193,7 +196,7 @@ fn check_trigger_expr(
         | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
         | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
         | ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::HeightTrigger, _) => {}
-        ExpX::Binary(BinaryOp::Bitwise(_, _) | BinaryOp::ArrayIndex, _, _) => {}
+        ExpX::Binary(BinaryOp::Bitwise(_, _) | BinaryOp::Index(..), _, _) => {}
         ExpX::Unary(UnaryOp::BitNot(_), _) => {}
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
@@ -261,11 +264,15 @@ fn check_trigger_expr(
                 | UnaryOp::StrIsAscii
                 | UnaryOp::BitNot(_)
                 | UnaryOp::MutRefCurrent
-                | UnaryOp::MutRefFuture => {
+                | UnaryOp::MutRefFuture(_)
+                | UnaryOp::MutRefFinal(_) => {
                     check_trigger_expr_arg(state, arg);
                     Ok(())
                 }
-                UnaryOp::Clip { .. } | UnaryOp::FloatToBits | UnaryOp::IntToReal => {
+                UnaryOp::Clip { .. }
+                | UnaryOp::FloatToBits
+                | UnaryOp::IntToReal
+                | UnaryOp::RealToInt => {
                     check_trigger_expr_arg(state, arg);
                     Ok(())
                 }
@@ -280,10 +287,13 @@ fn check_trigger_expr(
                     Err(error(&exp.span, "triggers cannot contain loop spec inference"))
                 }
                 UnaryOp::Not => Err(error(&exp.span, "triggers cannot contain boolean operators")),
+                UnaryOp::Length(_) => {
+                    Err(error(&exp.span, "triggers cannot contain builtin Length operator"))
+                }
             },
             ExpX::UnaryOpr(op, arg) => match op {
                 UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-                UnaryOpr::CustomErr(_) => Ok(()),
+                UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) => Ok(()),
                 UnaryOpr::IsVariant { .. } | UnaryOpr::Field { .. } => {
                     check_trigger_expr_arg(state, arg);
                     Ok(())
@@ -314,7 +324,7 @@ fn check_trigger_expr(
                         check_trigger_expr_arg(state, arg2);
                         Ok(())
                     }
-                    ArrayIndex => {
+                    Index(..) => {
                         check_trigger_expr_arg(state, arg1);
                         check_trigger_expr_arg(state, arg2);
                         Ok(())

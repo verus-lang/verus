@@ -36,6 +36,7 @@ impl std::fmt::Debug for Span {
 pub struct MessageLabel {
     pub span: Span,
     pub note: String,
+    pub is_proof_note: bool,
 }
 
 /// If you just want to build a simple message, see the builders below.
@@ -171,6 +172,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
                 as_string: air_span.to_owned(),
             },
             note: note.to_owned(),
+            is_proof_note: false,
         })
     }
 
@@ -178,7 +180,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
         if labels.len() == 0 {
             self.empty()
         } else {
-            let MessageLabel { span, note } =
+            let MessageLabel { span, note, .. } =
                 labels[0].downcast_ref::<MessageLabel>().unwrap().clone();
             Arc::new(MessageX {
                 level: MessageLevel::Error,
@@ -235,7 +237,7 @@ pub fn message_with_label<S: Into<String>, T: Into<String>>(
         level,
         note: note.into(),
         spans: vec![span.clone()],
-        labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
+        labels: vec![MessageLabel { span: span.clone(), note: label.into(), is_proof_note: false }],
         help: None,
         fancy_note: None,
     })
@@ -251,7 +253,23 @@ pub fn message_with_secondary_label<S: Into<String>, T: Into<String>>(
         level,
         note: note.into(),
         spans: vec![],
-        labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
+        labels: vec![MessageLabel { span: span.clone(), note: label.into(), is_proof_note: false }],
+        help: None,
+        fancy_note: None,
+    })
+}
+
+/// Multiple basic message, each with a note and a single span to be highlighted with ^^^^^^
+pub fn multiple_message<'a, S: Into<String>>(
+    level: MessageLevel,
+    note: S,
+    spans: impl Iterator<Item = &'a Span>,
+) -> Message {
+    Arc::new(MessageX {
+        level,
+        note: note.into(),
+        spans: spans.cloned().collect(),
+        labels: Vec::new(),
         help: None,
         fancy_note: None,
     })
@@ -287,6 +305,14 @@ pub fn error_bare<S: Into<String>>(note: S) -> Message {
 /// Basic error, with a message and a single span to be highlighted with ^^^^^^
 pub fn error<S: Into<String>>(span: &Span, note: S) -> Message {
     message(MessageLevel::Error, note, span)
+}
+
+/// Multiple basic errors, each with a message and a single span to be highlighted with ^^^^^^
+pub fn multiple_errors<'a, S: Into<String>>(
+    spans: impl Iterator<Item = &'a Span>,
+    note: S,
+) -> Message {
+    multiple_message(MessageLevel::Error, note, spans)
 }
 
 /// Prepend the error with "Verus Internal Error"
@@ -327,21 +353,40 @@ impl MessageX {
     pub fn primary_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
         let mut e = self.clone();
         e.spans.push(span.clone());
-        e.labels.push(MessageLabel { span: span.clone(), note: label.into() });
+        e.labels.push(MessageLabel {
+            span: span.clone(),
+            note: label.into(),
+            is_proof_note: false,
+        });
         Arc::new(e)
     }
 
     /// Add a secondary_span to be highlighted, with no label (rendered with ------)
     pub fn secondary_span(&self, span: &Span) -> Message {
         let mut e = self.clone();
-        e.labels.push(MessageLabel { span: span.clone(), note: "".to_string() });
+        e.labels.push(MessageLabel {
+            span: span.clone(),
+            note: "".to_string(),
+            is_proof_note: false,
+        });
         Arc::new(e)
     }
 
     /// Add a secondary_span to be highlighted, with a label (rendered with ------)
     pub fn secondary_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
         let mut e = self.clone();
-        e.labels.push(MessageLabel { span: span.clone(), note: label.into() });
+        e.labels.push(MessageLabel {
+            span: span.clone(),
+            note: label.into(),
+            is_proof_note: false,
+        });
+        Arc::new(e)
+    }
+
+    /// Add a `proof_note` label
+    pub fn proof_note_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
+        let mut e = self.clone();
+        e.labels.push(MessageLabel { span: span.clone(), note: label.into(), is_proof_note: true });
         Arc::new(e)
     }
 

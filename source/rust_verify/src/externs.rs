@@ -50,7 +50,7 @@ fn verus_builtin_std() -> Box<[(VerusExtern, &'static str, String)]> {
 }
 
 impl VerusExterns {
-    pub fn to_args(&self) -> impl Iterator<Item = String> {
+    pub fn to_args(&self) -> impl Iterator<Item = String> + use<> {
         let mut args = Vec::new();
         args.push(format!("-L"));
         args.push(format!("dependency={}", self.verus_root.to_str().unwrap()));

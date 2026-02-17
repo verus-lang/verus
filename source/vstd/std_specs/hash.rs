@@ -176,7 +176,7 @@ pub broadcast proof fn axiom_i32_obeys_hash_table_key_model()
     admit();
 }
 
-pub broadcast proof fn axiom_i164_obeys_hash_table_key_model()
+pub broadcast proof fn axiom_i64_obeys_hash_table_key_model()
     ensures
         #[trigger] obeys_key_model::<i64>(),
 {
@@ -832,6 +832,15 @@ pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: Hash
         m@ == Map::<Key, Value>::empty(),
 ;
 
+pub assume_specification<K, V, S: core::default::Default>[ <HashMap<
+    K,
+    V,
+    S,
+> as core::default::Default>::default ]() -> (m: HashMap<K, V, S>)
+    ensures
+        m@ == Map::<K, V>::empty(),
+;
+
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::with_capacity ](capacity: usize) -> (m:
     HashMap<Key, Value, RandomState>)
     ensures
@@ -1228,6 +1237,14 @@ pub assume_specification<Key>[ HashSet::<Key>::new ]() -> (m: HashSet<Key, Rando
         m@ == Set::<Key>::empty(),
 ;
 
+pub assume_specification<T, S: core::default::Default>[ <HashSet<
+    T,
+    S,
+> as core::default::Default>::default ]() -> (m: HashSet<T, S>)
+    ensures
+        m@ == Set::<T>::empty(),
+;
+
 pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) -> (m: HashSet<
     Key,
     RandomState,
@@ -1433,7 +1450,7 @@ pub broadcast group group_hash_axioms {
     axiom_i8_obeys_hash_table_key_model,
     axiom_i16_obeys_hash_table_key_model,
     axiom_i32_obeys_hash_table_key_model,
-    axiom_i164_obeys_hash_table_key_model,
+    axiom_i64_obeys_hash_table_key_model,
     axiom_i128_obeys_hash_table_key_model,
     axiom_isize_obeys_hash_table_key_model,
     axiom_box_bool_obeys_hash_table_key_model,

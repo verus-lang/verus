@@ -165,11 +165,6 @@ pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (r
         },
 ;
 
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[verifier::reject_recursive_types_in_ground_variants(V)]
-pub struct ExManuallyDrop<V: ?Sized>(core::mem::ManuallyDrop<V>);
-
 // A private seal trait to prevent a trait from being implemented outside of vstd.
 pub(crate) trait TrustedSpecSealed {}
 

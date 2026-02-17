@@ -3,12 +3,23 @@ name: ci
 on:
   push:
     branches:
-      - 'main'
+      - "main"
 
   workflow_dispatch:
 
   pull_request:
     types: [opened, synchronize, reopened]
+
+# Cancel a workflow iff the branch for the pull request got updated
+#
+# How:
+#   - This creates a concurrency group for workflow runs;
+#   - When the workflow runs, it cancels in-progress runs if the concurrency group is the same
+#   - The group names are ci-<pr number> (in the case of PRs) and ci-<SHA> for main
+#   - This means that we still run CI for every commit on main (but those runs don't get updated anyway)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.push.after }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -16,7 +27,7 @@ permissions:
 jobs:
   # check if formatting is correct
   fmt:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -24,7 +35,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.93.0
 
       - name: setup verusfmt
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
@@ -39,10 +50,33 @@ jobs:
         working-directory: ./tools/vargo
         run: cargo fmt -- --check
 
+  # run linter (clippy)
+  clippy:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: clippy
+
+      - name: clippy check codebase
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          vargo clippy -- -D warnings
+
+      - name: clippy check vargo
+        working-directory: ./tools/vargo
+        run: cargo clippy -- -D warnings
+
   # check if it builds and runs on macos, running the full test suite
   # (in release mode because it makes a huge difference)
   full-test:
-    runs-on: macos-latest
+    runs-on: macos-14
 
     defaults:
       run:
@@ -67,7 +101,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.93.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -101,9 +135,9 @@ jobs:
           - build: macos-x86_64
             os: macos-15-intel
           - build: linux
-            os: ubuntu-latest
+            os: ubuntu-22.04
           - build: windows
-            os: windows-latest
+            os: windows-2022
 
     runs-on: ${{ matrix.os }}
 
@@ -124,7 +158,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.93.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -152,7 +186,7 @@ jobs:
       matrix:
         features: [record-history, no-std, no-alloc, singular]
 
-    runs-on: macos-latest
+    runs-on: macos-14
 
     defaults:
       run:
@@ -171,14 +205,14 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.93.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
 
       - name: download singular
         if: matrix.features == 'singular'
-        run: curl -LO https://www.singular.uni-kl.de/ftp/pub/Math/Singular/UNIX/Singular-4-3-2_M1.dmg
+        run: curl -fLO https://github.com/verus-lang/verus/releases/download/dependency/singular-4.3.2/Singular-4-3-2_M1.dmg
 
       - name: build
         working-directory: ./source
@@ -228,8 +262,8 @@ jobs:
   # build the documentation
   # will complain if there are warnings
   build-docs:
-    needs: [fmt]
-    runs-on: ubuntu-latest
+    needs: [fmt, clippy]
+    runs-on: ubuntu-22.04
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -237,7 +271,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.93.0
 
       - name: build docs
         working-directory: ./source
@@ -263,16 +297,16 @@ jobs:
         build: [macos, macos-x86_64, linux, windows]
         include:
           - build: macos
-            os: macos-latest
+            os: macos-14
             release_name: verus-arm64-macos
           - build: macos-x86_64
             os: macos-15-intel
             release_name: verus-x86-macos
           - build: linux
-            os: ubuntu-latest
+            os: ubuntu-22.04
             release_name: verus-x86-linux
           - build: windows
-            os: windows-latest
+            os: windows-2022
             release_name: verus-x86-win
 
     runs-on: ${{ matrix.os }}
@@ -294,7 +328,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.93.0
 
       - name: build
         working-directory: ./source
@@ -309,7 +343,7 @@ jobs:
           ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
           cp -R ./target-verus/release ../${{ matrix.release_name }}
           cd ..;
-          if [ ${{ matrix.os }} == "windows-latest" ]; then
+          if [ ${{ matrix.os }} == "windows-2022" ]; then
             7z a ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
           else
             zip -r ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
@@ -325,7 +359,7 @@ jobs:
   release:
     needs: [build-docs, build-release, full-test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: download all artifacts
         uses: actions/download-artifact@v4

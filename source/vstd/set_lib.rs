@@ -1212,40 +1212,6 @@ pub broadcast proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
     }
 }
 
-/// Properties of sets from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-#[deprecated = "Use `broadcast use group_set_properties` instead"]
-pub proof fn lemma_set_properties<A>()
-    ensures
-        forall|a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(b) == a.union(b),  //from lemma_set_union_again1
-        forall|a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(a) == a.union(b),  //from lemma_set_union_again2
-        forall|a: Set<A>, b: Set<A>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b),  //from lemma_set_intersect_again1
-        forall|a: Set<A>, b: Set<A>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b),  //from lemma_set_intersect_again2
-        forall|s1: Set<A>, s2: Set<A>, a: A| s2.contains(a) ==> !s1.difference(s2).contains(a),  //from lemma_set_difference2
-        forall|a: Set<A>, b: Set<A>|
-            #![trigger (a + b).difference(a)]
-            a.disjoint(b) ==> ((a + b).difference(a) =~= b && (a + b).difference(b) =~= a),  //from lemma_set_disjoint
-        forall|s: Set<A>| #[trigger] s.len() != 0 && s.finite() ==> exists|a: A| s.contains(a),  // half of lemma_set_empty_equivalency_len
-        forall|a: Set<A>, b: Set<A>|
-            (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] (a + b).len() == a.len()
-                + b.len(),  //from lemma_set_disjoint_lens
-        forall|a: Set<A>, b: Set<A>|
-            (a.finite() && b.finite()) ==> #[trigger] (a + b).len() + #[trigger] a.intersect(
-                b,
-            ).len() == a.len() + b.len(),  //from lemma_set_intersect_union_lens
-        forall|a: Set<A>, b: Set<A>|
-            (a.finite() && b.finite()) ==> ((#[trigger] a.difference(b).len() + b.difference(
-                a,
-            ).len() + a.intersect(b).len() == (a + b).len()) && (a.difference(b).len() == a.len()
-                - a.intersect(b).len())),  //from lemma_set_difference_len
-{
-    broadcast use group_set_properties;
-
-    assert forall|s: Set<A>| #[trigger] s.len() != 0 && s.finite() implies exists|a: A|
-        s.contains(a) by {
-        assert(s.contains(s.choose()));
-    }
-}
-
 pub broadcast group group_set_properties {
     lemma_set_union_again1,
     lemma_set_union_again2,

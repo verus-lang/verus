@@ -5,6 +5,16 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Port every functions signature from old-style to new-mut-ref style
+pub fn ignore_mut_ref_only_fns(krate: Krate) -> Krate {
+    let mut krate = krate;
+    let kratex = Arc::make_mut(&mut krate);
+    let functions = std::mem::take(&mut kratex.functions);
+    kratex.functions =
+        functions.into_iter().filter(|f| !f.x.attrs.ignore_outside_new_mut_ref).collect();
+    krate
+}
+
+/// Port every functions signature from old-style to new-mut-ref style
 pub fn migrate_mut_ref_krate(krate: Krate) -> Krate {
     let mut krate = krate;
     let kratex = Arc::make_mut(&mut krate);
@@ -30,6 +40,7 @@ pub fn migrate_mut_ref_function(f: &mut Function) {
                         typ: Arc::new(TypX::MutRef(p.x.typ.clone())),
                         mode: p.x.mode,
                         is_mut: false,
+                        user_mut: p.x.user_mut,
                         unwrapped_info: p.x.unwrapped_info.clone(),
                     })
                 } else {
@@ -71,7 +82,8 @@ fn migrate_one_expr(expr: &Expr, params_migrated: &HashSet<VarIdent>) -> Expr {
         ExprX::Var(ident) if params_migrated.contains(ident) => {
             let mut_ref_typ = Arc::new(TypX::MutRef(expr.typ.clone()));
             let e = SpannedTyped::new(&expr.span, &mut_ref_typ, ExprX::Var(ident.clone()));
-            SpannedTyped::new(&expr.span, &expr.typ, ExprX::Unary(UnaryOp::MutRefFuture, e))
+            let op = UnaryOp::MutRefFuture(MutRefFutureSourceName::MutRefFuture);
+            SpannedTyped::new(&expr.span, &expr.typ, ExprX::Unary(op, e))
         }
         _ => expr.clone(),
     }
@@ -82,8 +94,8 @@ fn migrate_one_place(place: &Place, params_migrated: &HashSet<VarIdent>) -> Plac
         PlaceX::Local(ident) if params_migrated.contains(ident) => {
             let mut_ref_typ = Arc::new(TypX::MutRef(place.typ.clone()));
             let e = SpannedTyped::new(&place.span, &mut_ref_typ, ExprX::Var(ident.clone()));
-            let e =
-                SpannedTyped::new(&place.span, &place.typ, ExprX::Unary(UnaryOp::MutRefFuture, e));
+            let op = UnaryOp::MutRefFuture(MutRefFutureSourceName::MutRefFuture);
+            let e = SpannedTyped::new(&place.span, &place.typ, ExprX::Unary(op, e));
             SpannedTyped::new(&place.span, &place.typ, PlaceX::Temporary(e))
         }
         _ => place.clone(),

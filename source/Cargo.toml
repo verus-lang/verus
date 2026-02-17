@@ -25,3 +25,127 @@ exclude = [
 # do not modify the following two lines
 [workspace.metadata.vargo]
 tag = "workspace"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(verus_keep_ghost)',
+  'cfg(verus_verify_core)',
+] }
+
+[workspace.lints.clippy]
+# These are all the lints required to make clippy pass
+# Lints are grouped by [lint groups](https://doc.rust-lang.org/clippy/lints.html)
+# correctness/perf/suspicious are the priority groups
+#
+# Clippy Policy:
+#
+# Goal: reduce the set of lints being supressed, as it helps to maintain code
+# quality across the codebase while at the same time unburdening reviewers
+#
+# How: remove a particular suppression one by one and fix the underlying issue.
+# From that point onward the lint is enforced.
+#
+# Escape hatches: some clippy lints are particularly nitpicky/pedantic.
+#  - If the complaints are localized, consider annotating it with `[allow(clippy::lint)]`,
+#    preferably with a comment explaining why it's reasonable to do so.
+#
+#  - If the lint is triggering a lot and is overly pedantic, consider leaving it supressed
+#    and commenting on the fact that it's too pedantic
+#
+#  - If an already enforced lint is being pedantic for a particular instance, where
+#    fixing it would be overly complex, consider also `allow`ing it on that particular instance.
+
+# suspicious
+# do not remove: see https://github.com/verus-lang/verus/pull/2091#discussion_r2710412679 for a discussion
+manual_unwrap_or_default = "allow"
+
+# style
+assign_op_pattern = "allow"
+chars_last_cmp = "allow"
+collapsible_else_if = "allow"
+collapsible_if = "allow"
+collapsible_match = "allow"
+comparison_to_empty = "allow"
+doc_lazy_continuation = "allow"
+doc_overindented_list_items = "allow"
+enum_variant_names = "allow"
+for_kv_map = "allow"
+from_over_into = "allow"
+get_first = "allow"
+if_same_then_else = "allow"
+inherent_to_string = "allow"
+into_iter_on_ref = "allow"
+is_digit_ascii_radix = "allow"
+len_zero = "allow"
+let_and_return = "allow"
+let_unit_value = "allow"
+manual_map = "allow"
+manual_range_contains = "allow"
+manual_repeat_n = "allow"
+map_clone = "allow"
+match_like_matches_macro = "allow"
+match_ref_pats = "allow"
+match_result_ok = "allow"
+mem_replace_option_with_some = "allow"
+mem_replace_with_default = "allow"
+missing_safety_doc = "allow"
+needless_borrow = "allow"
+needless_borrows_for_generic_args = "allow"
+needless_else = "allow"
+needless_late_init = "allow"
+needless_range_loop = "allow"
+needless_return = "allow"
+new_without_default = "allow"
+non_minimal_cfg = "allow"
+op_ref = "allow"
+option_map_or_none = "allow"
+partialeq_to_none = "allow"
+print_literal = "allow"
+ptr_arg = "allow"
+question_mark = "allow"
+redundant_closure = "allow"
+redundant_field_names = "allow"
+redundant_pattern_matching = "allow"
+redundant_static_lifetimes = "allow"
+result_unit_err = "allow"
+should_implement_trait = "allow"
+single_char_add_str = "allow"
+single_match = "allow"
+to_string_trait_impl = "allow"
+unnecessary_lazy_evaluations = "allow"
+unnecessary_map_or = "allow"
+unnecessary_mut_passed = "allow"
+unneeded_struct_pattern = "allow"
+unused_unit = "allow"
+unwrap_or_default = "allow"
+upper_case_acronyms = "allow"
+while_let_on_iterator = "allow"
+writeln_empty_string = "allow"
+write_with_newline = "allow"
+wrong_self_convention = "allow"
+zero_ptr = "allow"
+
+# complexity
+bind_instead_of_map = "allow"
+bool_comparison = "allow"
+borrow_deref_ref = "allow"
+char_lit_as_u8 = "allow"
+clone_on_copy = "allow"
+derivable_impls = "allow"
+explicit_auto_deref = "allow"
+extra_unused_lifetimes = "allow"
+match_single_binding = "allow"
+needless_arbitrary_self_type = "allow"
+needless_lifetimes = "allow"
+needless_question_mark = "allow"
+nonminimal_bool = "allow"
+only_used_in_recursion = "allow"
+option_as_ref_deref = "allow"
+option_map_unit_fn = "allow"
+redundant_guards = "allow"
+search_is_some = "allow"
+too_many_arguments = "allow"
+type_complexity = "allow"
+unit_arg = "allow"
+useless_conversion = "allow"
+useless_format = "allow"

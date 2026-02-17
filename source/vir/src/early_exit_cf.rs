@@ -29,7 +29,6 @@ pub fn assert_no_early_exit_in_inv_block(inv_span: &Span, expr: &Expr) -> Result
 /// Walk the AST and find all return/break/continue statements that would cause an
 /// 'early exit' from the expression. Does *not* recurse into nested Invariant blocks,
 /// to avoid quadratic behavior, and to avoid doubling up the errors.
-
 fn expr_get_early_exits(expr: &Expr) -> Vec<EarlyExitInst> {
     let mut v = Vec::new();
     let mut scope_map = ScopeMap::new();
@@ -40,7 +39,6 @@ fn expr_get_early_exits(expr: &Expr) -> Vec<EarlyExitInst> {
 /// While recursing, we keep track of whether we entered a loop or not; then we can know
 /// if a break/continue would cause an exit at the high-level expr.
 /// (Well, it will be useful when we implement break/continue, anyway.)
-
 fn expr_get_early_exits_rec(
     expr: &Expr,
     in_loop: bool,
@@ -77,6 +75,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Nondeterministic { .. }
             | ExprX::TwoPhaseBorrowMut(_)
             | ExprX::BorrowMut(_)
+            | ExprX::ImplicitReborrowOrSpecRead(..)
             | ExprX::ReadPlace(..)
             | ExprX::UseLeftWhereRightCanHaveNoAssignments(..)
             | ExprX::Block(..) => VisitorControlFlow::Recurse,
@@ -92,7 +91,6 @@ fn expr_get_early_exits_rec(
             | ExprX::AssertAssume { .. }
             | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::AssertBy { .. }
-            | ExprX::AssumeResolved(..)
             | ExprX::RevealString(_)
             | ExprX::AirStmt(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,

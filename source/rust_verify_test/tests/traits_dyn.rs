@@ -337,6 +337,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] dyn_cycle3 verus_code! {
+        use vstd::std_specs::alloc::*;
         trait T {
             spec fn f(&self, d: &S) -> int;
         }

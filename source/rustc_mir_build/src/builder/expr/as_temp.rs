@@ -2,7 +2,7 @@
 
 use rustc_data_structures::stack::ensure_sufficient_stack;
 use rustc_hir::HirId;
-use rustc_middle::middle::region::{Scope, ScopeData};
+use rustc_middle::middle::region::{Scope, ScopeData, TempLifetime};
 use rustc_middle::mir::*;
 use rustc_middle::thir::*;
 use tracing::{debug, instrument};
@@ -34,7 +34,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         expr_id: ExprId,
         mutability: Mutability,
     ) -> BlockAnd<Local> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
 
         let expr = &this.thir[expr_id];
         let expr_span = expr.span;
@@ -129,13 +129,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             this.schedule_drop(expr_span, temp_lifetime, temp, DropKind::Value);
         }
 
-        if let Some((backwards_incompatible, reason)) = temp_lifetime.backwards_incompatible {
-            this.schedule_backwards_incompatible_drop(
-                expr_span,
-                backwards_incompatible,
-                temp,
-                reason,
-            );
+        if let Some(backwards_incompatible) = temp_lifetime.backwards_incompatible {
+            this.schedule_backwards_incompatible_drop(expr_span, backwards_incompatible, temp);
         }
 
         block.and(temp)

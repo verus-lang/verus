@@ -555,6 +555,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 | UnaryOp::Clip { .. }
                 | UnaryOp::FloatToBits
                 | UnaryOp::IntToReal
+                | UnaryOp::RealToInt
                 | UnaryOp::BitNot(_)
                 | UnaryOp::StrLen
                 | UnaryOp::StrIsAscii => {
@@ -566,7 +567,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
-                UnaryOp::HeightTrigger => {
+                UnaryOp::HeightTrigger | UnaryOp::Length(_) => {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
@@ -584,9 +585,12 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
                     mk_exp(ExpX::UnaryOpr(unbox, e1.clone()))
                 }
-                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1.clone()))
+                }
+                UnaryOp::MutRefFinal(_) => {
+                    panic!("internal error: MustBeFinalized in SST")
                 }
             }
         }
@@ -609,7 +613,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp(ExpX::UnaryOpr(op.clone(), e1))
                 }
-                UnaryOpr::CustomErr(_) => {
+                UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) => {
                     mk_exp_typ(&e1.typ, ExpX::UnaryOpr(op.clone(), e1.clone()))
                 }
                 UnaryOpr::Field(FieldOpr {
@@ -640,13 +644,13 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 }
             }
         }
-        ExpX::Binary(BinaryOp::ArrayIndex, e1, e2) => {
+        ExpX::Binary(BinaryOp::Index(kind, bc), e1, e2) => {
             let e1 = visit_exp(ctx, state, e1);
             let e2 = visit_exp(ctx, state, e2);
             let e1 = coerce_exp_to_native(ctx, &e1);
             let e2 = coerce_exp_to_poly(ctx, &e2);
             let typ = coerce_typ_to_poly(ctx, &exp.typ);
-            mk_exp_typ(&typ, ExpX::Binary(BinaryOp::ArrayIndex, e1, e2))
+            mk_exp_typ(&typ, ExpX::Binary(BinaryOp::Index(*kind, *bc), e1, e2))
         }
         ExpX::Binary(op, e1, e2) => {
             let e1 = visit_exp(ctx, state, e1);
@@ -660,7 +664,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 BinaryOp::Eq(_) | BinaryOp::Ne => (false, false),
                 BinaryOp::Bitwise(..) => (true, false),
                 BinaryOp::StrGetChar { .. } => (true, false),
-                BinaryOp::ArrayIndex => unreachable!("ArrayIndex"),
+                BinaryOp::Index(..) => unreachable!("Index"),
             };
             if native {
                 let e1 = coerce_exp_to_native(ctx, &e1);
@@ -950,6 +954,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             decrease,
             typ_inv_vars,
             modified_vars,
+            pre_modified_params,
         } => {
             let cond = cond
                 .as_ref()
@@ -972,6 +977,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 decrease,
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
+                pre_modified_params: pre_modified_params.clone(),
             })
         }
         StmX::OpenInvariant(s) => {
@@ -1115,14 +1121,13 @@ fn visit_func_check_sst(
             | (LocalDeclKind::Assert, _, _)
             | (LocalDeclKind::AssertByVar { native: true }, _, _)
             | (LocalDeclKind::LetBinder, _, _)
-            | (LocalDeclKind::OpenInvariantBinder, _, _)
+            | (LocalDeclKind::OpenInvariantInnerTemp, _, _)
             | (LocalDeclKind::ExecClosureId, _, _)
-            | (LocalDeclKind::ExecClosureParam, _, _)
+            | (LocalDeclKind::ExecClosureParam { .. }, _, _)
             | (LocalDeclKind::Nondeterministic, _, _)
             | (LocalDeclKind::BorrowMut, _, _)
             | (LocalDeclKind::ExecClosureRet, _, _)
-            | (LocalDeclKind::Decreases, _, _)
-            | (LocalDeclKind::MutableTemporary, _, _) => coerce_typ_to_native(ctx, &l.typ),
+            | (LocalDeclKind::Decreases, _, _) => coerce_typ_to_native(ctx, &l.typ),
             (LocalDeclKind::TempViaAssign, _, _) => l.typ.clone(),
         };
         match l.kind {
@@ -1175,26 +1180,26 @@ fn visit_func_check_sst(
 }
 
 fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
-    let FunctionSstX {
-        name,
-        kind,
-        body_visibility,
-        opaqueness,
-        owning_module,
+    let &FunctionSstX {
+        ref name,
+        ref kind,
+        ref body_visibility,
+        ref opaqueness,
+        ref owning_module,
         mode: mut function_mode,
-        typ_params,
-        typ_bounds,
-        pars,
-        ret,
-        ens_has_return,
-        item_kind,
-        attrs,
-        has,
-        decl,
-        axioms,
-        exec_proof_check,
-        recommends_check,
-        safe_api_check,
+        ref typ_params,
+        ref typ_bounds,
+        ref pars,
+        ref ret,
+        ref ens_has_return,
+        ref item_kind,
+        ref attrs,
+        ref has,
+        ref decl,
+        ref axioms,
+        ref exec_proof_check,
+        ref recommends_check,
+        ref safe_api_check,
     } = &function.x;
 
     if attrs.is_decrease_by {

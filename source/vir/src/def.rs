@@ -5,7 +5,7 @@ use crate::util::vec_map;
 use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /*
 In SMT-LIB format (used by Z3), symbols are built of letters, digits, and:
@@ -153,6 +153,7 @@ pub const RDIV: &str = "RDiv";
 pub const SNAPSHOT_CALL: &str = "CALL";
 pub const SNAPSHOT_PRE: &str = "PRE";
 pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
+pub const SNAPSHOT_LOOP: &str = "LOOP";
 pub const T_HEIGHT: &str = "Height";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
@@ -429,6 +430,54 @@ pub fn strslice_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
+pub fn fn_slice_len(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_len".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_slice_index(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_index".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_slice_update(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_update".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_array_update(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("array".to_string()),
+                Arc::new("spec_array_update".to_string()),
+            ]),
+        }),
+    })
+}
+
 pub fn array_type() -> Path {
     let ident = Arc::new(ARRAY_TYPE.to_string());
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
@@ -489,13 +538,7 @@ pub fn impl_ident(disambiguator: u32) -> Ident {
 
 pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
     let proj = if decoration { PREFIX_PROJECT_DECORATION } else { PREFIX_PROJECT };
-    Arc::new(format!(
-        "{}{}{}{}",
-        proj,
-        path_to_string(trait_path),
-        PROJECT_SEPARATOR,
-        name.to_string()
-    ))
+    Arc::new(format!("{}{}{}{}", proj, path_to_string(trait_path), PROJECT_SEPARATOR, name))
 }
 
 pub fn projection_pointee_metadata(decoration: bool) -> Ident {
@@ -802,13 +845,12 @@ impl CommandContext {
 }
 
 #[derive(Debug)]
-#[derive(Clone)]
 pub struct CommandsWithContextX {
     pub context: CommandContext,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
-    pub hint_upon_failure: std::cell::RefCell<Option<crate::messages::Message>>,
+    pub hint_upon_failure: Mutex<Option<crate::messages::Message>>,
 }
 
 impl CommandsWithContextX {
@@ -825,8 +867,22 @@ impl CommandsWithContextX {
             commands,
             prover_choice,
             skip_recommends,
-            hint_upon_failure: std::cell::RefCell::new(None),
+            hint_upon_failure: Mutex::new(None),
         })
+    }
+}
+
+impl Clone for CommandsWithContextX {
+    fn clone(&self) -> Self {
+        CommandsWithContextX {
+            context: self.context.clone(),
+            commands: self.commands.clone(),
+            prover_choice: self.prover_choice.clone(),
+            skip_recommends: self.skip_recommends.clone(),
+            hint_upon_failure: Mutex::new(
+                self.hint_upon_failure.lock().expect("we abort on poisoning").clone(),
+            ),
+        }
     }
 }
 
