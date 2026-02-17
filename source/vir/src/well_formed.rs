@@ -740,6 +740,12 @@ fn check_one_expr<Emit: EmitError>(
                 }
             }
         }
+        ExprX::Old(..) if function.x.mode == Mode::Spec => {
+            return Err(error(
+                &expr.span,
+                "`old` is meaningless in spec functions",
+            ).help("You can dereference the mutable reference normally to get the \"current\"/\"old\" value"));
+        }
         _ => {}
     }
     Ok(())
