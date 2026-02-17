@@ -7,7 +7,7 @@ use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
-use crate::util::error;
+use crate::util::{HashMapAbsorbWith, error};
 use crate::verus_items::VerusItems;
 use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
@@ -94,9 +94,10 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         let mut multispan = MultiSpan::from_spans(v);
 
-        for MessageLabel { note, span: sp } in &msg.labels {
+        for MessageLabel { note, span: sp, is_proof_note } in &msg.labels {
+            let note = if *is_proof_note { format!("note: {}", note) } else { note.clone() };
             if let Some(span) = self.spans.from_air_span(&sp, Some(self.source_map)) {
-                multispan.push_span_label(span, note.clone());
+                multispan.push_span_label(span, note);
             } else {
                 dbg!(&note, &sp.as_string);
             }
@@ -306,6 +307,9 @@ pub struct Verifier {
     /// smt runtimes for each function per bucket
     pub func_times: HashMap<BucketId, HashMap<Fun, FunctionSmtStats>>,
 
+    /// Details about each function
+    pub func_details: HashMap<Fun, FuncDetails>,
+
     pub via_cargo_args: Option<CargoVerusArgs>,
     // Some(DepTracker) if via_cargo_args.is_some(), None otherwise
     // In both cases, is set to None when VerifierCallbacksEraseMacro.config finishes with it
@@ -329,6 +333,27 @@ pub struct Verifier {
     expand_flag: bool,
 
     error_format: Option<ErrorOutputType>,
+}
+
+#[derive(serde::Serialize)]
+pub struct FuncDetails {
+    pub failed_proof_notes: HashSet<String>,
+}
+
+impl Default for FuncDetails {
+    fn default() -> Self {
+        Self { failed_proof_notes: Default::default() }
+    }
+}
+
+impl FuncDetails {
+    fn absorb(&mut self, other: Self) {
+        self.failed_proof_notes.extend(other.failed_proof_notes);
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap()
+    }
 }
 
 fn report_chosen_triggers(
@@ -462,6 +487,8 @@ impl Verifier {
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
 
+            func_details: HashMap::new(),
+
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
             via_cargo_args,
             import_virs_via_cargo: None,
@@ -508,6 +535,8 @@ impl Verifier {
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
 
+            func_details: HashMap::new(),
+
             via_cargo_args: self.via_cargo_args.clone(),
             dep_tracker: None,
             import_virs_via_cargo: self.import_virs_via_cargo.clone(),
@@ -538,6 +567,7 @@ impl Verifier {
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
         self.bucket_stats.extend(other.bucket_stats);
         self.func_times.extend(other.func_times);
+        self.func_details.absorb_with(other.func_details, |lhs, rhs| lhs.absorb(rhs));
     }
 
     fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
@@ -870,6 +900,15 @@ impl Verifier {
                             }
                         }
                     }
+
+                    // Collect `proof_note` labels related to this failure.
+                    let mut proof_notes = vec![];
+                    for label in &error.labels {
+                        if label.is_proof_note {
+                            proof_notes.push(label.note.clone());
+                        }
+                    }
+                    self.record_func_failed_proof_notes(context.fun.clone(), proof_notes);
 
                     if level == Some(MessageLevel::Error) {
                         if self.args.expand_errors {
@@ -2883,6 +2922,20 @@ impl Verifier {
                 .find(|function| function.x.name == *f)
                 .map(|function| &function.x.mode)
         })
+    }
+
+    fn record_func_failed_proof_notes(&mut self, func: Fun, failed_proof_notes: Vec<String>) {
+        use std::collections::hash_map::Entry;
+        match self.func_details.entry(func) {
+            Entry::Occupied(mut occupied_entry) => {
+                occupied_entry.get_mut().failed_proof_notes.extend(failed_proof_notes);
+            }
+            Entry::Vacant(vacant_entry) => {
+                let _ = vacant_entry.insert(FuncDetails {
+                    failed_proof_notes: HashSet::from_iter(failed_proof_notes),
+                });
+            }
+        }
     }
 }
 

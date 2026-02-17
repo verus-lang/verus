@@ -517,6 +517,13 @@ pub fn main() {
     };
 
     if verifier.args.output_json {
+        // Render function verification details as JSON.
+        let mut func_details: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+        for (func, details) in &verifier.func_details {
+            let name = vir::ast_util::fun_as_friendly_rust_name(&func);
+            func_details.insert(name, details.to_json());
+        }
+
         let mut res = serde_json::json!({
             "encountered-error": status.is_err(),
             "encountered-vir-error": verifier.encountered_vir_error,
@@ -538,6 +545,7 @@ pub fn main() {
             );
         }
         let mut out: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+        out.insert("func-details".to_string(), serde_json::Value::Object(func_details));
         out.insert("verification-results".to_string(), res);
         if let Some(times_ms) = times_ms_json_data {
             out.insert("times-ms".to_string(), times_ms);
