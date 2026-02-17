@@ -74,7 +74,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOpr::Field(_) => exp.clone(),
             UnaryOpr::IntegerTypeBound(..) => exp.clone(),
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-            UnaryOpr::CustomErr(_) => {
+            UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) => {
                 exp.new_x(ExpX::UnaryOpr(op.clone(), insert_auto_ext_equal(ctx, e)))
             }
             UnaryOpr::HasResolved(..) => exp.clone(),

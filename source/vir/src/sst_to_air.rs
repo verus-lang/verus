@@ -13,13 +13,14 @@ use crate::context::Ctx;
 use crate::def::{
     ARCH_SIZE, CommandsWithContext, CommandsWithContextX, FUEL_BOOL, FUEL_BOOL_DEFAULT,
     FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, ProverChoice, SNAPSHOT_CALL,
-    SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
-    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, SnapPos,
-    SpanKind, Spanned, U_HI, encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid,
-    new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
-    prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type,
-    prefix_unbox, snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id,
-    suffix_typ_param_ids, variant_field_ident, variant_field_ident_internal, variant_ident,
+    SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
+    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
+    SUFFIX_SNAP_WHILE_END, SnapPos, SpanKind, Spanned, U_HI, encode_dt_as_path, fun_to_string,
+    is_variant_ident, new_internal_qid, new_user_qid_name, path_to_string, prefix_box,
+    prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv, prefix_pre_var,
+    prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident, static_name,
+    suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, variant_field_ident,
+    variant_field_ident_internal, variant_ident,
 };
 use crate::messages::{Span, error, error_with_label};
 use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
@@ -28,7 +29,7 @@ use crate::sst::{
     UnwindSst,
 };
 use crate::sst::{FuncCheckSst, Pars, PostConditionKind, Stms};
-use crate::sst_util::subst_typ_for_datatype;
+use crate::sst_util::{sst_exp_get_proof_note, subst_typ_for_datatype};
 use crate::sst_vars::{AssignMap, get_loc_var};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -51,7 +52,8 @@ pub struct PostConditionInfo {
     /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
     pub dest: Option<VarIdent>,
     /// Post-conditions (only used in non-recommends-checking mode)
-    pub ens_exprs: Vec<(Span, Expr)>,
+    /// Each entry carries the span, the AIR expression, and an optional `proof_note` label.
+    pub ens_exprs: Vec<(Span, Expr, Option<Arc<String>>)>,
     /// Recommends checks (only used in recommends-checking mode)
     pub ens_spec_precondition_stms: Stms,
     /// Extra info about PostCondition for error reporting
@@ -764,6 +766,7 @@ fn exp_get_custom_err(exp: &Exp) -> Option<Arc<String>> {
     match &exp.x {
         ExpX::UnaryOpr(UnaryOpr::Box(_), e) => exp_get_custom_err(e),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => exp_get_custom_err(e),
+        ExpX::UnaryOpr(UnaryOpr::ProofNote(_), e) => exp_get_custom_err(e),
         ExpX::UnaryOpr(UnaryOpr::CustomErr(s), _) => Some(s.clone()),
         _ => None,
     }
@@ -1206,6 +1209,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 // CustomErr is handled by split_expression. Maybe it could
                 // be useful in the 'normal' case too, but right now, we just
                 // ignore it here.
+                return exp_to_expr(ctx, exp, expr_ctxt);
+            }
+            UnaryOpr::ProofNote(_) => {
+                // A `proof_note` label is metadata and has no effect otherwise.
                 return exp_to_expr(ctx, exp, expr_ctxt);
             }
             UnaryOpr::HasResolved(t) => {
@@ -2119,7 +2126,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::Assert(assert_id, error, expr) => {
             let air_expr = exp_to_expr(ctx, &expr, expr_ctxt)?;
-            let error = match error {
+            let mut error = match error {
                 Some(error) => error.clone(),
                 None => error_with_label(
                     &stm.span,
@@ -2127,6 +2134,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     "assertion failed".to_string(),
                 ),
             };
+            if let Some(label) = sst_exp_get_proof_note(expr) {
+                error = error.proof_note_label(&stm.span, label.to_string());
+            }
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
             }
@@ -2186,13 +2196,22 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         stmts.append(&mut new_stmts);
                     }
                 } else {
-                    for (span, ens) in state.post_condition_info.ens_exprs.clone().iter() {
+                    for (span, ens, proof_note) in
+                        state.post_condition_info.ens_exprs.clone().iter()
+                    {
                         // The base_error should point to the return-statement or
                         // return-expression. Augment with an additional label pointing
                         // to the 'ensures' clause that fails.
                         let error = match state.post_condition_info.kind {
-                            PostConditionKind::Ensures => base_error
-                                .primary_label(&span, crate::def::THIS_POST_FAILED.to_string()),
+                            PostConditionKind::Ensures => {
+                                let new_error = base_error
+                                    .primary_label(&span, crate::def::THIS_POST_FAILED.to_string());
+                                if let Some(label) = proof_note {
+                                    new_error.proof_note_label(span, label.to_string())
+                                } else {
+                                    new_error
+                                }
+                            }
                             PostConditionKind::DecreasesImplicitLemma => {
                                 base_error.ensure_primary_label()
                             }
@@ -2554,9 +2573,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
             let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
             let mut hint_message = None;
+            let modified_vars = modified_vars.as_ref().unwrap();
             for inv in invs.iter() {
-                let inv_exp =
-                    crate::loop_inference::finalize_inv(modified_vars, &inv.inv, &mut hint_message);
+                let inv_exp = crate::loop_inference::finalize_inv(
+                    &modified_vars,
+                    &inv.inv,
+                    &mut hint_message,
+                );
                 let msg_opt = exp_get_custom_err(&inv_exp);
                 let expr = exp_to_expr(ctx, &inv_exp, expr_ctxt)?;
                 if cond.is_some() {
@@ -2653,18 +2676,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut air_body: Vec<Stmt> = state.static_prelude.clone();
             if !loop_isolation {
-                for x in modified_vars.iter() {
-                    air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
-                }
-                for (x, typ) in typ_inv_vars.iter() {
-                    if modified_vars.contains(x) {
-                        let typ_inv =
-                            typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                        if let Some(expr) = typ_inv {
-                            air_body.push(Arc::new(StmtX::Assume(expr)));
-                        }
-                    }
-                }
+                air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
+                modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut air_body);
             }
 
             let mut local = state.local_shared.clone();
@@ -2690,13 +2703,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 // For any variable that might have been mutated since the beginning of the
                 // function, we need to havoc it, in order to create a difference between
                 // the "current" value and the "pre-state" value.
-                for (x, typ) in pre_modified_params.iter() {
-                    air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(x))));
-                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                    if let Some(expr) = typ_inv {
-                        air_body.push(Arc::new(StmtX::Assume(expr)));
-                    }
-                }
+                let pre_modified_params = pre_modified_params.as_ref().unwrap();
+                pre_modified_params.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
             }
 
             // Assume invariants for the beginning of the loop body.
@@ -2813,18 +2821,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(loop_breakable);
             }
             if loop_isolation {
-                for x in modified_vars.iter() {
-                    stmts.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
-                }
-                for (x, typ) in typ_inv_vars.iter() {
-                    if modified_vars.contains(x) {
-                        let typ_inv =
-                            typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                        if let Some(expr) = typ_inv {
-                            stmts.push(Arc::new(StmtX::Assume(expr)));
-                        }
-                    }
-                }
+                stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
+                modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut stmts);
                 for (_, inv, _, _) in invs_exit.iter() {
                     let inv_stmt = StmtX::Assume(inv.clone());
                     stmts.push(Arc::new(inv_stmt));
@@ -3091,11 +3089,12 @@ pub(crate) fn body_stm_to_air(
 
     let initial_sid = Arc::new("0_entry".to_string());
 
-    let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
+    let mut ens_exprs: Vec<(Span, Expr, Option<Arc<String>>)> = Vec::new();
     for ens in post_condition.ens_exps.iter() {
         let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+        let note = sst_exp_get_proof_note(ens);
         let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
-        ens_exprs.push((ens.span.clone(), e));
+        ens_exprs.push((ens.span.clone(), e, note));
     }
 
     let unwind_air = match unwind {

@@ -19,9 +19,9 @@ use crate::sst::{
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_int_literal, sst_le,
-    sst_lt, sst_mut_ref_current, sst_unit_value, stm_with_vars_at_pre_state, subst_exp,
-    subst_pre_local_decl, subst_stm,
+    exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_exp_get_proof_note,
+    sst_int_literal, sst_le, sst_lt, sst_mut_ref_current, sst_unit_value,
+    stm_with_vars_at_pre_state, subst_exp, subst_pre_local_decl, subst_stm,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
@@ -2051,7 +2051,16 @@ pub(crate) fn expr_to_stm_opt(
                     let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Assert));
                     let (temp_id, temp_var) = state.declare_temp_var_stm(&exp.span, &exp.typ, kind);
                     stms.push(init_var(&exp.span, &temp_id, &exp));
-                    temp_var
+                    // Carry any proof note from `exp` to `temp_var`.
+                    if let Some(label) = sst_exp_get_proof_note(&exp) {
+                        SpannedTyped::new(
+                            &exp.span,
+                            &exp.typ,
+                            ExpX::UnaryOpr(UnaryOpr::ProofNote(label), temp_var),
+                        )
+                    } else {
+                        temp_var
+                    }
                 };
                 stms.push(Spanned::new(
                     e.span.clone(),
@@ -2535,8 +2544,8 @@ pub(crate) fn expr_to_stm_opt(
                     decrease: Arc::new(decrease1),
                     // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
-                    modified_vars: Arc::new(vec![]),
-                    pre_modified_params: Arc::new(vec![]),
+                    modified_vars: None,
+                    pre_modified_params: None,
                 },
             );
             if can_control_flow_reach_after_loop(expr) {

@@ -512,6 +512,8 @@ pub enum UnaryOpr {
     IntegerTypeBound(IntegerTypeBoundKind, Mode),
     /// Custom diagnostic message
     CustomErr(Arc<String>),
+    /// Label from a `proof_note` attribute.
+    ProofNote(Arc<String>),
     /// Predicate over any type that indicates its mutable references has resolved.
     /// For &mut T this says the prophetic value == the current value.
     /// For primitive types this is trivially true.

@@ -53,10 +53,6 @@ impl ExternalInfo {
         }
     }
 
-    pub(crate) fn add_type_id(&mut self, def_id: DefId) {
-        self.type_id_map.insert(def_id, true);
-    }
-
     pub(crate) fn has_type_id<'tcx>(&mut self, ctxt: &Context<'tcx>, def_id: DefId) -> bool {
         match self.type_id_map.get(&def_id).copied() {
             None => {

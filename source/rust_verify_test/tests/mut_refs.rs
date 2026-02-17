@@ -1636,21 +1636,21 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_params_with_reborrow ["new-mut-ref"] => verus_code! {
         fn test4_1(x: &mut (u64, u64)) -> (ret: &mut u64)
-            ensures ({
+            ensures {
                 mut_ref_future(x).1 == mut_ref_current(x).1 &&
                 mut_ref_current(x).0 == mut_ref_current(ret) &&
                 mut_ref_future(x).0 == mut_ref_future(ret)
-            })
+            },
         {
             &mut x.0
         }
 
         fn test4(x: &mut (u64, u64)) -> (ret: &mut u64)
-            ensures ({
+            ensures {
                 mut_ref_future(x).1 == mut_ref_current(x).1 &&
                 mut_ref_current(x).0 == mut_ref_current(ret) &&
                 mut_ref_future(x).0 == mut_ref_future(ret)
-            })
+            },
         {
             let r = &mut x.0;
             return r;

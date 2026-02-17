@@ -369,6 +369,16 @@ impl<K: ToDebugSNode, V: ToDebugSNode> ToDebugSNode for std::collections::HashMa
     }
 }
 
+impl<K: ToDebugSNode, V: ToDebugSNode> ToDebugSNode for indexmap::IndexMap<K, V> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        let mut nodes = vec![];
+        for (k, v) in self.iter() {
+            nodes.push(Node::List(vec![k.to_node(opts), v.to_node(opts)]));
+        }
+        Node::List(nodes)
+    }
+}
+
 fn path_to_node(path: &Path) -> Node {
     Node::Atom(format!(
         "\"{}\"",
