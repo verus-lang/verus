@@ -315,7 +315,7 @@ pub struct GhostSubmap<K, V> {
 ///
 /// The existence of a [`GhostPersistentSubmap`] implies that:
 ///  - Those keys will remain in the map, pointing to the same values, forever;
-///  - All other [`GhostSubmap`]/[`GhostPointsTo`]/[`GhostPersistentSubmap`]/[`GhostPersistentPointsTo`] are disjoint subsets of the domain
+///  - All other [`GhostSubmap`]/[`GhostPointsTo`] are disjoint subsets of the domain
 #[verifier::reject_recursive_types(K)]
 pub struct GhostPersistentSubmap<K, V> {
     r: Resource<MapCarrier<K, V>>,
@@ -336,7 +336,7 @@ pub struct GhostPointsTo<K, V> {
 ///
 /// The existence of a [`GhostPersistentPointsTo`] implies that:
 ///  - The key-value pair will remain in the map, forever;
-///  - All other [`GhostSubmap`]/[`GhostPointsTo`]/[`GhostPersistentSubmap`]/[`GhostPersistentPointsTo`] are disjoint subsets of the domain
+///  - All other [`GhostSubmap`]/[`GhostPointsTo`] are disjoint subsets of the domain
 #[verifier::reject_recursive_types(K)]
 pub struct GhostPersistentPointsTo<K, V> {
     submap: GhostPersistentSubmap<K, V>,
@@ -843,7 +843,7 @@ impl<K, V> GhostSubmap<K, V> {
             result.id() == self.id(),
             old(self)@ == self@.insert(result.key(), result.value()),
             result.key() == k,
-            self@.dom() =~= old(self)@.dom().remove(k),
+            self@ == old(self)@.remove(k),
     {
         use_type_invariant(&*self);
 
@@ -1231,7 +1231,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
             result.id() == self.id(),
             old(self)@ == self@.insert(result.key(), result.value()),
             result.key() == k,
-            self@.dom() =~= old(self)@.dom().remove(k),
+            self@ == old(self)@.remove(k),
     {
         use_type_invariant(&*self);
 

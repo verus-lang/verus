@@ -2624,12 +2624,11 @@ test_verify_one_file! {
         impl T for S { spec fn f() -> int { 200 } }
         impl<A: Sized> T for A { spec fn f() -> int { 100 } }
         proof fn test() {
-            assert(<S as T>::f() == 100);
-            assert(<S as T>::f() == 200); // FAILS
+            assert(<S as T>::f() == 200);
+            assert(<S as T>::f() == 100); // FAILS
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
-    // TODO: } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -2946,8 +2945,8 @@ test_verify_one_file! {
 
         trait ATrait {
             exec fn afun(Tracked(aparam): Tracked<&mut AType>)
-                requires old(aparam) == (AType { v: 41 }),
-                ensures aparam == (AType { v: 41 });
+                requires *old(aparam) == (AType { v: 41 }),
+                ensures *aparam == (AType { v: 41 });
         }
 
         struct AnotherType {}
@@ -3610,6 +3609,40 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_default11c verus_code! {
+        trait T {
+            proof fn f<A>() ensures false { Self::g() }
+            proof fn g() ensures false;
+        }
+
+        proof fn h() ensures false {
+            <bool as T>::f::<u8>();
+        }
+
+        impl T for bool {
+            proof fn g() { h(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] test_default11d verus_code! {
+        trait T {
+            proof fn f() ensures false { Self::g::<u8>() }
+            proof fn g<A>() ensures false;
+        }
+
+        proof fn h() ensures false {
+            <bool as T>::f();
+        }
+
+        impl T for bool {
+            proof fn g<A>() { h(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
     #[test] test_default12 verus_code! {
         trait T1 {
             proof fn f() ensures false;
@@ -4145,6 +4178,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_recursion_through_sync_impl_is_checked verus_code! {
+        use vstd::std_specs::alloc::*;
         trait Tr {
             proof fn tr_g() {
             }
@@ -4193,6 +4227,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_recursion_through_send_impl_is_checked verus_code! {
+        use vstd::std_specs::alloc::*;
         trait Tr {
             proof fn tr_g() {
             }

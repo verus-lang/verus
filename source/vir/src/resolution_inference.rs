@@ -96,6 +96,37 @@ Thus, we need to treat the resolution of `x` independently of the resolution of 
 This is in contrast with fields, where resolving `x` is equivalent to resolving all the
 fields of `x`.
 
+### Working with enums
+
+In order to resolve the field of an enum (e.g., `opt->Some_0` for a varible `opt: Option<T>`),
+the resolution needs to be conditional on the variant:
+
+```
+assume(opt is Some ==> has_resolved(opt->Some_0)
+```
+
+Since resolution is explicitly conditional, we don't need to account for variants
+in the initialization analysis; when an enum place is initialized, we then consider all
+fields of the enum to be initialized (until they are subsequently moved from).
+
+More formally, we can define a notion of "conditional initialization": a place is
+conditionally initialized if "parents being in the correct variant ==> place is initialized".
+
+Example:
+
+```
+let x: Result<A, B> = Ok(foo);
+```
+
+There are two fields of interest, `x->Ok_0` and `x->Err_0`. In the above statement, *both*
+of these fields are considered "conditionally initialized"
+
+ * Ok_0 is "conditionally initialized" because it's "really" initialized
+ * Err_0 is "conditionally initialized" in a vacuous sense because `x` is not in the Err state
+
+Thus, we can compute the "conditionally initialized" places with a straightforward
+analysis that treats enums like normal structs.
+
 ### Notes about scopes
 
 For the most part, we ignore the concept of a scope entirely in our CFG, so we don't
@@ -111,49 +142,168 @@ into the expression, we always check that the local variable it refers to is act
 in scope, so, e.g., we won't end up resolving any variables declared inside a loop from
 outside the loop. In all other cases, this check shouldn't matter.
 
+### Working with temporaries
+
+Sometimes we need to work with unnamed "temporary places", given by the PlaceX::Temporary
+place, e.g., we might take a mutable reference of a computed expression:
+
+```rust
+let x = &mut foo(); // equivalent to `let mut tmp = foo(); let x = &mut tmp;`
+```
+
+or we might update a mutable reference returned by some function without assigning it
+
+```rust
+*func() = y; // equivalent to `let mut tmp = func(); *tmp = y;`
+```
+
+Furthermore, these temporary places might need resolving (just like any other place).
+For example, suppose `pair()` returns `(&mut A, &mut A)`. If we write:
+
+```rust
+let x = pair().0;
+```
+
+Then `pair().1` goes unused and requires immediate resolution. (This last example
+also illustrates that temporaries are nontrivial even when they are not mutated.)
+
+In our analysis, we assign a TempId to each PlaceX::Temporary node, and in the
+main part of the analysis, we treat these places just like any other places.
+After we compute the set of resolutions to add, we find all temporary nodes that
+are mentioned in the set. We then replace those temporaries with named Local nodes.
+
+Specifically, we can replace the place node `Temporary(expr)` with
+`WithExpr({ tmp = expr; }, Local("tmp"))` for a fresh `tmp` variable.
+We place the declaration `let tmp;` at a larger scope.
+
+### Closures
+
+A closure is its own function, so its gets its own CFG. However, we still have to deal
+with captured variables.
+
+(Verus doesn't support capturing variables by mut-ref at the time of writing,
+which makes things a bit easier for the time being.)
+
+Note that our job is a *bit* simpler than having to compute the exact same set of
+moves/references as rustc would for its MIR representation. For example,
+if we consider something like:
+
+```rust
+let x = ...;
+let foo = move || {
+    let y = &x;
+}
+```
+
+Technically, this moves `x` into the closure (since the closure is marked `move`) but because
+the interior only uses an immutable reference to `x`, we can ignore the move when doing
+analysis on the containing function.
+
+In a similar vein, if we have a closure that only pulls in one field:
+
+```rust
+let x = ...;
+let foo = move || {
+    let y = x.0;
+}
+```
+
+Rust might move the entirety of `x` instead of just `x.0` (this depends on the edition),
+but the point it is doesn't matter: either way, for the sake of our analysis, we can say
+that only `x.0` is getting moved (the semantics don't matter either way).
+(In Rust, the difference only matters for computing where the drops go.)
+
+Therefore, to determine what moves/mutations should represent the construction of the closure
+in our analysis, we only need to look at what moves/mutations happen *inside* the closure.
+(Though again, mutations of captured variables are currently disallowed.)
+
+### Assignments
+
+Typically when we do an assignment `x.f = 5;`,
+we want to resolve the (overwritten) value of `x.f` from before the mutation.
+For most places, this is already handled by our analysis, which marks `x.f` as
+safe-to-resolve right before the assignment. We can't do this analysis for array/slice places
+however, so we need to handle the case `x[i] = 5;` separately.
+While building the CFG, we find all such cases (`assigns_to_resolve`) and update the
+Expr appropriately (by setting the `resolve` field on the assignment nodes).
+
+### User-defined type invariants
+
+We handle type-invariants here, inserting nodes that will lower to assertions about type-invariants.
+The analysis is pretty weak right now but could be improved.
+
 */
 
 use crate::ast::{
-    BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident,
-    Mode, ModeWrapperMode, Param, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
-    ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnfinalizedReadKind, VarIdent,
+    Arm, BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function,
+    Ident, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
+    ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
+    VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast_util::{bool_typ, mk_bool, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
+use crate::messages::error;
 use crate::messages::{AstId, Span};
 use crate::modes::ReadKindFinals;
+use crate::patterns::pattern_has_mut;
 use crate::sst_util::subst_typ_for_datatype;
+use air::ast_util::str_ident;
+use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 
 /// Updates the given function body to include AssumeResolved nodes at the appropriate places.
+///
+/// This relies on the AstIds of the given Expr being unique, but it also destroys this property
+/// in the transformation, returning an Expr that may have duplicate AstIds.
 pub(crate) fn infer_resolution(
     params: &Params,
     body: &Expr,
     read_kind_finals: &ReadKindFinals,
     datatypes: &HashMap<Path, Datatype>,
     functions: &HashMap<Fun, Function>,
+    typ_inv_info: &crate::modes::TypeInvInfo,
+    module: &Path,
     var_modes: &HashMap<VarIdent, Mode>,
-) -> Expr {
-    let mut var_modes = var_modes.clone();
-    for p in params.iter() {
-        var_modes.insert(p.x.name.clone(), p.x.mode);
-    }
-
-    let cfg = new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes);
+    temporary_modes: &HashMap<AstId, Mode>,
+) -> Result<Expr, VirErr> {
+    let (cfg, assigns_to_resolve, typ_inv_obligations) =
+        new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes)?;
     //println!("{:}", pretty_cfg(&cfg));
     let resolutions = get_resolutions(&cfg);
-    apply_resolutions(&cfg, body, resolutions)
+    apply_resolutions(
+        &cfg,
+        params,
+        body,
+        resolutions,
+        assigns_to_resolve,
+        typ_inv_obligations,
+        typ_inv_info,
+        module,
+    )
 }
 
 /// Represents the tree structure of "places" under consideration.
 #[derive(Debug)]
 enum PlaceTree {
     Leaf(Typ),
-    Struct(Typ, Dt, Vec<PlaceTree>),
+    /// We have 1 child for every non-ghost field. Use None in place of the ghost fields.
+    /// Outer vec corresponds to variants, inner vec to fields of that variant.
+    /// Use the same ordering as on the datatype.
+    Struct(Typ, Dt, Vec<Vec<Option<PlaceTree>>>),
     MutRef(Typ, Box<PlaceTree>),
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+struct TempId(u64);
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+enum LocalName {
+    Named(VarIdent),
+    /// AST ID of the PlaceX::Temporary
+    Temporary(AstId, TempId),
 }
 
 /// A local var in the function, represents the base of any place.
@@ -163,19 +313,28 @@ enum PlaceTree {
 /// For example, if we have a local variable `x: (T, T, T)`, and the programs assigns to `x.0`,
 /// we would expand the tree to include [x.0, x.1, x.2]. If the program also assigns to `x.0.0`,
 /// we expand it further, [[x.0.0, x.0.1] x.1, x.2]
+///
+/// Only non-ghost places should be represented.
 #[derive(Debug)]
 struct Local {
-    name: VarIdent,
-    is_param: bool,
+    name: LocalName,
     tree: PlaceTree,
 }
 
 /// Collection of all the locals in the program.
 struct LocalCollection<'a> {
     locals: Vec<Local>,
-    ident_to_idx: HashMap<VarIdent, usize>,
+    /// Map LocalName to index within the 'locals' vec
+    ident_to_idx: HashMap<LocalName, usize>,
+
+    /// Map AstId to temp id
+    ast_id_to_temp_id: HashMap<AstId, TempId>,
+    next_temp_id: u64,
+
     datatypes: &'a HashMap<Path, Datatype>,
-    var_modes: &'a HashMap<VarIdent, Mode>,
+    functions: &'a HashMap<Fun, Function>,
+    var_modes: HashMap<VarIdent, Mode>,
+    temporary_modes: &'a HashMap<AstId, Mode>,
 }
 
 /// A projection that maps a place to a subplace
@@ -187,35 +346,52 @@ pub(crate) enum ProjectionTyped {
 
 /// "Flattened" form of the vir::ast::Place type.
 /// Only represents places based on locals, not temporaries.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct FlattenedPlaceTyped {
-    pub local: VarIdent,
+    pub local: LocalName,
     pub typ: Typ,
     pub projections: Vec<ProjectionTyped>,
 }
 
 /// Untyped version of the ProjectionTyped. The indices are used to walk the PlaceTree.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
 enum Projection {
-    StructField(usize),
+    StructField((usize, usize)),
     DerefMut,
 }
 
-#[derive(Clone, Debug)]
+// note: sort_and_remove_redundant relies on sorting order
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct FlattenedPlace {
     local: usize,
     projections: Vec<Projection>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TypInv {
+    Yes,
+    No,
+    PatternError,
+}
+
 /// Represents a position in the vir::ast::Expr where an AssumeResolved can be inserted.
 #[derive(Clone, Copy, Debug)]
 enum AstPosition {
+    /// Right before an Expr or Stmt with the given ID
     Before(AstId),
+    /// Right after an Expr or Stmt with the given ID
     After(AstId),
+    /// For an ExprX::Call node, right after evaluation of the arguments but before the call itself
     AfterArguments(AstId),
+    /// Immediately after a call in the 'unwinding' case.
+    /// (Currently this is place is not representable in VIR so we do nothing with these.)
     OnUnwind(#[allow(dead_code)] AstId),
-    /// After the given bool-typed expression only when that expression evaluates to the given bool
+    /// After the given bool-typed Expr, only when that expression evaluates to the given bool
     AfterBool(AstId, bool),
+    /// For a PlaceX::Temporary node, this is right after assignment to that temporary.
+    AfterTempAssignment(AstId),
+    /// Extra place generated during Match that doesn't go anywhere nice
+    MatchIntermediate,
 }
 
 struct Instruction {
@@ -247,6 +423,9 @@ struct BasicBlock {
     predecessors: Vec<BBIndex>,
     /// Basic blocks that we might jump to after the end
     successors: Vec<BBIndex>,
+    /// Can we enter here?
+    /// (Should be one entry for the whole function, and one entry for every closure)
+    is_entry: bool,
     /// Is it possible to return from the function at the end of this basic block
     /// (i.e., as opposed to jumping to another basic block)
     is_exit: bool,
@@ -274,10 +453,17 @@ struct ResolutionToInsert {
 
 struct Builder<'a> {
     basic_blocks: Vec<BasicBlock>,
-    loops: Vec<LoopEntry>,
     locals: LocalCollection<'a>,
+    assigns_to_resolve: Vec<AstId>,
+    typ_inv_obligations: Vec<(AstId, Fun)>,
+    errors: Vec<VirErr>,
+
+    /// Loop stack, outermost to innermost
+    loops: Vec<LoopEntry>,
+    /// First element is the outermost fn, followed by closure stack, outermost to innermost
+    fns: Vec<FnScope>,
+
     read_kind_finals: &'a ReadKindFinals,
-    functions: &'a HashMap<Fun, Function>,
 }
 
 #[derive(Clone)]
@@ -291,25 +477,40 @@ struct LoopEntry {
     drops: Rc<Vec<FlattenedPlace>>,
 }
 
-#[derive(Clone)]
-enum ComputedPlaceTyped {
-    /// Temporary, or subfield thereof
-    OfTemp,
-    /// Subfield of some local
-    OfLocal(FlattenedPlaceTyped),
-    /// Subfield of some local, at a *ghost place*
-    /// The place given here is the most-specific non-spec place, e.g., if the user writes
-    /// x.foo.bar, and `x.foo` is proof-mode but `x.foo.bar` is spec-mode, then
-    /// Return the place `x.foo`. If the local var itself is spec-mode, then None.
-    /// (note: I think we will generalize this later for other cases where we are mutating
-    /// a place more specific than what we track in the analysis)
-    OfGhost(Option<FlattenedPlaceTyped>),
+/// Represents the scope for either the top-level fn or for any closure inside it
+/// Tracks the "upvars", i.e., vars captured by the closure
+/// (any var declared outside the closure but referenced from within it)
+#[derive(Debug)]
+struct FnScope {
+    scope_map: ScopeMap<VarIdent, ()>,
+    upvars_mutated: Vec<FlattenedPlace>,
+    upvars_moved: Vec<FlattenedPlace>,
 }
 
+#[derive(Clone, Debug)]
+enum ComputedPlaceTyped {
+    /// Subfield of some local
+    Exact(FlattenedPlaceTyped),
+    /// Exec-mode subplace of some local, at a granularity that we don't track
+    /// The place given here is the most-specific non-spec place that we might do analysis over.
+    /// e.g. if the place is like `x.g[i].f` then we'd return Partial(x.g).
+    Partial(FlattenedPlaceTyped),
+    /// Spec-mode place. This is the most specific exec-mode place that we can provide,
+    /// or None for a local.
+    /// Examples:
+    ///   * If the user writes x.foo.bar, and `x.foo` is proof-mode but `x.foo.bar`
+    ///     is spec-mode, then return the place `x.foo`.
+    ///   * If the local var itself is spec-mode, then None.
+    ///   * If the user writes `x.foo[i].y` where `x.foo` is exec/proof and
+    ///     `y` is a ghost place then return `x.foo`
+    Ghost(Option<FlattenedPlaceTyped>),
+}
+
+#[derive(Debug)]
 enum ComputedPlace {
-    OfTemp,
-    OfLocal(FlattenedPlace),
-    OfGhost(Option<FlattenedPlace>),
+    Exact(FlattenedPlace),
+    Partial(FlattenedPlace),
+    Ghost(Option<FlattenedPlace>),
 }
 
 /// Compute the CFG for the given expression.
@@ -320,30 +521,70 @@ fn new_cfg<'a>(
     datatypes: &'a HashMap<Path, Datatype>,
     functions: &'a HashMap<Fun, Function>,
     var_modes: &'a HashMap<VarIdent, Mode>,
-) -> CFG<'a> {
+    temporary_modes: &'a HashMap<AstId, Mode>,
+) -> Result<(CFG<'a>, Vec<AstId>, Vec<(AstId, Fun)>), VirErr> {
+    let mut var_modes = var_modes.clone();
+    for p in params.iter() {
+        var_modes.insert(p.x.name.clone(), p.x.mode);
+    }
+
     let mut builder = Builder {
         basic_blocks: vec![],
         loops: vec![],
+        fns: vec![],
+        assigns_to_resolve: vec![],
+        typ_inv_obligations: vec![],
+        errors: vec![],
         locals: LocalCollection {
             locals: vec![],
             ident_to_idx: HashMap::new(),
+            ast_id_to_temp_id: HashMap::new(),
+            next_temp_id: 0,
             datatypes,
+            functions,
             var_modes,
+            temporary_modes,
         },
         read_kind_finals,
-        functions,
     };
     let start_bb = builder.new_bb(AstPosition::Before(body.span.id), true);
+    builder.basic_blocks[start_bb].is_entry = true;
+
+    builder.push_fn();
+    builder.push_scope();
 
     for param in params.iter() {
-        builder.locals.add_param(param);
+        builder.scope_insert(&param.x.name);
+        if param.x.mode != Mode::Spec {
+            let local = FlattenedPlaceTyped {
+                local: LocalName::Named(param.x.name.clone()),
+                typ: param.x.typ.clone(),
+                projections: vec![],
+            };
+            let local_place = builder.locals.add_place(&local);
+            builder.push_instruction_raw(
+                start_bb,
+                AstPosition::Before(body.span.id),
+                InstructionKind::Overwrite(local_place),
+            );
+        }
     }
+
     let end_bb = builder.build(body, start_bb);
     builder.optionally_exit(end_bb);
 
+    builder.pop_scope();
+    builder.pop_fn();
+    assert!(builder.fns.len() == 0);
+
     builder.compute_predecessors();
 
-    CFG { basic_blocks: builder.basic_blocks, locals: builder.locals }
+    if builder.errors.len() > 0 {
+        return Err(builder.errors[0].clone());
+    }
+
+    let cfg = CFG { basic_blocks: builder.basic_blocks, locals: builder.locals };
+    Ok((cfg, builder.assigns_to_resolve, builder.typ_inv_obligations))
 }
 
 impl<'a> Builder<'a> {
@@ -366,6 +607,7 @@ impl<'a> Builder<'a> {
             instructions: vec![],
             predecessors: vec![],
             successors: vec![],
+            is_entry: false,
             is_exit: false,
             always_add_resolution_at_start,
             position_of_start: start_position,
@@ -391,7 +633,33 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn push_instruction(
+    /// Push the instruction and update the recorded upvars if necessary
+    fn push_instruction_propagate(
+        &mut self,
+        bb: BBIndex,
+        post_instruction_position: AstPosition,
+        instr: InstructionKind,
+    ) {
+        match &instr {
+            InstructionKind::Overwrite(fp) | InstructionKind::Mutate(fp) => {
+                if self.place_is_upvar(fp) {
+                    self.fns.last_mut().unwrap().upvars_mutated.push(fp.clone());
+                }
+            }
+            InstructionKind::MoveFrom(fp) => {
+                if self.place_is_upvar(fp) {
+                    self.fns.last_mut().unwrap().upvars_moved.push(fp.clone());
+                }
+            }
+            InstructionKind::DropFrom(_) => {}
+        }
+        self.push_instruction_raw(bb, post_instruction_position, instr);
+    }
+
+    /// Just push the instruction
+    /// Usually use `push_instruction_propagate` instead of this; only use raw at
+    /// function/closure boundaries.
+    fn push_instruction_raw(
         &mut self,
         bb: BBIndex,
         post_instruction_position: AstPosition,
@@ -409,7 +677,7 @@ impl<'a> Builder<'a> {
         drops: &[FlattenedPlace],
     ) {
         for fp in drops.iter() {
-            self.push_instruction(
+            self.push_instruction_propagate(
                 bb,
                 post_instruction_position,
                 InstructionKind::DropFrom(fp.clone()),
@@ -465,8 +733,7 @@ impl<'a> Builder<'a> {
             | ExprX::AssertCompute(..)
             | ExprX::ProofInSpec(..)
             | ExprX::AirStmt(..)
-            | ExprX::Nondeterministic
-            | ExprX::AssumeResolved(..) => Ok(bb),
+            | ExprX::Nondeterministic => Ok(bb),
             ExprX::Call(call_target, es, post_args) => {
                 assert!(post_args.is_none());
 
@@ -478,7 +745,7 @@ impl<'a> Builder<'a> {
                 for e in es.iter() {
                     match &e.x {
                         ExprX::TwoPhaseBorrowMut(p) => {
-                            let (p, bb1) = self.build_place_and_intern(p, bb)?;
+                            let (p, bb1) = self.build_place_and_intern(p, bb, TypInv::Yes)?;
                             bb = bb1;
                             if let Some(p) = p.get_place_for_mutation() {
                                 two_phase_delayed_mutations.push(p);
@@ -493,14 +760,14 @@ impl<'a> Builder<'a> {
                 for p in two_phase_delayed_mutations.into_iter() {
                     // The point we mark here is after the arguments execute,
                     // but before the call executes.
-                    self.push_instruction(
+                    self.push_instruction_propagate(
                         bb,
                         AstPosition::AfterArguments(span_id),
                         InstructionKind::Mutate(p),
                     );
                 }
 
-                if crate::ast_util::call_no_unwind(call_target, &self.functions) {
+                if crate::ast_util::call_no_unwind(call_target, &self.locals.functions) {
                     Ok(bb)
                 } else {
                     // Create an extra edge that ends immediately to represent unwinding
@@ -513,7 +780,7 @@ impl<'a> Builder<'a> {
                 }
             }
             ExprX::Ctor(_dt, _id, binders, Some(CtorUpdateTail { place, taken_fields })) => {
-                // CtorUpdateTail can only happen for Ctor-style ctor, so we don't need
+                // CtorUpdateTail can only happen for braces-style ctor, so we don't need
                 // to account for TwoPhaseBorrows. (If this ever changes we'll just get a panic
                 // later about unhandled TwoPhaseBorrowMut node)
 
@@ -522,15 +789,18 @@ impl<'a> Builder<'a> {
                     bb = self.build(e, bb)?;
                 }
 
-                let (p, bb1) = self.build_place_typed(place, bb)?;
+                let (p, bb1) = self.build_place_typed(place, bb, TypInv::No)?;
                 bb = bb1;
 
                 for (field_name, unfinal_read_kind) in taken_fields.iter() {
                     if self.is_move(unfinal_read_kind) {
-                        if matches!(p, ComputedPlaceTyped::OfGhost(..)) {
-                            // This case should be unreachable because we already checked the ReadKind
+                        if !matches!(p, ComputedPlaceTyped::Exact(..)) {
+                            // TODO(new_mut_ref): we need careful handling here; this case
+                            // should be impossible if the source program is well-formed,
+                            // but the problem is we haven't run lifetime  checking yet.
+                            // So we might get `try to move from foo[i]` error here or something.
                             panic!(
-                                "Verus Internal State: inconsistent state, move out of ghost place"
+                                "Verus Internal State: inconsistent state, move out of ghost place or index"
                             )
                         }
                         if let Some(mut p) = p.clone().get_place_for_move() {
@@ -539,8 +809,8 @@ impl<'a> Builder<'a> {
                                 field_name,
                                 &self.locals.datatypes,
                             ));
-                            let p = self.locals.add_place(p, false);
-                            self.push_instruction(
+                            let p = self.locals.add_place(&p);
+                            self.push_instruction_propagate(
                                 bb,
                                 AstPosition::After(place.span.id),
                                 InstructionKind::MoveFrom(p),
@@ -554,13 +824,11 @@ impl<'a> Builder<'a> {
             ExprX::Ctor(_dt, _id, binders, None) => {
                 let mut two_phase_delayed_mutations = vec![];
 
-                // TODO(new_mut_ref): tests for two-phase borrows
-
                 for b in binders.iter() {
                     let e = &b.a;
                     match &e.x {
                         ExprX::TwoPhaseBorrowMut(p) => {
-                            let (p, bb1) = self.build_place_and_intern(p, bb)?;
+                            let (p, bb1) = self.build_place_and_intern(p, bb, TypInv::Yes)?;
                             bb = bb1;
                             if let Some(p) = p.get_place_for_mutation() {
                                 two_phase_delayed_mutations.push(p);
@@ -573,10 +841,10 @@ impl<'a> Builder<'a> {
                 }
 
                 for p in two_phase_delayed_mutations.into_iter() {
-                    // Convenentially, we can just put these mutations after the Ctor call itself
+                    // Conveniently, we can just put these mutations after the Ctor call itself
                     // since the Ctor is a trivial operation, i.e., we don't need a special
                     // place for the "post_args" like we do with calls.
-                    self.push_instruction(
+                    self.push_instruction_propagate(
                         bb,
                         AstPosition::After(span_id),
                         InstructionKind::Mutate(p),
@@ -648,8 +916,29 @@ impl<'a> Builder<'a> {
                 }
                 Ok(bb)
             }
-            ExprX::NonSpecClosure { .. } => {
-                todo!()
+            ExprX::NonSpecClosure {
+                params,
+                proof_fn_modes,
+                body,
+                requires: _,
+                ensures: _,
+                ret: _,
+                external_spec: _,
+            } => {
+                // Build the closure interior as a disconnected part of the CFG
+                let fn_scope = self.build_closure(params, proof_fn_modes, body);
+
+                // Emit instructions in the parent function that correspond to the
+                // construction of the closure.
+                for fp in fn_scope.upvars_moved.into_iter() {
+                    self.push_instruction_propagate(
+                        bb,
+                        AstPosition::After(expr.span.id),
+                        InstructionKind::MoveFrom(fp),
+                    );
+                }
+
+                Ok(bb)
             }
             ExprX::ArrayLiteral(es) => {
                 for e in es.iter() {
@@ -657,61 +946,10 @@ impl<'a> Builder<'a> {
                 }
                 Ok(bb)
             }
-            ExprX::Match(place, arms) => {
-                let (cpt, bb) = self.build_place_typed(place, bb)?;
-
-                let mut arm_bb_ends = vec![];
-                for arm in arms.iter() {
-                    // TODO(new_mut_ref) handle guards
-
-                    let arm_bb = self.new_bb(AstPosition::Before(arm.x.body.span.id), false);
-                    self.basic_blocks[bb].successors.push(arm_bb);
-
-                    self.append_instructions_for_pattern_moves_mutations(
-                        &arm.x.pattern,
-                        &cpt,
-                        arm_bb,
-                        AstPosition::Before(arm.x.body.span.id),
-                    );
-
-                    for bound_var in pattern_all_bound_vars_with_ownership(
-                        &arm.x.pattern,
-                        &self.locals.var_modes,
-                    )
-                    .into_iter()
-                    {
-                        let fpt = FlattenedPlaceTyped {
-                            local: bound_var.name,
-                            typ: bound_var.typ,
-                            projections: vec![],
-                        };
-                        let fp = self.locals.add_place(fpt, false);
-                        self.push_instruction(
-                            bb,
-                            AstPosition::Before(arm.x.body.span.id),
-                            InstructionKind::Overwrite(fp),
-                        );
-                    }
-
-                    let arm_bb_end = self.build(&arm.x.body, arm_bb);
-                    if let Ok(arm_bb_end) = arm_bb_end {
-                        arm_bb_ends.push(arm_bb_end);
-                    }
-                }
-
-                if arm_bb_ends.len() > 0 {
-                    let join_position = AstPosition::After(expr.span.id);
-                    let join_block = self.new_bb(join_position, false);
-                    for arm_bb_end in arm_bb_ends {
-                        self.basic_blocks[arm_bb_end].successors.push(join_block);
-                    }
-                    Ok(join_block)
-                } else {
-                    Err(())
-                }
-            }
+            ExprX::Match(..) => self.build_match(expr, bb),
             ExprX::Loop {
                 loop_isolation: _,
+                allow_complex_invariants: _,
                 // for-loops have already been de-sugared by this point, so they don't
                 // need special handling
                 is_for_loop: _,
@@ -796,10 +1034,39 @@ impl<'a> Builder<'a> {
                 Ok(post_bb)
             }
 
-            ExprX::OpenInvariant(e1, _, e2, _) => {
+            ExprX::OpenInvariant(arg, binder, body, _) => {
                 // TODO(new_mut_ref): test cases
-                bb = self.build(e1, bb)?;
-                bb = self.build(e2, bb)?;
+                bb = self.build(arg, bb)?;
+
+                let local = FlattenedPlaceTyped {
+                    local: LocalName::Named(binder.name.clone()),
+                    typ: binder.a.clone(),
+                    projections: vec![],
+                };
+                let fp = self.locals.add_place(&local);
+
+                self.push_scope();
+                self.scope_insert(&binder.name);
+
+                self.push_instruction_propagate(
+                    bb,
+                    AstPosition::Before(body.span.id),
+                    InstructionKind::Overwrite(fp.clone()),
+                );
+                bb = match self.build(body, bb) {
+                    Ok(bb) => bb,
+                    Err(()) => {
+                        self.pop_scope();
+                        return Err(());
+                    }
+                };
+                self.push_instruction_propagate(
+                    bb,
+                    AstPosition::After(body.span.id),
+                    InstructionKind::MoveFrom(fp),
+                );
+                self.pop_scope();
+
                 Ok(bb)
             }
             ExprX::Return(e_opt) => {
@@ -827,13 +1094,25 @@ impl<'a> Builder<'a> {
                 let _ = self.build(e, bb)?;
                 Err(())
             }
-            ExprX::AssignToPlace { place, rhs, op } => {
-                let (p, bb) = self.build_place_and_intern(place, bb)?;
+            ExprX::AssignToPlace { place, rhs, op, resolve } => {
+                assert!(resolve.is_none());
+                // Right-hand side first!
                 let bb = self.build(rhs, bb)?;
+                let (p, bb) = self.build_place_and_intern(place, bb, TypInv::Yes)?;
+                match &p {
+                    ComputedPlace::Partial(_) => {
+                        if op.is_none() {
+                            self.assigns_to_resolve.push(expr.span.id);
+                        }
+                    }
+                    ComputedPlace::Exact(_) | ComputedPlace::Ghost(_) => {
+                        // Exact: resolution handled by main part of the analysis
+                        // Ghost: unsound to resolve because this place is ghost
+                    }
+                }
                 match p {
-                    ComputedPlace::OfTemp => {}
-                    ComputedPlace::OfLocal(p) => {
-                        self.push_instruction(
+                    ComputedPlace::Exact(p) => {
+                        self.push_instruction_propagate(
                             bb,
                             AstPosition::After(span_id),
                             if op.is_some() {
@@ -843,14 +1122,14 @@ impl<'a> Builder<'a> {
                             },
                         );
                     }
-                    ComputedPlace::OfGhost(Some(p)) => {
-                        self.push_instruction(
+                    ComputedPlace::Partial(p) | ComputedPlace::Ghost(Some(p)) => {
+                        self.push_instruction_propagate(
                             bb,
                             AstPosition::After(span_id),
                             InstructionKind::Mutate(p),
                         );
                     }
-                    ComputedPlace::OfGhost(None) => {}
+                    ComputedPlace::Ghost(None) => {}
                 }
                 Ok(bb)
             }
@@ -860,9 +1139,9 @@ impl<'a> Builder<'a> {
                 panic!("Verus Internal Error: unhandled TwoPhaseBorrowMut node");
             }
             ExprX::BorrowMut(p) => {
-                let (p, bb) = self.build_place_and_intern(p, bb)?;
+                let (p, bb) = self.build_place_and_intern(p, bb, TypInv::Yes)?;
                 if let Some(p) = p.get_place_for_mutation() {
-                    self.push_instruction(
+                    self.push_instruction_propagate(
                         bb,
                         AstPosition::After(span_id),
                         InstructionKind::Mutate(p),
@@ -871,15 +1150,20 @@ impl<'a> Builder<'a> {
                 Ok(bb)
             }
             ExprX::ReadPlace(p, unfinal_read_kind) => {
+                let (p, bb) = self.build_place_typed(p, bb, TypInv::No)?;
                 if self.is_move(unfinal_read_kind) {
-                    let (p, bb) = self.build_place_typed(p, bb)?;
-                    if matches!(p, ComputedPlaceTyped::OfGhost(..)) {
-                        // This case should be unreachable because we already checked the ReadKind
-                        panic!("Verus Internal State: inconsistent state, move out of ghost place")
+                    if !matches!(p, ComputedPlaceTyped::Exact(..)) {
+                        // TODO(new_mut_ref): we need careful handling here; this case
+                        // should be impossible if the source program is well-formed,
+                        // but the problem is we haven't run lifetime  checking yet.
+                        // So we might get `try to move from foo[i]` error here or something.
+                        panic!(
+                            "Verus Internal State: inconsistent state, move out of ghost place or index"
+                        )
                     }
                     if let Some(p) = p.get_place_for_move() {
-                        let p = self.locals.add_place(p, false);
-                        self.push_instruction(
+                        let p = self.locals.add_place(&p);
+                        self.push_instruction_propagate(
                             bb,
                             AstPosition::After(span_id),
                             InstructionKind::MoveFrom(p),
@@ -887,21 +1171,47 @@ impl<'a> Builder<'a> {
                     }
                     Ok(bb)
                 } else {
-                    let (_p, bb) = self.build_place_typed(p, bb)?;
                     Ok(bb)
                 }
             }
             ExprX::Block(stmts, e_opt) => {
+                let mut scope_count = 0;
                 for s in stmts.iter() {
-                    bb = self.build_stmt(s, bb)?;
+                    bb = match self.build_stmt(s, bb) {
+                        Ok(bb) => bb,
+                        Err(()) => {
+                            for _i in 0..scope_count {
+                                self.pop_scope();
+                            }
+                            return Err(());
+                        }
+                    };
+
+                    if let StmtX::Decl { .. } = &s.x {
+                        scope_count += 1;
+                    }
                 }
                 if let Some(e) = e_opt {
-                    bb = self.build(e, bb)?;
+                    bb = match self.build(e, bb) {
+                        Ok(bb) => bb,
+                        Err(()) => {
+                            for _i in 0..scope_count {
+                                self.pop_scope();
+                            }
+                            return Err(());
+                        }
+                    };
+                }
+                for _i in 0..scope_count {
+                    self.pop_scope();
                 }
                 Ok(bb)
             }
-            ExprX::UseLeftWhereRightCanHaveNoAssignments(..) => {
-                panic!("UseLeftWhereRightCanHaveNoAssignments shouldn't be created yet");
+            ExprX::EvalAndResolve(..) => {
+                panic!("EvalAndResolve shouldn't be created yet");
+            }
+            ExprX::ImplicitReborrowOrSpecRead(..) => {
+                panic!("ImplicitReborrowOrSpecRead should have been removed");
             }
         }
     }
@@ -909,38 +1219,60 @@ impl<'a> Builder<'a> {
     fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Result<BBIndex, ()> {
         match &stmt.x {
             StmtX::Expr(e) => self.build(e, bb),
-            StmtX::Decl { pattern: _, mode: _, init: None, els: None } => {
-                // do nothing
+            StmtX::Decl { pattern, mode: _, init: None, els: None } => {
+                self.push_scope();
+                self.scope_insert_pattern(pattern);
+
                 Ok(bb)
             }
-            StmtX::Decl { pattern, mode: _, init: Some(init), els: None } => {
-                let (cpt, bb) = self.build_place_typed(init, bb)?;
+            StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
+                let tinv = if pattern_has_mut(pattern) { TypInv::PatternError } else { TypInv::No };
+                let (cpt, bb) = self.build_place_typed(init, bb, tinv)?;
+
+                let next_bb = match els {
+                    Some(els) => {
+                        let els_bb = self.new_bb(AstPosition::Before(els.span.id), false);
+                        let next_bb = self.new_bb(AstPosition::After(stmt.span.id), false);
+                        self.basic_blocks[bb].successors.push(els_bb);
+                        self.basic_blocks[bb].successors.push(next_bb);
+                        match self.build(els, els_bb) {
+                            Ok(_) | Err(()) => {}
+                        }
+                        next_bb
+                    }
+                    None => bb,
+                };
+
                 self.append_instructions_for_pattern_moves_mutations(
                     pattern,
                     &cpt,
-                    bb,
+                    next_bb,
                     AstPosition::After(stmt.span.id),
                 );
+
+                self.push_scope();
+                self.scope_insert_pattern(pattern);
+
                 for bound_var in
                     pattern_all_bound_vars_with_ownership(pattern, &self.locals.var_modes)
                         .into_iter()
                 {
                     let fpt = FlattenedPlaceTyped {
-                        local: bound_var.name,
+                        local: LocalName::Named(bound_var.name),
                         typ: bound_var.typ,
                         projections: vec![],
                     };
-                    let fp = self.locals.add_place(fpt, false);
-                    self.push_instruction(
-                        bb,
+                    let fp = self.locals.add_place(&fpt);
+                    self.push_instruction_propagate(
+                        next_bb,
                         AstPosition::After(stmt.span.id),
                         InstructionKind::Overwrite(fp),
                     );
                 }
-                Ok(bb)
+                Ok(next_bb)
             }
-            StmtX::Decl { pattern: _, mode: _, init: _, els: Some(_) } => {
-                todo!()
+            StmtX::Decl { pattern: _, mode: _, init: None, els: Some(_) } => {
+                panic!("Unexpected let-else without an initializer");
             }
         }
     }
@@ -949,8 +1281,9 @@ impl<'a> Builder<'a> {
         &mut self,
         place: &Place,
         bb: BBIndex,
+        typ_invs: TypInv,
     ) -> Result<(ComputedPlace, BBIndex), ()> {
-        let r = self.build_place_typed(place, bb);
+        let r = self.build_place_typed(place, bb, typ_invs);
         match r {
             Ok((p, bb)) => {
                 let sp = self.locals.add_computed_place(p);
@@ -965,71 +1298,124 @@ impl<'a> Builder<'a> {
         &mut self,
         place: &Place,
         bb: BBIndex,
+        typ_invs: TypInv,
     ) -> Result<(ComputedPlaceTyped, BBIndex), ()> {
         match &place.x {
-            PlaceX::Field(field_opr, p) => match self.build_place_typed(p, bb) {
-                Ok((ComputedPlaceTyped::OfLocal(mut fpt), bb)) => {
-                    let mode = field_opr_to_mode(field_opr, &self.locals.datatypes);
-                    if mode == Mode::Spec {
-                        Ok((ComputedPlaceTyped::OfGhost(Some(fpt)), bb))
-                    } else {
-                        fpt.projections.push(ProjectionTyped::StructField(
-                            field_opr.clone(),
-                            place.typ.clone(),
-                        ));
-                        Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+            PlaceX::Field(field_opr, p) => {
+                let (inner, bb) = self.build_place_typed(p, bb, typ_invs)?;
+                if typ_invs != TypInv::No {
+                    match &inner {
+                        ComputedPlaceTyped::Exact(_) | ComputedPlaceTyped::Partial(_) => {
+                            if let Some(typ_inv_fun) = self.get_typ_inv_fun(p) {
+                                match typ_invs {
+                                    TypInv::Yes => {
+                                        self.typ_inv_obligations.push((p.span.id, typ_inv_fun));
+                                    }
+                                    TypInv::PatternError => {
+                                        self.errors.push(error(&p.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant"));
+                                    }
+                                    TypInv::No => unreachable!(),
+                                }
+                            }
+                        }
+                        ComputedPlaceTyped::Ghost(_) => {}
                     }
                 }
-                Ok((ComputedPlaceTyped::OfGhost(fpt), bb)) => {
-                    Ok((ComputedPlaceTyped::OfGhost(fpt), bb))
+                match inner {
+                    ComputedPlaceTyped::Exact(mut fpt) => {
+                        let mode = field_opr_to_mode(field_opr, &self.locals.datatypes);
+                        if mode == Mode::Spec {
+                            Ok((ComputedPlaceTyped::Ghost(Some(fpt)), bb))
+                        } else {
+                            fpt.projections.push(ProjectionTyped::StructField(
+                                FieldOpr { check: VariantCheck::None, ..field_opr.clone() },
+                                place.typ.clone(),
+                            ));
+                            Ok((ComputedPlaceTyped::Exact(fpt), bb))
+                        }
+                    }
+                    ComputedPlaceTyped::Partial(fpt) => {
+                        let mode = field_opr_to_mode(field_opr, &self.locals.datatypes);
+                        if mode == Mode::Spec {
+                            Ok((ComputedPlaceTyped::Ghost(Some(fpt)), bb))
+                        } else {
+                            Ok((ComputedPlaceTyped::Partial(fpt), bb))
+                        }
+                    }
+                    ComputedPlaceTyped::Ghost(opt_fpt) => {
+                        Ok((ComputedPlaceTyped::Ghost(opt_fpt), bb))
+                    }
                 }
-                Ok((ComputedPlaceTyped::OfTemp, bb)) => Ok((ComputedPlaceTyped::OfTemp, bb)),
-                Err(()) => Err(()),
-            },
-            PlaceX::DerefMut(p) => match self.build_place_typed(p, bb) {
-                Ok((ComputedPlaceTyped::OfLocal(mut fpt), bb)) => {
-                    fpt.projections.push(ProjectionTyped::DerefMut(place.typ.clone()));
-                    Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+            }
+            PlaceX::DerefMut(p) => {
+                let (inner, bb) = self.build_place_typed(p, bb, typ_invs)?;
+                match inner {
+                    ComputedPlaceTyped::Exact(mut fpt) => {
+                        fpt.projections.push(ProjectionTyped::DerefMut(place.typ.clone()));
+                        Ok((ComputedPlaceTyped::Exact(fpt), bb))
+                    }
+                    ComputedPlaceTyped::Partial(fpt) => Ok((ComputedPlaceTyped::Partial(fpt), bb)),
+                    ComputedPlaceTyped::Ghost(opt_fpt) => {
+                        Ok((ComputedPlaceTyped::Ghost(opt_fpt), bb))
+                    }
                 }
-                Ok((ComputedPlaceTyped::OfGhost(fpt), bb)) => {
-                    Ok((ComputedPlaceTyped::OfGhost(fpt), bb))
-                }
-                Ok((ComputedPlaceTyped::OfTemp, bb)) => Ok((ComputedPlaceTyped::OfTemp, bb)),
-                Err(()) => Err(()),
-            },
+            }
             PlaceX::Local(var) => {
                 let mode = self.locals.var_modes[var];
                 if mode == Mode::Spec {
-                    Ok((ComputedPlaceTyped::OfGhost(None), bb))
+                    Ok((ComputedPlaceTyped::Ghost(None), bb))
                 } else {
                     let fpt = FlattenedPlaceTyped {
-                        local: var.clone(),
+                        local: LocalName::Named(var.clone()),
                         typ: place.typ.clone(),
                         projections: vec![],
                     };
-                    Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+                    Ok((ComputedPlaceTyped::Exact(fpt), bb))
                 }
             }
             PlaceX::Temporary(e) => {
                 let bb = self.build(e, bb)?;
-                Ok((ComputedPlaceTyped::OfTemp, bb))
+                let mode = self.locals.temporary_modes[&place.span.id];
+                if mode == Mode::Spec {
+                    Ok((ComputedPlaceTyped::Ghost(None), bb))
+                } else {
+                    let temp_name = self.locals.new_temp_name(place.span.id);
+
+                    let fpt = FlattenedPlaceTyped {
+                        local: temp_name,
+                        typ: place.typ.clone(),
+                        projections: vec![],
+                    };
+                    let fp = self.locals.add_place(&fpt);
+                    self.push_instruction_propagate(
+                        bb,
+                        AstPosition::AfterTempAssignment(place.span.id),
+                        InstructionKind::Overwrite(fp),
+                    );
+
+                    Ok((ComputedPlaceTyped::Exact(fpt), bb))
+                }
             }
             PlaceX::ModeUnwrap(p, ModeWrapperMode::Proof) => {
                 // As usual we just ignore Tracked (kinda like Box)
-                self.build_place_typed(p, bb)
+                self.build_place_typed(p, bb, typ_invs)
             }
             PlaceX::ModeUnwrap(p, ModeWrapperMode::Spec) => {
-                // wrap in OfGhost
-                match self.build_place_typed(p, bb) {
-                    Ok((ComputedPlaceTyped::OfLocal(fpt), bb)) => {
-                        Ok((ComputedPlaceTyped::OfGhost(Some(fpt)), bb))
-                    }
-                    Ok((ComputedPlaceTyped::OfGhost(fpt), bb)) => {
-                        Ok((ComputedPlaceTyped::OfGhost(fpt), bb))
-                    }
-                    Ok((ComputedPlaceTyped::OfTemp, bb)) => Ok((ComputedPlaceTyped::OfTemp, bb)),
-                    Err(()) => Err(()),
-                }
+                let (cpt, bb) = self.build_place_typed(p, bb, typ_invs)?;
+                Ok((cpt.to_ghost(), bb))
+            }
+            PlaceX::WithExpr(..) => {
+                panic!("Verus Internal Error: unexpected PlaceX::WithExpr");
+            }
+            PlaceX::UserDefinedTypInvariantObligation(..) => {
+                panic!(
+                    "Verus Internal Error: unexpected PlaceX::UserDefinedTypInvariantObligation"
+                );
+            }
+            PlaceX::Index(p, idx, _kind, _needs_bounds_check) => {
+                let (cpt, bb) = self.build_place_typed(p, bb, typ_invs)?;
+                let bb = self.build(idx, bb)?;
+                Ok((cpt.to_partial(), bb))
             }
         }
     }
@@ -1046,15 +1432,16 @@ impl<'a> Builder<'a> {
     /// Get the local vars that should be dropped when returning to the beginning
     /// of the the loop.
     fn loop_drops(&mut self, loop_expr: &Expr) -> Vec<FlattenedPlace> {
+        // TODO(new_mut_ref): should get temps? Actually, is this even necessary at all?
         expr_all_bound_vars_with_ownership(loop_expr, &self.locals.var_modes)
             .iter()
             .map(|bv| {
                 let fpt = FlattenedPlaceTyped {
-                    local: bv.name.clone(),
+                    local: LocalName::Named(bv.name.clone()),
                     typ: bv.typ.clone(),
                     projections: vec![],
                 };
-                self.locals.add_place(fpt, false)
+                self.locals.add_place(&fpt)
             })
             .collect()
     }
@@ -1067,16 +1454,11 @@ impl<'a> Builder<'a> {
         position: AstPosition,
     ) {
         match cpt {
-            ComputedPlaceTyped::OfLocal(fpt) => {
-                let places = moves_and_muts_for_place_being_matched(
-                    pattern,
-                    &fpt,
-                    &self.locals.datatypes,
-                    &self.locals.var_modes,
-                );
-                for (fpt, by_ref) in places.into_iter() {
-                    let fp = self.locals.add_place(fpt, false);
-                    self.push_instruction(
+            ComputedPlaceTyped::Exact(fpt) => {
+                let places =
+                    self.moves_and_muts_for_place_being_matched_intern_and_sort(pattern, &fpt);
+                for (fp, by_ref) in places.into_iter() {
+                    self.push_instruction_propagate(
                         bb,
                         position,
                         match by_ref {
@@ -1087,16 +1469,417 @@ impl<'a> Builder<'a> {
                     );
                 }
             }
-            ComputedPlaceTyped::OfGhost(_fpt) => {
-                if crate::patterns::pattern_has_mut(pattern) {
+            ComputedPlaceTyped::Partial(fpt) | ComputedPlaceTyped::Ghost(Some(fpt)) => {
+                if pattern_has_mut(pattern) {
+                    let fp = self.locals.add_place(fpt);
+                    self.push_instruction_propagate(bb, position, InstructionKind::Mutate(fp));
+                }
+            }
+            ComputedPlaceTyped::Ghost(None) => {
+                if pattern_has_mut(pattern) {
                     // Mode-checking should disallow mutable references to ghost places
                     panic!("Verus Internal Error: mut refs found when matchee is ghost");
                 }
             }
-            ComputedPlaceTyped::OfTemp => {
-                // do nothing
+        }
+    }
+
+    /// When a place is matched against a pattern, it induces some moves,
+    /// e.g.:
+    ///
+    /// ```
+    /// let (x, _) = y;   // moves y.0
+    /// let (x, _) = y.1; // moves y.1.0
+    /// ```
+    ///
+    /// It may also induce mutations due to variables with MutRef binding mode.
+    /// This function calculates all such moves and mutations.
+    ///
+    /// TODO(new_mut_ref): incompleteness: when or-patterns are involved,
+    /// moves may be over-approximated
+    ///
+    /// Note: We don't have to worry about or-patterns together with mutations, as we currently
+    /// don't support this combination (see check in well_formed.rs)
+    fn moves_and_muts_for_place_being_matched_intern_and_sort(
+        &mut self,
+        pattern: &Pattern,
+        fpt: &FlattenedPlaceTyped,
+    ) -> Vec<(FlattenedPlace, ByRef)> {
+        let places = self.moves_and_muts_for_place_being_matched(pattern, fpt);
+        let mut v = vec![];
+        for (fpt, by_ref) in places.into_iter() {
+            v.push((self.locals.add_place(&fpt), by_ref));
+        }
+
+        // If there was an or-pattern, we need to sort out any redundancies
+        let has_or = crate::patterns::pattern_has_or(pattern);
+        if has_or {
+            let v = v
+                .into_iter()
+                .map(|(fp, by_ref)| {
+                    assert!(by_ref == ByRef::No);
+                    fp
+                })
+                .collect::<Vec<_>>();
+            let v = sort_and_remove_redundant(v);
+            v.into_iter().map(|fp| (fp, ByRef::No)).collect::<Vec<_>>()
+        } else {
+            v
+        }
+    }
+
+    fn moves_and_muts_for_place_being_matched(
+        &mut self,
+        pattern: &Pattern,
+        fpt: &FlattenedPlaceTyped,
+    ) -> Vec<(FlattenedPlaceTyped, ByRef)> {
+        let projs = moves_and_muts_for_pattern(
+            pattern,
+            &self.locals.datatypes,
+            &self.locals.var_modes,
+            &mut self.errors,
+        );
+        projs
+            .into_iter()
+            .map(|(mut projs, by_ref)| {
+                let mut f = fpt.clone();
+                f.projections.append(&mut projs);
+                (f, by_ref)
+            })
+            .collect()
+    }
+
+    //// Match
+
+    fn build_match(&mut self, expr: &Expr, bb: BBIndex) -> Result<BBIndex, ()> {
+        // TODO(new_mut_ref): need more tests for guards
+        // TODO(new_mut_ref): need more tests for or-patterns
+
+        let ExprX::Match(place, arms) = &expr.x else {
+            unreachable!();
+        };
+
+        let tinv = if arms.iter().any(|arm| pattern_has_mut(&arm.x.pattern)) {
+            TypInv::PatternError
+        } else {
+            TypInv::No
+        };
+        let (cpt, bb) = self.build_place_typed(place, bb, tinv)?;
+
+        assert!(arms.len() != 0);
+
+        let mut cur_bb = bb;
+        let mut arm_bb_ends = vec![];
+
+        for (i, arm) in arms.iter().enumerate() {
+            // We treat the last arm as irrefutable. In principle, an irrefutable arm
+            // could come earlier, but this would be a warning from Rust so it's probably
+            // not worth optimizing that case.
+            //
+            // In the unlikely event that the final arm has a match guard,
+            // then it must be the case that a prior arm was irrefutable, so it doesn't
+            // really matter what we do.
+            let is_irrefut = i == arms.len() - 1;
+
+            if is_irrefut {
+                let arm_bb = self.new_bb(AstPosition::Before(arm.x.body.span.id), false);
+                self.basic_blocks[cur_bb].successors.push(arm_bb);
+                let arm_bb_end = self.build_arm_after_checks(&cpt, arm, arm_bb);
+                if let Ok(arm_bb_end) = arm_bb_end {
+                    arm_bb_ends.push(arm_bb_end);
+                }
+                break;
+            } else {
+                let (continue_bb, arm_bb_end) = self.build_arm_before_checks(&cpt, arm, cur_bb);
+                if let Ok(arm_bb_end) = arm_bb_end {
+                    arm_bb_ends.push(arm_bb_end);
+                }
+                match continue_bb {
+                    Ok(continue_bb) => {
+                        let next_bb = self.new_bb(AstPosition::MatchIntermediate, false);
+                        self.basic_blocks[continue_bb].successors.push(next_bb);
+                        self.basic_blocks[cur_bb].successors.push(next_bb);
+                        cur_bb = next_bb;
+                    }
+                    Err(()) => { /* leave cur_bb as it is */ }
+                }
             }
         }
+
+        if arm_bb_ends.len() > 0 {
+            let join_position = AstPosition::After(expr.span.id);
+            let join_block = self.new_bb(join_position, false);
+            for arm_bb_end in arm_bb_ends {
+                self.basic_blocks[arm_bb_end].successors.push(join_block);
+            }
+            Ok(join_block)
+        } else {
+            Err(())
+        }
+    }
+
+    /// Build the arm, starting from before any checks occur.
+    /// Create a branch off of `cur_bb` to represent the pattern check passing;
+    /// caller will handle failure and moving onto the next branch.
+    ///
+    /// Returns two BB positions:
+    ///   - guard_fail_bb: After guard failure (when applicable)
+    ///   - arm_end_bb: After arm completes
+    fn build_arm_before_checks(
+        &mut self,
+        cpt: &ComputedPlaceTyped,
+        arm: &Arm,
+        cur_bb: BBIndex,
+    ) -> (Result<BBIndex, ()>, Result<BBIndex, ()>) {
+        if arm.x.has_guard() {
+            // Note that because we currently disallow match guards together with or-patterns,
+            // we don't have to worry about the match guard running more than once
+            //
+            //           pattern succeeds
+            // cur_bb           --->        guard_bb --> (guard body) --> guard_success_bb
+            //   |                                            |                   |
+            //   |                                            |                   |
+            //   |                                            |               (arm body)
+            //   |                                            |                   |
+            //   |                                            v                   v
+            //   |                                      guard_fail_bb          arm_end_bb
+            //   |                                            |
+            //   |                                            |
+            //   v                                            /
+            // next_bb  <-------------------------------------
+
+            let guard_bb = self.new_bb(AstPosition::Before(arm.x.guard.span.id), false);
+            self.basic_blocks[cur_bb].successors.push(guard_bb);
+
+            // Bound vars are immutable until the guard passes, so don't emit any instructions
+            // for the bound variables yet
+            self.push_scope();
+            self.scope_insert_pattern(&arm.x.pattern);
+            let guard_bb_end = self.build(&arm.x.guard, guard_bb);
+            self.pop_scope();
+
+            let guard_bb_end = match guard_bb_end {
+                Ok(guard_bb_end) => guard_bb_end,
+                Err(()) => {
+                    return (Err(()), Err(()));
+                }
+            };
+
+            let guard_fail_bb =
+                self.new_bb(AstPosition::AfterBool(arm.x.guard.span.id, false), false);
+            let guard_success_bb = self.new_bb(AstPosition::Before(arm.x.body.span.id), false);
+
+            self.basic_blocks[guard_bb_end].successors.push(guard_fail_bb);
+            self.basic_blocks[guard_bb_end].successors.push(guard_success_bb);
+
+            let arm_end_bb = self.build_arm_after_checks(cpt, arm, guard_success_bb);
+            (Ok(guard_fail_bb), arm_end_bb)
+        } else {
+            //           pattern succeeds
+            // cur_bb           --->        arm_bb --> (arm body) --> arm_end_bb
+            //   |
+            //   |
+            // (pattern fails)
+            //   |
+            //   v
+            // (next branch)
+
+            let arm_bb = self.new_bb(AstPosition::Before(arm.x.body.span.id), false);
+            self.basic_blocks[cur_bb].successors.push(arm_bb);
+            let arm_end_bb = self.build_arm_after_checks(cpt, arm, arm_bb);
+            (Err(()), arm_end_bb)
+        }
+    }
+
+    /// Build the arm, starting immediately after all checks pass (i.e., after the pattern
+    /// and pattern-guard pass). This performs moves, mutations, and initialization of bound vars
+    fn build_arm_after_checks(
+        &mut self,
+        cpt: &ComputedPlaceTyped,
+        arm: &Arm,
+        arm_bb: BBIndex,
+    ) -> Result<BBIndex, ()> {
+        self.append_instructions_for_pattern_moves_mutations(
+            &arm.x.pattern,
+            &cpt,
+            arm_bb,
+            AstPosition::Before(arm.x.body.span.id),
+        );
+
+        self.push_scope();
+        self.scope_insert_pattern(&arm.x.pattern);
+
+        for bound_var in
+            pattern_all_bound_vars_with_ownership(&arm.x.pattern, &self.locals.var_modes)
+                .into_iter()
+        {
+            let fpt = FlattenedPlaceTyped {
+                local: LocalName::Named(bound_var.name),
+                typ: bound_var.typ,
+                projections: vec![],
+            };
+            let fp = self.locals.add_place(&fpt);
+            self.push_instruction_propagate(
+                arm_bb,
+                AstPosition::Before(arm.x.body.span.id),
+                InstructionKind::Overwrite(fp),
+            );
+        }
+
+        let arm_bb_end = self.build(&arm.x.body, arm_bb);
+
+        self.pop_scope();
+
+        arm_bb_end
+    }
+
+    //// Closures
+
+    fn build_closure(
+        &mut self,
+        params: &VarBinders<Typ>,
+        proof_fn_modes: &Option<(Arc<Vec<Mode>>, Mode)>,
+        body: &Expr,
+    ) -> FnScope {
+        let closure_prologue = self.new_bb(AstPosition::Before(body.span.id), true);
+        self.basic_blocks[closure_prologue].is_entry = true;
+        let closure_start_bb = self.new_bb(AstPosition::Before(body.span.id), false);
+
+        self.push_fn();
+        self.push_scope();
+
+        for (i, param) in params.iter().enumerate() {
+            self.scope_insert(&param.name);
+
+            let mode = crate::ast_util::arg_mode_from_proof_fn_modes(proof_fn_modes, i);
+
+            let f = self.locals.var_modes.insert(param.name.clone(), mode);
+            assert!(f.is_none());
+
+            if mode != Mode::Spec {
+                let local = FlattenedPlaceTyped {
+                    local: LocalName::Named(param.name.clone()),
+                    typ: param.a.clone(),
+                    projections: vec![],
+                };
+                let local_place = self.locals.add_place(&local);
+                self.push_instruction_raw(
+                    closure_prologue,
+                    AstPosition::Before(body.span.id),
+                    InstructionKind::Overwrite(local_place),
+                );
+            }
+        }
+
+        let closure_normal_ret_bb = self.build(body, closure_start_bb);
+        self.optionally_exit(closure_normal_ret_bb);
+
+        self.pop_scope();
+        let mut fn_scope = self.pop_fn();
+
+        if fn_scope.upvars_mutated.len() > 0 {
+            // TODO(new_mut_ref): make this a real error
+            panic!("Verus unsupported: closure mutable references");
+        }
+
+        fn_scope.upvars_moved = sort_and_remove_redundant(fn_scope.upvars_moved);
+        for fp in fn_scope.upvars_moved.iter() {
+            self.push_instruction_raw(
+                closure_prologue,
+                AstPosition::Before(body.span.id),
+                InstructionKind::Overwrite(fp.clone()),
+            );
+        }
+        self.basic_blocks[closure_prologue].successors.push(closure_start_bb);
+
+        fn_scope
+    }
+
+    fn push_fn(&mut self) {
+        self.fns.push(FnScope {
+            scope_map: ScopeMap::new(),
+            upvars_mutated: vec![],
+            upvars_moved: vec![],
+        });
+    }
+
+    fn pop_fn(&mut self) -> FnScope {
+        let p = self.fns.pop().unwrap();
+        assert_eq!(p.scope_map.num_scopes(), 0);
+        p
+    }
+
+    fn push_scope(&mut self) {
+        // TODO(new_mut_ref): disallow shadowing
+        self.fns.last_mut().unwrap().scope_map.push_scope(true);
+    }
+
+    fn pop_scope(&mut self) {
+        self.fns.last_mut().unwrap().scope_map.pop_scope();
+    }
+
+    fn scope_insert(&mut self, id: &VarIdent) {
+        self.fns.last_mut().unwrap().scope_map.insert(id.clone(), ()).unwrap();
+    }
+
+    fn scope_insert_pattern(&mut self, pattern: &Pattern) {
+        match &pattern.x {
+            PatternX::Wildcard(_) | PatternX::Expr(_) | PatternX::Range(_, _) => {
+                // nothing to do
+            }
+            PatternX::Var(binding) => {
+                self.scope_insert(&binding.name);
+            }
+            PatternX::Binding { binding, sub_pat } => {
+                self.scope_insert(&binding.name);
+                self.scope_insert_pattern(sub_pat);
+            }
+            PatternX::Constructor(_dt, _variant, patterns) => {
+                for p in patterns.iter() {
+                    self.scope_insert_pattern(&p.a);
+                }
+            }
+            PatternX::Or(sub_pat, _) | PatternX::ImmutRef(sub_pat) | PatternX::MutRef(sub_pat) => {
+                self.scope_insert_pattern(sub_pat);
+            }
+        }
+    }
+
+    fn place_is_upvar(&self, fp: &FlattenedPlace) -> bool {
+        match &self.locals.locals[fp.local].name {
+            LocalName::Named(var_ident) => {
+                for i in (0..self.fns.len()).rev() {
+                    if self.fns[i].scope_map.contains_key(var_ident) {
+                        return i != self.fns.len() - 1;
+                    }
+                }
+                panic!("Verus Internal Error: place_is_upvar failed to find var");
+            }
+            LocalName::Temporary(..) => false,
+        }
+    }
+
+    //// User-defined type invariants
+
+    fn get_typ_inv_fun(&mut self, p: &Place) -> Option<Fun> {
+        match &*undecorate_typ(&p.typ) {
+            TypX::Datatype(dt, ..) => get_typ_inv_fun_dt(&self.locals.datatypes, dt),
+            _ => {
+                dbg!(&p.typ);
+                self.errors.push(error(&p.span, "Verus Internal Error: get_typ_inv_fun failed"));
+                None
+            }
+        }
+    }
+}
+
+fn get_typ_inv_fun_dt(datatypes: &HashMap<Path, Datatype>, dt: &Dt) -> Option<Fun> {
+    match dt {
+        Dt::Path(path) => match &datatypes.get(path).unwrap().x.user_defined_invariant_fn {
+            Some(fun) => Some(fun.clone()),
+            None => None,
+        },
+        Dt::Tuple(_) => None,
     }
 }
 
@@ -1122,9 +1905,9 @@ pub fn expr_all_bound_vars_with_ownership(
         &mut |_env, _scope_map, _stmt| Ok(()),
         &mut |_env, _scope_map, pattern| {
             match &pattern.x {
-                PatternX::Var(PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ })
+                PatternX::Var(PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ })
                 | PatternX::Binding {
-                    binding: PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ },
+                    binding: PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ },
                     sub_pat: _,
                 } => {
                     let spec = matches!(&modes[name], Mode::Spec);
@@ -1151,8 +1934,6 @@ pub fn pattern_all_bound_vars_with_ownership(
     pattern: &Pattern,
     modes: &HashMap<VarIdent, Mode>,
 ) -> Vec<BoundVar> {
-    // TODO(new_mut_ref) the mode-checking here needs to be exercised in test cases
-
     fn pattern_all_bound_vars_rec(
         pattern: &Pattern,
         out: &mut Vec<BoundVar>,
@@ -1160,9 +1941,9 @@ pub fn pattern_all_bound_vars_with_ownership(
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var(PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ })
+            PatternX::Var(PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ })
             | PatternX::Binding {
-                binding: PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ },
+                binding: PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ },
                 sub_pat: _,
             } => {
                 let spec = matches!(&modes[name], Mode::Spec);
@@ -1195,37 +1976,11 @@ pub fn pattern_all_bound_vars_with_ownership(
     v
 }
 
-/// When a place is matched against a pattern, it induces some moves,
-/// e.g.:
-///
-/// ```
-/// let (x, _) = y;   // moves y.0
-/// let (x, _) = y.1; // moves y.1.0
-/// ```
-
-fn moves_and_muts_for_place_being_matched(
-    pattern: &Pattern,
-    fpt: &FlattenedPlaceTyped,
-    datatypes: &HashMap<Path, Datatype>,
-    modes: &HashMap<VarIdent, Mode>,
-) -> Vec<(FlattenedPlaceTyped, ByRef)> {
-    // TODO(new_mut_ref) need to check if stuff is copy vs move
-    // TODO(new_mut_ref) need to account for pattern-ergonomics
-    let projs = moves_and_muts_for_pattern(pattern, datatypes, modes);
-    projs
-        .into_iter()
-        .map(|(mut projs, by_ref)| {
-            let mut f = fpt.clone();
-            f.projections.append(&mut projs);
-            (f, by_ref)
-        })
-        .collect()
-}
-
 fn moves_and_muts_for_pattern(
     pattern: &Pattern,
     datatypes: &HashMap<Path, Datatype>,
     modes: &HashMap<VarIdent, Mode>,
+    errors: &mut Vec<VirErr>,
 ) -> Vec<(Vec<ProjectionTyped>, ByRef)> {
     fn moves_and_muts_for_pattern_rec(
         pattern: &Pattern,
@@ -1233,12 +1988,13 @@ fn moves_and_muts_for_pattern(
         out: &mut Vec<(Vec<ProjectionTyped>, ByRef)>,
         datatypes: &HashMap<Path, Datatype>,
         modes: &HashMap<VarIdent, Mode>,
+        errors: &mut Vec<VirErr>,
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var(PatternBinding { name, mutable: _, by_ref, typ: _, copy })
+            PatternX::Var(PatternBinding { name, user_mut: _, by_ref, typ: _, copy })
             | PatternX::Binding {
-                binding: PatternBinding { name, mutable: _, by_ref, typ: _, copy },
+                binding: PatternBinding { name, user_mut: _, by_ref, typ: _, copy },
                 sub_pat: _,
             } => {
                 // no need to descend into subpat, already moving or borrowing the whole thing
@@ -1247,46 +2003,33 @@ fn moves_and_muts_for_pattern(
                 }
             }
             PatternX::Constructor(dt, variant, patterns) => {
-                let is_irrefutable = match dt {
-                    Dt::Path(path) => {
-                        let datatype = &datatypes[path];
-                        datatype.x.variants.len() == 1
-                    }
-                    Dt::Tuple(_) => true,
-                };
-
-                if is_irrefutable {
-                    for binder in patterns.iter() {
-                        let field_typ = binder.a.typ.clone();
-                        let proj = ProjectionTyped::StructField(
-                            FieldOpr {
-                                datatype: dt.clone(),
-                                variant: variant.clone(),
-                                field: binder.name.clone(),
-                                get_variant: false,
-                                check: crate::ast::VariantCheck::None,
-                            },
-                            field_typ,
-                        );
-
-                        projs.push(proj);
-                        moves_and_muts_for_pattern_rec(&binder.a, projs, out, datatypes, modes);
-                        projs.pop();
-                    }
-                } else {
-                    // TODO(new_mut_ref) this is not quite right, need to check if anything
-                    // is actually bound in here, irrefutability issues, Copy,
-                    // what if there's a mixture of muts and moves
-                    if crate::patterns::pattern_has_move(pattern, modes) {
-                        out.push((projs.clone(), ByRef::No));
-                    } else if crate::patterns::pattern_has_mut(pattern) {
-                        out.push((projs.clone(), ByRef::MutRef));
+                if let Some(_typ_inv_fun) = get_typ_inv_fun_dt(datatypes, dt) {
+                    if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
+                        errors.push(error(&pattern.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant").secondary_label(&span, "mutable binding here"));
                     }
                 }
+
+                for binder in patterns.iter() {
+                    let field_typ = binder.a.typ.clone();
+                    let proj = ProjectionTyped::StructField(
+                        FieldOpr {
+                            datatype: dt.clone(),
+                            variant: variant.clone(),
+                            field: binder.name.clone(),
+                            get_variant: false,
+                            check: crate::ast::VariantCheck::None,
+                        },
+                        field_typ,
+                    );
+
+                    projs.push(proj);
+                    moves_and_muts_for_pattern_rec(&binder.a, projs, out, datatypes, modes, errors);
+                    projs.pop();
+                }
             }
-            PatternX::Or(_, _) => {
-                // TODO(new_mut_ref): this might be complicated, need to see what rustc does
-                todo!()
+            PatternX::Or(pat1, pat2) => {
+                moves_and_muts_for_pattern_rec(&pat1, projs, out, datatypes, modes, errors);
+                moves_and_muts_for_pattern_rec(&pat2, projs, out, datatypes, modes, errors);
             }
             PatternX::Expr(..) | PatternX::Range(..) => {}
             PatternX::ImmutRef(_) => {
@@ -1296,77 +2039,81 @@ fn moves_and_muts_for_pattern(
                 let proj = ProjectionTyped::DerefMut(sub_pat.typ.clone());
 
                 projs.push(proj);
-                moves_and_muts_for_pattern_rec(sub_pat, projs, out, datatypes, modes);
+                moves_and_muts_for_pattern_rec(sub_pat, projs, out, datatypes, modes, errors);
                 projs.pop();
             }
         }
     }
 
     let mut out = vec![];
-    moves_and_muts_for_pattern_rec(pattern, &mut vec![], &mut out, datatypes, modes);
+    moves_and_muts_for_pattern_rec(pattern, &mut vec![], &mut out, datatypes, modes, errors);
     out
 }
 
 ////// Place trees
 
 impl<'a> LocalCollection<'a> {
-    fn add_param(&mut self, p: &Param) {
-        if p.x.mode != Mode::Spec {
-            self.add_place(
-                FlattenedPlaceTyped {
-                    local: p.x.name.clone(),
-                    typ: p.x.typ.clone(),
-                    projections: vec![],
-                },
-                true,
-            );
-        }
+    fn new_temp_name(&mut self, ast_id: AstId) -> LocalName {
+        let temp_id = TempId(self.next_temp_id);
+        self.next_temp_id += 1;
+        assert!(!self.ast_id_to_temp_id.contains_key(&ast_id));
+        self.ast_id_to_temp_id.insert(ast_id, temp_id);
+        LocalName::Temporary(ast_id, temp_id)
     }
 
     fn add_computed_place(&mut self, p: ComputedPlaceTyped) -> ComputedPlace {
         match p {
-            ComputedPlaceTyped::OfLocal(fpi) => {
-                let sp = self.add_place(fpi, false);
-                ComputedPlace::OfLocal(sp)
+            ComputedPlaceTyped::Exact(fpt) => {
+                let sp = self.add_place(&fpt);
+                ComputedPlace::Exact(sp)
             }
-            ComputedPlaceTyped::OfGhost(Some(fpi)) => {
-                let sp = self.add_place(fpi, false);
-                ComputedPlace::OfGhost(Some(sp))
+            ComputedPlaceTyped::Partial(fpt) => {
+                let sp = self.add_place(&fpt);
+                ComputedPlace::Partial(sp)
             }
-            ComputedPlaceTyped::OfGhost(None) => ComputedPlace::OfGhost(None),
-            ComputedPlaceTyped::OfTemp => ComputedPlace::OfTemp,
+            ComputedPlaceTyped::Ghost(Some(fpt)) => {
+                let sp = self.add_place(&fpt);
+                ComputedPlace::Ghost(Some(sp))
+            }
+            ComputedPlaceTyped::Ghost(None) => ComputedPlace::Ghost(None),
         }
     }
 
     /// Given a FlattenedPlaceTyped, we extend the tree if necessary so that it is deep enough
     /// to incorporate the given place. Returns a FlattenedPlace which indexes into the tree.
-    fn add_place(&mut self, p: FlattenedPlaceTyped, is_param: bool) -> FlattenedPlace {
+    fn add_place(&mut self, p: &FlattenedPlaceTyped) -> FlattenedPlace {
         if !self.ident_to_idx.contains_key(&p.local) {
-            self.locals.push(Local {
-                name: p.local.clone(),
-                tree: PlaceTree::Leaf(p.typ.clone()),
-                is_param,
-            });
+            self.locals.push(Local { name: p.local.clone(), tree: PlaceTree::Leaf(p.typ.clone()) });
             self.ident_to_idx.insert(p.local.clone(), self.locals.len() - 1);
         }
         let idx = self.ident_to_idx[&p.local];
 
         let projections =
-            Self::extend_tree(&mut self.locals[idx].tree, &p.projections, &self.datatypes);
+            Self::extend_tree(&mut self.locals[idx].tree, &p.typ, &p.projections, &self.datatypes);
 
         FlattenedPlace { local: idx, projections: projections }
     }
 
     fn extend_tree(
         tree: &mut PlaceTree,
+        root_typ: &Typ,
         projections: &[ProjectionTyped],
         datatypes: &HashMap<Path, Datatype>,
     ) -> Vec<Projection> {
         let mut tree: &mut PlaceTree = tree;
         let mut output_projections: Vec<Projection> = vec![];
+        let mut cur_typ = root_typ.clone();
         for projection_typed in projections.iter() {
-            if let PlaceTree::Leaf(typ) = tree {
-                let typ = undecorate_box_trk_decorations(typ);
+            if let PlaceTree::Leaf(_typ) = tree {
+                // Note: the type off the PlaceTree::Leaf might not be head-normalized
+                // (i.e., it might be a TypX::Projection instead of something concrete
+                // like TypX::MutRef or TypX::Datatype).
+                // (Note: TypX::Projection shouldn't be confused with the notion of
+                // 'place projection' common in this file.)
+                // Anyway, the `cur_typ` should be equivalent and should also be
+                // head-normalized, so use that instead.
+                let typ = undecorate_box_trk_decorations(&cur_typ);
+
                 match &**typ {
                     TypX::MutRef(inner_typ) => {
                         *tree = PlaceTree::MutRef(
@@ -1379,24 +2126,37 @@ impl<'a> LocalCollection<'a> {
                             *tree = PlaceTree::Struct(
                                 typ.clone(),
                                 dt.clone(),
-                                (0..*n).map(|i| PlaceTree::Leaf(typ_args[i].clone())).collect(),
+                                vec![
+                                    (0..*n)
+                                        .map(|i| Some(PlaceTree::Leaf(typ_args[i].clone())))
+                                        .collect(),
+                                ],
                             );
                         }
                         Dt::Path(path) => {
                             let datatype = &datatypes[path];
-                            assert!(datatype.x.variants.len() == 1);
-                            let variant = &datatype.x.variants[0];
-                            let fields = variant
-                                .fields
+                            let fields = datatype
+                                .x
+                                .variants
                                 .iter()
-                                .map(|f| {
-                                    PlaceTree::Leaf(subst_typ_for_datatype(
-                                        &datatype.x.typ_params,
-                                        typ_args,
-                                        &f.a.0,
-                                    ))
+                                .map(|variant| {
+                                    variant
+                                        .fields
+                                        .iter()
+                                        .map(|f| {
+                                            if f.a.1 == Mode::Spec {
+                                                None
+                                            } else {
+                                                Some(PlaceTree::Leaf(subst_typ_for_datatype(
+                                                    &datatype.x.typ_params,
+                                                    typ_args,
+                                                    &f.a.0,
+                                                )))
+                                            }
+                                        })
+                                        .collect::<Vec<Option<PlaceTree>>>()
                                 })
-                                .collect();
+                                .collect::<Vec<Vec<Option<PlaceTree>>>>();
                             *tree = PlaceTree::Struct(typ.clone(), dt.clone(), fields);
                         }
                     },
@@ -1410,17 +2170,19 @@ impl<'a> LocalCollection<'a> {
 
             let projection = match projection_typed {
                 ProjectionTyped::StructField(field_opr, _typ) => {
-                    Projection::StructField(field_opr_to_index(field_opr, datatypes))
+                    Projection::StructField(field_opr_to_indices(field_opr, datatypes))
                 }
                 ProjectionTyped::DerefMut(_typ) => Projection::DerefMut,
             };
             output_projections.push(projection);
 
             match &projection {
-                Projection::StructField(field_idx) => match tree {
+                Projection::StructField((variant_idx, field_idx)) => match tree {
                     PlaceTree::Leaf(_) => unreachable!(),
                     PlaceTree::Struct(_, _, subtrees) => {
-                        tree = &mut subtrees[*field_idx];
+                        // If this unwrap fails, it means we are improperly trying to
+                        // manipulate a ghost place
+                        tree = subtrees[*variant_idx][*field_idx].as_mut().unwrap();
                     }
                     PlaceTree::MutRef(..) => {
                         panic!(
@@ -1440,6 +2202,8 @@ impl<'a> LocalCollection<'a> {
                     }
                 },
             }
+
+            cur_typ = projection_typed.typ();
         }
         output_projections
     }
@@ -1449,27 +2213,29 @@ impl<'a> LocalCollection<'a> {
         let mut ast_place = SpannedTyped::new(
             span,
             self.locals[fp.local].tree.typ(),
-            PlaceX::Local(self.locals[fp.local].name.clone()),
+            PlaceX::Local(self.locals[fp.local].name.to_var_ident()),
         );
         let mut tree = &self.locals[fp.local].tree;
         for projection in fp.projections.iter() {
             match projection {
-                Projection::StructField(idx) => {
+                Projection::StructField((variant_idx, field_idx)) => {
                     let (dt, inner_trees) = match tree {
                         PlaceTree::Struct(_ty, dt, trees) => (dt, trees),
                         _ => unreachable!(),
                     };
-                    let inner_tree = &inner_trees[*idx];
+                    let inner_tree = inner_trees[*variant_idx][*field_idx].as_ref().unwrap();
                     let field_opr = match dt {
-                        Dt::Tuple(n) => crate::ast_util::mk_tuple_field_opr(*n, *idx),
+                        Dt::Tuple(n) => {
+                            assert!(*variant_idx == 0);
+                            crate::ast_util::mk_tuple_field_opr(*n, *field_idx)
+                        }
                         Dt::Path(path) => {
                             let datatype = &self.datatypes[path];
-                            assert!(datatype.x.variants.len() == 1);
-                            let variant = &datatype.x.variants[0];
+                            let variant = &datatype.x.variants[*variant_idx];
                             FieldOpr {
                                 datatype: dt.clone(),
                                 variant: variant.name.clone(),
-                                field: variant.fields[*idx].name.clone(),
+                                field: variant.fields[*field_idx].name.clone(),
                                 get_variant: false,
                                 check: crate::ast::VariantCheck::None,
                             }
@@ -1524,10 +2290,14 @@ impl<'a> LocalCollection<'a> {
                 output.push(cur.clone());
             }
             PlaceTree::Struct(_t, _, children) => {
-                for (f, child) in children.iter().enumerate() {
-                    cur.projections.push(Projection::StructField(f));
-                    Self::traverse_rec(child, cur, output, go_inside_muts);
-                    cur.projections.pop();
+                for (v, variant_children) in children.iter().enumerate() {
+                    for (f, child) in variant_children.iter().enumerate() {
+                        if let Some(child) = child {
+                            cur.projections.push(Projection::StructField((v, f)));
+                            Self::traverse_rec(child, cur, output, go_inside_muts);
+                            cur.projections.pop();
+                        }
+                    }
                 }
             }
             PlaceTree::MutRef(_t, child) => {
@@ -1550,18 +2320,23 @@ fn undecorate_box_trk_decorations(t: &Typ) -> &Typ {
     }
 }
 
-fn field_opr_to_index(field_opr: &FieldOpr, datatypes: &HashMap<Path, Datatype>) -> usize {
+fn field_opr_to_indices(
+    field_opr: &FieldOpr,
+    datatypes: &HashMap<Path, Datatype>,
+) -> (usize, usize) {
     match &field_opr.datatype {
         Dt::Tuple(n) => {
             let p = field_opr.field.parse::<usize>().unwrap();
             assert!(p < *n);
-            p
+            (0, p)
         }
         Dt::Path(path) => {
             let datatype = &datatypes[path];
-            assert!(datatype.x.variants.len() == 1);
-            let variant = &datatype.x.variants[0];
-            variant.fields.iter().position(|f| f.name == field_opr.field).unwrap()
+            let variant_idx =
+                datatype.x.variants.iter().position(|v| v.name == field_opr.variant).unwrap();
+            let variant = &datatype.x.variants[variant_idx];
+            let field_idx = variant.fields.iter().position(|f| f.name == field_opr.field).unwrap();
+            (variant_idx, field_idx)
         }
     }
 }
@@ -1638,9 +2413,9 @@ impl FlattenedPlace {
 impl ComputedPlace {
     fn get_place_for_mutation(self) -> Option<FlattenedPlace> {
         match self {
-            ComputedPlace::OfTemp => None,
-            ComputedPlace::OfLocal(p) => Some(p),
-            ComputedPlace::OfGhost(p) => {
+            ComputedPlace::Exact(p) => Some(p),
+            ComputedPlace::Partial(p) => Some(p),
+            ComputedPlace::Ghost(p) => {
                 // When mutating a ghost place, we treat it as a mutation of whatever
                 // "real" place contains it
                 p
@@ -1650,11 +2425,26 @@ impl ComputedPlace {
 }
 
 impl ComputedPlaceTyped {
+    fn to_ghost(self) -> ComputedPlaceTyped {
+        match self {
+            ComputedPlaceTyped::Exact(fpt) => ComputedPlaceTyped::Ghost(Some(fpt)),
+            ComputedPlaceTyped::Partial(fpt) => ComputedPlaceTyped::Ghost(Some(fpt)),
+            ComputedPlaceTyped::Ghost(opt_fpt) => ComputedPlaceTyped::Ghost(opt_fpt),
+        }
+    }
+
+    fn to_partial(self) -> ComputedPlaceTyped {
+        match self {
+            ComputedPlaceTyped::Exact(fpt) => ComputedPlaceTyped::Partial(fpt),
+            ComputedPlaceTyped::Partial(fpt) => ComputedPlaceTyped::Partial(fpt),
+            ComputedPlaceTyped::Ghost(opt_fpt) => ComputedPlaceTyped::Ghost(opt_fpt),
+        }
+    }
+
     fn get_place_for_move(self) -> Option<FlattenedPlaceTyped> {
         match self {
-            ComputedPlaceTyped::OfTemp => None,
-            ComputedPlaceTyped::OfLocal(p) => Some(p),
-            ComputedPlaceTyped::OfGhost(_p) => {
+            ComputedPlaceTyped::Exact(p) => Some(p),
+            ComputedPlaceTyped::Partial(_) | ComputedPlaceTyped::Ghost(_) => {
                 // reading out of a ghost field is NOT a move
                 None
             }
@@ -1702,6 +2492,52 @@ impl ProjectionTyped {
             field_typ,
         )
     }
+
+    fn typ(&self) -> Typ {
+        match self {
+            ProjectionTyped::StructField(_, typ) => typ.clone(),
+            ProjectionTyped::DerefMut(typ) => typ.clone(),
+        }
+    }
+}
+
+impl LocalName {
+    fn to_var_ident(&self) -> VarIdent {
+        match self {
+            LocalName::Named(x) => {
+                // This disambiguator shouldn't have been used yet
+                assert!(!matches!(x.1, VarIdentDisambiguate::ResInfTemp(_)));
+                x.clone()
+            }
+            LocalName::Temporary(_ast_id, TempId(i)) => {
+                VarIdent(str_ident("tmp"), VarIdentDisambiguate::ResInfTemp(*i))
+            }
+        }
+    }
+
+    fn is_temp(&self) -> bool {
+        match self {
+            LocalName::Named(..) => false,
+            LocalName::Temporary(..) => true,
+        }
+    }
+}
+
+fn sort_and_remove_redundant(v: Vec<FlattenedPlace>) -> Vec<FlattenedPlace> {
+    let mut v = v;
+    v.sort();
+    let mut w: Vec<FlattenedPlace> = vec![];
+    for fp in v.into_iter() {
+        if w.len() == 0 || !w[w.len() - 1].contains(&fp) {
+            w.push(fp);
+        }
+    }
+    for i in 0..w.len() {
+        for j in 0..i {
+            assert!(!w[i].intersects(&w[j]));
+        }
+    }
+    w
 }
 
 ////// CFG dataflow analysis
@@ -1747,9 +2583,10 @@ fn do_dataflow<D: DataflowState + Clone + Eq>(
 
     match dir {
         Direction::Forward => {
-            output.output[0][0] = entry_or_exit.clone();
-
             for i in 0..cfg.basic_blocks.len() {
+                if cfg.basic_blocks[i].is_entry {
+                    *output.output[i].last_mut().unwrap() = entry_or_exit.clone();
+                }
                 worklist.push_back(i);
                 in_worklist[i] = true;
             }
@@ -1819,7 +2656,7 @@ fn join_predecessors<D: DataflowState + Clone>(
     empty: &D,
     entry: &D,
 ) -> D {
-    if bb == 0 {
+    if cfg.basic_blocks[bb].is_entry {
         let mut res = entry.clone();
         for pred in cfg.basic_blocks[bb].predecessors.iter().cloned() {
             res.join(&output.output[pred][output.output[pred].len() - 1]);
@@ -1894,7 +2731,42 @@ fn pretty_cfg(cfg: &CFG) -> String {
 }
 
 fn pretty_locals(locals: &LocalCollection) -> String {
-    format!("{:#?}", &locals.locals)
+    let mut v = vec![];
+    for l in locals.locals.iter() {
+        v.push(pretty_local(l, locals.datatypes));
+    }
+    v.join("\n")
+}
+
+fn pretty_local(l: &Local, datatypes: &HashMap<Path, Datatype>) -> String {
+    format!(
+        "{:}{:} : {:}",
+        pretty_local_name(&l.name),
+        pretty_tree(&l.tree, datatypes),
+        crate::ast_util::typ_to_diagnostic_str(l.tree.typ())
+    )
+}
+
+fn pretty_tree(pt: &PlaceTree, datatypes: &HashMap<Path, Datatype>) -> String {
+    match pt {
+        PlaceTree::Leaf(_) => "".to_string(),
+        PlaceTree::MutRef(_, pt) => format!(".*{:}", pretty_tree(&pt, datatypes)),
+        PlaceTree::Struct(_, dt, variants) => {
+            let mut v = vec![];
+            for (variant_idx, fields) in variants.iter().enumerate() {
+                for (field_idx, field) in fields.iter().enumerate() {
+                    match field {
+                        Some(child) => {
+                            let name = pretty_field_name(dt, variant_idx, field_idx, datatypes);
+                            v.push(format!("{:}{:}", name, pretty_tree(child, datatypes)));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            format!(".{{{:}}}", v.join(", "))
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -1923,6 +2795,7 @@ fn pretty_basic_blocks(
     let mut v = vec![];
     for (i, bb) in cfg.basic_blocks.iter().enumerate() {
         v.push(format!("BasicBlock {:}:\n", i));
+        v.push(format!("    is_entry = {:}\n", bb.is_entry));
         v.push(format!("    Predecessors: {:?}\n", &pretty_bb_list(&bb.predecessors)));
         v.push(format!(
             "    (always_add_resolution_at_start = {:?})\n",
@@ -1966,8 +2839,15 @@ fn pretty_instr(locals: &LocalCollection, instr: &Instruction) -> String {
     format!("{:}({:})", name, pretty_flattened_place(locals, fp))
 }
 
+fn pretty_local_name(l: &LocalName) -> String {
+    match l {
+        LocalName::Named(i) => (*i.0).clone(),
+        LocalName::Temporary(_ast_id, TempId(i)) => format!("Temp_{i}"),
+    }
+}
+
 fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> String {
-    let mut s: String = (*locals.locals[fp.local].name.0).clone();
+    let mut s: String = pretty_local_name(&locals.locals[fp.local].name);
     let mut tree: &PlaceTree = &locals.locals[fp.local].tree;
     for proj in fp.projections.iter() {
         let (x, t) = match proj {
@@ -1978,21 +2858,14 @@ fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> Stri
                 };
                 (".*".to_string(), inner_tree)
             }
-            Projection::StructField(idx) => {
+            Projection::StructField((variant_idx, field_idx)) => {
                 let (dt, inner_tree) = match tree {
-                    PlaceTree::Struct(_, dt, trees) => (dt, &trees[*idx]),
+                    PlaceTree::Struct(_, dt, trees) => (dt, &trees[*variant_idx][*field_idx]),
                     _ => unreachable!(),
                 };
-                let x = match dt {
-                    Dt::Tuple(_) => {
-                        format!(".{:}", idx)
-                    }
-                    Dt::Path(p) => {
-                        let datatype = &locals.datatypes[p];
-                        format!(".{:}", datatype.x.variants[0].fields[*idx].name)
-                    }
-                };
-                (x, inner_tree)
+                let x = pretty_field_name(dt, *variant_idx, *field_idx, &locals.datatypes);
+                let x = format!(".{:}", x);
+                (x, inner_tree.as_ref().unwrap())
             }
         };
         s += &x;
@@ -2001,24 +2874,47 @@ fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> Stri
     s
 }
 
+fn pretty_field_name(
+    dt: &Dt,
+    variant_idx: usize,
+    field_idx: usize,
+    datatypes: &HashMap<Path, Datatype>,
+) -> String {
+    match dt {
+        Dt::Tuple(_) => {
+            format!("{:}", field_idx)
+        }
+        Dt::Path(p) => {
+            let datatype = &datatypes[p];
+            if datatype.x.variants.len() > 1 {
+                format!(
+                    "{:}_{:}",
+                    datatype.x.variants[variant_idx].name,
+                    datatype.x.variants[variant_idx].fields[field_idx].name
+                )
+            } else {
+                format!("{:}", datatype.x.variants[variant_idx].fields[field_idx].name)
+            }
+        }
+    }
+}
+
 ////// Analysis: Initialization
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct InitializationPossibilities {
-    /// Is it possible to reach the given program point when the given place uninitialized?
+    /// Is it possible to reach the given program point with the given place
+    /// not initialized?
+    /// (Using the definition of "conditionally initialized" described above)
     can_be_uninit: bool,
-    /// Is it possible to reach the given program point when the given place initialized?
-    can_be_init: bool,
 }
 
 impl DataflowState for InitializationPossibilities {
     type Const = FlattenedPlace;
 
     fn join(&mut self, b: &Self) {
-        *self = InitializationPossibilities {
-            can_be_uninit: self.can_be_uninit || b.can_be_uninit,
-            can_be_init: self.can_be_init || b.can_be_init,
-        };
+        *self =
+            InitializationPossibilities { can_be_uninit: self.can_be_uninit || b.can_be_uninit };
     }
 
     // forward transfer
@@ -2026,20 +2922,14 @@ impl DataflowState for InitializationPossibilities {
         match &instr.kind {
             InstructionKind::MoveFrom(sp) => {
                 if sp.contains(place) {
-                    InitializationPossibilities {
-                        can_be_uninit: self.can_be_init || self.can_be_uninit,
-                        can_be_init: false,
-                    }
+                    InitializationPossibilities { can_be_uninit: true }
                 } else {
                     *self
                 }
             }
             InstructionKind::Overwrite(sp) => {
                 if sp.contains(place) {
-                    InitializationPossibilities {
-                        can_be_uninit: false,
-                        can_be_init: self.can_be_init || self.can_be_uninit,
-                    }
+                    InitializationPossibilities { can_be_uninit: false }
                 } else {
                     *self
                 }
@@ -2047,10 +2937,7 @@ impl DataflowState for InitializationPossibilities {
             InstructionKind::Mutate(_sp) => *self,
             InstructionKind::DropFrom(sp) => {
                 if sp.contains(place) {
-                    InitializationPossibilities {
-                        can_be_uninit: self.can_be_init || self.can_be_uninit,
-                        can_be_init: false,
-                    }
+                    InitializationPossibilities { can_be_uninit: true }
                 } else {
                     *self
                 }
@@ -2061,12 +2948,11 @@ impl DataflowState for InitializationPossibilities {
 
 impl InitializationPossibilities {
     fn empty() -> Self {
-        InitializationPossibilities { can_be_uninit: false, can_be_init: false }
+        InitializationPossibilities { can_be_uninit: false }
     }
 
-    fn entry(local: &Local) -> Self {
-        // Params are initialized at the start, nothing else is
-        InitializationPossibilities { can_be_uninit: !local.is_param, can_be_init: local.is_param }
+    fn entry() -> Self {
+        InitializationPossibilities { can_be_uninit: true }
     }
 }
 
@@ -2131,7 +3017,7 @@ fn get_resolutions(cfg: &CFG) -> Vec<ResolutionToInsert> {
                 do_dataflow::<InitializationPossibilities>(
                     cfg,
                     InitializationPossibilities::empty(),
-                    InitializationPossibilities::entry(&cfg.locals.locals[place.local]),
+                    InitializationPossibilities::entry(),
                     place,
                     Direction::Forward,
                 )
@@ -2186,6 +3072,7 @@ fn get_resolutions_for_place(
     resolve_analysis: &DataflowOutput<ResolveSafety>,
     output: &mut Vec<ResolutionToInsert>,
 ) {
+    let is_temp = cfg.locals.locals[place.local].name.is_temp();
     for bb in 0..cfg.basic_blocks.len() {
         for i in 0..cfg.basic_blocks[bb].instructions.len() + 1 {
             // Is it safe to resolve here?
@@ -2195,8 +3082,8 @@ fn get_resolutions_for_place(
                 // If so, is it *useful* to resolve here?
                 let should_assume_has_resolved =
                     // At beginning of function, or beginning or end of a loop,
-                    // Always add resolutions
-                    (i == 0 && cfg.basic_blocks[bb].always_add_resolution_at_start)
+                    // Always add resolutions for non-temps
+                    (i == 0 && cfg.basic_blocks[bb].always_add_resolution_at_start && !is_temp)
                     // If there's any predecessor block where this value can't be resolved
                     || (i == 0
                         && cfg.basic_blocks[bb].predecessors.iter().any(|pred| {
@@ -2224,7 +3111,21 @@ fn get_resolutions_for_place(
 ////// Modify the AST Expr with the new resolutions
 
 /// Returns the given expression with AssumeResolved expressions inserted.
-fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert>) -> Expr {
+fn apply_resolutions(
+    cfg: &CFG,
+    params: &Params,
+    body: &Expr,
+    resolutions: Vec<ResolutionToInsert>,
+    assigns_to_resolve: Vec<AstId>,
+    typ_inv_obligations: Vec<(AstId, Fun)>,
+    typ_inv_info: &crate::modes::TypeInvInfo,
+    module: &Path,
+) -> Result<Expr, VirErr> {
+    // All the resolutions that apply to PlaceX::Temporary nodes
+    let mut temp_map = HashMap::<AstId, (Vec<FlattenedPlace>, bool)>::new();
+    let mut typ_inv_map = HashMap::<AstId, (Fun, bool)>::new();
+
+    // All the resolutions that apply to Expr and Stmt nodes
     let mut id_map = HashMap::<
         AstId,
         (
@@ -2234,9 +3135,16 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
             Vec<FlattenedPlace>,
             Vec<FlattenedPlace>,
             bool,
+            bool,
         ),
     >::new();
+
     for r in resolutions.into_iter() {
+        // For any temp that has an Assume(HasResolved(...)) about it, we need to expand that temp
+        if let Some(temp_ast_id) = r.is_for_temp(cfg) {
+            temp_map.entry(temp_ast_id).or_insert_with_key(|_| (vec![], false));
+        }
+
         let ast_id = match r.position {
             AstPosition::Before(ast_id) => ast_id,
             AstPosition::After(ast_id) => ast_id,
@@ -2246,13 +3154,19 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
                 // advanced unwind-related stuff?
                 continue;
             }
+            AstPosition::MatchIntermediate => {
+                continue;
+            }
             AstPosition::AfterBool(ast_id, _b) => ast_id,
+            AstPosition::AfterTempAssignment(ast_id) => {
+                temp_map.entry(ast_id).or_insert_with_key(|_| (vec![], false)).0.push(r.place);
+                continue;
+            }
         };
-        if !id_map.contains_key(&ast_id) {
-            id_map.insert(ast_id, (vec![], vec![], vec![], vec![], vec![], false));
-        }
 
-        let entry = id_map.get_mut(&ast_id).unwrap();
+        let entry = id_map
+            .entry(ast_id)
+            .or_insert_with_key(|_| (vec![], vec![], vec![], vec![], vec![], false, false));
 
         match r.position {
             AstPosition::Before(_ast_id) => {
@@ -2265,6 +3179,8 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
                 entry.2.push(r.place);
             }
             AstPosition::OnUnwind(_) => unreachable!(),
+            AstPosition::AfterTempAssignment(_) => unreachable!(),
+            AstPosition::MatchIntermediate => unreachable!(),
             AstPosition::AfterBool(_ast_id, false) => {
                 entry.3.push(r.place);
             }
@@ -2274,12 +3190,46 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
         };
     }
 
-    let result = crate::ast_visitor::map_expr_visitor_env(
+    for ast_id in assigns_to_resolve.into_iter() {
+        let entry = id_map
+            .entry(ast_id)
+            .or_insert_with_key(|_| (vec![], vec![], vec![], vec![], vec![], false, false));
+        assert!(!entry.5);
+        entry.5 = true;
+    }
+
+    for (ast_id, fun) in typ_inv_obligations.iter() {
+        let found = typ_inv_map.insert(*ast_id, (fun.clone(), false));
+        assert!(found.is_none());
+    }
+
+    let mut maps = (id_map, temp_map, typ_inv_map);
+
+    let mut scope_map = VisitorScopeMap::new();
+    scope_map.push_scope(true);
+    for param in params.iter() {
+        scope_map
+            .insert(
+                param.x.name.clone(),
+                crate::ast_visitor::ScopeEntry::new(&param.x.typ, Some(param.x.user_mut), true),
+            )
+            .unwrap();
+    }
+
+    let mut result = crate::ast_visitor::map_expr_visitor_env(
         body,
-        &mut VisitorScopeMap::new(),
-        &mut id_map,
-        &|id_map, scope_map, expr: &Expr| {
-            if let Some((befores, afters, after_args, after_f, after_t, seen_yet)) =
+        &mut scope_map,
+        &mut maps,
+        &|(id_map, _, _), scope_map, expr: &Expr| {
+            let expr2 = crate::user_defined_type_invariants::annotate_one(
+                expr,
+                typ_inv_info,
+                &cfg.locals.functions,
+                &cfg.locals.datatypes,
+                module,
+            )?;
+
+            if let Some((befores, afters, after_args, after_f, after_t, assn, seen_yet)) =
                 id_map.get_mut(&expr.span.id)
             {
                 if *seen_yet {
@@ -2294,7 +3244,11 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
                 let after_f_exprs = filter_and_make_assumes(cfg, &expr.span, scope_map, after_f);
                 let after_t_exprs = filter_and_make_assumes(cfg, &expr.span, scope_map, after_t);
 
-                let e = expr.clone();
+                let mut e = expr2.clone();
+                if *assn {
+                    e = apply_resolution_to_assignment(&e);
+                }
+
                 let e = apply_after_args_exprs(e, after_args_exprs);
                 let e = apply_before_exprs(e, befores_exprs);
                 let e = apply_after_exprs(e, afters_exprs);
@@ -2302,11 +3256,11 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
 
                 Ok(e)
             } else {
-                Ok(expr.clone())
+                Ok(expr2.clone())
             }
         },
-        &|id_map, scope_map, stmt| {
-            if let Some((befores, afters, after_args, after_f, after_t, seen_yet)) =
+        &|(id_map, _, _), scope_map, stmt| {
+            if let Some((befores, afters, after_args, after_f, after_t, assn, seen_yet)) =
                 id_map.get_mut(&stmt.span.id)
             {
                 if *seen_yet {
@@ -2314,6 +3268,9 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
                 }
                 if after_f.len() > 0 || after_t.len() > 0 {
                     panic!("Verus internal error: AfterBool should only apply to exprs");
+                }
+                if *assn {
+                    panic!("Verus internal error: assignment should only apply to exprs");
                 }
                 assert!(after_args.len() == 0);
                 *seen_yet = true;
@@ -2341,17 +3298,73 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
             }
         },
         &|_, t| Ok(t.clone()),
-        &|_, _, p| Ok(p.clone()),
-    )
-    .unwrap();
+        &|(_, temp_map, typ_inv_map), scope_map, p| {
+            let p1 = if matches!(&p.x, PlaceX::Temporary(_)) {
+                if let Some((afters, seen_yet)) = temp_map.get_mut(&p.span.id) {
+                    if *seen_yet {
+                        panic!("Verus internal error: duplicate AstId");
+                    }
+                    *seen_yet = true;
+                    let afters_exprs = filter_and_make_assumes(cfg, &p.span, scope_map, afters);
+                    apply_temp_simplification(cfg, p, afters_exprs)
+                } else {
+                    p.clone()
+                }
+            } else {
+                p.clone()
+            };
 
-    for (_, (_, _, _, _, _, found)) in id_map.iter() {
+            if let Some((fun, seen_yet)) = typ_inv_map.get_mut(&p.span.id) {
+                if *seen_yet {
+                    panic!("Verus internal error: duplicate AstId");
+                }
+                *seen_yet = true;
+
+                let function = cfg.locals.functions.get(fun).unwrap();
+                crate::user_defined_type_invariants::check_vis(&p.span, function, module)?;
+
+                let x = PlaceX::UserDefinedTypInvariantObligation(p1.clone(), fun.clone());
+                Ok(SpannedTyped::new(&p1.span, &p1.typ, x))
+            } else {
+                Ok(p1)
+            }
+        },
+    )?;
+
+    let (id_map, temp_map, typ_inv_map) = maps;
+
+    for (_, (_, _, _, _, _, _, found)) in id_map.iter() {
         if !*found {
             panic!("resolution_inference: bad run for apply_resolutions");
         }
     }
 
-    result
+    for (_, (_, found)) in temp_map.iter() {
+        if !*found {
+            panic!("resolution_inference: bad run for apply_resolutions");
+        }
+    }
+
+    for (_, (_, found)) in typ_inv_map.iter() {
+        if !*found {
+            panic!("resolution_inference: bad run for apply_resolutions");
+        }
+    }
+
+    if temp_map.len() > 0 {
+        result = add_decls_for_temps(cfg, &temp_map, &result);
+    }
+
+    Ok(result)
+}
+
+impl ResolutionToInsert {
+    fn is_for_temp(&self, cfg: &CFG) -> Option<AstId> {
+        match &cfg.locals.locals[self.place.local].name {
+            LocalName::Temporary(ast_id, _temp_id) => Some(*ast_id),
+            LocalName::Named(_) => None,
+        }
+    }
 }
 
 /// Filter for the resolutions that are actually in scope and make the AssumeResolved expressions.
@@ -2364,22 +3377,91 @@ fn filter_and_make_assumes(
     v.iter()
         .filter_map(|fp| {
             let name = &cfg.locals.locals[fp.local].name;
-            if scope_map.contains_key(name) { Some(make_assume(cfg, span, fp)) } else { None }
+            let keep = match name {
+                LocalName::Named(name) => scope_map.contains_key(name),
+                LocalName::Temporary(..) => {
+                    // We can't use the scope_map to check if the temporary is in scope
+                    // Instead, we make sure the algorithm doesn't try to insert a resolution
+                    // for a temp-place outside of the temp scope.
+                    true
+                }
+            };
+            if keep { Some(make_assume(cfg, span, fp)) } else { None }
         })
         .collect()
 }
 
+/// Returns:
+/// assume(all IsVariant conditions needed for Place to be valid ==> HasResolved(Place))
 fn make_assume(cfg: &CFG, span: &Span, fp: &FlattenedPlace) -> Expr {
     let ast_place = cfg.locals.to_ast_place(span, fp);
-    let e = SpannedTyped::new(
-        &ast_place.span,
-        &ast_place.typ,
-        ExprX::ReadPlace(
-            ast_place.clone(),
-            UnfinalizedReadKind { preliminary_kind: ReadKind::Spec, id: u64::MAX },
-        ),
-    );
-    SpannedTyped::new(&ast_place.span, &unit_typ(), ExprX::AssumeResolved(e, ast_place.typ.clone()))
+    let e = crate::ast_util::place_to_spec_expr(&ast_place);
+    // TODO(new_mut_ref): are we sure that ast_place.typ is correct including decoration?
+    let has_resolvedx = ExprX::UnaryOpr(UnaryOpr::HasResolved(ast_place.typ.clone()), e);
+    let has_resolved = SpannedTyped::new(&ast_place.span, &bool_typ(), has_resolvedx);
+    let conditional_has_resolved =
+        condition_on_enum_variants(&has_resolved, &ast_place, &cfg.locals.datatypes);
+    crate::ast_util::mk_assume(&ast_place.span, &conditional_has_resolved)
+}
+
+/// Given an `AssignToPlace`, sets the `resolve` field to true
+/// (Equivalently, adds an `assume(has_resolved(...))` for the value being overwritten
+fn apply_resolution_to_assignment(e: &Expr) -> Expr {
+    match &e.x {
+        ExprX::AssignToPlace { place, rhs, op, resolve } => {
+            // TODO(new_mut_ref): are we sure that ast_place.typ is correct including decoration?
+            let typ = place.typ.clone();
+
+            assert!(resolve.is_none());
+            e.new_x(ExprX::AssignToPlace {
+                place: place.clone(),
+                rhs: rhs.clone(),
+                op: *op,
+                resolve: Some(typ),
+            })
+        }
+        _ => {
+            panic!("apply_resolution_to_assignment expects AssignToPlace node");
+        }
+    }
+}
+
+/// Returns:
+/// `all IsVariant conditions needed for Place to be valid ==> bool_expr`
+fn condition_on_enum_variants(
+    bool_expr: &Expr,
+    place: &Place,
+    datatypes: &HashMap<Path, Datatype>,
+) -> Expr {
+    match &place.x {
+        PlaceX::Local(_l) => bool_expr.clone(),
+        PlaceX::DerefMut(p) => condition_on_enum_variants(bool_expr, p, datatypes),
+        PlaceX::Field(field_opr, p) => {
+            let is_irref = match &field_opr.datatype {
+                Dt::Tuple(_) => true,
+                Dt::Path(path) => datatypes[path].x.variants.len() == 1,
+            };
+            let conditioned_bool_expr = if is_irref {
+                bool_expr
+            } else {
+                let e0 = crate::ast_util::place_to_spec_expr(p);
+                let is_variantx = ExprX::UnaryOpr(
+                    UnaryOpr::IsVariant {
+                        datatype: field_opr.datatype.clone(),
+                        variant: field_opr.variant.clone(),
+                    },
+                    e0,
+                );
+                let is_variant = SpannedTyped::new(&place.span, &bool_typ(), is_variantx);
+                &crate::ast_util::mk_implies(&place.span, &is_variant, bool_expr)
+            };
+            condition_on_enum_variants(conditioned_bool_expr, p, datatypes)
+        }
+        _ => {
+            // We only have to handle places produced by `to_ast_place`
+            panic!("condition_on_enum_variants got unexpected Place kind")
+        }
+    }
 }
 
 fn exprs_to_stmts(exprs: Vec<Expr>) -> Vec<Stmt> {
@@ -2410,11 +3492,7 @@ fn apply_after_exprs(expr: Expr, after_exprs: Vec<Expr>) -> Expr {
         }
         SpannedTyped::new(&expr.span, &unit_typ(), ExprX::Block(Arc::new(stmts), None))
     };
-    SpannedTyped::new(
-        &expr.span,
-        &expr.typ,
-        ExprX::UseLeftWhereRightCanHaveNoAssignments(expr.clone(), e),
-    )
+    SpannedTyped::new(&expr.span, &expr.typ, ExprX::EvalAndResolve(expr.clone(), e))
 }
 
 fn apply_after_bool_exprs(expr: Expr, after_f: Vec<Expr>, after_t: Vec<Expr>) -> Expr {
@@ -2478,4 +3556,75 @@ fn apply_after_args_exprs(expr: Expr, exprs: Vec<Expr>) -> Expr {
             panic!("apply_after_args_exprs expected ExprX::Call");
         }
     }
+}
+
+fn apply_temp_simplification(cfg: &CFG, place: &Place, exprs: Vec<Expr>) -> Place {
+    // Note that exprs might be empty here; we still need to do the transformation if there
+    // is some Assume(HasResolved) for this temporary being inserted at a different location.
+
+    let PlaceX::Temporary(expr) = &place.x else {
+        panic!("Verus Internal Error: apply_temp_simplification expected Temporary");
+    };
+
+    // Translate:
+    // Temporary(expr)   -->   WithExpr({ tmp = expr; other_stmts; }, Local(tmp))
+    // Use an Assign node (we add the Decl in `add_decls_for_temps`)
+
+    let ast_id = place.span.id;
+    let temp_id = cfg.locals.ast_id_to_temp_id[&ast_id];
+    let x = LocalName::Temporary(ast_id, temp_id).to_var_ident();
+
+    let tmp_local_place = SpannedTyped::new(&place.span, &place.typ, PlaceX::Local(x.clone()));
+
+    let assign_expr = SpannedTyped::new(
+        &place.span,
+        &unit_typ(),
+        ExprX::AssignToPlace {
+            place: tmp_local_place.clone(),
+            rhs: expr.clone(),
+            op: None,
+            resolve: None,
+        },
+    );
+
+    let mut stmts = vec![Spanned::new(place.span.clone(), StmtX::Expr(assign_expr))];
+    for e in exprs.into_iter() {
+        stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
+    }
+
+    let block_expr =
+        SpannedTyped::new(&place.span, &unit_typ(), ExprX::Block(Arc::new(stmts), None));
+
+    SpannedTyped::new(&place.span, &place.typ, PlaceX::WithExpr(block_expr, tmp_local_place))
+}
+
+fn add_decls_for_temps(
+    cfg: &CFG,
+    temp_map: &HashMap<AstId, (Vec<FlattenedPlace>, bool)>,
+    expr: &Expr,
+) -> Expr {
+    // Declare all temp vars at the beginning of the function body
+    // (There doesn't seem to be any point in minimizing the scope of such variables,
+    // but maybe we should restrict them to individual loops?)
+    // We mark them all mut, though in principle, some of them don't need to be mut,
+    // e.g., the ones that are only here so we can call `assume(HasResolved(...))`.
+    let mut stmts = vec![];
+    for local in cfg.locals.locals.iter() {
+        if let LocalName::Temporary(ast_id, temp_id) = &local.name {
+            if temp_map.contains_key(ast_id) {
+                let x = LocalName::Temporary(*ast_id, *temp_id).to_var_ident();
+                let typ = local.tree.typ();
+                stmts.push(Spanned::new(
+                    expr.span.clone(),
+                    StmtX::Decl {
+                        pattern: PatternX::simple_var(x, &expr.span, typ),
+                        mode: None, // doesn't matter
+                        init: None,
+                        els: None,
+                    },
+                ));
+            }
+        }
+    }
+    SpannedTyped::new(&expr.span, &expr.typ, ExprX::Block(Arc::new(stmts), Some(expr.clone())))
 }

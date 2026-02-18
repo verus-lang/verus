@@ -13,11 +13,18 @@ pub use super::raw_ptr::MemContents;
 use super::set::*;
 use super::*;
 
+pub mod invcell;
+pub mod pcell;
+pub mod pcell_maybe_uninit;
+
+// note that almost everything in this module is now deprecated and will be deleted
+
 verus! {
 
 broadcast use {super::map::group_map_axioms, super::set::group_set_axioms};
-// TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 
+/// **Now deprecated** See [`pcell::PCell`] or [`pcell_maybe_uninit::PCell`] instead
+///
 /// `PCell<V>` (which stands for "permissioned call") is the primitive Verus `Cell` type.
 ///
 /// Technically, it is a wrapper around
@@ -52,8 +59,7 @@ broadcast use {super::map::group_map_axioms, super::set::group_set_axioms};
 /// Also note that the `PCell` might be dropped before the `PointsTo` token is dropped,
 /// although in that case it will no longer be possible to use the `PointsTo` in `exec` code
 /// to extract data from the cell.
-///
-/// ### Example (TODO)
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::pcell::PCell` or `vstd::cell::pcell_maybe_uninit::PCell` instead")]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(V)]
 pub struct PCell<V> {
@@ -87,41 +93,8 @@ pub tracked struct PointsTo<V> {
 
 pub ghost struct PointsToData<V> {
     pub pcell: CellId,
-    #[cfg_attr(not(verus_verify_core), deprecated = "use `pcell_points!`, or `mem_contents()` instead")]
-    pub value: Option<V>,
+    pub mem_contents: MemContents<V>,
 }
-
-#[doc(hidden)]
-pub open spec fn option_from_mem_contents<V>(val: MemContents<V>) -> Option<V> {
-    match val {
-        MemContents::Init(v) => Some(v),
-        MemContents::Uninit => None,
-    }
-}
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! pcell_opt_internal {
-    [$pcell:expr => $val:expr] => {
-        $crate::vstd::cell::PointsToData {
-            pcell: $pcell,
-            value: $val,
-        }
-    };
-}
-
-#[cfg_attr(not(verus_verify_core), deprecated = "use pcell_points! instead")]
-#[macro_export]
-macro_rules! pcell_opt {
-    [$($tail:tt)*] => {
-        $crate::vstd::prelude::verus_proof_macro_exprs!(
-            $crate::vstd::cell::pcell_opt_internal!($($tail)*)
-        )
-    }
-}
-
-pub use pcell_opt_internal;
-pub use pcell_opt;
 
 #[doc(hidden)]
 #[macro_export]
@@ -129,7 +102,7 @@ macro_rules! pcell_points_internal {
     [$pcell:expr => $val:expr] => {
         $crate::vstd::cell::PointsToData {
             pcell: $pcell,
-            value: $crate::vstd::cell::option_from_mem_contents($val),
+            mem_contents: $val,
         }
     };
 }
@@ -159,15 +132,7 @@ impl<V> PointsTo<V> {
     pub uninterp spec fn mem_contents(&self) -> MemContents<V>;
 
     pub open spec fn view(self) -> PointsToData<V> {
-        PointsToData { pcell: self.id(), value: option_from_mem_contents(self.mem_contents()) }
-    }
-
-    #[cfg_attr(not(verus_verify_core), deprecated = "use mem_contents() instead")]
-    pub open spec fn opt_value(&self) -> Option<V> {
-        match self.mem_contents() {
-            MemContents::Init(value) => Some(value),
-            MemContents::Uninit => None,
-        }
+        PointsToData { pcell: self.id(), mem_contents: self.mem_contents() }
     }
 
     /// Is this cell initialized?
@@ -304,17 +269,25 @@ impl<V> PCell<V> {
         let tracked mut perm = perm;
         self.take(Tracked(&mut perm))
     }
-    // TODO this should replace the external_body implementation of `new` above;
-    // however it requires unstable features: const_mut_refs and const_refs_to_cell
-    //#[inline(always)]
-    //pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
-    //    ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: MemContents::Init(v) }),
-    //{
-    //    let (p, Tracked(mut t)) = Self::empty();
-    //    p.put(Tracked(&mut t), v);
-    //    (p, Tracked(t))
-    //}
 
+    #[doc(hidden)]
+    #[verifier::ignore_outside_new_mut_ref_experiment]
+    #[inline(always)]
+    #[verifier::external_body]
+    pub fn borrow_mut<'a>(&'a self, Tracked(perm): Tracked<&'a mut PointsTo<V>>) -> (v: &'a mut V)
+        requires
+            self.id() === perm@.pcell,
+            perm.is_init(),
+        ensures
+            *v === perm.value(),
+            fin(perm).id() == perm.id(),
+            fin(perm).is_init(),
+            fin(perm).value() === *fin(v),
+        opens_invariants none
+        no_unwind
+    {
+        unsafe { (*self.ucell.get()).assume_init_mut() }
+    }
 }
 
 impl<V: Copy> PCell<V> {
@@ -347,6 +320,8 @@ impl<T> InvariantPredicate<(Set<T>, PCell<T>), PointsTo<T>> for InvCellPred {
     }
 }
 
+/// **Now deprecated** See [`invcell::InvCell`] instead
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::invcell::InvCell` instead")]
 #[verifier::reject_recursive_types(T)]
 pub struct InvCell<T> {
     possible_values: Ghost<Set<T>>,

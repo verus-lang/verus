@@ -71,6 +71,7 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] test2 ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List<A> {
             Nil,
             Cons(A, Box<List<A>>),
@@ -120,6 +121,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test2_struct ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List<A> {
             Nil,
             Cons { hd: A, tl: Box<List<A>> },
@@ -169,6 +171,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test2_fails ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List<A> {
             Nil,
             Cons(A, Box<List<A>>),
@@ -575,6 +578,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_or_patterns verus_code! {
+        use vstd::std_specs::alloc::*;
         #[is_variant]
         enum Foo {
             Bar(u64),
@@ -1187,7 +1191,7 @@ test_verify_one_file! {
                 _ => false,
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "lower range bound must be less than or equal to upper")
+    } => Err(err) => assert_rust_error_msg(err, "lower bound for range pattern must be less than or equal to upper")
 }
 
 test_verify_one_file! {
@@ -1198,7 +1202,7 @@ test_verify_one_file! {
                 _ => false,
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "lower range bound must be less than or equal to upper")
+    } => Err(err) => assert_rust_error_msg(err, "lower bound for range pattern must be less than or equal to upper")
 }
 
 test_verify_one_file! {
@@ -1227,7 +1231,7 @@ test_verify_one_file! {
             };
         }
     //} => Err(err) => assert_one_fails(err)
-    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and an if-guard")
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: match arm containing both an or-pattern (|) and a match-guard")
 }
 
 test_verify_one_file! {

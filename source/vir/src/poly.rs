@@ -68,11 +68,20 @@ Note that the latter two cases lead to triggers involving "Unbox(x)", not just x
 This can lead to the completeness problems of (3).
 Therefore, the expression Unbox(Box(1)) explicitly introduces a superfluous Unbox to handle (3).
 
-Note: in some cases, we can also support int quantifier variables x,
-for the purpose of triggering on arithmetic expressions,
-as long as *all* the expressions in all the triggers use x for arithmetic.
-For example, #[trigger] g(f(x), x + 1) would not be allowed,
-because x is used both for f and for +.
+For triggers on arithmetic expressions like #[trigger] (x * y),
+we use int instead of Poly for the arithmetic variables in the trigger.
+(This is an exception to the table above.)
+Otherwise, an expression like 3 * 4 would fail to match the trigger (Unbox(x) * Unbox(y)).
+
+Note that if a variable x is used *both* as a function argument and an arithmetic argument,
+as in #[trigger] g(f(x), x + 1), we have more flexibility, because any term passed to both
+the function and the arithmetic must be boxed or unboxed in one or the other.
+For example, in g(f(3), 3 + 1) would be represented as g(f(Box(3)), Box(3 + 1)),
+so that Box(3) triggers the unbox-box axiom yielding Unbox(Box(3)) = 3.
+In this case, a trigger of g(f(x), Unbox(x) + 1) for x: Poly e-matches the expanded term
+g(f(Box(3)), Box(Unbox(Box(3)) + 1)).
+We take advantage of this to support mixed function-arithmetic triggers with Poly variables
+(native variables would also work if we wanted, relying on Box(Unbox(x)) axioms.)
 */
 
 use crate::ast::{
@@ -140,6 +149,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Datatype(path.clone(), Arc::new(monotyps))))
         }
+        TypX::Dyn(..) => None,
         TypX::Decorate(d, None, t) => typ_as_mono(t).map(|m| Arc::new(MonoTypX::Decorate(*d, m))),
         TypX::Decorate(d, Some(TypDecorationArg { allocator_typ }), t) => {
             let m1 = typ_as_mono(allocator_typ)?;
@@ -205,6 +215,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
                 typ_as_mono(typ).is_none()
             }
         }
+        TypX::Dyn(..) => true,
         TypX::Decorate(_, _, t) => typ_is_poly(ctx, t),
         // Note: we rely on rust_to_vir_base normalizing TypX::Projection { .. }.
         // If it normalized to a projection, it is poly; otherwise it is handled by
@@ -242,6 +253,7 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
                 }
             }
         }
+        TypX::Dyn(..) => typ.clone(),
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_native(ctx, t)))
         }
@@ -272,6 +284,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
         TypX::Datatype(..) | TypX::Primitive(_, _) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Dyn(..) => typ.clone(),
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t)))
         }
@@ -295,6 +308,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
         | TypX::Float(_)
         | TypX::SpecFn(..)
         | TypX::Datatype(..)
+        | TypX::Dyn(..)
         | TypX::Primitive(_, _)
         | TypX::FnDef(..) => exp.clone(),
         TypX::AnonymousClosure(..) => {
@@ -548,6 +562,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 | UnaryOp::Clip { .. }
                 | UnaryOp::FloatToBits
                 | UnaryOp::IntToReal
+                | UnaryOp::RealToInt
                 | UnaryOp::BitNot(_)
                 | UnaryOp::StrLen
                 | UnaryOp::StrIsAscii => {
@@ -559,7 +574,11 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
-                UnaryOp::HeightTrigger => {
+                UnaryOp::HeightTrigger | UnaryOp::Length(_) => {
+                    let e1 = coerce_exp_to_poly(ctx, &e1);
+                    mk_exp(ExpX::Unary(*op, e1))
+                }
+                UnaryOp::ToDyn => {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
@@ -573,9 +592,12 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
                     mk_exp(ExpX::UnaryOpr(unbox, e1.clone()))
                 }
-                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1.clone()))
+                }
+                UnaryOp::MutRefFinal(_) => {
+                    panic!("internal error: MustBeFinalized in SST")
                 }
             }
         }
@@ -598,7 +620,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp(ExpX::UnaryOpr(op.clone(), e1))
                 }
-                UnaryOpr::CustomErr(_) => {
+                UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) => {
                     mk_exp_typ(&e1.typ, ExpX::UnaryOpr(op.clone(), e1.clone()))
                 }
                 UnaryOpr::Field(FieldOpr {
@@ -629,13 +651,13 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 }
             }
         }
-        ExpX::Binary(BinaryOp::ArrayIndex, e1, e2) => {
+        ExpX::Binary(BinaryOp::Index(kind, bc), e1, e2) => {
             let e1 = visit_exp(ctx, state, e1);
             let e2 = visit_exp(ctx, state, e2);
             let e1 = coerce_exp_to_native(ctx, &e1);
             let e2 = coerce_exp_to_poly(ctx, &e2);
             let typ = coerce_typ_to_poly(ctx, &exp.typ);
-            mk_exp_typ(&typ, ExpX::Binary(BinaryOp::ArrayIndex, e1, e2))
+            mk_exp_typ(&typ, ExpX::Binary(BinaryOp::Index(*kind, *bc), e1, e2))
         }
         ExpX::Binary(op, e1, e2) => {
             let e1 = visit_exp(ctx, state, e1);
@@ -649,7 +671,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 BinaryOp::Eq(_) | BinaryOp::Ne => (false, false),
                 BinaryOp::Bitwise(..) => (true, false),
                 BinaryOp::StrGetChar { .. } => (true, false),
-                BinaryOp::ArrayIndex => unreachable!("ArrayIndex"),
+                BinaryOp::Index(..) => unreachable!("Index"),
             };
             if native {
                 let e1 = coerce_exp_to_native(ctx, &e1);
@@ -939,6 +961,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             decrease,
             typ_inv_vars,
             modified_vars,
+            pre_modified_params,
         } => {
             let cond = cond
                 .as_ref()
@@ -961,6 +984,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 decrease,
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
+                pre_modified_params: pre_modified_params.clone(),
             })
         }
         StmX::OpenInvariant(s) => {
@@ -1104,9 +1128,9 @@ fn visit_func_check_sst(
             | (LocalDeclKind::Assert, _, _)
             | (LocalDeclKind::AssertByVar { native: true }, _, _)
             | (LocalDeclKind::LetBinder, _, _)
-            | (LocalDeclKind::OpenInvariantBinder, _, _)
+            | (LocalDeclKind::OpenInvariantInnerTemp, _, _)
             | (LocalDeclKind::ExecClosureId, _, _)
-            | (LocalDeclKind::ExecClosureParam, _, _)
+            | (LocalDeclKind::ExecClosureParam { .. }, _, _)
             | (LocalDeclKind::Nondeterministic, _, _)
             | (LocalDeclKind::BorrowMut, _, _)
             | (LocalDeclKind::ExecClosureRet, _, _)
@@ -1163,26 +1187,26 @@ fn visit_func_check_sst(
 }
 
 fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
-    let FunctionSstX {
-        name,
-        kind,
-        body_visibility,
-        opaqueness,
-        owning_module,
+    let &FunctionSstX {
+        ref name,
+        ref kind,
+        ref body_visibility,
+        ref opaqueness,
+        ref owning_module,
         mode: mut function_mode,
-        typ_params,
-        typ_bounds,
-        pars,
-        ret,
-        ens_has_return,
-        item_kind,
-        attrs,
-        has,
-        decl,
-        axioms,
-        exec_proof_check,
-        recommends_check,
-        safe_api_check,
+        ref typ_params,
+        ref typ_bounds,
+        ref pars,
+        ref ret,
+        ref ens_has_return,
+        ref item_kind,
+        ref attrs,
+        ref has,
+        ref decl,
+        ref axioms,
+        ref exec_proof_check,
+        ref recommends_check,
+        ref safe_api_check,
     } = &function.x;
 
     if attrs.is_decrease_by {

@@ -48,6 +48,8 @@ pub struct GlobalCtx {
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     pub(crate) datatype_graph_span_infos: Vec<Span>,
     pub trait_impl_to_extensions: HashMap<Path, Vec<Path>>,
+    /// Map TSpec to T
+    pub(crate) extension_to_trait: HashMap<Path, Path>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
@@ -89,6 +91,7 @@ pub struct Ctx {
     pub(crate) datatypes_with_invariant: HashSet<Dt>,
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) spec_fn_types: Vec<usize>,
+    pub(crate) reached_dyn_traits: HashSet<Path>,
     pub(crate) used_builtins: crate::prune::UsedBuiltins,
     pub(crate) fndef_types: Vec<Fun>,
     pub(crate) resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
@@ -181,6 +184,7 @@ fn datatypes_invs(
                         // Should be kept in sync with vir::sst_to_air::typ_invariant
                         TypX::Int(IntRange::Int) => {}
                         TypX::Int(_)
+                        | TypX::Dyn(..)
                         | TypX::TypParam(_)
                         | TypX::Projection { .. }
                         | TypX::PointeeMetadata(_) => {
@@ -307,9 +311,16 @@ impl GlobalCtx {
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
 
+        let mut trait_map: HashMap<Path, Trait> = HashMap::new();
+        for tr in krate.traits.iter() {
+            assert!(!trait_map.contains_key(&tr.x.name));
+            trait_map.insert(tr.x.name.clone(), tr.clone());
+        }
+
         use crate::ast::TraitImpl;
         let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
         let mut trait_impl_to_extensions: HashMap<Path, Vec<Path>> = HashMap::new();
+        let mut trait_impl_from_extension: HashMap<Path, Path> = HashMap::new();
         let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
         let mut replace_with: HashMap<Node, Node> = HashMap::new();
         for t in &krate.traits {
@@ -352,6 +363,9 @@ impl GlobalCtx {
                     Node::TraitImpl(ImplPath::TraitImplPath(origin_impl.x.impl_path.clone()));
                 assert!(!replace_with.contains_key(&extension_node));
                 replace_with.insert(extension_node, origin_node);
+                assert!(!trait_impl_from_extension.contains_key(&trait_impl.x.impl_path));
+                trait_impl_from_extension
+                    .insert(trait_impl.x.impl_path.clone(), origin_impl.x.impl_path.clone());
                 trait_impl_to_extensions
                     .entry(origin_impl.x.impl_path.clone())
                     .or_default()
@@ -437,7 +451,9 @@ impl GlobalCtx {
 
             crate::recursion::expand_call_graph(
                 &func_map,
+                &trait_map,
                 &trait_impl_map,
+                &trait_impl_from_extension,
                 &reveal_group_set,
                 &mut func_call_graph,
                 &mut span_infos,
@@ -516,6 +532,7 @@ impl GlobalCtx {
                         if let Some(trait_impl) = method_impl_map.get(f1) {
                             let impl_path = ImplPath::TraitImplPath(trait_impl.clone());
                             let trait_impl = Node::TraitImpl(impl_path);
+                            let trait_impl = func_call_graph.replace(trait_impl);
                             // Do we already have f4 --> trait_impl?
                             for ti in get_edges_from(&func_call_graph.graph, &node_f4) {
                                 if *ti == trait_impl {
@@ -658,6 +675,7 @@ impl GlobalCtx {
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
             datatype_graph_span_infos: span_infos,
+            extension_to_trait,
             trait_impl_to_extensions,
             qid_map,
             rlimit,
@@ -690,6 +708,7 @@ impl GlobalCtx {
             datatype_graph: self.datatype_graph.clone(),
             datatype_graph_span_infos: self.datatype_graph_span_infos.clone(),
             func_call_sccs: self.func_call_sccs.clone(),
+            extension_to_trait: self.extension_to_trait.clone(),
             trait_impl_to_extensions: self.trait_impl_to_extensions.clone(),
             qid_map,
             rlimit: self.rlimit,
@@ -732,6 +751,7 @@ impl Ctx {
         module: Module,
         mono_types: Vec<MonoTyp>,
         spec_fn_types: Vec<usize>,
+        reached_dyn_traits: HashSet<Path>,
         used_builtins: crate::prune::UsedBuiltins,
         fndef_types: Vec<Fun>,
         resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
@@ -782,6 +802,7 @@ impl Ctx {
             datatypes_with_invariant,
             mono_types,
             spec_fn_types,
+            reached_dyn_traits,
             used_builtins,
             fndef_types,
             resolved_typs,

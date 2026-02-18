@@ -103,6 +103,13 @@ fn check_well_founded_typ(
             }
             true
         }
+        TypX::Dyn(..) => {
+            // This does not support decreases; it is a base case.
+            // For spec mode, this is like a collection of all the spec fns in the trait
+            // (the proof and exec fns are not callable from spec mode),
+            // so spec mode default values are formed like spec_fn default values.
+            true
+        }
         TypX::Decorate(_, _targ, t) => {
             // We don't need to check the allocator type argument
             // (We can consider it to be AcceptRecursiveType::Accept.
@@ -139,6 +146,7 @@ fn check_well_founded_typ(
 // REVIEW: should we also have Trait(Path) here?
 pub(crate) enum TypNode {
     Datatype(Dt),
+    Trait(Path),
     TraitImpl(ImplPath),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
@@ -178,6 +186,23 @@ fn check_positive_uses(
     polarity: Option<bool>,
     typ: &Typ,
 ) -> Result<(), VirErr> {
+    let check_impl_paths = |impl_paths: &crate::ast::ImplPaths, my_node: &TypNode| {
+        // REVIEW: this check isn't actually about polarity; should it be somewhere else?
+        for impl_path in impl_paths.iter() {
+            let impl_node = TypNode::TraitImpl(impl_path.clone());
+            if global.type_graph.in_same_scc(&impl_node, my_node) {
+                let scc_rep = global.type_graph.get_scc_rep(my_node);
+                let scc_nodes = global.type_graph.shortest_cycle_back_to_self(&scc_rep);
+                return Err(type_scc_error(
+                    &global.krate,
+                    &global.span_infos,
+                    &my_node,
+                    &scc_nodes,
+                ));
+            }
+        }
+        Ok(())
+    };
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int(..) => Ok(()),
@@ -236,19 +261,26 @@ fn check_positive_uses(
                     if strictly_positive && polarity == Some(true) { Some(true) } else { None };
                 check_positive_uses(datatype, global, local, t_polarity, t)?;
             }
-            for impl_path in impl_paths.iter() {
-                // REVIEW: this check isn't actually about polarity; should it be somewhere else?
-                let impl_node = TypNode::TraitImpl(impl_path.clone());
-                if global.type_graph.in_same_scc(&impl_node, &my_node) {
-                    let scc_rep = global.type_graph.get_scc_rep(&my_node);
-                    let scc_nodes = global.type_graph.shortest_cycle_back_to_self(&scc_rep);
-                    return Err(type_scc_error(
-                        &global.krate,
-                        &global.span_infos,
-                        &my_node,
-                        &scc_nodes,
-                    ));
-                }
+            check_impl_paths(impl_paths, &my_node)?;
+            Ok(())
+        }
+        TypX::Dyn(trait_path, ts, impl_paths) => {
+            for t in ts.iter() {
+                // For simplicity, just reject recursive types going through dyn T type args.
+                check_positive_uses(datatype, global, local, None, t)?;
+            }
+            let trait_node = TypNode::Trait(trait_path.clone());
+            let my_node = TypNode::Datatype(Dt::Path(local.my_datatype.clone()));
+            check_impl_paths(impl_paths, &my_node)?;
+            if global.type_graph.in_same_scc(&trait_node, &my_node) {
+                let scc_rep = global.type_graph.get_scc_rep(&my_node);
+                let scc_nodes = global.type_graph.shortest_cycle_back_to_self(&scc_rep);
+                return Err(type_scc_error(
+                    &global.krate,
+                    &global.span_infos,
+                    &my_node,
+                    &scc_nodes,
+                ));
             }
             Ok(())
         }
@@ -302,19 +334,45 @@ fn add_one_type_to_graph(type_graph: &mut Graph<TypNode>, src: &TypNode, typ: &T
             type_graph.add_edge(src.clone(), TypNode::TraitImpl(impl_path.clone()));
         }
     }
+    if let TypX::Dyn(path, _, impl_paths) = &**typ {
+        type_graph.add_edge(src.clone(), TypNode::Trait(path.clone()));
+        for impl_path in impl_paths.iter() {
+            type_graph.add_edge(src.clone(), TypNode::TraitImpl(impl_path.clone()));
+        }
+    }
 }
 
 pub(crate) fn build_datatype_graph(krate: &Krate, span_infos: &mut Vec<Span>) -> Graph<TypNode> {
+    use crate::ast_visitor::{AstVisitor, WalkTypVisitorEnv};
     let mut type_graph: Graph<TypNode> = Graph::new();
+    let ft = &|(type_graph, src_node): &mut (&mut Graph<TypNode>, TypNode), typ: &Typ| {
+        add_one_type_to_graph(type_graph, src_node, typ);
+        Ok(())
+    };
 
     // If datatype D1 has a field whose type mentions datatype D2, create a graph edge D1 --> D2
+    // If datatype D has bounds that mention T or fields that mention dyn T, add D --> T
     for datatype in &krate.datatypes {
-        type_graph.add_node(TypNode::Datatype(datatype.x.name.clone()));
-        let mut ft = |type_graph: &mut Graph<TypNode>, typ: &Typ| {
-            add_one_type_to_graph(type_graph, &TypNode::Datatype(datatype.x.name.clone()), typ);
-            Ok(typ.clone())
-        };
-        crate::ast_visitor::map_datatype_visitor_env(datatype, &mut type_graph, &mut ft).unwrap();
+        let src_node = TypNode::Datatype(datatype.x.name.clone());
+        type_graph.add_node(src_node.clone());
+        let mut visitor = WalkTypVisitorEnv { env: &mut (&mut type_graph, src_node), ft };
+        visitor.visit_datatype(datatype).unwrap();
+    }
+
+    // For trait T (including T's function decls) , add T --> D and T --> dyn T' edges
+    for tr in &krate.traits {
+        let src_node = TypNode::Trait(tr.x.name.clone());
+        type_graph.add_node(src_node.clone());
+        let mut visitor = WalkTypVisitorEnv { env: &mut (&mut type_graph, src_node), ft };
+        visitor.visit_trait(tr).unwrap();
+    }
+    for f in &krate.functions {
+        if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &f.x.kind {
+            let src_node = TypNode::Trait(trait_path.clone());
+            type_graph.add_node(src_node.clone());
+            let mut visitor = WalkTypVisitorEnv { env: &mut (&mut type_graph, src_node), ft };
+            visitor.visit_function(f).unwrap();
+        }
     }
 
     for a in &krate.assoc_type_impls {
@@ -477,6 +535,12 @@ fn type_scc_error(
                 if let Some(d) = krate.datatypes.iter().find(|t| t.x.name == *dt) {
                     let span = d.span.clone();
                     push(node, span, ": type definition");
+                }
+            }
+            TypNode::Trait(path) => {
+                if let Some(t) = krate.traits.iter().find(|t| t.x.name == *path) {
+                    let span = t.span.clone();
+                    push(node, span, ": trait declaration");
                 }
             }
             TypNode::TraitImpl(impl_path) => {
@@ -681,6 +745,15 @@ pub(crate) fn suppress_bound_in_trait_decl(
     }
 }
 
+pub(crate) fn add_trait_type_edges(call_graph: &mut GraphBuilder<Node>, src: &Node, typ: &Typ) {
+    match &**typ {
+        TypX::Dyn(dyn_t_path, _, _) => {
+            call_graph.add_edge(src.clone(), Node::Trait(dyn_t_path.clone()));
+        }
+        _ => {}
+    }
+}
+
 pub(crate) fn add_trait_to_graph(call_graph: &mut GraphBuilder<Node>, trt: &Trait) {
     // For
     //   trait T<...> where ...: U1(...), ..., ...: Un(...)
@@ -688,6 +761,14 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut GraphBuilder<Node>, trt: &Trai
     let t_path = &trt.x.name;
     let t_node = Node::Trait(t_path.clone());
     for bound in trt.x.typ_bounds.iter().chain(trt.x.assoc_typs_bounds.iter()) {
+        use crate::ast_visitor::{AstVisitor, WalkTypVisitorEnv};
+        let ft = &|call_graph: &mut GraphBuilder<Node>, t: &Typ| {
+            add_trait_type_edges(call_graph, &t_node, t);
+            Ok(())
+        };
+        let mut visitor = WalkTypVisitorEnv { env: call_graph, ft };
+        visitor.visit_generic_bound(bound).unwrap();
+
         let u_path = match &**bound {
             GenericBoundX::Trait(TraitId::Path(u_path), _) => u_path,
             GenericBoundX::Trait(TraitId::Sizedness(_), _) => {
@@ -915,6 +996,18 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // This allows us to split the termination checking into two phases:
     // 1) Check datatype definitions using type-only dictionaries
     // 2) Check function definitions using value dictionaries
+
+    // For dyn T:
+    // Suppose we have a trait (type class) T:
+    //   trait T {
+    //     fn f(x: &Self) -> bool;
+    //   }
+    // encoded as:
+    //   struct Dictionary_T<Self> {
+    //     f: Fn(x: &Self) -> bool,
+    //   }
+    // We encode dyn T as:
+    //   exists Self. (Dictionary_T<Self>, Self)
 
     for scc in ctx.func_call_sccs.iter() {
         for node in ctx.func_call_graph.get_scc_nodes(scc).iter() {

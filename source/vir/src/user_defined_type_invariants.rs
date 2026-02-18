@@ -22,7 +22,7 @@ use std::sync::Arc;
 //  3. For any call that takes &mut args to fields, add an assertion that
 //     after the call the struct meets the type invariant again.
 //
-// NOTE: we may need to revisit after more general &mut support lands.
+// NOTE: much of this is obsolete in new-mut-ref.
 
 pub(crate) fn annotate_user_defined_invariants(
     functionx: &mut FunctionX,
@@ -42,7 +42,12 @@ pub(crate) fn annotate_user_defined_invariants(
                     {
                         let fun =
                             typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
-                        let function = functions.get(&fun).unwrap();
+                        let Some(function) = functions.get(&fun) else {
+                            return Err(internal_error(
+                                &expr.span,
+                                "missing type invariant function",
+                            ));
+                        };
                         Ok(assert_and_return(&expr, function, module)?)
                     } else {
                         Ok(expr.clone())
@@ -84,7 +89,12 @@ pub(crate) fn annotate_user_defined_invariants(
                         return Err(error(&expr.span, "this type is not a datatype"));
                     }
                     if let Some(fun) = typ_get_user_defined_type_invariant(datatypes, &typ) {
-                        let function = functions.get(&fun).unwrap();
+                        let Some(function) = functions.get(&fun) else {
+                            return Err(internal_error(
+                                &expr.span,
+                                "missing type invariant function",
+                            ));
+                        };
                         if !crate::ast_util::is_visible_to(&function.x.visibility, module) {
                             return Err(error(
                                 &expr.span,
@@ -113,6 +123,63 @@ pub(crate) fn annotate_user_defined_invariants(
         },
     )?);
     Ok(())
+}
+
+/// Called by resolution_inference
+pub(crate) fn annotate_one(
+    expr: &Expr,
+    info: &TypeInvInfo,
+    functions: &HashMap<Fun, Function>,
+    datatypes: &HashMap<Path, Datatype>,
+    module: &Path,
+) -> Result<Expr, VirErr> {
+    match &expr.x {
+        ExprX::Ctor(Dt::Path(_), ..) => {
+            if info.ctor_needs_check[&expr.span.id]
+                && typ_has_user_defined_type_invariant(datatypes, &expr.typ)
+            {
+                let fun = typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
+                let Some(function) = functions.get(&fun) else {
+                    return Err(internal_error(&expr.span, "missing type invariant function"));
+                };
+                Ok(assert_and_return(&expr, function, module)?)
+            } else {
+                Ok(expr.clone())
+            }
+        }
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: true, expr, fun: _ } => {
+            // Check that this is fine, and fill in the correct 'fun'
+
+            let typ = undecorate_typ(&expr.typ);
+            if !matches!(&*typ, TypX::Datatype(..)) {
+                return Err(error(&expr.span, "this type is not a datatype"));
+            }
+            if let Some(fun) = typ_get_user_defined_type_invariant(datatypes, &typ) {
+                let Some(function) = functions.get(&fun) else {
+                    return Err(internal_error(&expr.span, "missing type invariant function"));
+                };
+                if !crate::ast_util::is_visible_to(&function.x.visibility, module) {
+                    return Err(error(
+                        &expr.span,
+                        "type invariant function is not visible to this program point",
+                    )
+                    .secondary_span(&function.span));
+                }
+                Ok(SpannedTyped::new(
+                    &expr.span,
+                    &expr.typ,
+                    ExprX::AssertAssumeUserDefinedTypeInvariant {
+                        is_assume: true,
+                        expr: expr.clone(),
+                        fun,
+                    },
+                ))
+            } else {
+                return Err(error(&expr.span, "this type does not have any type invariant"));
+            }
+        }
+        _ => Ok(expr.clone()),
+    }
 }
 
 fn check_func_is_no_unwind(
@@ -149,9 +216,9 @@ fn expr_followed_by_stmts(expr: &Expr, stmts: Vec<Stmt>, id_cell: &Cell<u64>) ->
         );
 
         let decl = StmtX::Decl {
-            pattern: PatternX::simple_var(ident.clone(), false, &expr.span, &expr.typ),
+            pattern: PatternX::simple_var(ident.clone(), &expr.span, &expr.typ),
             mode: None,
-            init: Some(PlaceX::temporary(expr.clone())),
+            init: Some(PlaceX::spec_temporary(expr.clone())),
             els: None,
         };
         stmts.insert(0, Spanned::new(expr.span.clone(), decl));
@@ -166,13 +233,18 @@ fn expr_followed_by_stmts(expr: &Expr, stmts: Vec<Stmt>, id_cell: &Cell<u64>) ->
     }
 }
 
-fn assert_and_return(e: &Expr, function: &Function, module: &Path) -> Result<Expr, VirErr> {
+pub(crate) fn check_vis(span: &Span, function: &Function, module: &Path) -> Result<(), VirErr> {
     if !crate::ast_util::is_visible_to(&function.x.visibility, module) {
         return Err(error(
-            &e.span,
+            span,
             "type invariant function is not visible to this program point, which requires us to prove the invariant is preserved",
         ).secondary_span(&function.span));
     }
+    Ok(())
+}
+
+fn assert_and_return(e: &Expr, function: &Function, module: &Path) -> Result<Expr, VirErr> {
+    check_vis(&e.span, function, module)?;
     Ok(SpannedTyped::new(
         &e.span,
         &e.typ,
@@ -230,7 +302,12 @@ fn asserts_for_lhs(
                 if info.field_loc_needs_check[&cur.span.id] {
                     if let Some(fun) = typ_get_user_defined_type_invariant(datatypes, &inner.typ) {
                         let expr = loc_to_normal_expr(inner);
-                        let function = functions.get(&fun).unwrap();
+                        let Some(function) = functions.get(&fun) else {
+                            return Err(internal_error(
+                                &inner.span,
+                                "missing type invariant function",
+                            ));
+                        };
                         stmts.push(mk_assert_stmt(&expr, function, module)?);
                     }
                 }

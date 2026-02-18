@@ -131,6 +131,7 @@ fn index_set<Idx, V>(&mut self, index: Idx, val: V) { panic!() }
 impl<A:?Sized> IndexSet for A {}
 struct C<const N: usize, A: ?Sized>(Box<A>);
 struct Arr<A: ?Sized, const N: usize>(Box<A>);
+struct Dyn<const N: usize, A>(Box<A>, [bool]);
 fn use_type_invariant<A>(a: A) -> A { a }
 
 struct FnProof<'a, P, M, N, A, O>(PhantomData<P>, PhantomData<M>, PhantomData<N>, PhantomData<&'a fn(A) -> O>);
@@ -216,12 +217,12 @@ impl rustc_span::source_map::FileLoader for TCFileLoader {
     }
 
     fn read_file(&self, path: &std::path::Path) -> Result<String, std::io::Error> {
-        assert!(path.display().to_string() == Self::FILENAME.to_string());
+        assert!(path.display().to_string() == Self::FILENAME);
         Ok(self.rust_code.clone())
     }
 
     fn read_binary_file(&self, path: &std::path::Path) -> Result<Arc<[u8]>, std::io::Error> {
-        assert!(path.display().to_string() == Self::FILENAME.to_string());
+        assert!(path.display().to_string() == Self::FILENAME);
         Ok(self.rust_code.as_bytes().into())
     }
 }
@@ -264,7 +265,7 @@ pub(crate) fn check_trait_conflicts<'tcx>(
     if let Some(mut file) = tc_log_file {
         write!(file, "{}", &rust_code).expect("error writing to trait-conflict log file");
     }
-    let rustc_args = vec![TC_DRIVER_ARG, TCFileLoader::FILENAME, "--error-format=json"];
+    let rustc_args = [TC_DRIVER_ARG, TCFileLoader::FILENAME, "--error-format=json"];
 
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
         // avoid warning about jobserver fd
@@ -276,7 +277,9 @@ pub(crate) fn check_trait_conflicts<'tcx>(
         .spawn()
         .expect("could not execute trait-conflict rustc process");
     let mut child_stdin = child.stdin.take().expect("take stdin");
-    child_stdin.write(rust_code.as_bytes()).expect("failed to send code to trait-conflict rustc");
+    child_stdin
+        .write_all(rust_code.as_bytes())
+        .expect("failed to send code to trait-conflict rustc");
     std::mem::drop(child_stdin);
     let run = child.wait_with_output().expect("trait-conflict rustc wait failed");
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();

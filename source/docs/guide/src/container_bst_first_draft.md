@@ -102,7 +102,7 @@ create a new node.
 
 (Aside: One slight snag has to do with a limitation of Verus's handing of mutable references.
 Specifically, Verus doesn't yet support an easy way to get a
-`&mut T` out of a `&mut Option<T>`. To get around this, we use [`std::mem::swap`](https://doc.rust-lang.org/std/mem/fn.swap.html) to get ownership of the node.)
+`&mut T` out of a `&mut Option<T>`. To get around this, we use [`Option::take`](https://doc.rust-lang.org/std/option/enum.Option.html#method.take) to get ownership of the node.)
 
 ```rust
 {{#include ../../../../examples/guide/bst_map.rs:insert}}

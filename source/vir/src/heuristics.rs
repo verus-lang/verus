@@ -14,6 +14,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
         TypX::Datatype(path, _, _) => ctx.datatype_map[path].x.ext_equal,
+        TypX::Dyn(..) => false,
         TypX::Decorate(_, _, t) => auto_ext_equal_typ(ctx, t),
         TypX::Boxed(typ) => auto_ext_equal_typ(ctx, typ),
         TypX::TypParam(_) => false,
@@ -54,15 +55,18 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOp::Not | UnaryOp::BitNot(_) | UnaryOp::Clip { .. } => exp.clone(),
             UnaryOp::FloatToBits => exp.clone(),
             UnaryOp::IntToReal => exp.clone(),
-            UnaryOp::StrLen | UnaryOp::StrIsAscii => exp.clone(),
+            UnaryOp::RealToInt => exp.clone(),
+            UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::Length(_) => exp.clone(),
             UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
             UnaryOp::Trigger(_)
             | UnaryOp::CoerceMode { .. }
+            | UnaryOp::ToDyn
             | UnaryOp::MustBeFinalized
             | UnaryOp::MustBeElaborated
             | UnaryOp::HeightTrigger
             | UnaryOp::MutRefCurrent
-            | UnaryOp::MutRefFuture
+            | UnaryOp::MutRefFuture(_)
+            | UnaryOp::MutRefFinal(_)
             | UnaryOp::CastToInteger => exp.new_x(ExpX::Unary(*op, insert_auto_ext_equal(ctx, e))),
         },
         ExpX::UnaryOpr(op, e) => match op {
@@ -70,7 +74,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOpr::Field(_) => exp.clone(),
             UnaryOpr::IntegerTypeBound(..) => exp.clone(),
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-            UnaryOpr::CustomErr(_) => {
+            UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) => {
                 exp.new_x(ExpX::UnaryOpr(op.clone(), insert_auto_ext_equal(ctx, e)))
             }
             UnaryOpr::HasResolved(..) => exp.clone(),
@@ -101,7 +105,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             | BinaryOp::RealArith(..)
             | BinaryOp::Bitwise(..)
             | BinaryOp::StrGetChar
-            | BinaryOp::ArrayIndex => exp.clone(),
+            | BinaryOp::Index(..) => exp.clone(),
         },
         ExpX::BinaryOpr(BinaryOpr::ExtEq(..), _, _) => exp.clone(),
         ExpX::If(e1, e2, e3) => {

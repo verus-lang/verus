@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::def::Spanned;
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -139,6 +140,9 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Datatype(path1, ts1, _), TypX::Datatype(path2, ts2, _)) => {
             path1 == path2 && n_types_equal(ts1, ts2)
         }
+        (TypX::Dyn(path1, ts1, _), TypX::Dyn(path2, ts2, _)) => {
+            path1 == path2 && n_types_equal(ts1, ts2)
+        }
         (TypX::Primitive(p1, ts1), TypX::Primitive(p2, ts2)) => p1 == p2 && n_types_equal(ts1, ts2),
         (TypX::Decorate(d1, a1, t1), TypX::Decorate(d2, a2, t2)) => {
             d1 == d2
@@ -192,6 +196,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::SpecFn(_, _), _) => false,
         (TypX::AnonymousClosure(_, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
+        (TypX::Dyn(_, _, _), _) => false,
         (TypX::Primitive(_, _), _) => false,
         (TypX::Decorate(..), _) => false,
         (TypX::Boxed(_), _) => false,
@@ -232,10 +237,24 @@ pub fn params_equal_opt(
 ) -> bool {
     // Note: unwrapped_info is internal to the function and is not part of comparing
     // the publicly visible parameters.
-    let ParamX { name: name1, typ: typ1, mode: mode1, is_mut: is_mut1, unwrapped_info: _ } =
-        &param1.x;
-    let ParamX { name: name2, typ: typ2, mode: mode2, is_mut: is_mut2, unwrapped_info: _ } =
-        &param2.x;
+    // 'user_mut' also isn't important at this level since it is only used to determine
+    // if mutation is allowed within the function
+    let ParamX {
+        name: name1,
+        typ: typ1,
+        mode: mode1,
+        is_mut: is_mut1,
+        unwrapped_info: _,
+        user_mut: _,
+    } = &param1.x;
+    let ParamX {
+        name: name2,
+        typ: typ2,
+        mode: mode2,
+        is_mut: is_mut2,
+        unwrapped_info: _,
+        user_mut: _,
+    } = &param2.x;
     (!check_names || name1 == name2)
         && types_equal(typ1, typ2)
         && (!check_modes || mode1 == mode2)
@@ -599,6 +618,14 @@ pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -
     expr
 }
 
+pub fn mk_assume(span: &Span, e1: &Expr) -> Expr {
+    SpannedTyped::new(
+        span,
+        &unit_typ(),
+        ExprX::AssertAssume { is_assume: true, expr: e1.clone(), msg: None },
+    )
+}
+
 pub fn const_int_from_u128(u: u128) -> Constant {
     Constant::Int(BigInt::from(u))
 }
@@ -632,7 +659,7 @@ pub fn mk_mut_ref_future(span: &Span, expr: &Expr) -> Expr {
         TypX::MutRef(t) => t,
         _ => panic!("sst_mut_ref_future expected MutRef type"),
     };
-    let op = UnaryOp::MutRefFuture;
+    let op = UnaryOp::MutRefFuture(MutRefFutureSourceName::MutRefFuture);
     SpannedTyped::new(span, &t, ExprX::Unary(op, expr.clone()))
 }
 
@@ -757,6 +784,16 @@ impl DatatypeX {
     }
 }
 
+impl TraitX {
+    pub fn typ_param_names_with_self(&self) -> Vec<Ident> {
+        let mut typ_params = vec![crate::def::trait_self_type_param()];
+        for (x, _) in self.typ_params.iter() {
+            typ_params.push(x.clone());
+        }
+        typ_params
+    }
+}
+
 pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
     let vars: std::cell::RefCell<HashSet<VarIdent>> = std::cell::RefCell::new(HashSet::new());
     crate::ast_visitor::ast_visitor_check_with_scope_map::<(), _, _, _, _, _, _>(
@@ -866,6 +903,15 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
     )
 }
 
+pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<Arc<String>> {
+    match &expr.x {
+        // NOTE: `UnaryOpr::Box` and `Unbox` not relevant; only introduced later in `ast_to_sst`.
+        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => ast_expr_get_proof_note(e),
+        ExprX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
+        _ => None,
+    }
+}
+
 pub fn int_range_to_type_string(range: &IntRange) -> String {
     match range {
         IntRange::Int => "int".to_string(),
@@ -915,6 +961,15 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         }
         TypX::Datatype(Dt::Path(path), typs, _) => format!(
             "{}{}",
+            path_as_friendly_rust_name(path),
+            if typs.len() > 0 {
+                format!("<{}>", typs_to_comma_separated_str(typs))
+            } else {
+                format!("")
+            }
+        ),
+        TypX::Dyn(path, typs, _) => format!(
+            "dyn {}{}",
             path_as_friendly_rust_name(path),
             if typs.len() > 0 {
                 format!("<{}>", typs_to_comma_separated_str(typs))
@@ -1214,7 +1269,7 @@ pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, boo
                             PlaceX::Local(ident) if ident == &ret.x.name => {
                                 assert!(is_unit(&undecorate_typ(&place.typ)));
                                 let e = mk_tuple(&place.span, &Arc::new(vec![]));
-                                Ok(PlaceX::temporary(e))
+                                Ok(PlaceX::spec_temporary(e))
                             }
                             _ => Ok(place.clone()),
                         },
@@ -1327,17 +1382,24 @@ impl Opaqueness {
 }
 
 impl PlaceX {
-    pub fn temporary(e: Expr) -> Place {
+    /// Wraps the given expression in a Temporary node.
+    /// Be wary of types (the type of the place is determined by the type of the Expr,
+    /// which is only correct up to decoration) and only use this for simplifications
+    /// post-resolution-analysis.
+    pub(crate) fn spec_temporary(e: Expr) -> Place {
         SpannedTyped::new(&e.span, &e.typ, PlaceX::Temporary(e.clone()))
     }
 
-    pub fn uses_temporary(&self) -> bool {
+    pub fn uses_unnamed_temporary(&self) -> bool {
         match self {
             PlaceX::Local(_) => false,
-            PlaceX::DerefMut(p) => p.x.uses_temporary(),
-            PlaceX::Field(_opr, p) => p.x.uses_temporary(),
+            PlaceX::DerefMut(p) => p.x.uses_unnamed_temporary(),
+            PlaceX::Field(_opr, p) => p.x.uses_unnamed_temporary(),
             PlaceX::Temporary(_) => true,
-            PlaceX::ModeUnwrap(p, _) => p.x.uses_temporary(),
+            PlaceX::ModeUnwrap(p, _) => p.x.uses_unnamed_temporary(),
+            PlaceX::WithExpr(_e, p) => p.x.uses_unnamed_temporary(),
+            PlaceX::Index(p, _idx, _k, _needs_bounds_check) => p.x.uses_unnamed_temporary(),
+            PlaceX::UserDefinedTypInvariantObligation(p, _) => p.x.uses_unnamed_temporary(),
         }
     }
 }
@@ -1349,44 +1411,60 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
         PlaceX::Field(_opr, p) => place_get_local(p),
         PlaceX::Temporary(_) => None,
         PlaceX::ModeUnwrap(p, _) => place_get_local(p),
+        PlaceX::WithExpr(_e, p) => place_get_local(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_get_local(p),
+        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_get_local(p),
     }
 }
 
+pub fn place_has_deref_mut(p: &Place) -> bool {
+    match &p.x {
+        PlaceX::Local(_) => false,
+        PlaceX::DerefMut(_p) => true,
+        PlaceX::Field(_opr, p) => place_has_deref_mut(p),
+        PlaceX::Temporary(_) => false,
+        PlaceX::ModeUnwrap(p, _) => place_has_deref_mut(p),
+        PlaceX::WithExpr(_e, p) => place_has_deref_mut(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_has_deref_mut(p),
+        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_has_deref_mut(p),
+    }
+}
+
+/// Returns an expression that reads from the place
 pub fn place_to_expr(place: &Place) -> Expr {
-    place_to_expr_rec(place, false)
-}
-
-pub fn place_to_expr_loc(place: &Place) -> Expr {
-    let e = place_to_expr_rec(place, true);
-    SpannedTyped::new(&e.span, &e.typ, ExprX::Loc(e.clone()))
-}
-
-fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
     let x = match &place.x {
-        PlaceX::Local(var_ident) => {
-            if loc {
-                ExprX::VarLoc(var_ident.clone())
-            } else {
-                ExprX::Var(var_ident.clone())
-            }
-        }
+        PlaceX::Local(var_ident) => ExprX::Var(var_ident.clone()),
         PlaceX::DerefMut(p) => {
-            let e = place_to_expr_rec(p, loc);
+            let e = place_to_expr(p);
             ExprX::Unary(UnaryOp::MutRefCurrent, e)
         }
         PlaceX::Field(opr, p) => {
-            let e = place_to_expr_rec(p, loc);
+            let e = place_to_expr(p);
             ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
         }
         PlaceX::Temporary(e) => {
-            if loc {
-                panic!("Place Temporary should have been simplified out")
-            } else {
-                return e.clone();
-            }
+            return e.clone();
         }
         PlaceX::ModeUnwrap(p, _) => {
-            return place_to_expr_rec(p, loc);
+            return place_to_expr(p);
+        }
+        PlaceX::WithExpr(e, p) => {
+            let e2 = place_to_expr(p);
+            ExprX::Block(
+                Arc::new(vec![Spanned::new(e.span.clone(), StmtX::Expr(e.clone()))]),
+                Some(e2),
+            )
+        }
+        PlaceX::Index(p, idx, kind, bounds_check) => {
+            let e = place_to_expr(p);
+            ExprX::Binary(BinaryOp::Index(*kind, *bounds_check), e, idx.clone())
+        }
+        PlaceX::UserDefinedTypInvariantObligation(..) => {
+            // place_to_expr should only be called for reading; this node should only
+            // appear in mutable contexts
+            panic!(
+                "Verus internal error: place_to_expr cannot handle UserDefinedTypInvariantObligation"
+            );
         }
     };
     SpannedTyped::new(&place.span, &place.typ, x)
@@ -1394,13 +1472,13 @@ fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
 
 impl PatternX {
     /// Returns a Pattern Var that is valid post-simplification.
-    pub(crate) fn simple_var(name: VarIdent, mutable: bool, span: &Span, typ: &Typ) -> Pattern {
+    pub(crate) fn simple_var(name: VarIdent, span: &Span, typ: &Typ) -> Pattern {
         SpannedTyped::new(
             span,
             typ,
             PatternX::Var(PatternBinding {
                 name: name.clone(),
-                mutable,
+                user_mut: None,
                 by_ref: ByRef::No,
                 typ: typ.clone(),
                 copy: false,
@@ -1414,6 +1492,60 @@ impl ModeWrapperMode {
         match self {
             ModeWrapperMode::Spec => Mode::Spec,
             ModeWrapperMode::Proof => Mode::Proof,
+        }
+    }
+}
+
+pub(crate) fn place_to_spec_expr(place: &Place) -> Expr {
+    SpannedTyped::new(
+        &place.span,
+        &place.typ,
+        ExprX::ReadPlace(
+            place.clone(),
+            UnfinalizedReadKind { preliminary_kind: ReadKind::Spec, id: u64::MAX },
+        ),
+    )
+}
+
+pub(crate) fn arg_mode_from_proof_fn_modes(
+    proof_fn_modes: &Option<(Arc<Vec<Mode>>, Mode)>,
+    i: usize,
+) -> Mode {
+    match proof_fn_modes {
+        Some((modes, _ret_mode)) => modes[i],
+        None => Mode::Exec,
+    }
+}
+
+impl MutRefFutureSourceName {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            MutRefFutureSourceName::MutRefFuture => "mut_ref_future",
+            MutRefFutureSourceName::Final => "fin",
+        }
+    }
+}
+
+impl ArmX {
+    pub(crate) fn has_guard(&self) -> bool {
+        !matches!(&self.guard.x, ExprX::Const(Constant::Bool(true)))
+    }
+}
+
+impl BinaryOp {
+    pub fn short_circuits(&self) -> bool {
+        match self {
+            BinaryOp::And | BinaryOp::Or | BinaryOp::Implies => true,
+            BinaryOp::Xor
+            | BinaryOp::HeightCompare { .. }
+            | BinaryOp::Eq(_)
+            | BinaryOp::Ne
+            | BinaryOp::Inequality(_)
+            | BinaryOp::Arith(_)
+            | BinaryOp::RealArith(_)
+            | BinaryOp::Bitwise(..)
+            | BinaryOp::StrGetChar
+            | BinaryOp::Index(..) => false,
         }
     }
 }

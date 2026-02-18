@@ -141,7 +141,7 @@ pub(crate) fn rewrite_verus_attribute(
                         .expect("unsupported tokens in verus_verify(dual_spec(...))")
                 } else {
                     syn::Ident::new(
-                        &format!("{DUAL_SPEC_PREFIX}_{}", f.sig.ident.to_string()),
+                        &format!("{DUAL_SPEC_PREFIX}_{}", f.sig.ident),
                         f.sig.ident.span(),
                     )
                 };
@@ -257,8 +257,9 @@ impl VisitMut for ExecReplacer {
                     with_args = TokenStream::new();
                 }
                 syn::Stmt::Expr(expr, _) if !with_args.is_empty() => {
-                    let call_with_spec = verus_syn::parse2(with_args.clone())
-                        .expect(format!("Failed to parse proof_with {:?}", with_args).as_str());
+                    let call_with_spec = verus_syn::parse2(with_args.clone()).unwrap_or_else(|e| {
+                        panic!("Failed to parse proof_with {:?}: {:?}", with_args, e)
+                    });
                     rewrite_with_expr(self.erase.clone(), expr, call_with_spec);
                     with_args = TokenStream::new();
                 }
@@ -545,7 +546,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 #(#spec_stmts)*
                 {#body}
             );
-            closure.body = Box::new(Expr::Verbatim(new_body));
+            *closure.body = Expr::Verbatim(new_body);
             closure.to_token_stream().into()
         }
         AnyFnOrLoop::TraitMethod(mut method) => {

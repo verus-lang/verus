@@ -147,7 +147,7 @@ pub enum MonoidElt {
     /// Represents the element Some(e)
     OptionSome(Option<Expr>),
     /// Represents the singleton map [k => v]
-    SingletonKV(Expr, Option<Expr>),
+    SingletonKV(Expr, Option<Box<Expr>>),
     /// Represents the singleton multiset {e}
     SingletonMultiset(Expr),
     /// Represents the set multiset {e}
@@ -237,21 +237,21 @@ pub struct Arm {
 pub enum SplitKind {
     If(Expr),
     Match(Expr, Vec<Arm>),
-    Let(Pat, Option<Type>, LetKind, Expr),
+    Let(Box<Pat>, Option<Box<Type>>, LetKind, Expr),
     /// concurrent-state-machine-specific stuff
-    Special(Ident, SpecialOp, AssertProof, Option<Pat>),
+    Special(Ident, SpecialOp, AssertProof, Option<Box<Pat>>),
 }
 
 #[derive(Clone, Debug)]
 pub enum SubIdx {
     Field(Ident),
-    Idx(Expr),
+    Idx(Box<Expr>),
 }
 
 #[derive(Clone, Debug)]
 pub enum TransitionStmt {
     Block(Span, Vec<TransitionStmt>),
-    Split(Span, SplitKind, Vec<TransitionStmt>),
+    Split(Span, Box<SplitKind>, Vec<TransitionStmt>),
     Require(Span, Expr),
     Assert(Span, Expr, AssertProof),
     Update(Span, Ident, Expr),
@@ -279,13 +279,13 @@ pub enum PostConditionReason {
 pub enum SimplStmt {
     // The Vec<Ident> are variables assigned inside the block that are used later
     // (This is filled in and used internally in to_relation.rs)
-    Let(Span, Pat, Option<Type>, Expr, Vec<SimplStmt>, Vec<Ident>),
-    Split(Span, SplitKind, Vec<(Span, Vec<SimplStmt>)>, Vec<Ident>), // only for If, Match
+    Let(Span, Box<Pat>, Option<Box<Type>>, Expr, Vec<SimplStmt>, Vec<Ident>),
+    Split(Span, Box<SplitKind>, Vec<(Span, Vec<SimplStmt>)>, Vec<Ident>), // only for If, Match
 
     Require(Span, Expr),
     PostCondition(Span, Expr, PostConditionReason),
     Assert(Span, Expr, AssertProof),
-    Assign(Span, Ident, Type, Expr, bool),
+    Assign(Span, Ident, Box<Type>, Expr, bool),
 }
 
 impl SpecialOp {
@@ -392,10 +392,12 @@ impl TransitionStmt {
     pub fn statement_name(&self) -> &'static str {
         match self {
             TransitionStmt::Block(..) => "block",
-            TransitionStmt::Split(_, SplitKind::Let(..), _) => "let",
-            TransitionStmt::Split(_, SplitKind::If(..), _) => "if",
-            TransitionStmt::Split(_, SplitKind::Match(..), _) => "match",
-            TransitionStmt::Split(_, SplitKind::Special(_, op, _, _), _) => op.stmt.name(),
+            TransitionStmt::Split(_, split_kind, _) => match &**split_kind {
+                SplitKind::Let(..) => "let",
+                SplitKind::If(..) => "if",
+                SplitKind::Match(..) => "match",
+                SplitKind::Special(_, op, _, _) => op.stmt.name(),
+            },
             TransitionStmt::Require(..) => "require",
             TransitionStmt::Assert(..) => "assert",
             TransitionStmt::Update(..) => "update",

@@ -175,7 +175,7 @@ macro_rules! declare_invariant_impl {
 
         verus!{
 
-        impl<K, V, Pred: InvariantPredicate<K, V>> $invariant<K, V, Pred> {
+        impl<K, V, Pred> $invariant<K, V, Pred> {
             /// The constant specified upon the initialization of this `
             #[doc = stringify!($invariant)]
             ///`.
@@ -184,7 +184,9 @@ macro_rules! declare_invariant_impl {
             /// Namespace the invariant was declared in.
             #[rustc_diagnostic_item = concat!("verus::vstd::invariant::", stringify!($invariant), "::namespace")]
             pub uninterp spec fn namespace(&self) -> int;
+        }
 
+        impl<K, V, Pred: InvariantPredicate<K, V>> $invariant<K, V, Pred> {
             /// Returns `true` if it is possible to store the value `v` into the `
             #[doc = stringify!($invariant)]
             ///`.
@@ -395,11 +397,12 @@ pub fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) {
 #[macro_export]
 macro_rules! open_atomic_invariant {
     [$($tail:tt)*] => {
-        #[cfg(verus_keep_ghost_body)]
-        let credit = $crate::vstd::invariant::create_open_invariant_credit();
-        $crate::vstd::prelude::verus_exec_inv_macro_exprs!(
-            $crate::vstd::invariant::open_atomic_invariant_internal!(credit => $($tail)*)
-        )
+        #[allow(unexpected_cfgs)] // make sure client crates don't see "unexpected `cfg` condition name: `verus_...`"
+        {
+            $crate::vstd::prelude::verus_exec_inv_macro_exprs!(
+                $crate::vstd::invariant::open_atomic_invariant_internal!($crate::vstd::invariant::create_open_invariant_credit() => $($tail)*)
+            )
+        }
     };
 }
 
@@ -545,10 +548,13 @@ pub use open_atomic_invariant_internal;
 #[macro_export]
 macro_rules! open_local_invariant {
     [$($tail:tt)*] => {
-        #[cfg(verus_keep_ghost_body)]
-        let credit = $crate::vstd::invariant::create_open_invariant_credit();
-        $crate::vstd::prelude::verus_exec_inv_macro_exprs!(
-            $crate::vstd::invariant::open_local_invariant_internal!(credit => $($tail)*))
+        #[allow(unexpected_cfgs)] // make sure client crates don't see "unexpected `cfg` condition name: `verus_...`"
+        {
+            #[cfg(verus_keep_ghost_body)]
+            let credit = $crate::vstd::invariant::create_open_invariant_credit();
+            $crate::vstd::prelude::verus_exec_inv_macro_exprs!(
+                $crate::vstd::invariant::open_local_invariant_internal!(credit => $($tail)*))
+        }
     };
 }
 

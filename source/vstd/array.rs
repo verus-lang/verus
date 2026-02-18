@@ -136,12 +136,44 @@ pub broadcast axiom fn axiom_array_ext_equal<T, const N: usize>(a1: [T; N], a2: 
         #[trigger] (a1 =~= a2) <==> (forall|i: int| 0 <= i < N ==> a1[i] == a2[i]),
 ;
 
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::spec_array_update")]
+pub uninterp spec fn spec_array_update<T, const N: usize>(array: [T; N], i: int, t: T) -> [T; N];
+
+pub broadcast axiom fn axiom_spec_array_update<T, const N: usize>(array: [T; N], i: int, t: T)
+    ensures
+        0 <= i < N ==> (#[trigger] spec_array_update(array, i, t)@) == array@.update(i, t),
+;
+
+pub broadcast axiom fn axiom_array_has_resolved<T, const N: usize>(array: [T; N], i: int)
+    ensures
+        0 <= i < N ==> #[trigger] has_resolved::<[T; N]>(array) ==> has_resolved(
+            #[trigger] array@[i],
+        ),
+;
+
+#[doc(hidden)]
+#[verifier::external_body]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::ref_mut_array_unsizing_coercion")]
+pub fn ref_mut_array_unsizing_coercion<T, const N: usize>(r: &mut [T; N]) -> (out: &mut [T])
+    ensures
+        out.view() === r.view(),
+        fin(out).view() === fin(r).view(),
+    opens_invariants none
+    no_unwind
+{
+    r
+}
+
 pub broadcast group group_array_axioms {
     array_len_matches_n,
     lemma_array_index,
     axiom_spec_array_as_slice,
     axiom_spec_array_fill_for_copy_type,
     axiom_array_ext_equal,
+    axiom_spec_array_update,
+    axiom_array_has_resolved,
 }
 
 } // verus!
