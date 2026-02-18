@@ -351,6 +351,14 @@ impl<T: super::cmp::PartialEqSpec<U>, U, A1: Allocator, A2: Allocator> super::cm
     }
 }
 
+pub assume_specification<T, A: Allocator, F: FnMut(&T) -> bool>[ Vec::<T, A>::retain ](vec: &mut Vec<T, A>, f: F)
+    requires
+        forall |idx| 0 <= idx < old(vec)@.len() ==> f.requires((#[trigger] &old(vec)@[idx],) ),
+    ensures
+        vec@ == old(vec)@.filter(|t: T| f.ensures((&t, ), true))
+;
+
+
 // The `into_iter` method of a `Vec` returns an iterator of type `IntoIter`,
 // so we specify that type here.
 #[verifier::external_type_specification]

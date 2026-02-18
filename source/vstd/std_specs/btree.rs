@@ -635,6 +635,8 @@ pub assume_specification<Key: Ord, Value, A: Allocator + Clone>[ BTreeMap::<
                 None => !old(m)@.contains_key(k),
             }
         },
+    no_unwind  // TODO(bsdinis): this is not guaranteed correct but without this we cannot write invariant code
+
 ;
 
 // The specification for `contains_key` has a parameter `key: &Q`
@@ -1015,6 +1017,8 @@ pub assume_specification<Key: Ord, A: Allocator + Clone>[ BTreeSet::<Key, A>::in
             &&& m@ == old(m)@.insert(k)
             &&& result == !old(m)@.contains(k)
         },
+    no_unwind  // TODO(bsdinis): this is not guaranteed correct but without this we cannot write invariant code
+
 ;
 
 // The specification for `contains` has a parameter `key: &Q`
@@ -1049,6 +1053,7 @@ pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?S
 >::contains ](m: &BTreeSet<Key, A>, k: &Q) -> (result: bool)
     ensures
         obeys_cmp::<Key>() ==> result == set_contains_borrowed_key(m@, k),
+    no_unwind
 ;
 
 // The specification for `get` has a parameter `key: &Q` where you'd
@@ -1143,6 +1148,8 @@ pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::clear ]
 ) where A: Clone
     ensures
         m@ == Set::<Key>::empty(),
+    no_unwind  // TODO(bsdinis): this is not guaranteed correct but without this we cannot write invariant code
+
 ;
 
 pub assume_specification<'a, Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::iter ](
