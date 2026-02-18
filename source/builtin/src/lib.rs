@@ -1977,9 +1977,9 @@ pub fn mut_ref_future<T>(_mut_ref: &mut T) -> T {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::fin"]
+#[rustc_diagnostic_item = "verus::verus_builtin::final_"]
 #[verifier::spec]
-pub fn fin<T: ?Sized>(_mut_ref: &mut T) -> &mut T {
+pub fn final_<T: ?Sized>(_mut_ref: &mut T) -> &mut T {
     unimplemented!()
 }
 

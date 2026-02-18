@@ -280,9 +280,9 @@ impl<V> PCell<V> {
             perm.is_init(),
         ensures
             *v === old(perm).value(),
-            fin(perm).id() == old(perm).id(),
-            fin(perm).is_init(),
-            fin(perm).value() === *fin(v),
+            final(perm).id() == old(perm).id(),
+            final(perm).is_init(),
+            final(perm).value() === *final(v),
         opens_invariants none
         no_unwind
     {
