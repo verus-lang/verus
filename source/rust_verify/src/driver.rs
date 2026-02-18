@@ -82,6 +82,9 @@ impl rustc_driver::Callbacks for TCCallbacks {
     // note: we only need to call into config here,
     // to change the file_loader
     fn config<'tcx>(&mut self, cfg: &mut rustc_interface::interface::Config) {
+        cfg.register_lints = Some(Box::new(|_session, lint_store| {
+            crate::automatic_derive::register_lints(lint_store);
+        }));
         cfg.file_loader =
             Some(Box::new(crate::trait_check::TCFileLoader { rust_code: self.code.clone() }));
     }
@@ -157,6 +160,10 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
     // Adding `override_stability` and `stable_attr` functions is a hacky solution specifically for verifying core,
     // to fix an issue with stability attributes.
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        config.register_lints = Some(Box::new(|_session, lint_store| {
+            crate::automatic_derive::register_lints(lint_store);
+        }));
+
         if self.override_stability {
             config.override_queries = Some(|_session, providers| {
                 providers.hir_attr_map = |tcx, owner_id| {

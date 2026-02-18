@@ -1,13 +1,25 @@
 use crate::context::Context;
 use crate::verus_items::RustItem;
-use rustc_ast::token::TokenKind;
-use rustc_ast::tokenstream::TokenTree;
-use rustc_hir::{AttrArgs, HirId};
+use rustc_hir::HirId;
+use rustc_session::lint::Level;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     BinaryOp, Expr, ExprX, FunctionX, Mode, Place, PlaceX, SpannedTyped, VirErr, VirErrAs,
 };
+
+rustc_session::declare_lint! {
+    /// Lint for when a derived `Clone` impl does not use `Copy`, so Verus cannot
+    /// add a specification for it. Use `#[allow(clone_without_copy)]` to suppress.
+    pub CLONE_WITHOUT_COPY,
+    Warn,
+    "Verus does not (yet) support autoderive Clone impl when the clone is not a copy"
+}
+
+/// Register the `clone_without_copy` lint so rustc recognizes it for `#[allow(...)]`.
+pub fn register_lints(lint_store: &mut rustc_lint::LintStore) {
+    lint_store.register_lints(&[CLONE_WITHOUT_COPY]);
+}
 
 /// Traits with special handling
 #[derive(Clone, Copy, Debug)]
@@ -121,7 +133,8 @@ fn clone_add_post_condition<'tcx>(
                     self_var = Some(last_expr.clone());
                 }
                 _ => {
-                    if !has_allow_clone_without_copy(ctxt, hir_id) {
+                    if ctxt.tcx.lint_level_at_node(CLONE_WITHOUT_COPY, hir_id).level != Level::Allow
+                    {
                         warn_unexpected();
                     }
                     return Ok(());
@@ -132,14 +145,14 @@ fn clone_add_post_condition<'tcx>(
                 self_var = None;
             }
             _ => {
-                if !has_allow_clone_without_copy(ctxt, hir_id) {
+                if ctxt.tcx.lint_level_at_node(CLONE_WITHOUT_COPY, hir_id).level != Level::Allow {
                     warn_unexpected();
                 }
                 return Ok(());
             }
         },
         _ => {
-            if !has_allow_clone_without_copy(ctxt, hir_id) {
+            if ctxt.tcx.lint_level_at_node(CLONE_WITHOUT_COPY, hir_id).level != Level::Allow {
                 warn_unexpected();
             }
             return Ok(());
@@ -147,7 +160,7 @@ fn clone_add_post_condition<'tcx>(
     }
 
     if functionx.ensure.0.len() != 0 {
-        if !has_allow_clone_without_copy(ctxt, hir_id) {
+        if ctxt.tcx.lint_level_at_node(CLONE_WITHOUT_COPY, hir_id).level != Level::Allow {
             warn_unexpected();
         }
         return Ok(());
@@ -170,43 +183,12 @@ fn clone_add_post_condition<'tcx>(
         let eq_expr = cleanup_span_ids(ctxt, span, hir_id, &eq_expr);
         functionx.ensure.0 = Arc::new(vec![eq_expr]);
     } else {
-        if !has_allow_clone_without_copy(ctxt, hir_id) {
+        if ctxt.tcx.lint_level_at_node(CLONE_WITHOUT_COPY, hir_id).level != Level::Allow {
             warn_unsupported();
         }
     }
 
     Ok(())
-}
-
-/// Check if the struct/type being cloned has `#[allow(clone_without_copy)]`
-fn has_allow_clone_without_copy<'tcx>(ctxt: &Context<'tcx>, hir_id: HirId) -> bool {
-    let tcx = ctxt.tcx;
-    let method_def_id = hir_id.owner.to_def_id();
-    let impl_def_id = tcx.parent(method_def_id);
-    let self_ty = tcx.type_of(impl_def_id).skip_binder();
-    if let Some(adt_def) = self_ty.ty_adt_def() {
-        let struct_def_id = adt_def.did();
-        for attr in tcx.get_all_attrs(struct_def_id) {
-            if let rustc_hir::Attribute::Unparsed(item) = attr {
-                if let [segment] = &item.path.segments[..] {
-                    if segment.as_str() == "allow" {
-                        if let AttrArgs::Delimited(delim) = &item.args {
-                            for tt in delim.tokens.iter() {
-                                if let TokenTree::Token(tok, _) = tt {
-                                    if let TokenKind::Ident(sym, _) = tok.kind {
-                                        if sym.as_str() == "clone_without_copy" {
-                                            return true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    false
 }
 
 // TODO better place for this

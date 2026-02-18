@@ -3024,6 +3024,10 @@ fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        config.register_lints = Some(Box::new(|_session, lint_store| {
+            crate::automatic_derive::register_lints(lint_store);
+        }));
+
         if let Some(mut dep_tracker) = self.verifier.dep_tracker.take() {
             let import_dep_if_present = &self
                 .verifier
