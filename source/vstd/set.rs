@@ -207,6 +207,42 @@ impl<A> Set<A> {
     pub open spec fn disjoint(self, s2: Self) -> bool {
         forall|a: A| self.contains(a) ==> !s2.contains(a)
     }
+
+    /// Create an empty tracked set.
+    /// This allows us to create a set, which we know is empty, that is _tracked_.
+    pub axiom fn tracked_empty() -> (tracked out: Self)
+        ensures
+            out == Set::<A>::empty(),
+    ;
+
+    /// Insert a value into a tracked set.
+    pub axiom fn tracked_insert(tracked &mut self, v: A)
+        ensures
+            *self == Set::insert(*old(self), v),
+    ;
+
+    /// Remove from a tracked set.
+    pub axiom fn tracked_remove(tracked &mut self, v: A)
+        requires
+            old(self).contains(v),
+        ensures
+            *self == Set::remove(*old(self), v),
+    ;
+
+    /// Remove a set of keys from the set, effectively splitting it out
+    pub axiom fn tracked_remove_keys(tracked &mut self, keys: Set<A>) -> (tracked r: Set<A>)
+        requires
+            keys.subset_of(*old(self)),
+        ensures
+            *self == old(self).difference(keys),
+            r == keys,
+    ;
+
+    /// Merge two sets
+    pub axiom fn tracked_union(tracked &mut self, right: Self)
+        ensures
+            *self == old(self).union(right),
+    ;
 }
 
 // Closures make triggering finicky but using this to trigger explicitly works well.

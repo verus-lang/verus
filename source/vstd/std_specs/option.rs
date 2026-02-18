@@ -125,6 +125,7 @@ pub open spec fn is_some<T>(option: &Option<T>) -> bool {
 pub assume_specification<T>[ Option::<T>::is_some ](option: &Option<T>) -> (b: bool)
     ensures
         b == is_some(option),
+    no_unwind
 ;
 
 // is_none
@@ -137,6 +138,7 @@ pub open spec fn is_none<T>(option: &Option<T>) -> bool {
 pub assume_specification<T>[ Option::<T>::is_none ](option: &Option<T>) -> (b: bool)
     ensures
         b == is_none(option),
+    no_unwind
 ;
 
 // as_ref
@@ -144,6 +146,7 @@ pub assume_specification<T>[ Option::<T>::as_ref ](option: &Option<T>) -> (a: Op
     ensures
         a is Some <==> option is Some,
         a is Some ==> option->0 == a->0,
+    no_unwind
 ;
 
 // unwrap
@@ -176,6 +179,7 @@ pub open spec fn spec_unwrap_or<T>(option: Option<T>, default: T) -> T {
 pub assume_specification<T>[ Option::<T>::unwrap_or ](option: Option<T>, default: T) -> (t: T)
     ensures
         t == spec_unwrap_or(option, default),
+    no_unwind
 ;
 
 // expect
@@ -200,6 +204,7 @@ pub assume_specification<T>[ Option::<T>::take ](option: &mut Option<T>) -> (t: 
     ensures
         t == *old(option),
         *option is None,
+    no_unwind
 ;
 
 // map
@@ -254,6 +259,7 @@ pub assume_specification<T: core::default::Default>[ Option::<T>::unwrap_or_defa
     ensures
         option.is_some() ==> res == option.unwrap(),
         option.is_none() ==> T::default.ensures((), res),
+    no_unwind
 ;
 
 // unwrap_or_else
