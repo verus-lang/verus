@@ -1992,6 +1992,9 @@ fn verus_item_to_vir<'tcx, 'a>(
             };
             mk_expr(ExprX::ReadPlace(p, rk))
         }
+        VerusItem::BuiltinDeref(_) => {
+            todo!()
+        }
         VerusItem::Vstd(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)

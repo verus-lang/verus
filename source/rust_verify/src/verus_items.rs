@@ -169,6 +169,14 @@ pub(crate) enum CompilableOprItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum BuiltinDerefItem {
+    TrackedDeref,
+    TrackedDerefMut,
+    GhostDeref,
+    GhostDerefMut,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum ArithItem {
     BuiltinAdd,
     BuiltinSub,
@@ -389,6 +397,7 @@ pub(crate) enum VerusItem {
     BuiltinType(BuiltinTypeItem),
     BuiltinTrait(BuiltinTraitItem),
     BuiltinFunction(BuiltinFunctionItem),
+    BuiltinDeref(BuiltinDerefItem),
     Global(GlobalItem),
     External(ExternalItem),
     HasResolved,
@@ -476,6 +485,11 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::Tracked::get",            VerusItem::CompilableOpr(CompilableOprItem::TrackedGet)),
         ("verus::verus_builtin::Tracked::borrow",         VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrow)),
         ("verus::verus_builtin::Tracked::borrow_mut",     VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)),
+
+        ("verus::verus_builtin::Tracked::deref",          VerusItem::BuiltinDeref(BuiltinDerefItem::TrackedDeref)),
+        ("verus::verus_builtin::Tracked::deref_mut",      VerusItem::BuiltinDeref(BuiltinDerefItem::TrackedDerefMut)),
+        ("verus::verus_builtin::Ghost::deref",            VerusItem::BuiltinDeref(BuiltinDerefItem::GhostDeref)),
+        ("verus::verus_builtin::Ghost::deref_mut",        VerusItem::BuiltinDeref(BuiltinDerefItem::GhostDerefMut)),
 
         ("verus::verus_builtin::add",                     VerusItem::BinaryOp(BinaryOpItem::Arith(ArithItem::BuiltinAdd))),
         ("verus::verus_builtin::sub",                     VerusItem::BinaryOp(BinaryOpItem::Arith(ArithItem::BuiltinSub))),
