@@ -203,6 +203,18 @@ impl<'tcx> BodyCtxt<'tcx> {
         self.ctxt.mid_ty_to_vir(self.fun_id, span, ty, allow_mut_ref)
     }
 
+    pub(crate) fn is_param_migrated(&self, ident: &vir::ast::VarIdent) -> bool {
+        let Some(vars) = &self.migrate_postcondition_vars else {
+            return false;
+        };
+        let r = self.unwrap_param_map.borrow();
+        let id = match r.get(ident) {
+            Some(unwrap_param_outer_id) => unwrap_param_outer_id,
+            None => ident,
+        };
+        vars.contains(id)
+    }
+
     pub(crate) fn is_param_for_fn_or_non_spec_closure(&self, ident: &vir::ast::VarIdent) -> bool {
         let r = self.unwrap_param_map.borrow();
         let id = match r.get(ident) {

@@ -2306,51 +2306,40 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let x = PlaceX::Local(pat_to_var(pat)?);
                         let typ = &expr_typ()?;
                         let place = bctx.spanned_typed_new(expr.span, typ, x);
-                        match &bctx.migrate_postcondition_vars {
-                            Some(vars)
-                                if bctx.in_postcondition
-                                    && !bctx.in_old
-                                    && vars.contains(&name) =>
+                        if bctx.in_postcondition && !bctx.in_old && bctx.is_param_migrated(&name) {
                             {
+                                let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                                erasure_info.hir_vir_ids.push((expr.hir_id, place.span.id));
+                            }
+                            let e = ExprOrPlace::Place(place).to_spec_expr(bctx);
+                            let x = ExprX::Unary(UnaryOp::MutRefFinal(true), e);
+                            let e = bctx.spanned_typed_new(expr.span, typ, x);
+                            Ok(ExprOrPlace::Expr(e))
+                        } else if bctx.in_old {
+                            // bctx.in_old implies new_mut_ref
+                            //
+                            // old(x) should create a VarAt(Pre) if we're in the body of a function
+                            // with x as a param.
+                            // If we're in the signature of the function that declares x,
+                            // use a normal Var
+                            if bctx.is_param_for_fn_or_non_spec_closure(&name) {
+                                if bctx.in_fn_sig
+                                    && bctx.is_param_for_innermost_fn_or_non_spec_closure(&name)
                                 {
-                                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                                    erasure_info.hir_vir_ids.push((expr.hir_id, place.span.id));
-                                }
-                                let e = ExprOrPlace::Place(place).to_spec_expr(bctx);
-                                let x = ExprX::Unary(UnaryOp::MutRefFinal(true), e);
-                                let e = bctx.spanned_typed_new(expr.span, typ, x);
-                                Ok(ExprOrPlace::Expr(e))
-                            }
-                            _ => {
-                                if bctx.in_old {
-                                    // bctx.in_old implies new_mut_ref
-                                    //
-                                    // old(x) should create a VarAt(Pre) if we're in the body of a function
-                                    // with x as a param.
-                                    // If we're in the signature of the function that declares x,
-                                    // use a normal Var
-                                    if bctx.is_param_for_fn_or_non_spec_closure(&name) {
-                                        if bctx.in_fn_sig
-                                            && bctx.is_param_for_innermost_fn_or_non_spec_closure(
-                                                &name,
-                                            )
-                                        {
-                                            Ok(ExprOrPlace::Place(place))
-                                        } else {
-                                            let x = ExprX::VarAt(name, vir::ast::VarAt::Pre);
-                                            let e = bctx.spanned_typed_new(expr.span, typ, x);
-                                            Ok(ExprOrPlace::Expr(e))
-                                        }
-                                    } else {
-                                        err_span(
-                                            expr.span,
-                                            "`old` for a local variable that isn't a parameter",
-                                        )
-                                    }
-                                } else {
                                     Ok(ExprOrPlace::Place(place))
+                                } else {
+                                    let x = ExprX::VarAt(name, vir::ast::VarAt::Pre);
+                                    let e = bctx.spanned_typed_new(expr.span, typ, x);
+                                    Ok(ExprOrPlace::Expr(e))
                                 }
+                            } else {
+                                err_span(
+                                    expr.span,
+                                    "`old` for a local variable that isn't a parameter",
+                                )
                             }
+                        } else {
+                            Ok(ExprOrPlace::Place(place))
                         }
                     }
                     node => unsupported_err!(expr.span, format!("Path {:?}", node)),
