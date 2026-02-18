@@ -400,6 +400,56 @@ impl<A> core::fmt::Debug for Tracked<A> {
     }
 }
 
+/// Dereferencing a `Ghost<A>` returns a reference to a ghost-mode location.
+///
+/// Note: This special behavior requires support from Verus,
+/// and this trait impl cannot be used generically.
+#[cfg(verus_keep_ghost)]
+impl<A> core::ops::Deref for Ghost<A> {
+    type Target = A;
+    #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::deref"]
+    fn deref(&self) -> &Self::Target {
+        unimplemented!();
+    }
+}
+
+/// Dereferencing a `Ghost<A>` returns a reference to a ghost-mode location.
+///
+/// Note: This special behavior requires support from Verus,
+/// and this trait impl cannot be used generically.
+#[cfg(verus_keep_ghost)]
+impl<A> core::ops::DerefMut for Ghost<A> {
+    #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::deref_mut"]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unimplemented!();
+    }
+}
+
+/// Dereferencing a `Tracked<A>` returns a reference to a tracked-mode location.
+///
+/// Note: This special behavior requires support from Verus,
+/// and this trait impl cannot be used generically.
+#[cfg(verus_keep_ghost)]
+impl<A> core::ops::Deref for Tracked<A> {
+    type Target = A;
+    #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::deref"]
+    fn deref(&self) -> &Self::Target {
+        unimplemented!();
+    }
+}
+
+/// Dereferencing a `Tracked<A>` returns a reference to a tracked-mode location.
+///
+/// Note: This special behavior requires support from Verus,
+/// and this trait impl cannot be used generically.
+#[cfg(verus_keep_ghost)]
+impl<A> core::ops::DerefMut for Tracked<A> {
+    #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::deref_mut"]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unimplemented!();
+    }
+}
+
 impl<A> Ghost<A> {
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::view"]
