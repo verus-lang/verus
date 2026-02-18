@@ -4447,3 +4447,42 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
 }
+
+test_verify_one_file! {
+    #[test] derive_clone_without_copy_warns verus_code! {
+        #[derive(Clone)]
+        struct Foo {
+            x: u64,
+        }
+    } => Err(err) => {
+        assert!(err.warnings.iter().any(|w| w.message.contains("Verus does not (yet) support autoderive Clone impl when the clone is not a copy; continuing, but without adding a specification for the derived Clone impl")),
+            "expected clone_without_copy warning, got: {:?}", err.warnings);
+    }
+}
+
+test_verify_one_file! {
+    #[test] derive_clone_without_copy_allow_suppresses verus_code! {
+        #![allow(clone_without_copy)]
+
+        #[derive(Clone)]
+        struct Foo {
+            x: u64,
+        }
+    } => Err(err) => {
+        assert_eq!(err.warnings.len(), 0,
+            "expected no warnings when clone_without_copy is allowed, got: {:?}", err.warnings);
+    }
+}
+
+test_verify_one_file! {
+    #[test] derive_clone_without_copy_allow_on_struct_suppresses verus_code! {
+        #[allow(clone_without_copy)]
+        #[derive(Clone)]
+        struct Foo {
+            x: u64,
+        }
+    } => Err(err) => {
+        assert_eq!(err.warnings.len(), 0,
+            "expected no warnings when clone_without_copy is allowed on struct, got: {:?}", err.warnings);
+    }
+}
