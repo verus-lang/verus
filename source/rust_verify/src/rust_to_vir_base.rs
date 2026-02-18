@@ -585,9 +585,6 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                             {
                                 // Sized, MetaSized, Tuple, Pointee, Thin are all ok to do nothing.
                                 // There can't be user impls of these traits, they can only be built-in.
-
-                                // TODO: Send and Sync needs handling, or a rigorous argument why it's ok to skip;
-                                // See https://github.com/verus-lang/verus/issues/1335
                             } else {
                                 unsupported_err!(span, format!("this trait bound: {:?}", trait_refs))
                             }
