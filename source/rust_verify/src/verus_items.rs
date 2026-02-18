@@ -721,7 +721,6 @@ pub(crate) enum RustItem {
     Destruct,
     SliceSealed,
     Vec,
-    Send,
     Thin,
 }
 
@@ -844,9 +843,6 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("alloc::vec::Vec") {
         return Some(RustItem::Vec);
-    }
-    if rust_path == Some("core::marker::Send") {
-        return Some(RustItem::Send);
     }
     if rust_path == Some("core::ptr::metadata::Thin") {
         return Some(RustItem::Thin);

@@ -574,6 +574,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                     _ => {}
                                 }
                             } else if Some(trait_def_id) == tcx.lang_items().sized_trait()
+                                || Some(trait_def_id) == tcx.lang_items().meta_sized_trait()
                                 || Some(trait_def_id) == tcx.lang_items().tuple_trait()
                                 || Some(trait_def_id) == tcx.lang_items().pointee_trait()
                                 || Some(trait_def_id) == tcx.lang_items().sync_trait()
@@ -582,17 +583,17 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                     Some(RustItem::Send | RustItem::Thin)
                                 )
                             {
-                                // Sized, Tuple, Pointee, Thin are all ok to do nothing.
+                                // Sized, MetaSized, Tuple, Pointee, Thin are all ok to do nothing.
                                 // There can't be user impls of these traits, they can only be built-in.
 
                                 // TODO: Send and Sync needs handling, or a rigorous argument why it's ok to skip;
                                 // See https://github.com/verus-lang/verus/issues/1335
                             } else {
-                                unsupported_err!(span, "this trait bound: {:?}", trait_refs)
+                                unsupported_err!(span, format!("this trait bound: {:?}", trait_refs))
                             }
                         }
                         _ => {
-                            unsupported_err!(span, "this trait bound: {:?}", trait_refs)
+                            unsupported_err!(span, format!("this trait bound: {:?}", trait_refs))
                         }
                     }
                 }
@@ -1264,7 +1265,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         trait_did,
                         args_with_self,
                         None,
-                    );
+                        span
+                    )?;
                     let typx = TypX::Dyn(trait_path, Arc::new(typ_args), impl_paths);
                     (Arc::new(typx), false)
                 }
