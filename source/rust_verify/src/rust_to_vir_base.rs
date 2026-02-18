@@ -511,7 +511,12 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
             });
             match candidate {
                 Ok(rustc_middle::traits::ImplSource::UserDefined(u)) => {
-                    let impl_path = def_id_to_vir_path(tcx, verus_items, u.impl_def_id, None::<&mut HashMap<_, _>>);
+                    let impl_path = def_id_to_vir_path(
+                        tcx,
+                        verus_items,
+                        u.impl_def_id,
+                        None::<&mut HashMap<_, _>>,
+                    );
                     let impl_path = ImplPath::TraitImplPath(impl_path);
                     match (&mut remove_self_trait_bound, inst_bound) {
                         (Some((expected_id, self_trait_impl_path)), Some(b))
@@ -586,7 +591,10 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                 // Sized, MetaSized, Tuple, Pointee, Thin are all ok to do nothing.
                                 // There can't be user impls of these traits, they can only be built-in.
                             } else {
-                                unsupported_err!(span, format!("this trait bound: {:?}", trait_refs))
+                                unsupported_err!(
+                                    span,
+                                    format!("this trait bound: {:?}", trait_refs)
+                                )
                             }
                         }
                         _ => {
@@ -1067,8 +1075,14 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
                 let impl_paths =
                     get_impl_paths(tcx, verus_items, param_env_src, did, args, None, span)?;
-                let datatypex =
-                    def_id_to_datatype(tcx, verus_items, path_def_id_map, did, Arc::new(typ_args), impl_paths);
+                let datatypex = def_id_to_datatype(
+                    tcx,
+                    verus_items,
+                    path_def_id_map,
+                    did,
+                    Arc::new(typ_args),
+                    impl_paths,
+                );
                 (Arc::new(datatypex), false)
             }
         }
@@ -1262,7 +1276,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         trait_did,
                         args_with_self,
                         None,
-                        span
+                        span,
                     )?;
                     let typx = TypX::Dyn(trait_path, Arc::new(typ_args), impl_paths);
                     (Arc::new(typx), false)

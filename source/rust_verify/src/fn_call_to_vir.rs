@@ -252,8 +252,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                 let mut self_trait_impl_path = None;
                 let trait_id = tcx.trait_of_assoc(did).unwrap();
                 let remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
-                let impl_paths =
-                    get_impl_paths(bctx, did, args, remove_self_trait_bound, const_var, expr.span);
+                let impl_paths = get_impl_paths(bctx, did, args, remove_self_trait_bound, const_var, expr.span);
 
                 let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
                 else {
