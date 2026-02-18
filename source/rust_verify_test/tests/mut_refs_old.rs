@@ -135,7 +135,7 @@ test_verify_one_file_with_options! {
             ensures *x == 20,
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it either `old` or `final`")
+    } => Err(err) => assert_vir_error_msg(err, "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`")
 }
 
 test_verify_one_file_with_options! {
@@ -146,7 +146,7 @@ test_verify_one_file_with_options! {
             {
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it either `old` or `final`")
+    } => Err(err) => assert_vir_error_msg(err, "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`")
 }
 
 test_verify_one_file_with_options! {
@@ -165,7 +165,7 @@ test_verify_one_file_with_options! {
             ensures *x.1 == 20,
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it either `old` or `final`")
+    } => Err(err) => assert_vir_error_msg(err, "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`")
 }
 
 test_verify_one_file_with_options! {
