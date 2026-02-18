@@ -1147,3 +1147,23 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] wrapped_mut_ref_params_resolved ["new-mut-ref"] => verus_code! {
+        fn test(Ghost(x): Ghost<&mut u64>) {
+            assert(has_resolved(x)); // FAILS
+        }
+
+        fn test2(Tracked(x): Tracked<&mut u64>) {
+            assert(has_resolved(x));
+        }
+
+        fn test3(x: Ghost<&mut u64>) {
+            assert(has_resolved(x@)); // FAILS
+        }
+
+        fn test4(x: Tracked<&mut u64>) {
+            assert(has_resolved(x@));
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
