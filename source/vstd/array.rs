@@ -159,7 +159,7 @@ pub broadcast axiom fn axiom_array_has_resolved<T, const N: usize>(array: [T; N]
 pub fn ref_mut_array_unsizing_coercion<T, const N: usize>(r: &mut [T; N]) -> (out: &mut [T])
     ensures
         out.view() === old(r).view(),
-        fin(out).view() === fin(r).view(),
+        final(out).view() === final(r).view(),
     opens_invariants none
     no_unwind
 {

@@ -24,9 +24,9 @@ use crate::token;
 use crate::ty::ReturnType;
 use crate::ty::Type;
 use crate::verus::{
-    Assert, AssertForall, Assume, BigAnd, BigOr, ClosureArg, Decreases, Ensures, ExprGetField,
-    ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions, Invariant,
-    InvariantEnsures, InvariantExceptBreak, Requires, RevealHide, View, ExprFinal,
+    Assert, AssertForall, Assume, BigAnd, BigOr, ClosureArg, Decreases, Ensures, ExprFinal,
+    ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions, Invariant,
+    InvariantEnsures, InvariantExceptBreak, Requires, RevealHide, View,
 };
 use proc_macro2::{Span, TokenStream};
 #[cfg(feature = "printing")]

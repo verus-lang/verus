@@ -2262,6 +2262,7 @@ impl Visitor {
                 | Expr::HasNot(_)
                 | Expr::Matches(_)
                 | Expr::GetField(_)
+                | Expr::Final(_)
         ) {
             return false;
         }
@@ -2367,6 +2368,13 @@ impl Visitor {
                 let member_ident = quote::format_ident!("arrow_{}", gf.member);
                 let get_call = quote_spanned!(gf.arrow_token.span() => .#member_ident());
                 *expr = Expr::Verbatim(quote_spanned!(span => (#base#get_call)));
+            }
+            Expr::Final(expr_final) => {
+                let span = expr_final.span();
+                let arg = expr_final.arg;
+                *expr = Expr::Verbatim(
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::final_(#arg)),
+                )
             }
             _ => unreachable!(),
         }
