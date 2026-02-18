@@ -51,12 +51,17 @@
 //! assert(lower_bound_duplicate@.n() == 1);
 //! ```
 #![allow(unused_imports)]
+use std::result::*;
 use verus_builtin::*;
 use verus_builtin_macros::*;
-use std::result::*;
-use vstd::pcm::*;
-use vstd::pcm_lib::*;
 use vstd::prelude::*;
+use vstd::resource::algebra::ResourceAlgebra;
+use vstd::resource::copy_duplicable_part;
+use vstd::resource::pcm::Resource;
+use vstd::resource::pcm::PCM;
+use vstd::resource::update_and_redistribute;
+use vstd::resource::update_mut;
+use vstd::resource::Loc;
 
 verus! {
 
@@ -82,13 +87,13 @@ pub enum MonotonicCounterResourceValue {
 
 // To use `MonotonicCounterResourceValue` as a resource, we have to implement
 // `PCM`, showing how to use it in a resource algebra.
-impl PCM for MonotonicCounterResourceValue {
+impl ResourceAlgebra for MonotonicCounterResourceValue {
     open spec fn valid(self) -> bool {
         !(self is Invalid)
     }
 
-    open spec fn op(self, other: Self) -> Self {
-        match (self, other) {
+    open spec fn op(a: Self, b: Self) -> Self {
+        match (a, b) {
             // Two lower bounds can be combined into a lower bound
             // that's the maximum of the two lower bounds.
             (
@@ -156,11 +161,7 @@ impl PCM for MonotonicCounterResourceValue {
         }
     }
 
-    open spec fn unit() -> Self {
-        MonotonicCounterResourceValue::LowerBound { lower_bound: 0 }
-    }
-
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn valid_op(a: Self, b: Self) {
     }
 
     proof fn commutative(a: Self, b: Self) {
@@ -168,8 +169,13 @@ impl PCM for MonotonicCounterResourceValue {
 
     proof fn associative(a: Self, b: Self, c: Self) {
     }
+}
+impl PCM for MonotonicCounterResourceValue {
+    open spec fn unit() -> Self {
+        MonotonicCounterResourceValue::LowerBound { lower_bound: 0 }
+    }
 
-    proof fn op_unit(a: Self) {
+    proof fn op_unit(self) {
     }
 
     proof fn unit_valid() {
@@ -212,15 +218,14 @@ impl MonotonicCounterResource {
         Self { r }
     }
 
-
     // Join two resources
     pub proof fn join(tracked self: Self, tracked other: Self) -> (tracked r: Self)
         requires
             self.id() == other.id(),
-            self@.n() == other@.n()
+            self@.n() == other@.n(),
         ensures
             r.id() == self.id(),
-            r@.n() == self@.op(other@).n(),
+            r@.n() == MonotonicCounterResourceValue::op(self@, other@).n(),
     {
         let tracked mut r = self.r.join(other.r);
         Self { r }
@@ -237,7 +242,8 @@ impl MonotonicCounterResource {
             ({
                 let (r1, r2) = return_value;
                 let value = self@->FullRightToAdvance_value;
-                &&& r1.id() == r2.id() == self.id()
+                &&& r1.id() == self.id()
+                &&& r2.id() == self.id()
                 &&& r1@ == (MonotonicCounterResourceValue::HalfRightToAdvance { value })
                 &&& r2@ == r1@
             }),
@@ -278,7 +284,8 @@ impl MonotonicCounterResource {
             old(other)@ is HalfRightToAdvance,
         ensures
             old(self)@ == old(other)@,
-            self.id() == other.id() == old(self).id(),
+            self.id() == old(self).id(),
+            other.id() == old(self).id(),
             other@ == self@,
             self@ == (MonotonicCounterResourceValue::HalfRightToAdvance {
                 value: old(self)@->HalfRightToAdvance_value + 1,
@@ -311,7 +318,6 @@ impl MonotonicCounterResource {
             other@ is LowerBound && self@ is FullRightToAdvance ==> other@.n() <= self@.n(),
             self@ is LowerBound && other@ is HalfRightToAdvance ==> self@.n() <= other@.n(),
             other@ is LowerBound && self@ is HalfRightToAdvance ==> other@.n() <= self@.n(),
-
     {
         self.r.validate_2(&other.r)
     }
@@ -337,14 +343,14 @@ fn main() {
     proof {
         half1.increment_using_two_halves(&mut half2);
     }
-    assert(half1.id() == half2.id() == id);
+    assert(half1.id() == id);
+    assert(half2.id() == id);
     assert(half1@.n() == half2@.n() == v1 + 1);
     assert(half1@.n() == 1);
     let tracked mut lower_bound = half1.extract_lower_bound();
     assert(lower_bound@.n() == 1);
     let tracked lower_bound_duplicate = lower_bound.extract_lower_bound();
     assert(lower_bound_duplicate@.n() == 1);
-
 
     proof {
         let tracked reconstructed_full = half1.join(half2);
