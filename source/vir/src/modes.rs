@@ -1611,7 +1611,9 @@ fn check_expr_handle_mut_arg(
             record.erasure_modes.var_modes.push((expr.span.clone(), mode));
             return Ok((mode, Some(x_mode), proph));
         }
-        ExprX::ConstVar(x, _) | ExprX::StaticVar(x) => {
+        ExprX::ConstVar(x, _)
+        | ExprX::StaticVar(x)
+        | ExprX::Call(CallTarget::Fun(_, x, _, _, _, true), _, _) => {
             let function = match ctxt.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
@@ -1647,7 +1649,7 @@ fn check_expr_handle_mut_arg(
             Ok((mode, Proph::No))
         }
         ExprX::Call(
-            CallTarget::Fun(crate::ast::CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),
+            CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _, _),
             es,
             None,
         ) => {
@@ -1695,8 +1697,9 @@ fn check_expr_handle_mut_arg(
 
             Ok((*ret_mode, Proph::No))
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage), es, None) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage, const_var), es, None) => {
             assert!(*autospec_usage == AutospecUsage::Final);
+            assert!(!const_var); // const_var is handled in ConstVar/StaticVar case
 
             let function = match ctxt.funs.get(x) {
                 None => {

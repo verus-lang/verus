@@ -61,7 +61,7 @@ pub(crate) fn annotate_user_defined_invariants(
                         Ok(expr.clone())
                     }
                 }
-                ExprX::Call(CallTarget::Fun(_, fun, _, _, _), args, _post_args) => {
+                ExprX::Call(CallTarget::Fun(_, fun, _, _, _, _), args, _post_args) => {
                     let function = &functions.get(fun).unwrap();
                     let mut all_asserts = vec![];
                     for (arg, param) in args.iter().zip(function.x.params.iter()) {

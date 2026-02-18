@@ -4447,3 +4447,60 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
 }
+
+test_verify_one_file! {
+    #[test] trait_assoc_const1 verus_code! {
+        trait U {}
+
+        trait T<A, B> {
+            const C: usize;
+            const S: &str;
+            const E: usize;
+        }
+
+        impl U for u16 {}
+
+        impl<Z: U> T<u8, Z> for bool {
+            const C: usize = 3;
+            const S: &str = "ha";
+
+            #[verifier::external_body]
+            const E: usize = 4;
+        }
+
+        fn test1() {
+            assert(<bool as T<u8, u16>>::C == 3);
+            let c = <bool as T<u8, u16>>::C;
+            assert(c == 3);
+        }
+
+        fn test2<A: T<u8, u16>>() {
+            assert(A::C == 3); // FAILS
+        }
+
+        fn test3<A: T<u8, u16>>() {
+            let e1 = <bool as T<u8, u16>>::E;
+            let e2 = <bool as T<u8, u16>>::E;
+            assert(e1 == e2);
+            assert(e1 == 4); // FAILS
+        }
+
+        fn test4<A: T<u8, u16>>() {
+            assert(<bool as T<u8, u16>>::E == 4); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const2 verus_code! {
+        const fn f() -> u8 { 3 }
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8;
+        }
+        impl T for bool {
+            // when we support general assoc consts, should be a mode violation:
+            const C: u8 = f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support const items in traits, except for")
+}
