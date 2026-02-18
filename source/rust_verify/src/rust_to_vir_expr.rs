@@ -1306,7 +1306,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                             adjustments,
                             adjustment_idx - 2,
                         )?;
-                        if bctx.in_postcondition || bctx.in_old {
+                        if bctx.in_fn_sig || bctx.in_old {
                             // In some cases, we already know we can elide the reborrow
                             return Ok(inner_inner);
                         } else {
