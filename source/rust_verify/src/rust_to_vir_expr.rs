@@ -3049,8 +3049,9 @@ fn binopkind_to_binaryop_inner<'tcx>(
         BinOpKind::BitAnd => {
             match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
                 (TyKind::Bool, TyKind::Bool) => {
-                    panic!(
-                        "bitwise AND for bools (i.e., the not-short-circuited version) not supported"
+                    unsupported_err!(
+                        lhs.span,
+                        "bitwise AND for bools (i.e., the not-short-circuited version)"
                     );
                 }
                 (TyKind::Int(_), TyKind::Int(_)) => {
@@ -3065,8 +3066,9 @@ fn binopkind_to_binaryop_inner<'tcx>(
         BinOpKind::BitOr => {
             match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
                 (TyKind::Bool, TyKind::Bool) => {
-                    panic!(
-                        "bitwise OR for bools (i.e., the not-short-circuited version) not supported"
+                    unsupported_err!(
+                        lhs.span,
+                        "bitwise OR for bools (i.e., the not-short-circuited version)"
                     );
                 }
                 (TyKind::Int(_), TyKind::Int(_)) => {
