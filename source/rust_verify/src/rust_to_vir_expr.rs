@@ -3959,7 +3959,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Result<Pl
                 // TODO(new_mut_ref): link to documentation or something
                 return Err(vir::messages::error(
                     &place.span,
-                    "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it either `old` or `final`",
+                    "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`",
                 ));
             }
         }
