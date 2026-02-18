@@ -5,7 +5,7 @@ use crate::context::{BodyCtxt, Context, ContextX, HeaderSetting};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
-    check_generics_bounds_no_polarity, def_id_to_vir_path, no_body_param_to_var,
+    check_fn_opaque_ty, check_generics_bounds_no_polarity, def_id_to_vir_path, no_body_param_to_var,
 };
 use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir_consume, pat_to_mut_var};
 use crate::rust_to_vir_impl::ExternalInfo;
@@ -29,7 +29,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
     BodyVisibility, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind,
-    KrateX, Mode, Opaqueness, ParamX, Typ, TypDecoration, TypX, VarIdent, VirErr, Visibility,
+    KrateX, Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX, VarIdent,
+    VirErr, Visibility,
 };
 use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
@@ -287,6 +288,7 @@ fn body_to_vir<'tcx>(
     new_mut_ref: bool,
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     param_names: Vec<VarIdent>,
+    external_opaque_type_map: Option<HashMap<Path, Path>>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let types = body_id_to_types(ctxt.tcx, id);
     let bctx = BodyCtxt {
@@ -306,6 +308,7 @@ fn body_to_vir<'tcx>(
         params: std::rc::Rc::new(vec![param_names]),
         header_setting: HeaderSetting::Fn,
         unwrap_param_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
+        external_opaque_type_map,
     };
     let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
 
@@ -327,6 +330,7 @@ fn check_fn_decl<'tcx>(
     attrs: &[Attribute],
     mode: Mode,
     output_ty: rustc_middle::ty::Ty<'tcx>,
+    assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
     let FnDecl { inputs: _, output, c_variadic, implicit_self, lifetime_elision_allowed: _ } = decl;
     unsupported_err_unless!(!c_variadic, span, "c_variadic functions");
@@ -343,7 +347,13 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = ctxt.mid_ty_to_vir(id, span, &output_ty, false)?;
+            let typ = ctxt.mid_ty_to_vir(
+                id,
+                span,
+                &output_ty,
+                false,
+                assume_specification_opaque_type_map,
+            )?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -471,9 +481,12 @@ fn compare_external_ty_or_true<'tcx>(
         _ => false,
     }
 }
-fn compare_clasue_kind<'tcx>(
+fn compare_clause_kind<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    verus_items: &crate::verus_items::VerusItems,
     ck1: &rustc_middle::ty::ClauseKind<'tcx>,
     ck2: &rustc_middle::ty::ClauseKind<'tcx>,
+    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
 ) -> bool {
     match (ck1, ck2) {
         (
@@ -484,7 +497,16 @@ fn compare_clasue_kind<'tcx>(
             rustc_middle::ty::ClauseKind::Projection(pred1),
             rustc_middle::ty::ClauseKind::Projection(pred2),
         ) => {
-            pred1.projection_term.def_id == pred2.projection_term.def_id && pred1.term == pred2.term
+            let projection_term_eq = pred1.projection_term.def_id == pred2.projection_term.def_id;
+            let term_eq =
+                if let (rustc_middle::ty::TermKind::Ty(ty1), rustc_middle::ty::TermKind::Ty(ty2)) =
+                    (pred1.term.kind(), pred2.term.kind())
+                {
+                    compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to)
+                } else {
+                    pred1.term == pred2.term
+                };
+            projection_term_eq && term_eq
         }
         (
             rustc_middle::ty::ClauseKind::RegionOutlives(..),
@@ -522,29 +544,178 @@ fn compare_external_ty<'tcx>(
     ty2: &rustc_middle::ty::Ty<'tcx>,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
 ) -> bool {
-    // println!("ty1 {:#?} \n ty2 {:#?}", ty1, ty2);
-    // println!("external_trait_from_to {:#?}", external_trait_from_to);
+    let compare_generic_args = |generic_args1: &[GenericArg<'tcx>],
+                                generic_args2: &[GenericArg<'tcx>]| {
+        if generic_args1.len() != generic_args2.len() {
+            return false;
+        } else {
+            for (generic_arg1, generic_arg2) in generic_args1.iter().zip(generic_args2.iter()) {
+                match (generic_arg1.as_type(), generic_arg2.as_type()) {
+                    (Some(ty1), Some(ty2)) => {
+                        if compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to)
+                        {
+                            continue;
+                        } else {
+                            return false;
+                        }
+                    }
+                    (None, None) => {
+                        if generic_arg1 == generic_arg2 {
+                            continue;
+                        } else {
+                            return false;
+                        }
+                    }
+                    _ => {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+    };
+
     if let Some((from_path, to_path, _)) = external_trait_from_to {
         compare_external_ty_or_true(tcx, verus_items, from_path, to_path, ty1, ty2)
-    } else if let (
-        rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty1),
-        rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty2),
-    ) = (ty1.kind(), ty2.kind())
-    {
-        // two opaque types. We compare their trait bounds
-        let ty1_bounds = tcx.item_bounds(al_ty1.def_id).instantiate(tcx, al_ty1.args);
-        let ty2_bounds = tcx.item_bounds(al_ty2.def_id).instantiate(tcx, al_ty2.args);
-        if ty1_bounds.len() != ty2_bounds.len() {
-            return false;
-        }
-        for (bound1, bound2) in ty1_bounds.iter().zip(ty2_bounds.iter()) {
-            if !compare_clasue_kind(&bound1.kind().skip_binder(), &bound2.kind().skip_binder()) {
-                return false;
+    }
+    // we recursively reach all the nested opaque types.
+    else {
+        match (ty1.kind(), ty2.kind()) {
+            (
+                rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty1),
+                rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty2),
+            ) => {
+                // two opaque types. We compare their trait bounds
+                let ty1_bounds = tcx.item_bounds(al_ty1.def_id).instantiate(tcx, al_ty1.args);
+                let ty2_bounds = tcx.item_bounds(al_ty2.def_id).instantiate(tcx, al_ty2.args);
+                if ty1_bounds.len() != ty2_bounds.len() {
+                    return false;
+                }
+                for (bound1, bound2) in ty1_bounds.iter().zip(ty2_bounds.iter()) {
+                    if !compare_clause_kind(
+                        tcx,
+                        verus_items,
+                        &bound1.kind().skip_binder(),
+                        &bound2.kind().skip_binder(),
+                        external_trait_from_to,
+                    ) {
+                        return false;
+                    }
+                }
+                return true;
             }
+            (rustc_middle::ty::TyKind::Tuple(tys1), rustc_middle::ty::TyKind::Tuple(tys2)) => {
+                if tys1.len() != tys2.len() {
+                    false
+                } else {
+                    for (ty1, ty2) in tys1.iter().zip(tys2.iter()) {
+                        if !compare_external_ty(
+                            tcx,
+                            verus_items,
+                            &ty1,
+                            &ty2,
+                            external_trait_from_to,
+                        ) {
+                            return false;
+                        }
+                    }
+                    true
+                }
+            }
+            (
+                rustc_middle::ty::TyKind::Array(ty1, const1),
+                rustc_middle::ty::TyKind::Array(ty2, const2),
+            ) => {
+                const1 == const2
+                    && compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to)
+            }
+            (
+                rustc_middle::ty::TyKind::Pat(ty1, pat1),
+                rustc_middle::ty::TyKind::Pat(ty2, pat2),
+            ) => {
+                pat1 == pat2
+                    && compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to)
+            }
+            (rustc_middle::ty::TyKind::Slice(ty1), rustc_middle::ty::TyKind::Slice(ty2)) => {
+                compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to)
+            }
+            (
+                rustc_middle::ty::TyKind::RawPtr(ty1, mut1),
+                rustc_middle::ty::TyKind::RawPtr(ty2, mut2),
+            ) => {
+                mut1 == mut2
+                    && compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to)
+            }
+            (
+                rustc_middle::ty::TyKind::Ref(reg1, ty1, mut1),
+                rustc_middle::ty::TyKind::Ref(reg2, ty2, mut2),
+            ) => {
+                reg1 == reg2
+                    && mut1 == mut2
+                    && compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to)
+            }
+            (
+                rustc_middle::ty::TyKind::Adt(adt_def1, generic_args1),
+                rustc_middle::ty::TyKind::Adt(adt_def2, generic_args2),
+            ) => (*adt_def1 == *adt_def2) && compare_generic_args(generic_args1, generic_args2),
+            (
+                rustc_middle::ty::TyKind::FnDef(def_id1, generic_args1),
+                rustc_middle::ty::TyKind::FnDef(def_id2, generic_args2),
+            )
+            | (
+                rustc_middle::ty::TyKind::Closure(def_id1, generic_args1),
+                rustc_middle::ty::TyKind::Closure(def_id2, generic_args2),
+            )
+            | (
+                rustc_middle::ty::TyKind::CoroutineClosure(def_id1, generic_args1),
+                rustc_middle::ty::TyKind::CoroutineClosure(def_id2, generic_args2),
+            )
+            | (
+                rustc_middle::ty::TyKind::Coroutine(def_id1, generic_args1),
+                rustc_middle::ty::TyKind::Coroutine(def_id2, generic_args2),
+            )
+            | (
+                rustc_middle::ty::TyKind::CoroutineWitness(def_id1, generic_args1),
+                rustc_middle::ty::TyKind::CoroutineWitness(def_id2, generic_args2),
+            ) => (*def_id1 == *def_id2) && compare_generic_args(generic_args1, generic_args2),
+            (
+                rustc_middle::ty::TyKind::FnPtr(fn_tys1, fn_header1),
+                rustc_middle::ty::TyKind::FnPtr(fn_tys2, fn_header2),
+            ) => {
+                let input_tys1 = fn_tys1.skip_binder().inputs();
+                let input_tys2 = fn_tys2.skip_binder().inputs();
+
+                if input_tys1.len() != input_tys2.len() {
+                    return false;
+                } else {
+                    for (input_ty1, input_ty2) in input_tys1.iter().zip(input_tys2.iter()) {
+                        if !compare_external_ty(
+                            tcx,
+                            verus_items,
+                            &input_ty1,
+                            &input_ty2,
+                            external_trait_from_to,
+                        ) {
+                            return false;
+                        } else {
+                            continue;
+                        }
+                    }
+                };
+                if !compare_external_ty(
+                    tcx,
+                    verus_items,
+                    &fn_tys1.skip_binder().output(),
+                    &fn_tys2.skip_binder().output(),
+                    external_trait_from_to,
+                ) {
+                    return false;
+                }
+                fn_header1 == fn_header2
+            }
+            // other cases will not contain nested opaque types.
+            _ => ty1 == ty2,
         }
-        return true;
-    } else {
-        ty1 == ty2
     }
 }
 
@@ -568,6 +739,7 @@ fn compare_external_sig<'tcx>(
             return Ok(false);
         }
     }
+
     Ok(c1 == c2)
 }
 
@@ -585,9 +757,9 @@ fn handle_external_fn<'tcx>(
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     external_fn_specification_via_external_trait: Option<DefId>,
     external_info: &mut ExternalInfo,
-) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool, Safety, bool), VirErr> {
     // This function is the proxy, and we need to look up the actual path.
-
+) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool, Safety, bool, DefId), VirErr>
+{
     let is_builtin_external = matches!(
         external_fn_specification_via_external_trait
             .and_then(|d| ctxt.verus_items.id_to_name.get(&d)),
@@ -627,6 +799,7 @@ fn handle_external_fn<'tcx>(
             let body = find_body(ctxt, body_id);
             get_external_def_id(ctxt, id, body_id, body, sig)?
         };
+
     let external_path = ctxt.def_id_to_vir_path(external_id);
     let external_item_visibility = mk_visibility(ctxt, external_id);
 
@@ -690,7 +863,16 @@ fn handle_external_fn<'tcx>(
                 ty2.to_string(),
             );
         }
-        return Ok((external_path, external_item_visibility, kind, false, Safety::Safe, true));
+
+        return Ok((
+            external_path,
+            external_item_visibility,
+            kind,
+            false,
+            Safety::Safe,
+            true,
+            external_id,
+        ));
     }
 
     let substs1_early = get_substs_early(ty1, sig.span)?;
@@ -788,7 +970,15 @@ fn handle_external_fn<'tcx>(
 
     let safety = ctxt.tcx.fn_sig(external_id).skip_binder().safety();
 
-    Ok((external_path, external_item_visibility, kind, has_self_parameter, safety, false))
+    Ok((
+        external_path,
+        external_item_visibility,
+        kind,
+        has_self_parameter,
+        safety,
+        false,
+        external_id,
+    ))
 }
 
 pub(crate) fn get_substs_early<'tcx>(
@@ -1177,6 +1367,7 @@ pub(crate) fn check_item_fn<'tcx>(
     external_fn_specification_via_external_trait: Option<DefId>,
     external_info: &mut ExternalInfo,
     autoderive_action: Option<&AutomaticDeriveAction>,
+    opaque_types: &mut OpaqueTypes,
 ) -> Result<Option<Fun>, VirErr> {
     let mut this_path = ctxt.def_id_to_vir_path(id);
 
@@ -1221,7 +1412,7 @@ pub(crate) fn check_item_fn<'tcx>(
         };
 
         let ty = fn_sig.output().skip_binder();
-        let typ = ctxt.mid_ty_to_vir(id, sig.span, &ty, false)?;
+        let typ = ctxt.mid_ty_to_vir(id, sig.span, &ty, false, None)?;
 
         let fun = check_item_const_or_static(
             ctxt,
@@ -1257,19 +1448,26 @@ pub(crate) fn check_item_fn<'tcx>(
         None
     };
 
-    let (path, proxy, visibility, kind, has_self_param, safety, is_external_const) = if vattrs
-        .external_fn_specification
-        || external_fn_specification_via_external_trait.is_some()
-    {
-        if is_verus_spec {
-            return err_span(
-                sig.span,
-                "assume_specification attribute not supported with VERUS_SPEC",
-            );
-        }
+    let (path, proxy, visibility, kind, has_self_param, safety, is_external_const, proxy_id) =
+        if vattrs.external_fn_specification
+            || external_fn_specification_via_external_trait.is_some()
+        {
+            if is_verus_spec {
+                return err_span(
+                    sig.span,
+                    "assume_specification attribute not supported with VERUS_SPEC",
+                );
+            }
 
-        let (external_path, external_item_visibility, kind, has_self_param, safety, is_const) =
-            handle_external_fn(
+            let (
+                external_path,
+                external_item_visibility,
+                kind,
+                has_self_param,
+                safety,
+                is_const,
+                external_id,
+            ) = handle_external_fn(
                 ctxt,
                 id,
                 kind,
@@ -1284,14 +1482,30 @@ pub(crate) fn check_item_fn<'tcx>(
                 external_info,
             )?;
 
-        let proxy = Some((*ctxt.spanned_new(sig.span, this_path.clone())).clone());
+            let proxy = Some((*ctxt.spanned_new(sig.span, this_path.clone())).clone());
 
-        (external_path, proxy, external_item_visibility, kind, has_self_param, safety, is_const)
+            (
+                external_path,
+                proxy,
+                external_item_visibility,
+                kind,
+                has_self_param,
+                safety,
+                is_const,
+                Some(external_id),
+            )
+        } else {
+            // No proxy.
+            let has_self_param = has_self_parameter(ctxt, id);
+            let safety = sig.safety();
+            (this_path.clone(), None, visibility, kind, has_self_param, safety, false, None)
+        };
+
+    let assume_specification_opaque_type_map = if let Some(proxy_id) = proxy_id {
+        Some(check_fn_opaque_ty(ctxt, opaque_types, &proxy_id, sig.output_span(), Some(&id))?)
     } else {
-        // No proxy.
-        let has_self_param = has_self_parameter(ctxt, id);
-        let safety = sig.safety();
-        (this_path.clone(), None, visibility, kind, has_self_param, safety, false)
+        check_fn_opaque_ty(ctxt, opaque_types, &id, sig.output_span(), None)?;
+        None
     };
 
     let name = Arc::new(FunX { path: path.clone() });
@@ -1324,7 +1538,16 @@ pub(crate) fn check_item_fn<'tcx>(
                 );
             }
             let output = fn_sig.output().skip_binder();
-            let ret_typ_mode = check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, output)?;
+            let ret_typ_mode = check_fn_decl(
+                sig.span,
+                ctxt,
+                id,
+                decl,
+                attrs,
+                mode,
+                fn_sig.output().skip_binder(),
+                assume_specification_opaque_type_map.as_ref(),
+            )?;
             (ret_typ_mode, inputs.to_vec())
         }
         FnOrConstSigEnum::ConstVar(typ) => {
@@ -1390,8 +1613,13 @@ pub(crate) fn check_item_fn<'tcx>(
         }
 
         let typ = {
-            let typ =
-                ctxt.mid_ty_to_vir(id, span, is_ref_mut.map(|(t, _)| t).unwrap_or(input), false)?;
+            let typ = ctxt.mid_ty_to_vir(
+                id,
+                span,
+                is_ref_mut.map(|(t, _)| t).unwrap_or(input),
+                false,
+                None,
+            )?;
             if let Some((_, decoration)) = is_ref_mut.and_then(|(_, w)| w) {
                 Arc::new(TypX::Decorate(decoration, None, typ))
             } else {
@@ -1454,6 +1682,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 new_mut_ref,
                 migrate_postcondition_vars,
                 param_names,
+                assume_specification_opaque_type_map,
             )?;
             let header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
@@ -2356,7 +2585,7 @@ fn get_external_def_id<'tcx>(
                 let trait_ref = tcx.impl_trait_ref(impl_def_id);
 
                 for ty in trait_ref.instantiate(tcx, impl_args).args.types() {
-                    types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, false)?);
+                    types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, false, None)?);
                 }
 
                 let kind = FunctionKind::ForeignTraitMethodImpl {
@@ -2439,6 +2668,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         new_mut_ref,
         None,
         vec![],
+        None,
     )?;
     let header = vir::headers::read_header(
         &mut vir_body,
@@ -2570,7 +2800,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let inputs = fn_sig.inputs().skip_binder();
 
     let ret_typ_mode =
-        check_fn_decl(span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?;
+        check_fn_decl(span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder(), None)?;
     let (typ_params, typ_bounds) = check_generics_bounds_no_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
@@ -2585,8 +2815,13 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = no_body_param_to_var(param);
         let is_mut = is_mut_ty(ctxt, *input);
-        let typ =
-            ctxt.mid_ty_to_vir(id, param.span, is_mut.map(|(t, _)| t).unwrap_or(input), false)?;
+        let typ = ctxt.mid_ty_to_vir(
+            id,
+            param.span,
+            is_mut.map(|(t, _)| t).unwrap_or(input),
+            false,
+            None,
+        )?;
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,
