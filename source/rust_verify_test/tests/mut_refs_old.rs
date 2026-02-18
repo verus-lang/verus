@@ -429,3 +429,49 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] unwrap_params ["new-mut-ref"] => verus_code! {
+        fn test(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires *x == 0,
+            ensures fin(x)@ == old(x)@ + 3,
+        {
+            proof {
+                *x = Ghost(3);
+            }
+
+            assert(*x == 3);
+            assert(*old(x) == 0);
+        }
+
+        fn test_fail(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires *x == 0,
+        {
+            proof {
+                *x = Ghost(3);
+            }
+
+            assert(*x == 3);
+            assert(*old(x) == 0);
+            assert(false); // FAILS
+        }
+
+        fn caller() {
+            let mut x: Ghost<int> = Ghost(0);
+            test(Tracked(&mut x));
+            assert(x == 3);
+        }
+
+        fn caller_fail() {
+            let mut x: Ghost<int> = Ghost(0);
+            test(Tracked(&mut x));
+            assert(x == 3);
+            assert(false); // FAILS
+        }
+
+        fn caller_fail2() {
+            let mut x: Ghost<int> = Ghost(1);
+            test(Tracked(&mut x)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}

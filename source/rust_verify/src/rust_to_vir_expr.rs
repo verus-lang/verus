@@ -3424,10 +3424,11 @@ fn unwrap_parameter_to_vir<'tcx>(
             erasure_info.direct_var_modes.push((hir_id_y, Mode::Exec));
             erasure_info.resolved_calls.push((hir_id_get, stmt2.span.data(), resolved_call));
             let unwrap = vir::ast::UnwrapParameter { mode, outer_name: y, inner_name: x1 };
-            let headerx = HeaderExprX::UnwrapParameter(unwrap);
+            let headerx = HeaderExprX::UnwrapParameter(unwrap.clone());
             let exprx = ExprX::Header(Arc::new(headerx));
             let expr = bctx.spanned_typed_new(stmt1.span, &Arc::new(TypX::Bool), exprx);
             let stmt = bctx.spanned_new(stmt1.span, StmtX::Expr(expr));
+            bctx.unwrap_param_map.borrow_mut().insert(unwrap.inner_name, unwrap.outer_name);
             Ok(vec![stmt])
         }
         _ => err_span(stmt1.span, "ill-formed unwrap_parameter header"),

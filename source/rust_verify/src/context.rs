@@ -81,6 +81,8 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) in_old: bool,
     /// params for the enclosing function and all enclosing non-spec-closures
     pub(crate) params: Rc<Vec<Vec<vir::ast::VarIdent>>>,
+    /// unwrapped params encountered so far (inner_name -> outer_name) e.g. (x -> verus_tmp_x)
+    pub(crate) unwrap_param_map: Rc<RefCell<HashMap<vir::ast::VarIdent, vir::ast::VarIdent>>>,
 }
 
 impl<'tcx> ContextX<'tcx> {
@@ -202,14 +204,24 @@ impl<'tcx> BodyCtxt<'tcx> {
     }
 
     pub(crate) fn is_param_for_fn_or_non_spec_closure(&self, ident: &vir::ast::VarIdent) -> bool {
-        self.params.iter().any(|params| params.iter().any(|param| param == ident))
+        let r = self.unwrap_param_map.borrow();
+        let id = match r.get(ident) {
+            Some(unwrap_param_outer_id) => unwrap_param_outer_id,
+            None => ident,
+        };
+        self.params.iter().any(|params| params.iter().any(|param| param == id))
     }
 
     pub(crate) fn is_param_for_innermost_fn_or_non_spec_closure(
         &self,
         ident: &vir::ast::VarIdent,
     ) -> bool {
-        self.params.last().unwrap().iter().any(|param| param == ident)
+        let r = self.unwrap_param_map.borrow();
+        let id = match r.get(ident) {
+            Some(unwrap_param_outer_id) => unwrap_param_outer_id,
+            None => ident,
+        };
+        self.params.last().unwrap().iter().any(|param| param == id)
     }
 
     pub(crate) fn set_header_setting(&self, s: HeaderSetting) -> BodyCtxt<'tcx> {

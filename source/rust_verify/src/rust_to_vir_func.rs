@@ -305,6 +305,7 @@ fn body_to_vir<'tcx>(
         in_old: false,
         params: std::rc::Rc::new(vec![param_names]),
         header_setting: HeaderSetting::Fn,
+        unwrap_param_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
     };
     let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
 
