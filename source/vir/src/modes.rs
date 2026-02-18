@@ -269,7 +269,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::AirStmt(..)
             | ExprX::NeverToAny(..)
             | ExprX::Nondeterministic
-            | ExprX::UseLeftWhereRightCanHaveNoAssignments(..)
+            | ExprX::EvalAndResolve(..)
             | ExprX::ReadPlace(..)
             // all borrow types checked in the main function
             | ExprX::ImplicitReborrowOrSpecRead(..)
@@ -3209,8 +3209,8 @@ fn check_expr_handle_mut_arg(
 
             Ok((mode, p))
         }
-        ExprX::UseLeftWhereRightCanHaveNoAssignments(..) => {
-            panic!("UseLeftWhereRightCanHaveNoAssignments shouldn't be created yet");
+        ExprX::EvalAndResolve(..) => {
+            panic!("EvalAndResolve shouldn't be created yet");
         }
     };
     let (mode, proph) = mode_proph?;

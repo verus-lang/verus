@@ -77,7 +77,7 @@ fn expr_get_early_exits_rec(
             | ExprX::BorrowMut(_)
             | ExprX::ImplicitReborrowOrSpecRead(..)
             | ExprX::ReadPlace(..)
-            | ExprX::UseLeftWhereRightCanHaveNoAssignments(..)
+            | ExprX::EvalAndResolve(..)
             | ExprX::Block(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)

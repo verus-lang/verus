@@ -1135,9 +1135,9 @@ pub enum ExprX {
     /// We don't know for sure if something is a "real" move or copy until mode-checking.
     ReadPlace(Place, UnfinalizedReadKind),
     /// Evaluate both in sequence and return the left value.
-    /// The right side MUST NOT have any assigns it, this lets us avoid creating temporary
-    /// vars that would clutter everything up.
-    UseLeftWhereRightCanHaveNoAssignments(Expr, Expr),
+    /// The right side should only contain `assume(has_resolved(...))` statements
+    /// emitted by the resolution analysis.
+    EvalAndResolve(Expr, Expr),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
