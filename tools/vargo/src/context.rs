@@ -10,18 +10,7 @@ use crate::macros::warning;
 use crate::smt_solver::SmtSolverBinary;
 use crate::smt_solver::SmtSolverType;
 use crate::util::VersionInfo;
-use crate::VARGO_NEST;
 use crate::VARGO_SOURCE_FILES;
-
-fn get_vargo_nest() -> u64 {
-    let vargo_nest = std::env::var("VARGO_NEST")
-        .ok()
-        .and_then(|x| x.parse().ok().map(|x: u64| x + 1))
-        .unwrap_or(0);
-    *VARGO_NEST.write().unwrap() = vargo_nest;
-    std::env::set_var("VARGO_NEST", format!("{}", vargo_nest));
-    vargo_nest
-}
 
 fn get_repo_root() -> anyhow::Result<PathBuf> {
     std::env::current_dir()
@@ -132,7 +121,6 @@ fn create_target_verus_dir(release: bool) -> anyhow::Result<PathBuf> {
 
 #[derive(Debug)]
 pub struct VargoContext {
-    pub vargo_nest: u64,
     pub repo_root: PathBuf,
     pub rust_toolchain: Option<String>,
     pub in_nextest: bool,
@@ -147,26 +135,22 @@ pub struct VargoContext {
 impl VargoContext {
     pub fn construct(cli: &VargoCli) -> anyhow::Result<Self> {
         check_vargo_metadata_in_cargo_toml()?;
-        let vargo_nest = get_vargo_nest();
         let repo_root = get_repo_root()?;
         let in_nextest = std::env::var("VARGO_IN_NEXTEST").is_ok();
         let rust_toolchain = get_rust_toolchain(&repo_root, in_nextest)?;
 
-        if vargo_nest == 0 && vargo_source_changed(&repo_root)? {
+        if vargo_source_changed(&repo_root)? {
             anyhow::bail!(
                 "vargo sources have changed since it was last built, please re-build vargo"
             );
         }
 
-        let solver_binary_z3 = SmtSolverBinary::find_path(SmtSolverType::Z3, vargo_nest)
+        let solver_binary_z3 = SmtSolverBinary::find_path(SmtSolverType::Z3)
             .expect("find_path for Z3 always returns a path");
-        let solver_binary_cvc5 = SmtSolverBinary::find_path(SmtSolverType::Cvc5, vargo_nest);
+        let solver_binary_cvc5 = SmtSolverBinary::find_path(SmtSolverType::Cvc5);
 
         // check binary versions
-        if vargo_nest == 0
-            && cli.command.needs_solver_version_check()
-            && cli.options.solver_version_check
-        {
+        if cli.command.needs_solver_version_check() && cli.options.solver_version_check {
             solver_binary_z3.check_version()?;
             if let Some(cvc5) = &solver_binary_cvc5 {
                 cvc5.check_version()?;
@@ -203,7 +187,6 @@ impl VargoContext {
             target_dir,
             target_verus_dir,
             target_verus_artifact_dir_absolute,
-            vargo_nest,
             repo_root,
             solver_binary_z3,
             solver_binary_cvc5,

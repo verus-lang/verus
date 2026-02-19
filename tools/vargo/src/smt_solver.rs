@@ -66,7 +66,7 @@ pub struct SmtSolverBinary {
 }
 
 impl SmtSolverBinary {
-    pub fn find_path(solver_type: SmtSolverType, vargo_nest: u64) -> Option<Self> {
+    pub fn find_path(solver_type: SmtSolverType) -> Option<Self> {
         let find_path_inner = || {
             let file_name = if std::env::var(solver_type.env_var_name()).is_ok() {
                 std::env::var(solver_type.env_var_name()).unwrap()
@@ -75,7 +75,7 @@ impl SmtSolverBinary {
             };
             let path = std::path::Path::new(&file_name);
 
-            if !path.is_file() && vargo_nest == 0 {
+            if !path.is_file() {
                 // When we fail to find Z3, we warning the user but optimistically continue
                 // Since we don't currently use cvc5, we don't warning the user about it, and we bail out
                 match solver_type {
