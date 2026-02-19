@@ -122,8 +122,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // Test ensuring that no specification is generated on code compiled from exec_spec_trusted!
-    #[test] test_exec_spec_trusted_no_spec IMPORTS.to_string() + verus_code_str! {
+    // Test ensuring that specification is generated on code compiled from exec_spec_trusted!
+    #[test] test_exec_spec_trusted_spec IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn test1() -> bool {
                 true
@@ -143,5 +143,5 @@ test_verify_one_file! {
             let res2 = exec_test2();
             assert(res2);
         }
-    } => Err(_)
+    } => Ok(())
 }
