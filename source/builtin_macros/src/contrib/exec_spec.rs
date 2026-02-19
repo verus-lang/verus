@@ -699,7 +699,11 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
 }
 
 /// Compiles a spec fn to the exec fn signature.
-fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn, unverified: bool) -> Result<TokenStream2, Error> {
+fn compile_sig(
+    ctx: &mut LocalCtx,
+    item_fn: &ItemFn,
+    unverified: bool,
+) -> Result<TokenStream2, Error> {
     let spec_params = item_fn
         .sig
         .inputs
@@ -1657,7 +1661,9 @@ fn compile_guarded_quant_verified(
 /// |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> ==> <body>
 /// or
 /// |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> && <body>
-fn get_guarded_range_quant_unverified(closure: &ExprClosure) -> Result<GuardedQuantifierUnverified, Error> {
+fn get_guarded_range_quant_unverified(
+    closure: &ExprClosure,
+) -> Result<GuardedQuantifierUnverified, Error> {
     let quant_vars = closure.inputs.iter().map(|input| {
         let (quant_var, Some(quant_type)) = get_simple_pat(&input.pat)? else {
             return Err(Error::new_spanned(closure, "Missing type on quantified variable. The exec_spec_unverified! macro only supports typed quantified variables: forall/exists |x: <type>|."));
@@ -1812,8 +1818,9 @@ fn compile_guarded_quant_loops_unverified(
     } else {
         let mut next_vars = guarded_vars.clone();
         next_vars.remove(0);
-        let compiled_inner =
-            compile_guarded_quant_loops_unverified(&body_ctx, op, expr, guard_op, body, &next_vars)?;
+        let compiled_inner = compile_guarded_quant_loops_unverified(
+            &body_ctx, op, expr, guard_op, body, &next_vars,
+        )?;
         compiled_body = match op {
             UnOp::Forall(..) => quote! {
                 #compiled_inner
@@ -1872,7 +1879,11 @@ fn compile_guarded_quant_loops_unverified(
 }
 
 /// Compiles some forms of forall/exists quantifiers to loops.
-fn compile_guarded_quant_unverified(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<TokenStream2, Error> {
+fn compile_guarded_quant_unverified(
+    ctx: &LocalCtx,
+    op: &UnOp,
+    expr: &Expr,
+) -> Result<TokenStream2, Error> {
     // Quantified variables and the body of the quantifier expression
     // is expected to be described as a closure.
     let Expr::Closure(closure) = expr else {
@@ -2228,7 +2239,8 @@ fn compile_expr(
             UnOp::Forall(..) | UnOp::Exists(..) => {
                 // todo - should support all features in both modes
                 if unverified {
-                    let compiled = compile_guarded_quant_unverified(ctx, &expr_unary.op, &expr_unary.expr)?;
+                    let compiled =
+                        compile_guarded_quant_unverified(ctx, &expr_unary.op, &expr_unary.expr)?;
                     match mode {
                         VarMode::Ref => quote! { #compiled.get_ref() },
                         VarMode::Owned => compiled,
@@ -2995,7 +3007,14 @@ fn respan(input: TokenStream2, span: Span) -> TokenStream2 {
 fn compile_spec_fn(item_fn: &ItemFn, unverified: bool) -> Result<TokenStream2, Error> {
     if let FnMode::Spec(..) = &item_fn.sig.mode {
     } else {
-        return Err(Error::new_spanned(item_fn, if unverified { "The exec_spec_unverified! macro only supports spec functions" } else { "The exec_spec_verified! macro only supports spec functions" }));
+        return Err(Error::new_spanned(
+            item_fn,
+            if unverified {
+                "The exec_spec_unverified! macro only supports spec functions"
+            } else {
+                "The exec_spec_verified! macro only supports spec functions"
+            },
+        ));
     }
 
     let mut ctx = LocalCtx::new(&item_fn.sig.ident);
