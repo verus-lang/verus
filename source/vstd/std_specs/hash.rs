@@ -1,27 +1,27 @@
-/// This code adds specifications for the standard-library types
-/// `std::collections::HashMap` and `std::collections::HashSet`.
-///
-/// Most of the specification only applies if you use `HashMap<Key,
-/// Value>` or `HashSet<Key>`. If you use some custom build hasher,
-/// e.g., with`HashMap<Key, Value, CustomBuildHasher>`, the
-/// specification won't specify much.
-///
-/// Likewise, the specification is only meaningful when the `Key`
-/// obeys our hash table model, i.e., (1) `Key::hash` is
-/// deterministic, (2) any two `Key`s are identical if and only if the
-/// executable `==` operator considers them equal, and (3)
-/// `Key::clone` produces a result equal to its input. We have an
-/// axiom that all primitive types and `Box`es thereof obey this
-/// model. But if you want to use some other key type `MyKey`, you
-/// need to explicitly state your assumption that it does so with
-/// `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>());`. In
-/// the future, we plan to devise a way for you to prove that it does
-/// so, so that you don't have to make such an assumption.
-///
-/// By default, the Verus standard library brings useful axioms
-/// about the behavior of `HashMap` and `HashSet` into the ambient
-/// reasoning context by broadcasting the group
-/// `vstd::std_specs::hash::group_hash_axioms`.
+//! This code adds specifications for the standard-library types
+//! `std::collections::HashMap` and `std::collections::HashSet`.
+//!
+//! Most of the specification only applies if you use `HashMap<Key,
+//! Value>` or `HashSet<Key>`. If you use some custom build hasher,
+//! e.g., with`HashMap<Key, Value, CustomBuildHasher>`, the
+//! specification won't specify much.
+//!
+//! Likewise, the specification is only meaningful when the `Key`
+//! obeys our hash table model, i.e., (1) `Key::hash` is
+//! deterministic, (2) any two `Key`s are identical if and only if the
+//! executable `==` operator considers them equal, and (3)
+//! `Key::clone` produces a result equal to its input. We have an
+//! axiom that all primitive types and `Box`es thereof obey this
+//! model. But if you want to use some other key type `MyKey`, you
+//! need to explicitly state your assumption that it does so with
+//! `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>());`. In
+//! the future, we plan to devise a way for you to prove that it does
+//! so, so that you don't have to make such an assumption.
+//!
+//! By default, the Verus standard library brings useful axioms
+//! about the behavior of `HashMap` and `HashSet` into the ambient
+//! reasoning context by broadcasting the group
+//! `vstd::std_specs::hash::group_hash_axioms`.
 use super::super::prelude::*;
 
 use core::borrow::Borrow;
@@ -607,7 +607,7 @@ impl<'a, Key, Value> View for MapIterGhostIterator<'a, Key, Value> {
 // function `iter()` is invoked in a `for` loop header (e.g., in
 // `for x in it: v.iter() { ... }`), we need to specify the behavior of
 // the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
+// `#[verifier::when_used_as_spec(spec_iter)]` to the specification for
 // the executable `iter` method and define that spec function here.
 pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>) -> (r:
     hash_map::Iter<'a, Key, Value>);
