@@ -1,10 +1,10 @@
 // ANCHOR: example
-use vstd::prelude::*;
 use vstd::contrib::exec_spec::*;
+use vstd::prelude::*;
 
 verus! {
 
-exec_spec_trusted! {
+exec_spec_unverified! {
 
 struct Point {
     x: i64,
@@ -18,9 +18,8 @@ spec fn on_line(points: Seq<Point>) -> bool {
 
 }
 
-}
+} // verus!
 // ANCHOR_END: example
-
 // ANCHOR: check
 fn main() {
     let p1 = ExecPoint { x: 1, y: 1 };

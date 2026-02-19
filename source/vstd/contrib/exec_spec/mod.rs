@@ -1,13 +1,14 @@
 //! This module provides runtime utilities for the compiled
-//! executable code of [`verus_builtin_macros::exec_spec`].
+//! executable code of [`verus_builtin_macros::exec_spec_verified`]
+//! and [`verus_builtin_macros::exec_spec_unverified`].
 #![cfg(all(feature = "alloc", feature = "std"))]
 
 use crate::multiset::*;
 use crate::prelude::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
-pub use verus_builtin_macros::exec_spec;
-pub use verus_builtin_macros::exec_spec_trusted;
+pub use verus_builtin_macros::exec_spec_unverified;
+pub use verus_builtin_macros::exec_spec_verified;
 
 mod map;
 pub use map::*;
@@ -48,7 +49,7 @@ pub trait DeepViewClone: Sized + DeepView {
     ;
 }
 
-/// Any spec types used in [`exec_spec`] macro
+/// Any spec types used in [`exec_spec_verified`] or [`exec_spec_unverified`] macros
 /// must implement this trait to indicate
 /// the corresponding exec type (owned and borrowed versions).
 pub trait ExecSpecType where

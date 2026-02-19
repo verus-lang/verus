@@ -699,7 +699,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
 }
 
 /// Compiles a spec fn to the exec fn signature.
-fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn, trusted: bool) -> Result<TokenStream2, Error> {
+fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn, unverified: bool) -> Result<TokenStream2, Error> {
     let spec_params = item_fn
         .sig
         .inputs
@@ -817,7 +817,7 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn, trusted: bool) -> Result<To
             #decreases
     };
 
-    let sig = if trusted {
+    let sig = if unverified {
         quote_spanned! { span =>
             #[verifier::external_body]
             #sig_common
@@ -1173,7 +1173,7 @@ fn compile_pattern(
 }
 
 /// Compiles a match arm.
-fn compile_match_arm(ctx: &LocalCtx, arm: &Arm, trusted: bool) -> Result<TokenStream2, Error> {
+fn compile_match_arm(ctx: &LocalCtx, arm: &Arm, unverified: bool) -> Result<TokenStream2, Error> {
     let mut ctx = ctx.clone();
     let mut new_locals = HashSet::new();
 
@@ -1186,7 +1186,7 @@ fn compile_match_arm(ctx: &LocalCtx, arm: &Arm, trusted: bool) -> Result<TokenSt
         }
     });
 
-    let body = compile_expr(&ctx, &arm.body, VarMode::Owned, trusted)?;
+    let body = compile_expr(&ctx, &arm.body, VarMode::Owned, unverified)?;
 
     Ok(quote! {
         #pat => {
@@ -1211,19 +1211,19 @@ struct GuardedQuantifierVar {
     bounds: GuardedQuantifierBounds,
 }
 
-struct GuardedQuantifierUntrusted {
+struct GuardedQuantifierVerified {
     quant_var: GuardedQuantifierVar,
     guard_op: BinOp,
     body: Box<Expr>,
 }
 
-struct GuardedQuantifier {
+struct GuardedQuantifierUnverified {
     guard_op: BinOp,
     body: Box<Expr>,
     guarded_vars: Vec<GuardedQuantifierVar>,
 }
 
-const UNSUPPORTED_QUANTIFIER_ERROR_MSG: &str = "Within the exec_spec_trusted! macro, quantifier expressions must match one of these forms:
+const UNSUPPORTED_QUANTIFIER_ERROR_MSG: &str = "Within the exec_spec_unverified! macro, quantifier expressions must match one of these forms:
 - forall |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> ==> <body>
 - exists |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> && <body>
 
@@ -1236,10 +1236,10 @@ And <lowerI> and <upperI> may mention xJ for all J < I.";
 
 const UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type.
 
-Within the exec_spec_trusted! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char. Note: int and nat are not allowed.";
+Within the exec_spec_unverified! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char. Note: int and nat are not allowed.";
 
 const UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG: &str =
-    "Within the exec_spec! macro, quantifiers must have one of these forms:
+    "Within the exec_spec_verified! macro, quantifiers must have one of these forms:
 - forall |x: <type>| <guard> ==> <body>
 - exists |x: <type>| <guard> && <body>
 
@@ -1251,13 +1251,13 @@ Where <guard> is one of:
 
 const UNTRUSTED_UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type.
 
-Within the exec_spec! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize. Note: int and nat are not allowed.";
+Within the exec_spec_verified! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize. Note: int and nat are not allowed.";
 
 /// Extracts a single guard expression
 fn get_single_guard(
     guard: &Expr,
     quant_var: &Ident,
-    trusted: bool,
+    unverified: bool,
 ) -> Result<GuardedQuantifierBounds, Error> {
     // <guard> == <lower> <op> x <op> <upper>
     let Expr::Binary(ExprBinary { left: lower_guard, op: upper_op, right: upper, .. }) = guard
@@ -1265,7 +1265,7 @@ fn get_single_guard(
         return Err(Error::new_spanned(
             guard,
             "Unsupported quantifier expression.\n".to_owned()
-                + (if trusted {
+                + (if unverified {
                     UNSUPPORTED_QUANTIFIER_ERROR_MSG
                 } else {
                     UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
@@ -1278,7 +1278,7 @@ fn get_single_guard(
             return Err(Error::new_spanned(
                 upper_op,
                 "Unsupported quantifier expression.\n".to_owned()
-                    + (if trusted {
+                    + (if unverified {
                         UNSUPPORTED_QUANTIFIER_ERROR_MSG
                     } else {
                         UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
@@ -1293,7 +1293,7 @@ fn get_single_guard(
         return Err(Error::new_spanned(
             lower_guard,
             "Unsupported quantifier expression.\n".to_owned()
-                + (if trusted {
+                + (if unverified {
                     UNSUPPORTED_QUANTIFIER_ERROR_MSG
                 } else {
                     UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
@@ -1306,7 +1306,7 @@ fn get_single_guard(
             return Err(Error::new_spanned(
                 lower_op,
                 "Unsupported quantifier expression.\n".to_owned()
-                    + (if trusted {
+                    + (if unverified {
                         UNSUPPORTED_QUANTIFIER_ERROR_MSG
                     } else {
                         UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
@@ -1324,7 +1324,7 @@ fn get_single_guard(
             return Err(Error::new_spanned(
                 guard_var,
                 "Unsupported quantifier expression: expected a simple variable.\n".to_owned()
-                    + (if trusted {
+                    + (if unverified {
                         UNSUPPORTED_QUANTIFIER_ERROR_MSG
                     } else {
                         UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
@@ -1335,7 +1335,7 @@ fn get_single_guard(
         return Err(Error::new_spanned(
             guard_var,
             "Unsupported quantifier expression: expected a simple variable.\n".to_owned()
-                + (if trusted {
+                + (if unverified {
                     UNSUPPORTED_QUANTIFIER_ERROR_MSG
                 } else {
                     UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
@@ -1346,7 +1346,7 @@ fn get_single_guard(
     if guard_var != quant_var {
         return Err(Error::new_spanned(
             guard_var,
-            "Unsupported quantifier expression: quantified variable does not match the guard variable.\n".to_owned() + (if trusted { UNSUPPORTED_QUANTIFIER_ERROR_MSG } else { UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG })
+            "Unsupported quantifier expression: quantified variable does not match the guard variable.\n".to_owned() + (if unverified { UNSUPPORTED_QUANTIFIER_ERROR_MSG } else { UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG })
         ));
     }
 
@@ -1359,12 +1359,12 @@ fn get_single_guard(
 }
 
 /// Returns true when the given type is supported in a quantified expression for the given mode
-fn check_quant_type(quant_type: &Type, trusted: bool) -> Result<(), Error> {
+fn check_quant_type(quant_type: &Type, unverified: bool) -> Result<(), Error> {
     match quant_type {
         Type::Path(type_path) => {
             if type_path.path.segments.len() == 1 {
                 let ident = &type_path.path.segments.first().unwrap().ident;
-                if trusted {
+                if unverified {
                     if !(ident == "u8"
                         || ident == "u16"
                         || ident == "u32"
@@ -1409,7 +1409,7 @@ fn check_quant_type(quant_type: &Type, trusted: bool) -> Result<(), Error> {
         _ => {
             return Err(Error::new_spanned(
                 quant_type,
-                if trusted {
+                if unverified {
                     UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG
                 } else {
                     UNTRUSTED_UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG
@@ -1429,20 +1429,20 @@ fn check_quant_type(quant_type: &Type, trusted: bool) -> Result<(), Error> {
 ///   `<lower> <= x <= <upper>`
 ///   `<lower> < x < <upper>`
 ///   `<lower> < x <= <upper>`
-fn get_guarded_range_quant_untrusted(
+fn get_guarded_range_quant_verified(
     closure: &ExprClosure,
-) -> Result<GuardedQuantifierUntrusted, Error> {
+) -> Result<GuardedQuantifierVerified, Error> {
     if closure.inputs.len() != 1 {
         return Err(Error::new_spanned(
             closure,
-            "The exec_spec! macro only supports single variable per quantifier. If multiple quantified variables are needed, use nested quantifiers instead.",
+            "The exec_spec_verified! macro only supports single variable per quantifier. If multiple quantified variables are needed, use nested quantifiers instead.",
         ));
     }
 
     let (quant_var, Some(quant_type)) = get_simple_pat(&closure.inputs[0].pat)? else {
         return Err(Error::new_spanned(
             closure,
-            "The exec_spec! macro only supports typed quantified variables.",
+            "The exec_spec_verified! macro only supports typed quantified variables.",
         ));
     };
 
@@ -1463,7 +1463,7 @@ fn get_guarded_range_quant_untrusted(
     // <guard> == <lower> <op> x <op> <upper>
     let bounds = get_single_guard(&guard, &quant_var, false)?;
 
-    Ok(GuardedQuantifierUntrusted {
+    Ok(GuardedQuantifierVerified {
         quant_var: GuardedQuantifierVar { quant_var: quant_var.clone(), quant_type, bounds },
         guard_op: guard_op.clone(),
         body: body.clone(),
@@ -1471,7 +1471,7 @@ fn get_guarded_range_quant_untrusted(
 }
 
 /// Compiles some forms of forall/exists quantifiers to loops.
-fn compile_guarded_quant_untrusted(
+fn compile_guarded_quant_verified(
     ctx: &LocalCtx,
     op: &UnOp,
     expr: &Expr,
@@ -1487,7 +1487,7 @@ fn compile_guarded_quant_untrusted(
     };
 
     // TODO: support other forms of quantifiers
-    let quant = get_guarded_range_quant_untrusted(closure)?;
+    let quant = get_guarded_range_quant_verified(closure)?;
 
     let quant_var = &quant.quant_var.quant_var;
     let quant_type = &quant.quant_var.quant_type;
@@ -1657,10 +1657,10 @@ fn compile_guarded_quant_untrusted(
 /// |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> ==> <body>
 /// or
 /// |x1: <type1>, x2: <type2>, ..., xN: <typeN>| <guard1> && <guard2> && ... && <guardN> && <body>
-fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, Error> {
+fn get_guarded_range_quant_unverified(closure: &ExprClosure) -> Result<GuardedQuantifierUnverified, Error> {
     let quant_vars = closure.inputs.iter().map(|input| {
         let (quant_var, Some(quant_type)) = get_simple_pat(&input.pat)? else {
-            return Err(Error::new_spanned(closure, "Missing type on quantified variable. The exec_spec_trusted! macro only supports typed quantified variables: forall/exists |x: <type>|."));
+            return Err(Error::new_spanned(closure, "Missing type on quantified variable. The exec_spec_unverified! macro only supports typed quantified variables: forall/exists |x: <type>|."));
         };
         // check that the type is supported
         let _ = check_quant_type(&*quant_type, true)?;
@@ -1710,7 +1710,7 @@ fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, E
         );
     }
 
-    Ok(GuardedQuantifier { guard_op: guard_op.clone(), body: body.clone(), guarded_vars })
+    Ok(GuardedQuantifierUnverified { guard_op: guard_op.clone(), body: body.clone(), guarded_vars })
 }
 
 /// Compiles the initialization, update statement, initial condition, and while loop condition for a single variable
@@ -1773,7 +1773,7 @@ fn compile_single_quant_var(
 }
 
 /// Compiles nested loops for the guarded variables, given the quantifier op (exists/forall), body expression, and guard operator (&&/==>)
-fn compile_guarded_quant_loops(
+fn compile_guarded_quant_loops_unverified(
     ctx: &LocalCtx,
     op: &UnOp,
     expr: &Expr,
@@ -1813,7 +1813,7 @@ fn compile_guarded_quant_loops(
         let mut next_vars = guarded_vars.clone();
         next_vars.remove(0);
         let compiled_inner =
-            compile_guarded_quant_loops(&body_ctx, op, expr, guard_op, body, &next_vars)?;
+            compile_guarded_quant_loops_unverified(&body_ctx, op, expr, guard_op, body, &next_vars)?;
         compiled_body = match op {
             UnOp::Forall(..) => quote! {
                 #compiled_inner
@@ -1872,7 +1872,7 @@ fn compile_guarded_quant_loops(
 }
 
 /// Compiles some forms of forall/exists quantifiers to loops.
-fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<TokenStream2, Error> {
+fn compile_guarded_quant_unverified(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<TokenStream2, Error> {
     // Quantified variables and the body of the quantifier expression
     // is expected to be described as a closure.
     let Expr::Closure(closure) = expr else {
@@ -1883,9 +1883,9 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
     };
 
     // TODO: support other forms of quantifiers
-    let quant = get_guarded_range_quant(closure)?;
+    let quant = get_guarded_range_quant_unverified(closure)?;
 
-    let loops = compile_guarded_quant_loops(
+    let loops = compile_guarded_quant_loops_unverified(
         ctx,
         op,
         expr,
@@ -1931,7 +1931,7 @@ fn compile_expr(
     ctx: &LocalCtx,
     expr: &Expr,
     mode: VarMode,
-    trusted: bool,
+    unverified: bool,
 ) -> Result<TokenStream2, Error> {
     let expr_ts = match expr {
         Expr::Lit(lit) => match &lit.lit {
@@ -1951,7 +1951,7 @@ fn compile_expr(
         // Blocks have the owned type, so we need to
         // convert back a reference again
         Expr::Block(expr_block) => {
-            let block_expr = compile_block(ctx, &expr_block.block, trusted)?;
+            let block_expr = compile_block(ctx, &expr_block.block, unverified)?;
 
             match mode {
                 VarMode::Ref => quote! { #block_expr.get_ref() },
@@ -1972,7 +1972,7 @@ fn compile_expr(
                 let args = args
                     .0
                     .iter()
-                    .map(|arg| compile_expr(ctx, arg, VarMode::Owned, trusted))
+                    .map(|arg| compile_expr(ctx, arg, VarMode::Owned, unverified))
                     .collect::<Result<Vec<_>, Error>>()?;
 
                 // We need to convert each argument to the owned type
@@ -1994,14 +1994,14 @@ fn compile_expr(
         }
 
         Expr::Paren(expr_paren) => {
-            let inner = compile_expr(ctx, &expr_paren.expr, mode, trusted)?;
+            let inner = compile_expr(ctx, &expr_paren.expr, mode, unverified)?;
             quote! { #inner } // we'll insert the parenthesis in the end
         }
 
         Expr::Field(expr_field) => {
             // The base of a field is always get as a reference
             // since we want to avoid partially moving the base
-            let expr = compile_expr(ctx, &expr_field.base, VarMode::Ref, trusted)?;
+            let expr = compile_expr(ctx, &expr_field.base, VarMode::Ref, unverified)?;
             let field = &expr_field.member;
             // By default, x.y have the owned type of field y
             // so we need to take the reference and convert it
@@ -2060,14 +2060,14 @@ fn compile_expr(
         Expr::Binary(expr_binary) => match &expr_binary.op {
             // `bool` has the same owned and borrowed types, so no need to convert here
             BinOp::Eq(..) => {
-                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, trusted)?;
-                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, trusted)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
                 quote! { vstd::contrib::exec_spec::ExecSpecEq::exec_eq(#left, #right) }
             }
 
             BinOp::Ne(..) => {
-                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, trusted)?;
-                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, trusted)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
                 quote! { !vstd::contrib::exec_spec::ExecSpecEq::exec_eq(#left, #right) }
             }
 
@@ -2099,30 +2099,30 @@ fn compile_expr(
             | BinOp::Ge(..)
             | BinOp::Gt(..) => {
                 let op = &expr_binary.op;
-                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, trusted)?;
-                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, trusted)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
 
                 quote! { #left #op #right }
             }
 
             // `a ==> b` to `!a || b`
             BinOp::Imply(..) => {
-                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, trusted)?;
-                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, trusted)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
                 quote! { !(#left) || (#right) }
             }
 
             // `a <== b` to `!b || a`
             BinOp::Exply(..) => {
-                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, trusted)?;
-                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, trusted)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
                 quote! { !(#right) || (#left) }
             }
 
             // `a <==> b` to `a == b`
             BinOp::Equiv(..) => {
-                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, trusted)?;
-                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, trusted)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
                 quote! { vstd::contrib::exec_spec::ExecSpecEq::exec_eq(#left, #right) }
             }
 
@@ -2148,12 +2148,12 @@ fn compile_expr(
                 if is_path_eq(&type_path.path, &["int"])
                     || is_path_eq(&type_path.path, &["nat"]) =>
             {
-                compile_expr(ctx, &expr_cast.expr, mode, trusted)?
+                compile_expr(ctx, &expr_cast.expr, mode, unverified)?
             }
 
             _ => {
                 let typ = compile_type(&expr_cast.ty, TypeKind::Ref)?;
-                let expr = compile_expr(ctx, &expr_cast.expr, mode, trusted)?;
+                let expr = compile_expr(ctx, &expr_cast.expr, mode, unverified)?;
 
                 quote! {
                     (#expr as #typ)
@@ -2162,8 +2162,8 @@ fn compile_expr(
         },
 
         Expr::If(expr_if) => {
-            let cond = compile_expr(ctx, &expr_if.cond, VarMode::Ref, trusted)?;
-            let then_branch = compile_block(ctx, &expr_if.then_branch, trusted)?;
+            let cond = compile_expr(ctx, &expr_if.cond, VarMode::Ref, unverified)?;
+            let then_branch = compile_block(ctx, &expr_if.then_branch, unverified)?;
 
             // let e = &expr_if.else_branch.as_ref().unwrap().1;
             // println!("???: {}", quote! { #e });
@@ -2179,7 +2179,7 @@ fn compile_expr(
                     ))?
                     .1,
                 VarMode::Owned, // to align with the owned type of then_branch
-                trusted,
+                unverified,
             )?;
 
             let owned = quote! {
@@ -2199,7 +2199,7 @@ fn compile_expr(
         // View expressions are ignored (e.g. "abc"@ => "abc")
         // TODO: more strict rules here
         Expr::View(view) => {
-            let expr = compile_expr(ctx, &view.expr, mode, trusted)?;
+            let expr = compile_expr(ctx, &view.expr, mode, unverified)?;
             quote! { #expr }
         }
 
@@ -2207,8 +2207,8 @@ fn compile_expr(
         // but NOT SpecString, whose exec version (String)
         // does not have a direct indexing operator
         Expr::Index(expr_index) => {
-            let base = compile_expr(ctx, &expr_index.expr, VarMode::Ref, trusted)?;
-            let index = compile_expr(ctx, &expr_index.index, VarMode::Ref, trusted)?;
+            let base = compile_expr(ctx, &expr_index.expr, VarMode::Ref, unverified)?;
+            let index = compile_expr(ctx, &expr_index.index, VarMode::Ref, unverified)?;
 
             match mode {
                 VarMode::Ref => quote! { #base.exec_index(#index).get_ref() },
@@ -2222,20 +2222,20 @@ fn compile_expr(
         Expr::Unary(expr_unary) => match &expr_unary.op {
             UnOp::Neg(..) | UnOp::Not(..) => {
                 let op = &expr_unary.op;
-                let expr = compile_expr(ctx, &expr_unary.expr, VarMode::Ref, trusted)?;
+                let expr = compile_expr(ctx, &expr_unary.expr, VarMode::Ref, unverified)?;
                 quote! { #op #expr }
             }
             UnOp::Forall(..) | UnOp::Exists(..) => {
                 // todo - should support all features in both modes
-                if trusted {
-                    let compiled = compile_guarded_quant(ctx, &expr_unary.op, &expr_unary.expr)?;
+                if unverified {
+                    let compiled = compile_guarded_quant_unverified(ctx, &expr_unary.op, &expr_unary.expr)?;
                     match mode {
                         VarMode::Ref => quote! { #compiled.get_ref() },
                         VarMode::Owned => compiled,
                     }
                 } else {
                     let compiled =
-                        compile_guarded_quant_untrusted(ctx, &expr_unary.op, &expr_unary.expr)?;
+                        compile_guarded_quant_verified(ctx, &expr_unary.op, &expr_unary.expr)?;
                     match mode {
                         VarMode::Ref => quote! { #compiled.get_ref() },
                         VarMode::Owned => compiled,
@@ -2252,7 +2252,7 @@ fn compile_expr(
             let exprs = big_and
                 .exprs
                 .iter()
-                .map(|e| compile_expr(ctx, &e.expr, VarMode::Ref, trusted))
+                .map(|e| compile_expr(ctx, &e.expr, VarMode::Ref, unverified))
                 .collect::<Result<Vec<_>, Error>>()?;
             quote! { #((#exprs))&&* }
         }
@@ -2261,7 +2261,7 @@ fn compile_expr(
             let exprs = big_or
                 .exprs
                 .iter()
-                .map(|e| compile_expr(ctx, &e.expr, VarMode::Ref, trusted))
+                .map(|e| compile_expr(ctx, &e.expr, VarMode::Ref, unverified))
                 .collect::<Result<Vec<_>, Error>>()?;
             quote! { #((#exprs))||* }
         }
@@ -2286,7 +2286,7 @@ fn compile_expr(
                     let args = expr_call
                         .args
                         .iter()
-                        .map(|arg| compile_expr(ctx, arg, VarMode::Owned, trusted))
+                        .map(|arg| compile_expr(ctx, arg, VarMode::Owned, unverified))
                         .collect::<Result<Vec<_>, Error>>()?;
                     quote! { #exec_fn_path(#(#args),*) }
                 }
@@ -2295,7 +2295,7 @@ fn compile_expr(
                     let args = expr_call
                         .args
                         .iter()
-                        .map(|arg| compile_expr(ctx, arg, VarMode::Ref, trusted))
+                        .map(|arg| compile_expr(ctx, arg, VarMode::Ref, unverified))
                         .collect::<Result<Vec<_>, Error>>()?;
                     quote! { #exec_fn_path(#(#args),*) }
                 }
@@ -2313,13 +2313,13 @@ fn compile_expr(
         Expr::MethodCall(expr_method_call) => match expr_method_call.method.to_string().as_str() {
             "len" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 quote! { #receiver.exec_len() }
             }
 
             "dom" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_dom().get_ref() },
 
@@ -2329,12 +2329,12 @@ fn compile_expr(
             }
 
             "index" => {
-                let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let index = compile_expr(
                     ctx,
                     &expr_method_call.args.last().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2345,7 +2345,7 @@ fn compile_expr(
 
             "drop_first" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_drop_first() },
@@ -2355,7 +2355,7 @@ fn compile_expr(
 
             "drop_last" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_drop_last() },
@@ -2365,12 +2365,12 @@ fn compile_expr(
 
             "add" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.last().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2381,12 +2381,12 @@ fn compile_expr(
 
             "push" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.last().unwrap(),
                     VarMode::Owned,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2397,18 +2397,18 @@ fn compile_expr(
 
             "update" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let index = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.last().unwrap(),
                     VarMode::Owned,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2421,18 +2421,18 @@ fn compile_expr(
 
             "subrange" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg1 = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
                 let arg2 = compile_expr(
                     ctx,
                     &expr_method_call.args.last().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2443,7 +2443,7 @@ fn compile_expr(
 
             "to_multiset" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_to_multiset().get_ref() },
@@ -2453,12 +2453,12 @@ fn compile_expr(
 
             "take" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2469,12 +2469,12 @@ fn compile_expr(
 
             "skip" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2485,7 +2485,7 @@ fn compile_expr(
 
             "last" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_last().get_ref() },
@@ -2495,7 +2495,7 @@ fn compile_expr(
 
             "first" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_first().get_ref() },
@@ -2504,12 +2504,12 @@ fn compile_expr(
             }
 
             "count" => {
-                let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let value = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Owned,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2520,12 +2520,12 @@ fn compile_expr(
 
             "is_prefix_of" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2536,12 +2536,12 @@ fn compile_expr(
 
             "is_suffix_of" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2552,12 +2552,12 @@ fn compile_expr(
 
             "contains" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Owned,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2568,12 +2568,12 @@ fn compile_expr(
 
             "get" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Owned,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2584,12 +2584,12 @@ fn compile_expr(
 
             "index_of" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Owned,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2600,12 +2600,12 @@ fn compile_expr(
 
             "index_of_first" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Owned,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2618,12 +2618,12 @@ fn compile_expr(
 
             "index_of_last" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Owned,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2636,19 +2636,19 @@ fn compile_expr(
 
             "insert" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 if expr_method_call.args.len() == 2 {
                     let arg1 = compile_expr(
                         ctx,
                         &expr_method_call.args.first().unwrap(),
                         VarMode::Owned,
-                        trusted,
+                        unverified,
                     )?;
                     let arg2 = compile_expr(
                         ctx,
                         &expr_method_call.args.last().unwrap(),
                         VarMode::Owned,
-                        trusted,
+                        unverified,
                     )?;
 
                     match mode {
@@ -2662,7 +2662,7 @@ fn compile_expr(
                         ctx,
                         &expr_method_call.args.first().unwrap(),
                         VarMode::Owned,
-                        trusted,
+                        unverified,
                     )?;
 
                     match mode {
@@ -2676,12 +2676,12 @@ fn compile_expr(
 
             "remove" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Owned,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2692,12 +2692,12 @@ fn compile_expr(
 
             "intersect" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.last().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2710,12 +2710,12 @@ fn compile_expr(
 
             "union" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.last().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2726,12 +2726,12 @@ fn compile_expr(
 
             "difference" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.last().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2744,12 +2744,12 @@ fn compile_expr(
 
             "sub" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
                 let arg = compile_expr(
                     ctx,
                     &expr_method_call.args.first().unwrap(),
                     VarMode::Ref,
-                    trusted,
+                    unverified,
                 )?;
 
                 match mode {
@@ -2760,7 +2760,7 @@ fn compile_expr(
 
             "unwrap" => {
                 let receiver =
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_unwrap().get_ref() },
@@ -2772,11 +2772,11 @@ fn compile_expr(
         },
 
         Expr::Match(expr_match) => {
-            let expr = compile_expr(ctx, &expr_match.expr, VarMode::Ref, trusted)?;
+            let expr = compile_expr(ctx, &expr_match.expr, VarMode::Ref, unverified)?;
             let arms = expr_match
                 .arms
                 .iter()
-                .map(|arm| compile_match_arm(ctx, arm, trusted))
+                .map(|arm| compile_match_arm(ctx, arm, unverified))
                 .collect::<Result<Vec<_>, Error>>()?;
 
             let owned = quote! {
@@ -2795,7 +2795,7 @@ fn compile_expr(
             let exprs = expr_tuple
                 .elems
                 .iter()
-                .map(|e| compile_expr(ctx, e, VarMode::Owned, trusted))
+                .map(|e| compile_expr(ctx, e, VarMode::Owned, unverified))
                 .collect::<Result<Vec<_>, Error>>()?;
 
             match mode {
@@ -2823,7 +2823,7 @@ fn compile_expr(
                             "unsupported unamed field in struct expression",
                         ));
                     };
-                    let value = compile_expr(ctx, &field.expr, VarMode::Owned, trusted)?;
+                    let value = compile_expr(ctx, &field.expr, VarMode::Owned, unverified)?;
                     Ok(quote! { #name: #value })
                 })
                 .collect::<Result<Vec<_>, Error>>()?;
@@ -2848,10 +2848,10 @@ fn compile_expr(
             let mut new_locals = HashSet::new();
             let pat = compile_pattern(&mut ctx, pat, &mut new_locals)?;
 
-            let lhs = compile_expr(&ctx, lhs, VarMode::Ref, trusted)?;
+            let lhs = compile_expr(&ctx, lhs, VarMode::Ref, unverified)?;
 
             let true_rhs = if let Some(MatchesOpExpr { rhs, .. }) = op_expr {
-                let rhs = compile_expr(&ctx, rhs, VarMode::Owned, trusted)?;
+                let rhs = compile_expr(&ctx, rhs, VarMode::Owned, unverified)?;
                 quote! { { #rhs } }
             } else {
                 quote! { true }
@@ -2934,7 +2934,7 @@ fn compile_expr(
 /// TODO: to avoid issues of `temporary value dropped while borrowed`
 /// the return value of a block has the owned type instead of the ref type
 /// This might incur some performance overhead.
-fn compile_block(ctx: &LocalCtx, block: &Block, trusted: bool) -> Result<TokenStream2, Error> {
+fn compile_block(ctx: &LocalCtx, block: &Block, unverified: bool) -> Result<TokenStream2, Error> {
     let mut ts = Vec::new();
     let mut ctx = ctx.clone();
 
@@ -2955,7 +2955,7 @@ fn compile_block(ctx: &LocalCtx, block: &Block, trusted: bool) -> Result<TokenSt
                     ));
                 };
 
-                let expr = compile_expr(&ctx, &local_init.expr, VarMode::Owned, trusted)?;
+                let expr = compile_expr(&ctx, &local_init.expr, VarMode::Owned, unverified)?;
 
                 ctx.add(var.clone(), VarMode::Owned);
                 ts.push(quote! { let #var = #expr; });
@@ -2963,7 +2963,7 @@ fn compile_block(ctx: &LocalCtx, block: &Block, trusted: bool) -> Result<TokenSt
 
             // NOTE: this is expected to be the last expression
             Stmt::Expr(expr, ..) => {
-                let expr = compile_expr(&ctx, expr, VarMode::Owned, trusted)?;
+                let expr = compile_expr(&ctx, expr, VarMode::Owned, unverified)?;
                 ts.push(quote! { #expr });
             }
 
@@ -2992,16 +2992,16 @@ fn respan(input: TokenStream2, span: Span) -> TokenStream2 {
 }
 
 /// Compiles a spec function into an exec function.
-fn compile_spec_fn(item_fn: &ItemFn, trusted: bool) -> Result<TokenStream2, Error> {
+fn compile_spec_fn(item_fn: &ItemFn, unverified: bool) -> Result<TokenStream2, Error> {
     if let FnMode::Spec(..) = &item_fn.sig.mode {
     } else {
-        return Err(Error::new_spanned(item_fn, "#[exec_spec] only supports spec functions"));
+        return Err(Error::new_spanned(item_fn, if unverified { "The exec_spec_unverified! macro only supports spec functions" } else { "The exec_spec_verified! macro only supports spec functions" }));
     }
 
     let mut ctx = LocalCtx::new(&item_fn.sig.ident);
 
-    let sig = compile_sig(&mut ctx, item_fn, trusted)?;
-    let body = compile_block(&ctx, &item_fn.block, trusted)?;
+    let sig = compile_sig(&mut ctx, item_fn, unverified)?;
+    let body = compile_block(&ctx, &item_fn.block, unverified)?;
 
     // Generate all promised trigger functions
     let trigger_fns = ctx
@@ -3029,9 +3029,9 @@ fn compile_spec_fn(item_fn: &ItemFn, trusted: bool) -> Result<TokenStream2, Erro
 }
 
 /// Compiles a fn/struct/enum item.
-fn compile_item(item: Item, trusted: bool) -> Result<TokenStream2, Error> {
+fn compile_item(item: Item, unverified: bool) -> Result<TokenStream2, Error> {
     match item {
-        Item::Fn(item_fn) => compile_spec_fn(&item_fn, trusted),
+        Item::Fn(item_fn) => compile_spec_fn(&item_fn, unverified),
         Item::Struct(item_struct) => compile_struct(&item_struct),
         Item::Enum(item_enum) => compile_enum(&item_enum),
         _ => Err(Error::new_spanned(item, "unsupported item")),
@@ -3039,12 +3039,12 @@ fn compile_item(item: Item, trusted: bool) -> Result<TokenStream2, Error> {
 }
 
 /// Parses and compiles a list of items.
-pub fn exec_spec(input: TokenStream, trusted: bool) -> TokenStream {
+pub fn exec_spec(input: TokenStream, unverified: bool) -> TokenStream {
     let items = parse_macro_input!(input as Items);
     let res = items
         .0
         .into_iter()
-        .map(|item| match compile_item(item, trusted) {
+        .map(|item| match compile_item(item, unverified) {
             Ok(ts) => Ok(ts),
             Err(err) => Err(err.to_compile_error().into()),
         })

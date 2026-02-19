@@ -1,4 +1,4 @@
-// Tests for additional features in the exec_spec_trusted! macro.
+// Tests for additional features in the exec_spec_unverified! macro.
 #![feature(rustc_private)]
 #[macro_use]
 mod common;
@@ -11,8 +11,8 @@ const IMPORTS: &str = code_str! {
 
 test_verify_one_file! {
     // Test quantifiers with multiple variables
-    #[test] test_exec_spec_trusted_multivar_quant IMPORTS.to_string() + verus_code_str! {
-        exec_spec_trusted! {
+    #[test] test_exec_spec_unverified_multivar_quant IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
             spec fn spec_five(x1: u8, x2: u8, x3: u8, x4: u8, x5: u8) -> bool {
                 x1 == x2 && x3 != x4 && x3 != x5 && x5 != x2
             }
@@ -54,8 +54,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     // Test quantifiers over char
-    #[test] test_exec_spec_trusted_char_quant IMPORTS.to_string() + verus_code_str! {
-        exec_spec_trusted! {
+    #[test] test_exec_spec_unverified_char_quant IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
             spec fn forall_char_le_le() -> bool {
                 forall |c: char| #![trigger c as u32] 'A' <= c <= 'Z' ==> c != '!'
             }
@@ -92,9 +92,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // Test using exec_spec! and exec_spec_trusted! macros together
+    // Test using exec_spec_verified! and exec_spec_unverified! macros together
     #[test] test_exec_spec_mixed_modes IMPORTS.to_string() + verus_code_str! {
-        exec_spec! {
+        exec_spec_verified! {
             struct X {
                 a: u32,
                 b: bool
@@ -105,7 +105,7 @@ test_verify_one_file! {
             }
         }
 
-        exec_spec_trusted! {
+        exec_spec_unverified! {
             spec fn forall_char_le_le() -> bool {
                 forall |c: char| #![trigger c as u32] 'A' <= c <= 'Z' ==> c != '!'
             }
@@ -122,15 +122,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // Test ensuring that specification is generated on code compiled from exec_spec_trusted!
-    #[test] test_exec_spec_trusted_spec IMPORTS.to_string() + verus_code_str! {
-        exec_spec! {
+    // Test ensuring that specification is generated on code compiled from exec_spec_unverified!
+    #[test] test_exec_spec_unverified_spec IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
             spec fn test1() -> bool {
                 true
             }
         }
 
-        exec_spec_trusted! {
+        exec_spec_unverified! {
             spec fn test2() -> bool {
                 true
             }

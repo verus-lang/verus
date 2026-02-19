@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 verus! {
 
-/// We use this special alias to tell the `exec_spec` macro to
+/// We use this special alias to tell the [`exec_spec_verified`] and [`exec_spec_unverified`] macros to
 /// compile [`Seq<char>`] to [`String`] instead of [`Vec<char>`].
 pub type SpecString = Seq<char>;
 
