@@ -175,6 +175,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         Some(args),
         rust_item,
         false,
+        outer_modifier,
     )
 }
 
@@ -187,6 +188,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
     args: Option<Vec<&'tcx Expr<'tcx>>>,
     rust_item: Option<RustItem>,
     const_var: bool,
+    outer_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     // Normal function call
     let tcx = bctx.ctxt.tcx;
@@ -231,7 +233,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                         expr,
                         expr_typ,
                         verus_item.unwrap(),
-                        &args,
+                        args.as_ref().unwrap(),
                         tcx,
                         res_args,
                         did,
@@ -239,8 +241,8 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                     );
                 }
 
-                let typs = mk_typ_args(bctx, args, did, expr.span)?;
-                let impl_paths = get_impl_paths(bctx, did, args, None, const_var, expr.span)?;
+                let typs = mk_typ_args(bctx, res_args, did, expr.span)?;
+                let impl_paths = get_impl_paths(bctx, did, res_args, None, const_var, expr.span)?;
 
                 let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
                 record_name = f.clone();
@@ -332,7 +334,7 @@ pub(crate) fn const_var_to_vir<'tcx>(
         let Some(expr) = expr else {
             unsupported_err!(span, "associated constant in pattern");
         };
-        return fn_call_or_assoc_const_to_vir(bctx, expr, id, node_substs, span, None, None, true);
+        return fn_call_or_assoc_const_to_vir(bctx, expr, id, node_substs, span, None, None, true, ExprModifier::REGULAR);
     }
     let typ = typ_of_node_unadjusted(bctx, span, hir_id, false)?;
     let path = bctx.ctxt.def_id_to_vir_path(id);

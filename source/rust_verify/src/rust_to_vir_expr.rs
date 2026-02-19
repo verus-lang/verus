@@ -1242,8 +1242,6 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             }
         }
         Adjust::Deref(Some(deref)) => {
-            
-
             // note: deref has signature (&self) -> &Self::Target
             // and deref_mut has signature (&mut self) -> &mut Self::Target
             // The adjustment, though, goes from self -> Self::Target
@@ -1255,17 +1253,36 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?;
-            if auto_deref_supported_for_ty(bctx.ctxt.tcx, &get_inner_ty()) {
+
+            let inner_ty = get_inner_ty();
+
+            dbg!(inner_ty);
+            dbg!(adjustments[adjustment_idx - 1].target);
+
+            if let Some((ty, is_tracked)) = crate::rust_to_vir_base::is_tracked_or_ghost_ty(
+                &bctx.ctxt.verus_items, inner_ty)
+            {
+                if bctx.new_mut_ref {
+                    let mwm = if is_tracked { vir::ast::ModeWrapperMode::Proof } else { vir::ast::ModeWrapperMode::Spec };
+                    let typ = bctx.mid_ty_to_vir(expr.span, &ty, false)?;
+                    return Ok(ExprOrPlace::Place(bctx.spanned_typed_new(expr.span, &typ,
+                        PlaceX::ModeUnwrap(inner.to_place(), mwm))));
+                } else {
+                    todo!();
+                }
+            }
+
+            if auto_deref_supported_for_ty(bctx.ctxt.tcx, &inner_ty) {
                 Ok(inner)
             } else {
-                let inner = inner.consume(bctx, get_inner_ty());
+                let inner = inner.consume(bctx, inner_ty);
                 Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::deref_to_vir(
                     bctx,
                     expr,
                     deref.method_call(bctx.ctxt.tcx),
                     inner,
                     expr_typ()?,
-                    get_inner_ty(),
+                    inner_ty,
                     expr.span,
                 )?))
             }
@@ -2257,7 +2274,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 };
                 mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub(ob)), zero, varg))
             }
-            UnOp::Deref => deref_expr_to_vir(bctx, expr, arg, modifier),
+            UnOp::Deref => {
+                dbg!(bctx.types.expr_ty_adjusted(arg));
+                dbg!(bctx.types.expr_ty(expr));
+                deref_expr_to_vir(bctx, expr, arg, modifier)
+            }
         },
         ExprKind::Binary(op, lhs, rhs) => {
             let vlhs = expr_to_vir_consume(bctx, lhs, modifier)?;

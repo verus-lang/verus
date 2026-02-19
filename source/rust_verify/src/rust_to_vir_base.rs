@@ -667,6 +667,25 @@ fn err_for_builtin_tracked_ghost_deref<'tcx>(
         .help(format!("The trait bound `{ty_name}<_>: {trait_name}` is treated specially by Verus, and it is not meant to be used generically")))
 }
 
+pub(crate) fn is_tracked_or_ghost_ty<'tcx>(
+    verus_items: &crate::verus_items::VerusItems,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> Option<(rustc_middle::ty::Ty<'tcx>, bool)> {
+    match ty.kind() {
+        TyKind::Adt(AdtDef(adt_def_data), args) => {
+            let did = adt_def_data.did;
+            match verus_items.id_to_name.get(&did) {
+                Some(VerusItem::BuiltinType(BuiltinTypeItem::Ghost)) => 
+                    Some((args[0].as_type().unwrap(), false)),
+                Some(VerusItem::BuiltinType(BuiltinTypeItem::Tracked)) =>
+                    Some((args[0].as_type().unwrap(), true)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn mk_visibility<'tcx>(ctxt: &Context<'tcx>, def_id: DefId) -> vir::ast::Visibility {
     mk_visibility_from_vis(ctxt, ctxt.tcx.visibility(def_id))
 }
