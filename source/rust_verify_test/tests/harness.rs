@@ -5,15 +5,17 @@ use common::*;
 
 #[test]
 fn harness_zero() {
-    assert!(verify_one_file(
-        "harness_zero",
-        verus_code! {
-            fn harness1() {
-            }
-        },
-        &[]
-    )
-    .is_ok());
+    assert!(
+        verify_one_file(
+            "harness_zero",
+            verus_code! {
+                fn harness1() {
+                }
+            },
+            &[]
+        )
+        .is_ok()
+    );
 }
 
 #[test]
@@ -30,16 +32,18 @@ fn harness_invalid_rust() {
 
 #[test]
 fn harness_true() {
-    assert!(verify_one_file(
-        "harness_true",
-        verus_code! {
-            fn harness1() {
-                assert(true);
-            }
-        },
-        &[]
-    )
-    .is_ok());
+    assert!(
+        verify_one_file(
+            "harness_true",
+            verus_code! {
+                fn harness1() {
+                    assert(true);
+                }
+            },
+            &[]
+        )
+        .is_ok()
+    );
 }
 
 #[test]
