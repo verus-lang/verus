@@ -1,7 +1,9 @@
 use super::super::modes::*;
-use super::super::pcm::*;
 use super::super::prelude::*;
-use super::super::storage_protocol::*;
+use super::Loc;
+use super::pcm::PCM;
+use super::pcm::Resource;
+use super::storage_protocol::*;
 use super::*;
 
 verus! {
@@ -30,13 +32,13 @@ impl<T, const TOTAL: u64> PCM for FractionalCarrier<T, TOTAL> {
         }
     }
 
-    closed spec fn op(self, other: Self) -> Self {
-        match self {
+    closed spec fn op(a: Self, b: Self) -> Self {
+        match a {
             FractionalCarrier::Invalid => FractionalCarrier::Invalid,
-            FractionalCarrier::Empty => other,
-            FractionalCarrier::Value { v: sv, n: sn } => match other {
+            FractionalCarrier::Empty => b,
+            FractionalCarrier::Value { v: sv, n: sn } => match b {
                 FractionalCarrier::Invalid => FractionalCarrier::Invalid,
-                FractionalCarrier::Empty => self,
+                FractionalCarrier::Empty => a,
                 FractionalCarrier::Value { v: ov, n: on } => {
                     if sv != ov {
                         FractionalCarrier::Invalid
@@ -54,7 +56,7 @@ impl<T, const TOTAL: u64> PCM for FractionalCarrier<T, TOTAL> {
         FractionalCarrier::Empty
     }
 
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn valid_op(a: Self, b: Self) {
     }
 
     proof fn commutative(a: Self, b: Self) {
@@ -63,7 +65,7 @@ impl<T, const TOTAL: u64> PCM for FractionalCarrier<T, TOTAL> {
     proof fn associative(a: Self, b: Self, c: Self) {
     }
 
-    proof fn op_unit(a: Self) {
+    proof fn op_unit(self) {
     }
 
     proof fn unit_valid() {
@@ -194,7 +196,8 @@ impl<T, const TOTAL: u64> FracGhost<T, TOTAL> {
         requires
             0 < n < old(self).frac(),
         ensures
-            result.id() == self.id() == old(self).id(),
+            self.id() == old(self).id(),
+            result.id() == self.id(),
             self@ == old(self)@,
             result@ == old(self)@,
             self.frac() + result.frac() == old(self).frac(),
@@ -309,7 +312,7 @@ impl<T> GhostVar<T> {
         self.frac.frac() == 1
     }
 
-    pub closed spec fn id(self) -> int {
+    pub closed spec fn id(self) -> Loc {
         self.frac.id()
     }
 
@@ -356,7 +359,7 @@ impl<T> GhostVarAuth<T> {
         self.frac.frac() == 1
     }
 
-    pub closed spec fn id(self) -> int {
+    pub closed spec fn id(self) -> Loc {
         self.frac.id()
     }
 
@@ -539,7 +542,8 @@ impl<T, const TOTAL: u64> Frac<T, TOTAL> {
         requires
             0 < n < old(self).frac(),
         ensures
-            result.id() == self.id() == old(self).id(),
+            self.id() == old(self).id(),
+            result.id() == old(self).id(),
             self.resource() == old(self).resource(),
             result.resource() == old(self).resource(),
             self.frac() + result.frac() == old(self).frac(),
@@ -557,7 +561,8 @@ impl<T, const TOTAL: u64> Frac<T, TOTAL> {
             0 < n < old(r).value()->n,
             old(r).value() matches FractionalCarrierOpt::Value { v: Some(_), .. },
         ensures
-            result.id() == r.loc() == old(r).loc(),
+            r.loc() == old(r).loc(),
+            result.id() == old(r).loc(),
             r.value()->v.unwrap() == old(r).value()->v.unwrap(),
             result.resource() == old(r).value()->v.unwrap(),
             r.value()->n + result.frac() == old(r).value()->n,
