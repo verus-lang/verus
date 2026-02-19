@@ -358,8 +358,8 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         if item_struct
             .fields
             .iter()
-            .all(|field| { if let Visibility::Public(..) = field.vis { true } else { false }
-        }) {
+            .all(|field| { if let Visibility::Public(..) = field.vis { true } else { false }}
+        ) {
             quote_spanned! { span => open }
         } else {
             quote_spanned! { span => closed }
