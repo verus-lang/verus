@@ -59,7 +59,6 @@ pub const VARGO_SOURCE_FILES: &[(&str, &[u8])] = &[
     ("src/smt_solver.rs", include_bytes!("smt_solver.rs")),
 ];
 
-pub static VARGO_NEST: std::sync::RwLock<u64> = std::sync::RwLock::new(0);
 pub const VSTD_FILES: &[&str] = &["vstd.vir", "libvstd.rlib", ".vstd-fingerprint"];
 pub const VERUS_ROOT_FILE: &str = "verus-root";
 
