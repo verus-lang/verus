@@ -412,8 +412,8 @@ test_verify_one_file! {
     #[test] test_exec_spec_recursion_seq IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn test_all_positive(a: Seq<i32>, i: usize) -> bool
-                recommends 0 <= i < a.len()
-                decreases a.len() - i when i < usize::MAX
+                recommends 0 <= i < a.len() < usize::MAX
+                decreases a.len() - i when i < a.len() < usize::MAX
             {
                 &&& a[i as int] > 0
                 &&& i + 1 < a.len() ==> test_all_positive(a, (i + 1) as usize)
@@ -438,8 +438,8 @@ test_verify_one_file! {
     #[test] test_exec_spec_interop1 IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn test_all_positive(a: Seq<i32>, i: usize) -> bool
-                recommends 0 <= i < a.len()
-                decreases a.len() - i when i < usize::MAX
+                recommends 0 <= i < a.len() < usize::MAX
+                decreases a.len() - i when i < a.len() < usize::MAX
             {
                 &&& a[i as int] > 0
                 &&& i + 1 < a.len() ==> test_all_positive(a, (i + 1) as usize)
@@ -486,15 +486,15 @@ test_verify_one_file! {
             struct MyPair(Seq<u32>, Seq<u32>);
 
             spec fn pred_helper(a: Seq<u32>, b: Seq<u32>, i: usize) -> bool
-                recommends 0 <= i < a.len() == b.len()
-                decreases a.len() - i when i < usize::MAX
+                recommends 0 <= i < a.len() == b.len() < usize::MAX
+                decreases a.len() - i when i < a.len() == b.len() < usize::MAX
             {
                 &&& a[i as int] > b[i as int]
                 &&& i + 1 < a.len() ==> pred_helper(a, b, (i + 1) as usize)
             }
 
             spec fn pred(p: MyPair) -> bool
-                recommends p.0.len() == p.1.len()
+                recommends p.0.len() == p.1.len() < usize::MAX
             {
                 if p.0.len() == 0 {
                     true
