@@ -4460,8 +4460,10 @@ test_verify_one_file! {
 
         impl U for u16 {}
 
+        const Q: u8 = 10;
+
         impl<Z: U> T<u8, Z> for bool {
-            const C: usize = 3;
+            const C: usize = 13 - Q as usize;
             const S: &str = "ha";
 
             #[verifier::external_body]
@@ -4503,4 +4505,30 @@ test_verify_one_file! {
             const C: u8 = f();
         }
     } => Err(err) => assert_vir_error_msg(err, "Verus does not support const items in traits, except for")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const3 verus_code! {
+        spec const Q: u8 = 3;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8;
+        }
+        impl T for bool {
+            const C: u8 = Q;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected mode")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const4 verus_code! {
+        exec const Q: u8 = 3;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8;
+        }
+        impl T for bool {
+            const C: u8 = Q;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
 }

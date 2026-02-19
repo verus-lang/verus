@@ -76,6 +76,51 @@ use verus_syn::*;
 
 pub(crate) const VERUS_UNERASED_PROXY: &str = "VERUS_UNERASED_PROXY__";
 
+// TODO: when we can generate unerased_proxy for associated const impls, we won't need this
+// For the moment, only simple literals, constants, and basic arithmetic are supported.
+// Function calls (including overloaded operators) aren't supported yet because only
+// dual-mode spec-exec associated consts are supported, and dual mode consts cannot call
+// spec, proof, or exec functions (and there are no dual-mode functions yet).
+fn is_simple_const_expr(expr: &Expr) -> bool {
+    use verus_syn::{BinOp, UnOp};
+    match expr {
+        Expr::Lit(..) => true,
+        Expr::Path(..) => true,
+        Expr::Paren(e) => is_simple_const_expr(&e.expr),
+        Expr::Cast(e) => is_simple_const_expr(&e.expr),
+        Expr::Tuple(e) => e.elems.iter().all(is_simple_const_expr),
+        Expr::Array(e) => e.elems.iter().all(is_simple_const_expr),
+        Expr::Struct(e) => {
+            if let Some(r) = &e.rest {
+                if !is_simple_const_expr(r) {
+                    return false;
+                }
+            }
+            e.fields.iter().all(|f| is_simple_const_expr(&f.expr))
+        }
+        Expr::Unary(e) => {
+            match e.op {
+                UnOp::Not(_) | UnOp::Neg(_) => {}
+                _ => return false,
+            }
+            is_simple_const_expr(&e.expr)
+        }
+        Expr::Binary(e) => {
+            match e.op {
+                BinOp::Add(_) | BinOp::Sub(_) | BinOp::Mul(_) | BinOp::Div(_) | BinOp::Rem(_) => {}
+                BinOp::And(_) | BinOp::Or(_) => {}
+                BinOp::BitXor(_) | BinOp::BitAnd(_) | BinOp::BitOr(_) => {}
+                BinOp::Shl(_) | BinOp::Shr(_) => {}
+                BinOp::Eq(_) | BinOp::Ne(_) => {}
+                BinOp::Lt(_) | BinOp::Le(_) | BinOp::Gt(_) | BinOp::Ge(_) => {}
+                _ => return false,
+            }
+            is_simple_const_expr(&e.left) && is_simple_const_expr(&e.right)
+        }
+        _ => false,
+    }
+}
+
 impl crate::syntax::Visitor {
     fn needs_unerased_proxies(&self) -> bool {
         self.erase_ghost.keep() && !self.rustdoc
@@ -99,7 +144,7 @@ impl crate::syntax::Visitor {
             ImplItem::Const(impl_item_const) => {
                 if for_trait {
                     // For the moment, allow associated const impls only if they are external_body,
-                    // or are simple literals,
+                    // or are simple expressions,
                     // and don't generate unerased_proxy.
                     // TODO: generate unerased_proxy for associated const impls
                     let has_external_code =
@@ -107,10 +152,7 @@ impl crate::syntax::Visitor {
                     let is_literal = match impl_item {
                         ImplItem::Const(ImplItemConst {
                             block: None, expr: Some(expr), ..
-                        }) => match &**expr {
-                            Expr::Lit(..) => true,
-                            _ => false,
-                        },
+                        }) => is_simple_const_expr(expr),
                         _ => false,
                     };
                     !(has_external_code || is_literal)
@@ -516,7 +558,7 @@ impl crate::syntax::Visitor {
         for item in std::mem::take(impl_items).into_iter() {
             if self.impl_item_needs_unerased_proxy(&item, for_trait) {
                 if for_trait {
-                    let msg = "Verus does not support const items in traits, except for simple literals and external_body consts";
+                    let msg = "Verus does not support const items in traits, except for simple expressions and external_body consts (hint: declare an extra non-trait constant `const C: t = ...` and then define the trait constant to be equal to `C`, or make the trait constant external_body)";
                     *impl_items = vec![ImplItem::Verbatim(
                         quote_spanned!(item.span() => compile_error!(#msg);),
                     )];

@@ -1674,7 +1674,7 @@ pub(crate) fn check_item_fn<'tcx>(
         ctxt,
         id,
         &vattrs,
-        vattrs.verus_macro,
+        vattrs.verus_macro && !matches!(sig.sig, FnOrConstSigEnum::ConstVar(..)),
         Arc::new(header.hidden),
         vattrs.custom_req_err.clone(),
         n_params == 0,
