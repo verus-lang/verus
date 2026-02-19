@@ -583,6 +583,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                 || Some(trait_def_id) == tcx.lang_items().tuple_trait()
                                 || Some(trait_def_id) == tcx.lang_items().pointee_trait()
                                 || Some(trait_def_id) == tcx.lang_items().sync_trait()
+                                || Some(trait_def_id) == tcx.lang_items().destruct_trait()
                                 || matches!(
                                     verus_items::get_rust_item(tcx, trait_def_id),
                                     Some(RustItem::Send | RustItem::Thin)
