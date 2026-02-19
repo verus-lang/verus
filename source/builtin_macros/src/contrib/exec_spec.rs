@@ -9,10 +9,10 @@ use verus_syn::parse::{Parse, ParseStream};
 use verus_syn::spanned::Spanned;
 use verus_syn::token::Comma;
 use verus_syn::{
-    parse_macro_input, Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary,
+    Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary,
     ExprClosure, ExprMatches, ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index,
     Item, ItemEnum, ItemFn, ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat,
-    PatType, Path, PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility,
+    PatType, Path, PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility, parse_macro_input,
 };
 
 /// Checks if the given path is of the form
@@ -355,12 +355,10 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
     // Only open the view if the struct and all fields are public
     let span = item_struct.vis.span();
     let open_or_close = if let Visibility::Public(..) = item_struct.vis {
-        if item_struct.fields.iter().all(|field| {
-            if let Visibility::Public(..) = field.vis {
-                true
-            } else {
-                false
-            }
+        if item_struct
+            .fields
+            .iter()
+            .all(|field| { if let Visibility::Public(..) = field.vis { true } else { false }
         }) {
             quote_spanned! { span => open }
         } else {
@@ -973,17 +971,9 @@ fn infer_expr_path_kind(ctx: &LocalCtx, path: &Path) -> ExprPathKind {
         path.segments.iter().any(|seg| seg.ident.to_string().chars().any(|c| c.is_uppercase()));
 
     if has_capital {
-        if path.segments.len() <= 2 {
-            ExprPathKind::StructOrEnum
-        } else {
-            ExprPathKind::Unknown
-        }
+        if path.segments.len() <= 2 { ExprPathKind::StructOrEnum } else { ExprPathKind::Unknown }
     } else {
-        if path.segments.len() != 0 {
-            ExprPathKind::FnName
-        } else {
-            ExprPathKind::Unknown
-        }
+        if path.segments.len() != 0 { ExprPathKind::FnName } else { ExprPathKind::Unknown }
     }
 }
 
