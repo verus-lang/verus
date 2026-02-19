@@ -8,6 +8,7 @@ use core::sync::atomic::{
 #[cfg(target_has_atomic = "64")]
 use core::sync::atomic::{AtomicI64, AtomicU64};
 
+use super::intrinsics::*;
 use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
@@ -16,26 +17,6 @@ macro_rules! make_unsigned_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
         // TODO we could support `std::intrinsics::wrapping_add`
         // and use that instead.
-
-        verus! {
-
-        pub open spec fn $wrap_add(a: int, b: int) -> int {
-            if a + b > (<$value_ty>::MAX as int) {
-                a + b - ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
-            } else {
-                a + b
-            }
-        }
-
-        pub open spec fn $wrap_sub(a: int, b: int) -> int {
-            if a - b < (<$value_ty>::MIN as int) {
-                a - b + ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
-            } else {
-                a - b
-            }
-        }
-
-        } // verus!
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
@@ -47,29 +28,6 @@ macro_rules! make_unsigned_integer_atomic {
 
 macro_rules! make_signed_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
-        verus! {
-
-        pub open spec fn $wrap_add(a: int, b: int) -> int {
-            if a + b > (<$value_ty>::MAX as int) {
-                a + b - ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
-            } else if a + b < (<$value_ty>::MIN as int) {
-                a + b + ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
-            } else {
-                a + b
-            }
-        }
-
-        pub open spec fn $wrap_sub(a: int, b: int) -> int {
-            if a - b > (<$value_ty>::MAX as int) {
-                a - b - ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
-            } else if a - b < (<$value_ty>::MIN as int) {
-                a - b + ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
-            } else {
-                a - b
-            }
-        }
-
-        } // verus!
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
