@@ -592,14 +592,23 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                 // Sized, MetaSized, Tuple, Pointee, Thin are all ok to do nothing.
                                 // There can't be user impls of these traits, they can only be built-in.
                             } else {
-                                unsupported_err!(
+                                return err_span(
                                     span,
-                                    format!("this trait bound: {:?}", trait_refs)
-                                )
+                                    format!(
+                                        "Verus does not recognize this trait bound: {:?}",
+                                        trait_refs
+                                    ),
+                                );
                             }
                         }
                         _ => {
-                            unsupported_err!(span, format!("this trait bound: {:?}", trait_refs))
+                            return err_span(
+                                span,
+                                format!(
+                                    "Verus does not recognize this trait bound: {:?}",
+                                    trait_refs
+                                ),
+                            );
                         }
                     }
                 }

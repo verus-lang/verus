@@ -2261,3 +2261,21 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] recursion_through_cloned_tuple verus_code!{
+        use vstd::prelude::*;
+
+        struct A { }
+
+        // This implementation is recursive through tuple clone
+
+        impl Clone for A {
+            fn clone(&self) -> Self {
+                let x = Some((A { }, 0));
+                let z = x.clone();
+                A { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not recognize this trait bound: <(A, i32) as std::clone::Clone>")
+}
