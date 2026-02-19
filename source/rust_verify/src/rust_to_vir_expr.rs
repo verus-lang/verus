@@ -1242,6 +1242,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             }
         }
         Adjust::Deref(Some(deref)) => {
+            
+
             // note: deref has signature (&self) -> &Self::Target
             // and deref_mut has signature (&mut self) -> &mut Self::Target
             // The adjustment, though, goes from self -> Self::Target

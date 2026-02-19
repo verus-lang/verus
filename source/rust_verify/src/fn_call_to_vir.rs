@@ -222,8 +222,23 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                 impl_def_id: _,
                 impl_args: _,
                 impl_item_args: _,
-                resolved_item: ResolvedItem::FromImpl(did, args),
+                resolved_item: ResolvedItem::FromImpl(did, res_args),
             } => {
+                let verus_item = bctx.ctxt.get_verus_item(did);
+                if matches!(verus_item, Some(VerusItem::BuiltinDeref(_))) {
+                    return verus_item_to_vir(
+                        bctx,
+                        expr,
+                        expr_typ,
+                        verus_item.unwrap(),
+                        &args,
+                        tcx,
+                        res_args,
+                        did,
+                        outer_modifier,
+                    );
+                }
+
                 let typs = mk_typ_args(bctx, args, did, expr.span)?;
                 let impl_paths = get_impl_paths(bctx, did, args, None, const_var, expr.span)?;
 
