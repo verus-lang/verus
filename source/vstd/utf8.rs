@@ -685,9 +685,10 @@ pub open spec fn is_ascii_chars(chars: Seq<char>) -> bool {
 
 }
 
-pub proof fn is_ascii_chars_encode_utf8(chars: Seq<char>)
+// todo - add to a broadcast group
+pub broadcast proof fn is_ascii_chars_encode_utf8(chars: Seq<char>)
     requires
-        is_ascii_chars(chars),
+        #[trigger] is_ascii_chars(chars),
     ensures
         chars.len() == encode_utf8(chars).len(),
         forall|i|
@@ -704,6 +705,24 @@ pub proof fn is_ascii_chars_encode_utf8(chars: Seq<char>)
                 is_1_byte_codepoint(c0),
         ;
         is_ascii_chars_encode_utf8(chars.drop_first());
+    }
+}
+
+pub broadcast proof fn is_ascii_chars_nat_bound(chars: Seq<char>)
+    ensures
+        #[trigger] is_ascii_chars(s) ==> forall|i: int| 0 <= i < s@.len() ==> (s@.index(i) as nat) < 128
+{}
+
+//todo - add cfg
+pub broadcast proof fn is_ascii_concat(c1: Seq<char>, s2: Seq<char>, s3: Seq<char>)
+    requires
+        s1@ =~= #[trigger] s2@ + s3@,
+    ensures
+        #[trigger] is_ascii(s1) <==> #[trigger] is_ascii(s2) && #[trigger] is_ascii(s3)
+{
+    if (is_ascii(s1)) {
+        assert(s2@ =~= s1@.subrange(0, s2@.len() as int));
+        assert(s3@ =~= s1@.subrange(s2@.len() as int, s1@.len() as int));
     }
 }
 

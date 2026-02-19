@@ -52,14 +52,17 @@ pub open spec fn is_ascii(s: &str) -> bool {
 }
 
 #[cfg(feature = "alloc")]
-pub proof fn is_ascii_spec_bytes(s: &str)
+pub broadcast proof fn is_ascii_spec_bytes(s: &str)
     ensures
-        is_ascii(s) ==> s.spec_bytes() =~= Seq::new(s@.len(), |i| s@.index(i) as u8)
+        #[trigger] is_ascii(s) ==> #[trigger] s.spec_bytes() =~= Seq::new(s@.len(), |i| s@.index(i) as u8)
 {
     if (is_ascii(s)) {
         is_ascii_chars_encode_utf8(s@);
     }
 }
+
+//todo - add these to a broadcast group
+//todo - add cfg
 
 #[cfg(feature = "alloc")]
 #[verifier::when_used_as_spec(is_ascii)]
@@ -80,7 +83,6 @@ use crate::alloc::borrow::ToOwned;
 pub assume_specification[ str::to_owned ](s: &str) -> (res: String)
     ensures
         s@ == res@,
-        // s.is_ascii() == res.is_ascii(), // this is trivial now
 ;
 
 #[cfg(feature = "alloc")]
@@ -98,8 +100,7 @@ pub uninterp spec fn to_string_from_display_ensures<T: core::fmt::Display + ?Siz
 #[cfg(feature = "alloc")]
 pub broadcast proof fn to_string_from_display_ensures_for_str(t: &str, res: String)
     ensures
-        #[trigger] to_string_from_display_ensures::<str>(t, res) <==> (t@ == res@ && t.is_ascii()
-            == res.is_ascii()),
+        #[trigger] to_string_from_display_ensures::<str>(t, res) <==> (t@ == res@),
 {
     admit();
 }
@@ -149,7 +150,6 @@ impl StrSliceExecFns for str {
             0 <= i < self@.len(),
         ensures
             self@.index(i as int) == c,
-            //self.is_ascii() ==> forall|i: int| i < self@.len() ==> (self@.index(i) as nat) < 256, // what was this for?
     {
         self.chars().nth(i).unwrap()
     }
@@ -217,7 +217,6 @@ impl StrSliceExecFns for str {
     fn as_bytes_vec(&self) -> (ret: alloc::vec::Vec<u8>)
         ensures
             ret@ == self.spec_bytes(),
-            self.is_ascii() ==> ret@ == Seq::new(self@.len(), |i| self@.index(i) as u8),
     {
         proof {
             is_ascii_spec_bytes(self);
@@ -289,7 +288,6 @@ pub open spec fn string_is_ascii(s: &String) -> bool {
 pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
-        //s.is_ascii() == res.is_ascii(), // this is trivial now
 ;
 
 // same as above
@@ -297,7 +295,6 @@ pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
 pub assume_specification<'a>[ <String as core::ops::Deref>::deref ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
-        //s.is_ascii() == res.is_ascii(), // this is trivial now
 ;
 
 #[cfg(feature = "alloc")]
@@ -316,14 +313,12 @@ pub assume_specification[ <String as PartialEq>::eq ](s: &String, other: &String
 pub assume_specification[ String::new ]() -> (res: String)
     ensures
         res@ == Seq::<char>::empty(),
-        //string_is_ascii(&res), // this is trivial now
 ;
 
 #[cfg(feature = "alloc")]
 pub assume_specification[ <String as core::default::Default>::default ]() -> (r: String)
     ensures
         r@ == Seq::<char>::empty(),
-        //string_is_ascii(&r), this is trivial now
 ;
 
 #[cfg(feature = "alloc")]
@@ -359,7 +354,6 @@ impl StringExecFns for String {
     fn from_str<'a>(s: &'a str) -> (ret: String)
         ensures
             s@ == ret@,
-            //s.is_ascii() == ret.is_ascii(), // now trivial
     {
         s.to_string()
     }
@@ -368,7 +362,6 @@ impl StringExecFns for String {
     fn append<'a, 'b>(&'a mut self, other: &'b str)
         ensures
             self@ == old(self)@ + other@,
-            //self.is_ascii() == old(self).is_ascii() && other.is_ascii(), // todo - keep this? it is now easily derivable
     {
         *self += other;
     }
@@ -377,7 +370,6 @@ impl StringExecFns for String {
     fn concat<'b>(self, other: &'b str) -> (ret: String)
         ensures
             ret@ == self@ + other@,
-            //ret.is_ascii() == self.is_ascii() && other.is_ascii(), // todo - keep this? it is now easily derivable
     {
         self + other
     }
