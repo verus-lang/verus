@@ -394,7 +394,7 @@ macro_rules! unsigned_int_encoding {
                 proof fn encoding_size(v: $int, b: Seq<AbstractByte>) {
                     broadcast use endian_to_bytes_to_endian;
 
-                    unsigned_int_max_bounds();
+                    unsigned_int_max_values();
                 }
 
                 proof fn encoding_exists(tracked v: &$int) -> (b: Seq<AbstractByte>) {
@@ -404,7 +404,7 @@ macro_rules! unsigned_int_encoding {
                 proof fn encoding_invertible(v: $int, b: Seq<AbstractByte>) {
                     broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
-                    unsigned_int_max_bounds();
+                    unsigned_int_max_values();
                 }
 
                 axiom fn abs_encode_impl(v: Self, b: Seq<AbstractByte>);
@@ -425,7 +425,7 @@ macro_rules! unsigned_int_encoding {
             {
                 broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
-                unsigned_int_max_bounds();
+                unsigned_int_max_values();
             }
         }
     )+};
@@ -493,7 +493,7 @@ macro_rules! signed_int_encoding {
                 proof fn encoding_size(v: $int, b: Seq<AbstractByte>) {
                     broadcast use endian_to_bytes_to_endian;
 
-                    unsigned_int_max_bounds();
+                    unsigned_int_max_values();
                 }
 
                 proof fn encoding_exists(tracked v: &$int) -> (b: Seq<AbstractByte>) {
@@ -503,7 +503,7 @@ macro_rules! signed_int_encoding {
                 proof fn encoding_invertible(v: $int, b: Seq<AbstractByte>) {
                     broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
-                    unsigned_int_max_bounds();
+                    unsigned_int_max_values();
                 }
 
                 axiom fn abs_encode_impl(v: Self, b: Seq<AbstractByte>);
@@ -524,7 +524,7 @@ macro_rules! signed_int_encoding {
             {
                 broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
-                unsigned_int_max_bounds()
+                unsigned_int_max_values()
             }
 
             pub broadcast proof fn $signed_to_unsigned_lemma_name(v: $int, w: $int)
@@ -533,7 +533,7 @@ macro_rules! signed_int_encoding {
                 ensures
                     v == w
             {
-                signed_int_min_max_bounds();
+                signed_int_min_max_values();
             }
         }
     )+};
@@ -874,7 +874,7 @@ impl<T: ?Sized> AbstractByteEncoding<*mut T> for RawPtrRepresentation<T> {
     proof fn encoding_exists(tracked v: &*mut T) -> (b: Seq<AbstractByte>) {
         broadcast use endian_to_bytes_to_endian;
 
-        unsigned_int_max_bounds();
+        unsigned_int_max_values();
         let prefix = endian_to_bytes(
             EndianNat::<u8>::from_nat(v@.addr as nat, size_of::<usize>()),
             Some(v@.provenance),
@@ -896,7 +896,7 @@ impl<T: ?Sized> AbstractByteEncoding<*mut T> for RawPtrRepresentation<T> {
             endian_to_bytes_shared_provenance,
         ;
 
-        unsigned_int_max_bounds();
+        unsigned_int_max_values();
     }
 }
 
@@ -965,7 +965,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                 let suffix = bytes.subrange(size_of::<usize>() as int, size_of::<*$mutability T>() as int);
                 <() as AbstractByteRepresentation>::abs_encode_impl(v@.metadata, suffix);
 
-                unsigned_int_max_bounds();
+                unsigned_int_max_values();
             }
 
             /// Useful properties for `<*$mutability T as AbstractByteRepresentation>::encode(v, bytes)` for `T: ?Sized`.
@@ -992,7 +992,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                     endian_to_bytes_shared_provenance,
                 ;
 
-                unsigned_int_max_bounds();
+                unsigned_int_max_values();
             }
         }
     )+};

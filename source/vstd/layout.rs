@@ -5,9 +5,6 @@ use super::arithmetic::power2::*;
 use super::bits::*;
 use super::math::*;
 use super::prelude::*;
-use crate::vstd::arithmetic::power::*;
-use crate::vstd::arithmetic::power2::*;
-use crate::vstd::bits::*;
 
 verus! {
 
@@ -180,131 +177,6 @@ pub broadcast axiom fn layout_of_primitives()
         size_of::<usize>() * 8 == usize::BITS,
 ;
 
-/// The alignment of `u8` is 1, per [type layout rules](https://doc.rust-lang.org/reference/type-layout.html).
-/// Note: This is not part of the alignment broadcast group due to proof time-out,
-/// so it must be imported directly as needed.
-pub broadcast proof fn align_of_u8()
-    ensures
-        #![trigger align_of::<u8>()]
-        align_of::<u8>() == 1,
-{
-    broadcast use {
-        layout_of_primitives,
-        align_properties,
-        align_nonzero,
-        crate::vstd::arithmetic::div_mod::lemma_mod_is_zero,
-    };
-
-}
-
-// The size is a multiple of alignment and alignment is always a power of 2 by
-// https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size
-pub broadcast axiom fn align_properties<T>()
-    ensures
-        #![trigger align_of::<T>()]
-        size_of::<T>() % align_of::<T>() == 0,
-        is_power_2_exists(align_of::<T>() as int),
-;
-
-// The alignment is at least 1 by https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size
-pub broadcast proof fn align_nonzero<T>()
-    ensures
-        #![trigger align_of::<T>()]
-        align_of::<T>() > 0,
-{
-    broadcast use crate::vstd::arithmetic::power::lemma_pow_positive, align_properties;
-
-}
-
-pub proof fn usize_size_pow2()
-    ensures
-        is_power_2(size_of::<usize>() as int),
-{
-    broadcast use group_vstd_default;
-
-    assert(is_power_2(4)) by (compute);
-    assert(is_power_2(8)) by (compute);
-}
-
-pub proof fn unsigned_int_max_bounds()
-    ensures
-        (usize::MAX as nat) < pow2(usize::BITS as nat),
-        (usize::MAX as nat) < pow(256, size_of::<usize>()),
-        (u8::MAX as nat) < pow2(u8::BITS as nat),
-        (u8::MAX as nat) < pow(256, size_of::<u8>()),
-        (u16::MAX as nat) < pow2(u16::BITS as nat),
-        (u16::MAX as nat) < pow(256, size_of::<u16>()),
-        (u32::MAX as nat) < pow2(u32::BITS as nat),
-        (u32::MAX as nat) < pow(256, size_of::<u32>()),
-        (u64::MAX as nat) < pow2(u64::BITS as nat),
-        (u64::MAX as nat) < pow(256, size_of::<u64>()),
-        (u128::MAX as nat) < pow2(u128::BITS as nat),
-        (u128::MAX as nat) < pow(256, size_of::<u128>()),
-{
-    broadcast use layout_of_primitives;
-
-    reveal(pow);
-    reveal(pow2);
-    assert(0x100 - 1 < pow2(8)) by (compute);
-    assert(0x1_0000 - 1 < pow2(16)) by (compute);
-    assert(0x1_0000_0000 - 1 < pow2(32)) by (compute);
-    assert(0x1_0000_0000_0000_0000 - 1 < pow2(64)) by (compute);
-    assert(0x1_0000_0000_0000_0000_0000_0000_0000_0000 - 1 < pow2(128)) by (compute);
-    assert(pow(256, 1) == pow2(8)) by (compute);
-    assert(pow(256, 2) == pow2(16)) by (compute);
-    assert(pow(256, 4) == pow2(32)) by (compute);
-    assert(pow(256, 8) == pow2(64)) by (compute);
-    assert(pow(256, 16) == pow2(128)) by (compute);
-}
-
-pub proof fn signed_int_min_max_bounds()
-    ensures
-        (isize::MAX as nat) < pow2((isize::BITS - 1) as nat),
-        abs(isize::MIN as int) == pow2((isize::BITS - 1) as nat),
-        (isize::MAX as nat) * 2 < pow(256, size_of::<isize>()),
-        abs(isize::MIN as int) * 2 == pow(256, size_of::<isize>()),
-        (i8::MAX as nat) < pow2((i8::BITS - 1) as nat),
-        abs(i8::MIN as int) == pow2((i8::BITS - 1) as nat),
-        (i8::MAX as nat) * 2 < pow(256, size_of::<i8>()),
-        abs(i8::MIN as int) * 2 == pow(256, size_of::<i8>()),
-        (i16::MAX as nat) < pow2((i16::BITS - 1) as nat),
-        abs(i16::MIN as int) == pow2((i16::BITS - 1) as nat),
-        (i16::MAX as nat) * 2 < pow(256, size_of::<i16>()),
-        abs(i16::MIN as int) * 2 == pow(256, size_of::<i16>()),
-        (i32::MAX as nat) < pow2((i32::BITS - 1) as nat),
-        abs(i32::MIN as int) == pow2((i32::BITS - 1) as nat),
-        (i32::MAX as nat) * 2 < pow(256, size_of::<i32>()),
-        abs(i32::MIN as int) * 2 == pow(256, size_of::<i32>()),
-        (i64::MAX as nat) < pow2((i64::BITS - 1) as nat),
-        abs(i64::MIN as int) == pow2((i64::BITS - 1) as nat),
-        (i64::MAX as nat) * 2 < pow(256, size_of::<i64>()),
-        abs(i64::MIN as int) * 2 == pow(256, size_of::<i64>()),
-        (i128::MAX as nat) < pow2((i128::BITS - 1) as nat),
-        abs(i128::MIN as int) == pow2((i128::BITS - 1) as nat),
-        (i128::MAX as nat) * 2 < pow(256, size_of::<i128>()),
-        abs(i128::MIN as int) * 2 == pow(256, size_of::<i128>()),
-{
-    broadcast use layout_of_primitives;
-
-    reveal(pow);
-    reveal(pow2);
-    assert(0x80 - 1 < pow2(7)) by (compute);
-    assert(0x80 == pow2(7)) by (compute);
-    assert(0x8_000 - 1 < pow2(15)) by (compute);
-    assert(0x8_000 == pow2(15)) by (compute);
-    assert(0x80_000_000 - 1 < pow2(31)) by (compute);
-    assert(0x80_000_000 == pow2(31)) by (compute);
-    assert(0x8_000_000_000_000_000 - 1 < pow2(63)) by (compute);
-    assert(0x8_000_000_000_000_000 == pow2(63)) by (compute);
-    assert(0x80_000_000_000_000_000_000_000_000_000_000 - 1 < pow2(127)) by (compute);
-    assert(0x80_000_000_000_000_000_000_000_000_000_000 == pow2(127)) by (compute);
-    assert(pow(256, 1) == pow2(7) * 2) by (compute);
-    assert(pow(256, 2) == pow2(15) * 2) by (compute);
-    assert(pow(256, 4) == pow2(31) * 2) by (compute);
-    assert(pow(256, 8) == pow2(63) * 2) by (compute);
-    assert(pow(256, 16) == pow2(127) * 2) by (compute);
-}
-
 /// Size and alignment of the unit tuple ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.tuple.unit)).
 pub broadcast axiom fn layout_of_unit_tuple()
     ensures
@@ -393,7 +265,7 @@ pub broadcast proof fn align_nonzero<T>()
 /// so it must be imported directly as needed.
 pub broadcast proof fn align_of_u8()
     ensures
-        #![trigger size_of::<u8>()]
+        #![trigger align_of::<u8>()]
         align_of::<u8>() == 1,
 {
     broadcast use {
