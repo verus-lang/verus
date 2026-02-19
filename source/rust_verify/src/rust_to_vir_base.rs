@@ -596,6 +596,8 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                 // Sized, MetaSized, Tuple, Pointee, Thin are all ok to do nothing.
                                 // There can't be user impls of these traits, they can only be built-in.
                             } else {
+                                // If we don't recognize the trait bound, we don't know whether
+                                // we need to recurse further.
                                 return err_span(
                                     span,
                                     format!(
