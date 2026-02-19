@@ -20,6 +20,7 @@ use rustc_span::Span;
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{Ident, kw};
 use rustc_trait_selection::infer::InferCtxtExt;
+use rustc_trait_selection::solve::BuiltinImplSource;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -538,6 +539,9 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                     }
                 }
                 Ok(rustc_middle::traits::ImplSource::Param(_)) => {}
+                Ok(rustc_middle::traits::ImplSource::Builtin(BuiltinImplSource::Object(_), _)) => {
+                    // builtin impl for dyn Trait : Trait
+                }
                 Ok(rustc_middle::traits::ImplSource::Builtin(_, _)) => {
                     match inst_pred_kind {
                         ClauseKind::Trait(TraitPredicate {
@@ -586,7 +590,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                 || Some(trait_def_id) == tcx.lang_items().destruct_trait()
                                 || matches!(
                                     verus_items::get_rust_item(tcx, trait_def_id),
-                                    Some(RustItem::Send | RustItem::Thin)
+                                    Some(RustItem::Send | RustItem::Thin | RustItem::Any)
                                 )
                             {
                                 // Sized, MetaSized, Tuple, Pointee, Thin are all ok to do nothing.
