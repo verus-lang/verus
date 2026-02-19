@@ -293,6 +293,7 @@ pub broadcast proof fn align_nonzero<T>()
         align_of::<T>() > 0,
 {
     broadcast use crate::vstd::arithmetic::power::lemma_pow_positive, align_properties;
+
 }
 
 pub proof fn usize_size_pow2()
