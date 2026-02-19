@@ -25,20 +25,10 @@ use super::power::{
     lemma_pow_subtracts,
 };
 
-/// This function computes 2 to the power of the given natural number
-/// `e`. It's opaque so that the SMT solver doesn't waste time
+/// This function computes 2 to the power of the given natural number `e`.
+/// Note that the called function `pow` is opaque so the SMT solver doesn't waste time
 /// repeatedly recursively unfolding it.
-#[verifier::opaque]
-pub open spec fn pow2(e: nat) -> nat
-    decreases
-            e  // ensures pow2(e) > 0
-            // cannot have ensurs clause in spec functions
-            // a workaround is the lemma_pow2_pos below
-            ,
-{
-    // you cannot reveal in a spec function, which cause more reveals clauses
-    // for the proof
-    // reveal(pow);
+pub open spec fn pow2(e: nat) -> nat {
     pow(2, e) as nat
 }
 

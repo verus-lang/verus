@@ -30,7 +30,9 @@ pub open spec fn is_power_2_exists(m: int) -> bool {
 
 pub broadcast proof fn is_power_2_equiv(n: int)
     ensures
-        #[trigger] is_power_2(n) <==> #[trigger] is_power_2_exists(n),
+        #![trigger is_power_2(n)]
+        #![trigger is_power_2_exists(n)]
+        is_power_2(n) <==> is_power_2_exists(n),
 {
     if is_power_2(n) {
         assert(is_power_2_exists(n)) by {
@@ -258,9 +260,11 @@ pub broadcast axiom fn layout_of_primitives()
         size_of::<usize>() * 8 == usize::BITS,
 ;
 
-// Adding this to the alignment broadcast group causes proofs to time out, so import as-needed
+/// The alignment of `u8` is 1, per [type layout rules](https://doc.rust-lang.org/reference/type-layout.html).
+/// Note: This is not part of the alignment broadcast group due to proof time-out,
+/// so it must be imported directly as needed.
 pub broadcast proof fn align_of_u8()
-    ensures 
+    ensures
         #![trigger align_of::<u8>()]
         align_of::<u8>() == 1,
 {
@@ -270,6 +274,7 @@ pub broadcast proof fn align_of_u8()
         align_nonzero,
         crate::vstd::arithmetic::div_mod::lemma_mod_is_zero,
     };
+
 }
 
 // The size is a multiple of alignment and alignment is always a power of 2 by
