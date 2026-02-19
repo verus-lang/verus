@@ -2032,7 +2032,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             bctx.fun_id,
                             vec![(None, clause)],
                             None,
-                        );
+                            expr.span,
+                        )?;
 
                         let typ_args = Arc::new(vec![tup_typ, ret_typ, fun_typ]);
                         (

@@ -225,7 +225,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                 resolved_item: ResolvedItem::FromImpl(did, args),
             } => {
                 let typs = mk_typ_args(bctx, args, did, expr.span)?;
-                let impl_paths = get_impl_paths(bctx, did, args, None, const_var);
+                let impl_paths = get_impl_paths(bctx, did, args, None, const_var, expr.span)?;
 
                 let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
                 record_name = f.clone();
@@ -253,7 +253,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                 let trait_id = tcx.trait_of_assoc(did).unwrap();
                 let remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
                 let impl_paths =
-                    get_impl_paths(bctx, did, args, remove_self_trait_bound, const_var);
+                    get_impl_paths(bctx, did, args, remove_self_trait_bound, const_var, expr.span)?;
 
                 let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
                 else {
@@ -294,7 +294,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
         if let Some(args) = args { mk_vir_args(bctx, node_substs, f, &args)? } else { vec![] };
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
-    let impl_paths = get_impl_paths(bctx, f, node_substs, None, const_var);
+    let impl_paths = get_impl_paths(bctx, f, node_substs, None, const_var, expr.span)?;
     let target =
         CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage, const_var);
     Ok(bctx.spanned_typed_new(
@@ -352,7 +352,7 @@ pub(crate) fn deref_to_vir<'tcx>(
     let target_kind = match res {
         ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(did, args), .. } => {
             let typs = mk_typ_args(bctx, args, did, span)?;
-            let impl_paths = get_impl_paths(bctx, did, args, None, false);
+            let impl_paths = get_impl_paths(bctx, did, args, None, false, span)?;
             let resolved = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
 
             record_trait_fun = resolved.clone();
@@ -373,7 +373,7 @@ pub(crate) fn deref_to_vir<'tcx>(
     record_call(bctx, expr, ResolvedCall::Call(trait_fun.clone(), record_trait_fun, bctx.in_ghost));
 
     let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
-    let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None, false);
+    let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None, false, span)?;
     let call_target =
         CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, autospec_usage, false);
     let args = Arc::new(vec![arg.clone()]);
@@ -1895,7 +1895,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             typ_args.swap(0, 1);
             let typ_args = Arc::new(typ_args);
 
-            let impl_paths = get_impl_paths(bctx, f, node_substs, None, false);
+            let impl_paths = get_impl_paths(bctx, f, node_substs, None, false, expr.span)?;
 
             return mk_expr(ExprX::Call(
                 CallTarget::BuiltinSpecFun(bsf, typ_args, impl_paths),
@@ -2023,7 +2023,8 @@ fn get_impl_paths<'tcx>(
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     remove_self_trait_bound: Option<(DefId, &mut Option<vir::ast::ImplPath>)>,
     const_var: bool,
-) -> vir::ast::ImplPaths {
+    span: Span,
+) -> Result<vir::ast::ImplPaths, VirErr> {
     let fid = if const_var {
         f
     } else if let rustc_middle::ty::FnDef(fid, _fsubsts) =
@@ -2040,6 +2041,7 @@ fn get_impl_paths<'tcx>(
         fid,
         node_substs,
         remove_self_trait_bound,
+        span,
     )
 }
 
