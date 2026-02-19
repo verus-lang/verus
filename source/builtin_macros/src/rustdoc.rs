@@ -29,13 +29,14 @@
 // some data explaining the function mode, param modes, and return mode.
 
 use proc_macro2::Span;
+use quote::ToTokens;
 use std::iter::FromIterator;
 use verus_syn::punctuated::Punctuated;
 use verus_syn::spanned::Spanned;
 use verus_syn::token;
 use verus_syn::{
-    AssumeSpecification, AttrStyle, Attribute, Block, Expr, ExprBlock, ExprPath, FnMode, Ident,
-    ImplItemFn, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
+    AssumeSpecification, AttrStyle, Attribute, Block, Expr, ExprBlock, ExprPath, FnArg, FnMode,
+    Ident, ImplItemFn, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
     ReturnType, Signature, TraitItemFn, Type, TypeGroup, TypePath,
 };
 
@@ -102,6 +103,10 @@ fn attr_for_sig(
     let mut v = vec![];
 
     v.push(encoded_sig_info(sig));
+
+    if let Some(with_spec) = &sig.spec.with {
+        v.push(encoded_str("with", &format_with_spec(with_spec)));
+    }
 
     match &sig.spec.requires {
         Some(es) => {
@@ -328,6 +333,89 @@ fn encoded_body(kind: &str, code: &Expr) -> String {
 /// into the format that the postprocessor will recognize.
 fn encoded_str(kind: &str, data: &str) -> String {
     "```rust\n// verusdoc_special_attr ".to_string() + kind + "\n" + data + "\n```"
+}
+
+fn format_with_spec(with_spec: &verus_syn::WithSpecOnFn) -> String {
+    let mut lines: Vec<String> = vec![];
+
+    let inputs = format_fn_args(&with_spec.inputs);
+    for input in inputs {
+        let input = normalize_ws(input.trim());
+        lines.push(format!("{input},"));
+    }
+
+    if let Some((_, outputs)) = &with_spec.outputs {
+        lines.push("->".to_string());
+        let outputs = format_pat_types(outputs);
+        for output in outputs {
+            let output = normalize_ws(output.trim());
+            lines.push(format!("{output},"));
+        }
+    }
+
+    lines.join("\n")
+}
+
+fn format_pat_types(outputs: &Punctuated<verus_syn::PatType, verus_syn::Token![,]>) -> Vec<String> {
+    if outputs.is_empty() {
+        return vec![];
+    }
+
+    outputs.iter().map(format_pat_type).collect()
+}
+
+fn format_fn_args(inputs: &Punctuated<FnArg, verus_syn::Token![,]>) -> Vec<String> {
+    if inputs.is_empty() {
+        return vec![];
+    }
+    inputs.iter().map(format_fn_arg).collect()
+}
+
+fn format_fn_arg(arg: &FnArg) -> String {
+    let tracked = if arg.tracked.is_some() { "tracked " } else { "" };
+    match &arg.kind {
+        verus_syn::FnArgKind::Receiver(receiver) => {
+            let s = normalize_ws(&receiver.to_token_stream().to_string());
+            format!("{tracked}{s}")
+        }
+        verus_syn::FnArgKind::Typed(pt) => {
+            let s = format_pat_type(pt);
+            format!("{tracked}{s}")
+        }
+    }
+}
+
+fn format_pat_type(pt: &verus_syn::PatType) -> String {
+    let pat = normalize_ws(&pt.pat.to_token_stream().to_string());
+    let ty = tighten_type_spacing(&normalize_ws(&pt.ty.to_token_stream().to_string()));
+    format!("{pat}: {ty}")
+}
+
+fn normalize_ws(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<&str>>().join(" ")
+}
+
+fn tighten_type_spacing(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(bytes.len());
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b' ' {
+            let prev = if i > 0 { bytes[i - 1] } else { 0 };
+            let next = if i + 1 < bytes.len() { bytes[i + 1] } else { 0 };
+            let remove =
+                matches!(prev, b'<' | b'(' | b',' | b':') || matches!(next, b'>' | b')' | b',');
+            if !remove {
+                out.push(' ');
+            }
+            i += 1;
+            continue;
+        }
+        out.push(b as char);
+        i += 1;
+    }
+    out
 }
 
 /// Create an attr that looks like #[doc = "doc_str"]
