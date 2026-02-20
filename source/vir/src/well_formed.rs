@@ -53,7 +53,7 @@ impl EmitError for EmitErrorState {
 
     fn has_fatal_errors(&self) -> bool {
         self.diags.iter().any(|err| match err {
-            VirErrAs::NonBlockingError(..) | VirErrAs::NonFatalError(..) => true,
+            VirErrAs::NonBlockingError(..) => true,
             _ => false,
         })
     }
@@ -1933,10 +1933,7 @@ pub fn check_crate(
 
     diags.append(&mut emit.diags);
     // There is no point in checking for well-founded types if we already have a fatal error:
-    if diags
-        .iter()
-        .any(|x| matches!(x, VirErrAs::NonBlockingError(..) | VirErrAs::NonFatalError(..)))
-    {
+    if diags.iter().any(|x| matches!(x, VirErrAs::NonBlockingError(..))) {
         return Ok(());
     }
     crate::recursive_types::check_recursive_types(krate)?;

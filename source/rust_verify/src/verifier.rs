@@ -2821,8 +2821,7 @@ impl Verifier {
             check_crate_result1.err().or(check_crate_result.err());
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
-                vir::ast::VirErrAs::NonBlockingError(err, maybe_p)
-                | vir::ast::VirErrAs::NonFatalError(err, maybe_p) => {
+                vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
                     // This diagnostic message may be a verification boundary violation.
                     // In that case, we want to try to construct a suggestion to deal with the problem.
 
@@ -2850,6 +2849,10 @@ impl Verifier {
                     } else {
                         diagnostics.report_as(&err.to_any(), MessageLevel::Error)
                     }
+                }
+                vir::ast::VirErrAs::NonFatalError(err, _) => {
+                    // TODO: Reconsider whether reporting should happen here.
+                    diagnostics.report_as(&err.to_any(), MessageLevel::Error)
                 }
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
