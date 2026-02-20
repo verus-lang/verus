@@ -92,6 +92,35 @@ test_verify_one_file_with_options! {
     }
 }
 
+test_verify_one_file_with_options! {
+    #[test]
+    test_json_proof_note_on_assume_and_req_with_no_cheating ["--output-json", "--no-cheating"] =>
+    verus_code! {
+        fn func_with_precond(x: u64) -> u64
+            requires
+                #[verifier::proof_note("Precondition known to fail")]
+                (x < 10),
+        {
+            2 * x
+        }
+
+        fn caller() {
+            let _ = func_with_precond(42);
+            assume(
+                #[verifier::proof_note("Assumption forbidden by no-cheating")]
+                (1 > 2)
+            );
+        }
+    } => Err(err) => {
+        assert_help_error_msg(err.clone(), "note: Assumption forbidden by no-cheating");
+        assert_help_error_msg(err.clone(), "note: Precondition known to fail");
+        with_json_func_details(&err, "crate::caller", |details| {
+            assert!(details.failed_proof_notes.contains("Assumption forbidden by no-cheating"));
+            assert!(details.failed_proof_notes.contains("Precondition known to fail"));
+        });
+    }
+}
+
 fn with_json_func_details(err: &TestErr, func: &str, body: impl Fn(&FuncDetails)) {
     let json = err.json_output.as_ref().expect("expected JSON summary output");
 
