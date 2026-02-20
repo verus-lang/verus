@@ -30,11 +30,14 @@ struct Ctxt<'a> {
 trait EmitError {
     fn emit(&mut self, path: Option<Path>, err: VirErrAs);
     fn has_fatal_errors(&self) -> bool;
+    fn record_func_failed_proof_note(&mut self, func: Fun, note: String);
 }
 
 struct EmitErrorState {
     diags: Vec<VirErrAs>,
     diag_map: HashMap<Path, usize>,
+    /// For each function, collects proof notes that fail due to `--no-cheating`.
+    func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
 }
 
 impl EmitError for EmitErrorState {
@@ -56,6 +59,10 @@ impl EmitError for EmitErrorState {
             VirErrAs::NonBlockingError(..) => true,
             _ => false,
         })
+    }
+
+    fn record_func_failed_proof_note(&mut self, func: Fun, note: String) {
+        self.func_failed_proof_notes.entry(func).or_default().insert(note);
     }
 }
 
@@ -581,7 +588,9 @@ fn check_one_expr<Emit: EmitError>(
             if ctxt.no_cheating && *is_assume {
                 let mut msg = error(&expr.span, "assume/admit not allowed with --no-cheating");
                 if let Some(label) = ast_expr_get_proof_note(inner_expr) {
-                    msg = msg.proof_note_label(&expr.span, label.to_string());
+                    let label = label.to_string();
+                    msg = msg.proof_note_label(&expr.span, label.clone());
+                    emit.record_func_failed_proof_note(function.x.name.clone(), label);
                 }
                 emit.emit(None, VirErrAs::NonFatalError(msg, None));
             }
@@ -1115,10 +1124,8 @@ fn check_function<Emit: EmitError>(
     }
 
     if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
-        let msg = error(
-            &function.span,
-            "#[verifier::assume_termination] not allowed with --no-cheating",
-        );
+        let msg =
+            error(&function.span, "#[verifier::assume_termination] not allowed with --no-cheating");
         emit.emit(None, VirErrAs::NonFatalError(msg, None));
     }
 
@@ -1910,7 +1917,8 @@ pub fn check_crate(
 
     let diag_map: HashMap<Path, usize> = HashMap::new();
     let new_diags: Vec<VirErrAs> = Vec::new();
-    let mut emit = EmitErrorState { diag_map, diags: new_diags };
+    let mut emit =
+        EmitErrorState { diag_map, diags: new_diags, func_failed_proof_notes: HashMap::new() };
     let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
