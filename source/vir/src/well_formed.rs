@@ -583,7 +583,7 @@ fn check_one_expr<Emit: EmitError>(
                 if let Some(label) = ast_expr_get_proof_note(inner_expr) {
                     msg = msg.proof_note_label(&expr.span, label.to_string());
                 }
-                return Err(msg);
+                emit.emit(None, VirErrAs::NonBlockingError(msg, None));
             }
         }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
@@ -1115,10 +1115,11 @@ fn check_function<Emit: EmitError>(
     }
 
     if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
-        return Err(error(
+        let msg = error(
             &function.span,
             "#[verifier::assume_termination] not allowed with --no-cheating",
-        ));
+        );
+        emit.emit(None, VirErrAs::NonBlockingError(msg, None));
     }
 
     #[cfg(feature = "singular")]
@@ -1437,10 +1438,11 @@ fn check_function<Emit: EmitError>(
             // Allow external_body/assume_specification inside vstd
             Some(path) if path.is_vstd_path() => {}
             _ => {
-                return Err(error(
+                let msg = error(
                     &function.span,
                     "external_body/assume_specification not allowed with --no-cheating",
-                ));
+                );
+                emit.emit(None, VirErrAs::NonBlockingError(msg, None));
             }
         }
     }
