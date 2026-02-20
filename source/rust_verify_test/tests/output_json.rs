@@ -86,10 +86,9 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => {
         assert_help_error_msg(err.clone(), "note: Statement known to be false");
-        // TODO: This doesn't work, because `--no-cheating` mode prevents JSON output.
-        // with_json_func_details(&err, "crate::caller", |details| {
-        //     assert!(details.failed_proof_notes.contains("Statement known to be false"))
-        // });
+        with_json_func_details(&err, "crate::caller", |details| {
+            assert!(details.failed_proof_notes.contains("Statement known to be false"))
+        });
     }
 }
 

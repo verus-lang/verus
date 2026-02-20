@@ -2817,8 +2817,22 @@ impl Verifier {
             self.args.no_verify,
             self.args.no_cheating,
         );
-        let mut first_error: Option<VirErr> =
-            check_crate_result1.err().or(check_crate_result.err());
+        let mut first_error: Option<VirErr> = check_crate_result1.err();
+        match check_crate_result {
+            Ok(check_details) => {
+                for (func, failed_proof_notes) in check_details.func_failed_proof_notes {
+                    self.record_func_failed_proof_notes(
+                        func,
+                        failed_proof_notes.into_iter().collect(),
+                    );
+                }
+            }
+            Err(err) => {
+                if first_error.is_none() {
+                    first_error = Some(err);
+                }
+            }
+        }
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {

@@ -27,6 +27,10 @@ struct Ctxt<'a> {
     no_cheating: bool,
 }
 
+pub struct CheckDetails {
+    pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
+}
+
 trait EmitError {
     fn emit(&mut self, path: Option<Path>, err: VirErrAs);
     fn has_fatal_errors(&self) -> bool;
@@ -1668,7 +1672,7 @@ pub fn check_crate(
     diags: &mut Vec<VirErrAs>,
     no_verify: bool,
     no_cheating: bool,
-) -> Result<(), VirErr> {
+) -> Result<CheckDetails, VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
         match funs.get(&function.x.name) {
@@ -1942,8 +1946,8 @@ pub fn check_crate(
     diags.append(&mut emit.diags);
     // There is no point in checking for well-founded types if we already have a fatal error:
     if diags.iter().any(|x| matches!(x, VirErrAs::NonBlockingError(..))) {
-        return Ok(());
+        return Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes });
     }
     crate::recursive_types::check_recursive_types(krate)?;
-    Ok(())
+    Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes })
 }
