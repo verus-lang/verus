@@ -3941,6 +3941,21 @@ pub(crate) fn expr_to_loc_coerce_modes(expr: &vir::ast::Expr) -> Result<vir::ast
 }
 
 pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Result<Place, VirErr> {
+    // Error if `*x` is used in the postcondition where `x` is a mutable reference
+    //
+    // Ok:
+    //    *old(x)
+    //    *old(x.field)
+    //    old(*x)
+    //    *fin(x)
+    // Bad:
+    //    *x
+    //    *x.field
+    //    fin(*x)
+    //
+    // Note that in order to display an error we need both:
+    //  - dereference is not inside an `old` node
+    //  - there is no `old` node between the dereference and the variable
     if bctx.in_postcondition && !bctx.in_old {
         if let Some(local_place) = vir::ast_util::place_get_local(place) {
             let PlaceX::Local(name) = &local_place.x else { unreachable!() };
