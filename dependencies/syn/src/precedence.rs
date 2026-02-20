@@ -209,7 +209,8 @@ impl Precedence {
             | Expr::AssertForall(_)
             | Expr::RevealHide(_)
             | Expr::View(_)
-            | Expr::GetField(_) => Precedence::Unambiguous,
+            | Expr::GetField(_)
+            | Expr::Final(_) => Precedence::Unambiguous,
             Expr::BigAnd(_) | Expr::BigOr(_) => Precedence::Assign,
             Expr::Has(_) | Expr::Is(_) | Expr::IsNot(_) | Expr::HasNot(_) | Expr::Matches(_) => {
                 Precedence::HasIsMatches

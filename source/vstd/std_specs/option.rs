@@ -359,10 +359,10 @@ pub assume_specification<T, E>[ Option::ok_or ](option: Option<T>, err: E) -> (r
 pub assume_specification<T>[ Option::as_mut ](option: &mut Option<T>) -> (res: Option<&mut T>)
     ensures
         (match *old(option) {
-            None => fin(option).is_none() && res.is_none(),
-            Some(r) => fin(option).is_some() && res.is_some() && *res.unwrap() === r && *fin(
-                res.unwrap(),
-            ) === fin(option).unwrap(),
+            None => final(option).is_none() && res.is_none(),
+            Some(r) => final(option).is_some() && res.is_some() && *res.unwrap() === r && *final(
+                res.unwrap()
+            ) === final(option).unwrap(),
         }),
 ;
 
@@ -382,9 +382,9 @@ pub assume_specification<T>[ Option::as_mut_slice ](option: &mut Option<T>) -> (
             Some(x) => seq![x],
             None => seq![],
         }),
-        fin(res)@.len() == res@.len(),  // TODO this should be broadcast for all `&mut [T]`
-        fin(option)@ == (match *old(option) {
-            Some(_) => Some(fin(res)@[0]),
+        final(res)@.len() == res@.len(),  // TODO this should be broadcast for all `&mut [T]`
+        final(option)@ == (match *old(option) {
+            Some(_) => Some(final(res)@[0]),
             None => None,
         }),
 ;
@@ -394,7 +394,7 @@ pub assume_specification<T>[ Option::as_mut_slice ](option: &mut Option<T>) -> (
 pub assume_specification<T>[ Option::insert ](option: &mut Option<T>, value: T) -> (res: &mut T)
     ensures
         *res == value,
-        *fin(option) == Some(*fin(res)),
+        *final(option) == Some(*final(res)),
 ;
 
 #[doc(hidden)]
@@ -406,7 +406,7 @@ pub assume_specification<T>[ Option::get_or_insert ](option: &mut Option<T>, val
             Some(x) => x,
             None => value,
         }),
-        *fin(option) == Some(*fin(res)),
+        *final(option) == Some(*final(res)),
 ;
 
 } // verus!

@@ -1164,7 +1164,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test(a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 5;
@@ -1177,7 +1177,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test2(a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 20;
@@ -1190,7 +1190,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test3(a: &mut (u64, u64))
-            ensures *fin(a) === (5, 6),
+            ensures *final(a) === (5, 6),
         {
             loop {
                 a.0 = 20;
@@ -1208,7 +1208,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test(a: (&mut u64, &mut u64))
-            ensures *fin(a.0) == 5,
+            ensures *final(a.0) == 5,
         {
             loop {
                 *a.0 = 5;
@@ -1227,7 +1227,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             a = leak_ref();
             loop {
@@ -1239,7 +1239,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test2(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1258,7 +1258,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test3(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 5;
@@ -1282,7 +1282,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 20;
@@ -1296,7 +1296,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test_fails(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1310,7 +1310,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test_fails2(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             a = leak_ref();
 
@@ -1326,7 +1326,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test_fails3(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1350,7 +1350,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 20;
@@ -1369,7 +1369,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test1(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1388,7 +1388,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test2(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 20;
@@ -1407,7 +1407,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test3(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1435,7 +1435,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 20;
@@ -1454,7 +1454,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test1(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1473,7 +1473,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test2(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 20;
@@ -1492,7 +1492,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test3(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1515,7 +1515,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test(a: (&mut u64, &mut u64))
-            ensures *fin(a.0) == 5,
+            ensures *final(a.0) == 5,
         {
             loop {
                 *a.0 = 5;
@@ -1534,7 +1534,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             a = leak_ref();
             loop {
@@ -1546,7 +1546,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test2(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1565,7 +1565,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test3(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 5;
@@ -1589,7 +1589,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 20;
@@ -1603,7 +1603,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test_fails(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1617,7 +1617,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test_fails2(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             a = leak_ref();
 
@@ -1633,7 +1633,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test_fails3(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1657,7 +1657,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 20;
@@ -1676,7 +1676,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test1(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1695,7 +1695,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test2(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 20;
@@ -1714,7 +1714,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test3(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1742,7 +1742,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 20;
@@ -1761,7 +1761,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test1(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();
@@ -1780,7 +1780,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test2(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 *a = 20;
@@ -1799,7 +1799,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test3(mut a: &mut u64)
-            ensures *fin(a) == 5,
+            ensures *final(a) == 5,
         {
             loop {
                 a = leak_ref();

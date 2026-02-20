@@ -1523,13 +1523,13 @@ test_verify_one_file_with_options! {
             // TODO(new_mut_ref): export an axiom so this succeeds
             // (note: this might be tricky to do in a sound way, since the AIR encoding
             // lets you assign anything to current?)
-            assert(a@.len() == fin(a)@.len()); // FAILS
+            assert(a@.len() == final(a)@.len()); // FAILS
             consume(a);
         }
 
         fn test2(a: &mut Box<[u64]>) {
             // This one must fail, though:
-            assert(a@.len() == fin(a)@.len()); // FAILS
+            assert(a@.len() == final(a)@.len()); // FAILS
             consume(a);
         }
     } => Err(err) => assert_fails(err, 2)

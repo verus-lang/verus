@@ -1521,7 +1521,7 @@ impl MutRefFutureSourceName {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             MutRefFutureSourceName::MutRefFuture => "mut_ref_future",
-            MutRefFutureSourceName::Final => "fin",
+            MutRefFutureSourceName::Final => "final",
         }
     }
 }
