@@ -9,10 +9,10 @@ use verus_syn::parse::{Parse, ParseStream};
 use verus_syn::spanned::Spanned;
 use verus_syn::token::Comma;
 use verus_syn::{
-    Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary,
-    ExprClosure, ExprMatches, ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index,
-    Item, ItemEnum, ItemFn, ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat,
-    PatType, Path, PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility, parse_macro_input,
+    Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary, ExprClosure, ExprMatches,
+    ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index, Item, ItemEnum, ItemFn,
+    ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat, PatType, Path,
+    PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility, parse_macro_input,
 };
 
 /// Checks if the given path is of the form
@@ -358,8 +358,8 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         if item_struct
             .fields
             .iter()
-            .all(|field| { if let Visibility::Public(..) = field.vis { true } else { false }}
-        ) {
+            .all(|field| if let Visibility::Public(..) = field.vis { true } else { false })
+        {
             quote_spanned! { span => open }
         } else {
             quote_spanned! { span => closed }
