@@ -27,7 +27,9 @@ struct Ctxt<'a> {
     no_cheating: bool,
 }
 
+/// Details from well-formedness checking.
 pub struct CheckDetails {
+    /// For each function, collects proof notes that fail due to `--no-cheating`.
     pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
 }
 
@@ -40,7 +42,6 @@ trait EmitError {
 struct EmitErrorState {
     diags: Vec<VirErrAs>,
     diag_map: HashMap<Path, usize>,
-    /// For each function, collects proof notes that fail due to `--no-cheating`.
     func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
 }
 
