@@ -395,15 +395,41 @@ impl<T: Clone> Clone for ViewAt<T> {
 
 unsafe impl<T> Objective for ViewAt<T> {}
 
+// skipped --
+// VA-VS - I'm not sure if this is used anywhere in program proofs?
+// VA-IDEMP
 impl<T> ViewAt<T> {
     pub uninterp spec fn view(&self) -> View;
 
     pub uninterp spec fn value(&self) -> T;
 
+    // VA-INTRO
+    pub axiom fn new(tracked t: T) -> (tracked out: (Self, ViewSeen))
+        ensures
+            out.0.value() == t,
+            out.0.view() == out.1.view(), 
+        ;
+
+    // VA-INTRO-INCL
+    pub axiom fn new_incl(tracked t: T, tracked sn: &ViewSeen) -> (tracked out: (Self, ViewSeen))
+        ensures
+            out.0.value() == t,
+            out.0.view() == out.1.view(),
+            out.1.view().contains(sn.view())
+        ;
+
+    // VA-ELIM
+    pub axiom fn into_inner(tracked self, tracked sn: ViewSeen) -> (tracked out: T)
+        requires
+            self.view() == sn.view() // could be sn.view().contains(self.view())
+        ensures
+            out == self.value()
+        ;
+
     // this is encoding view monotonicity
     pub axiom fn weaken(tracked self, v: View) -> (tracked out: Self)
         requires
-            self.view().contains(v)
+            v.contains(self.view())
         ensures
             out.view() == v,
             out.value() == self.value()
@@ -416,21 +442,96 @@ impl<T> ViewAt<T> {
         tracked f: ViewAt<proof_fn[Once](tracked v1: T) -> tracked U>,
     ) -> (tracked out: ViewAt<U>)
             requires
-                f.value().requires((self.value(),))
+                f.value().requires((self.value(),)),
+                f.view() == self.view()
             ensures
                 f.value().ensures((self.value(),), out.value()),
                 out.view() == self.view()
         ;
 }
 
+impl<T: Objective> ViewAt<T> {
+    // VA-OBJ |-
+    pub axiom fn new_objective(tracked t: T) -> (tracked out: Self)
+        ensures
+            out.value() == t
+        ;
+
+    // VA-OBJ -|
+    pub axiom fn into_inner_objective(tracked self) -> (tracked out: T)
+        ensures
+            out == self.value()
+        ;
+}
+
+#[derive(Copy)]
 pub tracked struct ViewJoin<T> {
     _phantom: PhantomData<T>,
 }
 
+impl<T: Clone> Clone for ViewJoin<T> {
+    #[verifier::external_body]
+    fn clone(&self) -> Self { unimplemented!() }
+}
+
+unsafe impl<T> Objective for ViewJoin<T> {}
+
+// I am skipping a lot of rules for now. If we don't use raw invariants, I am not sure how much we will use view joins
+// skip - VJ-JOIN, VA-VJ, VJ-VA, VJ-VA-ACC, VJ-BOPS (including wand), VJ-UNOPS
 impl<T> ViewJoin<T> {
     pub uninterp spec fn view(&self) -> View;
 
     pub uninterp spec fn value(&self) -> T;
+
+    // this is encoding view monotonicity
+    pub axiom fn weaken(tracked self, v: View) -> (tracked out: Self)
+        requires
+            v.contains(self.view())
+        ensures
+            out.view() == v,
+            out.value() == self.value()
+        ;
+
+    // VJ-INTRO-NOW
+    pub axiom fn new(tracked t: T) -> (tracked out: Self)
+        ensures
+            out.value() == t
+        ;
+
+    // this is kind of like VJ-UNFOLD |-
+    // this isn't an exact encoding, but perhaps this would work fine in practice
+    pub proof fn new_incl(tracked t: T, tracked sn: &ViewSeen) -> (tracked out: Self)
+        ensures
+            out.value() == t,
+            out.view().contains(sn.view())
+    {
+        let tracked (at, _) = ViewAt::new_incl(t, sn);
+        Self::from_view_at(at)
+    }
+
+    // VJ-ELIM
+    // this is kind of also encoding VJ-UNFOLD -|, but not exactly
+    pub axiom fn into_inner(tracked self, tracked sn: ViewSeen) -> (tracked out: T)
+        requires
+            self.view() == sn.view()
+        ensures
+            out == self.value()
+        ;
+
+    // VA-TO-VJ
+    pub axiom fn from_view_at(tracked at: ViewAt<T>) -> (tracked out: Self)
+        ensures
+            out.view() == at.view(),
+            out.value() == at.value()
+        ;
+
+    // VJ-ELIM-VA
+    pub axiom fn as_view_at(tracked self, tracked sn: ViewSeen) -> (tracked out: (ViewSeen, ViewAt<T>))
+        ensures
+            out.0.view().contains(sn.view()),
+            out.1.view() == out.0.view().join(self.view()),
+            out.1.value() == self.value()
+        ;
 }
 
 // Non-Atomic Points-To
