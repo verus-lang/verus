@@ -1141,6 +1141,12 @@ pub enum ExprX {
     /// The right side should only contain `assume(has_resolved(...))` statements
     /// emitted by the resolution analysis.
     EvalAndResolve(Expr, Expr),
+    /// The `old` node. (new-mut-ref only)
+    /// Note: to explicitly refer to the pre-state of a variable, the ExprX::VarAt(e, Pre)
+    /// node should be used. The 'old' node itself is used for some bookkeeping purposes
+    /// and well-formedness checks, but otherwise has no meaning. The `Old` node is
+    /// ignored after these checks are complete.
+    Old(Expr),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]

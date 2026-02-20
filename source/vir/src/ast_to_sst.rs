@@ -2845,6 +2845,7 @@ pub(crate) fn expr_to_stm_opt(
             stms.append(&mut stms2);
             Ok((stms, Maybe::Some(Value::Exp(exp1))))
         }
+        ExprX::Old(e) => expr_to_stm_opt(ctx, state, e),
     }
 }
 
