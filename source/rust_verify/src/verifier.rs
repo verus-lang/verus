@@ -2821,7 +2821,8 @@ impl Verifier {
             check_crate_result1.err().or(check_crate_result.err());
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
-                vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
+                vir::ast::VirErrAs::NonBlockingError(err, maybe_p)
+                | vir::ast::VirErrAs::NonFatalError(err, maybe_p) => {
                     // This diagnostic message may be a verification boundary violation.
                     // In that case, we want to try to construct a suggestion to deal with the problem.
 
@@ -3163,7 +3164,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         vir::ast::VirErrAs::Note(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Note)
                         }
-                        vir::ast::VirErrAs::NonBlockingError(err, _) => {
+                        vir::ast::VirErrAs::NonBlockingError(err, _)
+                        | vir::ast::VirErrAs::NonFatalError(err, _) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Error)
                         }
                     }

@@ -53,7 +53,7 @@ impl EmitError for EmitErrorState {
 
     fn has_fatal_errors(&self) -> bool {
         self.diags.iter().any(|err| match err {
-            VirErrAs::NonBlockingError(..) => true,
+            VirErrAs::NonBlockingError(..) | VirErrAs::NonFatalError(..) => true,
             _ => false,
         })
     }
@@ -583,7 +583,7 @@ fn check_one_expr<Emit: EmitError>(
                 if let Some(label) = ast_expr_get_proof_note(inner_expr) {
                     msg = msg.proof_note_label(&expr.span, label.to_string());
                 }
-                emit.emit(None, VirErrAs::NonBlockingError(msg, None));
+                emit.emit(None, VirErrAs::NonFatalError(msg, None));
             }
         }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
@@ -1119,7 +1119,7 @@ fn check_function<Emit: EmitError>(
             &function.span,
             "#[verifier::assume_termination] not allowed with --no-cheating",
         );
-        emit.emit(None, VirErrAs::NonBlockingError(msg, None));
+        emit.emit(None, VirErrAs::NonFatalError(msg, None));
     }
 
     #[cfg(feature = "singular")]
@@ -1442,7 +1442,7 @@ fn check_function<Emit: EmitError>(
                     &function.span,
                     "external_body/assume_specification not allowed with --no-cheating",
                 );
-                emit.emit(None, VirErrAs::NonBlockingError(msg, None));
+                emit.emit(None, VirErrAs::NonFatalError(msg, None));
             }
         }
     }
@@ -1933,7 +1933,10 @@ pub fn check_crate(
 
     diags.append(&mut emit.diags);
     // There is no point in checking for well-founded types if we already have a fatal error:
-    if diags.iter().any(|x| matches!(x, VirErrAs::NonBlockingError(..))) {
+    if diags
+        .iter()
+        .any(|x| matches!(x, VirErrAs::NonBlockingError(..) | VirErrAs::NonFatalError(..)))
+    {
         return Ok(());
     }
     crate::recursive_types::check_recursive_types(krate)?;
