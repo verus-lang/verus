@@ -66,6 +66,21 @@ impl<T> History<T> {
         &&& forall |t| #[trigger] self.contains_timestamp(t) ==> t <= timestamp
     }
 
+    pub open spec fn max_timestamp(&self) -> nat 
+        recommends
+            self.0.len() > 0
+    {
+        self.0.dom().to_seq().map(|i, t| t as int).max() as nat
+    }
+
+    pub open spec fn singleton(timestamp: nat, val: T, view: Option<View>) -> Self {
+        History(map![timestamp => (val, view)])
+    }
+
+    pub open spec fn is_singleton(&self, timestamp: nat, val: T, view: Option<View>) -> bool {
+        self == Self::singleton(timestamp, val, view)
+    }
+
     pub open spec fn has_view(&self, timestamp: nat) -> bool 
         recommends
             self.contains_timestamp(timestamp)
@@ -607,15 +622,13 @@ impl<T> NonAtomicPointsTo<T> {
     }
 
     // NA-AT-SW
-    // note: strengthened a bit. timestamp and view are from the history in the NA points to, rather than arbitrary
-    pub axiom fn as_atomic_points_to(tracked self) -> (tracked out: (AtomicPointsTo<T>, SingleWriter<T>, ViewSeen))
+    pub axiom fn as_atomic_points_to(tracked self) -> (tracked out: (AtomicPointsTo<T>, SingleWriter<T>, ViewSeen, nat))
         ensures
             out.0.loc() == self.loc(),
             out.0.mode() == AtomicMode::SingleWriter,
             out.1.loc() == self.loc(),
-            out.2.view() == self.view(),
-            out.0.hist() == out.1.hist(),
-            out.0.hist().0 == map![self.timestamp() => (self.value(), Some(self.view()))]
+            out.1.hist() == out.0.hist(),
+            out.0.hist().is_singleton(out.3, self.value(), Some(out.2.view()))
         ;
 
     // NA-AT-SW-VIEW
@@ -627,7 +640,7 @@ impl<T> NonAtomicPointsTo<T> {
             out.0.value().1.mode() == AtomicMode::SingleWriter,
             out.0.value().2.loc() == self.loc(),
             out.0.value().1.hist() == out.0.value().2.hist(),
-            out.0.value().1.hist().0 == map![out.2 => (self.value(), Some(out.1.view()))]
+            out.0.value().1.hist().is_singleton(out.2, self.value(), Some(out.1.view()))
         ;
 }
 
@@ -722,75 +735,75 @@ impl<T> AtomicPointsTo<T> {
         ;
 
     // AT-CON-SW
-    pub axiom fn concurrent_as_single_writer(tracked self) -> (tracked out: (Self, SingleWriter<T>))
+    pub axiom fn concurrent_as_single_writer(tracked &mut self) -> (tracked out: SingleWriter<T>)
         requires
-            self.mode() == AtomicMode::Concurrent,
+            old(self).mode() == AtomicMode::Concurrent,
         ensures
-            out.0.mode() == AtomicMode::SingleWriter,
-            out.0.loc() == self.loc(),
-            out.0.hist() == self.hist(),
-            out.1.loc() == self.loc(),
-            out.1.hist() == self.hist()
+            self.mode() == AtomicMode::SingleWriter,
+            self.loc() == old(self).loc(),
+            self.hist() == old(self).hist(),
+            out.loc() == self.loc(),
+            out.hist() == self.hist()
         ;
 
     // AT-SW-CON
-    pub axiom fn single_writer_as_concurrent(tracked self, tracked sw: SingleWriter<T>) -> (tracked out: Self)
+    pub axiom fn single_writer_as_concurrent(tracked &mut self, tracked sw: SingleWriter<T>)
         requires
-            self.mode() == AtomicMode::SingleWriter,
-            self.loc() == sw.loc(),
+            old(self).mode() == AtomicMode::SingleWriter,
+            old(self).loc() == sw.loc(),
         ensures
-            out.mode() == AtomicMode::Concurrent,
-            out.loc() == self.loc(),
-            out.hist() == self.hist()
+            self.mode() == AtomicMode::Concurrent,
+            self.loc() == old(self).loc(),
+            self.hist() == old(self).hist()
         ;
 
     // AT-CAS-SW
-    pub axiom fn compare_and_swap_as_single_writer(tracked self, tracked cas: CompareAndSwap<T>) -> (tracked out: (Self, SingleWriter<T>))
+    pub axiom fn compare_and_swap_as_single_writer(tracked &mut self, tracked cas: CompareAndSwap<T>) -> (tracked out: SingleWriter<T>)
         requires
-            self.mode() == AtomicMode::CompareAndSwap,
-            self.loc() == cas.loc(),
+            old(self).mode() == AtomicMode::CompareAndSwap,
+            old(self).loc() == cas.loc(),
         ensures
-            out.0.mode() == AtomicMode::SingleWriter,
-            out.0.loc() == self.loc(),
-            out.0.hist() == self.hist(),
-            out.1.loc() == self.loc(),
-            out.1.hist() == self.hist()
+            self.mode() == AtomicMode::SingleWriter,
+            self.loc() == old(self).loc(),
+            self.hist() == old(self).hist(),
+            out.loc() == self.loc(),
+            out.hist() == self.hist()
         ;
 
     // AT-SW-CAS
-    pub axiom fn single_writer_as_compare_and_swap(tracked self, tracked sw: SingleWriter<T>) -> (tracked out: (Self, CompareAndSwap<T>))
+    pub axiom fn single_writer_as_compare_and_swap(tracked &mut self, tracked sw: SingleWriter<T>) -> (tracked out: CompareAndSwap<T>)
         requires
-            self.mode() == AtomicMode::SingleWriter,
-            self.loc() == sw.loc(),
+            old(self).mode() == AtomicMode::SingleWriter,
+            old(self).loc() == sw.loc(),
         ensures
-            out.0.mode() == AtomicMode::CompareAndSwap,
-            out.0.loc() == self.loc(),
-            out.0.hist() == self.hist(),
-            out.1.loc() == self.loc(),
-            out.1.hist() == self.hist()
+            self.mode() == AtomicMode::CompareAndSwap,
+            self.loc() == old(self).loc(),
+            self.hist() == old(self).hist(),
+            out.loc() == self.loc(),
+            out.hist() == self.hist()
         ;
     
     // AT-CON-CAS |-
-    pub axiom fn concurrent_as_compare_and_swap(tracked self) -> (tracked out: (Self, CompareAndSwap<T>))
+    pub axiom fn concurrent_as_compare_and_swap(tracked &mut self) -> (tracked out: CompareAndSwap<T>)
         requires
-            self.mode() == AtomicMode::Concurrent,
+            old(self).mode() == AtomicMode::Concurrent,
         ensures
-            out.0.mode() == AtomicMode::CompareAndSwap,
-            out.0.loc() == self.loc(),
-            out.0.hist() == self.hist(),
-            out.1.loc() == self.loc(),
-            out.1.hist() == self.hist()
+            self.mode() == AtomicMode::CompareAndSwap,
+            self.loc() == old(self).loc(),
+            self.hist() == old(self).hist(),
+            out.loc() == self.loc(),
+            out.hist() == self.hist()
         ;
 
     // AT-CON-CAS -|
-    pub axiom fn compare_and_swap_as_concurrent(tracked self, tracked cas: CompareAndSwap<T>) -> (tracked out: Self)
+    pub axiom fn compare_and_swap_as_concurrent(tracked &mut self, tracked cas: CompareAndSwap<T>)
         requires
-            self.mode() == AtomicMode::CompareAndSwap,
-            self.loc() == cas.loc(),
+            old(self).mode() == AtomicMode::CompareAndSwap,
+            old(self).loc() == cas.loc(),
         ensures
-            out.mode() == AtomicMode::Concurrent,
-            out.loc() == self.loc(),
-            out.hist() == self.hist()
+            self.mode() == AtomicMode::Concurrent,
+            self.loc() == old(self).loc(),
+            self.hist() == old(self).hist()
         ;
 }
 
@@ -965,6 +978,163 @@ impl<T> CompareAndSwap<T> {
             self.loc() == out.loc(),
             self.hist() == out.hist()
     ;
+}
+
+// this is just a placeholder type for now, we can refine what the internal representation should be later
+// (Rust's atomic types use an UnsafeCell internally)
+pub struct Ptr<T>(pub T);
+
+impl<T> Ptr<T> {
+    pub uninterp spec fn loc(&self) -> CellId;
+
+    pub uninterp spec fn value(&self) -> T;
+
+    // I'm just encoding these functions as axioms right now so that we don't have to worry about implementing them.
+    // That way, we can focus only on the signatures.
+
+    // NA-ALLOC but simplified:
+    // - only allocates a single location
+    // - ensures that the location is initialized
+    // should this also say something about the history in the NonAtomicPointsTo? I'm not sure if this info is ever used.
+    pub axiom fn new_nonatomic(t: T) -> (tracked out: (Self, NonAtomicPointsTo<T>))
+        ensures
+            out.0.loc() == out.1.loc(),
+            out.1.value() == t
+        ;
+
+    // NA-READ
+    pub axiom fn read_nonatomic(&self, tracked pt: &NonAtomicPointsTo<T>) -> (out: T) where T: Copy
+        requires
+            self.loc() == pt.loc()
+        ensures
+            out == pt.value()
+        ;
+
+    // NA-WRITE
+    pub axiom fn write_nonatomic(&self, tracked pt: &mut NonAtomicPointsTo<T>, t: T)
+        requires
+            self.loc() == old(pt).loc()
+        ensures
+            pt.loc() == old(pt).loc(),
+            pt.value() == t
+            // we could add more info here about the timestamp and view for the points to here?
+            // there is nothing in the rule itself though, so maybe it is not needed?
+            // more generally, will we ever need to reason about the PrimitiveNonAtomicPointsTo?
+        ;
+
+    pub proof fn new_atomic_single_writer(t: T) -> (tracked out: (Self, AtomicPointsTo<T>, SingleWriter<T>, ViewSeen, nat))
+        ensures
+            out.0.loc() == out.1.loc(),
+            out.1.mode() == AtomicMode::SingleWriter,
+            out.2.loc() == out.1.loc(),
+            out.2.hist() == out.1.hist(),
+            out.1.hist().is_singleton(out.4, t, Some(out.3.view()))
+    {
+        let tracked (p, na_pt) = Self::new_nonatomic(t);
+        let tracked (a_pt, sw, sn, ts) = na_pt.as_atomic_points_to();
+        (p, a_pt, sw, sn, ts)
+    }
+
+    pub proof fn new_atomic_compare_and_swap(t: T) -> (tracked out: (Self, AtomicPointsTo<T>, CompareAndSwap<T>, ViewSeen, nat))
+        ensures
+            out.0.loc() == out.1.loc(),
+            out.1.mode() == AtomicMode::CompareAndSwap,
+            out.2.loc() == out.1.loc(),
+            out.2.hist() == out.1.hist(),
+            out.1.hist().is_singleton(out.4, t, Some(out.3.view()))
+    {
+        let tracked (p, mut a_pt, sw, sn, ts) = Self::new_atomic_single_writer(t);
+        let tracked cas = a_pt.single_writer_as_compare_and_swap(sw);
+        (p, a_pt, cas, sn, ts)
+    }
+
+    pub proof fn new_atomic_concurrent(t: T) -> (tracked out: (Self, AtomicPointsTo<T>, ViewSeen, nat))
+        ensures
+            out.0.loc() == out.1.loc(),
+            out.1.mode() == AtomicMode::Concurrent,
+            out.1.hist().is_singleton(out.3, t, Some(out.2.view()))
+    {
+        let tracked (p, mut a_pt, sw, sn, ts) = Self::new_atomic_single_writer(t);
+        let tracked _ = a_pt.single_writer_as_concurrent(sw);
+        (p, a_pt, sn, ts)
+    }
+
+    // AT-READ-SN -- acquire
+    // I skipped mutating the ViewAt<AtomicPointsTo> to join the new view. This is easily derivable from monotonicity.
+    // However, we *do* need to mutate the HistorySeen to add the write we have now observed. 
+    pub axiom fn read_acquire(&self, tracked v_sn: &ViewSeen, tracked h_sn: &mut HistorySeen<T>, tracked pt: ViewAt<AtomicPointsTo<T>>) -> (tracked out: (T, ViewSeen, History<T>, nat))
+        requires
+            self.loc() == pt.value().loc(),
+            self.loc() == old(h_sn).loc(),
+        ensures
+            ({
+                let v = out.0; // returned value
+                let v_sn_new = out.1; // new ViewSeen
+                let hist = out.2; // new history for HistorySeen 
+                let timestamp = out.3; // timestamp of the write that was read
+                let message_view = hist.view(timestamp); // message view for the write that was read
+                &&& v_sn_new.view().contains(v_sn.view())
+                &&& pt.value().hist().contains(hist) && hist.contains(old(h_sn).hist())
+                &&& hist.value(timestamp) == v // the new HistorySeen will include the write we just read
+                &&& old(h_sn).hist().max_timestamp() <= timestamp // the write is no earlier than the last write that was read at this loc
+                &&& v_sn_new.view().contains(message_view) // because this is an acquire read, the latest ViewSeen will contain the message view
+                &&& h_sn.loc() == old(h_sn).loc()
+                &&& h_sn.hist() == hist
+            })
+        ;
+
+    // AT-READ-SN -- relaxed
+    pub axiom fn read_relaxed(&self, tracked v_sn: &ViewSeen, tracked h_sn: &mut HistorySeen<T>, tracked pt: ViewAt<AtomicPointsTo<T>>) -> (tracked out: (T, ViewSeen, Acquire<ViewSeen>, History<T>, nat))
+        requires
+            self.loc() == pt.value().loc(),
+            self.loc() == old(h_sn).loc(),
+        ensures
+            ({
+                let v = out.0; // returned value
+                let v_sn_new = out.1; // new ViewSeen
+                let acq_v_sn = out.2; // the view for the write that was read, under the acquire modality
+                let hist = out.3; // new history for HistorySeen 
+                let timestamp = out.4; // timestamp of the write that was read
+                let message_view = hist.view(timestamp); // message view for the write that was read
+                &&& v_sn_new.view().contains(v_sn.view())
+                &&& pt.value().hist().contains(hist) && hist.contains(old(h_sn).hist())
+                &&& hist.value(timestamp) == v // the new HistorySeen will include the write we just read
+                &&& old(h_sn).hist().max_timestamp() <= timestamp // the write is no earlier than the last write that was read at this loc
+                &&& acq_v_sn.value().view() == message_view // because this is a relaxed read, the Acquire<ViewSeen> will be the message view
+                &&& h_sn.loc() == old(h_sn).loc()
+                &&& h_sn.hist() == hist
+            })
+        ;
+
+    // AT-WRITE-SN -- release
+    // skipped mutating the history for h_sn + wrapping it with ViewAt:
+    // - adding the write to the history could be derived as follows: 
+    //    - apply view monotonicity to the returned HistorySeen to learn it at the latest view
+    //    - apply VA-ELIM to unwrap the HistorySeen
+    //    - join the two HistorySeens 
+    // - note: I don't know whether knowing the full HistorySeen _under ViewAt_ is useful (maybe would be useful if you had to transfer this to a different thread?)
+    // I also skipped mutating the ViewAt<AtomicPointsTo> to join the new view. This is easily derivable from monotonicity. We *do* need to add the new write to the history here, though.
+    pub axiom fn write_release_concurrent(&self, t: T, tracked v_sn: &ViewSeen, tracked h_sn: HistorySeen<T>, tracked pt: &mut ViewAt<AtomicPointsTo<T>>) -> (tracked out: (ViewSeen, ViewAt<HistorySeen<T>>, nat))
+        requires
+            self.loc() == h_sn.loc(),
+            self.loc() == old(pt).value().loc(),
+            old(pt).value().mode() == AtomicMode::Concurrent
+        ensures
+            ({
+                let v_sn_new = out.0; // new ViewSeen
+                let h_sn_write = out.1; // HistorySeen containing singleton history for this write, known at the write view
+                let timestamp = out.2; // timestamp of the new write
+                let singleton_write_hist = History::singleton(timestamp, t, Some(v_sn_new.view()));
+                &&& v_sn_new.view().contains(v_sn.view()) && v_sn.view() != v_sn_new.view() // latest thread view is strictly greater than the old one
+                &&& h_sn.hist().max_timestamp() < timestamp && !old(pt).value().hist().0.dom().contains(timestamp) // timestamp is greater than all of the thread's observations and is unique for the history
+                &&& h_sn_write.view() == v_sn_new.view() // because this is a release write, the write view is the latest thread view
+                &&& h_sn_write.value().loc() == self.loc()
+                &&& h_sn_write.value().hist() == singleton_write_hist
+                &&& pt.view() == old(pt).view()
+                &&& pt.value().loc() == old(pt).value().loc()
+                &&& pt.value().hist() == old(pt).value().hist().join(singleton_write_hist) // the points-to's history has the new write
+            })
+        ;
 }
 
 
