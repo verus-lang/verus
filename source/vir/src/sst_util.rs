@@ -767,12 +767,6 @@ pub fn func_collect_obligation_proof_notes(
     if let Some(func_check) = func.x.exec_proof_check.as_ref() {
         collector.collect_func_check(func_check);
     }
-    if let Some(func_check) = func.x.recommends_check.as_ref() {
-        collector.collect_func_check(func_check);
-    }
-    if let Some(func_check) = func.x.safe_api_check.as_ref() {
-        collector.collect_func_check(func_check);
-    }
     if let Some(spec_axioms) = func.x.axioms.spec_axioms.as_ref()
         && let Some(func_check) = spec_axioms.termination_check.as_ref()
     {
