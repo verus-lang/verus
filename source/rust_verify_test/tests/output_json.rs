@@ -124,7 +124,7 @@ test_verify_one_file_with_options! {
 
         // Details about `caller`
         with_json_func_details(&err, "crate::caller", |details| {
-            assert_eq!(details.obligation_proof_notes, all_labels);
+            assert!(details.obligation_proof_notes.is_empty());
             assert_eq!(details.failed_proof_notes, all_labels);
         });
     }
@@ -155,12 +155,13 @@ test_verify_one_file_with_options! {
         assert_help_error_msg(err.clone(), &format!("note: {assume_label}"));
         assert_help_error_msg(err.clone(), &format!("note: {requires_label}"));
 
-        let all_labels = HashSet::from_iter([assume_label, requires_label]);
+        let expected_obligations = HashSet::from_iter([requires_label.clone()]);
+        let expected_failed_notes = HashSet::from_iter([assume_label, requires_label]);
 
         // Details about `caller`
         with_json_func_details(&err, "crate::caller", |details| {
-            assert_eq!(details.obligation_proof_notes, all_labels);
-            assert_eq!(details.failed_proof_notes, all_labels);
+            assert_eq!(details.obligation_proof_notes, expected_obligations);
+            assert_eq!(details.failed_proof_notes, expected_failed_notes);
         });
     }
 }
