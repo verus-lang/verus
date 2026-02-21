@@ -37,7 +37,8 @@ pub use verus_builtin_macros::StructuralEq;
 pub use super::map::{imap, map, IMap, Map};
 pub use super::seq::seq;
 pub use super::seq::Seq;
-pub use super::set::{iset, set, ISet, Set};
+pub use super::set::{set, Set};
+pub use super::iset::{iset, ISet};
 pub use super::view::*;
 
 #[cfg(verus_keep_ghost)]

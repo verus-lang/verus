@@ -2,6 +2,7 @@
 
 use super::pervasive::*;
 use super::prelude::*;
+use super::gset::*;
 use super::set::*;
 
 verus! {

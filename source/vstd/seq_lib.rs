@@ -1072,7 +1072,7 @@ impl<A> Seq<A> {
             self.len() == self.to_iset().len(),
         decreases self.len(),
     {
-        broadcast use {super::set::group_set_lemmas, super::set::GSet::congruent_len};
+        broadcast use {super::set::group_set_lemmas, super::gset::GSet::congruent_len};
 
         seq_to_set_equal_rec::<A>(self);
         if self.len() == 0 {

@@ -4,6 +4,7 @@ use super::map::{GMap, Map, IMap, assert_maps_equal, assert_maps_equal_internal}
 use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
+use super::gset::*;
 use super::set::*;
 #[cfg(verus_keep_ghost)]
 use super::set_lib::*;
