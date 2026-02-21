@@ -10,9 +10,8 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::lang_items::LangItem;
 use rustc_hir::{self as hir, HirId, find_attr};
 use rustc_middle::bug;
-use rustc_middle::middle::region;
 use rustc_middle::thir::*;
-use rustc_middle::ty::{self, RvalueScopes, TyCtxt};
+use rustc_middle::ty::{self, TyCtxt};
 use tracing::instrument;
 
 use crate::thir::pattern::pat_from_hir;
@@ -33,7 +32,6 @@ pub(crate) fn thir_body(
     let expr = if crate::verus::erase_body(&mut cx, owner_def) {
         crate::verus::erase_tree(&mut cx, body.value)
     } else {
-        cx.verus_ctxt.prep_expr(body.value, false);
         cx.mirror_expr(body.value)
     };
 
@@ -73,9 +71,7 @@ pub(crate) struct ThirBuildCx<'tcx> {
 
     pub(crate) typing_env: ty::TypingEnv<'tcx>,
 
-    pub(crate) region_scope_tree: &'tcx region::ScopeTree,
     pub(crate) typeck_results: &'tcx ty::TypeckResults<'tcx>,
-    pub(crate) rvalue_scopes: &'tcx RvalueScopes,
 
     /// False to indicate that adjustments should not be applied. Only used for `custom_mir`
     apply_adjustments: bool,
@@ -122,21 +118,11 @@ impl<'tcx> ThirBuildCx<'tcx> {
             // FIXME(#132279): We're in a body, we should use a typing
             // mode which reveals the opaque types defined by that body.
             typing_env: ty::TypingEnv::non_body_analysis(tcx, def),
-            region_scope_tree: tcx.region_scope_tree(def),
             typeck_results,
-            rvalue_scopes: &typeck_results.rvalue_scopes,
             body_owner: def.to_def_id(),
-            // <<<<<<< HEAD
-            //             apply_adjustments: tcx
-            //                 .hir_attrs(hir_id)
-            //                 .iter()
-            //                 .all(|attr| !attr.has_name(rustc_span::sym::custom_mir)),
-            //             verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
-            // =======
-            // >>>>>>> 61ea30e1 (Updating forked Rust code: from 1.88.0 (6b00bc3880198600130e1cf62b8f8a93494488cc) to beta (3b4dd9bf1410f8da6329baa36ce5e37673cbbd1f))
             apply_adjustments:
                 !find_attr!(tcx.hir_attrs(hir_id), AttributeKind::CustomMir(..) => ()).is_some(),
-            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
+            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx),
         }
     }
 

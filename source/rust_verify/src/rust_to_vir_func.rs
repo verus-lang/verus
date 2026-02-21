@@ -1,7 +1,7 @@
 use crate::attributes::{AttrPublish, VerifierAttrs, get_mode, get_ret_mode, get_var_mode};
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::config::Vstd;
-use crate::context::{BodyCtxt, Context};
+use crate::context::{BodyCtxt, Context, ContextX, HeaderSetting};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
@@ -34,6 +34,69 @@ use vir::ast::{
 use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 use vir::sst_util::subst_typ;
+
+enum FnOrConstSigEnum<'tcx> {
+    Fn(&'tcx FnSig<'tcx>),
+    ConstVar(Typ),
+}
+
+pub(crate) struct FnOrConstSig<'tcx> {
+    span: Span,
+    sig: FnOrConstSigEnum<'tcx>,
+}
+
+impl<'tcx> FnOrConstSig<'tcx> {
+    pub(crate) fn sig(sig: &'tcx FnSig<'tcx>) -> Self {
+        FnOrConstSig { span: sig.span, sig: FnOrConstSigEnum::Fn(sig) }
+    }
+
+    pub(crate) fn const_var(span: Span, typ: Typ) -> Self {
+        FnOrConstSig { span, sig: FnOrConstSigEnum::ConstVar(typ) }
+    }
+
+    fn output_span(&self) -> Span {
+        match &self.sig {
+            FnOrConstSigEnum::Fn(sig) => sig.decl.output.span(),
+            FnOrConstSigEnum::ConstVar(_) => self.span,
+        }
+    }
+
+    fn safety(&self) -> Safety {
+        match &self.sig {
+            FnOrConstSigEnum::Fn(sig) => match sig.header.safety {
+                HeaderSafety::Normal(s) => s,
+                _ => Safety::Unsafe,
+            },
+            FnOrConstSigEnum::ConstVar(_) => Safety::Safe,
+        }
+    }
+
+    fn item_kind(&self) -> ItemKind {
+        match &self.sig {
+            FnOrConstSigEnum::Fn(..) => ItemKind::Function,
+            FnOrConstSigEnum::ConstVar(..) => ItemKind::Const,
+        }
+    }
+
+    fn override_body_visibility(
+        &self,
+        publish: Option<AttrPublish>,
+        visibility: Visibility,
+        body_visibility: BodyVisibility,
+    ) -> BodyVisibility {
+        match (&self.sig, publish) {
+            // REVIEW: syntax.rs currently implements much of the Publish logic by comparing
+            // the "open"/"closed" keywords to the "pub" syntax.
+            // However, "pub" isn't visible to trait implementations in the syntax,
+            // so it would make more sense to move the logic out of syntax.rs and into this file.
+            // For now, just implement here the common case where trait consts are open by default
+            // (as normal consts are).
+            // TODO: handle more Publish variations for trait consts
+            (FnOrConstSigEnum::ConstVar(..), None) => BodyVisibility::Visibility(visibility),
+            _ => body_visibility,
+        }
+    }
+}
 
 pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
     // turn a::b::c into a::b::method_name
@@ -117,6 +180,7 @@ fn handle_autospec<'tcx>(
                     mode: Mode::Spec,
                     is_mut: false,
                     unwrapped_info: None,
+                    user_mut: false,
                 },
             ));
         }
@@ -129,6 +193,7 @@ fn handle_autospec<'tcx>(
                 mode: Mode::Spec,
                 is_mut: false,
                 unwrapped_info: None,
+                user_mut: false,
             },
         );
 
@@ -220,6 +285,8 @@ fn body_to_vir<'tcx>(
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     new_mut_ref: bool,
+    migrate_postcondition_vars: Option<HashSet<VarIdent>>,
+    param_names: Vec<VarIdent>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let types = body_id_to_types(ctxt.tcx, id);
     let bctx = BodyCtxt {
@@ -232,6 +299,13 @@ fn body_to_vir<'tcx>(
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
         new_mut_ref,
+        migrate_postcondition_vars,
+        in_fn_sig: false,
+        in_postcondition: false,
+        in_old: false,
+        params: std::rc::Rc::new(vec![param_names]),
+        header_setting: HeaderSetting::Fn,
+        unwrap_param_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
     };
     let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
 
@@ -288,7 +362,7 @@ pub(crate) fn find_body_krate<'tcx>(
     panic!("Body not found");
 }
 
-pub(crate) fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
+pub(crate) fn find_body<'tcx>(ctxt: &ContextX<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
     find_body_krate(ctxt.krate, body_id)
 }
 
@@ -359,8 +433,18 @@ fn compare_external_ty_or_true<'tcx>(
             match (trait_def1, trait_def2) {
                 (None, None) => true,
                 (Some(trait_def1), Some(trait_def2)) => {
-                    let mut trait_path1 = def_id_to_vir_path(tcx, verus_items, trait_def1, None);
-                    let trait_path2 = def_id_to_vir_path(tcx, verus_items, trait_def2, None);
+                    let mut trait_path1 = def_id_to_vir_path(
+                        tcx,
+                        verus_items,
+                        trait_def1,
+                        None::<&mut HashMap<_, _>>,
+                    );
+                    let trait_path2 = def_id_to_vir_path(
+                        tcx,
+                        verus_items,
+                        trait_def2,
+                        None::<&mut HashMap<_, _>>,
+                    );
                     if trait_path1 == *from_path {
                         trait_path1 = to_path.clone();
                     }
@@ -487,12 +571,12 @@ fn compare_external_sig<'tcx>(
     Ok(c1 == c2)
 }
 
-pub(crate) fn handle_external_fn<'tcx>(
+fn handle_external_fn<'tcx>(
     ctxt: &Context<'tcx>,
     id: DefId,
     kind: FunctionKind,
     visibility: vir::ast::Visibility,
-    sig: &'tcx FnSig<'tcx>,
+    sig: &FnOrConstSig<'tcx>,
     // (impl generics, impl def_id)
     self_generics: Option<(&'tcx Generics, DefId)>,
     body_id: &CheckItemFnEither<&BodyId, &[Ident]>,
@@ -684,8 +768,8 @@ pub(crate) fn handle_external_fn<'tcx>(
             "assume_specification trait bound mismatch")
             .help(format!("assume_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
           but the proxy function's trait bounds are:\n{}\nthe external function's trait bounds are:\n{}",
-          proxy_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n"),
-          external_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n")));
+          proxy_preds.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n"),
+          external_preds.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n")));
         return Err(err);
     }
 
@@ -1083,7 +1167,7 @@ pub(crate) fn check_item_fn<'tcx>(
     visibility: vir::ast::Visibility,
     module_path: &vir::ast::Path,
     attrs: &[Attribute],
-    sig: &'tcx FnSig<'tcx>,
+    sig: FnOrConstSig<'tcx>,
     // (impl generics, impl def_id)
     self_generics: Option<(&'tcx Generics, DefId)>,
     generics: &'tcx Generics,
@@ -1099,7 +1183,22 @@ pub(crate) fn check_item_fn<'tcx>(
     let is_verus_spec = this_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
-    let mode = get_mode(Mode::Exec, attrs);
+    let mode = match &sig.sig {
+        FnOrConstSigEnum::Fn(..) => get_mode(Mode::Exec, attrs),
+        FnOrConstSigEnum::ConstVar(..) => get_mode(Mode::Spec, attrs),
+    };
+
+    let do_migration = if ctxt.cmd_line_args.new_mut_ref {
+        if vattrs.ignore_outside_new_mut_ref_experiment {
+            false
+        } else {
+            let migration_attr =
+                crate::attributes::migrate_postconditions_walk_parents(ctxt.tcx, id);
+            migration_attr == Some(true)
+        }
+    } else {
+        false
+    };
 
     let new_mut_ref = vattrs.ignore_outside_new_mut_ref_experiment;
     if new_mut_ref && !matches!(ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore) {
@@ -1175,7 +1274,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 id,
                 kind,
                 visibility,
-                sig,
+                &sig,
                 self_generics,
                 &body_id,
                 mode,
@@ -1191,10 +1290,7 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         // No proxy.
         let has_self_param = has_self_parameter(ctxt, id);
-        let safety = match sig.header.safety {
-            HeaderSafety::Normal(s) => s,
-            _ => Safety::Unsafe,
-        };
+        let safety = sig.safety();
         (this_path.clone(), None, visibility, kind, has_self_param, safety, false)
     };
 
@@ -1213,24 +1309,32 @@ pub(crate) fn check_item_fn<'tcx>(
         None
     };
 
-    let fn_sig = ctxt.tcx.fn_sig(id);
-    // REVIEW: rustc docs refer to skip_binder as "dangerous"
-    let fn_sig = fn_sig.skip_binder();
-    let inputs = fn_sig.inputs().skip_binder();
-
-    let ret_typ_mode = match sig {
-        FnSig {
+    let (ret_typ_mode, inputs) = match &sig.sig {
+        FnOrConstSigEnum::Fn(FnSig {
             header: FnHeader { safety, constness: _, asyncness: _, abi: _ },
             decl,
             span: _,
-        } => {
+        }) => {
+            let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();
+            let inputs = fn_sig.inputs().skip_binder();
             if mode != Mode::Exec && safety == &HeaderSafety::Normal(Safety::Unsafe) {
                 return err_span(
                     sig.span,
                     format!("'unsafe' only makes sense on exec-mode functions"),
                 );
             }
-            check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?
+            let output = fn_sig.output().skip_binder();
+            let ret_typ_mode = check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, output)?;
+            (ret_typ_mode, inputs.to_vec())
+        }
+        FnOrConstSigEnum::ConstVar(typ) => {
+            // TODO: generalize beyond default const mode (spec + exec):
+            let mode_opt = crate::attributes::get_mode_opt(attrs);
+            let ret_mode = get_ret_mode(Mode::Exec, attrs);
+            if mode_opt.is_some() || ret_mode != Mode::Exec {
+                unsupported_err!(sig.span, "non-default mode on associated const")
+            }
+            (Some((typ.clone(), Mode::Exec)), vec![])
         }
     };
 
@@ -1261,9 +1365,8 @@ pub(crate) fn check_item_fn<'tcx>(
         }
     };
 
-    let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
+    let mut migrate_postcondition_vars: HashSet<VarIdent> = HashSet::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
-    let mut mut_params_redecl: Vec<vir::ast::Stmt> = Vec::new();
     assert!(params.len() == inputs.len());
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
         let param_mode = if let Some(hir_id) = hir_id {
@@ -1274,6 +1377,13 @@ pub(crate) fn check_item_fn<'tcx>(
             // where the mode will later be overridden by the separate spec method anyway:
             Mode::Exec
         };
+
+        if do_migration {
+            if is_mut_ty(ctxt, *input).is_some() {
+                migrate_postcondition_vars.insert(name.clone());
+            }
+        }
+
         let is_ref_mut = if new_mut_ref { None } else { is_mut_ty(ctxt, *input) };
         if is_ref_mut.is_some() && mode == Mode::Spec {
             return err_span(span, format!("&mut parameter not allowed for spec functions"));
@@ -1300,16 +1410,11 @@ pub(crate) fn check_item_fn<'tcx>(
                 mode: param_mode,
                 is_mut,
                 unwrapped_info: None,
+                user_mut: is_mut_var || is_mut,
             },
         );
 
-        // TODO(new_mut_ref): be more precise here
         // TODO(new_mut_ref): should probably error for mutable references in the dual exec/spec cases
-        let is_mut_var = if new_mut_ref {
-            is_mut_var || (param_mode != Mode::Spec && mode != Mode::Spec)
-        } else {
-            is_mut_var
-        };
 
         if is_mut_var {
             if mode == Mode::Spec {
@@ -1323,41 +1428,13 @@ pub(crate) fn check_item_fn<'tcx>(
                 // declaring and assigning to a variable of type `&mut T` is not implemented yet.
                 unsupported_err!(span, "mut parameters of &mut types")
             }
-            vir_mut_params.push((
-                vir_param.clone(),
-                is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode),
-            ));
-            // TODO(new_mut_ref): resolve_inference expects no shadowing
-            let new_binding_pat = ctxt.spanned_typed_new(
-                span,
-                &typ,
-                vir::ast::PatternX::Var(vir::ast::PatternBinding {
-                    name: name.clone(),
-                    mutable: true,
-                    by_ref: vir::ast::ByRef::No,
-                    typ: typ.clone(),
-                    copy: false,
-                }),
-            );
-            let new_init_expr =
-                ctxt.spanned_typed_new(span, &typ, vir::ast::PlaceX::Local(name.clone()));
-            if let Some(hir_id) = hir_id {
-                ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_binding_pat.span.id));
-                ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_init_expr.span.id));
-            }
-            let redecl = ctxt.spanned_new(
-                span,
-                vir::ast::StmtX::Decl {
-                    pattern: new_binding_pat,
-                    mode: Some(mode),
-                    init: Some(new_init_expr),
-                    els: None,
-                },
-            );
-            mut_params_redecl.push(redecl);
         }
-        vir_params.push((vir_param, is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode)));
+
+        vir_params.push((vir_param, is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
     }
+
+    let migrate_postcondition_vars =
+        if do_migration { Some(migrate_postcondition_vars) } else { None };
 
     let n_params = vir_params.len();
 
@@ -1365,6 +1442,7 @@ pub(crate) fn check_item_fn<'tcx>(
         CheckItemFnEither::BodyId(body_id) => {
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
+            let param_names = vir_params.iter().map(|p| p.0.x.name.clone()).collect::<Vec<_>>();
             let mut vir_body = body_to_vir(
                 ctxt,
                 id,
@@ -1374,6 +1452,8 @@ pub(crate) fn check_item_fn<'tcx>(
                 external_body,
                 &external_trait_from_to,
                 new_mut_ref,
+                migrate_postcondition_vars,
+                param_names,
             )?;
             let header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
@@ -1517,7 +1597,7 @@ pub(crate) fn check_item_fn<'tcx>(
         (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
     };
-    let ret_span = sig.decl.output.span();
+    let ret_span = sig.output_span();
     let ret = ctxt.spanned_new(
         ret_span,
         ParamX {
@@ -1525,6 +1605,7 @@ pub(crate) fn check_item_fn<'tcx>(
             typ: ret_typ,
             mode: ret_mode,
             is_mut: false,
+            user_mut: false,
             unwrapped_info: None,
         },
     );
@@ -1567,6 +1648,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 && visibility.restricted_to.as_ref() != Some(module_path)
                 && body.is_some()
                 && !open_closed_present
+                && !matches!(sig.sig, FnOrConstSigEnum::ConstVar(..))
             {
                 return err_span(
                     sig.span,
@@ -1600,7 +1682,7 @@ pub(crate) fn check_item_fn<'tcx>(
         ctxt,
         id,
         &vattrs,
-        vattrs.verus_macro,
+        vattrs.verus_macro && !matches!(sig.sig, FnOrConstSigEnum::ConstVar(..)),
         Arc::new(header.hidden),
         vattrs.custom_req_err.clone(),
         n_params == 0,
@@ -1626,21 +1708,6 @@ pub(crate) fn check_item_fn<'tcx>(
             visibility.restricted_to = None;
         }
     }
-
-    // Given a func named 'f' which has mut parameters 'x_0', ..., 'x_n' and body
-    // 'f_body', we rewrite it to a function without mut params and body
-    // 'let mut x_0 = x_0; ...; let mut x_n = x_n; f_body'.
-    let body = if vir_mut_params.is_empty() {
-        body
-    } else {
-        body.map(move |body| {
-            ctxt.spanned_typed_new_vir(
-                &body.span,
-                &body.typ,
-                vir::ast::ExprX::Block(Arc::new(mut_params_redecl), Some(body.clone())),
-            )
-        })
-    };
 
     // Note: ens_has_return isn't final; it may need to be changed later to make
     // sure it's in sync for trait method impls and trait method decls.
@@ -1671,14 +1738,9 @@ pub(crate) fn check_item_fn<'tcx>(
                 assert!(mode == Mode::Exec);
                 (vattrs.publish.clone(), mode, (ensure0, ensure1), None, ItemKind::Const, body)
             }
-            (_, returns) => (
-                vattrs.publish.clone(),
-                mode,
-                (ensure0, ensure1),
-                returns,
-                ItemKind::Function,
-                body,
-            ),
+            (_, returns) => {
+                (vattrs.publish.clone(), mode, (ensure0, ensure1), returns, sig.item_kind(), body)
+            }
         };
 
     let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
@@ -1692,6 +1754,8 @@ pub(crate) fn check_item_fn<'tcx>(
         module_path,
         body.is_some(),
     )?;
+    let body_visibility =
+        sig.override_body_visibility(publish, visibility.clone(), body_visibility);
 
     ctxt.push_body_erasure(
         id.expect_local(),
@@ -2168,12 +2232,12 @@ fn all_predicates<'tcx>(
     clauses
 }
 
-pub(crate) fn get_external_def_id<'tcx>(
+fn get_external_def_id<'tcx>(
     ctxt: &Context<'tcx>,
     proxy_fun_id: DefId,
     body_id: &BodyId,
     body: &Body<'tcx>,
-    sig: &'tcx FnSig<'tcx>,
+    sig: &FnOrConstSig<'tcx>,
 ) -> Result<(rustc_span::def_id::DefId, FunctionKind, bool), VirErr> {
     let tcx = ctxt.tcx;
 
@@ -2364,8 +2428,18 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     }
 
     let body = find_body(ctxt, body_id);
-    let mut vir_body =
-        body_to_vir(ctxt, id, &body_id, body, body_mode, vattrs.external_body, &None, new_mut_ref)?;
+    let mut vir_body = body_to_vir(
+        ctxt,
+        id,
+        &body_id,
+        body,
+        body_mode,
+        vattrs.external_body,
+        &None,
+        new_mut_ref,
+        None,
+        vec![],
+    )?;
     let header = vir::headers::read_header(
         &mut vir_body,
         &vir::headers::HeaderAllows::Some(vec![vir::headers::HeaderAllow::Ensure]),
@@ -2385,6 +2459,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             typ: typ.clone(),
             mode: ret_mode,
             is_mut: false,
+            user_mut: false,
             unwrapped_info: None,
         },
     );
@@ -2515,7 +2590,14 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,
-            ParamX { name, typ, mode, is_mut: is_mut.is_some(), unwrapped_info: None },
+            ParamX {
+                name,
+                typ,
+                mode,
+                is_mut: is_mut.is_some(),
+                unwrapped_info: None,
+                user_mut: false,
+            },
         );
         vir_params.push(vir_param);
     }
@@ -2529,6 +2611,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         typ: ret_typ,
         mode: ret_mode,
         is_mut: false,
+        user_mut: false,
         unwrapped_info: None,
     };
     let ret = ctxt.spanned_new(span, ret_param);

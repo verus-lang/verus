@@ -10,7 +10,7 @@ use rustc_middle::mir::FakeReadCause;
 use rustc_middle::thir;
 use rustc_middle::thir::{
     AdtExprBase, Arm, ArmId, Block, BlockId, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, Pat,
-    PatKind, Stmt, StmtId, StmtKind, TempLifetime,
+    PatKind, Stmt, StmtId, StmtKind,
 };
 use rustc_middle::ty;
 use rustc_middle::ty::{
@@ -28,40 +28,13 @@ pub enum VarErasure {
     Keep,
 }
 
-/// This type explains how we propagate the 'spec' status through a given node.
-/// Yes = expect the argument to be spec
-/// No = expect the argument to be non-spec
-/// Propagate = expect the argument to be spec iff the node itself is spec.
-///
-/// ExpectSpec is for a single argument; ExpectSpecArgs is for argument lists.
-///
-/// Example: datatype constructor is propagate
-/// Example: Function may have a mix of spec and proof arguments so
-///          in general you may mix it up between Yes and No.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ExpectSpec {
-    Yes,
-    No,
-    Propagate,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ExpectSpecArgs {
-    AllYes,
-    AllNo,
-    AllPropagate,
-    PerArg(Arc<Vec<ExpectSpec>>),
-}
-
 /// Do we erase a given node (no bearing on whether we erase its subexpressions)
 /// When we erase a node `call(x1, x2)` but not the subexpressions x1, x2, it will look like:
 /// { x1; x2; arbitrary_ghost_value() }
-/// This depends on the 'spec' status.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum NodeErase {
     Erase,
     Keep,
-    WhenExpectingSpec,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -69,7 +42,7 @@ pub enum CallErasure {
     /// Erase the call and ALL subexpressions. This can only be used when the node is guaranteed
     /// to have no proof code in the subtree (outer_mode = spec in modes.rs)
     EraseTree,
-    Call(NodeErase, ExpectSpecArgs),
+    Call(NodeErase),
 }
 
 /// Information for a body (function or closure).
@@ -94,9 +67,6 @@ pub struct VerusErasureCtxt {
     pub calls: HashMap<HirId, CallErasure>,
 
     pub bodies: HashMap<LocalDefId, BodyErasure>,
-
-    /// Conditions on 'if' statements and discriminants in 'match' statements
-    pub condition_spec: HashMap<HirId, bool>,
 
     /// Some DefIds from builtin that we'll need to handle directly
     pub erased_ghost_value_fn_def_id: DefId,
@@ -175,43 +145,15 @@ pub(crate) fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
 
 /// Per-body context (i.e., one for each function or closure).
 pub(crate) struct VerusThirBuildCtxt {
-    ctxt: Option<Arc<VerusErasureCtxt>>,
+    pub(crate) ctxt: Option<Arc<VerusErasureCtxt>>,
     closure_overrides: HashMap<LocalDefId, ClosureOverrides>,
-    pub(crate) expr_is_spec: HashMap<HirId, bool>,
-    local_def_id: LocalDefId,
 }
 
 impl VerusThirBuildCtxt {
-    pub(crate) fn new<'tcx>(_tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> Self {
+    pub(crate) fn new<'tcx>(_tcx: TyCtxt<'tcx>) -> Self {
         VerusThirBuildCtxt {
             ctxt: get_verus_erasure_ctxt_option(),
             closure_overrides: HashMap::new(),
-            expr_is_spec: HashMap::new(),
-            local_def_id,
-        }
-    }
-
-    pub(crate) fn ret_spec<'tcx>(&self) -> bool {
-        match &self.ctxt {
-            None => false,
-            Some(ctxt) => match ctxt.bodies.get(&self.local_def_id) {
-                Some(b) => b.ret_spec,
-                None => false,
-            },
-        }
-    }
-
-    pub(crate) fn condition_spec<'tcx>(&self, expr: &hir::Expr<'tcx>) -> bool {
-        match &self.ctxt {
-            None => false,
-            Some(ctxt) => matches!(ctxt.condition_spec.get(&expr.hir_id), Some(true)),
-        }
-    }
-
-    pub(crate) fn var_spec<'tcx>(&self, hir_id: HirId) -> bool {
-        match &self.ctxt {
-            None => false,
-            Some(ctxt) => matches!(ctxt.vars.get(&hir_id), Some(VarErasure::Erase)),
         }
     }
 
@@ -227,54 +169,23 @@ impl VerusThirBuildCtxt {
 }
 
 impl NodeErase {
-    pub(crate) fn should_erase(&self, spec: bool) -> bool {
+    pub(crate) fn should_erase(&self) -> bool {
         match self {
             NodeErase::Erase => true,
             NodeErase::Keep => false,
-            NodeErase::WhenExpectingSpec => spec,
-        }
-    }
-}
-
-impl ExpectSpec {
-    pub(crate) fn apply(&self, spec: bool) -> bool {
-        match self {
-            ExpectSpec::Yes => true,
-            ExpectSpec::No => false,
-            ExpectSpec::Propagate => spec,
         }
     }
 }
 
 impl CallErasure {
     pub fn keep_all() -> Self {
-        CallErasure::Call(NodeErase::Keep, ExpectSpecArgs::AllNo)
+        CallErasure::Call(NodeErase::Keep)
     }
 
-    pub(crate) fn should_erase(&self, spec: bool) -> bool {
+    pub(crate) fn should_erase(&self) -> bool {
         match self {
             CallErasure::EraseTree => panic!("EraseTree should be handled by mirror_expr_opt"),
-            CallErasure::Call(node_erase, _spec_args) => node_erase.should_erase(spec),
-        }
-    }
-}
-
-impl ExpectSpecArgs {
-    pub fn get(&self, i: usize) -> ExpectSpec {
-        match self {
-            ExpectSpecArgs::AllNo => ExpectSpec::No,
-            ExpectSpecArgs::AllYes => ExpectSpec::Yes,
-            ExpectSpecArgs::AllPropagate => ExpectSpec::Propagate,
-            ExpectSpecArgs::PerArg(args) => args[i],
-        }
-    }
-
-    pub fn last(&self) -> ExpectSpec {
-        match self {
-            ExpectSpecArgs::AllNo => ExpectSpec::No,
-            ExpectSpecArgs::AllYes => ExpectSpec::Yes,
-            ExpectSpecArgs::AllPropagate => ExpectSpec::Propagate,
-            ExpectSpecArgs::PerArg(args) => *args.last().unwrap(),
+            CallErasure::Call(node_erase) => node_erase.should_erase(),
         }
     }
 }
@@ -293,23 +204,15 @@ pub(crate) fn handle_call<'tcx>(
     }
 }
 
-pub(crate) fn should_erase_var(verus_ctxt: &VerusThirBuildCtxt, var_hir_id: HirId) -> bool {
-    let Some(erasure_ctxt) = verus_ctxt.ctxt.clone() else {
-        return false;
-    };
-    matches!(erasure_ctxt.vars.get(&var_hir_id), Some(VarErasure::Erase))
-}
-
 pub(crate) fn handle_var<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
     _var_hir_id: HirId,
-    spec: bool,
 ) -> Option<ExprKind<'tcx>> {
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
         return None;
     };
-    if !spec && matches!(erasure_ctxt.vars.get(&expr.hir_id), None | Some(VarErasure::Keep)) {
+    if matches!(erasure_ctxt.vars.get(&expr.hir_id), None | Some(VarErasure::Keep)) {
         return None;
     }
     let ty = cx.typeck_results.expr_ty(expr);
@@ -323,21 +226,13 @@ pub(crate) fn expr_id_from_kind<'tcx>(
     span: Span,
     ty: Ty<'tcx>,
 ) -> ExprId {
-    let (temp_lifetime, backwards_incompatible) =
-        cx.rvalue_scopes.temporary_scope(cx.region_scope_tree, hir_id.local_id);
-    let e = Expr {
-        temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible },
-        ty,
-        span: span,
-        kind,
-    };
+    let e = Expr { temp_scope_id: hir_id.local_id, ty, span: span, kind };
     cx.thir.exprs.push(e)
 }
 
 /// erase_tree
 /// This erases the expression and all HIR subexpressions.
 /// (Mostly. It also keeps expressions that need pattern-exhaustiveness checking.)
-
 pub(crate) fn erase_tree<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,
@@ -345,19 +240,12 @@ pub(crate) fn erase_tree<'tcx>(
     let kind = erase_tree_kind(cx, hir_expr);
     let ty = cx.typeck_results.expr_ty(hir_expr);
 
-    let (temp_lifetime, backwards_incompatible) =
-        cx.rvalue_scopes.temporary_scope(cx.region_scope_tree, hir_expr.hir_id.local_id);
-    let expr = Expr {
-        temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible },
-        ty,
-        span: hir_expr.span,
-        kind,
-    };
+    let expr = Expr { temp_scope_id: hir_expr.hir_id.local_id, ty, span: hir_expr.span, kind };
 
     let expr_scope =
         region::Scope { local_id: hir_expr.hir_id.local_id, data: region::ScopeData::Node };
     let expr = Expr {
-        temp_lifetime: expr.temp_lifetime,
+        temp_scope_id: expr.temp_scope_id,
         ty: expr.ty,
         span: hir_expr.span,
         kind: ExprKind::Scope {
@@ -388,28 +276,6 @@ pub(crate) fn erase_tree_kind<'tcx>(
 /// This erases a single node but not the children.
 /// We create a value `erased_ghost_value::<T>::((args...))` where `args` contains anything
 /// that needs checking from the subexpressions.
-
-/// Erase the node; use the unadjusted type of the hir_expr
-pub(crate) fn maybe_erase_node_unadjusted<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    hir_expr: &'tcx hir::Expr<'tcx>,
-    kind: ExprKind<'tcx>,
-    erase: bool,
-) -> ExprKind<'tcx> {
-    if erase { erase_node_unadjusted(cx, hir_expr, kind) } else { kind }
-}
-
-/// Erase the node; use the given type (this is useful for adjusted expressions)
-pub(crate) fn maybe_erase_node<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    hir_expr: &'tcx hir::Expr<'tcx>,
-    ty: Ty<'tcx>,
-    kind: ExprKind<'tcx>,
-    erase: bool,
-) -> ExprKind<'tcx> {
-    if erase { erase_node(cx, hir_expr, ty, kind) } else { kind }
-}
-
 pub(crate) fn erase_node_unadjusted<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,
@@ -504,7 +370,6 @@ pub(crate) fn erase_node<'tcx>(
 /// `erased_ghost_value::<S>()`, we replace the latter with `erased_ghost_value::<()>()`.
 /// The type param only matters for the return value anyway, which doesn't matter in this
 /// context.
-
 fn erased_ghost_value_remove_type_if_possible<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
@@ -554,6 +419,47 @@ fn erased_ghost_value_remove_type_if_possible<'tcx>(
             }
         }
         _ => None,
+    }
+}
+
+/// Is the given THIR node the result of erasure?
+pub(crate) fn is_erased<'tcx>(
+    cx: &ThirBuildCx<'tcx>,
+    erasure_ctxt: &VerusErasureCtxt,
+    expr_kind: &rustc_middle::thir::ExprKind<'tcx>,
+) -> bool {
+    match expr_kind {
+        ExprKind::Call { fun, args: _, .. } => match cx.thir.exprs[*fun].ty.kind() {
+            TyKind::FnDef(fn_def_id, _) => *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id,
+            _ => false,
+        },
+        ExprKind::Scope { region_scope: _, lint_level: _, value } => {
+            is_erased(cx, erasure_ctxt, &cx.thir.exprs[*value].kind)
+        }
+        _ => false,
+    }
+}
+
+/// Given an expression like `&x`, `*x` or `x.field`, determine if it should be erased
+/// by looking at if `x` is erased.
+pub(crate) fn is_node_with_single_arg_erased<'tcx>(
+    cx: &ThirBuildCx<'tcx>,
+    erasure_ctxt: &VerusErasureCtxt,
+    expr_kind: &rustc_middle::thir::ExprKind<'tcx>,
+) -> bool {
+    match expr_kind {
+        ExprKind::Call { ty: _, fun: _, args, from_hir_call: _, fn_span: _ } => {
+            assert!(args.len() == 1);
+            is_erased(cx, erasure_ctxt, &cx.thir.exprs[args[0]].kind)
+        }
+        ExprKind::Borrow { borrow_kind: _, arg }
+        | ExprKind::Deref { arg }
+        | ExprKind::Field { lhs: arg, .. } => {
+            is_erased(cx, erasure_ctxt, &cx.thir.exprs[*arg].kind)
+        }
+        _ => {
+            panic!("is_node_with_single_arg_erased got unexpected kind");
+        }
     }
 }
 
@@ -1484,7 +1390,6 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
         def_id,
         (forged_upvars.into_boxed_slice(), verus_fake_reads_final),
     );
-    cx.verus_ctxt.prep_expr(block.expr.unwrap(), false);
     let expr = cx.mirror_expr(block.expr.unwrap());
 
     let block = Block {

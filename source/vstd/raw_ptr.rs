@@ -94,7 +94,44 @@ pub ghost struct PtrData<T: core::marker::PointeeSized> {
     pub metadata: Metadata<T>,
 }
 
-/// Permission to access possibly-initialized, _typed_ memory.
+/**
+Permission to access possibly-initialized, _typed_ memory.
+
+The associated pointer ([`points_to.ptr()`](PointsTo::ptr)) is always a valid pointer for constructing
+a reference to the underlying data. That means it's always aligned to its type
+([`is_aligned`](PointsTo::is_nonnull)) and is non-null ([`is_nonnull`](PointsTo::is_nonnull)).
+
+### Notes
+
+The invariants on a `PointsTo` are a little more restrictive than is necessary for all
+Rust operations you might want to do. For example:
+
+1. With a null pointer to a ZST, Rust lets you read and write (though not take a reference).
+
+```
+#[derive(Copy, Clone)]
+#[repr(align(64))]
+struct X { }
+
+fn zst_test() {
+    let x_ptr: *mut X = std::ptr::null_mut();
+
+    let x = unsafe { *x_ptr };  // allowed
+
+    let x = X { };
+    unsafe { *x_ptr = x; }      // allowed
+
+    let j = unsafe { &*x_ptr }; // not allowed because ptr is null
+}
+```
+
+2. The [`std::ptr::read_unaligned`] and [`std::ptr::write_unaligned`] don't require the pointer
+   to be aligned.
+
+Currently, these use-cases aren't supported because `PointsTo` enforces both non-nullness
+and alignment.
+*/
+
 // ptr |--> Init(v) means:
 //   bytes in this memory are consistent with value v
 //   and we have all the ghost state associated with type V
@@ -231,20 +268,13 @@ impl<T> PointsTo<T> {
         self.opt_value().value()
     }
 
-    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
-    ///
-    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    // See https://doc.rust-lang.org/std/ptr/#safety
+    /// Guarantee that the `PointsTo` points to a non-null address.
     pub axiom fn is_nonnull(tracked &self)
-        requires
-            size_of::<T>() != 0,
         ensures
             self@.ptr@.addr != 0,
     ;
 
     /// Guarantee that the `PointsTo` points to an aligned address.
-    ///
-    // Note that even for ZSTs, pointers need to be aligned.
     pub axiom fn is_aligned(tracked &self)
         ensures
             self@.ptr@.addr as nat % align_of::<T>() == 0,
@@ -429,6 +459,78 @@ pub open spec fn spec_cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [
 pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (result: *mut [T])
     ensures
         result == spec_cast_array_ptr_to_slice_ptr(ptr),
+    opens_invariants none
+    no_unwind
+{
+    ptr as *mut [T]
+}
+
+/// Cast a slice pointer to another slice pointer.
+/// Length is preserved even if the size of the elements changes.
+pub open spec fn spec_cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> *mut [U] {
+    ptr_mut_from_data(
+        PtrData::<[U]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+    )
+}
+
+/// Cast a slice pointer to another slice pointer.
+/// Length is preserved even if the size of the elements changes.
+///
+/// Don't call this directly; use an `as`-cast instead.
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_slice_ptr_to_slice_ptr")]
+#[verifier::when_used_as_spec(spec_cast_slice_ptr_to_slice_ptr)]
+pub fn cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> (result: *mut [U])
+    ensures
+        result == spec_cast_slice_ptr_to_slice_ptr::<T, U>(ptr),
+    opens_invariants none
+    no_unwind
+{
+    ptr as *mut [U]
+}
+
+/// Cast a slice pointer to a `str` pointer.
+/// Length is preserved even if the size of the elements changes.
+pub open spec fn spec_cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> *mut str {
+    ptr_mut_from_data(
+        PtrData::<str> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+    )
+}
+
+/// Cast a slice pointer to a `str` pointer.
+/// Length is preserved even if the size of the elements changes.
+///
+/// Don't call this directly; use an `as`-cast instead.
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_slice_ptr_to_str_ptr")]
+#[verifier::when_used_as_spec(spec_cast_slice_ptr_to_str_ptr)]
+pub fn cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> (result: *mut str)
+    ensures
+        result == spec_cast_slice_ptr_to_str_ptr::<T>(ptr),
+    opens_invariants none
+    no_unwind
+{
+    ptr as *mut str
+}
+
+/// Cast a `str` pointer to a slice pointer.
+/// Length is preserved even if the size of the elements changes.
+pub open spec fn spec_cast_str_ptr_to_slice_ptr<T>(ptr: *mut str) -> *mut [T] {
+    ptr_mut_from_data(
+        PtrData::<[T]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+    )
+}
+
+/// Cast a `str` pointer to a slice pointer.
+/// Length is preserved even if the size of the elements changes.
+///
+/// Don't call this directly; use an `as`-cast instead.
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_str_ptr_to_slice_ptr")]
+#[verifier::when_used_as_spec(spec_cast_str_ptr_to_slice_ptr)]
+pub fn cast_str_ptr_to_slice_ptr<T>(ptr: *mut str) -> (result: *mut [T])
+    ensures
+        result == spec_cast_str_ptr_to_slice_ptr::<T>(ptr),
     opens_invariants none
     no_unwind
 {
@@ -712,10 +814,15 @@ impl PointsToRaw {
     /// provided that `start` is aligned to `V` and
     /// that the domain of the `PointsToRaw` permission matches the size of `V`.
     ///
-    /// In combination with PointsToRaw::empty(),
-    /// this lets us create a PointsTo for a ZST for _any_ aligned pointer (any address and provenance, even null).
+    /// In combination with [`PointsToRaw::empty()`],
+    /// this lets us create a PointsTo for a ZST for _any_ non-null aligned pointer.
+    ///
+    /// To call this, it is necessary for the address to be non-null. This can be proved either
+    /// by showing `start != 0` or by showing the size of the type is non-zero (in which case
+    /// the non-null-ness follows from the existence of the `PointsToRaw`).
     pub axiom fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
+            start != 0 || size_of::<V>() != 0,
             start as int % align_of::<V>() as int == 0,
             self.is_range(start as int, size_of::<V>() as int),
         ensures

@@ -14,6 +14,7 @@ pub const CHAR_RANGE_1_MAX: u32 = 0xD7FF;
 pub const CHAR_RANGE_2_MIN: u32 = 0xE000;
 pub const CHAR_RANGE_2_MAX: u32 = char::MAX as u32;
 
+#[allow(clippy::absurd_extreme_comparisons)] // absurd comparison is documenting here
 fn valid_unicode_scalar(i: u32) -> bool {
     (CHAR_RANGE_1_MIN <= i && i <= CHAR_RANGE_1_MAX)
         || (CHAR_RANGE_2_MIN <= i && i <= CHAR_RANGE_2_MAX)

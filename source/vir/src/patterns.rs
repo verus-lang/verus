@@ -1,6 +1,7 @@
 use crate::ast::*;
-use crate::ast_util::bool_typ;
-use crate::ast_util::{conjoin, mk_eq, mk_ineq};
+use crate::ast_util::{
+    bool_typ, conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_spec_expr,
+};
 use crate::context::GlobalCtx;
 use crate::def::Spanned;
 use crate::messages::{Span, error};
@@ -24,10 +25,10 @@ pub fn pattern_to_exprs(
             ));
         }
 
-        let ComputedPatternBinding { name, mutable, mut_ref, place } = pbd;
+        let ComputedPatternBinding { name, mut_ref, place } = pbd;
 
         let place = if mut_ref {
-            PlaceX::temporary(SpannedTyped::new(
+            PlaceX::spec_temporary(SpannedTyped::new(
                 &place.span,
                 &Arc::new(TypX::MutRef(place.typ.clone())),
                 ExprX::BorrowMut(place.clone()),
@@ -36,10 +37,9 @@ pub fn pattern_to_exprs(
             place
         };
 
-        let pattern = PatternX::simple_var(name, mutable, &place.span, &place.typ);
-        // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
-        let decl =
-            StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(place.clone()), els: None };
+        let pattern = PatternX::simple_var(name, &place.span, &place.typ);
+        // Mode doesn't matter at this stage; arbitrarily set it to None
+        let decl = StmtX::Decl { pattern, mode: None, init: Some(place.clone()), els: None };
         decls.push(Spanned::new(place.span.clone(), decl));
     }
 
@@ -48,7 +48,6 @@ pub fn pattern_to_exprs(
 
 struct ComputedPatternBinding {
     name: VarIdent,
-    mutable: bool,
     mut_ref: bool,
     place: Place,
 }
@@ -56,7 +55,6 @@ struct ComputedPatternBinding {
 fn computed(binding: &PatternBinding, place: &Place) -> Result<ComputedPatternBinding, VirErr> {
     Ok(ComputedPatternBinding {
         name: binding.name.clone(),
-        mutable: binding.mutable,
         place: place.clone(),
         mut_ref: matches!(binding.by_ref, ByRef::MutRef),
     })
@@ -145,34 +143,37 @@ fn pattern_to_exprs_rec(
 
             Ok(test)
         }
-        PatternX::Or(_pat1, _pat2) => {
-            /*
-            let mut decls1 = vec![];
-            let mut decls2 = vec![];
+        PatternX::Or(pat1, pat2) => {
+            let mut bindings1 = vec![];
+            let mut bindings2 = vec![];
 
-            let pat1_matches = pattern_to_exprs_rec(ctx, expr, pat1, &mut decls1)?;
-            let pat2_matches = pattern_to_exprs_rec(ctx, expr, pat2, &mut decls2)?;
+            let pat1_matches = pattern_to_exprs_rec(ctx, pat1, place, &mut bindings1, in_immut)?;
+            let pat2_matches = pattern_to_exprs_rec(ctx, pat2, place, &mut bindings2, in_immut)?;
 
             let matches = disjoin(&pattern.span, &vec![pat1_matches.clone(), pat2_matches]);
 
-            assert!(decls1.len() == decls2.len());
-            for d1 in decls1 {
-                let d2 = decls2
+            assert!(bindings1.len() == bindings2.len());
+            for d1 in bindings1 {
+                let d2 = bindings2
                     .iter()
-                    .find(|d| d.name == d1.name)
+                    .find(|d2| d2.name == d1.name)
                     .expect("both sides of 'or' pattern should bind the same variables");
-                assert!(d1.mutable == d2.mutable);
-                let combined_decl = PatternBoundDecl {
+                assert!(!d1.mut_ref);
+                assert!(!d2.mut_ref);
+
+                let e1 = place_to_spec_expr(&d1.place);
+                let e2 = place_to_spec_expr(&d2.place);
+                let ite = if_then_else(&pattern.span, &pat1_matches, &e1, &e2);
+
+                let combined_binding = ComputedPatternBinding {
                     name: d1.name,
-                    mutable: d1.mutable,
-                    expr: if_then_else(&pattern.span, &pat1_matches, &d1.expr, &d2.expr),
+                    mut_ref: false,
+                    place: PlaceX::spec_temporary(ite),
                 };
-                decls.push(combined_decl);
+                bindings.push(combined_binding);
             }
 
             Ok(matches)
-            */
-            todo!(); // TODO(new_mut_ref)
         }
         PatternX::Expr(e) => {
             let expr = read_place(&place);

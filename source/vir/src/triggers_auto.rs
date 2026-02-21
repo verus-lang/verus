@@ -40,6 +40,8 @@ pub enum AutoType {
 enum App {
     Const(Constant),
     Field(Dt, Ident, Ident),
+    MutRefCurrent,
+    MutRefFuture,
     Call(Fun),
     // datatype constructor: (Path, Variant)
     Ctor(Dt, Ident),
@@ -78,6 +80,8 @@ impl std::fmt::Debug for TermX {
             TermX::Var(x) => write!(f, "{}", x),
             TermX::App(App::Const(c), _) => write!(f, "{:?}", c),
             TermX::App(App::Field(_, x, y), es) => write!(f, "{:?}.{}/{}", es[0], x, y),
+            TermX::App(App::MutRefCurrent, es) => write!(f, "mut_ref_current({:?})", es[0]),
+            TermX::App(App::MutRefFuture, es) => write!(f, "mut_ref_future({:?})", es[0]),
             TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
                 match c {
                     App::Call(x) => write!(f, "{}(", path_as_friendly_rust_name(&x.path))?,
@@ -388,6 +392,15 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Unary(UnaryOp::CastToInteger, _) => {
             panic!("internal error: CastToInteger should have been removed before here")
         }
+        ExpX::Unary(op @ (UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_)), e1) => {
+            let (is_pure, arg) = gather_terms(ctxt, ctx, e1, depth + 1);
+            let app = match op {
+                UnaryOp::MutRefCurrent => App::MutRefCurrent,
+                UnaryOp::MutRefFuture(_) => App::MutRefFuture,
+                _ => unreachable!(),
+            };
+            (is_pure, Arc::new(TermX::App(app, Arc::new(vec![arg]))))
+        }
         ExpX::Unary(op, e1) => {
             let depth = match op {
                 UnaryOp::Not
@@ -401,9 +414,11 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
                 UnaryOp::FloatToBits => 1,
                 UnaryOp::IntToReal => 1,
+                UnaryOp::RealToInt => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
                 UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
-                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefFinal => 1,
+                UnaryOp::MutRefFinal(_) => 1,
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {
@@ -417,6 +432,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
         ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::UnaryOpr(UnaryOpr::ProofNote(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
         }
@@ -514,6 +530,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
     if let TermX::Var(..) = *term {
         return (is_pure, term);
     }
+    if let TermX::App(App::VarAt(..), _) = *term {
+        return (is_pure, term);
+    }
     if let TermX::App(App::Tuple, _) = *term {
         return (is_pure, term);
     }
@@ -546,7 +565,11 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
 // Second bool: is the instantiation potentially bigger than the original template?
 fn structure_matches(ctxt: &Ctxt, template: &Term, term: &Term) -> (bool, bool) {
     match (&**template, &**term) {
-        (TermX::Var(x1), TermX::App(_, _)) if ctxt.trigger_vars.contains(x1) => (true, true),
+        (TermX::Var(x1), TermX::App(app, _))
+            if ctxt.trigger_vars.contains(x1) && !matches!(app, App::VarAt(..)) =>
+        {
+            (true, true)
+        }
         (TermX::Var(x1), _) if ctxt.trigger_vars.contains(x1) => (true, false),
         (TermX::Var(x1), TermX::Var(x2)) => (x1 == x2, false),
         (TermX::App(a1, args1), TermX::App(a2, args2))
@@ -570,7 +593,9 @@ fn remove_obvious_potential_loops(ctxt: &mut Ctxt, timer: &mut Timer) -> Result<
     // REVIEW: we could attempt more sophisticated cycle detection
     let mut remove: Vec<Term> = Vec::new();
     for pure in ctxt.pure_terms.keys() {
-        if let TermX::App(app, _) = &**pure {
+        if let TermX::App(app, _) = &**pure
+            && !matches!(app, App::VarAt(..))
+        {
             if ctxt.all_terms_by_app.contains_key(app) {
                 for term in ctxt.all_terms_by_app[app].keys() {
                     check_timeout(timer)?;

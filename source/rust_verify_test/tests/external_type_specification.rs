@@ -436,14 +436,21 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] type_recursion_is_handled verus_code! {
+        use vstd::std_specs::alloc::*;
+        #[verifier(external)]
+        pub enum SomeStruct<T> {
+            No,
+            Yes(T),
+        }
+
         #[verifier(external_type_specification)]
-        #[verifier::reject_recursive_types(U)]
-        pub struct ExOption<U>(core::option::Option<U>);
+        #[verifier(reject_recursive_types(U))]
+        pub struct ExSomeStruct<U>(SomeStruct<U>);
 
         struct Test {
-            t: Box<core::option::Option<Test>>,
+            t: Box<SomeStruct<Test>>,
         }
-    } => Err(err) => assert_vir_error_msg(err, "crate::Test recursively uses type crate::Test in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "Type test_crate::Test recursively uses type test_crate::Test in a non-positive position")
 }
 
 test_verify_one_file! {

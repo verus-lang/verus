@@ -4,7 +4,7 @@ use rustc_abi::FieldIdx;
 use rustc_hir::lang_items::LangItem;
 use rustc_index::{Idx, IndexVec};
 use rustc_middle::bug;
-use rustc_middle::middle::region;
+use rustc_middle::middle::region::{self, TempLifetime};
 use rustc_middle::mir::interpret::Scalar;
 use rustc_middle::mir::*;
 use rustc_middle::thir::*;
@@ -47,7 +47,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         scope: TempLifetime,
         expr_id: ExprId,
     ) -> BlockAnd<Rvalue<'tcx>> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
         let expr = &this.thir[expr_id];
         debug!("expr_as_rvalue(block={:?}, scope={:?}, expr={:?})", block, scope, expr);
 
@@ -126,21 +126,12 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 let tcx = this.tcx;
                 let source_info = this.source_info(expr_span);
 
-                let size = this.temp(tcx.types.usize, expr_span);
-                this.cfg.push_assign(
-                    block,
-                    source_info,
-                    size,
-                    Rvalue::NullaryOp(NullOp::SizeOf, value_ty),
-                );
+                let size = tcx.require_lang_item(LangItem::SizeOf, expr_span);
+                let size = Operand::unevaluated_constant(tcx, size, &[value_ty.into()], expr_span);
 
-                let align = this.temp(tcx.types.usize, expr_span);
-                this.cfg.push_assign(
-                    block,
-                    source_info,
-                    align,
-                    Rvalue::NullaryOp(NullOp::AlignOf, value_ty),
-                );
+                let align = tcx.require_lang_item(LangItem::AlignOf, expr_span);
+                let align =
+                    Operand::unevaluated_constant(tcx, align, &[value_ty.into()], expr_span);
 
                 // malloc some memory of suitable size and align:
                 let exchange_malloc = Operand::function_handle(
@@ -157,8 +148,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     TerminatorKind::Call {
                         func: exchange_malloc,
                         args: [
-                            Spanned { node: Operand::Move(size), span: DUMMY_SP },
-                            Spanned { node: Operand::Move(align), span: DUMMY_SP },
+                            Spanned { node: size, span: DUMMY_SP },
+                            Spanned { node: align, span: DUMMY_SP },
                         ]
                         .into(),
                         destination: storage,
@@ -418,10 +409,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     user_ty: None,
                     const_: Const::zero_sized(this.tcx.types.unit),
                 }))))
-            }
-
-            ExprKind::OffsetOf { container, fields } => {
-                block.and(Rvalue::NullaryOp(NullOp::OffsetOf(fields), container))
             }
 
             ExprKind::Literal { .. }
@@ -685,7 +672,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         scope: TempLifetime,
         outer_source_info: SourceInfo,
     ) -> BlockAnd<Rvalue<'tcx>> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
         let value_expr = &this.thir[value];
         let elem_ty = value_expr.ty;
         if this.check_constness(&value_expr.kind) {
@@ -725,7 +712,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         mut block: BasicBlock,
         arg: ExprId,
     ) -> BlockAnd<Operand<'tcx>> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
 
         let source_info = this.source_info(upvar_span);
         let temp = this.local_decls.push(LocalDecl::new(upvar_ty, upvar_span));
@@ -788,8 +775,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             Rvalue::Ref(this.tcx.lifetimes.re_erased, borrow_kind, arg_place),
         );
 
-        // See the comment in `expr_as_temp` and on the `rvalue_scopes` field for why
-        // this can be `None`.
+        // This can be `None` if the expression's temporary scope was extended so that it can be
+        // borrowed by a `const` or `static`. In that case, it's never dropped.
         if let Some(temp_lifetime) = temp_lifetime {
             this.schedule_drop_storage_and_value(upvar_span, temp_lifetime, temp);
         }

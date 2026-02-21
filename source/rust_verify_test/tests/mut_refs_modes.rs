@@ -9,17 +9,17 @@ test_verify_one_file_with_options! {
             let ghost g: u64 = 3;
             let mut_ret = &mut g;
         }
-    } => Err(err) => assert_vir_error_msg(err, "can only take mutable borrow of an exec-mode place; found spec-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
 }
 
 test_verify_one_file_with_options! {
     #[test] mut_borrow_of_tracked_local_in_proof_fn ["new-mut-ref"] => verus_code! {
         struct X { }
         proof fn test() {
-            let tracked x = X { };
+            let tracked mut x = X { };
             let mut_ret = &mut x;
         }
-    } => Err(err) => assert_vir_error_msg(err, "can only take mutable borrow of an exec-mode place; found proof-mode place")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -49,7 +49,7 @@ test_verify_one_file_with_options! {
                 let tracked mut_ret = &mut g;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "can only take mutable borrow of an exec-mode place; found spec-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
 }
 
 test_verify_one_file_with_options! {
@@ -61,7 +61,7 @@ test_verify_one_file_with_options! {
                 let tracked mut_ret = &mut x;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "can only take mutable borrow of an exec-mode place; found proof-mode place")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -113,7 +113,18 @@ test_verify_one_file_with_options! {
                 mut_ref1.borrow_mut().y = Y { };
             }
         }
-    } => Ok(()) // TODO(new_mut_ref): I'm not sure about this being ok
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+}
+
+test_verify_one_file_with_options! {
+    // TODO(new_mut_ref): fix
+    #[ignore] #[test] mut_borrow_in_ghost_decl ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut x = 0;
+            let ghost mut_ref2 = &mut x;
+            assert(x == 0);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -327,6 +338,53 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] modify_exec_place_in_proof_code2 ["new-mut-ref"] => verus_code! {
         struct X { y: Ghost<(int, int)> }
+        tracked struct XWrapper<'a> { tracked mut_ref: &'a mut X }
+
+        fn test3(x0: X, x1: X) {
+            let mut x = x0;
+            let mut_ref = &mut x;
+            let tracked wrapper = XWrapper { mut_ref: mut_ref };
+
+            proof {
+                *wrapper.mut_ref = x1;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] modify_tracked_type_in_proof_code ["new-mut-ref"] => verus_code! {
+        tracked struct X { y: Ghost<(int, int)> }
+
+        fn test3(x0: Tracked<X>, x1: Tracked<X>) {
+            proof {
+                let tracked mut x = x0.get();
+                let tracked mut_ref = &mut x;
+
+                *mut_ref = x1.get();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] modify_tracked_wrapped_type_in_proof_code ["new-mut-ref"] => verus_code! {
+        tracked struct X { y: Ghost<(int, int)> }
+
+        fn test3(x0: Tracked<X>, x1: Tracked<X>) {
+            let mut x = x0;
+            let mut_ref = &mut x;
+
+            proof {
+                *mut_ref = x1;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] modify_ghost_wrapped_type_in_proof_code ["new-mut-ref"] => verus_code! {
+        struct X { y: Ghost<(int, int)> }
 
         fn test3(x0: X, x1: X) {
             let mut x = x0;
@@ -334,10 +392,11 @@ test_verify_one_file_with_options! {
 
             proof {
                 // mut_ref.y is an exec-mode place of type Ghost
+                // but since Ghost is a ZST, it's ok
                 mut_ref.y = Ghost((3, 2));
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -356,7 +415,7 @@ test_verify_one_file_with_options! {
                 let tracked z = &mut mut_ref.y.borrow_mut().0;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "can only take mutable borrow of an exec-mode place; found proof-mode place")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -374,7 +433,7 @@ test_verify_one_file_with_options! {
                 let tracked z = x.y.borrow_mut();
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "can only take mutable borrow of an exec-mode place; found proof-mode place")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -389,7 +448,7 @@ test_verify_one_file_with_options! {
                 let tracked z = &mut mut_ref.y.borrow_mut().0;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "can only take mutable borrow of an exec-mode place; found spec-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
 }
 
 test_verify_one_file_with_options! {
@@ -487,7 +546,7 @@ test_verify_one_file_with_options! {
         fn test() {
             let mut x = Tracked(X {});
             let mut_ref = &mut x;
-            let mr = Ghost(mut_ref);
+            let mut mr = Ghost(mut_ref);
 
             proof {
                 let z = *mr.borrow_mut().borrow_mut();
@@ -605,8 +664,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): need to elide implicit reborrow in this test case
-    #[ignore] #[test] ghost_places_dont_resolve ["new-mut-ref"] => verus_code! {
+    #[test] ghost_places_dont_resolve ["new-mut-ref"] => verus_code! {
         fn test() {
             let mut x: u64 = 0;
 
@@ -737,7 +795,7 @@ test_verify_one_file_with_options! {
         axiom fn new_x() -> (tracked x: X);
         axiom fn new_x_gho() -> (x: X);
 
-        fn test<X>(tracked x1: X, tracked x2: X) {
+        fn test<X>() {
             let mut j = (Tracked(new_x()), Ghost(new_x_gho()));
 
             proof { let y = *j.1.borrow_mut(); }
@@ -745,7 +803,7 @@ test_verify_one_file_with_options! {
             assert(has_resolved(j));
         }
 
-        fn test2<X>(tracked x1: X, tracked x2: X) {
+        fn test2<X>() {
             let mut j = (Tracked(new_x()), Ghost(new_x_gho()));
 
             // This is an ownership error ("cannot move out of a mutable reference"),
@@ -828,11 +886,25 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] modify_ghost_fields_doesnt_reinitialize ["new-mut-ref"] => verus_code! {
+    #[test] modify_ghost_fields_doesnt_reinitialize1 ["new-mut-ref"] => verus_code! {
         fn consume<A>(a: A) { }
 
         fn test<X>(x: X) {
             let y = (x, Ghost(0int));
+            consume(y.0);
+            proof { *y.1.borrow_mut() = 5int; }
+
+            assert(has_resolved(y.0)); // FAILS
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `y.1` as mutable, as `y` is not declared as mutable")
+}
+
+test_verify_one_file_with_options! {
+    #[test] modify_ghost_fields_doesnt_reinitialize2 ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+
+        fn test<X>(x: X) {
+            let mut y = (x, Ghost(0int));
             consume(y.0);
             proof { *y.1.borrow_mut() = 5int; }
 
@@ -933,4 +1005,165 @@ test_verify_one_file_with_options! {
             assert(has_resolved(m)); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+// TODO(new_mut_ref): un-ignore this
+test_verify_one_file_with_options! {
+    #[ignore] #[test] read_from_borrowed_ghost_location_and_then_assign_to_mut_ref ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut x: Ghost<bool> = Ghost(false);
+
+            let r = &mut x;
+
+            let ghost updated_value = x@;
+
+            proof {
+                r@ = !updated_value;
+            }
+
+            assert(false);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot use `x` because it was mutably borrowed")
+}
+
+// TODO(new_mut_ref): un-ignore this test; swap needs to be restricted to non-exec types
+test_verify_one_file_with_options! {
+    #[ignore] #[test] tracked_swap_requires_non_exec_type ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        fn test() {
+            let mut a: u64 = 0;
+            let mut b: u64 = 1;
+            let a_ref = &mut a;
+            let b_ref = &mut b;
+            proof {
+                tracked_swap(a_ref, b_ref);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call tracked_swap with exec types")
+}
+
+test_verify_one_file_with_options! {
+    #[test] wrapped_params ["new-mut-ref"] => verus_code! {
+        fn f(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == old(x).view() + 1,
+        {
+            proof { *x = Ghost(x.view() + 1); }
+        }
+
+        fn f2(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == old(x).view() + 1,
+        {
+            f(Tracked(x));
+        }
+
+        fn f3(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == old(x).view() + 1,
+        {
+            f(Tracked(&mut *x));
+        }
+
+        fn f4() {
+            let mut g = Ghost(3);
+            f(Tracked(&mut g));
+            assert(g == 4);
+        }
+
+        fn f5() {
+            let mut g = Ghost(3);
+            let tg = Tracked(&mut g);
+            f(tg);
+            assert(g == 4);
+        }
+
+        fn f_fails(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == old(x).view() + 1,
+        {
+            proof { *x = Ghost(x.view() + 1); }
+            assert(false); // FAILS
+        }
+
+        fn f2_fails(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == old(x).view() + 1,
+        {
+            f(Tracked(x));
+            assert(false); // FAILS
+        }
+
+        fn f3_fails(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == old(x).view() + 1,
+        {
+            f(Tracked(&mut *x));
+            assert(false); // FAILS
+        }
+
+        fn f4_fails() {
+            let mut g = Ghost(3);
+            f(Tracked(&mut g));
+            assert(g == 4);
+            assert(false); // FAILS
+        }
+
+        fn f5_fails() {
+            let mut g = Ghost(3);
+            let tg = Tracked(&mut g);
+            f(tg);
+            assert(g == 4);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] wrapped_params_reborrow ["new-mut-ref"] => verus_code! {
+        fn f(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == old(x).view() + 1,
+        {
+            proof { *x = Ghost(x.view() + 1); }
+        }
+
+        fn f2(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() == 3,
+        {
+            f(Tracked(x));
+            f(Tracked(x));
+            assert(*x == 5);
+        }
+
+        fn f2_fails(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() == 3,
+        {
+            f(Tracked(x));
+            f(Tracked(x));
+            assert(*x == 5);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] wrapped_mut_ref_params_resolved ["new-mut-ref"] => verus_code! {
+        fn test(Ghost(x): Ghost<&mut u64>) {
+            assert(has_resolved(x)); // FAILS
+        }
+
+        fn test2(Tracked(x): Tracked<&mut u64>) {
+            assert(has_resolved(x));
+        }
+
+        fn test3(x: Ghost<&mut u64>) {
+            assert(has_resolved(x@)); // FAILS
+        }
+
+        fn test4(x: Tracked<&mut u64>) {
+            assert(has_resolved(x@));
+        }
+    } => Err(err) => assert_fails(err, 2)
 }

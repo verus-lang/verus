@@ -382,7 +382,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
                         break;
                     }
                     if let Some(print_to) = &mut print_to {
-                        print_to.write(&buffer[..bytes]).expect("failed to write to stdio");
+                        print_to.write_all(&buffer[..bytes]).expect("failed to write to stdio");
                     }
                     full_output
                         .write_all(&buffer[..bytes])
@@ -390,7 +390,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
                 }
                 let bytes = child_stdio.read_to_end(&mut buffer).expect("read from stdio failed");
                 if let Some(print_to) = &mut print_to {
-                    print_to.write(&buffer[..bytes]).expect("failed to write to stdio");
+                    print_to.write_all(&buffer[..bytes]).expect("failed to write to stdio");
                 }
                 full_output
                     .write_all(&buffer[..bytes])
@@ -497,11 +497,11 @@ fn get_vstd_kind(args: &Vec<String>) -> &'static str {
     let mut found = None;
     for (arg_name, kind_string) in arg_names.iter() {
         if args.contains(&arg_name.to_string()) {
-            if found.is_none() {
-                found = Some((arg_name, kind_string));
-            } else {
-                eprintln!("contradictory arguments: {:} and {:}", found.unwrap().0, arg_name);
+            if let Some((conflicting_arg_name, _)) = found {
+                eprintln!("contradictory arguments: {conflicting_arg_name} and {arg_name}");
                 std::process::exit(255);
+            } else {
+                found = Some((arg_name, kind_string));
             }
         }
     }

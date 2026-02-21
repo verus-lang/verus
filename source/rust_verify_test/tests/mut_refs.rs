@@ -125,7 +125,7 @@ test_verify_one_file_with_options! {
         spec fn test<T>(x: &mut T) -> T {
             mut_ref_future(x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent function `mut_ref_future` in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
 
 test_verify_one_file_with_options! {
@@ -133,7 +133,7 @@ test_verify_one_file_with_options! {
         spec fn test<T>(x: &mut T) -> T {
             *fin(x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent function `fin` in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
 
 test_verify_one_file_with_options! {
@@ -141,7 +141,7 @@ test_verify_one_file_with_options! {
         spec fn test<T>(x: &mut T) -> bool {
             has_resolved(x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent predicate `has_resolved` in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
 
 test_verify_one_file_with_options! {
@@ -150,11 +150,11 @@ test_verify_one_file_with_options! {
             let mut x = 0;
             let x_ref = &mut x;
 
-            let ghost y = after_borrow(x);
+            let y = Ghost(after_borrow(x));
 
             *x_ref = 20;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent function `after_borrow` in prophecy-independent context")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'Ghost' wrapper")
 }
 
 test_verify_one_file_with_options! {
@@ -1636,21 +1636,21 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_params_with_reborrow ["new-mut-ref"] => verus_code! {
         fn test4_1(x: &mut (u64, u64)) -> (ret: &mut u64)
-            ensures ({
+            ensures {
                 mut_ref_future(x).1 == mut_ref_current(x).1 &&
                 mut_ref_current(x).0 == mut_ref_current(ret) &&
                 mut_ref_future(x).0 == mut_ref_future(ret)
-            })
+            },
         {
             &mut x.0
         }
 
         fn test4(x: &mut (u64, u64)) -> (ret: &mut u64)
-            ensures ({
+            ensures {
                 mut_ref_future(x).1 == mut_ref_current(x).1 &&
                 mut_ref_current(x).0 == mut_ref_current(ret) &&
                 mut_ref_future(x).0 == mut_ref_future(ret)
-            })
+            },
         {
             let r = &mut x.0;
             return r;
@@ -2419,6 +2419,31 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] two_phase_proof_code ["new-mut-ref"] => verus_code! {
+        proof fn set_to(tracked a: &mut Ghost<int>, tracked b: Ghost<int>)
+            ensures *fin(a) == b
+        {
+            *a = b;
+        }
+
+        proof fn two_phase() {
+            let tracked mut x: Ghost<int> = Ghost(0);
+            let tracked x_ref = &mut x;
+            set_to(x_ref, Ghost(x_ref@ + 1));
+            assert(x == 1);
+        }
+
+        proof fn two_phase_fail() {
+            let tracked mut x: Ghost<int> = Ghost(0);
+            let tracked x_ref = &mut x;
+            set_to(x_ref, Ghost(x_ref@ + 1));
+            assert(x == 1);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file_with_options! {
     #[test] struct_mut_ref_pair_immut_ref ["new-mut-ref"] => verus_code! {
         struct BigStruct<'a, 'b>(&'a mut (u64, &'b (u64, u64)));
 
@@ -2819,7 +2844,10 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         fn test2() {
             let mut a = 4;
-            *({ loop {}; &mut a }) = ({ assert(false); 5 });
+            *({ loop {}; &mut a }) = ({
+                assert(false); // FAILS
+                5
+            });
             assert(false);
         }
 
@@ -2828,7 +2856,7 @@ test_verify_one_file_with_options! {
         fn test2_fails() {
             let mut a = 4;
             *({
-                assert(false); // FAILS
+                assert(false);
             &mut a }) = ({ loop {} 5 });
         }
 
@@ -2880,7 +2908,7 @@ test_verify_one_file_with_options! {
         fn test2(y: [&mut (u64, u64); 2]) {
             let mut y = y;
             (*y[({
-                assert(false); // FAILS
+                assert(false);
             0 })]).0 += ({ loop{} 20 });
         }
 
@@ -2911,7 +2939,7 @@ test_verify_one_file_with_options! {
                 0
             });
         }
-    } => Err(e) => assert_fails(e, 2)
+    } => Err(e) => assert_fails(e, 1)
 }
 
 test_verify_one_file_with_options! {
@@ -3081,4 +3109,173 @@ test_verify_one_file_with_options! {
             return list;
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_snapshot ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut a = 0;
+            let a_ref = &mut a;
+
+            let ghost snapshot = a_ref;
+
+            assert(a == 0);
+            assert(mut_ref_future(snapshot) == 0);
+            assert(mut_ref_current(snapshot) == 0);
+        }
+
+        fn fails() {
+            let mut a = 0;
+            let a_ref = &mut a;
+
+            let ghost snapshot = a_ref;
+
+            assert(a == 0);
+            assert(mut_ref_future(snapshot) == 0);
+            assert(mut_ref_current(snapshot) == 0);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            *a = *a + 1;
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            test(a);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat_unwrapped_param ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(Tracked(a): Tracked<&mut Ghost<u8>>)
+            requires old(a)@ < 255,
+            ensures a@ == old(a)@ + 1,
+        {
+            proof { *a = Ghost((a@ + 1) as u8); }
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(Tracked(a): Tracked<&mut Ghost<u8>>)
+            requires old(a)@ < 255,
+            ensures a@ == old(a)@ + 1,
+        {
+            test(Tracked(a));
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2_fails(Tracked(a): Tracked<&mut Ghost<u8>>)
+            requires old(a)@ < 255,
+            ensures a@ == old(a)@ + 1,
+        {
+            test(Tracked(a));
+            assert(false); // FAILS
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2_fails2(Tracked(a): Tracked<&mut Ghost<u8>>)
+            ensures a@ == old(a)@ + 1,
+        {
+            test(Tracked(a)); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat_fail ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *fin(a) == *old(a) + 1,
+        {
+            *a = *a + 1;
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            test(a);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to use `final`, disable mut-ref backwards-compatability")
+}
+
+test_verify_one_file_with_options! {
+    #[test] backwards_compat_fail2 ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(a: &mut u8)
+            requires *old(a) < 255,
+            ensures *a == *old(a) + 1,
+        {
+            *a = *a + 1;
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(a: &mut u8)
+            requires *old(a) < 255,
+            ensures a == a
+        {
+            test(a);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "For more flexible mutable reference support, disable the backwards-compatability")
+}
+
+// TODO(new_mut_ref): un-ignore after paradox-checking
+test_verify_one_file_with_options! {
+    #[ignore] #[test] false_two_phase ["new-mut-ref"] => verus_code! {
+        fn set_to(Tracked(a): Tracked<&mut Ghost<int>>, Tracked(b): Tracked<Ghost<int>>)
+            ensures *fin(a) == b
+        {
+            proof { *a = b; }
+        }
+
+        fn test() {
+            let tracked mut x: Ghost<int> = Ghost(0);
+            let tracked x_ref = &mut x;
+            set_to(Tracked(x_ref), Tracked(Ghost(x_ref@ + 1)));
+            assert(x == 1);
+        }
+
+        fn test_fail() {
+            let tracked mut x: Ghost<int> = Ghost(0);
+            let tracked x_ref = &mut x;
+            // The x_ref here is two-phase with respect to `Tracked` rather than to
+            // the `set_to` call.
+            set_to(Tracked(x_ref), Tracked(Ghost(x_ref@ + 1)));
+            assert(x == 1);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot use `*x_ref` because it was mutably borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] false_two_phase2 ["new-mut-ref"] => verus_code! {
+        fn set_to(Tracked(a): Tracked<&mut Tracked<int>>, Tracked(b): Tracked<int>)
+            ensures *fin(a) == b
+        {
+            proof { *a = Tracked(b); }
+        }
+
+        fn test_fail() {
+            let tracked mut x: Tracked<int> = Tracked(0);
+            let tracked x_ref = &mut x;
+            set_to(Tracked(x_ref), Tracked(x_ref.get() + 1));
+            assert(x == 1);
+            assert(false);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot use `*x_ref` because it was mutably borrowed")
 }

@@ -268,7 +268,9 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 _ => Err("expected function type".to_string()),
             }
         }
-        ExprX::Unary(UnaryOp::Not, e1) => check_exprs(typing, "not", &[bt()], &bt(), &[e1.clone()]),
+        ExprX::Unary(UnaryOp::Not, e1) => {
+            check_exprs(typing, "not", &[bt()], &bt(), std::slice::from_ref(e1))
+        }
         ExprX::Unary(UnaryOp::BitNot, e1) => {
             check_bv_unary_exprs(typing, UnaryOp::BitNot, "bvnot", &e1.clone())
         }
@@ -285,7 +287,10 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             check_bv_unary_exprs(typing, UnaryOp::BitSignExtend(*n), "sign_extend", &e1.clone())
         }
         ExprX::Unary(UnaryOp::ToReal, e1) => {
-            check_exprs(typing, "not", &[it()], &rt(), &[e1.clone()])
+            check_exprs(typing, "to_real", &[it()], &rt(), std::slice::from_ref(e1))
+        }
+        ExprX::Unary(UnaryOp::RealToInt, e1) => {
+            check_exprs(typing, "to_int", &[rt()], &it(), std::slice::from_ref(e1))
         }
         ExprX::Binary(BinaryOp::Implies, e1, e2) => {
             check_exprs(typing, "=>", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])
