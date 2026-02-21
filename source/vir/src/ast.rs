@@ -908,7 +908,8 @@ pub enum CallTargetKind {
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
     /// Regular function, passing some type arguments
-    Fun(CallTargetKind, Fun, Typs, ImplPaths, AutospecUsage),
+    /// If the final bool is true, represents an associated const var
+    Fun(CallTargetKind, Fun, Typs, ImplPaths, AutospecUsage, bool),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
@@ -983,6 +984,8 @@ pub enum ExprX {
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(VarIdent, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
+    /// ConstVar is not used for associated consts; associated consts use Call directly.
+    /// REVIEW: do we still need ConstVar, or is it just a special case of Call?
     ConstVar(Fun, AutospecUsage),
     /// Use of a static variable.
     StaticVar(Fun),
@@ -1135,9 +1138,15 @@ pub enum ExprX {
     /// We don't know for sure if something is a "real" move or copy until mode-checking.
     ReadPlace(Place, UnfinalizedReadKind),
     /// Evaluate both in sequence and return the left value.
-    /// The right side MUST NOT have any assigns it, this lets us avoid creating temporary
-    /// vars that would clutter everything up.
-    UseLeftWhereRightCanHaveNoAssignments(Expr, Expr),
+    /// The right side should only contain `assume(has_resolved(...))` statements
+    /// emitted by the resolution analysis.
+    EvalAndResolve(Expr, Expr),
+    /// The `old` node. (new-mut-ref only)
+    /// Note: to explicitly refer to the pre-state of a variable, the ExprX::VarAt(e, Pre)
+    /// node should be used. The 'old' node itself is used for some bookkeeping purposes
+    /// and well-formedness checks, but otherwise has no meaning. The `Old` node is
+    /// ignored after these checks are complete.
+    Old(Expr),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]

@@ -1617,11 +1617,15 @@ impl Visitor {
                     );
                 }
                 Item::AssumeSpecification(assume_specification) => {
-                    *item = self.handle_assume_specification(
-                        assume_specification,
-                        item.span(),
-                        &mut assume_spec_extra_impl_items,
-                    );
+                    *item = if self.erase_ghost.erase() {
+                        Item::Verbatim(quote! { const _: () = (); })
+                    } else {
+                        self.handle_assume_specification(
+                            assume_specification,
+                            item.span(),
+                            &mut assume_spec_extra_impl_items,
+                        )
+                    };
                 }
                 _ => (),
             }

@@ -7,7 +7,7 @@ use crate::ast::{
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_str};
 use crate::def::user_local_name;
-use crate::messages::{Span, error};
+use crate::messages::{Span, error, internal_error};
 use crate::messages::{error_bare, error_with_label};
 use crate::util::vec_map_result;
 use air::scope_map::ScopeMap;
@@ -269,12 +269,13 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::AirStmt(..)
             | ExprX::NeverToAny(..)
             | ExprX::Nondeterministic
-            | ExprX::UseLeftWhereRightCanHaveNoAssignments(..)
+            | ExprX::EvalAndResolve(..)
             | ExprX::ReadPlace(..)
             // all borrow types checked in the main function
             | ExprX::ImplicitReborrowOrSpecRead(..)
             | ExprX::BorrowMut(..)
             | ExprX::TwoPhaseBorrowMut(..)
+            | ExprX::Old(..)
         => None,
         ExprX::NonSpecClosure { .. } => Some(OuterProphReason::NonSpecClosure),
         ExprX::Loop { .. } => Some(OuterProphReason::Loop),
@@ -1611,7 +1612,9 @@ fn check_expr_handle_mut_arg(
             record.erasure_modes.var_modes.push((expr.span.clone(), mode));
             return Ok((mode, Some(x_mode), proph));
         }
-        ExprX::ConstVar(x, _) | ExprX::StaticVar(x) => {
+        ExprX::ConstVar(x, _)
+        | ExprX::StaticVar(x)
+        | ExprX::Call(CallTarget::Fun(_, x, _, _, _, true), _, _) => {
             let function = match ctxt.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
@@ -1647,7 +1650,7 @@ fn check_expr_handle_mut_arg(
             Ok((mode, Proph::No))
         }
         ExprX::Call(
-            CallTarget::Fun(crate::ast::CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),
+            CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _, _),
             es,
             None,
         ) => {
@@ -1695,8 +1698,9 @@ fn check_expr_handle_mut_arg(
 
             Ok((*ret_mode, Proph::No))
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage), es, None) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage, const_var), es, None) => {
             assert!(*autospec_usage == AutospecUsage::Final);
+            assert!(!const_var); // const_var is handled in ConstVar/StaticVar case
 
             let function = match ctxt.funs.get(x) {
                 None => {
@@ -2893,7 +2897,7 @@ fn check_expr_handle_mut_arg(
             match (e1, typing.ret_mode) {
                 (None, _) => {}
                 (Some(v), None) if is_unit(&v.typ) => {}
-                (_, None) => panic!("internal error: missing return type"),
+                (_, None) => return Err(internal_error(&expr.span, "missing return type")),
                 (Some(e1), Some(ret_mode)) => {
                     let proph = check_expr_has_mode(
                         ctxt,
@@ -3209,8 +3213,13 @@ fn check_expr_handle_mut_arg(
 
             Ok((mode, p))
         }
-        ExprX::UseLeftWhereRightCanHaveNoAssignments(..) => {
-            panic!("UseLeftWhereRightCanHaveNoAssignments shouldn't be created yet");
+        ExprX::EvalAndResolve(..) => {
+            panic!("EvalAndResolve shouldn't be created yet");
+        }
+        ExprX::Old(e) => {
+            let proph =
+                check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
+            Ok((Mode::Spec, proph))
         }
     };
     let (mode, proph) = mode_proph?;

@@ -319,6 +319,7 @@ pub(crate) enum VstdItem {
     RefMutArrayUnsizingCoercion,
     VecIndex,
     VecIndexMut,
+    SharedReference,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -589,6 +590,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::raw_ptr::cast_slice_ptr_to_str_ptr", VerusItem::Vstd(VstdItem::CastSlicePtrToStrPtr, Some(Arc::new("raw_ptr::cast_slice_ptr_to_str_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_str_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastStrPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_str_ptr_to_slice_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
+        ("verus::vstd::raw_ptr::SharedReference", VerusItem::Vstd(VstdItem::SharedReference, Some(Arc::new("raw_ptr::SharedReference".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
         ("verus::verus_builtin::Structural",              VerusItem::Marker(MarkerItem::Structural)),
@@ -694,6 +696,7 @@ pub(crate) enum RustItem {
     Copy,
     Send,
     Sync,
+    Any,
     Clone,
     StructuralPartialEq,
     Eq,
@@ -719,6 +722,7 @@ pub(crate) enum RustItem {
     Destruct,
     SliceSealed,
     Vec,
+    Thin,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -840,6 +844,12 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("alloc::vec::Vec") {
         return Some(RustItem::Vec);
+    }
+    if rust_path == Some("core::ptr::metadata::Thin") {
+        return Some(RustItem::Thin);
+    }
+    if rust_path == Some("core::any::Any") {
+        return Some(RustItem::Any);
     }
 
     if let Some(rust_path) = rust_path {

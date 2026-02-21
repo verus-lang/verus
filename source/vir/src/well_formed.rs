@@ -426,7 +426,7 @@ fn check_one_expr<Emit: EmitError>(
         ExprX::ConstVar(x, _) => {
             check_function_access(ctxt, x, disallow_private_access, &expr.span, emit)?;
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), args, _post_args) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, _, _), args, _post_args) => {
             let f =
                 check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span, emit)?;
             let Ok(f) = f else {
@@ -753,6 +753,12 @@ fn check_one_expr<Emit: EmitError>(
                     ));
                 }
             }
+        }
+        ExprX::Old(..) if function.x.mode == Mode::Spec => {
+            return Err(error(
+                &expr.span,
+                "`old` is meaningless in spec functions",
+            ).help("You can dereference the mutable reference normally to get the \"current\"/\"old\" value"));
         }
         _ => {}
     }

@@ -201,7 +201,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
 
     fn visit_call_target(&mut self, call_target: &CallTarget) -> Result<R::Ret<CallTarget>, Err> {
         match call_target {
-            CallTarget::Fun(kind, fun, typs, impl_paths, au) => {
+            CallTarget::Fun(kind, fun, typs, impl_paths, au, const_var) => {
                 let kind = self.visit_call_target_kind(kind)?;
                 let typs = self.visit_typs(typs)?;
                 R::ret(|| {
@@ -210,7 +210,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         fun.clone(),
                         R::get_vec_a(typs),
                         impl_paths.clone(),
-                        au.clone(),
+                        *au,
+                        *const_var,
                     )
                 })
             }
@@ -655,12 +656,14 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::ReadPlace(R::get(p), *read_type)))
             }
-            ExprX::UseLeftWhereRightCanHaveNoAssignments(e1, e2) => {
+            ExprX::EvalAndResolve(e1, e2) => {
                 let e1 = self.visit_expr(e1)?;
                 let e2 = self.visit_expr(e2)?;
-                R::ret(|| {
-                    expr_new(ExprX::UseLeftWhereRightCanHaveNoAssignments(R::get(e1), R::get(e2)))
-                })
+                R::ret(|| expr_new(ExprX::EvalAndResolve(R::get(e1), R::get(e2))))
+            }
+            ExprX::Old(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Old(R::get(e))))
             }
         }
     }

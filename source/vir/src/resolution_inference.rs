@@ -733,6 +733,7 @@ impl<'a> Builder<'a> {
             | ExprX::AssertCompute(..)
             | ExprX::ProofInSpec(..)
             | ExprX::AirStmt(..)
+            | ExprX::Old(..)
             | ExprX::Nondeterministic => Ok(bb),
             ExprX::Call(call_target, es, post_args) => {
                 assert!(post_args.is_none());
@@ -1207,8 +1208,8 @@ impl<'a> Builder<'a> {
                 }
                 Ok(bb)
             }
-            ExprX::UseLeftWhereRightCanHaveNoAssignments(..) => {
-                panic!("UseLeftWhereRightCanHaveNoAssignments shouldn't be created yet");
+            ExprX::EvalAndResolve(..) => {
+                panic!("EvalAndResolve shouldn't be created yet");
             }
             ExprX::ImplicitReborrowOrSpecRead(..) => {
                 panic!("ImplicitReborrowOrSpecRead should have been removed");
@@ -3492,11 +3493,7 @@ fn apply_after_exprs(expr: Expr, after_exprs: Vec<Expr>) -> Expr {
         }
         SpannedTyped::new(&expr.span, &unit_typ(), ExprX::Block(Arc::new(stmts), None))
     };
-    SpannedTyped::new(
-        &expr.span,
-        &expr.typ,
-        ExprX::UseLeftWhereRightCanHaveNoAssignments(expr.clone(), e),
-    )
+    SpannedTyped::new(&expr.span, &expr.typ, ExprX::EvalAndResolve(expr.clone(), e))
 }
 
 fn apply_after_bool_exprs(expr: Expr, after_f: Vec<Expr>, after_t: Vec<Expr>) -> Expr {

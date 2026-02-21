@@ -711,7 +711,12 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             }
         }
     } else {
-        assert!(!function.x.has.has_ensures); // no ensures allowed on spec functions yet
+        if function.x.has.has_ensures {
+            return Err(crate::messages::error(
+                &function.x.ret.span,
+                "ensures clause unsupported on spec function",
+            ));
+        }
     }
 
     if is_trait_method_impl {
