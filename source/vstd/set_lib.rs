@@ -244,15 +244,16 @@ impl<A> Set<A> {
     pub proof fn lemma_len0_is_empty(self)
         requires
             self.finite(),
-            self.len() == 0,
         ensures
-            self == Set::<A>::empty(),
+            self.len() == 0 <==> self.is_empty(),
     {
-        if exists|a: A| self.contains(a) {
-            // derive contradiction:
-            assert(self.remove(self.choose()).len() + 1 == 0);
+        if self.len() == 0 {
+            if exists|a: A| self.contains(a) {
+                // derive contradiction:
+                assert(self.remove(self.choose()).len() + 1 == 0);
+            }
+            assert(self =~= Set::empty());
         }
-        assert(self =~= Set::empty());
     }
 
     /// A singleton set has length 1.
