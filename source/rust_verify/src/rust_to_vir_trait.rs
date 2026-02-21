@@ -194,16 +194,8 @@ pub(crate) fn translate_trait<'tcx>(
                     .help(format!(
                         "external_trait_specification requires trait bounds to match exactly \
                     but the proxy's trait bounds are:\n{}\nthe external trait bounds are:\n{}",
-                        preds2
-                            .iter()
-                            .map(|x| format!("  - {}", x.to_string()))
-                            .collect::<Vec<_>>()
-                            .join("\n"),
-                        preds1
-                            .iter()
-                            .map(|x| format!("  - {}", x.to_string()))
-                            .collect::<Vec<_>>()
-                            .join("\n")
+                        preds2.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n"),
+                        preds1.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n")
                     ));
             return Err(err);
         }
@@ -309,6 +301,7 @@ pub(crate) fn translate_trait<'tcx>(
             None
         };
 
+        let trait_extension_in_spec = if is_verus_spec { trait_extension.clone() } else { None };
         match kind {
             TraitItemKind::Fn(sig, fun) => {
                 // putting param_names here ensures that Vec in TraitFn::Required case below lives long enough
@@ -329,8 +322,6 @@ pub(crate) fn translate_trait<'tcx>(
                     }
                 };
                 // requires and ensures on exec functions can refer to spec extension trait:
-                let trait_extension_in_spec =
-                    if is_verus_spec { trait_extension.clone() } else { None };
                 let fun = check_item_fn(
                     ctxt,
                     &mut methods,
@@ -340,7 +331,7 @@ pub(crate) fn translate_trait<'tcx>(
                     visibility.clone(),
                     module_path,
                     attrs,
-                    sig,
+                    crate::rust_to_vir_func::FnOrConstSig::sig(sig),
                     Some((trait_generics, trait_def_id)),
                     item_generics,
                     body_id,
@@ -352,6 +343,38 @@ pub(crate) fn translate_trait<'tcx>(
                 if let Some(fun) = fun {
                     method_names.push(fun);
                 }
+            }
+            TraitItemKind::Const(_ty, None) => {
+                let has_default = false;
+                let mid_ty = ctxt.tcx.type_of(owner_id.to_def_id()).skip_binder();
+                let typ = ctxt.mid_ty_to_vir(owner_id.to_def_id(), *span, &mid_ty, false)?;
+                let fun = crate::rust_to_vir_func::check_item_fn(
+                    ctxt,
+                    &mut methods,
+                    None,
+                    owner_id.to_def_id(),
+                    FunctionKind::TraitMethodDecl { trait_path: trait_path.clone(), has_default },
+                    visibility.clone(),
+                    module_path,
+                    attrs,
+                    crate::rust_to_vir_func::FnOrConstSig::const_var(*span, typ),
+                    Some((trait_generics, trait_def_id)),
+                    item_generics,
+                    crate::rust_to_vir_func::CheckItemFnEither::ParamNames(&[]),
+                    ex_trait_id_for.map(|d| (d, trait_extension_in_spec)),
+                    ex_item_id_for,
+                    external_info,
+                    None,
+                )?;
+                if let Some(fun) = fun {
+                    method_names.push(fun);
+                }
+            }
+            TraitItemKind::Const(_ty, Some(_body_id)) => {
+                return err_span(
+                    trait_span,
+                    "Verus does not yet support associated constants with default values",
+                );
             }
             TraitItemKind::Type(_, Some(_)) => {
                 return err_span(
@@ -387,8 +410,8 @@ pub(crate) fn translate_trait<'tcx>(
 
                     let mut preds1 = preds1.to_vec();
                     let mut preds2 = preds2.to_vec();
-                    preds1.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
-                    preds2.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+                    preds1.sort_by_key(|x| x.to_string());
+                    preds2.sort_by_key(|x| x.to_string());
 
                     if preds1.len() != preds2.len() {
                         let mut t = format!(
@@ -429,9 +452,6 @@ pub(crate) fn translate_trait<'tcx>(
                         }
                     }
                 }
-            }
-            TraitItemKind::Const(_, _) => {
-                return err_span(trait_span, "Verus does not yet support associated constants");
             }
         }
     }

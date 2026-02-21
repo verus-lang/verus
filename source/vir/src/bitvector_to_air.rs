@@ -342,6 +342,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             }
             UnaryOp::FloatToBits => panic!("internal error: unexpected float to bits coercion"),
             UnaryOp::IntToReal => panic!("internal error: unexpected int to real coercion"),
+            UnaryOp::RealToInt => panic!("internal error: unexpected real to int coercion"),
             UnaryOp::HeightTrigger => panic!("internal error: unexpected HeightTrigger"),
             UnaryOp::Trigger(_) => bv_exp_to_expr(ctx, state, arg),
             UnaryOp::ToDyn => bv_exp_to_expr(ctx, state, arg),
@@ -360,7 +361,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::CastToInteger => {
                 panic!("internal error: unexpected CastToInteger")
             }
-            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefFinal => {
+            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefFinal(_) => {
                 panic!("mut-ref operation not allowed in bitvector query")
             }
             UnaryOp::Length(_) => {

@@ -4,7 +4,7 @@ use crate::expr;
 use crate::fixup::FixupContext;
 use crate::mac;
 use crate::INDENT;
-use verus_syn::{BinOp, Expr, Stmt};
+use verus_syn::{BinOp, Expr, Stmt, UnOp};
 
 impl Printer {
     pub fn stmt(&mut self, stmt: &Stmt, is_last: bool) {
@@ -42,6 +42,9 @@ impl Printer {
             }
             Stmt::Item(item) => self.item(item),
             Stmt::Expr(expr, None) => {
+                if should_skip_proof_stmt(expr) {
+                    return;
+                }
                 if break_after(expr) {
                     self.ibox(0);
                     self.expr_beginning_of_line(expr, false, true, FixupContext::new_stmt());
@@ -60,6 +63,9 @@ impl Printer {
                         return;
                     }
                 }
+                if should_skip_proof_stmt(expr) {
+                    return;
+                }
                 self.ibox(0);
                 self.expr_beginning_of_line(expr, false, true, FixupContext::new_stmt());
                 if !remove_semi(expr) {
@@ -76,6 +82,15 @@ impl Printer {
                 self.hardbreak();
             }
         }
+    }
+}
+
+// Skip printing proof code, since we are not interested in it in doc.
+fn should_skip_proof_stmt(expr: &Expr) -> bool {
+    match expr {
+        Expr::Assume(_) | Expr::Assert(_) | Expr::AssertForall(_) | Expr::RevealHide(_) => true,
+        Expr::Unary(unary) => matches!(unary.op, UnOp::Proof(_)),
+        _ => false,
     }
 }
 

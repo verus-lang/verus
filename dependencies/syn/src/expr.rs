@@ -1265,7 +1265,8 @@ pub(crate) mod parsing {
     use crate::ty::ReturnType;
     use crate::verbatim;
     use crate::verus::{
-        ClosureArg, Ensures, ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, Requires, View,
+        ClosureArg, Context, Decreases, Ensures, ExprGetField, ExprHas, ExprHasNot, ExprIs,
+        ExprIsNot, Requires, View,
     };
     #[cfg(feature = "full")]
     use proc_macro2::{Span, TokenStream};
@@ -2165,8 +2166,10 @@ pub(crate) mod parsing {
                 return Ok(Expr::Struct(expr_struct));
             } else {
                 use crate::spanned::Spanned;
-                return Err(Error::new(expr_struct.span(),
-                    "struct literals are not allowed here; try surrounding the struct literal with parentheses"));
+                return Err(Error::new(
+                    expr_struct.span(),
+                    "struct literals are not allowed here; try surrounding the struct literal with parentheses",
+                ));
             }
         }
 
@@ -2533,7 +2536,7 @@ pub(crate) mod parsing {
                 };
             let expr: Expr = input.call(Expr::parse_without_eager_brace)?;
             let invariant = input.parse()?;
-            let decreases = input.parse()?;
+            let decreases = Decreases::parse_optional_in(Context::Expr, input)?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2565,8 +2568,8 @@ pub(crate) mod parsing {
             let invariant_except_break = input.parse()?;
             let invariant = input.parse()?;
             let invariant_ensures = input.parse()?;
-            let ensures = input.parse()?;
-            let decreases = input.parse()?;
+            let ensures = Ensures::parse_optional_in(Context::Expr, input)?;
+            let decreases = Decreases::parse_optional_in(Context::Expr, input)?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2813,8 +2816,8 @@ pub(crate) mod parsing {
             input.peek(Token![->]) || input.peek(Token![requires]) || input.peek(Token![ensures]);
         let (output, requires, ensures, inner_attrs, body) = if needs_block {
             let output = input.parse()?;
-            let requires: Option<Requires> = input.parse()?;
-            let ensures: Option<Ensures> = input.parse()?;
+            let requires: Option<Requires> = Requires::parse_optional_in(Context::Expr, input)?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Expr, input)?;
             let body: Block = input.parse()?;
             let inner_attrs = input.call(Attribute::parse_inner)?;
             let block = Expr::Block(ExprBlock {
@@ -2917,8 +2920,8 @@ pub(crate) mod parsing {
             let invariant_except_break = input.parse()?;
             let invariant = input.parse()?;
             let invariant_ensures = input.parse()?;
-            let ensures = input.parse()?;
-            let decreases = input.parse()?;
+            let ensures = Ensures::parse_optional_in(Context::Expr, input)?;
+            let decreases = Decreases::parse_optional_in(Context::Expr, input)?;
 
             let content;
             let brace_token = braced!(content in input);

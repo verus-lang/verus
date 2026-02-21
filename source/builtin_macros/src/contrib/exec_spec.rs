@@ -118,6 +118,7 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
         // we don't implement ExecSpecType for it (to avoid
         // conflicting with SpecString)
         Type::Path(type_path) => {
+            #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
             if type_path.path.segments.len() == 1 {
                 if type_path.path.segments[0].ident.to_string() == "Seq" {
                     let type_arg = get_seg_type_arg(&type_path.path.segments[0], 0)?;
@@ -175,8 +176,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
     }
 
     let spec_name = &item_struct.ident;
-    let exec_name: Ident =
-        Ident::new(&format!("Exec{}", item_struct.ident.to_string()), item_struct.span());
+    let exec_name: Ident = Ident::new(&format!("Exec{}", item_struct.ident), item_struct.span());
 
     // Generate the fields
     let exec_fields = match &item_struct.fields {
@@ -339,8 +339,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
     }
 
     let spec_name = &item_enum.ident;
-    let exec_name: Ident =
-        Ident::new(&format!("Exec{}", item_enum.ident.to_string()), item_enum.span());
+    let exec_name: Ident = Ident::new(&format!("Exec{}", item_enum.ident), item_enum.span());
 
     // Compile the type of each variant
     let exec_variants = item_enum
@@ -568,7 +567,7 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
 
     let vis = &item_fn.vis;
     let spec_name = &item_fn.sig.ident;
-    let exec_name = Ident::new(&format!("exec_{}", spec_name.to_string()), spec_name.span());
+    let exec_name = Ident::new(&format!("exec_{spec_name}"), spec_name.span());
 
     // Generate a specification stating that
     //   requires <recommends clause of spec_f>
@@ -835,6 +834,7 @@ fn compile_pattern(
     match pat {
         Pat::Ident(pat_ident) => {
             // TODO: why do we need this case?
+            #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
             if pat_ident.ident.to_string() == "None" {
                 return Ok(quote! { #pat });
             }
@@ -1046,8 +1046,8 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
     // we have to convert all variables in the context to their spec versions via deep_view
     let local_view: Vec<TokenStream2> = ctx
         .vars
-        .iter()
-        .map(|(name, _)| {
+        .keys()
+        .map(|name| {
             quote! { let #name = #name.deep_view(); }
         })
         .collect();

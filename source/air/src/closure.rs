@@ -552,6 +552,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                     _ => panic!("internal error during processing bit extend"),
                 },
                 UnaryOp::ToReal => Arc::new(TypX::Real),
+                UnaryOp::RealToInt => Arc::new(TypX::Int),
             };
             let (es, t) = enclose(state, App::Unary(*op), es, ts);
             (typ, Arc::new(ExprX::Unary(*op, es[0].clone())), t)

@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 
 use core::sync::atomic::{
-    AtomicBool, AtomicI16, AtomicI32, AtomicI8, AtomicIsize, AtomicPtr, AtomicU16, AtomicU32,
-    AtomicU8, AtomicUsize, Ordering,
+    AtomicBool, AtomicI8, AtomicI16, AtomicI32, AtomicIsize, AtomicPtr, AtomicU8, AtomicU16,
+    AtomicU32, AtomicUsize, Ordering,
 };
 
 #[cfg(target_has_atomic = "64")]

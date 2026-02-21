@@ -16,6 +16,7 @@
 #![cfg_attr(verus_keep_ghost, feature(freeze))]
 #![cfg_attr(verus_keep_ghost, feature(derive_clone_copy))]
 #![cfg_attr(verus_keep_ghost, feature(derive_eq))]
+#![cfg_attr(verus_keep_ghost, verifier::migrate_postconditions_with_mut_refs(true))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 #![cfg_attr(verus_keep_ghost, feature(new_range_api))]
 
@@ -32,6 +33,7 @@ pub mod calc_macro;
 pub mod cell;
 pub mod compute;
 pub mod contrib;
+pub mod endian;
 pub mod float;
 pub mod function;
 #[cfg(all(feature = "alloc", feature = "std"))]
@@ -54,6 +56,7 @@ pub mod multiset_lib;
 pub mod pcm;
 pub mod pcm_lib;
 pub mod pervasive;
+pub mod predicate;
 pub mod proph;
 pub mod raw_ptr;
 pub mod relations;

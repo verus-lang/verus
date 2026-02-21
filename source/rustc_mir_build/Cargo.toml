@@ -8,3 +8,8 @@ edition = "2024"
 itertools = "0.12"
 tracing = "0.1"
 # tidy-alphabetical-end
+
+[lints.clippy]
+# rustc_mir_build is forked from other code, we don't want lints here
+# we generally avoid to change this dir directly so as not to cause merge conflicts
+all = "allow"

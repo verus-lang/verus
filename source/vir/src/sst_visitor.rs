@@ -9,6 +9,7 @@ use crate::sst::{
     FunctionSst, FunctionSstX, LocalDecl, LocalDeclX, LoopInv, Par, ParX, PostConditionSst, Stm,
     StmX, Trigs, UniqueIdent, UnwindSst,
 };
+use crate::sst_vars::HavocSet;
 pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
 use air::ast::Binder;
 use air::scope_map::ScopeMap;
@@ -185,6 +186,23 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         Ok(typ_inv_vars2)
     }
 
+    fn visit_havoc_set(&mut self, hset: &Arc<HavocSet>) -> Result<R::Ret<Arc<HavocSet>>, Err> {
+        let mut typ_inv_vars2 = R::vec();
+        for (uid, (typ, hvar)) in hset.vars.iter() {
+            let typ = self.visit_typ(typ)?;
+            let hvar = *hvar;
+            R::push(&mut typ_inv_vars2, R::ret(|| (uid.clone(), (R::get(typ), hvar)))?);
+        }
+        R::ret(|| Arc::new(HavocSet { vars: R::get_vec(typ_inv_vars2).into_iter().collect() }))
+    }
+
+    fn visit_havoc_set_opt(
+        &mut self,
+        hset_opt: &Option<Arc<HavocSet>>,
+    ) -> Result<R::Opt<Arc<HavocSet>>, Err> {
+        R::map_opt(hset_opt, &mut |hset| self.visit_havoc_set(hset))
+    }
+
     fn visit_exp_rec(&mut self, exp: &Exp) -> Result<R::Ret<Exp>, Err> {
         let typ = self.visit_typ(&exp.typ)?;
         let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &R::get(typ), e);
@@ -282,7 +300,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     UnaryOpr::IsVariant { .. }
                     | UnaryOpr::Field { .. }
                     | UnaryOpr::IntegerTypeBound(..)
-                    | UnaryOpr::CustomErr(..) => R::ret(|| op.clone()),
+                    | UnaryOpr::CustomErr(..)
+                    | UnaryOpr::ProofNote(..) => R::ret(|| op.clone()),
                 }?;
                 R::ret(|| exp_new(ExpX::UnaryOpr(R::get(op), R::get(e1))))
             }
@@ -468,6 +487,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 decrease,
                 typ_inv_vars,
                 modified_vars,
+                pre_modified_params,
             } => {
                 let cond = R::map_opt(cond, &mut |(cond_stm, cond_exp)| {
                     let cond_stm = self.visit_stm(cond_stm)?;
@@ -478,6 +498,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let invs = R::map_vec(invs, &mut |inv| self.visit_loop_inv(inv))?;
                 let decrease = self.visit_exps(decrease)?;
                 let typ_inv_vars = self.visit_typ_inv_vars(typ_inv_vars)?;
+                let modified_vars = self.visit_havoc_set_opt(modified_vars)?;
+                let pre_modified_params = self.visit_havoc_set_opt(pre_modified_params)?;
                 R::ret(|| {
                     stm_new(StmX::Loop {
                         loop_isolation: *loop_isolation,
@@ -489,7 +511,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         invs: R::get_vec_a(invs),
                         decrease: R::get_vec_a(decrease),
                         typ_inv_vars: R::get_vec_a(typ_inv_vars),
-                        modified_vars: modified_vars.clone(),
+                        modified_vars: R::get_opt(modified_vars),
+                        pre_modified_params: R::get_opt(pre_modified_params),
                     })
                 })
             }
@@ -1136,4 +1159,31 @@ where
         VisitorControlFlow::Return => unreachable!(),
         VisitorControlFlow::Stop(e) => Err(e),
     }
+}
+
+struct MapExpsInStmVisitor<'a, F> {
+    fe: &'a mut F,
+}
+
+impl<'a, F> Visitor<Rewrite, VirErr, NoScoper> for MapExpsInStmVisitor<'a, F>
+where
+    F: FnMut(&Exp) -> Exp,
+{
+    fn visit_stm(&mut self, stm: &Stm) -> Result<Stm, VirErr> {
+        let stm = self.visit_stm_rec(stm)?;
+        Ok(stm)
+    }
+
+    fn visit_exp(&mut self, exp: &Exp) -> Result<Exp, VirErr> {
+        let exp = self.visit_exp_rec(exp)?;
+        Ok((self.fe)(&exp))
+    }
+}
+
+pub(crate) fn map_exps_in_stm_visitor<F>(stm: &Stm, fe: &mut F) -> Stm
+where
+    F: FnMut(&Exp) -> Exp,
+{
+    let mut visitor = MapExpsInStmVisitor { fe };
+    visitor.visit_stm(stm).unwrap()
 }

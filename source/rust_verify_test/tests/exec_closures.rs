@@ -481,16 +481,6 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_does_not_support_mut_param_fail ["vstd"] => verus_code! {
-        use vstd::prelude::*;
-
-        fn testfn() {
-            let t = |mut a: u64| { };
-        }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support 'mut' params for closures")
-}
-
-test_verify_one_file_with_options! {
     #[test] construct_exec_closure_in_spec_code_fail ["vstd"] => (code_str! {
         use vstd::prelude::*;
 
@@ -1816,6 +1806,20 @@ test_verify_one_file! {
             };
 
             require_static(clos);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] return_in_loop_in_closure verus_code! {
+        #[verifier::loop_isolation(true)]
+        #[allow(unreachable_code)]
+        fn test_loop() {
+            let r = || {
+                loop decreases 0int {
+                    return;
+                }
+            };
         }
     } => Ok(())
 }

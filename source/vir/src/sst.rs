@@ -237,7 +237,12 @@ pub enum StmX {
         /// Variables requiring type invariant assumptions
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         /// Variables potentially modified by the loop body
-        modified_vars: Arc<Vec<UniqueIdent>>,
+        modified_vars: Option<Arc<crate::sst_vars::HavocSet>>,
+        /// Params (including closure params) that may be modified _in or before_ this loop body
+        /// but *excluding* their initial assignments.
+        /// This is the same set of variables for which we need to consider different values
+        /// for the 'current' and 'pre-state' value of the variable at the beginning of the loop.
+        pre_modified_params: Option<Arc<crate::sst_vars::HavocSet>>,
     },
     /// Atomic invariant opening for concurrent verification
     OpenInvariant(Stm),
@@ -265,13 +270,12 @@ pub enum LocalDeclKind {
     QuantBinder,
     ChooseBinder,
     ClosureBinder,
-    OpenInvariantBinder,
     ExecClosureId,
-    ExecClosureParam,
+    ExecClosureParam { mutable: bool },
     ExecClosureRet,
     Nondeterministic,
+    OpenInvariantInnerTemp,
     BorrowMut,
-    MutableTemporary,
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;
