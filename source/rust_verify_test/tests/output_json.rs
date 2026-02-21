@@ -1,6 +1,8 @@
 #![feature(rustc_private)]
 #[macro_use]
 mod common;
+use std::{collections::HashSet, iter::FromIterator};
+
 use common::*;
 
 test_verify_one_file_with_options! {
@@ -21,11 +23,23 @@ test_verify_one_file_with_options! {
             let _ = example(3, 3); // precondition "Label 451" fails
         }
     } => Err(err) => {
-        assert_help_error_msg(err.clone(), "note: Property 732");
-        assert_help_error_msg(err.clone(), "note: Label 451");
+        let property_732 = "Property 732".to_string();
+        let label_451 = "Label 451".to_string();
+        assert_help_error_msg(err.clone(), &format!("note: {property_732}"));
+        assert_help_error_msg(err.clone(), &format!("note: {label_451}"));
+
+        let all_labels = HashSet::from_iter([property_732, label_451]);
+
+        // Details about `example`
+        with_json_func_details(&err, "crate::example", |details| {
+            assert!(details.obligation_proof_notes.is_empty());
+            assert!(details.failed_proof_notes.is_empty());
+        });
+
+        // Details about `caller`
         with_json_func_details(&err, "crate::caller", |details| {
-            assert!(details.failed_proof_notes.contains("Property 732"));
-            assert!(details.failed_proof_notes.contains("Label 451"));
+            assert_eq!(details.obligation_proof_notes, all_labels);
+            assert_eq!(details.failed_proof_notes, all_labels);
         });
     }
 }
@@ -48,11 +62,23 @@ test_verify_one_file_with_options! {
             let _ = example(1, 2);
         }
     } => Err(err) => {
-        assert_help_error_msg(err.clone(), "note: Property 732");
-        assert_help_error_msg(err.clone(), "note: Label 451");
+        let property_732 = "Property 732".to_string();
+        let label_451 = "Label 451".to_string();
+        assert_help_error_msg(err.clone(), &format!("note: {property_732}"));
+        assert_help_error_msg(err.clone(), &format!("note: {label_451}"));
+
+        let all_labels = HashSet::from_iter([property_732, label_451]);
+
+        // Details about `example`
         with_json_func_details(&err, "crate::example", |details| {
-            assert!(details.failed_proof_notes.contains("Property 732"));
-            assert!(details.failed_proof_notes.contains("Label 451"));
+            assert_eq!(details.obligation_proof_notes, all_labels);
+            assert_eq!(details.failed_proof_notes, all_labels);
+        });
+
+        // Details about `caller`
+        with_json_func_details(&err, "crate::caller", |details| {
+            assert!(details.obligation_proof_notes.is_empty());
+            assert!(details.failed_proof_notes.is_empty());
         });
     }
 }
@@ -67,9 +93,15 @@ test_verify_one_file_with_options! {
             ); // assertion fails
         }
     } => Err(err) => {
-        assert_help_error_msg(err.clone(), "note: Statement known to be false");
+        let label = "Statement known to be false".to_string();
+        assert_help_error_msg(err.clone(), &format!("note: {label}"));
+
+        let all_labels = HashSet::from_iter([label]);
+
+        // Details about `caller`
         with_json_func_details(&err, "crate::caller", |details| {
-            assert!(details.failed_proof_notes.contains("Statement known to be false"));
+            assert_eq!(details.obligation_proof_notes, all_labels);
+            assert_eq!(details.failed_proof_notes, all_labels);
         });
     }
 }
@@ -85,15 +117,21 @@ test_verify_one_file_with_options! {
             ); // assumption fails
         }
     } => Err(err) => {
-        assert_help_error_msg(err.clone(), "note: Statement known to be false");
-        // TODO: This doesn't work, because `--no-cheating` mode prevents JSON output.
+        let label = "Statement known to be false".to_string();
+        assert_help_error_msg(err.clone(), &format!("note: {label}"));
+
+        // let all_labels = HashSet::from_iter([label]);
+
+        // Details about `caller`
+        // TODO: This doesn't work, because `--no-cheating` mode prevents verification altogether.
         // with_json_func_details(&err, "crate::caller", |details| {
-        //     assert!(details.failed_proof_notes.contains("Statement known to be false"))
+        //     assert_eq!(details.obligation_proof_notes, all_labels);
+        //     assert_eq!(details.failed_proof_notes, all_labels);
         // });
     }
 }
 
-fn with_json_func_details(err: &TestErr, func: &str, body: impl Fn(&FuncDetails)) {
+fn with_json_func_details(err: &TestErr, func: &str, body: impl FnOnce(&FuncDetails)) {
     let json = err.json_output.as_ref().expect("expected JSON summary output");
 
     dbg!(json);
@@ -114,5 +152,6 @@ fn with_json_func_details(err: &TestErr, func: &str, body: impl Fn(&FuncDetails)
 
 #[derive(serde::Deserialize)]
 pub struct FuncDetails {
-    pub failed_proof_notes: std::collections::HashSet<String>,
+    pub obligation_proof_notes: HashSet<String>,
+    pub failed_proof_notes: HashSet<String>,
 }
