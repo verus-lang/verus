@@ -16,11 +16,15 @@ pub use super::gmap::{
     lemma_map_ext_equal_deep,
     lemma_congruence_extensionality,
     group_map_axioms,
+    map,
+    imap,
+    assert_maps_equal,
+};
+
+#[doc(hidden)]
+pub use super::gmap::{
     check_argument_is_map,
     map_internal,
-    map,
     imap_internal,
-    imap,
     assert_maps_equal_internal,
-    assert_maps_equal,
 };
