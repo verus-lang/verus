@@ -44,7 +44,7 @@ pub mod laws_cmp;
 pub mod laws_eq;
 pub mod layout;
 pub mod logatom;
-pub mod gmap;
+mod gmap;
 pub mod map;
 pub mod map_lib;
 pub mod math;

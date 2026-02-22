@@ -1584,15 +1584,13 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] decrease_through_my_map_gmap_infinite verus_code! {
+    #[test] decrease_through_my_map_imap verus_code! {
         // Err on the side of caution; see https://github.com/FStarLang/FStar/pull/2954
         use vstd::prelude::*;
-        use vstd::set;
-        use vstd::gmap::GMap;
 
         #[verifier::reject_recursive_types(A)]
         #[verifier::accept_recursive_types(B)]
-        struct MyMap<A, B>(GMap<A, B, set::Infinite>);
+        struct MyMap<A, B>(IMap<A, B>);
         struct S {
             x: MyMap<int, Box<S>>,
         }
@@ -1606,15 +1604,13 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] decrease_through_my_map_gmap_finite verus_code! {
+    #[test] decrease_through_my_map_map verus_code! {
         // Err on the side of caution; see https://github.com/FStarLang/FStar/pull/2954
         use vstd::prelude::*;
-        use vstd::set;
-        use vstd::gmap::GMap;
 
         #[verifier::reject_recursive_types(A)]
         #[verifier::accept_recursive_types(B)]
-        struct MyMap<A, B>(GMap<A, B, set::Finite>);
+        struct MyMap<A, B>(Map<A, B>);
         struct S {
             x: MyMap<int, Box<S>>,
         }
