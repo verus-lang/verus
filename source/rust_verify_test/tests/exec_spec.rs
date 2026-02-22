@@ -818,3 +818,21 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    /// Tests alternating quantifiers.
+    #[test] test_exec_spec_const IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            pub const TEST_CONST: u32 = 0x00000010;
+            spec fn is_test_const(x: u32) -> bool {
+                x == TEST_CONST
+            }
+        }
+
+        fn sanity_check(test_value: u32) {
+            if exec_is_test_const(test_value) {
+                assert(test_value == TEST_CONST);
+            }
+        }
+    } => Ok(())
+}
