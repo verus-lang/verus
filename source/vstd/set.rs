@@ -976,7 +976,7 @@ pub broadcast proof fn lemma_map_by<A, B>(sa: Set<A>, fwd: spec_fn(A) -> B, rev:
             sa.map_by(fwd, rev).contains(b) <==> sa.contains(rev(b)) && b == fwd(rev(b)),
 {
     reveal(Set::map);
-    broadcast use {fold::group_set_lemmas_early, GSet::to_infinite_ensures};
+    broadcast use {super::gset::group_gset_lemmas_early, super::gset::group_gset_support_lemmas};
 
     let ib1 = ISet::new(|b: B| sa.contains(rev(b)) && b == fwd(rev(b)));
     let ib2 = sa.map(fwd).to_infinite();
@@ -984,13 +984,8 @@ pub broadcast proof fn lemma_map_by<A, B>(sa: Set<A>, fwd: spec_fn(A) -> B, rev:
 }
 
 pub broadcast group group_set_lemmas {
-    // This line...
-    fold::group_set_lemmas_early,
-    // ...should replace these lines (up to the blank), but it doesn't.
-    // (verus #1616)
-    GSet::cast_finiteness_properties,
-    GSet::lemma_self_castable,
-    GSet::lemma_to_infinite_castable,
+    super::gset::group_gset_lemmas_early,
+    super::gset::group_gset_support_lemmas,
     lemma_set_finite_from_type,
     lemma_set_empty,
     lemma_set_new,
@@ -1017,7 +1012,6 @@ pub broadcast group group_set_lemmas {
     lemma_set_map_subset,
     lemma_set_map_finite,
     lemma_set_filter_finite,
-    GSet::to_infinite_ensures,
     lemma_set_map_len,
     lemma_set_map_insert,
     lemma_set_generic_union_finite,
@@ -1034,8 +1028,6 @@ pub broadcast group group_set_lemmas {
     lemma_set_contains_len,
     lemma_set_choose_len,
     lemma_set_filter_is_intersect,
-    GSet::lemma_set_product_contains,
-    GSet::lemma_set_product_contains_2,
     range_set_properties,
     lemma_to_finite_len,
     lemma_map_by,

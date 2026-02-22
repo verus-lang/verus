@@ -338,6 +338,16 @@ pub broadcast proof fn lemma_iset_ext_equal<A>( s1: ISet<A>, s2: ISet<A>,)
     }
 }
 
+pub broadcast proof fn lemma_iset_ext_equal_eq<A>(s1: ISet<A>, s2: ISet<A>)
+    ensures
+        #[trigger] (s1 =~= s2) ==> s1 == s2,
+{
+    if s1 =~= s2 {
+        lemma_gset_ext_equal_eq(s1.0, s2.0);
+        assert(s1 == s2);
+    }
+}
+
 /// The result of inserting an element `a` into a finite set `s` is also finite.
 /// This conclusion is automatic for finite `Set`s, but still useful for SMT-`.finite()` `ISet`s.
 pub broadcast proof fn lemma_set_insert_finite<A>(s: ISet<A>, a: A)
@@ -346,7 +356,7 @@ pub broadcast proof fn lemma_set_insert_finite<A>(s: ISet<A>, a: A)
     ensures
         #[trigger] s.insert(a).finite(),
 {
-    broadcast use GSet::cast_finiteness_properties;
+    broadcast use super::gset::group_gset_cast_lemmas;
 
     lemma_gset_finite_from_type(s.0.to_finite().insert(a));
     super::gset::lemma_congruence_extensionality(s.0, s.0.to_finite());
@@ -361,7 +371,7 @@ pub broadcast proof fn lemma_set_remove_finite<A>(s: ISet<A>, a: A)
     ensures
         #[trigger] s.remove(a).finite(),
 {
-    broadcast use GSet::cast_finiteness_properties;
+    broadcast use super::gset::group_gset_cast_lemmas;
 
     lemma_gset_finite_from_type(s.0.to_finite().remove(a));
     super::gset::lemma_congruence_extensionality(s.0, s.0.to_finite());
@@ -521,7 +531,7 @@ pub broadcast proof fn lemma_iset_contains_len<A>(s: ISet<A>, a: A)
     ensures
         #[trigger] s.len() != 0,
 {
-    broadcast use GSet::cast_finiteness_properties;
+    broadcast use super::gset::group_gset_cast_lemmas;
 
     assert(s.0.to_finite().contains(a));
     lemma_gset_contains_len(s.0.to_finite(), a);
@@ -553,7 +563,7 @@ pub broadcast proof fn lemma_to_finite_len<A>(s: ISet<A>)
     broadcast use lemma_gset_empty_len;
     broadcast use lemma_gset_remove_len;
     broadcast use lemma_gset_len_empty;
-    broadcast use GSet::cast_finiteness_properties;
+    broadcast use super::gset::group_gset_cast_lemmas;
     broadcast use lemma_set_remove_finite;
     broadcast use lemma_gset_choose_len;
 

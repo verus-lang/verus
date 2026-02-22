@@ -425,7 +425,8 @@ pub mod fold {
         lemma_gset_ext_equal,
         lemma_gset_ext_equal_eq,
         lemma_gset_ext_equal_deep,
-        lemma_gset_insert_finite,
+        // NOTE: this lemma is implicated in a trigger loop (see set_lib::lemma_filter_map_generic_union profiling).
+        // lemma_gset_insert_finite,
         lemma_gset_remove_finite,
     }
 
@@ -505,7 +506,12 @@ pub mod fold {
         ensures
             fold_graph(z, f, s.insert(a), f(y, a), d + 1),
     {
-        broadcast use {group_set_lemmas_early, GSet::cast_finiteness_properties};
+        // Keep this local import out of group_set_lemmas_early to avoid exposing a known trigger-loop source.
+        broadcast use {
+            group_set_lemmas_early,
+            GSet::cast_finiteness_properties,
+            lemma_gset_insert_finite,
+        };
 
         reveal(fold_graph);
         let _ = trigger_fold_graph(y, a);
@@ -672,7 +678,12 @@ pub mod fold {
         ensures
             s.finite(),
     {
-        broadcast use {group_set_lemmas_early, GSet::cast_finiteness_properties};
+        // Keep this local import out of group_set_lemmas_early to avoid exposing a known trigger-loop source.
+        broadcast use {
+            group_set_lemmas_early,
+            GSet::cast_finiteness_properties,
+            lemma_gset_insert_finite,
+        };
 
         let pred = |s: GSet<A, FINITE>, y, d| s.finite();
         lemma_fold_graph_induct::<A, FINITE, B>(z, f, s, y, d, pred);
@@ -848,6 +859,23 @@ pub mod fold {
         lemma_fold_graph_empty_elim::<A, FINITE, B>(z, f, y, d);
     }
 
+}
+
+pub broadcast group group_gset_lemmas_early {
+    fold::group_set_lemmas_early,
+}
+
+pub broadcast group group_gset_support_lemmas {
+    GSet::cast_finiteness_properties,
+    GSet::lemma_self_castable,
+    GSet::lemma_to_infinite_castable,
+    GSet::to_infinite_ensures,
+    GSet::lemma_set_product_contains,
+    GSet::lemma_set_product_contains_2,
+}
+
+pub broadcast group group_gset_cast_lemmas {
+    GSet::cast_finiteness_properties,
 }
 
 /// The union of sets `s1` and `s2` contains element `a` if and only if
