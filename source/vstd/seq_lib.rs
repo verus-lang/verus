@@ -555,6 +555,14 @@ impl<A> Seq<A> {
             self.to_iset().finite(),
     {
         self.to_set_ensures();
+        assert forall|a: A| self.to_set().contains(a) == self.to_iset().contains(a) by {
+            self.to_set_ensures();
+        }
+        assert forall|a: A|
+            #![auto]
+            self.to_set().0.contains(a) == self.to_iset().0.contains(a) by {
+            assert(self.to_set().contains(a) == self.to_iset().contains(a));
+        }
         assert(self.to_set().0.congruent(self.to_iset().0));
         Set::congruent_infiniteness(self.to_set(), self.to_iset().0);
     }
@@ -3072,10 +3080,15 @@ proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
     broadcast use super::set::group_set_lemmas;
 
     seq.to_set_ensures();
+    seq.to_iset_ensures();
     assert(forall|n| seq.contains(n) <==> #[trigger] seq_to_set_rec(seq).contains(n)) by {
         seq_to_set_rec_contains(seq);
     }
     assert(seq.to_set() =~= seq_to_set_rec(seq));
+    assert forall|a: A| seq.to_iset().0.contains(a) == seq_to_set_rec(seq).0.contains(a) by {
+        assert(seq.to_iset().contains(a) <==> seq.contains(a));
+        assert(seq.contains(a) <==> seq_to_set_rec(seq).contains(a));
+    }
 }
 
 /// The set obtained from a sequence is finite

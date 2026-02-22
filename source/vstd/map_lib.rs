@@ -118,6 +118,8 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
         ensures
             self.dom().len() == 1 + self.remove(key).dom().len(),
     {
+        broadcast use group_set_properties;
+        lemma_gset_remove_len(self.dom(), key);
     }
 
     /// The domain of a map after removing a key is equivalent to removing the key from
@@ -143,6 +145,9 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
 
         if keys.len() > 0 {
             let key = keys.choose();
+            lemma_gset_choose_len(keys);
+            lemma_gset_remove_len(keys, key);
+            assert(keys.remove(key).len() < keys.len());
             self.remove(key).lemma_remove_keys_len(keys.remove(key));  // recurse
 
             // trigger extensionality
@@ -537,7 +542,18 @@ pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
         #[trigger] m1.union_prefer_right(m2).dom() == (Set(m1.dom()) + Set(m2.dom())).0,
 {
-    assert(m1.union_prefer_right(m2).dom() == (Set(m1.dom()) + Set(m2.dom())).0);  // issue #1534
+    let lhs = m1.union_prefer_right(m2).dom();
+    let rhs = (Set(m1.dom()) + Set(m2.dom())).0;
+    m1.lemma_union_prefer_right(m2);
+    assert(lhs =~= rhs) by {
+        assert forall|k: K| #[trigger] lhs.contains(k) == rhs.contains(k) by {
+            assert(lhs.contains(k) <==> m1.dom().generic_union(m2.dom()).contains(k));
+            lemma_set_generic_union(m1.dom(), m2.dom(), k);
+            lemma_set_union(Set(m1.dom()), Set(m2.dom()), k);
+        }
+    }
+    lemma_gset_ext_equal_eq(lhs, rhs);
+    assert(lhs == rhs);
 }
 
 /// The size of the union of two disjoint maps is equal to the sum of the sizes of the individual maps
@@ -550,7 +566,8 @@ pub broadcast proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K,
         #[trigger] m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
 {
     let u = m1.union_prefer_right(m2);
-    assert(u.dom() =~= (Set(m1.dom()) + Set(m2.dom())).0);  //proves u.dom() is finite
+    lemma_union_dom(m1, m2);
+    assert(u.dom() == (Set(m1.dom()) + Set(m2.dom())).0);  //proves u.dom() is finite
     assert(u.remove_keys(m1.dom()).dom() =~= m2.dom());
     assert(u.remove_keys(m1.dom()).dom().len() == u.dom().len() - m1.dom().len()) by {
         u.lemma_remove_keys_len(m1.dom());

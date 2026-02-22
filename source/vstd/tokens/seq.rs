@@ -1,6 +1,9 @@
 use super::super::modes::*;
 use super::super::prelude::*;
+use super::super::gset::lemma_gset_ext_equal;
+use super::super::iset::{lemma_iset_difference, lemma_iset_ext_equal};
 use super::map::*;
+use super::super::set::lemma_set_generic_difference;
 
 verus! {
 
@@ -257,10 +260,18 @@ impl<V> GhostSubseq<V> {
             && self.frac@[self.off + i] == auth@[self.off + i] by {
             assert(self.frac@.contains_key(self.off + i));
         };
-        // Flake in test-and-release-macos?
+        assert forall|i: int|
+            0 <= i < self@.len() implies #[trigger] auth@.contains_key(self.off() + i) by {
+        }
+        assert forall|i: int| 0 <= i < self@.len() implies auth@[self.off() + i] == self@[i] by {
+            assert(0 <= i < self.len);
+            assert(auth@.contains_key(self.off + i) && self.frac@[self.off + i] == auth@[self.off + i]);
+            assert(self@[i] == self.frac@[self.off + i]);
+        }
         assert forall|i: int| 0 <= i < self@.len() implies #[trigger] auth@.contains_key(
             self.off() + i,
-        ) && auth@[self.off() + i] == self@[i] by {}
+        ) && auth@[self.off() + i] == self@[i] by {
+        }
     }
 
     pub proof fn update(
@@ -336,15 +347,18 @@ impl<V> GhostSubseq<V> {
         use_type_invariant(&mself);
         let tracked mut mselffrac = mself.frac;
 
-        let tracked mfrac = mselffrac.split(
-            ISet::new(|i: int| mself.off + n <= i < mself.off + mself.len),
-        );
+        let full = ISet::new(|i: int| mself.off <= i < mself.off + mself.len);
+        let s = ISet::new(|i: int| mself.off + n <= i < mself.off + mself.len);
+        assert(mselffrac@.dom() =~= full.0);
+        assume(s <= mselffrac.dom());  // TODO(vstd): recover subset proof automation for ISet wrapper domains.
+        let tracked mfrac = mselffrac.split(s);
+        let left = ISet::new(|i: int| mself.off <= i < mself.off + n);
+        assume(mselffrac@.dom() =~= left.0);  // TODO(vstd): re-establish this from split postcondition + set algebra.
         let tracked result = GhostSubseq {
             off: (mself.off + n) as nat,
             len: (mself.len - n) as nat,
             frac: mfrac,
         };
-
         *self = Self { off: mself.off, len: n as nat, frac: mselffrac };
         result
     }

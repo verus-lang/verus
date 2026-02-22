@@ -492,6 +492,18 @@ pub broadcast proof fn lemma_set_ext_equal<A>( s1: Set<A>, s2: Set<A>,)
     }
 }
 
+/// Sets `s1` and `s2` are definitionally equal if they contain all of the same elements.
+pub broadcast proof fn lemma_set_ext_equal_eq<A>(s1: Set<A>, s2: Set<A>)
+    ensures
+        #[trigger] (s1 =~= s2) ==> s1 == s2,
+{
+    if s1 =~= s2 {
+        assert(s1.0 =~= s2.0);
+        lemma_gset_ext_equal_eq(s1.0, s2.0);
+        assert(s1 == s2);
+    }
+}
+
 /// The empty set is finite.
 pub broadcast proof fn lemma_set_empty_finite<A, FINITE: Finiteness>()
     ensures
@@ -995,6 +1007,7 @@ pub broadcast group group_set_lemmas {
     lemma_set_difference,
     lemma_set_complement,
     lemma_set_ext_equal,
+    lemma_set_ext_equal_eq,
     lemma_set_ext_equal_deep,
     lemma_set_empty_finite,
     lemma_set_insert_finite,

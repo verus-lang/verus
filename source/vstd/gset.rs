@@ -266,6 +266,72 @@ pub broadcast proof fn lemma_gset_filter_finite<A, FINITE: Finiteness>(
 {
 }
 
+/// The empty set contains no elements.
+pub broadcast proof fn lemma_gset_empty<A, FINITE: Finiteness>(a: A)
+    ensures
+        !(#[trigger] GSet::<A, FINITE>::empty().contains(a)),
+{
+}
+
+/// The empty set is finite.
+pub broadcast proof fn lemma_gset_empty_finite<A, FINITE: Finiteness>()
+    ensures
+        #[trigger] GSet::<A, FINITE>::empty().finite(),
+{
+    let f = |a: A| 0;
+    let ub = 0;
+    let _ = trigger_finite(f, ub);
+}
+
+/// The result of inserting element `a` into set `s` must contain `a`.
+pub broadcast proof fn lemma_gset_insert_same<A, FINITE: Finiteness>(s: GSet<A, FINITE>, a: A)
+    ensures
+        #[trigger] s.insert(a).contains(a),
+{
+}
+
+/// If `a1` does not equal `a2`, insertion of `a2` leaves membership of `a1` unchanged.
+pub broadcast proof fn lemma_gset_insert_different<A, FINITE: Finiteness>(
+    s: GSet<A, FINITE>,
+    a1: A,
+    a2: A,
+)
+    requires
+        a1 != a2,
+    ensures
+        #[trigger] s.insert(a2).contains(a1) == s.contains(a1),
+{
+}
+
+/// The result of removing element `a` from set `s` must not contain `a`.
+pub broadcast proof fn lemma_gset_remove_same<A, FINITE: Finiteness>(s: GSet<A, FINITE>, a: A)
+    ensures
+        !(#[trigger] s.remove(a).contains(a)),
+{
+}
+
+/// Removing `a` and inserting `a` back yields the original set when `a` was present.
+pub broadcast proof fn lemma_gset_remove_insert<A, FINITE: Finiteness>(s: GSet<A, FINITE>, a: A)
+    requires
+        s.contains(a),
+    ensures
+        (#[trigger] s.remove(a)).insert(a) == s,
+{
+}
+
+/// If `a1` does not equal `a2`, removal of `a2` leaves membership of `a1` unchanged.
+pub broadcast proof fn lemma_gset_remove_different<A, FINITE: Finiteness>(
+    s: GSet<A, FINITE>,
+    a1: A,
+    a2: A,
+)
+    requires
+        a1 != a2,
+    ensures
+        #[trigger] s.remove(a2).contains(a1) == s.contains(a1),
+{
+}
+
 impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     pub open spec fn to_infinite(self) -> (infinite_out: GSet<A, Infinite>) {
         GSet { set: |a| self.contains(a), _phantom: PhantomData }
@@ -346,10 +412,18 @@ pub mod fold {
     pub(crate) broadcast group group_set_lemmas_early {
         GSet::cast_finiteness_properties,
         lemma_gset_finite_from_type,
+        lemma_gset_empty,
+        lemma_gset_empty_finite,
+        lemma_gset_insert_same,
+        lemma_gset_insert_different,
+        lemma_gset_remove_same,
+        lemma_gset_remove_insert,
+        lemma_gset_remove_different,
         lemma_gset_generic_union,
         lemma_gset_generic_intersect,
         lemma_gset_generic_difference,
         lemma_gset_ext_equal,
+        lemma_gset_ext_equal_eq,
         lemma_gset_ext_equal_deep,
         lemma_gset_insert_finite,
         lemma_gset_remove_finite,
@@ -831,6 +905,20 @@ pub broadcast proof fn lemma_gset_ext_equal<A, FINITE: Finiteness>(
             assert(false);
         }
         assert(s1 =~= s2);
+    }
+}
+
+/// Sets `s1` and `s2` are definitionally equal if they contain all of the same elements.
+pub broadcast proof fn lemma_gset_ext_equal_eq<A, FINITE: Finiteness>(
+    s1: GSet<A, FINITE>,
+    s2: GSet<A, FINITE>,
+)
+    ensures
+        #[trigger] (s1 =~= s2) ==> s1 == s2,
+{
+    if s1 =~= s2 {
+        lemma_congruence_extensionality(s1, s2);
+        assert(s1 == s2);
     }
 }
 

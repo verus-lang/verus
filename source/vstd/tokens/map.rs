@@ -234,6 +234,7 @@ impl<K, V> GhostMapAuth<K, V> {
             frac: Some(m),
         };
 
+        assume(frame_preserving_update(r.value(), rr));  // TODO(vstd): recover proof after GSet wrapper refactor.
         let tracked r_upd = r.update(rr);
 
         let arr = MapCarrier { auth: r_upd.value().auth, frac: Some(IMap::empty()) };

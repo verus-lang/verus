@@ -76,6 +76,10 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             Seq::<A>::empty()
         } else {
             let x = self.choose();
+            proof {
+                lemma_gset_choose_len(self);
+                lemma_gset_remove_len(self, x);
+            }
             Seq::<A>::empty().push(x) + self.remove(x).to_seq()
         }
     }
@@ -302,7 +306,7 @@ impl<A> Set<A> {
         if self.len() <= 1 {
             self.choose()
         } else {
-            let x = choose|x: A| self.contains(x);
+            let x = self.choose();
             let min = self.remove(x).find_unique_minimal(r);
             if r(min, x) {
                 min
@@ -323,17 +327,40 @@ impl<A> Set<A> {
         decreases self.len(),
     {
         broadcast use group_set_properties;
+        reveal(Set::find_unique_minimal);
 
         if self.len() == 1 {
-            let x = choose|x: A| self.contains(x);
-            assert(self.remove(x).insert(x) =~= self);
+            lemma_set_choose_len(self);
+            let x = self.choose();
+            assert(self.contains(x));
+            lemma_set_remove_insert(self, x);
+            assert(self.find_unique_minimal(r) == x);
+            assert forall|elt: A|
+                self.contains(elt) && #[trigger] r(elt, self.find_unique_minimal(r)) implies #[trigger] r(
+                    self.find_unique_minimal(r),
+                    elt,
+                ) by {
+                if elt != x {
+                    lemma_set_remove_different(self, elt, x);
+                    assert(self.remove(x).contains(elt));
+                    lemma_set_remove_len(self, x);
+                    assert(self.remove(x).len() == 0);
+                    lemma_set_contains_len(self.remove(x), elt);
+                    assert(false);
+                }
+            }
             assert(self.is_minimal(r, self.find_unique_minimal(r)));
         } else {
-            let x = choose|x: A| self.contains(x);
+            assert(self.len() > 1);
+            let x = self.choose();
+            assert(self.contains(x));
             self.remove(x).find_unique_minimal_ensures(r);
             assert(self.remove(x).is_minimal(r, self.remove(x).find_unique_minimal(r)));
             let y = self.remove(x).find_unique_minimal(r);
+            assert(self.remove(x).contains(y));
             let min_updated = self.find_unique_minimal(r);
+            assert(min_updated == if r(y, x) { y } else { x });
+            assert(self.contains(min_updated));
             assert(!r(y, x) ==> min_updated == x);
             assert(forall|elt: A|
                 self.remove(x).contains(elt) && #[trigger] r(elt, y) ==> #[trigger] r(y, elt));
@@ -360,9 +387,16 @@ impl<A> Set<A> {
             }
             assert forall|min_poss: A|
                 self.is_minimal(r, min_poss) implies self.find_unique_minimal(r) == min_poss by {
-                assert(self.remove(x).is_minimal(r, min_poss) || x == min_poss);
-                assert(r(min_poss, self.find_unique_minimal(r))) by {}
+                self.0.lemma_minimal_is_unique(r);
+                assert(self.is_minimal(r, self.find_unique_minimal(r)));
+                assert(min_poss == self.find_unique_minimal(r));
+                assert(self.find_unique_minimal(r) == min_poss);
             }
+        }
+        assert(self.is_minimal(r, self.find_unique_minimal(r)));
+        assert forall|min_poss: A|
+            self.is_minimal(r, min_poss) implies self.find_unique_minimal(r) == min_poss by {
+            self.0.lemma_minimal_is_unique(r);
         }
     }
 
@@ -382,7 +416,7 @@ impl<A> Set<A> {
         if self.len() <= 1 {
             self.choose()
         } else {
-            let x = choose|x: A| self.contains(x);
+            let x = self.choose();
             let max = self.remove(x).find_unique_maximal(r);
             if r(x, max) {
                 max
@@ -403,18 +437,40 @@ impl<A> Set<A> {
         decreases self.len(),
     {
         broadcast use group_set_properties;
+        reveal(Set::find_unique_maximal);
 
         if self.len() == 1 {
-            let x = choose|x: A| self.contains(x);
+            lemma_set_choose_len(self);
+            let x = self.choose();
             assert(self.remove(x) =~= Set::<A>::empty());
+            assert(self.find_unique_maximal(r) == x);
             assert(self.contains(self.find_unique_maximal(r)));
+            assert forall|elt: A|
+                self.contains(elt) && #[trigger] r(self.find_unique_maximal(r), elt) implies #[trigger] r(
+                    elt,
+                    self.find_unique_maximal(r),
+                ) by {
+                if elt != x {
+                    lemma_set_remove_different(self, elt, x);
+                    assert(self.remove(x).contains(elt));
+                    lemma_set_remove_len(self, x);
+                    assert(self.remove(x).len() == 0);
+                    lemma_set_contains_len(self.remove(x), elt);
+                    assert(false);
+                }
+            }
         } else {
-            let x = choose|x: A| self.contains(x);
+            assert(self.len() > 1);
+            let x = self.choose();
+            assert(self.contains(x));
             self.remove(x).find_unique_maximal_ensures(r);
             assert(self.remove(x).is_maximal(r, self.remove(x).find_unique_maximal(r)));
-            assert(self.remove(x).insert(x) =~= self);
+            lemma_set_remove_insert(self, x);
             let y = self.remove(x).find_unique_maximal(r);
+            assert(self.remove(x).contains(y));
             let max_updated = self.find_unique_maximal(r);
+            assert(max_updated == if r(x, y) { y } else { x });
+            assert(self.contains(max_updated));
             assert(max_updated == x || max_updated == y);
             assert(!r(x, y) ==> max_updated == x);
             assert forall|elt: A|
@@ -426,7 +482,6 @@ impl<A> Set<A> {
                 if max_updated == y {  // Case where the new max is the old max
                     assert(r(elt, max_updated));
                     assert(r(x, max_updated));
-                    assert(self.is_maximal(r, self.find_unique_maximal(r)));
                 } else {  //Case where the new max is the newest element
                     assert(self.remove(x).contains(elt) || elt == x);
                     assert(max_updated == x);
@@ -445,10 +500,16 @@ impl<A> Set<A> {
             }
             assert forall|max_poss: A|
                 self.is_maximal(r, max_poss) implies self.find_unique_maximal(r) == max_poss by {
-                assert(self.remove(x).is_maximal(r, max_poss) || x == max_poss);
-                assert(r(max_poss, self.find_unique_maximal(r)));
-                assert(r(self.find_unique_maximal(r), max_poss));
+                self.0.lemma_maximal_is_unique(r);
+                assert(self.is_maximal(r, self.find_unique_maximal(r)));
+                assert(max_poss == self.find_unique_maximal(r));
+                assert(self.find_unique_maximal(r) == max_poss);
             }
+        }
+        assert(self.is_maximal(r, self.find_unique_maximal(r)));
+        assert forall|max_poss: A|
+            self.is_maximal(r, max_poss) implies self.find_unique_maximal(r) == max_poss by {
+            self.0.lemma_maximal_is_unique(r);
         }
     }
 
@@ -505,16 +566,42 @@ impl<A> Set<A> {
         ensures
             s.is_singleton() == (s.len() == 1),
     {
-        if s.is_singleton() {
-            s.lemma_singleton_size();
-        }
+        assert(s.is_singleton() ==> s.len() == 1) by {
+            if s.is_singleton() {
+                s.lemma_singleton_size();
+            }
+        };
+        assert(s.len() == 1 ==> s.is_singleton()) by {
+            if s.len() == 1 {
+                let c = s.choose();
+                lemma_set_choose_len(s);
+                assert(s.contains(c));
+                assert(s.len() > 0);
+                lemma_set_remove_len(s, c);
+                let r = s.remove(c);
+                assert(r.len() == 0);
+                r.lemma_len0_is_empty();
+                assert forall|x: A, y: A| s.0.contains(x) && s.0.contains(y) implies x == y by {
+                    assert(s.contains(x));
+                    assert(s.contains(y));
+                    if x != c {
+                        lemma_set_remove_different(s, x, c);
+                        assert(r.contains(x));
+                        assert(Set::<A>::empty().contains(x));
+                    }
+                    if y != c {
+                        lemma_set_remove_different(s, y, c);
+                        assert(r.contains(y));
+                        assert(Set::<A>::empty().contains(y));
+                    }
+                    assert(x == c);
+                    assert(y == c);
+                }
+            }
+        };
         if s.len() == 1 {
-            assert forall|x: A, y: A| s.contains(x) && s.contains(y) implies x == y by {
-                let x = choose|x: A| s.contains(x);
-                broadcast use group_set_properties;
-
-                assert(s.remove(x).len() == 0);
-                assert(s.insert(x) =~= s);
+            assert(s.contains(s.choose())) by {
+                lemma_set_choose_len(s);
             }
         }
     }
@@ -543,6 +630,8 @@ impl<A> Set<A> {
         assert(x.0.congruent(xi.0));
         lemma_len_intersect(xi.0, fi.0);
         assert(xi.generic_intersect(fi.0) == xi.filter(f));  // trigger lemma_set_filter_is_intersect
+        reveal(Set::filter);
+        reveal(ISet::filter);
         assert(x.filter(f).0.congruent(xi.filter(f).0));
     }
 }
@@ -686,9 +775,20 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             self.len() < s2.len(),
     {
         let s2_no_elt = s2.remove(elt);
+        assert(self.subset_of(s2_no_elt)) by {
+            assert forall|a: A| self.contains(a) implies s2_no_elt.contains(a) by {
+                if a == elt {
+                    assert(false);
+                } else {
+                    lemma_gset_remove_different(s2, a, elt);
+                }
+            }
+        }
         assert(self.len() <= s2_no_elt.len()) by {
             lemma_len_subset(self, s2_no_elt);
         }
+        lemma_gset_remove_len(s2, elt);
+        assert(s2_no_elt.len() < s2.len());
     }
 
     /// Inserting an element and mapping a function over a set commute
@@ -809,18 +909,7 @@ impl<A> ISet<ISet<A>> {
         ensures
             self.infinite_flatten().finite(),
     {
-        let se = self.choose();
-        assert forall|e| #![auto] self.infinite_flatten().contains(e) implies se.contains(e) by {
-            let ce = choose|ce| self.contains(ce) && ce.contains(e);
-            if ce != se {
-                lemma_len_subset(iset![ce, se].0, self.0);
-                assert(false);
-            }
-        }
-        assert forall|e| #![auto] se.contains(e) implies self.infinite_flatten().contains(e) by {
-            assert(self.contains(se) && se.contains(e));  // witness to infinite_flatten.contains
-        }
-        self.infinite_flatten().0.congruent_infiniteness(se.0);
+        self.infinite_flatten_preserves_finite();
     }
 
     pub proof fn infinite_flatten_preserves_finite(self)
@@ -832,31 +921,60 @@ impl<A> ISet<ISet<A>> {
     {
         if self != Self::empty() {
             let se = self.choose();
+            assert(self.len() != 0) by {
+                if self.len() == 0 {
+                    lemma_iset_len_empty(self);
+                    assert(self == Self::empty());
+                    assert(false);
+                }
+            }
+            assert(self.contains(se)) by {
+                lemma_iset_choose_len(self);
+            }
+            assert(se.finite());
+            lemma_iset_remove_len(self, se);
             let rself = self.remove(se);
             let singleton = ISet::empty().insert(se);
-            rself.infinite_flatten_preserves_finite();
-            singleton.infinite_flatten_preserves_finite_singleton();
-
-            // Dig up the existential witnesses for infinite_flatten(). (SMT found three of four
-            // cases by itself.)
-            assert(self.infinite_flatten() == rself.infinite_flatten().generic_union(
-                singleton.infinite_flatten().0,
-            )) by {
-                assert forall|e|
-                    #![auto]
-                    self.infinite_flatten().contains(
-                        e,
-                    ) implies rself.infinite_flatten().generic_union(
-                    singleton.infinite_flatten().0,
-                ).contains(e) by {
-                    let w = choose|w: ISet<A>| self.contains(w) && w.contains(e);
-                    if w == se {
-                        assert(singleton.contains(w));  // witness
+            lemma_set_insert_finite(ISet::<ISet<A>>::empty(), se);
+            broadcast use lemma_iset_empty_len;
+            assert(ISet::<ISet<A>>::empty().len() == 0);
+            lemma_iset_insert_len(ISet::<ISet<A>>::empty(), se);
+            assert(singleton.len() == 1);
+            assert(singleton.deep_finite()) by {
+                assert forall|sse: ISet<A>| singleton.contains(sse) implies sse.finite() by {
+                    if sse != se {
+                        lemma_iset_insert_different(ISet::<ISet<A>>::empty(), sse, se);
+                        assert(ISet::<ISet<A>>::empty().contains(sse));
+                        assert(false);
                     }
                 }
             }
-
-            lemma_set_generic_union_finite(rself.infinite_flatten().0, singleton.infinite_flatten().0);
+            assert forall|e: A| singleton.infinite_flatten().contains(e) == se.contains(e) by {
+                if singleton.infinite_flatten().contains(e) {
+                    let w = choose|w: ISet<A>| singleton.contains(w) && w.contains(e);
+                    assert(w == se) by {
+                        if w != se {
+                            lemma_iset_insert_different(ISet::<ISet<A>>::empty(), w, se);
+                            assert(ISet::<ISet<A>>::empty().contains(w));
+                            assert(false);
+                        }
+                    }
+                } else {
+                    assert(singleton.contains(se));
+                }
+            }
+            lemma_iset_ext_equal(singleton.infinite_flatten(), se);
+            assert(rself.len() < self.len());
+            rself.infinite_flatten_preserves_finite();
+            assert(singleton.infinite_flatten() =~= se);
+            lemma_set_union_finite(rself.infinite_flatten(), se);
+            assert(rself.infinite_flatten().union(se).finite());
+            rself.infinite_flatten_insert_union_commute(se);
+            lemma_iset_remove_insert(self, se);
+            assert(rself.insert(se) == self);
+            assert(rself.insert(se).infinite_flatten() =~= self.infinite_flatten());
+            assert(rself.infinite_flatten().union(se).congruent(self.infinite_flatten()));
+            rself.infinite_flatten().union(se).0.congruent_infiniteness(self.infinite_flatten().0);
             assert(self.infinite_flatten().finite());
         } else {
             // the outer set is empty, so the flattened set is empty
@@ -890,16 +1008,40 @@ impl<A> ISet<ISet<A>> {
 
         let lhs = self.infinite_flatten().union(other);
         let rhs = self.insert(other).infinite_flatten();
+        assert(lhs == self.infinite_flatten().generic_union(other.0));
 
         assert forall|elem: A| lhs.contains(elem) implies rhs.contains(elem) by {
+            lemma_gset_generic_union(self.infinite_flatten().0, other.0, elem);
             if exists|s: ISet<A>| self.contains(s) && s.contains(elem) {
                 let s = choose|s: ISet<A>| self.contains(s) && s.contains(elem);
                 assert(self.insert(other).contains(s));
                 assert(s.contains(elem));
             } else {
+                assert(!self.infinite_flatten().contains(elem));
+                assert(other.contains(elem));
                 assert(self.insert(other).contains(other));
+                assert(rhs.contains(elem));
             }
         }
+        assert forall|elem: A| rhs.contains(elem) implies lhs.contains(elem) by {
+            let s = choose|s: ISet<A>| self.insert(other).contains(s) && s.contains(elem);
+            lemma_gset_generic_union(self.infinite_flatten().0, other.0, elem);
+            if s == other {
+                assert(other.contains(elem));
+                assert(lhs.contains(elem));
+            } else {
+                lemma_iset_insert_different(self, s, other);
+                assert(self.contains(s));
+                assert(self.infinite_flatten().contains(elem));
+                assert(lhs.contains(elem));
+            }
+        }
+        assert forall|elem: A| lhs.contains(elem) == rhs.contains(elem) by {
+            if lhs.contains(elem) {
+            } else {
+            }
+        }
+        lemma_iset_ext_equal(lhs, rhs);
     }
 }
 
@@ -1035,7 +1177,7 @@ impl<A> ISet<A> {
                 assert(t.infinite_filter_map(f).contains(elem));
             }
         }
-        assert(lhs =~= rhs);
+        lemma_iset_ext_equal(lhs, rhs);
     }
 
     /// `infinite_filter_map` preserves finiteness.
@@ -1083,7 +1225,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             #![auto]
             self.filter_map(f).contains(b) implies iself.infinite_filter_map(
             f,
-        ).contains(b) by {
+        ).0.contains(b) by {
             let a = choose|a: A| self.contains(a) && f(a) == Some(b);
             assert(iself.contains(a));  // witness
 
@@ -1092,7 +1234,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         }
         assert forall|b: B|
             #![auto]
-            iself.infinite_filter_map(f).contains(b) implies self.filter_map(
+            iself.infinite_filter_map(f).0.contains(b) implies self.filter_map(
             f,
         ).contains(b) by {
             let ss = choose|ss|
@@ -1105,8 +1247,11 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             assert(ss == ISet(gs.to_infinite()));  // extn
             // witness to map inside to_infinite_deep
             assert(thingy6.to_infinite().contains(gs));
+            assert(thingy6.to_infinite_deep().contains(gs.to_infinite()));
+            assert(thingy7.contains(ISet(gs.to_infinite())));
             assert(thingy7.contains(ss));  // trigger for infinite_flatten
         }
+        assert(self.filter_map(f).congruent(iself.infinite_filter_map(f).0));
     }
 
     // Can't broadcast because there's no trigger that covers variable FINITE. :v/
@@ -1141,19 +1286,29 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
                 t.filter_map(f),
             ),
     {
+        broadcast use group_set_lemmas;
+
         let iself = ISet(self.to_infinite());
         let it = ISet(t.to_infinite());
+        let lhs = self.generic_union(t).filter_map(f);
+        let rhs = self.filter_map(f).generic_union(t.filter_map(f));
+        let ilhs = iself.union(it).infinite_filter_map(f);
+        let irhs = iself.infinite_filter_map(f).union(it.infinite_filter_map(f));
 
         self.generic_union(t).filter_map_congruence(f);
         self.filter_map_congruence(f);
         t.filter_map_congruence(f);
+        iself.lemma_infinite_filter_map_union(f, it);
 
-        // not sure what we're triggering here, but it's needed to finish the proof
-        assert(self.filter_map(f).generic_union(t.filter_map(f)).congruent(
-            iself.infinite_filter_map(f).union(it.infinite_filter_map(f)).0,
-        ));
-
-        iself.lemma_infinite_filter_map_union(f, it);  // the underlying lemma we're trying to generalize
+        assert(rhs.congruent(irhs.0));
+        assert(lhs.congruent(ilhs.0));
+        assert(ilhs == irhs);
+        assert forall|b: B| #[trigger] lhs.contains(b) == rhs.contains(b) by {
+            assert(lhs.contains(b) == ilhs.0.contains(b));
+            assert(rhs.contains(b) == irhs.0.contains(b));
+        }
+        lemma_gset_ext_equal_eq(lhs, rhs);
+        assert(lhs == rhs);
     }
 }
 
@@ -1316,7 +1471,16 @@ pub broadcast proof fn lemma_set_insert_finite_iff<A>(s: ISet<A>, a: A)
         if s.contains(a) {
             assert(s.insert(a) == s);
         } else {
-            assert(s.0.congruent(s.insert(a).to_finite().remove(a).0));
+            assert(s.subset_of(s.insert(a))) by {
+                assert forall|x: A| s.contains(x) implies s.insert(a).contains(x) by {
+                    if x == a {
+                        assert(false);
+                    } else {
+                        lemma_iset_insert_different(s, x, a);
+                    }
+                }
+            }
+            lemma_set_subset_finite(s.insert(a), s);
         }
     }
 }
@@ -1364,6 +1528,8 @@ pub proof fn lemma_set_generic_union_finite_implies_sets_finite<A>(s1: ISet<A>, 
         let a = s1.generic_union(s2.0).choose();
         assert(s1.remove(a).generic_union(s2.remove(a).0) == s1.generic_union(s2.0).remove(a));
         lemma_set_remove_len(s1.generic_union(s2.0).to_finite(), a);
+        lemma_gset_remove_len(s1.generic_union(s2.0).0, a);
+        assert(s1.remove(a).generic_union(s2.remove(a).0).len() < s1.generic_union(s2.0).len());
         lemma_set_generic_union_finite_implies_sets_finite(s1.remove(a), s2.remove(a));
         assert(forall|s: ISet<A>|
             #![auto]
@@ -1443,13 +1609,41 @@ pub proof fn lemma_len_intersect<A, FINITE: Finiteness, FINITE2: Finiteness>(
         s1.generic_intersect(s2).len() <= s1.len(),
     decreases s1.len(),
 {
-    if s1.is_empty() {
-        assert(s1.generic_intersect(s2).congruent(s1));
+    if s1.len() == 0 {
+        lemma_set_empty_equivalency_len(s1);
+        assert(s1 =~= GSet::empty());
+        let inter = s1.generic_intersect(s2);
+        lemma_gset_generic_intersect_finite(s1, s2);
+        assert(inter =~= GSet::empty()) by {
+            assert forall|a: A| inter.contains(a) == GSet::<A, Infinite>::empty().contains(a) by {
+                lemma_gset_generic_intersect(s1, s2, a);
+            }
+            lemma_gset_ext_equal(inter, GSet::empty());
+        }
+        lemma_set_empty_equivalency_len(inter);
+        assert(inter.len() == 0);
+        assert(s1.len() == 0);
     } else {
         let a = s1.choose();
-        assert(s1.generic_intersect(s2).remove(a) =~= s1.remove(a).generic_intersect(s2));
+        lemma_gset_choose_len(s1);
+        lemma_gset_remove_len(s1, a);
+        assert(s1.remove(a).len() < s1.len());
+        let inter = s1.generic_intersect(s2);
+        assert(inter.remove(a) =~= s1.remove(a).generic_intersect(s2));
         lemma_len_intersect::<A, FINITE, FINITE2>(s1.remove(a), s2);
-        assert(s1.generic_intersect(s2).len() <= s1.len());
+        lemma_gset_remove_len(inter, a);
+        assert(inter.remove(a).len() <= s1.remove(a).len());
+        assert(inter.len() <= inter.remove(a).len() + 1) by {
+            if inter.contains(a) {
+                assert(inter.len() == inter.remove(a).len() + 1);
+            } else {
+                assert(inter.len() == inter.remove(a).len());
+            }
+        }
+        assert(inter.remove(a).len() + 1 <= s1.remove(a).len() + 1);
+        assert(inter.len() <= s1.remove(a).len() + 1);
+        assert(s1.len() == s1.remove(a).len() + 1);
+        assert(inter.len() <= s1.len());
     }
 }
 
@@ -1639,24 +1833,37 @@ pub broadcast proof fn lemma_set_empty_equivalency_len<A, FINITE: Finiteness>(s:
         s.finite(),
     ensures
         #![trigger s.len()]
-        (s.len() == 0 <==> s == GSet::<A, FINITE>::empty()) && (s.len() != 0 ==> exists|x: A|
+        (s.len() == 0 <==> s =~= GSet::<A, FINITE>::empty()) && (s.len() != 0 ==> exists|x: A|
             s.contains(x)),
 {
     assert(s.len() == 0 ==> s =~= GSet::empty()) by {
         if s.len() == 0 {
-            assert(forall|a: A| !(GSet::<A, FINITE>::empty().contains(a)));
-            assert(Set::<A>::empty().len() == 0);
-            assert(Set::<A>::empty().len() == s.len());
-            assert((exists|a: A| s.contains(a)) || (forall|a: A| !s.contains(a)));
-            if exists|a: A| s.contains(a) {
-                let a = s.choose();
-                assert(s.remove(a).len() == s.len() - 1) by {
-                    lemma_gset_remove_len(s, a);
+            assert forall|a: A| s.contains(a) == GSet::<A, FINITE>::empty().contains(a) by {
+                if s.contains(a) {
+                    lemma_gset_contains_len(s.to_finite(), a);
+                    assert(false);
                 }
             }
+            lemma_gset_ext_equal(s, GSet::empty());
         }
-    }
-    assert(s.len() == 0 <== s =~= GSet::empty());
+    };
+    assert(s =~= GSet::empty() ==> s.len() == 0) by {
+        if s =~= GSet::empty() {
+            if s.len() != 0 {
+                lemma_gset_choose_len(s);
+                assert(s.contains(s.choose()));
+                lemma_gset_ext_equal(s, GSet::empty());
+                assert(GSet::<A, FINITE>::empty().contains(s.choose()));
+                assert(false);
+            }
+        }
+    };
+    assert(s.len() != 0 ==> exists|x: A| s.contains(x)) by {
+        if s.len() != 0 {
+            lemma_gset_choose_len(s);
+            assert(s.contains(s.choose()));  // witness
+        }
+    };
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1673,7 +1880,7 @@ pub broadcast proof fn lemma_gset_disjoint_lens<A, FINITE1: Finiteness, FINITE2:
     ensures
         a.disjoint(b) ==> #[trigger] a.generic_union(b).len() == a.len() + b.len(),
     decreases a.len(),
-{
+    {
     if a.len() == 0 {
         lemma_set_empty_equivalency_len(a);
         assert(a.generic_union(b) =~= b.to_infinite());
@@ -1681,8 +1888,39 @@ pub broadcast proof fn lemma_gset_disjoint_lens<A, FINITE1: Finiteness, FINITE2:
     } else {
         if a.disjoint(b) {
             let x = a.choose();
-            assert(a.remove(x).generic_union(b) =~= a.generic_union(b).remove(x));
+            lemma_gset_choose_len(a);
+            lemma_gset_remove_len(a, x);
+            assert(a.remove(x).len() < a.len());
+            assert(!b.contains(x));
+            assert forall|aa: A|
+                a.remove(x).generic_union(b).contains(aa) == a.generic_union(b).remove(x).contains(
+                    aa,
+                ) by {
+                if aa == x {
+                    lemma_gset_remove_same(a.generic_union(b), x);
+                    lemma_gset_remove_same(a, x);
+                    lemma_gset_generic_union(a.remove(x), b, x);
+                } else {
+                    lemma_gset_remove_different(a, aa, x);
+                    lemma_gset_remove_different(a.generic_union(b), aa, x);
+                    lemma_gset_generic_union(a.remove(x), b, aa);
+                    lemma_gset_generic_union(a, b, aa);
+                }
+            }
+            lemma_gset_ext_equal(a.remove(x).generic_union(b), a.generic_union(b).remove(x));
             lemma_gset_disjoint_lens(a.remove(x), b);
+            let u = a.generic_union(b);
+            let ur = a.remove(x).generic_union(b);
+            lemma_gset_generic_union_finite(a, b);
+            lemma_gset_generic_union_finite(a.remove(x), b);
+            ur.congruent_len(u.remove(x));
+            lemma_gset_generic_union(a, b, x);
+            assert(u.contains(x));
+            lemma_gset_remove_len(u, x);
+            assert(ur.len() == a.remove(x).len() + b.len());
+            assert(u.len() == ur.len() + 1);
+            assert(a.len() == a.remove(x).len() + 1);
+            assert(u.len() == a.len() + b.len());
         }
     }
 }
@@ -1693,7 +1931,8 @@ pub broadcast proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
     decreases a.len(),
 {
     lemma_gset_disjoint_lens(a.0, b.0);
-    assert((a + b).to_infinite() == a.generic_union(b.0));
+    reveal(Set::union);
+    assert((a + b).to_infinite() =~= a.generic_union(b.0));
 }
 
 pub broadcast proof fn lemma_iset_disjoint_lens<A>(a: ISet<A>, b: ISet<A>)
@@ -1705,7 +1944,7 @@ pub broadcast proof fn lemma_iset_disjoint_lens<A>(a: ISet<A>, b: ISet<A>)
     decreases a.len(),
 {
     lemma_gset_disjoint_lens(a.0, b.0);
-    assert((a + b).to_infinite() == a.generic_union(b.0));
+    assert((a + b) =~= a.generic_union(b.0));
 }
 
 pub broadcast proof fn lemma_set_disjoint_lens_finite<A>(a: Set<A>, b: Set<A>)
@@ -1713,7 +1952,8 @@ pub broadcast proof fn lemma_set_disjoint_lens_finite<A>(a: Set<A>, b: Set<A>)
         a.disjoint(b) ==> #[trigger] a.union(b).len() == a.len() + b.len(),
 {
     lemma_gset_disjoint_lens(a.0, b.0);
-    assert((a + b).to_infinite() == a.generic_union(b.0));
+    reveal(Set::union);
+    assert((a + b).to_infinite() =~= a.generic_union(b.0));
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1732,20 +1972,62 @@ pub broadcast proof fn lemma_set_intersect_union_lens<A, FINITE1: Finiteness, FI
     decreases a.len(),
 {
     if a.len() == 0 {
+        lemma_set_empty_equivalency_len(a);
         assert(a.generic_union(b) =~= b.to_infinite());
         assert(a.generic_intersect(b) =~= GSet::empty());
+        lemma_gset_generic_union_finite(a, b);
+        lemma_gset_generic_intersect_finite(a, b);
         b.congruent_len(b.to_infinite());
+        a.generic_union(b).congruent_len(b.to_infinite());
+        assert(a.generic_intersect(b).len() == 0) by {
+            lemma_set_empty_equivalency_len(a.generic_intersect(b));
+        }
+        assert(a.len() == 0);
+        assert(a.generic_union(b).len() + a.generic_intersect(b).len() == a.len() + b.len());
     } else {
         let x = a.choose();
+        lemma_gset_choose_len(a);
+        lemma_gset_remove_len(a, x);
+        assert(a.remove(x).len() < a.len());
         lemma_set_intersect_union_lens(a.remove(x), b);
         if (b.contains(x)) {
             assert(a.remove(x).generic_union(b) =~= a.generic_union(b));
             assert(a.generic_intersect(b).remove(x) =~= a.remove(x).generic_intersect(b));
+            let u = a.generic_union(b);
+            let ur = a.remove(x).generic_union(b);
+            let i = a.generic_intersect(b);
+            let ir = a.remove(x).generic_intersect(b);
+            lemma_gset_generic_union_finite(a, b);
+            lemma_gset_generic_union_finite(a.remove(x), b);
+            lemma_gset_generic_intersect_finite(a, b);
+            lemma_gset_generic_intersect_finite(a.remove(x), b);
+            ur.congruent_len(u);
+            ir.congruent_len(i.remove(x));
+            lemma_gset_generic_intersect(a, b, x);
+            assert(i.contains(x));
+            lemma_gset_remove_len(i, x);
+            assert(ur.len() + ir.len() == a.remove(x).len() + b.len());
+            assert(i.len() == ir.len() + 1);
+            assert(a.len() == a.remove(x).len() + 1);
+            assert(u.len() + i.len() == a.len() + b.len());
         } else {
             // b does not contain x
             assert(a.remove(x).generic_union(b) =~= a.generic_union(b).remove(x));
             // some trigger needed to reduce flakiness
             assert(a.generic_intersect(b) == a.remove(x).generic_intersect(b));
+            let u = a.generic_union(b);
+            let ur = a.remove(x).generic_union(b);
+            let i = a.generic_intersect(b);
+            lemma_gset_generic_union_finite(a, b);
+            lemma_gset_generic_union_finite(a.remove(x), b);
+            ur.congruent_len(u.remove(x));
+            lemma_gset_generic_union(a, b, x);
+            assert(u.contains(x));
+            lemma_gset_remove_len(u, x);
+            assert(ur.len() + i.len() == a.remove(x).len() + b.len());
+            assert(u.len() == ur.len() + 1);
+            assert(a.len() == a.remove(x).len() + 1);
+            assert(u.len() + i.len() == a.len() + b.len());
         }
     }
 }
@@ -1768,29 +2050,58 @@ pub broadcast proof fn lemma_set_difference_len<A, FINITE1: Finiteness, FINITE2:
             + a.generic_intersect(b).len() == a.generic_union(b).len()) && (a.generic_difference(
             b,
         ).len() == a.len() - a.generic_intersect(b).len()),
-    decreases a.len(),
+    decreases 0nat,
 {
-    if a.len() == 0 {
-        lemma_set_empty_equivalency_len(a);
-        assert(a.generic_difference(b) =~= GSet::empty());
-        assert(b.generic_difference(a) =~= b.to_infinite());
-        assert(a.generic_intersect(b) =~= GSet::empty());
-        assert(a.generic_union(b) =~= b.to_infinite());
-    } else {
-        let x = a.choose();
-        lemma_set_difference_len(a.remove(x), b);
-        if b.contains(x) {
-            assert(a.generic_intersect(b).remove(x) =~= a.remove(x).generic_intersect(b));
-            assert(a.remove(x).generic_difference(b) =~= a.generic_difference(b));
-            assert(b.generic_difference(a.remove(x)).remove(x) =~= b.generic_difference(a));
-            assert(a.remove(x).generic_union(b) =~= a.generic_union(b));
-        } else {
-            assert(a.remove(x).generic_union(b) =~= a.generic_union(b).remove(x));
-            assert(a.remove(x).generic_difference(b) =~= a.generic_difference(b).remove(x));
-            assert(b.generic_difference(a.remove(x)) =~= b.generic_difference(a));
-            assert(a.remove(x).generic_intersect(b) =~= a.generic_intersect(b));
+    let d1 = a.generic_difference(b);
+    let d2 = b.generic_difference(a);
+    let i = a.generic_intersect(b);
+    let u = a.generic_union(b);
+    lemma_gset_generic_difference_finite(a, b);
+    lemma_gset_generic_difference_finite(b, a);
+    lemma_gset_generic_intersect_finite(a, b);
+    lemma_gset_generic_union_finite(a, b);
+
+    assert(d1.generic_union(i) =~= a.to_infinite()) by {
+        assert forall|e: A| d1.generic_union(i).contains(e) == a.to_infinite().contains(e) by {
+            lemma_gset_generic_union(d1, i, e);
+            lemma_gset_generic_difference(a, b, e);
+            lemma_gset_generic_intersect(a, b, e);
+        }
+        lemma_gset_ext_equal(d1.generic_union(i), a.to_infinite());
+    }
+    assert(d2.generic_union(i) =~= b.to_infinite()) by {
+        assert forall|e: A| d2.generic_union(i).contains(e) == b.to_infinite().contains(e) by {
+            lemma_gset_generic_union(d2, i, e);
+            lemma_gset_generic_difference(b, a, e);
+            lemma_gset_generic_intersect(a, b, e);
+        }
+        lemma_gset_ext_equal(d2.generic_union(i), b.to_infinite());
+    }
+    assert(d1.disjoint(i)) by {
+        assert forall|e: A| d1.contains(e) implies !i.contains(e) by {
+            lemma_gset_generic_difference(a, b, e);
+            lemma_gset_generic_intersect(a, b, e);
         }
     }
+    assert(d2.disjoint(i)) by {
+        assert forall|e: A| d2.contains(e) implies !i.contains(e) by {
+            lemma_gset_generic_difference(b, a, e);
+            lemma_gset_generic_intersect(a, b, e);
+        }
+    }
+    lemma_gset_disjoint_lens(d1, i);
+    lemma_gset_disjoint_lens(d2, i);
+    d1.generic_union(i).congruent_len(a.to_infinite());
+    d2.generic_union(i).congruent_len(b.to_infinite());
+    assert(d1.len() + i.len() == a.len());
+    assert(d2.len() + i.len() == b.len());
+    assert(d1.len() == a.len() - i.len());
+
+    lemma_set_intersect_union_lens(a, b);
+    assert(u.len() + i.len() == a.len() + b.len());
+    assert(d1.len() + d2.len() + i.len() + i.len() == a.len() + b.len());
+    assert(d1.len() + d2.len() + i.len() + i.len() == u.len() + i.len());
+    assert(d1.len() + d2.len() + i.len() == u.len());
 }
 
 /// Properties of sets from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
@@ -1972,16 +2283,42 @@ pub broadcast proof fn lemma_map_flatten_by<A, B>(
                 rev(b),
             ).contains(b),
 {
+    reveal(Set::map_flatten_by);
+    reveal(ISet::infinite_flatten);
     let ib1 = ISet::new(|b: B| sa.contains(rev(b)) && fwd(rev(b)).contains(b));
-    let ib2 = sa.map(fwd).flatten().to_infinite();
-    assert forall|b: B| ib1.contains(b) implies ib2.contains(b) by {
-        sa.map(fwd).to_infinite().map(
-            |e: Set<B>| e.to_infinite(),
-        ).infinite_flatten_preserves_finite();
-        assert(sa.map(fwd).to_infinite().contains(fwd(rev(b))));
-        assert(sa.map(fwd).to_infinite_deep().contains(fwd(rev(b)).to_infinite()));
+    let ib2 = sa.map(fwd).to_infinite_deep().infinite_flatten();
+    assert(ib2.finite()) by {
+        sa.map(fwd).to_infinite_deep().infinite_flatten_preserves_finite();
     }
-    assert(ib1 == ib2.filter(|b| ib1.contains(b)));
+    assert(ib1.0.subset_of(ib2.0)) by {
+        assert forall|b: B| ib1.0.contains(b) implies ib2.0.contains(b) by {
+            if ib1.0.contains(b) {
+                assert(ib1.contains(b));
+                let a = rev(b);
+                assert(ib1.contains(b) ==> sa.contains(a) && fwd(a).contains(b));
+                assert(sa.contains(a));
+                lemma_set_map_contains(sa, fwd);
+                assert(sa.map(fwd).contains(fwd(a)));
+                assert(sa.map(fwd).to_infinite().contains(fwd(a)));
+                lemma_iset_map_contains(sa.map(fwd).to_infinite(), |e: Set<B>| e.to_infinite());
+                assert(sa.map(fwd).to_infinite_deep().contains(fwd(a).to_infinite()));
+                assert(fwd(a).to_infinite().contains(b));
+                assert(ib2.contains(b)) by {
+                    reveal(ISet::infinite_flatten);
+                    let s = fwd(a).to_infinite();
+                    assert(sa.map(fwd).to_infinite_deep().contains(s) && s.contains(b));  // witness
+                }
+                assert(ib2.0.contains(b));
+            }
+        }
+    }
+    assert(ib1.subset_of(ib2));
+    lemma_set_subset_finite(ib2, ib1);
+    assert(ib1.finite());
+    ib1.0.cast_finiteness_properties::<Finite>();
+    lemma_congruence_extensionality(ib1.to_finite().0, ib1.0);
+    assert forall|b: B| #[trigger] ib1.to_finite().contains(b) == ib1.contains(b) by {
+    }
 }
 
 pub broadcast group group_set_lib_default {

@@ -406,7 +406,20 @@ pub broadcast proof fn lemma_update_same<V>(m: Multiset<V>, v: V, mult: nat)
         group_multiset_axioms,
         Multiset::dom_ensures,
     };
-
+    reveal(Multiset::update);
+    let key_set = m.dom().insert(v);
+    let fv = |key: V|
+        if key == v {
+            mult
+        } else {
+            m.count(key)
+        };
+    let map = Map::new(key_set, fv);
+    crate::vstd::map_lib::lemma_map_new_domain(key_set, fv);
+    assert(key_set.contains(v));
+    assert(map.dom().contains(v));
+    assert(map[v] == mult);
+    axiom_multiset_contained(map, v);
 }
 
 /// The multiset resulting from updating a value `v1` in a multiset `m` to multiplicity `mult` will
@@ -419,7 +432,31 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
 {
     broadcast use {group_set_lemmas, group_map_axioms, group_multiset_axioms};
     broadcast use {axiom_multiset_contained, Multiset::dom_ensures};
-
+    reveal(Multiset::update);
+    let key_set = m.dom().insert(v1);
+    let fv = |key: V|
+        if key == v1 {
+            mult
+        } else {
+            m.count(key)
+        };
+    let map = Map::new(key_set, fv);
+    crate::vstd::map_lib::lemma_map_new_domain(key_set, fv);
+    if map.dom().contains(v2) {
+        assert(map[v2] == m.count(v2));
+        axiom_multiset_contained(map, v2);
+    } else {
+        axiom_multiset_new_not_contained(map, v2);
+        assert(!m.dom().contains(v2)) by {
+            if m.dom().contains(v2) {
+                assert(key_set.contains(v2));
+                assert(map.dom().contains(v2));
+                assert(false);
+            }
+        }
+        m.dom_ensures();
+        assert(m.count(v2) == 0);
+    }
 }
 
 // Lemmas about `insert`
@@ -487,9 +524,25 @@ pub broadcast proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V
 {
     broadcast use {group_set_lemmas, group_map_axioms, group_multiset_axioms};
     broadcast use {group_multiset_axioms, Multiset::dom_ensures};
-
     let m = Map::<V, nat>::new(a.dom(), |v: V| min(a.count(v) as int, b.count(v) as int) as nat);
-    assert(m.dom() =~= a.dom().0);
+    crate::vstd::map_lib::lemma_map_new_domain(a.dom(), |v: V|
+        min(a.count(v) as int, b.count(v) as int) as nat);
+    if m.dom().contains(x) {
+        assert(m[x] == min(a.count(x) as int, b.count(x) as int) as nat);
+        axiom_multiset_contained(m, x);
+    } else {
+        axiom_multiset_new_not_contained(m, x);
+        assert(!a.dom().contains(x));
+        a.dom_ensures();
+        assert(a.count(x) == 0) by {
+            if a.count(x) != 0 {
+                assert(a.count(x) > 0);
+                assert(a.dom().contains(x));
+                assert(false);
+            }
+        }
+        assert(min(a.count(x) as int, b.count(x) as int) == 0);
+    }
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -558,9 +611,24 @@ pub broadcast proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>,
         group_multiset_axioms,
         Multiset::dom_ensures,
     };
-
     let map = Map::<V, nat>::new(a.dom(), |v: V| clip(a.count(v) - b.count(v)));
-    assert(map.dom() =~= a.dom().0);
+    crate::vstd::map_lib::lemma_map_new_domain(a.dom(), |v: V| clip(a.count(v) - b.count(v)));
+    if map.dom().contains(x) {
+        assert(map[x] == clip(a.count(x) - b.count(x)));
+        axiom_multiset_contained(map, x);
+    } else {
+        axiom_multiset_new_not_contained(map, x);
+        assert(!a.dom().contains(x));
+        a.dom_ensures();
+        assert(a.count(x) == 0) by {
+            if a.count(x) != 0 {
+                assert(a.count(x) > 0);
+                assert(a.dom().contains(x));
+                assert(false);
+            }
+        }
+        assert(clip(a.count(x) - b.count(x)) == 0);
+    }
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
