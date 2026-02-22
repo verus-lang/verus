@@ -1588,7 +1588,7 @@ test_verify_one_file! {
         // Err on the side of caution; see https://github.com/FStarLang/FStar/pull/2954
         use vstd::prelude::*;
         use vstd::set;
-        use vstd::map::GMap;
+        use vstd::gmap::GMap;
 
         #[verifier::reject_recursive_types(A)]
         #[verifier::accept_recursive_types(B)]
@@ -1610,7 +1610,7 @@ test_verify_one_file! {
         // Err on the side of caution; see https://github.com/FStarLang/FStar/pull/2954
         use vstd::prelude::*;
         use vstd::set;
-        use vstd::map::GMap;
+        use vstd::gmap::GMap;
 
         #[verifier::reject_recursive_types(A)]
         #[verifier::accept_recursive_types(B)]
