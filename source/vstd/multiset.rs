@@ -402,7 +402,7 @@ pub broadcast proof fn lemma_update_same<V>(m: Multiset<V>, v: V, mult: nat)
 {
     broadcast use {
         group_set_lemmas,
-        super::gmap::group_map_axioms,
+        super::map::group_map_axioms,
         group_multiset_axioms,
         Multiset::dom_ensures,
     };
@@ -430,7 +430,7 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
     ensures
         #[trigger] m.update(v1, mult).count(v2) == m.count(v2),
 {
-    broadcast use {group_set_lemmas, super::gmap::group_map_axioms, group_multiset_axioms};
+    broadcast use {group_set_lemmas, super::map::group_map_axioms, group_multiset_axioms};
     broadcast use {axiom_multiset_contained, Multiset::dom_ensures};
     reveal(Multiset::update);
     let key_set = m.dom().insert(v1);
@@ -522,7 +522,7 @@ pub broadcast proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V
     ensures
         #[trigger] a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int),
 {
-    broadcast use {group_set_lemmas, super::gmap::group_map_axioms, group_multiset_axioms};
+    broadcast use {group_set_lemmas, super::map::group_map_axioms, group_multiset_axioms};
     broadcast use {group_multiset_axioms, Multiset::dom_ensures};
     let m = Map::<V, nat>::new(a.dom(), |v: V| min(a.count(v) as int, b.count(v) as int) as nat);
     crate::vstd::map_lib::lemma_map_new_domain(a.dom(), |v: V|
@@ -607,7 +607,7 @@ pub broadcast proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>,
 {
     broadcast use {
         group_set_lemmas,
-        super::gmap::group_map_axioms,
+        super::map::group_map_axioms,
         group_multiset_axioms,
         Multiset::dom_ensures,
     };
