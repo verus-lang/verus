@@ -1,4 +1,5 @@
 use super::gmap::GMap;
+use super::map::{IMap, Map};
 use super::multiset::*;
 use super::prelude::*;
 use super::gset::{Finite, Finiteness, GSet, Infinite};
@@ -249,7 +250,7 @@ pub trait UniqueSimpleToken : SimpleToken {
 }
 
 #[verifier::reject_recursive_types(Key)]
-pub tracked struct GMapToken<Key, Value, Token, FINITE: Finiteness>
+tracked struct GMapToken<Key, Value, Token, FINITE: Finiteness>
     where Token: KeyValueToken<Key, Value>
 {
     ghost _v: PhantomData<Value>,
@@ -360,8 +361,199 @@ impl<Key, Value, Token, FINITE: Finiteness> GMapToken<Key, Value, Token, FINITE>
     }
 }
 
-pub type IMapToken<Key, Value, Token> = GMapToken<Key, Value, Token, Infinite>;
-pub type MapToken<Key, Value, Token> = GMapToken<Key, Value, Token, Finite>;
+#[verifier::reject_recursive_types(Key)]
+pub tracked struct IMapToken<Key, Value, Token>
+    where Token: KeyValueToken<Key, Value>
+{
+    tracked m: GMapToken<Key, Value, Token, Infinite>,
+}
+
+impl<Key, Value, Token> IMapToken<Key, Value, Token>
+    where Token: KeyValueToken<Key, Value>
+{
+    pub closed spec fn instance_id(self) -> InstanceId {
+        self.m.instance_id()
+    }
+
+    pub closed spec fn map(self) -> IMap<Key, Value> {
+        self.m.map()
+    }
+
+    #[verifier::inline]
+    pub open spec fn dom(self) -> ISet<Key> {
+        ISet(self.map().dom())
+    }
+
+    #[verifier::inline]
+    pub open spec fn spec_index(self, k: Key) -> Value {
+        self.map()[k]
+    }
+
+    #[verifier::inline]
+    pub open spec fn index(self, k: Key) -> Value {
+        self.map()[k]
+    }
+
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
+        ensures
+            s.instance_id() == instance_id,
+            s.map() === IMap::empty(),
+    {
+        let tracked m = GMapToken::empty(instance_id);
+        let tracked s = Self { m };
+        assert(s.map() =~= IMap::empty());
+        s
+    }
+
+    pub proof fn insert(tracked &mut self, tracked token: Token)
+        requires
+            old(self).instance_id() == token.instance_id(),
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.map() == old(self).map().insert(token.key(), token.value()),
+    {
+        self.m.insert(token);
+    }
+
+    pub proof fn remove(tracked &mut self, key: Key) -> (tracked token: Token)
+        requires
+            old(self).map().dom().contains(key)
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.map() == old(self).map().remove(key),
+            token.instance_id() == self.instance_id(),
+            token.key() == key,
+            token.value() == old(self).map()[key]
+    {
+        self.m.remove(key)
+    }
+
+    pub proof fn into_map(tracked self) -> (tracked map: IMap<Key, Token>)
+        ensures
+            map.dom() == self.map().dom(),
+            forall |key|
+                #![trigger(map.dom().contains(key))]
+                #![trigger(map.index(key))]
+              map.dom().contains(key)
+                ==> map[key].instance_id() == self.instance_id()
+                 && map[key].key() == key
+                 && map[key].value() == self.map()[key]
+    {
+        let tracked IMapToken { m } = self;
+        m.into_map()
+    }
+
+    pub proof fn from_map(instance_id: InstanceId, tracked map: IMap<Key, Token>) -> (tracked s: Self)
+        requires
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].key() == key,
+        ensures
+            s.instance_id() == instance_id,
+            s.map().dom() == map.dom(),
+            forall |key| #[trigger] map.dom().contains(key)
+                ==> s.map()[key] == map[key].value()
+    {
+        let tracked m = GMapToken::from_map(instance_id, map);
+        Self { m }
+    }
+}
+
+#[verifier::reject_recursive_types(Key)]
+pub tracked struct MapToken<Key, Value, Token>
+    where Token: KeyValueToken<Key, Value>
+{
+    tracked m: GMapToken<Key, Value, Token, Finite>,
+}
+
+impl<Key, Value, Token> MapToken<Key, Value, Token>
+    where Token: KeyValueToken<Key, Value>
+{
+    pub closed spec fn instance_id(self) -> InstanceId {
+        self.m.instance_id()
+    }
+
+    pub closed spec fn map(self) -> Map<Key, Value> {
+        self.m.map()
+    }
+
+    #[verifier::inline]
+    pub open spec fn dom(self) -> Set<Key> {
+        Set(self.map().dom())
+    }
+
+    #[verifier::inline]
+    pub open spec fn spec_index(self, k: Key) -> Value {
+        self.map()[k]
+    }
+
+    #[verifier::inline]
+    pub open spec fn index(self, k: Key) -> Value {
+        self.map()[k]
+    }
+
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
+        ensures
+            s.instance_id() == instance_id,
+            s.map() === Map::empty(),
+    {
+        let tracked m = GMapToken::empty(instance_id);
+        let tracked s = Self { m };
+        assert(s.map() =~= Map::empty());
+        s
+    }
+
+    pub proof fn insert(tracked &mut self, tracked token: Token)
+        requires
+            old(self).instance_id() == token.instance_id(),
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.map() == old(self).map().insert(token.key(), token.value()),
+    {
+        self.m.insert(token);
+    }
+
+    pub proof fn remove(tracked &mut self, key: Key) -> (tracked token: Token)
+        requires
+            old(self).map().dom().contains(key)
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.map() == old(self).map().remove(key),
+            token.instance_id() == self.instance_id(),
+            token.key() == key,
+            token.value() == old(self).map()[key]
+    {
+        self.m.remove(key)
+    }
+
+    pub proof fn into_map(tracked self) -> (tracked map: Map<Key, Token>)
+        ensures
+            map.dom() == self.map().dom(),
+            forall |key|
+                #![trigger(map.dom().contains(key))]
+                #![trigger(map.index(key))]
+              map.dom().contains(key)
+                ==> map[key].instance_id() == self.instance_id()
+                 && map[key].key() == key
+                 && map[key].value() == self.map()[key]
+    {
+        let tracked MapToken { m } = self;
+        m.into_map()
+    }
+
+    pub proof fn from_map(instance_id: InstanceId, tracked map: Map<Key, Token>) -> (tracked s: Self)
+        requires
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].key() == key,
+        ensures
+            s.instance_id() == instance_id,
+            s.map().dom() == map.dom(),
+            forall |key| #[trigger] map.dom().contains(key)
+                ==> s.map()[key] == map[key].value()
+    {
+        let tracked m = GMapToken::from_map(instance_id, map);
+        Self { m }
+    }
+}
 
 #[verifier::reject_recursive_types(Element)]
 pub tracked struct GSetToken<Element, Token, FINITE: Finiteness>
