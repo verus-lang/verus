@@ -100,7 +100,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
         recommends
             self.dom().finite(),
     {
-        Map::new(self.dom().to_finite(), |k| self[k])
+        Map::new(Set(self.dom().to_finite()), |k| self[k])
     }
 }
 
@@ -486,13 +486,13 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
 // finite mappings inside GMaps with FINITE=true.
 broadcast axiom fn axiom_dom_ensures<K, V, FINITE: Finiteness>(m: GMap<K, V, FINITE>)
     ensures
-        (#[trigger] m.dom()).congruent(ISet::new(|k| (m.mapping)(k) is Some)),
+        (#[trigger] m.dom()).congruent(ISet::new(|k| (m.mapping)(k) is Some).0),
 ;
 
 impl<K, V> Map<K, V> {
     #[verifier::inline]
     pub open spec fn new(key_set: Set<K>, fv: spec_fn(K) -> V) -> Map<K, V> {
-        Map::from_set(key_set, fv)
+        Map::from_set(key_set.0, fv)
     }
 }
 
@@ -541,7 +541,7 @@ pub broadcast proof fn lemma_infinite_new_ensures<K, V>(fk: spec_fn(K) -> bool, 
             #![auto]
             fk(k) <==> IMap::new(fk, fv).dom().contains(k),
         forall|k| #![auto] fk(k) ==> IMap::new(fk, fv)[k] == fv(k),
-        IMap::new(fk, fv).dom() == ISet::new(fk),
+        IMap::new(fk, fv).dom() == ISet::new(fk).0,
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
@@ -703,7 +703,7 @@ pub broadcast proof fn lemma_map_ext_equal_deep<K, V, FINITE: Finiteness>(
 
 proof fn lemma_dom_congruence<K, V, FINITE: Finiteness>(m: GMap<K, V, FINITE>)
     ensures
-        ISet::new(|k| (m.mapping)(k) is Some).congruent(m.dom()),
+        ISet::new(|k| (m.mapping)(k) is Some).0.congruent(m.dom()),
 {
     broadcast use super::set::group_set_lemmas;
 

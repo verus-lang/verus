@@ -76,7 +76,7 @@ pub struct GhostSubseq<V> {
 impl<V> GhostSeqAuth<V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
-        &&& self.auth@.dom() =~= ISet::new(|i: int| self.off <= i < self.off + self.len)
+        &&& self.auth@.dom() =~= ISet::new(|i: int| self.off <= i < self.off + self.len).0
     }
 
     pub closed spec fn id(self) -> int {
@@ -174,7 +174,7 @@ impl<V> GhostSeqAuth<V> {
 impl<V> GhostSubseq<V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
-        &&& self.frac@.dom() =~= ISet::new(|i: int| self.off <= i < self.off + self.len)
+        &&& self.frac@.dom() =~= ISet::new(|i: int| self.off <= i < self.off + self.len).0
     }
 
     pub closed spec fn view(self) -> Seq<V> {
@@ -396,7 +396,7 @@ impl<V> GhostSubseq<V> {
     pub proof fn new(off: nat, len: nat, tracked f: GhostSubmap<int, V>) -> (tracked result:
         GhostSubseq<V>)
         requires
-            f@.dom() == ISet::new(|i: int| off <= i < off + len),
+            f@.dom() == ISet::new(|i: int| off <= i < off + len).0,
         ensures
             result.id() == f.id(),
             result.off() == off,

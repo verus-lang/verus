@@ -8,13 +8,17 @@ use super::prelude::*;
 use super::relations::*;
 #[allow(unused_imports)]
 use super::set::*;
+#[allow(unused_imports)]
+use super::gset::*;
+#[allow(unused_imports)]
+use super::iset::*;
 
 verus! {
 
 broadcast use {
     super::set::group_set_lemmas,
-    super::set::GSet::congruent_infiniteness,
-    super::set::GSet::congruent_len,
+    GSet::congruent_infiniteness,
+    GSet::congruent_len,
 };
 
 //////////////////////////////////////////////////////////////////////////////
@@ -23,7 +27,7 @@ broadcast use {
 impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     /// Is `true` if called by a "full" set, i.e., a set containing every element of type `A`.
     pub open spec fn is_full(self) -> bool {
-        self.to_infinite() == ISet::<A>::full()
+        self.to_infinite() == ISet::<A>::full().0
     }
 
     /// Is `true` if called by an "empty" set, i.e., a set containing no elements and has length 0
@@ -74,6 +78,202 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             let x = self.choose();
             Seq::<A>::empty().push(x) + self.remove(x).to_seq()
         }
+    }
+}
+
+// Forwarding wrappers so GSet methods are available on Set<A> and ISet<A>
+impl<A> Set<A> {
+    #[verifier::inline]
+    pub open spec fn is_full(self) -> bool { self.0.is_full() }
+
+    #[verifier::inline]
+    pub open spec fn is_singleton(self) -> bool { self.0.is_singleton() }
+
+    #[verifier::inline]
+    pub open spec fn is_least(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
+        self.0.is_least(leq, min)
+    }
+
+    #[verifier::inline]
+    pub open spec fn is_minimal(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
+        self.0.is_minimal(leq, min)
+    }
+
+    #[verifier::inline]
+    pub open spec fn is_greatest(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
+        self.0.is_greatest(leq, max)
+    }
+
+    #[verifier::inline]
+    pub open spec fn is_maximal(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
+        self.0.is_maximal(leq, max)
+    }
+
+    #[verifier::inline]
+    pub open spec fn to_seq(self) -> Seq<A> { self.0.to_seq() }
+
+    #[verifier::inline]
+    pub open spec fn all(&self, pred: spec_fn(A) -> bool) -> bool { self.0.all(pred) }
+
+    #[verifier::inline]
+    pub open spec fn any(&self, pred: spec_fn(A) -> bool) -> bool { self.0.any(pred) }
+
+    pub open spec fn apply_filter<B>(self, f: spec_fn(A) -> Option<B>) -> Set<Set<B>> {
+        self.map(
+            |elem: A|
+                match f(elem) {
+                    Option::Some(r) => Set::<B>::empty().insert(r),
+                    Option::None => Set::<B>::empty(),
+                },
+        )
+    }
+
+    pub open spec fn filter_map<B>(self, f: spec_fn(A) -> Option<B>) -> Set<B> {
+        self.apply_filter(f).flatten()
+    }
+
+    #[verifier::inline]
+    pub open spec fn castable<NEWFINITE: Finiteness>(self) -> bool {
+        self.0.castable::<NEWFINITE>()
+    }
+
+    pub broadcast proof fn congruent_infiniteness<FINITE2: Finiteness>(
+        self,
+        s2: GSet<A, FINITE2>,
+    )
+        requires
+            #[trigger] self.0.congruent(s2),
+        ensures
+            self.finite() <==> s2.finite(),
+    {
+        self.0.congruent_infiniteness(s2);
+    }
+
+    pub broadcast proof fn congruent_len<FINITE2: Finiteness>(
+        self,
+        s2: GSet<A, FINITE2>,
+    )
+        requires
+            #[trigger] self.0.congruent(s2),
+            self.finite(),
+        ensures
+            self.len() == s2.len(),
+        decreases self.len(),
+    {
+        self.0.congruent_len(s2);
+    }
+}
+
+impl<A> ISet<A> {
+    #[verifier::inline]
+    pub open spec fn is_full(self) -> bool { self.0.is_full() }
+
+    #[verifier::inline]
+    pub open spec fn is_singleton(self) -> bool { self.0.is_singleton() }
+
+    #[verifier::inline]
+    pub open spec fn is_least(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
+        self.0.is_least(leq, min)
+    }
+
+    #[verifier::inline]
+    pub open spec fn is_minimal(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
+        self.0.is_minimal(leq, min)
+    }
+
+    #[verifier::inline]
+    pub open spec fn is_greatest(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
+        self.0.is_greatest(leq, max)
+    }
+
+    #[verifier::inline]
+    pub open spec fn is_maximal(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
+        self.0.is_maximal(leq, max)
+    }
+
+    #[verifier::inline]
+    pub open spec fn to_seq(self) -> Seq<A> { self.0.to_seq() }
+
+    #[verifier::inline]
+    pub open spec fn all(&self, pred: spec_fn(A) -> bool) -> bool { self.0.all(pred) }
+
+    #[verifier::inline]
+    pub open spec fn any(&self, pred: spec_fn(A) -> bool) -> bool { self.0.any(pred) }
+
+    pub open spec fn apply_filter<B>(self, f: spec_fn(A) -> Option<B>) -> ISet<ISet<B>> {
+        self.map(
+            |elem: A|
+                match f(elem) {
+                    Option::Some(r) => ISet::<B>::empty().insert(r),
+                    Option::None => ISet::<B>::empty(),
+                },
+        )
+    }
+
+    pub open spec fn filter_map<B>(self, f: spec_fn(A) -> Option<B>) -> ISet<B> {
+        self.apply_filter(f).infinite_flatten()
+    }
+
+    #[verifier::inline]
+    pub open spec fn castable<NEWFINITE: Finiteness>(self) -> bool {
+        self.0.castable::<NEWFINITE>()
+    }
+
+    pub broadcast proof fn congruent_infiniteness<FINITE2: Finiteness>(
+        self,
+        s2: GSet<A, FINITE2>,
+    )
+        requires
+            #[trigger] self.0.congruent(s2),
+        ensures
+            self.finite() <==> s2.finite(),
+    {
+        self.0.congruent_infiniteness(s2);
+    }
+
+    pub broadcast proof fn congruent_len<FINITE2: Finiteness>(
+        self,
+        s2: GSet<A, FINITE2>,
+    )
+        requires
+            #[trigger] self.0.congruent(s2),
+            self.finite(),
+        ensures
+            self.len() == s2.len(),
+        decreases self.len(),
+    {
+        self.0.congruent_len(s2);
+    }
+}
+
+// Set<Set<A>> forwarding for nested set methods
+impl<A> Set<Set<A>> {
+    pub open spec fn deep_finite(self) -> bool {
+        &&& self.finite()
+        &&& forall|se| #![auto] self.contains(se) ==> se.finite()
+    }
+
+    pub open spec fn deep_castable<F2: Finiteness>(self) -> bool {
+        self.deep_finite() || !F2::type_is_finite()
+    }
+
+    pub open spec fn to_infinite_deep(self) -> ISet<ISet<A>> {
+        self.to_infinite().map(|e: Set<A>| e.to_infinite())
+    }
+
+    pub open spec fn flatten(self) -> Set<A> {
+        self.to_infinite_deep().infinite_flatten().to_finite()
+    }
+}
+
+impl<A> ISet<ISet<A>> {
+    pub open spec fn deep_finite(self) -> bool {
+        &&& self.finite()
+        &&& forall|se| #![auto] self.contains(se) ==> se.finite()
+    }
+
+    pub open spec fn deep_castable<F2: Finiteness>(self) -> bool {
+        self.deep_finite() || !F2::type_is_finite()
     }
 }
 
@@ -340,10 +540,10 @@ impl<A> Set<A> {
         let xi = x.to_infinite();
         let fi = ISet::<A>::new(f);
 
-        assert(x.congruent(xi));
-        lemma_len_intersect(xi, fi);
-        assert(xi.generic_intersect(fi) == xi.filter(f));  // trigger lemma_set_filter_is_intersect
-        assert(x.filter(f).congruent(xi.filter(f)));
+        assert(x.0.congruent(xi.0));
+        lemma_len_intersect(xi.0, fi.0);
+        assert(xi.generic_intersect(fi.0) == xi.filter(f));  // trigger lemma_set_filter_is_intersect
+        assert(x.filter(f).0.congruent(xi.filter(f).0));
     }
 }
 
@@ -463,15 +663,17 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             !s.contains(elt),
             self.finite(),
         ensures
-            #[trigger] self.generic_difference(s.insert(elt)).len() < self.generic_difference(
-                s,
+            #[trigger] self.generic_difference(s.0.insert(elt)).len() < self.generic_difference(
+                s.0,
             ).len(),
     {
-        self.generic_difference(s.insert(elt)).lemma_subset_not_in_lt(
-            self.generic_difference(s),
+        self.generic_difference(s.0.insert(elt)).lemma_subset_not_in_lt(
+            self.generic_difference(s.0),
             elt,
         );
     }
+
+    // TODO(jonh): lemma_set_insert_diff_decreases trigger uses s.0 which is awkward for callers
 
     /// If there is an element not present in a subset, its length is stricly smaller.
     pub proof fn lemma_subset_not_in_lt(self: GSet<A, FINITE>, s2: GSet<A, FINITE>, elt: A)
@@ -573,18 +775,18 @@ impl<A> ISet<A> {
         ensures
             (self.union(t)).map(f) =~= self.map(f).union(t.map(f)),
     {
-        assert(self.union(t) == self.generic_union(t));  // extn
-        self.lemma_map_generic_union_commute(t, f);
+        assert(self.union(t) == self.generic_union(t.0));  // extn
+        self.0.lemma_map_generic_union_commute(t.0, f);
     }
 
     pub broadcast proof fn lemma_filter_map_union<B>(self, f: spec_fn(A) -> Option<B>, t: Self)
         ensures
             #[trigger] self.union(t).filter_map(f) == self.filter_map(f).union(t.filter_map(f)),
     {
-        self.lemma_filter_map_generic_union(f, t);
-        assert(self.union(t) == self.generic_union(t));  // extn
+        self.0.lemma_filter_map_generic_union(f, t.0);
+        assert(self.union(t) == self.generic_union(t.0));  // extn
         assert(self.filter_map(f).union(t.filter_map(f)) == self.filter_map(f).generic_union(
-            t.filter_map(f),
+            t.filter_map(f).0,
         ));  // extn
     }
 }
@@ -611,14 +813,14 @@ impl<A> ISet<ISet<A>> {
         assert forall|e| #![auto] self.infinite_flatten().contains(e) implies se.contains(e) by {
             let ce = choose|ce| self.contains(ce) && ce.contains(e);
             if ce != se {
-                lemma_len_subset(iset![ce, se], self);
+                lemma_len_subset(iset![ce, se].0, self.0);
                 assert(false);
             }
         }
         assert forall|e| #![auto] se.contains(e) implies self.infinite_flatten().contains(e) by {
             assert(self.contains(se) && se.contains(e));  // witness to infinite_flatten.contains
         }
-        self.infinite_flatten().congruent_infiniteness(se);
+        self.infinite_flatten().0.congruent_infiniteness(se.0);
     }
 
     pub proof fn infinite_flatten_preserves_finite(self)
@@ -631,21 +833,21 @@ impl<A> ISet<ISet<A>> {
         if self != Self::empty() {
             let se = self.choose();
             let rself = self.remove(se);
-            let singleton = GSet::empty().insert(se);
+            let singleton = ISet::empty().insert(se);
             rself.infinite_flatten_preserves_finite();
             singleton.infinite_flatten_preserves_finite_singleton();
 
             // Dig up the existential witnesses for infinite_flatten(). (SMT found three of four
             // cases by itself.)
             assert(self.infinite_flatten() == rself.infinite_flatten().generic_union(
-                singleton.infinite_flatten(),
+                singleton.infinite_flatten().0,
             )) by {
                 assert forall|e|
                     #![auto]
                     self.infinite_flatten().contains(
                         e,
                     ) implies rself.infinite_flatten().generic_union(
-                    singleton.infinite_flatten(),
+                    singleton.infinite_flatten().0,
                 ).contains(e) by {
                     let w = choose|w: ISet<A>| self.contains(w) && w.contains(e);
                     if w == se {
@@ -654,11 +856,11 @@ impl<A> ISet<ISet<A>> {
                 }
             }
 
-            lemma_set_generic_union_finite(rself.infinite_flatten(), singleton.infinite_flatten());
+            lemma_set_generic_union_finite(rself.infinite_flatten().0, singleton.infinite_flatten().0);
             assert(self.infinite_flatten().finite());
         } else {
             // the outer set is empty, so the flattened set is empty
-            assert(self.infinite_flatten() == GSet::<A, Infinite>::empty());  // trigger lemma_set_empty_finite
+            assert(self.infinite_flatten() == ISet::<A>::empty());  // trigger lemma_set_empty_finite
         }
     }
 
@@ -707,8 +909,12 @@ impl<A, FINITE: Finiteness> GSet<GSet<A, FINITE>, FINITE> {
         self.to_infinite().map(|e: GSet<A, FINITE>| e.to_infinite())
     }
 
+    pub open spec fn to_iset_deep(self) -> ISet<ISet<A>> {
+        ISet(self.to_infinite_deep().map(|e: GSet<A, Infinite>| ISet(e)))
+    }
+
     pub open spec fn flatten(self) -> GSet<A, FINITE> {
-        self.to_infinite_deep().infinite_flatten().cast_finiteness::<FINITE>()
+        self.to_iset_deep().infinite_flatten().0.cast_finiteness::<FINITE>()
     }
 }
 
@@ -841,7 +1047,7 @@ impl<A> ISet<A> {
         decreases self.len(),
     {
         broadcast use group_set_lemmas;
-        broadcast use GSet::lemma_infinite_filter_map_insert;
+        broadcast use ISet::lemma_infinite_filter_map_insert;
 
         let mapped = self.infinite_filter_map(f);
         if self.len() == 0 {
@@ -862,40 +1068,41 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 
     pub proof fn filter_map_congruence<B>(self, f: spec_fn(A) -> Option<B>)
         ensures
-            self.filter_map(f).congruent(self.to_infinite().infinite_filter_map(f)),
+            self.filter_map(f).congruent(ISet(self.to_infinite()).infinite_filter_map(f).0),
     {
         assert(self.castable::<FINITE>());  // trigger lemma_self_castable
-        self.apply_filter(f).to_infinite_deep().infinite_flatten_ensures::<FINITE>();
-        self.apply_filter(f).to_infinite_deep().infinite_flatten().cast_finiteness_properties::<
+        self.apply_filter(f).to_iset_deep().infinite_flatten_ensures::<FINITE>();
+        self.apply_filter(f).to_iset_deep().infinite_flatten().0.cast_finiteness_properties::<
             FINITE,
         >();
 
-        self.to_infinite().apply_filter(f).to_infinite_deep().infinite_flatten_ensures::<FINITE>();
+        self.to_infinite().apply_filter(f).to_iset_deep().infinite_flatten_ensures::<FINITE>();
 
+        let iself = ISet(self.to_infinite());
         assert forall|b: B|
             #![auto]
-            self.filter_map(f).contains(b) implies self.to_infinite().infinite_filter_map(
+            self.filter_map(f).contains(b) implies iself.infinite_filter_map(
             f,
         ).contains(b) by {
             let a = choose|a: A| self.contains(a) && f(a) == Some(b);
-            assert(self.to_infinite().contains(a));  // witness
+            assert(iself.contains(a));  // witness
 
-            let sb = GSet::<B, Infinite>::empty().insert(b);
-            assert(self.to_infinite().apply_filter(f).contains(sb));  // witness
+            let sb = ISet::<B>::empty().insert(b);
+            assert(iself.apply_filter(f).contains(sb));  // witness
         }
         assert forall|b: B|
             #![auto]
-            self.to_infinite().infinite_filter_map(f).contains(b) implies self.filter_map(
+            iself.infinite_filter_map(f).contains(b) implies self.filter_map(
             f,
         ).contains(b) by {
             let ss = choose|ss|
                 #![auto]
-                self.to_infinite().apply_filter(f).contains(ss) && ss.contains(b);  // one of the infinite sets of Bs
+                iself.apply_filter(f).contains(ss) && ss.contains(b);  // one of the infinite sets of Bs
             //
             let thingy6 = self.apply_filter(f);  // a FINITE set of FINITE sets of Bs
-            let thingy7 = thingy6.to_infinite_deep();  // an infinite set of infinite sets of Bs
-            let gs = GSet::empty().insert(b);
-            assert(ss == gs.to_infinite());  // extn
+            let thingy7 = thingy6.to_iset_deep();  // an infinite set of infinite sets of Bs
+            let gs = GSet::<B, FINITE>::empty().insert(b);
+            assert(ss == ISet(gs.to_infinite()));  // extn
             // witness to map inside to_infinite_deep
             assert(thingy6.to_infinite().contains(gs));
             assert(thingy7.contains(ss));  // trigger for infinite_flatten
@@ -913,14 +1120,14 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     {
         //         broadcast use GSet::flatten_finite;
         assert(s.congruent(s.to_infinite()));
-        GSet::lemma_infinite_filter_map_insert(s.to_infinite(), f, elem);
+        ISet::lemma_infinite_filter_map_insert(ISet(s.to_infinite()), f, elem);
         assert(s.insert(elem).congruent(s.to_infinite().insert(elem)));
         s.filter_map_congruence(f);
         s.insert(elem).filter_map_congruence(f);
         assert(s.insert(elem).filter_map(f).congruent(
-            s.to_infinite().insert(elem).infinite_filter_map(f),
+            ISet(s.to_infinite()).insert(elem).infinite_filter_map(f).0,
         ));
-        assert(s.filter_map(f).congruent(s.to_infinite().infinite_filter_map(f)));
+        assert(s.filter_map(f).congruent(ISet(s.to_infinite()).infinite_filter_map(f).0));
 
     }
 
@@ -934,8 +1141,8 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
                 t.filter_map(f),
             ),
     {
-        let iself = self.to_infinite();
-        let it = t.to_infinite();
+        let iself = ISet(self.to_infinite());
+        let it = ISet(t.to_infinite());
 
         self.generic_union(t).filter_map_congruence(f);
         self.filter_map_congruence(f);
@@ -943,7 +1150,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 
         // not sure what we're triggering here, but it's needed to finish the proof
         assert(self.filter_map(f).generic_union(t.filter_map(f)).congruent(
-            iself.infinite_filter_map(f).union(it.infinite_filter_map(f)),
+            iself.infinite_filter_map(f).union(it.infinite_filter_map(f)).0,
         ));
 
         iself.lemma_infinite_filter_map_union(f, it);  // the underlying lemma we're trying to generalize
@@ -979,7 +1186,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 
     pub broadcast proof fn lemma_set_all_subset(self, s2: Set<A>, p: spec_fn(A) -> bool)
         requires
-            #[trigger] self.subset_of(s2),
+            #[trigger] self.subset_of(s2.0),
             s2.all(p),
         ensures
             #[trigger] self.all(p),
@@ -1030,10 +1237,10 @@ impl<A> Set<A> {
             let inner = self.remove(elem).to_seq().to_set().insert(elem);
 
             assert forall|x| #![auto] outer.contains(x) implies inner.contains(x) by {
-                Set::lemma_to_seq_to_set_id_recursive(self.remove(elem), x);
+                GSet::lemma_to_seq_to_set_id_recursive(self.0.remove(elem), x);
             }
             assert forall|x| #![auto] inner.contains(x) implies outer.contains(x) by {
-                Set::lemma_to_seq_to_set_id_recursive(self, x);
+                GSet::lemma_to_seq_to_set_id_recursive(self.0, x);
                 assert(exists|i|
                     #![auto]
                     Set::range(0, self.to_seq().len() as int).contains(i) && self.to_seq()[i] == x);  // witness
@@ -1064,11 +1271,11 @@ impl<A> ISet<A> {
             let inner = self.remove(elem).to_seq().to_iset().insert(elem);
 
             assert forall|x| #![auto] outer.contains(x) implies inner.contains(x) by {
-                ISet::lemma_to_seq_to_set_id_recursive(self, x);
-                ISet::lemma_to_seq_to_set_id_recursive(self.remove(elem), x);
+                GSet::lemma_to_seq_to_set_id_recursive(self.0, x);
+                GSet::lemma_to_seq_to_set_id_recursive(self.0.remove(elem), x);
             }
             assert forall|x| #![auto] inner.contains(x) implies outer.contains(x) by {
-                ISet::lemma_to_seq_to_set_id_recursive(self, x);
+                GSet::lemma_to_seq_to_set_id_recursive(self.0, x);
             }
             assert(self.to_seq().to_iset() =~= self.remove(elem).to_seq().to_iset().insert(elem));
         }
@@ -1109,7 +1316,7 @@ pub broadcast proof fn lemma_set_insert_finite_iff<A>(s: ISet<A>, a: A)
         if s.contains(a) {
             assert(s.insert(a) == s);
         } else {
-            assert(s.congruent(s.insert(a).to_finite().remove(a)));
+            assert(s.0.congruent(s.insert(a).to_finite().remove(a).0));
         }
     }
 }
@@ -1131,34 +1338,34 @@ pub broadcast proof fn lemma_set_remove_finite_iff<A>(s: Set<A>, a: A)
 /// The union of two sets is finite iff both sets are finite.
 pub broadcast proof fn lemma_set_union_finite_iff<A>(s1: ISet<A>, s2: ISet<A>)
     ensures
-        (#[trigger] s1.generic_union(s2)).finite() <==> s1.finite() && s2.finite(),
+        (#[trigger] s1.generic_union(s2.0)).finite() <==> s1.finite() && s2.finite(),
         (#[trigger] s1.union(s2)).finite() <==> s1.finite() && s2.finite(),
 {
-    assert(s1.union(s2) == s1.generic_union(s2));  // extn
-    if s1.generic_union(s2).finite() {
+    assert(s1.union(s2) == s1.generic_union(s2.0));  // extn
+    if s1.generic_union(s2.0).finite() {
         lemma_set_generic_union_finite_implies_sets_finite(s1, s2);
     }
 }
 
 pub proof fn lemma_set_generic_union_finite_implies_sets_finite<A>(s1: ISet<A>, s2: ISet<A>)
     requires
-        s1.generic_union(s2).finite(),
+        s1.generic_union(s2.0).finite(),
     ensures
         s1.finite(),
         s2.finite(),
-    decreases s1.generic_union(s2).len(),
+    decreases s1.generic_union(s2.0).len(),
 {
     broadcast use lemma_set_insert_finite;
 
-    if s1.generic_union(s2) =~= iset![] {
+    if s1.generic_union(s2.0) =~= iset![] {
         assert(s1 =~= iset![]);
         assert(s2 =~= iset![]);
     } else {
-        let a = s1.generic_union(s2).choose();
-        assert(s1.remove(a).generic_union(s2.remove(a)) == s1.generic_union(s2).remove(a));
-        lemma_set_remove_len(s1.generic_union(s2), a);
+        let a = s1.generic_union(s2.0).choose();
+        assert(s1.remove(a).generic_union(s2.remove(a).0) == s1.generic_union(s2.0).remove(a));
+        lemma_set_remove_len(s1.generic_union(s2.0).to_finite(), a);
         lemma_set_generic_union_finite_implies_sets_finite(s1.remove(a), s2.remove(a));
-        assert(forall|s: Set<A>|
+        assert(forall|s: ISet<A>|
             #![auto]
             s.remove(a).insert(a) == if s.contains(a) {
                 s
@@ -1183,17 +1390,17 @@ pub proof fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>)
         s1.finite(),
         s2.finite(),
     ensures
-        s1.generic_union(s2).len() <= s1.len() + s2.len(),
+        s1.generic_union(s2.0).len() <= s1.len() + s2.len(),
     decreases s1.len(),
 {
     if s1.is_empty() {
-        s1.generic_union(s2).congruent_len(s2);
+        s1.generic_union(s2.0).congruent_len(s2.0);
     } else {
         let a = s1.choose();
         if s2.contains(a) {
-            assert(s1.generic_union(s2) =~= s1.remove(a).generic_union(s2));
+            assert(s1.generic_union(s2.0) =~= s1.remove(a).generic_union(s2.0));
         } else {
-            assert(s1.generic_union(s2).remove(a) =~= s1.remove(a).generic_union(s2));
+            assert(s1.generic_union(s2.0).remove(a) =~= s1.remove(a).generic_union(s2.0));
         }
         lemma_len_union::<A>(s1.remove(a), s2);
     }
@@ -1206,8 +1413,8 @@ pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
         s1.finite(),
         s2.finite(),
     ensures
-        s1.generic_union(s2).len() >= s1.len(),
-        s1.generic_union(s2).len() >= s2.len(),
+        s1.generic_union(s2.0).len() >= s1.len(),
+        s1.generic_union(s2.0).len() >= s2.len(),
     decreases s2.len(),
 {
     broadcast use group_set_properties;
@@ -1216,10 +1423,10 @@ pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
     } else {
         let y = choose|y: A| s2.contains(y);
         if s1.contains(y) {
-            assert(s1.remove(y).generic_union(s2.remove(y)) =~= s1.generic_union(s2).remove(y));
+            assert(s1.remove(y).generic_union(s2.remove(y).0) =~= s1.generic_union(s2.0).remove(y));
             lemma_len_union_ind(s1.remove(y), s2.remove(y))
         } else {
-            assert(s1.generic_union(s2.remove(y)) =~= s1.generic_union(s2).remove(y));
+            assert(s1.generic_union(s2.remove(y).0) =~= s1.generic_union(s2.0).remove(y));
             lemma_len_union_ind(s1, s2.remove(y))
         }
     }
@@ -1272,8 +1479,8 @@ pub broadcast proof fn lemma_set_subset_finite<A>(s: ISet<A>, sub: ISet<A>)
         #![trigger sub.subset_of(s)]
         sub.finite(),
 {
-    let complement = s.generic_difference(sub);
-    assert(sub =~= s.generic_difference(complement));
+    let complement = s.generic_difference(sub.0);
+    assert(sub =~= s.generic_difference(complement.0));
 }
 
 /// The size of the difference of finite set `s1` and set `s2` is less than or equal to the size of `s1`.
@@ -1281,14 +1488,14 @@ pub proof fn lemma_len_difference<A>(s1: ISet<A>, s2: ISet<A>)
     requires
         s1.finite(),
     ensures
-        s1.generic_difference(s2).len() <= s1.len(),
+        s1.generic_difference(s2.0).len() <= s1.len(),
     decreases s1.len(),
 {
     if s1.is_empty() {
-        assert(s1.generic_difference(s2) =~= s1);
+        assert(s1.generic_difference(s2.0) =~= s1);
     } else {
         let a = s1.choose();
-        assert(s1.generic_difference(s2).remove(a) =~= s1.remove(a).generic_difference(s2));
+        assert(s1.generic_difference(s2.0).remove(a) =~= s1.remove(a).generic_difference(s2.0));
         lemma_len_difference::<A>(s1.remove(a), s2);
     }
 }
@@ -1345,7 +1552,7 @@ pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
 /// is the same as taking the union of `a` and `b` once.
 pub broadcast proof fn lemma_set_union_again1<A>(a: Set<A>, b: Set<A>)
     ensures
-        #[trigger] a.generic_union(b).generic_union(b) =~= a.generic_union(b),
+        #[trigger] a.generic_union(b.0).generic_union(b.0) =~= a.generic_union(b.0),
 {
 }
 
@@ -1354,7 +1561,7 @@ pub broadcast proof fn lemma_set_union_again1<A>(a: Set<A>, b: Set<A>)
 /// is the same as taking the union of `a` and `b` once.
 pub broadcast proof fn lemma_set_union_again2<A>(a: Set<A>, b: Set<A>)
     ensures
-        #[trigger] a.generic_union(b).generic_union(a) =~= a.generic_union(b),
+        #[trigger] a.generic_union(b.0).generic_union(a.0) =~= a.generic_union(b.0),
 {
 }
 
@@ -1363,8 +1570,8 @@ pub broadcast proof fn lemma_set_union_again2<A>(a: Set<A>, b: Set<A>)
 /// is the same as taking the intersection of `a` and `b` once.
 pub broadcast proof fn lemma_set_intersect_again1<A>(a: Set<A>, b: Set<A>)
     ensures
-        #![trigger (a.generic_intersect(b)).generic_intersect(b)]
-        (a.generic_intersect(b)).generic_intersect(b) =~= a.generic_intersect(b),
+        #![trigger (a.generic_intersect(b.0)).generic_intersect(b.0)]
+        (a.generic_intersect(b.0)).generic_intersect(b.0) =~= a.generic_intersect(b.0),
 {
 }
 
@@ -1373,8 +1580,8 @@ pub broadcast proof fn lemma_set_intersect_again1<A>(a: Set<A>, b: Set<A>)
 /// is the same as taking the intersection of `a` and `b` once.
 pub broadcast proof fn lemma_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
     ensures
-        #![trigger (a.generic_intersect(b)).generic_intersect(a)]
-        (a.generic_intersect(b)).generic_intersect(a) =~= a.generic_intersect(b),
+        #![trigger (a.generic_intersect(b.0)).generic_intersect(a.0)]
+        (a.generic_intersect(b.0)).generic_intersect(a.0) =~= a.generic_intersect(b.0),
 {
 }
 
@@ -1444,7 +1651,7 @@ pub broadcast proof fn lemma_set_empty_equivalency_len<A, FINITE: Finiteness>(s:
             if exists|a: A| s.contains(a) {
                 let a = s.choose();
                 assert(s.remove(a).len() == s.len() - 1) by {
-                    lemma_set_remove_len(s, a);
+                    lemma_gset_remove_len(s, a);
                 }
             }
         }
@@ -1485,8 +1692,8 @@ pub broadcast proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
         a.disjoint(b) ==> #[trigger] a.union(b).len() == a.len() + b.len(),
     decreases a.len(),
 {
-    lemma_gset_disjoint_lens(a, b);
-    assert((a + b).to_infinite() == a.generic_union(b));
+    lemma_gset_disjoint_lens(a.0, b.0);
+    assert((a + b).to_infinite() == a.generic_union(b.0));
 }
 
 pub broadcast proof fn lemma_iset_disjoint_lens<A>(a: ISet<A>, b: ISet<A>)
@@ -1497,16 +1704,16 @@ pub broadcast proof fn lemma_iset_disjoint_lens<A>(a: ISet<A>, b: ISet<A>)
         a.disjoint(b) ==> #[trigger] a.union(b).len() == a.len() + b.len(),
     decreases a.len(),
 {
-    lemma_gset_disjoint_lens(a, b);
-    assert((a + b).to_infinite() == a.generic_union(b));
+    lemma_gset_disjoint_lens(a.0, b.0);
+    assert((a + b).to_infinite() == a.generic_union(b.0));
 }
 
 pub broadcast proof fn lemma_set_disjoint_lens_finite<A>(a: Set<A>, b: Set<A>)
     ensures
         a.disjoint(b) ==> #[trigger] a.union(b).len() == a.len() + b.len(),
 {
-    lemma_gset_disjoint_lens(a, b);
-    assert((a + b).to_infinite() == a.generic_union(b));
+    lemma_gset_disjoint_lens(a.0, b.0);
+    assert((a + b).to_infinite() == a.generic_union(b.0));
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1676,6 +1883,7 @@ pub open spec fn check_argument_is_set<A, FINITE: Finiteness>(s: GSet<A, FINITE>
 > {
     s
 }
+
 
 /// Prove two sets equal by extensionality. Usage is:
 ///

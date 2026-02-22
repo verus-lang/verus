@@ -248,7 +248,7 @@ pub broadcast proof fn lemma_from_map_dom<V>(mymap: Map<V, nat>)
     requires
         forall|k| #[trigger] mymap.contains_key(k) ==> mymap[k] > 0,
     ensures
-        #[trigger] Multiset::from_map(mymap).dom() == mymap.dom(),
+        #[trigger] Multiset::from_map(mymap).dom() == Set(mymap.dom()),
 {
     broadcast use {
         Multiset::dom_ensures,
@@ -256,7 +256,7 @@ pub broadcast proof fn lemma_from_map_dom<V>(mymap: Map<V, nat>)
         axiom_multiset_new_not_contained,
     };
 
-    assert(Multiset::from_map(mymap).dom() == mymap.dom());  // trigger ensures extn
+    assert(Multiset::from_map(mymap).dom() == Set(mymap.dom()));  // trigger ensures extn
 }
 
 // Specification of `singleton`
@@ -489,7 +489,7 @@ pub broadcast proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V
     broadcast use {group_multiset_axioms, Multiset::dom_ensures};
 
     let m = Map::<V, nat>::new(a.dom(), |v: V| min(a.count(v) as int, b.count(v) as int) as nat);
-    assert(m.dom() =~= a.dom());
+    assert(m.dom() =~= a.dom().0);
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -560,7 +560,7 @@ pub broadcast proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>,
     };
 
     let map = Map::<V, nat>::new(a.dom(), |v: V| clip(a.count(v) - b.count(v)));
-    assert(map.dom() =~= a.dom());
+    assert(map.dom() =~= a.dom().0);
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude

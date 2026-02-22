@@ -555,8 +555,8 @@ impl<A> Seq<A> {
             self.to_iset().finite(),
     {
         self.to_set_ensures();
-        assert(self.to_set().congruent(self.to_iset()));
-        Set::congruent_infiniteness(self.to_set(), self.to_iset());
+        assert(self.to_set().0.congruent(self.to_iset().0));
+        Set::congruent_infiniteness(self.to_set(), self.to_iset().0);
     }
 
     /// Converts a sequence into a multiset
@@ -1085,7 +1085,7 @@ impl<A> Seq<A> {
             assert(seq_to_set_rec(rest).insert(self.last()).len() == seq_to_set_rec(rest).len()
                 + 1);
         }
-        assert(self.to_set().congruent(self.to_iset()));
+        assert(self.to_set().0.congruent(self.to_iset().0));
     }
 
     /// The cardinality of a set of elements is always less than or
@@ -3066,7 +3066,7 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
 proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
     ensures
         seq.to_set() == seq_to_set_rec(seq),
-        seq.to_iset().congruent(seq_to_set_rec(seq)),
+        seq.to_iset().0.congruent(seq_to_set_rec(seq).0),
     decreases seq.len(),
 {
     broadcast use super::set::group_set_lemmas;

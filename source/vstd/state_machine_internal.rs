@@ -7,6 +7,7 @@ use super::pervasive::*;
 use super::prelude::*;
 use super::seq::*;
 use super::set::*;
+use super::gset::*;
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)] /* vattr */
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(T))]
