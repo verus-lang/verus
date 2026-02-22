@@ -439,7 +439,10 @@ impl<K, V> IMap<Seq<K>, V> {
 
         #[allow(deprecated)]
         super::seq_lib::lemma_seq_properties::<K>();  // new broadcast group not working here
-        broadcast use super::gmap::GMap::lemma_prefixed_entries_contains, super::gmap::GMap::lemma_prefixed_entries_get;
+        broadcast use {
+            lemma_prefixed_entries_contains_generic,
+            lemma_prefixed_entries_get_generic,
+        };
 
         let lhs = self.insert(prefix + k, v).prefixed_entries(prefix);
         let rhs = self.prefixed_entries(prefix).insert(k, v);
@@ -473,9 +476,9 @@ impl<K, V> IMap<Seq<K>, V> {
     {
         broadcast use group_map_properties;
         broadcast use
-            super::gmap::GMap::lemma_prefixed_entries_contains,
-            super::gmap::GMap::lemma_prefixed_entries_get,
-            super::gmap::GMap::lemma_prefixed_entries_insert,
+            lemma_prefixed_entries_contains_generic,
+            lemma_prefixed_entries_get_generic,
+            lemma_prefixed_entries_insert_generic,
         ;
 
         let lhs = self.union_prefer_right(m).prefixed_entries(prefix);
@@ -660,13 +663,96 @@ pub broadcast group group_map_properties {
     lemma_imap_new_values,
 }
 
+pub broadcast proof fn lemma_map_remove_keys_insert_generic<K, V, FINITE: Finiteness>(
+    m: GenericMap<K, V, FINITE>,
+    r: GSet<K, FINITE>,
+    k: K,
+    v: V,
+)
+    ensures
+        #[trigger] m.insert(k, v).remove_keys(r) == if r.contains(k) {
+            m.remove_keys(r)
+        } else {
+            m.remove_keys(r).insert(k, v)
+        },
+{
+    m.lemma_map_remove_keys_insert(r, k, v);
+}
+
+pub broadcast proof fn lemma_filter_keys_insert_generic<K, V, FINITE: Finiteness>(
+    m: GenericMap<K, V, FINITE>,
+    p: spec_fn(K) -> bool,
+    k: K,
+    v: V,
+)
+    ensures
+        #[trigger] m.insert(k, v).filter_keys(p) == (if p(k) {
+            m.filter_keys(p).insert(k, v)
+        } else {
+            m.filter_keys(p)
+        }),
+{
+    m.lemma_filter_keys_insert(p, k, v);
+}
+
+pub broadcast proof fn lemma_prefixed_entries_get_generic<K, V>(
+    m: IMap<Seq<K>, V>,
+    prefix: Seq<K>,
+    k: Seq<K>,
+)
+    requires
+        m.prefixed_entries(prefix).contains_key(k),
+    ensures
+        m.prefixed_entries(prefix)[k] == #[trigger] m[prefix + k],
+{
+    m.lemma_prefixed_entries_get(prefix, k);
+}
+
+pub broadcast proof fn lemma_prefixed_entries_contains_generic<K, V>(
+    m: IMap<Seq<K>, V>,
+    prefix: Seq<K>,
+    k: Seq<K>,
+)
+    ensures
+        #[trigger] m.prefixed_entries(prefix).contains_key(k) <==> m.contains_key(prefix + k),
+{
+    m.lemma_prefixed_entries_contains(prefix, k);
+}
+
+pub broadcast proof fn lemma_prefixed_entries_insert_generic<K, V>(
+    m: IMap<Seq<K>, V>,
+    prefix: Seq<K>,
+    k: Seq<K>,
+    v: V,
+)
+    ensures
+        #[trigger] m.insert(prefix + k, v).prefixed_entries(prefix) == m.prefixed_entries(
+            prefix,
+        ).insert(k, v),
+{
+    m.lemma_prefixed_entries_insert(prefix, k, v);
+}
+
+pub broadcast proof fn lemma_prefixed_entries_union_generic<K, V>(
+    m1: IMap<Seq<K>, V>,
+    m2: IMap<Seq<K>, V>,
+    prefix: Seq<K>,
+)
+    ensures
+        #[trigger] m1.union_prefer_right(m2).prefixed_entries(prefix) == m1.prefixed_entries(
+            prefix,
+        ).union_prefer_right(m2.prefixed_entries(prefix)),
+{
+    m1.lemma_prefixed_entries_union(m2, prefix);
+}
+
 pub broadcast group group_map_extra {
-    super::gmap::GMap::lemma_map_remove_keys_insert,
-    super::gmap::GMap::lemma_filter_keys_insert,
-    super::gmap::GMap::lemma_prefixed_entries_get,
-    super::gmap::GMap::lemma_prefixed_entries_contains,
-    super::gmap::GMap::lemma_prefixed_entries_insert,
-    super::gmap::GMap::lemma_prefixed_entries_union,
+    lemma_map_remove_keys_insert_generic,
+    lemma_filter_keys_insert_generic,
+    lemma_prefixed_entries_get_generic,
+    lemma_prefixed_entries_contains_generic,
+    lemma_prefixed_entries_insert_generic,
+    lemma_prefixed_entries_union_generic,
 }
 
 pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
