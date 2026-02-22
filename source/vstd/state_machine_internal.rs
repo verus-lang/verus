@@ -3,7 +3,7 @@
 #![doc(hidden)]
 
 use super::map::*;
-use super::gmap::GMap;
+use super::map::GenericMap;
 use super::pervasive::*;
 use super::prelude::*;
 use super::seq::*;
@@ -377,7 +377,7 @@ impl<A> Seq<A> {
 }
 
 #[doc(hidden)]
-impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
+impl<K, V, FINITE: Finiteness> GenericMap<K, V, FINITE> {
     // note that despite the name, this is allowed to insert
     #[verifier::inline]
     pub open spec fn update_at_index(self, k: K, v: V) -> Self {

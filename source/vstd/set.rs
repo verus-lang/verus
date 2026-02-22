@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use super::map::*;
 #[allow(unused_imports)]
-use super::gmap::GMap;
+use super::map::GenericMap;
 #[allow(unused_imports)]
 use super::pervasive::*;
 #[allow(unused_imports)]
@@ -211,8 +211,8 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     /// Creates a [`Map`] whose domain is the given set.
     /// The values of the map are given by `f`, a function of the keys.
     #[deprecated = "Use `Map::from_set` instead"]
-    pub open spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> GMap<A, V, FINITE> {
-        GMap::from_set(self, f)
+    pub open spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> GenericMap<A, V, FINITE> {
+        GenericMap::from_set(self, f)
     }
 
     /// Returns `true` if the sets are disjoint, i.e., if their interesection is

@@ -20,6 +20,9 @@ pub use super::gmap::{
 };
 
 #[doc(hidden)]
+pub type GenericMap<K, V, FINITE> = super::gmap::GMap<K, V, FINITE>;
+
+#[doc(hidden)]
 pub use super::gmap::{
     axiom_map_finite_from_trait,
     lemma_new_from_set_ensures,

@@ -1,4 +1,4 @@
-use super::gmap::GMap;
+use super::map::GenericMap;
 use super::map::{IMap, Map};
 use super::multiset::*;
 use super::prelude::*;
@@ -255,7 +255,7 @@ tracked struct GMapToken<Key, Value, Token, FINITE: Finiteness>
 {
     ghost _v: PhantomData<Value>,
     ghost inst: InstanceId,
-    tracked m: GMap<Key, Token, FINITE>,
+    tracked m: GenericMap<Key, Token, FINITE>,
 }
 
 impl<Key, Value, Token, FINITE: Finiteness> GMapToken<Key, Value, Token, FINITE>
@@ -271,7 +271,7 @@ impl<Key, Value, Token, FINITE: Finiteness> GMapToken<Key, Value, Token, FINITE>
         self.inst
     }
 
-    pub closed spec fn map(self) -> GMap<Key, Value, FINITE> {
+    pub closed spec fn map(self) -> GenericMap<Key, Value, FINITE> {
         self.m.map_values(|t: Token| t.value())
     }
 
@@ -293,10 +293,10 @@ impl<Key, Value, Token, FINITE: Finiteness> GMapToken<Key, Value, Token, FINITE>
     pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
             s.instance_id() == instance_id,
-            s.map() === GMap::empty(),
+            s.map() === GenericMap::empty(),
     {
-        let tracked s = Self { inst: instance_id, m: GMap::tracked_empty(), _v: PhantomData };
-        assert(s.map() =~= GMap::empty());
+        let tracked s = Self { inst: instance_id, m: GenericMap::tracked_empty(), _v: PhantomData };
+        assert(s.map() =~= GenericMap::empty());
         return s;
     }
 
@@ -328,7 +328,7 @@ impl<Key, Value, Token, FINITE: Finiteness> GMapToken<Key, Value, Token, FINITE>
         t
     }
 
-    pub proof fn into_map(tracked self) -> (tracked map: GMap<Key, Token, FINITE>)
+    pub proof fn into_map(tracked self) -> (tracked map: GenericMap<Key, Token, FINITE>)
         ensures
             map.dom() == self.map().dom(),
             forall |key|
@@ -345,7 +345,7 @@ impl<Key, Value, Token, FINITE: Finiteness> GMapToken<Key, Value, Token, FINITE>
         return m;
     }
 
-    pub proof fn from_map(instance_id: InstanceId, tracked map: GMap<Key, Token, FINITE>) -> (tracked s: Self)
+    pub proof fn from_map(instance_id: InstanceId, tracked map: GenericMap<Key, Token, FINITE>) -> (tracked s: Self)
         requires
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].key() == key,
@@ -560,7 +560,7 @@ pub tracked struct GSetToken<Element, Token, FINITE: Finiteness>
     where Token: ElementToken<Element>
 {
     ghost inst: InstanceId,
-    tracked m: GMap<Element, Token, FINITE>,
+    tracked m: GenericMap<Element, Token, FINITE>,
 }
 
 impl<Element, Token, FINITE: Finiteness> GSetToken<Element, Token, FINITE>
@@ -590,7 +590,7 @@ impl<Element, Token, FINITE: Finiteness> GSetToken<Element, Token, FINITE>
             s.instance_id() == instance_id,
             s.set() === GSet::empty(),
     {
-        let tracked s = Self { inst: instance_id, m: GMap::tracked_empty() };
+        let tracked s = Self { inst: instance_id, m: GenericMap::tracked_empty() };
         assert(s.set() =~= GSet::empty());
         return s;
     }
@@ -622,7 +622,7 @@ impl<Element, Token, FINITE: Finiteness> GSetToken<Element, Token, FINITE>
         t
     }
 
-    pub proof fn into_map(tracked self) -> (tracked map: GMap<Element, Token, FINITE>)
+    pub proof fn into_map(tracked self) -> (tracked map: GenericMap<Element, Token, FINITE>)
         ensures
             map.dom() == self.set(),
             forall |key|
@@ -638,7 +638,7 @@ impl<Element, Token, FINITE: Finiteness> GSetToken<Element, Token, FINITE>
         return m;
     }
 
-    pub proof fn from_map(instance_id: InstanceId, tracked map: GMap<Element, Token, FINITE>) -> (tracked s: Self)
+    pub proof fn from_map(instance_id: InstanceId, tracked map: GenericMap<Element, Token, FINITE>) -> (tracked s: Self)
         requires
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].element() == key,
