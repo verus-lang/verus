@@ -1,5 +1,6 @@
+use super::gmap::GMap;
 #[macro_use]
-use super::map::{GMap, Map, IMap, assert_maps_equal, assert_maps_equal_internal};
+use super::map::{Map, IMap, assert_maps_equal, assert_maps_equal_internal};
 #[allow(unused_imports)]
 use super::pervasive::*;
 #[allow(unused_imports)]

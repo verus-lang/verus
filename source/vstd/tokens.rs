@@ -1,4 +1,4 @@
-use super::map::GMap;
+use super::gmap::GMap;
 use super::multiset::*;
 use super::prelude::*;
 use super::gset::{Finite, Finiteness, GSet, Infinite};

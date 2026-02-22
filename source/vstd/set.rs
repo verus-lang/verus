@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 use super::map::*;
 #[allow(unused_imports)]
+use super::gmap::GMap;
+#[allow(unused_imports)]
 use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;

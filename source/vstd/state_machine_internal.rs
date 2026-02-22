@@ -3,6 +3,7 @@
 #![doc(hidden)]
 
 use super::map::*;
+use super::gmap::GMap;
 use super::pervasive::*;
 use super::prelude::*;
 use super::seq::*;
