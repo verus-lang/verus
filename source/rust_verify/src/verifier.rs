@@ -309,6 +309,8 @@ pub struct Verifier {
 
     /// Details about each function
     pub func_details: HashMap<Fun, FuncDetails>,
+    /// Errors to report after verification has run
+    deferred_errors: Vec<VirErr>,
 
     pub via_cargo_args: Option<CargoVerusArgs>,
     // Some(DepTracker) if via_cargo_args.is_some(), None otherwise
@@ -490,6 +492,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: HashMap::new(),
+            deferred_errors: Vec::new(),
 
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
             via_cargo_args,
@@ -538,6 +541,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: HashMap::new(),
+            deferred_errors: Vec::new(),
 
             via_cargo_args: self.via_cargo_args.clone(),
             dep_tracker: None,
@@ -570,6 +574,7 @@ impl Verifier {
         self.bucket_stats.extend(other.bucket_stats);
         self.func_times.extend(other.func_times);
         self.func_details.absorb_with(other.func_details, |lhs, rhs| lhs.absorb(rhs));
+        self.deferred_errors.extend(other.deferred_errors);
     }
 
     fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
@@ -2836,8 +2841,22 @@ impl Verifier {
             self.args.no_verify,
             self.args.no_cheating,
         );
-        let mut first_error: Option<VirErr> =
-            check_crate_result1.err().or(check_crate_result.err());
+        let mut first_error: Option<VirErr> = check_crate_result1.err();
+        match check_crate_result {
+            Ok(check_details) => {
+                for (func, failed_proof_notes) in check_details.func_failed_proof_notes {
+                    self.record_func_failed_proof_notes(
+                        func,
+                        failed_proof_notes.into_iter().collect(),
+                    );
+                }
+            }
+            Err(err) => {
+                if first_error.is_none() {
+                    first_error = Some(err);
+                }
+            }
+        }
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
@@ -2868,6 +2887,9 @@ impl Verifier {
                     } else {
                         diagnostics.report_as(&err.to_any(), MessageLevel::Error)
                     }
+                }
+                vir::ast::VirErrAs::NonFatalError(err, _) => {
+                    self.deferred_errors.push(err);
                 }
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
@@ -3202,7 +3224,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         vir::ast::VirErrAs::Note(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Note)
                         }
-                        vir::ast::VirErrAs::NonBlockingError(err, _) => {
+                        vir::ast::VirErrAs::NonBlockingError(err, _)
+                        | vir::ast::VirErrAs::NonFatalError(err, _) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Error)
                         }
                     }
@@ -3327,15 +3350,19 @@ impl VerifierCallbacksEraseMacro {
 
     fn finish_verus(&mut self, compiler: &Compiler) {
         let spans = self.spans.clone().unwrap();
+        let reporter = Reporter::new(&spans, compiler);
         match self.verifier.verify_crate(compiler, &spans) {
             Ok(()) => {}
             Err(err) => {
                 if let VerifyErr::Vir(err) = err {
-                    let reporter = Reporter::new(&spans, compiler);
                     reporter.report_as(&err.to_any(), MessageLevel::Error);
                 }
                 self.verifier.encountered_vir_error = true;
             }
+        }
+        for err in std::mem::take(&mut self.verifier.deferred_errors) {
+            reporter.report_as(&err.to_any(), MessageLevel::Error);
+            self.verifier.encountered_vir_error = true;
         }
         if !self.verifier.args.output_json
             && !self.verifier.encountered_error

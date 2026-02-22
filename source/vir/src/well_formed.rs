@@ -27,14 +27,22 @@ struct Ctxt<'a> {
     no_cheating: bool,
 }
 
+/// Details from well-formedness checking.
+pub struct CheckDetails {
+    /// For each function, collects proof notes that fail due to `--no-cheating`.
+    pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
+}
+
 trait EmitError {
     fn emit(&mut self, path: Option<Path>, err: VirErrAs);
     fn has_fatal_errors(&self) -> bool;
+    fn record_func_failed_proof_note(&mut self, func: Fun, note: String);
 }
 
 struct EmitErrorState {
     diags: Vec<VirErrAs>,
     diag_map: HashMap<Path, usize>,
+    func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
 }
 
 impl EmitError for EmitErrorState {
@@ -56,6 +64,10 @@ impl EmitError for EmitErrorState {
             VirErrAs::NonBlockingError(..) => true,
             _ => false,
         })
+    }
+
+    fn record_func_failed_proof_note(&mut self, func: Fun, note: String) {
+        self.func_failed_proof_notes.entry(func).or_default().insert(note);
     }
 }
 
@@ -581,9 +593,11 @@ fn check_one_expr<Emit: EmitError>(
             if ctxt.no_cheating && *is_assume {
                 let mut msg = error(&expr.span, "assume/admit not allowed with --no-cheating");
                 if let Some(label) = ast_expr_get_proof_note(inner_expr) {
-                    msg = msg.proof_note_label(&expr.span, label.to_string());
+                    let label = label.to_string();
+                    msg = msg.proof_note_label(&expr.span, label.clone());
+                    emit.record_func_failed_proof_note(function.x.name.clone(), label);
                 }
-                return Err(msg);
+                emit.emit(None, VirErrAs::NonFatalError(msg, None));
             }
         }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
@@ -1121,10 +1135,9 @@ fn check_function<Emit: EmitError>(
     }
 
     if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
-        return Err(error(
-            &function.span,
-            "#[verifier::assume_termination] not allowed with --no-cheating",
-        ));
+        let msg =
+            error(&function.span, "#[verifier::assume_termination] not allowed with --no-cheating");
+        emit.emit(None, VirErrAs::NonFatalError(msg, None));
     }
 
     #[cfg(feature = "singular")]
@@ -1443,10 +1456,11 @@ fn check_function<Emit: EmitError>(
             // Allow external_body/assume_specification inside vstd
             Some(path) if path.is_vstd_path() => {}
             _ => {
-                return Err(error(
+                let msg = error(
                     &function.span,
                     "external_body/assume_specification not allowed with --no-cheating",
-                ));
+                );
+                emit.emit(None, VirErrAs::NonFatalError(msg, None));
             }
         }
     }
@@ -1665,7 +1679,7 @@ pub fn check_crate(
     diags: &mut Vec<VirErrAs>,
     no_verify: bool,
     no_cheating: bool,
-) -> Result<(), VirErr> {
+) -> Result<CheckDetails, VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
         match funs.get(&function.x.name) {
@@ -1914,7 +1928,8 @@ pub fn check_crate(
 
     let diag_map: HashMap<Path, usize> = HashMap::new();
     let new_diags: Vec<VirErrAs> = Vec::new();
-    let mut emit = EmitErrorState { diag_map, diags: new_diags };
+    let mut emit =
+        EmitErrorState { diag_map, diags: new_diags, func_failed_proof_notes: HashMap::new() };
     let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
@@ -1938,8 +1953,8 @@ pub fn check_crate(
     diags.append(&mut emit.diags);
     // There is no point in checking for well-founded types if we already have a fatal error:
     if diags.iter().any(|x| matches!(x, VirErrAs::NonBlockingError(..))) {
-        return Ok(());
+        return Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes });
     }
     crate::recursive_types::check_recursive_types(krate)?;
-    Ok(())
+    Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes })
 }

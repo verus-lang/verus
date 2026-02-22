@@ -308,6 +308,8 @@ pub fn run_verus(
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
+        } else if *option == "--no-verify" {
+            verus_args.push("--no-verify".to_string());
         } else if *option == "--no-report-long-running" {
             verus_args.push("--no-report-long-running".to_string());
         } else if *option == "--no-cheating" {
