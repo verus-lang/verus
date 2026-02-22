@@ -33,9 +33,9 @@ impl Finiteness for Infinite {
 
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(A)]
-pub(super) struct GSet<A, FINITE: Finiteness> {
-    set: spec_fn(A) -> bool,
-    _phantom: PhantomData<FINITE>,
+pub struct GSet<A, FINITE: Finiteness> {
+    pub set: spec_fn(A) -> bool,
+    pub _phantom: PhantomData<FINITE>,
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -57,7 +57,7 @@ pub(super) struct GSet<A, FINITE: Finiteness> {
 // sets, which creates a different problem with extensional equality.)
 //////////////////////////////////////////////////////////////////////////////
 
-pub(super) broadcast proof fn axiom_gset_finite_from_trait<A, FINITE: Finiteness>(s: GSet<A, FINITE>)
+pub broadcast proof fn axiom_gset_finite_from_trait<A, FINITE: Finiteness>(s: GSet<A, FINITE>)
     requires
         FINITE::type_is_finite(),
     ensures
@@ -67,7 +67,7 @@ pub(super) broadcast proof fn axiom_gset_finite_from_trait<A, FINITE: Finiteness
     admit();
 }
 
-pub(super) broadcast proof fn lemma_gset_finite_from_type<A>(s: Set<A>)
+pub broadcast proof fn lemma_gset_finite_from_type<A>(s: GSet<A, Finite>)
     ensures
         #[trigger] s.finite(),
 {
@@ -82,14 +82,14 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     // users through group lemma automation. We expect most user code will stay within Set or ISet,
     // where extensionality is the more natural concept and syntax. Hence, the lemmas aren't
     // part of the exported broadcast group.
-    pub(super) open spec fn congruent<FINITE2: Finiteness>(
+    pub open spec fn congruent<FINITE2: Finiteness>(
         self: GSet<A, FINITE>,
         s2: GSet<A, FINITE2>,
     ) -> bool {
         forall|a: A| self.contains(a) <==> s2.contains(a)
     }
 
-    pub(super) broadcast proof fn congruent_infiniteness<FINITE2: Finiteness>(
+    pub broadcast proof fn congruent_infiniteness<FINITE2: Finiteness>(
         self: GSet<A, FINITE>,
         s2: GSet<A, FINITE2>,
     )
@@ -102,7 +102,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 
     }
 
-    pub(super) broadcast proof fn congruent_len<FINITE2: Finiteness>(
+    pub broadcast proof fn congruent_len<FINITE2: Finiteness>(
         self: GSet<A, FINITE>,
         s2: GSet<A, FINITE2>,
     )
@@ -117,6 +117,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             lemma_gset_empty_len,
             lemma_gset_len_empty,
             lemma_gset_remove_len,
+            lemma_gset_remove_finite,
             lemma_gset_choose_len,
             lemma_gset_ext_equal,
         };
@@ -138,19 +139,19 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     // but we don't need to invoke that lemma here because this file is trusting
     // GSet constructors to do so soundly (see "Important soundness note" above).
     /// Returns the set that contains an element `f(x)` for every element `x` in `self`.
-    pub closed spec fn map<B>(self, f: spec_fn(A) -> B) -> GSet<B, FINITE> {
+    pub open spec fn map<B>(self, f: spec_fn(A) -> B) -> GSet<B, FINITE> {
         GSet { set: |a: B| exists|x: A| self.contains(x) && a == f(x), _phantom: PhantomData }
     }
 
     /// Set of all elements in the given set which satisfy the predicate `f`.
     /// Preserves finiteness of self.
-    pub closed spec fn filter(self, f: spec_fn(A) -> bool) -> (out: GSet<A, FINITE>) {
+    pub open spec fn filter(self, f: spec_fn(A) -> bool) -> (out: GSet<A, FINITE>) {
         GSet { set: |a| self.contains(a) && f(a), _phantom: PhantomData }
     }
 
     /// Replace each element of a set with the elements of another set.
     /// Preserves finiteness of self.
-    pub closed spec fn product<B>(self, f: spec_fn(A) -> GSet<B, FINITE>) -> (out: GSet<
+    pub open spec fn product<B>(self, f: spec_fn(A) -> GSet<B, FINITE>) -> (out: GSet<
         B,
         FINITE,
     >) {
@@ -161,11 +162,11 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     // Set, and anything can be cast to an ISet.
     pub uninterp spec fn cast_finiteness<NEWFINITE: Finiteness>(self) -> GSet<A, NEWFINITE>;
 
-    pub(super) open spec fn castable<NEWFINITE: Finiteness>(self) -> bool {
+    pub open spec fn castable<NEWFINITE: Finiteness>(self) -> bool {
         self.finite() || !NEWFINITE::type_is_finite()
     }
 
-    pub(super) broadcast axiom fn cast_finiteness_properties<NEWFINITE: Finiteness>(self)
+    pub broadcast axiom fn cast_finiteness_properties<NEWFINITE: Finiteness>(self)
         requires
             self.castable::<NEWFINITE>(),
         ensures
@@ -173,7 +174,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     ;
 
     #[verifier::inline]
-    pub(super) open spec fn to_finite(self) -> Set<A>
+    pub open spec fn to_finite(self) -> GSet<A, Finite>
         recommends
             self.finite(),
     {
@@ -205,7 +206,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     }
 }
 
-pub(super) broadcast proof fn lemma_gset_map_contains<A, FINITE: Finiteness, B>(
+pub broadcast proof fn lemma_gset_map_contains<A, FINITE: Finiteness, B>(
     s: GSet<A, FINITE>,
     f: spec_fn(A) -> B,
 )
@@ -266,8 +267,8 @@ pub broadcast proof fn lemma_gset_filter_finite<A, FINITE: Finiteness>(
 }
 
 impl<A, FINITE: Finiteness> GSet<A, FINITE> {
-    pub(super) open spec fn to_infinite(self) -> (infinite_out: ISet<A>) {
-        ISet::new(|a| self.contains(a))
+    pub open spec fn to_infinite(self) -> (infinite_out: GSet<A, Infinite>) {
+        GSet { set: |a| self.contains(a), _phantom: PhantomData }
     }
 
     proof fn to_infinite_len(self)
@@ -293,7 +294,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         }
     }
 
-    pub(super) broadcast proof fn to_infinite_ensures(self)
+    pub broadcast proof fn to_infinite_ensures(self)
         requires
             self.finite(),
         ensures
@@ -307,11 +308,11 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     }
 }
 // Closures make triggering finicky but using this to trigger explicitly works well.
-spec fn trigger_finite<A>(f: spec_fn(A) -> nat, ub: nat) -> bool {
+pub open spec fn trigger_finite<A>(f: spec_fn(A) -> nat, ub: nat) -> bool {
     true
 }
 
-spec fn surj_on<A, AFINITE: Finiteness, B>(f: spec_fn(A) -> B, s: GSet<A, AFINITE>) -> bool {
+pub open spec fn surj_on<A, AFINITE: Finiteness, B>(f: spec_fn(A) -> B, s: GSet<A, AFINITE>) -> bool {
     forall|a1, a2| #![all_triggers] s.contains(a1) && s.contains(a2) && a1 != a2 ==> f(a1) != f(a2)
 }
 
@@ -342,7 +343,7 @@ pub mod fold {
     //! and contributors.
     use super::*;
 
-    pub(in super) broadcast group group_set_lemmas_early {
+    pub(crate) broadcast group group_set_lemmas_early {
         GSet::cast_finiteness_properties,
         lemma_gset_finite_from_type,
         lemma_gset_generic_union,
@@ -857,7 +858,7 @@ pub broadcast proof fn lemma_gset_insert_finite<A, FINITE: Finiteness>(s: GSet<A
 
 /// The result of removing an element `a` from a finite set `s` is also finite.
 /// This conclusion is automatic for finite `Set`s, but still useful for SMT-`.finite()` `ISet`s.
-pub broadcast proof fn lemma_gset_remove_finite<A, FINITE: Finiteness>(s: ISet<A, FINITE>, a: A)
+pub broadcast proof fn lemma_gset_remove_finite<A, FINITE: Finiteness>(s: GSet<A, FINITE>, a: A)
     requires
         s.finite(),
     ensures
@@ -875,7 +876,7 @@ pub broadcast proof fn lemma_gset_remove_finite<A, FINITE: Finiteness>(s: ISet<A
 // use this lemma to keep them easy. However, end users don't get access to the .set field;
 // I think this failure of triggeriness is similar to why it's more painful to talk about
 // built-up Sets than function-constructed ISets.
-proof fn lemma_congruence_extensionality<A, F1: Finiteness, F2: Finiteness>(
+pub proof fn lemma_congruence_extensionality<A, F1: Finiteness, F2: Finiteness>(
     x: GSet<A, F1>,
     y: GSet<A, F2>,
 )
@@ -1104,7 +1105,7 @@ pub broadcast proof fn lemma_gset_remove_len<A, FINITE: Finiteness>(s: GSet<A, F
 }
 
 /// If a finite set `s` contains any element, it has length greater than 0.
-pub broadcast proof fn lemma_gset_contains_len<A>(s: Set<A>, a: A)
+pub broadcast proof fn lemma_gset_contains_len<A>(s: GSet<A, Finite>, a: A)
     requires
         #[trigger] s.contains(a),
     ensures
