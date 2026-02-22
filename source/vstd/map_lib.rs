@@ -1,4 +1,4 @@
-use super::gmap::GMap;
+use super::map::GenericMap;
 #[macro_use]
 use super::map::{Map, IMap, assert_maps_equal, assert_maps_equal_internal};
 #[allow(unused_imports)]
@@ -14,7 +14,7 @@ verus! {
 
 broadcast use {super::map::group_map_axioms, super::set::group_set_lemmas};
 
-impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
+impl<K, V, FINITE: Finiteness> GenericMap<K, V, FINITE> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
     #[verifier::inline]
     pub open spec fn is_full(self) -> bool {
@@ -439,7 +439,7 @@ impl<K, V> IMap<Seq<K>, V> {
 
         #[allow(deprecated)]
         super::seq_lib::lemma_seq_properties::<K>();  // new broadcast group not working here
-        broadcast use GMap::lemma_prefixed_entries_contains, GMap::lemma_prefixed_entries_get;
+        broadcast use super::gmap::GMap::lemma_prefixed_entries_contains, super::gmap::GMap::lemma_prefixed_entries_get;
 
         let lhs = self.insert(prefix + k, v).prefixed_entries(prefix);
         let rhs = self.prefixed_entries(prefix).insert(k, v);
@@ -473,9 +473,9 @@ impl<K, V> IMap<Seq<K>, V> {
     {
         broadcast use group_map_properties;
         broadcast use
-            GMap::lemma_prefixed_entries_contains,
-            GMap::lemma_prefixed_entries_get,
-            GMap::lemma_prefixed_entries_insert,
+            super::gmap::GMap::lemma_prefixed_entries_contains,
+            super::gmap::GMap::lemma_prefixed_entries_get,
+            super::gmap::GMap::lemma_prefixed_entries_insert,
         ;
 
         let lhs = self.union_prefer_right(m).prefixed_entries(prefix);
@@ -586,9 +586,9 @@ pub broadcast group group_map_union {
 
 /// submap_of (<=) is transitive.
 pub broadcast proof fn lemma_submap_of_trans<K, V, FINITE: Finiteness>(
-    m1: GMap<K, V, FINITE>,
-    m2: GMap<K, V, FINITE>,
-    m3: GMap<K, V, FINITE>,
+    m1: GenericMap<K, V, FINITE>,
+    m2: GenericMap<K, V, FINITE>,
+    m3: GenericMap<K, V, FINITE>,
 )
     requires
         #[trigger] m1.submap_of(m2),
@@ -661,12 +661,12 @@ pub broadcast group group_map_properties {
 }
 
 pub broadcast group group_map_extra {
-    GMap::lemma_map_remove_keys_insert,
-    GMap::lemma_filter_keys_insert,
-    GMap::lemma_prefixed_entries_get,
-    GMap::lemma_prefixed_entries_contains,
-    GMap::lemma_prefixed_entries_insert,
-    GMap::lemma_prefixed_entries_union,
+    super::gmap::GMap::lemma_map_remove_keys_insert,
+    super::gmap::GMap::lemma_filter_keys_insert,
+    super::gmap::GMap::lemma_prefixed_entries_get,
+    super::gmap::GMap::lemma_prefixed_entries_contains,
+    super::gmap::GMap::lemma_prefixed_entries_insert,
+    super::gmap::GMap::lemma_prefixed_entries_union,
 }
 
 pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
