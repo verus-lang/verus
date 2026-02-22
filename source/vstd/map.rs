@@ -1,10 +1,8 @@
 pub use super::gmap::{
     Map, IMap,
-    axiom_map_finite_from_trait,
     axiom_map_finite_from_type,
     axiom_map_index_decreases_finite,
     axiom_map_index_decreases_infinite,
-    lemma_new_from_set_ensures,
     lemma_infinite_new_ensures,
     lemma_map_empty,
     lemma_map_insert_domain,
@@ -23,6 +21,8 @@ pub use super::gmap::{
 
 #[doc(hidden)]
 pub use super::gmap::{
+    axiom_map_finite_from_trait,
+    lemma_new_from_set_ensures,
     check_argument_is_map,
     map_internal,
     imap_internal,
