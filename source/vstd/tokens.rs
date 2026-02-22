@@ -20,7 +20,7 @@ verus_! {
 broadcast use {
     super::set_lib::group_set_lib_default,
     super::set::group_set_lemmas,
-    super::map::group_map_axioms };
+    super::gmap::group_map_axioms };
 
 /// Unique identifier for every VerusSync instance.
 /// Every "Token" and "Instance" object has an `InstanceId`. These ID values must agree

@@ -1409,7 +1409,7 @@ pub broadcast proof fn lemma_hashmap_view_ensures_contains_key<K, V>(m: HashMap<
     ensures
         #[trigger] m@.contains_key(k) <==> m@.to_infinite().contains_key(k),
 {
-    broadcast use crate::map::group_map_axioms;
+    broadcast use crate::gmap::group_map_axioms;
 
 }
 
@@ -1418,10 +1418,10 @@ pub broadcast proof fn lemma_hashmap_view_ensures_to_infinite<K, V>(m: HashMap<K
         #[trigger] m@ == m@.to_infinite().to_finite(),
 {
     // TODO(jonh): minimize
-    broadcast use super::super::map::group_map_axioms;
+    broadcast use super::super::gmap::group_map_axioms;
     broadcast use super::super::set::group_set_lemmas;
     broadcast use super::super::set::GSet::congruent_infiniteness;
-    broadcast use super::super::map::lemma_congruence_extensionality;
+    broadcast use super::super::gmap::lemma_congruence_extensionality;
 
     m@.to_infinite_ensures();
     assert(m@.to_infinite().congruent(m@));

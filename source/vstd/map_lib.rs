@@ -12,7 +12,7 @@ use super::set_lib::*;
 
 verus! {
 
-broadcast use {super::map::group_map_axioms, super::set::group_set_lemmas};
+broadcast use {super::gmap::group_map_axioms, super::set::group_set_lemmas};
 
 impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
