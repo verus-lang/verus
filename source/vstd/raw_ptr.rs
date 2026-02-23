@@ -371,12 +371,11 @@ impl<T> PointsTo<[T]> {
     // #[verifier::inline]
     // Q: Does it matter if `verifier::inline` is turned on or not?
     pub open spec fn is_init(&self) -> bool {
-        forall|i|
-            0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
+        self.is_init_subrange(0, self.mem_contents_seq().len())
     }
 
     /// Returns `true` if all of the permission's associated memory in the given subrange is initialized.
-    pub open spec fn is_init_subrange(&self, start_index: int, len: int) -> bool
+    pub open spec fn is_init_subrange(&self, start_index: int, len: nat) -> bool
         recommends
             0 <= start_index <= start_index + len <= self.mem_contents_seq().len(),
     {
@@ -406,7 +405,19 @@ impl<T> PointsTo<[T]> {
         recommends
             self.is_init(),
     {
-        Seq::new(self.mem_contents_seq().len(), |i| self.mem_contents_seq().index(i).value())
+        self.value_subrange(0, self.mem_contents_seq().len())
+    }
+
+    /// Returns a sequence where for each index in the given range,
+    /// if the permission's associated memory at that index is initialized,
+    /// the corresponding index in the sequence holds that value.
+    /// Otherwise, the value at that index is meaningless.
+    pub open spec fn value_subrange(&self, start_index: int, len: nat) -> Seq<T>
+        recommends
+            0 <= start_index <= start_index + len <= self.mem_contents_seq().len(),
+            self.is_init_subrange(start_index, len),
+    {
+        Seq::new(len, |i| self.mem_contents_seq().index(start_index + i).value())
     }
 
     /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
