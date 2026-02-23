@@ -93,7 +93,7 @@ need to use `old` or `final`. In the future, we may relax this so that `old` isn
 
 ### Summary
 
-To refer to the old or update value of a parameter `x: &mut u64`:
+To refer to the old or updated value of a parameter `x: &mut u64`:
 
 |                                | Old system | New system            |
 |--------------------------------|------------|-----------------------|
@@ -121,7 +121,7 @@ This attribute will be available for some time even after `new-mut-ref` is perma
 
 <strong>(relevant to anyone using `tracked` code)</strong>
 
-The new system for mutable references to tracked location is more permissive in some ways and more restrictive in others.
+The new system for mutable references to tracked locations is more permissive in some ways and more restrictive in others.
 
 For one, you can now take a mutable reference to an exec location and then modify it from ghost code, _provided_ that you only modify a ghost "sub-place". For example, this now works:
 
@@ -181,7 +181,7 @@ Fortunately, this kind of code—taking a tracked reference to possibly-executab
 When modifying data through a mutable reference in proof code, Verus will attempt to deduce that the reference points to a non-exec place and is thus allowable in proof code.
 The following are allowed:
 
-* Writing to a location of type `X` where `X` a struct declared as a `tracked struct`
+* Writing to a location of type `X` where `X` is a struct declared as a `tracked struct`
 * Writing to a location of type `Tracked<A>` or `Ghost<A>`
 * Writing to a location inside a `Tracked` that is not subsequently behind a mutable reference
   * e.g., writing to `**x` where `x: &mut Tracked<T>` is ok
