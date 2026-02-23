@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] test_is_core ["--is-core", "no-auto-import-verus_builtin"] => code! {
+    #[test] test_is_core ["--is-core", "no-auto-import-verus_builtin", "new-mut-ref"] => code! {
         #![allow(unused_parens)]
         #![allow(unused_imports)]
         #![allow(dead_code)]
@@ -23,6 +23,7 @@ test_verify_one_file_with_options! {
             feature(fn_traits),
         )]
         #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+        #![cfg_attr(verus_keep_ghost, verifier::migrate_postconditions_with_mut_refs(true))]
 
         #[verifier::external]
         #[path="../../../../builtin/src/lib.rs"]
@@ -59,6 +60,8 @@ test_verify_one_file_with_options! {
                 crate::vstd::multiset::assert_multisets_equal!(a, b);
                 crate::vstd::multiset::assert_multisets_equal!(a == b);
             }
+
+            broadcast use crate::vstd::slice::group_slice_axioms;
 
             fn test_slice_index(x: &[u8]) -> u8
                 requires x@.len() > 0
