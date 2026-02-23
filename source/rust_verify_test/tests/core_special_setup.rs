@@ -23,7 +23,7 @@ test_verify_one_file_with_options! {
             feature(fn_traits),
         )]
         #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
-        #![cfg_attr(verus_keep_ghost, verifier::migrate_postconditions_with_mut_refs(true))]
+        #![cfg_attr(verus_keep_ghost, verifier::deprecated_postcondition_mut_ref_style(true))]
 
         #[verifier::external]
         #[path="../../../../builtin/src/lib.rs"]

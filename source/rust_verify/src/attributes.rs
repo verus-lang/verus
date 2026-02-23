@@ -561,16 +561,16 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::LoopIsolation(false))
                 }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
-                    if arg == "migrate_postconditions_with_mut_refs" && r == "true" =>
+                    if arg == "deprecated_postcondition_mut_ref_style" && r == "true" =>
                 {
                     v.push(Attr::MigratePostconditionsWithMutRefs(true))
                 }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
-                    if arg == "migrate_postconditions_with_mut_refs" && r == "false" =>
+                    if arg == "deprecated_postcondition_mut_ref_style" && r == "false" =>
                 {
                     v.push(Attr::MigratePostconditionsWithMutRefs(false))
                 }
-                AttrTree::Fun(_, arg, _) if arg == "migrate_postconditions_with_mut_refs" => {
+                AttrTree::Fun(_, arg, _) if arg == "deprecated_postcondition_mut_ref_style" => {
                     v.push(Attr::MigratePostconditionsWithMutRefs(true))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "allow_complex_invariants" => {

@@ -3140,7 +3140,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] backwards_compat ["new-mut-ref"] => verus_code! {
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(a: &mut u8)
             requires *old(a) < 255,
             ensures *a == *old(a) + 1,
@@ -3148,7 +3148,7 @@ test_verify_one_file_with_options! {
             *a = *a + 1;
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2(a: &mut u8)
             requires *old(a) < 255,
             ensures *a == *old(a) + 1,
@@ -3160,7 +3160,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] backwards_compat_unwrapped_param ["new-mut-ref"] => verus_code! {
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(Tracked(a): Tracked<&mut Ghost<u8>>)
             requires old(a)@ < 255,
             ensures a@ == old(a)@ + 1,
@@ -3168,7 +3168,7 @@ test_verify_one_file_with_options! {
             proof { *a = Ghost((a@ + 1) as u8); }
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2(Tracked(a): Tracked<&mut Ghost<u8>>)
             requires old(a)@ < 255,
             ensures a@ == old(a)@ + 1,
@@ -3176,7 +3176,7 @@ test_verify_one_file_with_options! {
             test(Tracked(a));
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2_fails(Tracked(a): Tracked<&mut Ghost<u8>>)
             requires old(a)@ < 255,
             ensures a@ == old(a)@ + 1,
@@ -3185,7 +3185,7 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2_fails2(Tracked(a): Tracked<&mut Ghost<u8>>)
             ensures a@ == old(a)@ + 1,
         {
@@ -3196,7 +3196,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] backwards_compat_fail ["new-mut-ref"] => verus_code! {
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(a: &mut u8)
             requires *old(a) < 255,
             ensures *fin(a) == *old(a) + 1,
@@ -3204,7 +3204,7 @@ test_verify_one_file_with_options! {
             *a = *a + 1;
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2(a: &mut u8)
             requires *old(a) < 255,
             ensures *a == *old(a) + 1,
@@ -3216,7 +3216,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] backwards_compat_fail2 ["new-mut-ref"] => verus_code! {
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(a: &mut u8)
             requires *old(a) < 255,
             ensures *a == *old(a) + 1,
@@ -3224,7 +3224,7 @@ test_verify_one_file_with_options! {
             *a = *a + 1;
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2(a: &mut u8)
             requires *old(a) < 255,
             ensures a == a

@@ -1977,7 +1977,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 return err_span(
                     expr.span,
                     format!(
-                        "to use `{name}`, disable mut-ref backwards-compatability (add #[verifier::migrate_postcondition_with_mut_refs(false)] to the function)"
+                        "to use `{name}`, disable mut-ref backwards-compatability (add #[verifier::deprecated_postcondition_mut_ref_style(false)] to the function)"
                     ),
                 );
             }
