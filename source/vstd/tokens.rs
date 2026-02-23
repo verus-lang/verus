@@ -3,6 +3,8 @@ use super::map::{IMap, Map};
 use super::multiset::*;
 use super::prelude::*;
 use super::gset::{Finite, Finiteness, GSet, Infinite};
+use super::iset::ISet;
+use super::set::Set;
 use core::marker::PhantomData;
 
 pub mod frac;
@@ -556,7 +558,7 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
 }
 
 #[verifier::reject_recursive_types(Element)]
-pub tracked struct GSetToken<Element, Token, FINITE: Finiteness>
+tracked struct GSetToken<Element, Token, FINITE: Finiteness>
     where Token: ElementToken<Element>
 {
     ghost inst: InstanceId,
@@ -652,8 +654,171 @@ impl<Element, Token, FINITE: Finiteness> GSetToken<Element, Token, FINITE>
     }
 }
 
-pub type ISetToken<Element, Token> = GSetToken<Element, Token, Infinite>;
-pub type SetToken<Element, Token> = GSetToken<Element, Token, Finite>;
+#[verifier::reject_recursive_types(Element)]
+pub tracked struct ISetToken<Element, Token>
+    where Token: ElementToken<Element>
+{
+    tracked m: GSetToken<Element, Token, Infinite>,
+}
+
+impl<Element, Token> ISetToken<Element, Token>
+    where Token: ElementToken<Element>
+{
+    pub closed spec fn instance_id(self) -> InstanceId {
+        self.m.instance_id()
+    }
+
+    pub closed spec fn set(self) -> ISet<Element> {
+        ISet(self.m.set())
+    }
+
+    #[verifier::inline]
+    pub open spec fn contains(self, element: Element) -> bool {
+        self.set().contains(element)
+    }
+
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
+        ensures
+            s.instance_id() == instance_id,
+            s.set() === ISet::empty(),
+    {
+        let tracked m = GSetToken::empty(instance_id);
+        let tracked s = Self { m };
+        assert(s.set() =~= ISet::empty());
+        s
+    }
+
+    pub proof fn insert(tracked &mut self, tracked token: Token)
+        requires
+            old(self).instance_id() == token.instance_id(),
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.set() == old(self).set().insert(token.element()),
+    {
+        self.m.insert(token);
+    }
+
+    pub proof fn remove(tracked &mut self, element: Element) -> (tracked token: Token)
+        requires
+            old(self).set().contains(element)
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.set() == old(self).set().remove(element),
+            token.instance_id() == self.instance_id(),
+            token.element() == element,
+    {
+        self.m.remove(element)
+    }
+
+    pub proof fn into_map(tracked self) -> (tracked map: IMap<Element, Token>)
+        ensures
+            ISet(map.dom()) == self.set(),
+            forall |key|
+                #![trigger(map.dom().contains(key))]
+                #![trigger(map.index(key))]
+                map.dom().contains(key)
+                    ==> map[key].instance_id() == self.instance_id()
+                     && map[key].element() == key
+    {
+        let tracked ISetToken { m } = self;
+        m.into_map()
+    }
+
+    pub proof fn from_map(instance_id: InstanceId, tracked map: IMap<Element, Token>) -> (tracked s: Self)
+        requires
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].element() == key,
+        ensures
+            s.instance_id() == instance_id,
+            s.set() == ISet(map.dom()),
+    {
+        let tracked m = GSetToken::from_map(instance_id, map);
+        Self { m }
+    }
+}
+
+#[verifier::reject_recursive_types(Element)]
+pub tracked struct SetToken<Element, Token>
+    where Token: ElementToken<Element>
+{
+    tracked m: GSetToken<Element, Token, Finite>,
+}
+
+impl<Element, Token> SetToken<Element, Token>
+    where Token: ElementToken<Element>
+{
+    pub closed spec fn instance_id(self) -> InstanceId {
+        self.m.instance_id()
+    }
+
+    pub closed spec fn set(self) -> Set<Element> {
+        Set(self.m.set())
+    }
+
+    #[verifier::inline]
+    pub open spec fn contains(self, element: Element) -> bool {
+        self.set().contains(element)
+    }
+
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
+        ensures
+            s.instance_id() == instance_id,
+            s.set() === Set::empty(),
+    {
+        let tracked m = GSetToken::empty(instance_id);
+        let tracked s = Self { m };
+        assert(s.set() =~= Set::empty());
+        s
+    }
+
+    pub proof fn insert(tracked &mut self, tracked token: Token)
+        requires
+            old(self).instance_id() == token.instance_id(),
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.set() == old(self).set().insert(token.element()),
+    {
+        self.m.insert(token);
+    }
+
+    pub proof fn remove(tracked &mut self, element: Element) -> (tracked token: Token)
+        requires
+            old(self).set().contains(element)
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.set() == old(self).set().remove(element),
+            token.instance_id() == self.instance_id(),
+            token.element() == element,
+    {
+        self.m.remove(element)
+    }
+
+    pub proof fn into_map(tracked self) -> (tracked map: Map<Element, Token>)
+        ensures
+            Set(map.dom()) == self.set(),
+            forall |key|
+                #![trigger(map.dom().contains(key))]
+                #![trigger(map.index(key))]
+                map.dom().contains(key)
+                    ==> map[key].instance_id() == self.instance_id()
+                     && map[key].element() == key
+    {
+        let tracked SetToken { m } = self;
+        m.into_map()
+    }
+
+    pub proof fn from_map(instance_id: InstanceId, tracked map: Map<Element, Token>) -> (tracked s: Self)
+        requires
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].element() == key,
+        ensures
+            s.instance_id() == instance_id,
+            s.set() == Set(map.dom()),
+    {
+        let tracked m = GSetToken::from_map(instance_id, map);
+        Self { m }
+    }
+}
 
 pub tracked struct MultisetToken<Element, Token>
     where Token: ElementToken<Element>
