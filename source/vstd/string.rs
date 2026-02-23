@@ -92,6 +92,41 @@ pub assume_specification[ str::as_bytes ](s: &str) -> (b: &[u8])
 ;
 
 #[cfg(feature = "alloc")]
+pub assume_specification[ str::len ](s: &str) -> (res: usize)
+    ensures
+        res == s.spec_bytes().len(),
+;
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ str::is_empty ](s: &str) -> (res: bool)
+    ensures
+        res == (s@.len() == 0),
+;
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ str::is_char_boundary ](s: &str, index: usize) -> (res: bool)
+    ensures
+        res == (is_char_boundary(s.spec_bytes(), index as int)),
+;
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &str))
+    requires
+        is_char_boundary(s.spec_bytes(), mid as int)
+    ensures
+        res.0.spec_bytes() =~= s.spec_bytes().subrange(0, mid as int),
+        res.1.spec_bytes() =~= s.spec_bytes().subrange(mid as int, s.spec_bytes().len() as int)
+;
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ str::from_utf8_unchecked ](v: &[u8]) -> (res: &str)
+    requires
+        valid_utf8(v@)
+    ensures
+        res.spec_bytes() =~= v@
+;
+
+#[cfg(feature = "alloc")]
 pub uninterp spec fn to_string_from_display_ensures<T: core::fmt::Display + ?Sized>(
     t: &T,
     s: String,
@@ -158,7 +193,7 @@ impl StrSliceExecFns for str {
     fn substring_ascii<'a>(&'a self, from: usize, to: usize) -> (ret: &'a str)
         requires
             self.is_ascii(),
-            from <= to <= self@.len(), // MODIFIED
+            from <= to <= self@.len(), // MODIFIED - Range::index panics if from > to
         ensures
             ret@ == self@.subrange(from as int, to as int),
             ret.is_ascii(),
@@ -169,7 +204,7 @@ impl StrSliceExecFns for str {
     #[verifier::external_body]
     fn substring_char<'a>(&'a self, from: usize, to: usize) -> (ret: &'a str)
         requires
-            from <= to <= self@.len(), // MODIFIED
+            from <= to <= self@.len(), // MODIFIED - Range::index panics if from > to
         ensures
             ret@ == self@.subrange(from as int, to as int),
     {
@@ -201,7 +236,7 @@ impl StrSliceExecFns for str {
     fn get_ascii(&self, i: usize) -> (b: u8)
         requires
             self.is_ascii(),
-            0 <= i < self@.len() // NEW
+            0 <= i < self@.len() // NEW - would panic if i is not a valid index
         ensures
             self@.index(i as int) as u8 == b,
     {

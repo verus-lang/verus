@@ -10,13 +10,6 @@ pub open spec fn is_leading_1(byte: u8) -> bool {
     0x00 <= byte <= 0x7f
 }
 
-/*
-result == 1 <==> 0x00 <= b <= 0x7f,
-        result == 2 <==> 0xc2 <= b <= 0xdf,
-        result == 3 <==> 0xe0 <= b <= 0xef,
-        result == 4 <==> 0xf0 <= b <= 0xf4,
-*/
-
 /// byte has the form 110xxxxx
 /// 0xe0 = 1110 0000
 /// 0xc0 = 1100 0000
@@ -418,7 +411,6 @@ pub open spec fn is_char_boundary(bytes: Seq<u8>, index: int) -> bool
 
 /* encode_utf8 and decode_utf8 correspondence */
 
-// codepoint_of_scalar((scalar_of_codepoint_1(bytes[0]) as char) as u32)[0] == bytes[0]
 proof fn codepoint_of_scalar_scalar_of_codepoint_1_byte(c: u32)
     by (bit_vector)
     requires
@@ -710,19 +702,20 @@ pub broadcast proof fn is_ascii_chars_encode_utf8(chars: Seq<char>)
 
 pub broadcast proof fn is_ascii_chars_nat_bound(chars: Seq<char>)
     ensures
-        #[trigger] is_ascii_chars(s) ==> forall|i: int| 0 <= i < s@.len() ==> (s@.index(i) as nat) < 128
+        #[trigger] is_ascii_chars(chars) ==> forall|i: int| 0 <= i < chars.len() ==> (chars.index(i) as nat) < 128
 {}
 
 //todo - add cfg
-pub broadcast proof fn is_ascii_concat(c1: Seq<char>, s2: Seq<char>, s3: Seq<char>)
+pub broadcast proof fn is_ascii_chars_concat(c1: Seq<char>, c2: Seq<char>, c3: Seq<char>)
     requires
-        s1@ =~= #[trigger] s2@ + s3@,
+        c1 =~= c2 + c3,
     ensures
-        #[trigger] is_ascii(s1) <==> #[trigger] is_ascii(s2) && #[trigger] is_ascii(s3)
+        #![trigger c2 + c3, is_ascii_chars(c1), is_ascii_chars(c2), is_ascii_chars(c3)]
+        is_ascii_chars(c1) <==> is_ascii_chars(c2) && is_ascii_chars(c3)
 {
-    if (is_ascii(s1)) {
-        assert(s2@ =~= s1@.subrange(0, s2@.len() as int));
-        assert(s3@ =~= s1@.subrange(s2@.len() as int, s1@.len() as int));
+    if (is_ascii_chars(c1)) {
+        assert(c2 =~= c1.subrange(0, c2.len() as int));
+        assert(c3 =~= c1.subrange(c2.len() as int, c1.len() as int));
     }
 }
 
