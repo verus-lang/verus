@@ -19,8 +19,7 @@ pub use super::gmap::{
     assert_maps_equal,
 };
 
-#[doc(hidden)]
-pub type GenericMap<K, V, FINITE> = super::gmap::GMap<K, V, FINITE>;
+pub(crate) type GenericMap<K, V, FINITE> = super::gmap::GMap<K, V, FINITE>;
 
 #[doc(hidden)]
 pub use super::gmap::{
