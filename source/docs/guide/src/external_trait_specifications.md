@@ -116,5 +116,6 @@ to say that `obeys_eq_spec()` is true.
  * The specification trait should not have a body for any method.
  * Generic parameters and associated types must match the external trait exactly.
  * When using `external_trait_extension`, the two names (`SpecTrait` and `SpecImplTrait`)
-   become real trait names that can be used in bounds and `impl` blocks.
+   become real trait names; `SpecTrait` can be used in bounds and `SpecImplTrait` can be
+   used in `impl` blocks.
 
