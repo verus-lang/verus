@@ -210,9 +210,10 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 
     /// Creates a [`Map`] whose domain is the given set.
     /// The values of the map are given by `f`, a function of the keys.
-    /// Note: this returns `GenericMap` at generic `FINITE`; expressing a
+    /// Note: this returns an internal generic map type at generic `FINITE`; expressing a
     /// FINITE-indexed `Map`/`IMap` associated return type is blocked on Verus
     /// lacking support for trait generics.
+    #[doc(hidden)]
     #[deprecated = "Use `Map::from_set` instead"]
     pub open spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> GenericMap<A, V, FINITE> {
         GenericMap::from_set(self, f)
