@@ -12,7 +12,6 @@ pub use super::gmap::{
     lemma_map_ext_equal,
     lemma_map_ext_equal_deep,
     lemma_congruence_extensionality,
-    group_map_axioms,
     map,
     imap,
     assert_maps_equal,
@@ -32,3 +31,31 @@ pub use super::gmap::{
     imap_internal,
     assert_maps_equal_internal,
 };
+
+use super::prelude::*;
+
+verus! {
+
+pub broadcast group group_map_axioms {
+    lemma_new_from_set_ensures,
+    lemma_infinite_new_ensures,
+    super::gmap::GMap::lemma_remove_keys,
+    super::gmap::GMap::lemma_invert_ensures,
+    super::gmap::GMap::lemma_restrict,
+    super::gmap::GMap::lemma_map_entries,
+    super::gmap::GMap::lemma_map_values_ensures,
+    axiom_map_index_decreases_finite,
+    axiom_map_index_decreases_infinite,
+    lemma_map_empty,
+    lemma_map_insert_domain,
+    lemma_map_insert_same,
+    lemma_map_insert_different,
+    lemma_map_remove_domain,
+    lemma_map_remove_different,
+    lemma_map_ext_equal,
+    lemma_map_ext_equal_deep,
+    super::gmap::GMap::lemma_union_prefer_right,
+    lemma_congruence_extensionality,
+}
+
+} // verus!

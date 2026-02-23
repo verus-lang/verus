@@ -731,7 +731,7 @@ pub broadcast proof fn lemma_congruence_extensionality<K, V, FINITE: Finiteness>
     }
 }
 
-pub broadcast group group_map_axioms {
+pub(crate) broadcast group group_map_axioms {
     lemma_new_from_set_ensures,
     lemma_infinite_new_ensures,
     //     GMap::to_infinite_ensures,
