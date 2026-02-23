@@ -2,7 +2,8 @@ const REPOS_CACHE_PATH_VAR: &str = "REPOS_CACHE_PATH";
 const WORKDIR_PATH_VAR: &str = "WORKDIR_PATH";
 const Z3_CACHE_PATH_VAR: &str = "Z3_CACHE_PATH";
 const OUTPUT_PATH_VAR: &str = "OUTPUT_PATH";
-const RUNNER_PATH: &str = "/root/veritas";
+const RUNNER_PATH_VAR: &str = "VERITAS_RUNNER_PATH";
+const RUNNER_PATH_DEFAULT: &str = "/root/veritas";
 const BUILD_VERUS_SCRIPT_FILENAME: &str = "build_verus.sh";
 const GET_Z3_SCRIPT_FILENAME: &str = "get-z3.sh";
 const VERUS_PROJECT_NAME: &str = "verus";
@@ -132,6 +133,19 @@ struct ReposCache {
     repos_cache_path: PathBuf,
 }
 
+fn runner_path() -> PathBuf {
+    std::env::var(RUNNER_PATH_VAR)
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(RUNNER_PATH_DEFAULT))
+}
+
+fn display_path(path: &std::path::Path) -> String {
+    path.strip_prefix("/root")
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
 fn env_var_dir_or_err(var: &str) -> Result<PathBuf, VeritasError> {
     let path = std::env::var(var)
         .map_err(|_| verror!("{} env var not set", var))
@@ -202,7 +216,7 @@ impl Z3Cache {
         let result = log_command(
             Command::new("/bin/bash")
                 .current_dir(scratch_dir)
-                .arg(std::path::Path::new(RUNNER_PATH).join(GET_Z3_SCRIPT_FILENAME))
+                .arg(runner_path().join(GET_Z3_SCRIPT_FILENAME))
                 .arg(version)
                 .arg(&z3_path),
         )
@@ -458,7 +472,7 @@ fn run(run_configuration_path: &str) -> Result<(), VeritasError> {
         Command::new("/bin/bash")
             .current_dir(verus_workdir)
             .env("VERUS_FEATURES_ARGS", &features_args)
-            .arg(std::path::Path::new(RUNNER_PATH).join(BUILD_VERUS_SCRIPT_FILENAME)),
+            .arg(runner_path().join(BUILD_VERUS_SCRIPT_FILENAME)),
     )
     .status()
     .map_err(|e| verror!("cannot execute verus build script: {}", e))?;
@@ -709,17 +723,11 @@ fn run(run_configuration_path: &str) -> Result<(), VeritasError> {
     .map_err(|e| verror!("cannot write summary toml: {}", e))?;
     info(&format!(
         "output written to {}",
-        run_output_path
-            .strip_prefix("/root")
-            .expect("/root prefix")
-            .display()
+        display_path(&run_output_path)
     ));
     info(&format!(
         "summary written to {}",
-        summary_output_path
-            .strip_prefix("/root")
-            .expect("/root prefix")
-            .display()
+        display_path(&summary_output_path)
     ));
 
     {
@@ -808,10 +816,7 @@ fn run(run_configuration_path: &str) -> Result<(), VeritasError> {
         std::mem::drop(summary_md_file);
         info(&format!(
             "markdown table written to {}",
-            summary_md_output_path
-                .strip_prefix("/root")
-                .expect("/root prefix")
-                .display()
+            display_path(&summary_md_output_path)
         ));
     }
 
