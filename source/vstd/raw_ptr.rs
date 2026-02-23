@@ -20,6 +20,7 @@ they can be seamlessly cast to and fro.
 
 #[cfg(verus_keep_ghost)]
 use super::arithmetic::div_mod::*;
+use super::arithmetic::div_mod::*;
 #[cfg(verus_keep_ghost)]
 use super::arithmetic::mul::*;
 #[cfg(verus_keep_ghost)]
@@ -32,7 +33,6 @@ use super::set::group_set_axioms;
 use crate::vstd::endian::*;
 use crate::vstd::seq::*;
 use crate::vstd::slice::*;
-use super::arithmetic::div_mod::*;
 use core::ops::Index;
 use core::slice::SliceIndex;
 
@@ -110,15 +110,15 @@ pub broadcast axiom fn alloc_bound(p: Provenance)
 
 /// Since `self.alignment()` returns a `int`, `Alignment` invariants do not follow directly from the type.
 /// We bring them in as an axiom, instead.
+#[verusfmt::skip]
 pub broadcast axiom fn prov_alignment(p: Provenance)
     ensures
-// Weaker version: is_power_2_exists(self.alignment())
-// Taken directly from `alignment_properties`
-
-        #![trigger p.alignment()]
-        exists|i: nat|
-            pow(2, i) == p.alignment() as int && i < isize::BITS && 0 < p.alignment() <= isize::MAX
-                + 1,
+    // Weaker version: is_power_2_exists(self.alignment())
+    // Taken directly from `alignment_properties`
+    #![trigger p.alignment()]
+    exists|i: nat|
+        pow(2, i) == p.alignment() as int && i < isize::BITS && 0 < p.alignment() <= isize::MAX
+            + 1,
 ;
 
 /// Allocations should always start with a non-null address, even zero-sized allocations.
@@ -167,7 +167,6 @@ pub ghost struct PtrData<T: ?Sized> {
 //   no knowledge about what's in memory
 //   (to be pedantic, the bytes might be initialized in rust's abstract machine,
 //   but we don't know so we have to pretend they're uninitialized)
-//
 #[verifier::accept_recursive_types(T)]
 pub tracked struct PointsTo<T: ?Sized> {
     inner: PointsToUnaligned<T>,
@@ -285,13 +284,11 @@ impl<T> View for PointsToUnaligned<T> {
 }
 
 impl<T> PointsTo<T> {
-
     /// Alignment enforced as a type invariant.
     // #[verifier::type_invariant]
     // spec fn inv(self) -> bool {
-        // self.inner.ptr()@.addr as int % align_of::<T>() as int == 0
+    // self.inner.ptr()@.addr as int % align_of::<T>() as int == 0
     // }
-
     /// The (possibly uninitialized) memory that this permission gives access to.
     /// Delegates to the underlying `PointsToUnaligned`.
     pub closed spec fn mem_contents(&self) -> MemContents<T> {
@@ -357,7 +354,7 @@ impl<T> PointsTo<T> {
         self.inner.leak_contents();
     }
 
-       /// The memory associated with a pointer should always be within bounds of its spatial provenance.
+    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub proof fn ptr_bounds(tracked &self)
         requires
             size_of::<T>() != 0,
@@ -412,9 +409,6 @@ impl<T> PointsTo<T> {
 }
 
 impl<T> PointsToUnaligned<T> {
-    /// The pointer that this permission is associated with.
-    // pub uninterp spec fn ptr(&self) -> *mut T;
-
     /// The (possibly uninitialized) memory that this permission gives access to.
     pub uninterp spec fn mem_contents(&self) -> MemContents<T>;
 
@@ -488,7 +482,6 @@ impl<T> PointsToUnaligned<T> {
         PointsTo { inner: self }
     }
 
-
     /// Borrow an unaligned PointsToUnaligned as an aligned PointsTo.
     /// Requires the pointer address to be properly aligned.
     ///
@@ -519,13 +512,11 @@ pub broadcast axiom fn pt_slice_len<T>(pt: PointsTo<[T]>)
 ;
 
 impl<T> PointsTo<[T]> {
-
     /// Alignment enforced as a type invariant for slices.
     // #[verifier::type_invariant]
     // spec fn inv(self) -> bool {
-        // self.inner.ptr()@.addr as int % align_of::<T>() as int == 0
+    // self.inner.ptr()@.addr as int % align_of::<T>() as int == 0
     // }
-
     /// The sequence of (possibly uninitialized) memory that this permission gives access to.
     /// Delegates to the underlying `PointsToUnaligned<[T]>`.
     pub closed spec fn mem_contents_seq(&self) -> Seq<MemContents<T>> {
@@ -588,14 +579,16 @@ impl<T> PointsTo<[T]> {
     // https://doc.rust-lang.org/std/ptr/index.html#alignment
     /// Guarantee that the `PointsTo` points to an aligned address.
     pub axiom fn is_aligned(tracked &self)
-    ensures
-        self.ptr()@.addr as nat % align_of::<T>() == 0,
+        ensures
+            self.ptr()@.addr as nat % align_of::<T>() == 0,
     ;
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub proof fn ptr_bounds(
         tracked &self,
     )
+    // Q: do I need this requires? When the memory is zero-sized, is it true that we don't expect it to be "in bounds"?
+
         requires
             self.mem_contents_seq().len() * size_of::<T>() != 0,
         ensures
@@ -614,9 +607,9 @@ impl<T> PointsTo<[T]> {
         ensures
             sub_points_to.ptr() == ptr_mut_from_data::<[T]>(
                 PtrData {
-                    addr: #[verifier::truncate] ((self.ptr()@.addr + start_index * size_of::<T>()) as usize),
+                    addr: ((self.ptr()@.addr + start_index * size_of::<T>()) as usize),
                     provenance: self.ptr()@.provenance,
-                    metadata: #[verifier::truncate] (len as usize),
+                    metadata: (len as usize),
                 },
             ),
             sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(
@@ -633,30 +626,32 @@ impl<T> PointsTo<[T]> {
 
         if start_index > 0 && size_of::<T>() > 0 {
             assert(self.mem_contents_seq().len() > 0);
-            assert(self.mem_contents_seq().len() * size_of::<T>() != 0) by(nonlinear_arith)
+            assert(self.mem_contents_seq().len() * size_of::<T>() != 0) by (nonlinear_arith)
                 requires
                     self.mem_contents_seq().len() > 0,
                     size_of::<T>() > 0,
             ;
             unaligned_self_ref.ptr_bounds();
-            assert(start_index * size_of::<T>() <= self.mem_contents_seq().len() * size_of::<T>()) by(nonlinear_arith)
+            assert(start_index * size_of::<T>() <= self.mem_contents_seq().len() * size_of::<T>())
+                by (nonlinear_arith)
                 requires
                     start_index <= self.mem_contents_seq().len(),
                     size_of::<T>() >= 0,
             ;
-            assert(self.ptr()@.addr + start_index * size_of::<T>() <= usize::MAX as int + 1) by(nonlinear_arith)
+            assert(self.ptr()@.addr + start_index * size_of::<T>() <= usize::MAX as int + 1)
+                by (nonlinear_arith)
                 requires
                     self.ptr()@.addr <= usize::MAX as int + 1,
-                    start_index == 0 || size_of::<T>() == 0 || (
-                        self.ptr()@.addr + self.mem_contents_seq().len() * size_of::<T>()
-                            <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
-                        && self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len() <= usize::MAX as int + 1
-                        && start_index * size_of::<T>() <= self.mem_contents_seq().len() * size_of::<T>()
-                    ),
+                    start_index == 0 || size_of::<T>() == 0 || (self.ptr()@.addr
+                        + self.mem_contents_seq().len() * size_of::<T>()
+                        <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
+                        && self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
+                        <= usize::MAX as int + 1 && start_index * size_of::<T>()
+                        <= self.mem_contents_seq().len() * size_of::<T>()),
             ;
 
         } else {
-            assert(start_index * size_of::<T>() == 0) by(nonlinear_arith)
+            assert(start_index * size_of::<T>() == 0) by (nonlinear_arith)
                 requires
                     start_index == 0 || size_of::<T>() == 0,
                     start_index >= 0,
@@ -667,33 +662,36 @@ impl<T> PointsTo<[T]> {
         assert((self.ptr()@.addr + start_index * size_of::<T>()) as nat % align_of::<T>() == 0) by {
             broadcast use lemma_mul_mod_noop_right;
             broadcast use lemma_add_mod_noop;
+
         };
 
         let tracked unaligned_sub = self.inner.subrange(start_index, len);
 
         assert(unaligned_sub.ptr()@.addr as int % align_of::<T>() as int == 0) by {
             let exact_addr = self.ptr()@.addr + start_index * size_of::<T>();
-            
+
             let expected_data = PtrData::<[T]> {
-                addr: #[verifier::truncate] (exact_addr as usize),
+                addr: (exact_addr as usize),
                 provenance: self.ptr()@.provenance,
-                metadata: #[verifier::truncate] (len as usize),
+                metadata: (len as usize),
             };
             assert(ptr_mut_from_data::<[T]>(expected_data)@ == expected_data);
-            
+
             if exact_addr as int <= usize::MAX as int {
-                assert(#[verifier::truncate] (exact_addr as usize) as int == exact_addr as int);
+                assert((exact_addr as usize) as int == exact_addr as int);
             } else {
                 assert(exact_addr as int == usize::MAX as int + 1);
                 let lol = usize::MAX;
-                assert(arch_word_bits() == 64 ==> ((u64::MAX as int + 1) as usize) as int == 0) by(bit_vector);
-                assert(arch_word_bits() == 32 ==> ((u32::MAX as int + 1) as usize) as int == 0) by(bit_vector);
+                assert(arch_word_bits() == 64 ==> ((u64::MAX as int + 1) as usize) as int == 0)
+                    by (bit_vector);
+                assert(arch_word_bits() == 32 ==> ((u32::MAX as int + 1) as usize) as int == 0)
+                    by (bit_vector);
                 assert(((usize::MAX as int + 1) as usize) as int == 0);
-                assert(#[verifier::truncate] (exact_addr as usize) as int == 0); 
+                assert(#[verifier::truncate]
+                (exact_addr as usize) as int == 0);
                 assert(0 as int % align_of::<T>() as int == 0);
             }
         };
-
 
         unaligned_sub.as_aligned()
     }
@@ -730,6 +728,7 @@ impl<T> PointsTo<[T]> {
             points_to.value() as int == to_big_ne::<V, T>(self.value()).index(0),
     {
         broadcast use axiom_ptr_mut_from_data;
+
         let tracked pt_unaligned = self.inner.cast_points_to_unaligned::<V>();
         pt_unaligned.as_aligned()
     }
@@ -750,10 +749,8 @@ impl<T> PointsTo<[T]> {
     ///
     /// Note: unlike `cast_points_to`, there is no alignment precondition.
     /// Delegates to the underlying `PointsToUnaligned<[T]>`.
-    pub proof fn cast_points_to_unaligned<V>(tracked &self) -> (tracked points_to: &PointsToUnaligned<V>) where
-        T: CompatibleSmallerBaseFor<V> + Integer,
-        V: BasePow2 + Integer,
-
+    pub proof fn cast_points_to_unaligned<V>(tracked &self) -> (tracked points_to:
+        &PointsToUnaligned<V>) where T: CompatibleSmallerBaseFor<V> + Integer, V: BasePow2 + Integer
         requires
             self.is_init(),
             self.value().len() * size_of::<T>() == size_of::<V>(),
@@ -842,8 +839,7 @@ impl<T> PointsTo<[T]> {
                     == self.mem_contents_seq()[i as int],
             m.ptr() == self.ptr(),
     ;
-
- }
+}
 
 // PointsToUnaligned<[T]>: the unaligned slice permission that PointsTo<[T]> delegates to.
 impl<T> PointsToUnaligned<[T]> {
@@ -950,10 +946,8 @@ impl<T> PointsToUnaligned<[T]> {
     /// (3) `self.value().len() * size_of::<T>() == size_of::<V>()`.
     ///
     /// Note: no alignment precondition.
-    pub axiom fn cast_points_to_unaligned<V>(tracked &self) -> (tracked points_to: &PointsToUnaligned<V>) where
-        T: CompatibleSmallerBaseFor<V> + Integer,
-        V: BasePow2 + Integer,
-
+    pub axiom fn cast_points_to_unaligned<V>(tracked &self) -> (tracked points_to:
+        &PointsToUnaligned<V>) where T: CompatibleSmallerBaseFor<V> + Integer, V: BasePow2 + Integer
         requires
             self.is_init(),
             self.value().len() * size_of::<T>() == size_of::<V>(),
@@ -1190,7 +1184,7 @@ impl<T> MapPointsTo<T> {
     ///
     /// Note that this is more restrictive than a normal submap because we require the submap to be contiguous.
     /// note: all sub-assertions succeed, but this proof is somewhat flakey
-    #[verifier::spinoff_prover] 
+    #[verifier::spinoff_prover]
     pub proof fn contiguous_submap(tracked &mut self, begin: nat, len: nat) -> (tracked out_map:
         Self)
         requires
