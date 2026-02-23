@@ -74,10 +74,8 @@ around mutable references and no longer makes sense.
 We aim to treat mutable references uniformly with other types, and that means that referring to
 any input parameter should always refer to its pre-state value.
 
-In the new system, you have to use
-our new `final` operator to get the "new" value of the mutable reference.
-Note that `old` is still required to get the "old" value.
-On the other hand, using `old` in the _precondition_ is now optional. The above could be rewritten as:
+In the new system, mentioning a mutable variable in the precondition (e.g., `*a`) always refers to the value at entry. You can still optionally use `*old(a)`, but this is redundant.
+In the post-condition, you either use `*old(a)` to refer to the value at entry, or use the newly introduced `final` operator to refer to the updated value (`*final(a)`) of the mutable variable.
 
 ```rust
 fn test(a: &mut u8)
@@ -88,17 +86,16 @@ fn test(a: &mut u8)
 }
 ```
 
-To avoid confusion in the transition, postconditions are maximally unambiguous: You always
-need to use `old` or `final`. In the future, we may relax this so that `old` isn't necessary.
+Observe that postconditions are maximally unambiguous: You always need to use `old` or `final`. As a result, there should not be any specification which is well-formed in both before and after these changes, but which changes meaning.  (In the future, we may relax the system so that `old` isn't necessary at all, but it would be extremely confusing if this change were made today.)
 
 ### Summary
 
-To refer to the old or updated value of a parameter `x: &mut u64`:
+To refer to the entry value or updated value of a parameter `x: &mut u64`:
 
 |                                | Old system | New system            |
 |--------------------------------|------------|-----------------------|
-| requires clause, old value     | `*old(x)`  | `*old(x)` or `*x`     |
-| ensures clause, old value      | `*old(x)`  | `*old(x)`             |
+| requires clause, entry value   | `*old(x)`  | `*old(x)` or `*x`     |
+| ensures clause, entry value    | `*old(x)`  | `*old(x)`             |
 | ensures clause, updated value  | `*x`       | `*final(x)`           |
 
 ### Delaying the transition
