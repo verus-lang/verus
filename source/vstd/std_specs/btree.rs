@@ -1,284 +1,72 @@
 //! This code adds specifications for the standard-library types
-//! `std::collections::HashMap` and `std::collections::HashSet`.
+//! `std::collections::BTreeMap` and `std::collections::BTreeSet`.
 //!
-//! Most of the specification only applies if you use `HashMap<Key,
-//! Value>` or `HashSet<Key>`. If you use some custom build hasher,
-//! e.g., with`HashMap<Key, Value, CustomBuildHasher>`, the
-//! specification won't specify much.
-//!
-//! Likewise, the specification is only meaningful when the `Key`
-//! obeys our hash table model, i.e., (1) `Key::hash` is
-//! deterministic, (2) any two `Key`s are identical if and only if the
-//! executable `==` operator considers them equal, and (3)
-//! `Key::clone` produces a result equal to its input. We have an
-//! axiom that all primitive types and `Box`es thereof obey this
-//! model. But if you want to use some other key type `MyKey`, you
-//! need to explicitly state your assumption that it does so with
-//! `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>());`. In
-//! the future, we plan to devise a way for you to prove that it does
-//! so, so that you don't have to make such an assumption.
+//! The specification is only meaningful when the `Key` obeys our [`Ord`] model,
+//! as specified by [`super::super::laws_cmp::obeys_cmp_spec`].
 //!
 //! By default, the Verus standard library brings useful axioms
-//! about the behavior of `HashMap` and `HashSet` into the ambient
+//! about the behavior of `BTreeMap` and `BTreeSet` into the ambient
 //! reasoning context by broadcasting the group
-//! `vstd::std_specs::hash::group_hash_axioms`.
+//! `vstd::std_specs::btree::group_btree_axioms`.
+use super::super::laws_cmp::obeys_cmp_spec;
 use super::super::prelude::*;
+use super::cmp::OrdSpec;
 
+use alloc::alloc::Allocator;
 use core::borrow::Borrow;
-use core::hash::{BuildHasher, Hash, Hasher};
 use core::marker::PhantomData;
 use core::option::Option;
-use core::option::Option::None;
-use std::collections::hash_map;
-use std::collections::hash_map::{DefaultHasher, Keys, RandomState, Values};
-use std::collections::hash_set;
-use std::collections::{HashMap, HashSet};
+use std::collections::btree_map;
+use std::collections::btree_map::{Keys, Values};
+use std::collections::btree_set;
+use std::collections::{BTreeMap, BTreeSet};
 
 verus! {
 
-/// Specifications for the behavior of
-/// [`std::collections::hash_map::DefaultHasher`](https://doc.rust-lang.org/std/collections/hash_map/struct.DefaultHasher.html).
+/// Whether the `Key` type obeys the cmp spec, required for [`BTreeMap`]
 ///
-/// We model a `DefaultHasher` as having a view (i.e., an abstract
-/// state) of type `Seq<Seq<u8>>`. This reflects the sequence of write
-/// operations performed so far, where each write is modeled as having
-/// written a sequence of bytes. There's also a specification for
-/// how a view will be transformed by `finish` into a `u64`.
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExDefaultHasher(DefaultHasher);
+/// This is a workaround to the fact that [`BTreeMap`] "late binds" the trait bounds when needed.
+/// For instance, [`BTreeMap::iter`] does not require `Key: Ord`, even though it yields ordered
+/// items. Rather, it relies on the fact that [`BTreeMap::insert`] does require `Key: Ord`, meaning
+/// no instance of a [`BTreeMap`] will ever have keys that cannot be comparable.
+///
+/// See also [`axiom_key_obeys_cmp_spec_meaning`].
+pub uninterp spec fn key_obeys_cmp_spec<Key: ?Sized>() -> bool;
 
-impl View for DefaultHasher {
-    type V = Seq<Seq<u8>>;
-
-    #[verifier::external_body]
-    uninterp spec fn view(&self) -> Seq<Seq<u8>>;
-}
-
-pub trait DefaultHasherAdditionalSpecFns {
-    spec fn spec_finish(s: Seq<Seq<u8>>) -> u64;
-}
-
-impl DefaultHasherAdditionalSpecFns for DefaultHasher {
-    #[verifier::external_body]
-    uninterp spec fn spec_finish(s: Seq<Seq<u8>>) -> u64;
-}
-
-// This is the specification of behavior for `DefaultHasher::new()`.
-pub assume_specification[ DefaultHasher::new ]() -> (result: DefaultHasher)
+/// For types that are ordered, [`key_obeys_cmp_spec`] is equivalent to [`obeys_cmp_spec`].
+pub broadcast axiom fn axiom_key_obeys_cmp_spec_meaning<K: Ord>()
     ensures
-        result@ == Seq::<Seq<u8>>::empty(),
+        #[trigger] key_obeys_cmp_spec::<K>() <==> obeys_cmp_spec::<K>(),
 ;
 
-// This is the specification of behavior for `DefaultHasher::write(&[u8])`.
-pub assume_specification[ DefaultHasher::write ](state: &mut DefaultHasher, bytes: &[u8])
-    ensures
-        state@ == old(state)@.push(bytes@),
-;
-
-// This is the specification of behavior for `DefaultHasher::finish()`.
-pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (result: u64)
-    ensures
-        result == DefaultHasher::spec_finish(state@),
-;
-
-/// Specifies whether a type `Key` conforms to our requirements to be
-/// a key in our hash table (and hash set) model.
+/// Whether a sequence is ordered in increasing order.
+/// This only has meaning if `K: Ord` and [`obeys_cmp_spec::<K>`].
 ///
-/// The three requirements are (1) the hash function is deterministic,
-/// (2) any two keys of type `Key` are identical if and only if they
-/// are considered equal by the executable `==` operator, and (3) the
-/// executable `Key::clone` function produces a result identical to
-/// its input. Requirement (1) isn't satisfied by having `Key`
-/// implement `Hash`, since this trait doesn't mandate determinism.
-///
-/// The standard library has axioms that all primitive types and `Box`es
-/// thereof obey this model. If you want to use some other key
-/// type `MyKey`, you need to explicitly state your assumption that it
-/// does so with
-/// `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>())`.
-/// In the future, we plan to devise a way for you to prove that it
-/// does so, so that you don't have to make such an assumption.
-#[verifier::external_body]
-pub uninterp spec fn obeys_key_model<Key: ?Sized>() -> bool;
+/// See [`axiom_increasing_seq_meaning`] for an interpretation of this predicate.
+pub uninterp spec fn increasing_seq<K>(s: Seq<K>) -> bool;
 
-// These axioms state that any primitive type, or `Box` thereof,
-// obeys the requirements to be a key in a hash table that
-// conforms to our hash-table model.
-// (Declare each separately to enable pruning of unused primitive types.)
-pub broadcast proof fn axiom_bool_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<bool>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_u8_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<u8>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_u16_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<u16>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_u32_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<u32>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_u64_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<u64>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_u128_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<u128>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_usize_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<usize>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_i8_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<i8>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_i16_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<i16>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_i32_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<i32>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_i64_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<i64>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_i128_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<i128>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_isize_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<isize>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_box_bool_obeys_hash_table_key_model()
-    ensures
-        #[trigger] obeys_key_model::<Box<bool>>(),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_box_integer_type_obeys_hash_table_key_model<Key: Integer + ?Sized>()
+/// An interpretation for the [`increasing_seq`] predicate.
+pub broadcast axiom fn axiom_increasing_seq_meaning<K: Ord>(s: Seq<K>)
     requires
-        obeys_key_model::<Key>(),
+        obeys_cmp_spec::<K>(),
     ensures
-        #[trigger] obeys_key_model::<Box<Key>>(),
-{
-    admit();
-}
-
-#[verifier::external_trait_specification]
-pub trait ExHasher {
-    type ExternalTraitSpecificationFor: Hasher;
-}
-
-// Our model for the external trait `BuildHasher` is that for any two
-// `Hasher`s it builds, if they're both given the same write sequence
-// then their states will match and they'll produce the same digest
-// when invoked with `finish()`.
-//
-// We don't expect that all types implementing the `BuildHasher` trait
-// will conform to our model, just the types T for which
-// `builds_valid_hashers::<T>()` holds.
-#[verifier::external_trait_specification]
-pub trait ExBuildHasher {
-    type ExternalTraitSpecificationFor: BuildHasher;
-
-    type Hasher: Hasher;
-}
-
-/// Specifies whether a type conforms to our requirements to be a hash builder
-/// in our hash table (and hash set) model.
-///
-/// Our model requires that for any two `Hasher`s that the `BuildHasher` builds,
-/// if they're both given the same write sequence
-/// then their states will match and they'll produce the same digest
-/// when invoked with `finish()`.
-///
-/// The standard library has an axiom that `RandomState`, the default `BuildHasher`
-/// used by `HashMap` and `HashSet`, implements this model.
-/// If you want to use some other hash builder type `MyHashBuilder`,
-/// you need to explicitly state your assumption that it does so with
-/// `assume(vstd::std_specs::hash::builds_valid_hashers::<MyHashBuilder>())`.
-#[verifier::external_body]
-pub uninterp spec fn builds_valid_hashers<T: ?Sized>() -> bool;
+        #[trigger] increasing_seq(s) <==> forall|i, j|
+            0 <= i < j < s.len() ==> s[i].cmp_spec(&s[j]) is Less,
+;
 
 /// Specifications for the behavior of
-/// [`std::hash::RandomState`](https://doc.rust-lang.org/std/hash/struct.RandomState.html).
-///
-/// `RandomState` is the default `BuildHasher` used by Rust's `HashMap` and `HashSet` implementations.
-/// We have an axiom that `RandomState` satisfies [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
-/// and thereby conforms to our model of how `BuildHasher` behaves.
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExRandomState(RandomState);
-
-pub broadcast proof fn axiom_random_state_builds_valid_hashers()
-    ensures
-        #[trigger] builds_valid_hashers::<RandomState>(),
-{
-    admit();
-}
-
-/// Specifications for the behavior of
-/// [`std::collections::hash_map::Keys`](https://doc.rust-lang.org/std/collections/hash_map/struct.Keys.html).
+/// [`std::collections::btree_map::Keys`](https://doc.rust-lang.org/std/collections/btree_map/struct.Keys.html).
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
 #[verifier::accept_recursive_types(Value)]
-pub struct ExKeys<'a, Key: 'a, Value: 'a>(Keys<'a, Key, Value>);
+pub struct ExKeys<'a, Key, Value>(Keys<'a, Key, Value>);
 
-pub trait KeysAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
+pub trait KeysAdditionalSpecFns<'a, Key, Value> {
     spec fn view(self: &Self) -> (int, Seq<Key>);
 }
 
-impl<'a, Key: 'a, Value: 'a> KeysAdditionalSpecFns<'a, Key, Value> for Keys<'a, Key, Value> {
+impl<'a, Key, Value> KeysAdditionalSpecFns<'a, Key, Value> for Keys<'a, Key, Value> {
     uninterp spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
 }
 
@@ -376,18 +164,18 @@ impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
 }
 
 /// Specifications for the behavior of
-/// [`std::collections::hash_map::Values`](https://doc.rust-lang.org/std/collections/hash_map/struct.Values.html).
+/// [`std::collections::btree_map::Values`](https://doc.rust-lang.org/std/collections/btree_map/struct.Values.html).
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
 #[verifier::accept_recursive_types(Value)]
-pub struct ExValues<'a, Key: 'a, Value: 'a>(Values<'a, Key, Value>);
+pub struct ExValues<'a, Key, Value>(Values<'a, Key, Value>);
 
-pub trait ValuesAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
+pub trait ValuesAdditionalSpecFns<'a, Key, Value> {
     spec fn view(self: &Self) -> (int, Seq<Value>);
 }
 
-impl<'a, Key: 'a, Value: 'a> ValuesAdditionalSpecFns<'a, Key, Value> for Values<'a, Key, Value> {
+impl<'a, Key, Value> ValuesAdditionalSpecFns<'a, Key, Value> for Values<'a, Key, Value> {
     uninterp spec fn view(self: &Values<'a, Key, Value>) -> (int, Seq<Value>);
 }
 
@@ -484,29 +272,25 @@ impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
     }
 }
 
-// The `iter` method of a `HashMap` returns an iterator of type `hash_map::Iter`,
+// The `iter` method of a `BTreeMap` returns an iterator of type `btree_map::Iter`,
 // so we specify that type here.
 #[verifier::external_type_specification]
 #[verifier::external_body]
-#[verifier::accept_recursive_types(Key)]
-#[verifier::accept_recursive_types(Value)]
-pub struct ExMapIter<'a, Key: 'a, Value: 'a>(hash_map::Iter<'a, Key, Value>);
+#[verifier::accept_recursive_types(K)]
+#[verifier::accept_recursive_types(V)]
+pub struct ExMapIter<'a, K, V>(btree_map::Iter<'a, K, V>);
 
-pub trait MapIterAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
+pub trait MapIterAdditionalSpecFns<'a, Key, Value> {
     spec fn view(self: &Self) -> (int, Seq<(Key, Value)>);
 }
 
-impl<'a, Key: 'a, Value: 'a> MapIterAdditionalSpecFns<'a, Key, Value> for hash_map::Iter<
-    'a,
-    Key,
-    Value,
-> {
-    uninterp spec fn view(self: &hash_map::Iter<'a, Key, Value>) -> (int, Seq<(Key, Value)>);
+impl<'a, K: 'a, V: 'a> MapIterAdditionalSpecFns<'a, K, V> for btree_map::Iter<'a, K, V> {
+    uninterp spec fn view(self: &btree_map::Iter<'a, K, V>) -> (int, Seq<(K, V)>);
 }
 
-pub assume_specification<'a, Key, Value>[ hash_map::Iter::<'a, Key, Value>::next ](
-    iter: &mut hash_map::Iter<'a, Key, Value>,
-) -> (r: Option<(&'a Key, &'a Value)>)
+pub assume_specification<'a, K: 'a, V: 'a>[ btree_map::Iter::<'a, K, V>::next ](
+    iter: &mut btree_map::Iter<'a, K, V>,
+) -> (r: Option<(&'a K, &'a V)>)
     ensures
         ({
             let (old_index, old_seq) = old(iter)@;
@@ -529,13 +313,13 @@ pub assume_specification<'a, Key, Value>[ hash_map::Iter::<'a, Key, Value>::next
         }),
 ;
 
-pub struct MapIterGhostIterator<'a, Key, Value> {
+pub struct MapIterGhostIterator<'a, Key: 'a, Value: 'a> {
     pub pos: int,
     pub kv_pairs: Seq<(Key, Value)>,
     pub _marker: PhantomData<&'a Key>,
 }
 
-impl<'a, Key, Value> super::super::pervasive::ForLoopGhostIteratorNew for hash_map::Iter<
+impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIteratorNew for btree_map::Iter<
     'a,
     Key,
     Value,
@@ -552,13 +336,13 @@ impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIterator for M
     Key,
     Value,
 > {
-    type ExecIter = hash_map::Iter<'a, Key, Value>;
+    type ExecIter = btree_map::Iter<'a, Key, Value>;
 
     type Item = (Key, Value);
 
     type Decrease = int;
 
-    open spec fn exec_invariant(&self, exec_iter: &hash_map::Iter<'a, Key, Value>) -> bool {
+    open spec fn exec_invariant(&self, exec_iter: &btree_map::Iter<'a, Key, Value>) -> bool {
         &&& self.pos == exec_iter@.0
         &&& self.kv_pairs == exec_iter@.1
     }
@@ -589,7 +373,7 @@ impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIterator for M
 
     open spec fn ghost_advance(
         &self,
-        _exec_iter: &hash_map::Iter<'a, Key, Value>,
+        _exec_iter: &btree_map::Iter<'a, Key, Value>,
     ) -> MapIterGhostIterator<'a, Key, Value> {
         Self { pos: self.pos + 1, ..*self }
     }
@@ -609,87 +393,91 @@ impl<'a, Key, Value> View for MapIterGhostIterator<'a, Key, Value> {
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_iter)]` to the specification for
 // the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>) -> (r:
-    hash_map::Iter<'a, Key, Value>);
+pub uninterp spec fn spec_btree_map_iter<'a, Key, Value, A: Allocator + Clone>(
+    m: &'a BTreeMap<Key, Value, A>,
+) -> (r: btree_map::Iter<'a, Key, Value>);
 
-pub broadcast proof fn axiom_spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
+pub broadcast axiom fn axiom_spec_btree_map_iter<'a, Key, Value, A: Allocator + Clone>(
+    m: &'a BTreeMap<Key, Value, A>,
+)
     ensures
         ({
-            let (pos, v) = #[trigger] spec_hash_map_iter(m)@;
+            let (pos, v) = #[trigger] spec_btree_map_iter(m)@;
             &&& pos == 0int
             &&& forall|i: int| 0 <= i < v.len() ==> #[trigger] m@[v[i].0] == v[i].1
+            &&& increasing_seq(v.map(|idx: int, kv: (Key, Value)| kv.0))
         }),
-{
-    admit();
-}
+;
 
-#[verifier::when_used_as_spec(spec_hash_map_iter)]
-pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::iter ](
-    m: &'a HashMap<Key, Value, S>,
-) -> (iter: hash_map::Iter<'a, Key, Value>)
+#[verifier::when_used_as_spec(spec_btree_map_iter)]
+pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::iter ](
+    m: &'a BTreeMap<Key, Value, A>,
+) -> (iter: btree_map::Iter<'a, Key, Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        key_obeys_cmp_spec::<Key>() ==> {
             let (index, s) = iter@;
             &&& index == 0
             &&& s.to_set() == m@.kv_pairs()
             &&& s.no_duplicates()
+            &&& increasing_seq(s.map(|idx: int, kv: (Key, Value)| kv.0))
         },
 ;
 
-/// Specifications for the behavior of [`std::collections::HashMap`](https://doc.rust-lang.org/std/collections/struct.HashMap.html).
+/// Specifications for the behavior of [`std::collections::BTreeMap`](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html).
 ///
-/// We model a `HashMap` as having a view of type `Map<Key, Value>`, which reflects the current state of the map.
+/// We model a `BTreeMap` as having a view of type `Map<Key, Value>`, which reflects the current state of the map.
 ///
-/// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
-/// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
-/// for information on use with primitive types and other types,
-/// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
-/// for information on use with Rust's default implementation and custom implementations.
+/// These specifications are only meaningful if `key_obeys_cmp_spec::<Key>()` holds.
+/// See [`key_obeys_cmp_spec`] for information on use with primitive types and other types.
 ///
-/// Axioms about the behavior of HashMap are present in the broadcast group `vstd::std_specs::hash::group_hash_axioms`.
+/// Axioms about the behavior of BTreeMap are present in the broadcast group `vstd::std_specs::btree::group_btree_axioms`.
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
 #[verifier::accept_recursive_types(Value)]
-#[verifier::reject_recursive_types(S)]
-pub struct ExHashMap<Key, Value, S>(HashMap<Key, Value, S>);
+#[verifier::reject_recursive_types(A)]
+pub struct ExBTreeMap<Key, Value, A: Allocator + Clone>(BTreeMap<Key, Value, A>);
 
-pub trait HashMapAdditionalSpecFns<Key, Value>: View<V = Map<Key, Value>> {
+pub trait BTreeMapAdditionalSpecFns<Key, Value>: View<V = Map<Key, Value>> {
     spec fn spec_index(&self, k: Key) -> Value
         recommends
             self@.contains_key(k),
     ;
 }
 
-impl<Key, Value, S> HashMapAdditionalSpecFns<Key, Value> for HashMap<Key, Value, S> {
+impl<Key, Value, A: Allocator + Clone> BTreeMapAdditionalSpecFns<Key, Value> for BTreeMap<
+    Key,
+    Value,
+    A,
+> {
     #[verifier::inline]
     open spec fn spec_index(&self, k: Key) -> Value {
         self@.index(k)
     }
 }
 
-impl<Key, Value, S> View for HashMap<Key, Value, S> {
+impl<Key, Value, A: Allocator + Clone> View for BTreeMap<Key, Value, A> {
     type V = Map<Key, Value>;
 
     uninterp spec fn view(&self) -> Map<Key, Value>;
 }
 
-impl<Key: DeepView, Value: DeepView, S> DeepView for HashMap<Key, Value, S> {
+impl<Key: DeepView, Value: DeepView, A: Allocator + Clone> DeepView for BTreeMap<Key, Value, A> {
     type V = Map<Key::V, Value::V>;
 
     open spec fn deep_view(&self) -> Map<Key::V, Value::V> {
-        hash_map_deep_view_impl(*self)
+        btree_map_deep_view_impl(*self)
     }
 }
 
-/// The actual definition of `HashMap::deep_view`.
+/// The actual definition of `BTreeMap::deep_view`.
 ///
 /// This is a separate function since it introduces a lot of quantifiers and revealing an opaque trait
 /// method is not supported. In most cases, it's easier to use one of the lemmas below instead
 /// of revealing this function directly.
 #[verifier::opaque]
-pub open spec fn hash_map_deep_view_impl<Key: DeepView, Value: DeepView, S>(
-    m: HashMap<Key, Value, S>,
+pub open spec fn btree_map_deep_view_impl<Key: DeepView, Value: DeepView, A: Allocator + Clone>(
+    m: BTreeMap<Key, Value, A>,
 ) -> Map<Key::V, Value::V> {
     Map::new(
         |k: Key::V|
@@ -702,18 +490,20 @@ pub open spec fn hash_map_deep_view_impl<Key: DeepView, Value: DeepView, S>(
     )
 }
 
-pub broadcast proof fn lemma_hashmap_deepview_dom<K: DeepView, V: DeepView>(m: HashMap<K, V>)
+pub broadcast proof fn lemma_btree_map_deepview_dom<K: DeepView, V: DeepView>(m: BTreeMap<K, V>)
     ensures
         #[trigger] m.deep_view().dom() == m@.dom().map(|k: K| k.deep_view()),
 {
-    reveal(hash_map_deep_view_impl);
-    broadcast use group_hash_axioms;
+    reveal(btree_map_deep_view_impl);
+    broadcast use group_btree_axioms;
     broadcast use crate::vstd::group_vstd_default;
 
     assert(m.deep_view().dom() =~= m@.dom().map(|k: K| k.deep_view()));
 }
 
-pub broadcast proof fn lemma_hashmap_deepview_properties<K: DeepView, V: DeepView>(m: HashMap<K, V>)
+pub broadcast proof fn lemma_btree_map_deepview_properties<K: DeepView, V: DeepView>(
+    m: BTreeMap<K, V>,
+)
     requires
         crate::relations::injective(|k: K| k.deep_view()),
     ensures
@@ -727,8 +517,8 @@ pub broadcast proof fn lemma_hashmap_deepview_properties<K: DeepView, V: DeepVie
             m.deep_view().contains_key(dk) ==> exists|k: K|
                 k.deep_view() == dk && #[trigger] m@.contains_key(k),
 {
-    reveal(hash_map_deep_view_impl);
-    broadcast use group_hash_axioms;
+    reveal(btree_map_deep_view_impl);
+    broadcast use group_btree_axioms;
     broadcast use crate::vstd::group_vstd_default;
 
     assert(m.deep_view().dom() == m@.dom().map(|k: K| k.deep_view()));
@@ -744,15 +534,15 @@ pub broadcast proof fn lemma_hashmap_deepview_properties<K: DeepView, V: DeepVie
     }
 }
 
-pub broadcast proof fn lemma_hashmap_deepview_values<K: DeepView, V: DeepView>(m: HashMap<K, V>)
+pub broadcast proof fn lemma_btree_map_deepview_values<K: DeepView, V: DeepView>(m: BTreeMap<K, V>)
     requires
         crate::relations::injective(|k: K| k.deep_view()),
     ensures
         #[trigger] m.deep_view().values() =~= m@.values().map(|v: V| v.deep_view()),
 {
-    reveal(hash_map_deep_view_impl);
-    broadcast use group_hash_axioms;
-    broadcast use lemma_hashmap_deepview_properties;
+    reveal(btree_map_deep_view_impl);
+    broadcast use group_btree_axioms;
+    broadcast use lemma_btree_map_deepview_properties;
     broadcast use crate::vstd::group_vstd_default;
 
     let lhs = m.deep_view().values();
@@ -769,100 +559,77 @@ pub broadcast proof fn lemma_hashmap_deepview_values<K: DeepView, V: DeepView>(m
 
 /// Borrowing a key works the same way on deep_view as on view,
 /// if deep_view is injective; see `axiom_contains_deref_key`.
-pub broadcast proof fn axiom_hashmap_deepview_borrow<
+pub broadcast axiom fn axiom_btree_map_deepview_borrow<
     K: DeepView + Borrow<Q>,
     V: DeepView,
-    Q: View<V = <K as DeepView>::V> + Hash + Eq + ?Sized,
->(m: HashMap<K, V>, k: &Q)
+    Q: View<V = <K as DeepView>::V> + Eq + ?Sized,
+>(m: BTreeMap<K, V>, k: &Q)
     requires
-        obeys_key_model::<K>(),
+        key_obeys_cmp_spec::<K>(),
         crate::relations::injective(|k: K| k.deep_view()),
     ensures
         #[trigger] contains_borrowed_key(m@, k) <==> m.deep_view().contains_key(k@),
-{
-    admit();
-}
-
-/// A `Map` constructed from a `HashMap` is always finite.
-pub broadcast proof fn axiom_hashmap_view_finite_dom<K, V>(m: HashMap<K, V>)
-    ensures
-        #[trigger] m@.dom().finite(),
-{
-    admit();
-}
-
-pub uninterp spec fn spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>) -> usize;
-
-pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>)
-    ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> #[trigger] spec_hash_map_len(m)
-            == m@.len(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_hash_map_len)]
-pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::len ](
-    m: &HashMap<Key, Value, S>,
-) -> (len: usize)
-    ensures
-        len == spec_hash_map_len(m),
 ;
 
-pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::is_empty ](
-    m: &HashMap<Key, Value, S>,
+/// A `Map` constructed from a `BTreeMap` is always finite.
+pub broadcast axiom fn axiom_btree_map_view_finite_dom<K, V>(m: BTreeMap<K, V>)
+    ensures
+        #[trigger] m@.dom().finite(),
+;
+
+pub uninterp spec fn spec_btree_map_len<Key, Value, A: Allocator + Clone>(
+    m: &BTreeMap<Key, Value, A>,
+) -> usize;
+
+pub broadcast axiom fn axiom_spec_btree_map_len<Key, Value, A: Allocator + Clone>(
+    m: &BTreeMap<Key, Value, A>,
+)
+    ensures
+        key_obeys_cmp_spec::<Key>() ==> #[trigger] spec_btree_map_len(m) == m@.len(),
+;
+
+#[verifier::when_used_as_spec(spec_btree_map_len)]
+pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::len ](
+    m: &BTreeMap<Key, Value, A>,
+) -> (len: usize)
+    ensures
+        len == spec_btree_map_len(m),
+;
+
+pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::is_empty ](
+    m: &BTreeMap<Key, Value, A>,
 ) -> (res: bool)
     ensures
         res == m@.is_empty(),
 ;
 
-pub assume_specification<K: Clone, V: Clone, S: Clone>[ <HashMap::<K, V, S> as Clone>::clone ](
-    this: &HashMap<K, V, S>,
-) -> (other: HashMap<K, V, S>)
+pub assume_specification<K: Clone, V: Clone, A: Allocator + Clone>[ <BTreeMap::<
+    K,
+    V,
+    A,
+> as Clone>::clone ](this: &BTreeMap<K, V, A>) -> (other: BTreeMap<K, V, A>)
     ensures
         other@ == this@,
 ;
 
-pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: HashMap<
-    Key,
-    Value,
-    RandomState,
->)
+pub assume_specification<Key, Value>[ BTreeMap::<Key, Value>::new ]() -> (m: BTreeMap<Key, Value>)
     ensures
         m@ == Map::<Key, Value>::empty(),
 ;
 
-pub assume_specification<K, V, S: core::default::Default>[ <HashMap<
-    K,
-    V,
-    S,
-> as core::default::Default>::default ]() -> (m: HashMap<K, V, S>)
+pub assume_specification<K, V>[ <BTreeMap<K, V> as core::default::Default>::default ]() -> (m:
+    BTreeMap<K, V>)
     ensures
         m@ == Map::<K, V>::empty(),
 ;
 
-pub assume_specification<Key, Value>[ HashMap::<Key, Value>::with_capacity ](capacity: usize) -> (m:
-    HashMap<Key, Value, RandomState>)
-    ensures
-        m@ == Map::<Key, Value>::empty(),
-;
-
-pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher>[ HashMap::<
+pub assume_specification<Key: Ord, Value, A: Allocator + Clone>[ BTreeMap::<
     Key,
     Value,
-    S,
->::reserve ](m: &mut HashMap<Key, Value, S>, additional: usize)
+    A,
+>::insert ](m: &mut BTreeMap<Key, Value, A>, k: Key, v: Value) -> (result: Option<Value>)
     ensures
-        m@ == old(m)@,
-;
-
-pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher>[ HashMap::<Key, Value, S>::insert ](
-    m: &mut HashMap<Key, Value, S>,
-    k: Key,
-    v: Value,
-) -> (result: Option<Value>)
-    ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        obeys_cmp_spec::<Key>() ==> {
             &&& m@ == old(m)@.insert(k, v)
             &&& match result {
                 Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
@@ -890,34 +657,27 @@ pub uninterp spec fn contains_borrowed_key<Key, Value, Q: ?Sized>(
     k: &Q,
 ) -> bool;
 
-pub broadcast proof fn axiom_contains_deref_key<Q, Value>(m: Map<Q, Value>, k: &Q)
+pub broadcast axiom fn axiom_contains_deref_key<Q, Value>(m: Map<Q, Value>, k: &Q)
     ensures
         #[trigger] contains_borrowed_key::<Q, Value, Q>(m, k) <==> m.contains_key(*k),
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q)
+pub broadcast axiom fn axiom_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q)
     ensures
         #[trigger] contains_borrowed_key::<Box<Q>, Value, Q>(m, k) <==> m.contains_key(
             Box::new(*k),
         ),
-{
-    admit();
-}
+;
 
 pub assume_specification<
-    Key: Borrow<Q> + Hash + Eq,
+    Key: Borrow<Q> + Ord,
     Value,
-    S: BuildHasher,
-    Q: Hash + Eq + ?Sized,
->[ HashMap::<Key, Value, S>::contains_key::<Q> ](m: &HashMap<Key, Value, S>, k: &Q) -> (result:
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>[ BTreeMap::<Key, Value, A>::contains_key::<Q> ](m: &BTreeMap<Key, Value, A>, k: &Q) -> (result:
     bool)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result == contains_borrowed_key(
-            m@,
-            k,
-        ),
+        obeys_cmp_spec::<Key>() ==> result == contains_borrowed_key(m@, k),
 ;
 
 // The specification for `get` has a parameter `key: &Q` where you'd
@@ -942,36 +702,32 @@ pub uninterp spec fn maps_borrowed_key_to_value<Key, Value, Q: ?Sized>(
     v: Value,
 ) -> bool;
 
-pub broadcast proof fn axiom_maps_deref_key_to_value<Q, Value>(m: Map<Q, Value>, k: &Q, v: Value)
+pub broadcast axiom fn axiom_maps_deref_key_to_value<Q, Value>(m: Map<Q, Value>, k: &Q, v: Value)
     ensures
         #[trigger] maps_borrowed_key_to_value::<Q, Value, Q>(m, k, v) <==> m.contains_key(*k)
             && m[*k] == v,
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_maps_box_key_to_value<Q, Value>(m: Map<Box<Q>, Value>, q: &Q, v: Value)
+pub broadcast axiom fn axiom_maps_box_key_to_value<Q, Value>(m: Map<Box<Q>, Value>, q: &Q, v: Value)
     ensures
         #[trigger] maps_borrowed_key_to_value::<Box<Q>, Value, Q>(m, q, v) <==> {
             let k = Box::new(*q);
             &&& m.contains_key(k)
             &&& m[k] == v
         },
-{
-    admit();
-}
+;
 
 pub assume_specification<
     'a,
-    Key: Borrow<Q> + Hash + Eq,
+    Key: Borrow<Q> + Ord,
     Value,
-    S: BuildHasher,
-    Q: Hash + Eq + ?Sized,
->[ HashMap::<Key, Value, S>::get::<Q> ](m: &'a HashMap<Key, Value, S>, k: &Q) -> (result: Option<
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>[ BTreeMap::<Key, Value, A>::get::<Q> ](m: &'a BTreeMap<Key, Value, A>, k: &Q) -> (result: Option<
     &'a Value,
 >)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
+        obeys_cmp_spec::<Key>() ==> match result {
             Some(v) => maps_borrowed_key_to_value(m@, k, *v),
             None => !contains_borrowed_key(m@, k),
         },
@@ -998,7 +754,7 @@ pub uninterp spec fn borrowed_key_removed<Key, Value, Q: ?Sized>(
     k: &Q,
 ) -> bool;
 
-pub broadcast proof fn axiom_deref_key_removed<Q, Value>(
+pub broadcast axiom fn axiom_deref_key_removed<Q, Value>(
     old_m: Map<Q, Value>,
     new_m: Map<Q, Value>,
     k: &Q,
@@ -1007,11 +763,9 @@ pub broadcast proof fn axiom_deref_key_removed<Q, Value>(
         #[trigger] borrowed_key_removed::<Q, Value, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
             *k,
         ),
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_box_key_removed<Q, Value>(
+pub broadcast axiom fn axiom_box_key_removed<Q, Value>(
     old_m: Map<Box<Q>, Value>,
     new_m: Map<Box<Q>, Value>,
     q: &Q,
@@ -1019,19 +773,17 @@ pub broadcast proof fn axiom_box_key_removed<Q, Value>(
     ensures
         #[trigger] borrowed_key_removed::<Box<Q>, Value, Q>(old_m, new_m, q) <==> new_m
             == old_m.remove(Box::new(*q)),
-{
-    admit();
-}
+;
 
 pub assume_specification<
-    Key: Borrow<Q> + Hash + Eq,
+    Key: Borrow<Q> + Ord,
     Value,
-    S: BuildHasher,
-    Q: Hash + Eq + ?Sized,
->[ HashMap::<Key, Value, S>::remove::<Q> ](m: &mut HashMap<Key, Value, S>, k: &Q) -> (result:
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>[ BTreeMap::<Key, Value, A>::remove::<Q> ](m: &mut BTreeMap<Key, Value, A>, k: &Q) -> (result:
     Option<Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        obeys_cmp_spec::<Key>() ==> {
             &&& borrowed_key_removed(old(m)@, m@, k)
             &&& match result {
                 Some(v) => maps_borrowed_key_to_value(old(m)@, k, v),
@@ -1040,60 +792,68 @@ pub assume_specification<
         },
 ;
 
-pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::clear ](
-    m: &mut HashMap<Key, Value, S>,
+pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::clear ](
+    m: &mut BTreeMap<Key, Value, A>,
 )
     ensures
         m@ == Map::<Key, Value>::empty(),
 ;
 
-pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::keys ](
-    m: &'a HashMap<Key, Value, S>,
+pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::keys ](
+    m: &'a BTreeMap<Key, Value, A>,
 ) -> (keys: Keys<'a, Key, Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        key_obeys_cmp_spec::<Key>() ==> {
             let (index, s) = keys@;
             &&& index == 0
             &&& s.to_set() == m@.dom()
             &&& s.no_duplicates()
+            &&& increasing_seq(s)
         },
 ;
 
-pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::values ](
-    m: &'a HashMap<Key, Value, S>,
+pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::values ](
+    m: &'a BTreeMap<Key, Value, A>,
 ) -> (values: Values<'a, Key, Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        key_obeys_cmp_spec::<Key>() ==> {
             let (index, s) = values@;
             &&& index == 0
             &&& s.to_set() == m@.values()
+            &&& exists|key_seq: Seq<Key>|
+                {
+                    &&& increasing_seq(key_seq)
+                    &&& key_seq.to_set() == m@.dom()
+                    &&& key_seq.no_duplicates()
+                    &&& s == key_seq.map(|i: int, k| m@[k])
+                }
         },
 ;
 
-pub broadcast proof fn axiom_hashmap_decreases<Key, Value, S>(m: HashMap<Key, Value, S>)
+pub broadcast axiom fn axiom_btree_map_decreases<Key, Value, A: Allocator + Clone>(
+    m: BTreeMap<Key, Value, A>,
+)
     ensures
         #[trigger] (decreases_to!(m => m@)),
-{
-    admit();
-}
+;
 
-// The `iter` method of a `HashSet` returns an iterator of type `hash_set::Iter`,
+// The `iter` method of a `BTreeSet` returns an iterator of type `btree_set::Iter`,
 // so we specify that type here.
 #[verifier::external_type_specification]
 #[verifier::external_body]
-#[verifier::accept_recursive_types(Key)]
-pub struct ExSetIter<'a, Key: 'a>(hash_set::Iter<'a, Key>);
+#[verifier::accept_recursive_types(K)]
+pub struct ExSetIter<'a, K: 'a>(btree_set::Iter<'a, K>);
 
-pub trait SetIterAdditionalSpecFns<'a, Key: 'a> {
+pub trait SetIterAdditionalSpecFns<'a, Key> {
     spec fn view(self: &Self) -> (int, Seq<Key>);
 }
 
-impl<'a, Key: 'a> SetIterAdditionalSpecFns<'a, Key> for hash_set::Iter<'a, Key> {
-    uninterp spec fn view(self: &hash_set::Iter<'a, Key>) -> (int, Seq<Key>);
+impl<'a, Key> SetIterAdditionalSpecFns<'a, Key> for btree_set::Iter<'a, Key> {
+    uninterp spec fn view(self: &btree_set::Iter<'a, Key>) -> (int, Seq<Key>);
 }
 
-pub assume_specification<'a, Key>[ hash_set::Iter::<'a, Key>::next ](
-    elements: &mut hash_set::Iter<'a, Key>,
+pub assume_specification<'a, Key>[ btree_set::Iter::<'a, Key>::next ](
+    elements: &mut btree_set::Iter<'a, Key>,
 ) -> (r: Option<&'a Key>)
     ensures
         ({
@@ -1120,7 +880,7 @@ pub struct SetIterGhostIterator<'a, Key> {
     pub phantom: Option<&'a Key>,
 }
 
-impl<'a, Key> super::super::pervasive::ForLoopGhostIteratorNew for hash_set::Iter<'a, Key> {
+impl<'a, Key> super::super::pervasive::ForLoopGhostIteratorNew for btree_set::Iter<'a, Key> {
     type GhostIter = SetIterGhostIterator<'a, Key>;
 
     open spec fn ghost_iter(&self) -> SetIterGhostIterator<'a, Key> {
@@ -1128,14 +888,14 @@ impl<'a, Key> super::super::pervasive::ForLoopGhostIteratorNew for hash_set::Ite
     }
 }
 
-impl<'a, Key: 'a> super::super::pervasive::ForLoopGhostIterator for SetIterGhostIterator<'a, Key> {
-    type ExecIter = hash_set::Iter<'a, Key>;
+impl<'a, Key> super::super::pervasive::ForLoopGhostIterator for SetIterGhostIterator<'a, Key> {
+    type ExecIter = btree_set::Iter<'a, Key>;
 
     type Item = Key;
 
     type Decrease = int;
 
-    open spec fn exec_invariant(&self, exec_iter: &hash_set::Iter<'a, Key>) -> bool {
+    open spec fn exec_invariant(&self, exec_iter: &btree_set::Iter<'a, Key>) -> bool {
         &&& self.pos == exec_iter@.0
         &&& self.elements == exec_iter@.1
     }
@@ -1164,10 +924,10 @@ impl<'a, Key: 'a> super::super::pervasive::ForLoopGhostIterator for SetIterGhost
         }
     }
 
-    open spec fn ghost_advance(&self, _exec_iter: &hash_set::Iter<'a, Key>) -> SetIterGhostIterator<
-        'a,
-        Key,
-    > {
+    open spec fn ghost_advance(
+        &self,
+        _exec_iter: &btree_set::Iter<'a, Key>,
+    ) -> SetIterGhostIterator<'a, Key> {
         Self { pos: self.pos + 1, ..*self }
     }
 }
@@ -1180,30 +940,27 @@ impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
     }
 }
 
-/// Specifications for the behavior of [`std::collections::HashSet`](https://doc.rust-lang.org/std/collections/struct.HashSet.html).
+/// Specifications for the behavior of [`std::collections::BTreeSet`](https://doc.rust-lang.org/std/collections/struct.BTreeSet.html).
 ///
-/// We model a `HashSet` as having a view of type `Set<Key>`, which reflects the current state of the set.
+/// We model a `BTreeSet` as having a view of type `Set<Key>`, which reflects the current state of the set.
 ///
-/// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
-/// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
-/// for information on use with primitive types and custom types,
-/// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
-/// for information on use with Rust's default implementation and custom implementations.
+/// These specifications are only meaningful if `obeys_cmp_spec::<Key>()` hold.
+/// See [`obeys_cmp_spec`] for information on use with primitive types and custom types.
 ///
-/// Axioms about the behavior of HashSet are present in the broadcast group `vstd::std_specs::hash::group_hash_axioms`.
+/// Axioms about the behavior of BTreeSet are present in the broadcast group `vstd::std_specs::btree::group_btree_axioms`.
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
-#[verifier::reject_recursive_types(S)]
-pub struct ExHashSet<Key, S>(HashSet<Key, S>);
+#[verifier::reject_recursive_types(A)]
+pub struct ExBTreeSet<Key, A: Allocator + Clone>(BTreeSet<Key, A>);
 
-impl<Key, S> View for HashSet<Key, S> {
+impl<Key, A: Allocator + Clone> View for BTreeSet<Key, A> {
     type V = Set<Key>;
 
     uninterp spec fn view(&self) -> Set<Key>;
 }
 
-impl<Key: DeepView, S> DeepView for HashSet<Key, S> {
+impl<Key: DeepView, A: Allocator + Clone> DeepView for BTreeSet<Key, A> {
     type V = Set<Key::V>;
 
     open spec fn deep_view(&self) -> Set<Key::V> {
@@ -1211,62 +968,53 @@ impl<Key: DeepView, S> DeepView for HashSet<Key, S> {
     }
 }
 
-pub uninterp spec fn spec_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> usize;
+pub uninterp spec fn spec_btree_set_len<Key, A: Allocator + Clone>(m: &BTreeSet<Key, A>) -> usize;
 
-pub broadcast proof fn axiom_spec_hash_set_len<Key, S>(m: &HashSet<Key, S>)
+pub broadcast axiom fn axiom_spec_btree_set_len<Key, A: Allocator + Clone>(m: &BTreeSet<Key, A>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> #[trigger] spec_hash_set_len(m)
-            == m@.len(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_hash_set_len)]
-pub assume_specification<Key, S>[ HashSet::<Key, S>::len ](m: &HashSet<Key, S>) -> (len: usize)
-    ensures
-        len == spec_hash_set_len(m),
+        key_obeys_cmp_spec::<Key>() ==> #[trigger] spec_btree_set_len(m) == m@.len(),
 ;
 
-pub assume_specification<Key, S>[ HashSet::<Key, S>::is_empty ](m: &HashSet<Key, S>) -> (res: bool)
+#[verifier::when_used_as_spec(spec_btree_set_len)]
+pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::len ](
+    m: &BTreeSet<Key, A>,
+) -> (len: usize)
+    ensures
+        len == spec_btree_set_len(m),
+;
+
+pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::is_empty ](
+    m: &BTreeSet<Key, A>,
+) -> (res: bool)
     ensures
         res == m@.is_empty(),
 ;
 
-pub assume_specification<Key>[ HashSet::<Key>::new ]() -> (m: HashSet<Key, RandomState>)
+pub assume_specification<K: Clone, A: Allocator + Clone>[ <BTreeSet::<K, A> as Clone>::clone ](
+    this: &BTreeSet<K, A>,
+) -> (other: BTreeSet<K, A>)
+    ensures
+        other@ == this@,
+;
+
+pub assume_specification<Key>[ BTreeSet::<Key>::new ]() -> (m: BTreeSet<Key>)
     ensures
         m@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<T, S: core::default::Default>[ <HashSet<
+pub assume_specification<T>[ <BTreeSet<T> as core::default::Default>::default ]() -> (m: BTreeSet<
     T,
-    S,
-> as core::default::Default>::default ]() -> (m: HashSet<T, S>)
+>)
     ensures
         m@ == Set::<T>::empty(),
 ;
 
-pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) -> (m: HashSet<
-    Key,
-    RandomState,
->)
-    ensures
-        m@ == Set::<Key>::empty(),
-;
-
-pub assume_specification<Key: Eq + Hash, S: BuildHasher>[ HashSet::<Key, S>::reserve ](
-    m: &mut HashSet<Key, S>,
-    additional: usize,
-)
-    ensures
-        m@ == old(m)@,
-;
-
-pub assume_specification<Key: Eq + Hash, S: BuildHasher>[ HashSet::<Key, S>::insert ](
-    m: &mut HashSet<Key, S>,
+pub assume_specification<Key: Ord, A: Allocator + Clone>[ BTreeSet::<Key, A>::insert ](
+    m: &mut BTreeSet<Key, A>,
     k: Key,
 ) -> (result: bool)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        obeys_cmp_spec::<Key>() ==> {
             &&& m@ == old(m)@.insert(k)
             &&& result == !old(m)@.contains(k)
         },
@@ -1288,28 +1036,22 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher>[ HashSet::<Key, S>::ins
 // (2) `Key = Box<Q>`.
 pub uninterp spec fn set_contains_borrowed_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q) -> bool;
 
-pub broadcast proof fn axiom_set_contains_deref_key<Q>(m: Set<Q>, k: &Q)
+pub broadcast axiom fn axiom_set_contains_deref_key<Q>(m: Set<Q>, k: &Q)
     ensures
         #[trigger] set_contains_borrowed_key::<Q, Q>(m, k) <==> m.contains(*k),
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_set_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
+pub broadcast axiom fn axiom_set_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
     ensures
         #[trigger] set_contains_borrowed_key::<Box<Q>, Q>(m, k) <==> m.contains(Box::new(*k)),
-{
-    admit();
-}
+;
 
-pub assume_specification<
-    Key: Borrow<Q> + Hash + Eq,
-    S: BuildHasher,
-    Q: Hash + Eq + ?Sized,
->[ HashSet::<Key, S>::contains ](m: &HashSet<Key, S>, k: &Q) -> (result: bool)
+pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>[ BTreeSet::<
+    Key,
+    A,
+>::contains ](m: &BTreeSet<Key, A>, k: &Q) -> (result: bool)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result
-            == set_contains_borrowed_key(m@, k),
+        obeys_cmp_spec::<Key>() ==> result == set_contains_borrowed_key(m@, k),
 ;
 
 // The specification for `get` has a parameter `key: &Q` where you'd
@@ -1320,7 +1062,7 @@ pub assume_specification<
 // respectively.
 // To deal with this, we have a specification function that opaquely
 // specifies what it means for a returned reference to point to an
-// element of a HashSet. And the postcondition of `get` says that
+// element of a BTreeSet. And the postcondition of `get` says that
 // its result matches the output of that specification function. (It
 // also says that its result corresponds to the output of
 // `contains_borrowed_key`, discussed above.) But this isn't very
@@ -1330,30 +1072,26 @@ pub assume_specification<
 // Box<Q>`.
 pub uninterp spec fn sets_borrowed_key_to_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q, v: &Key) -> bool;
 
-pub broadcast proof fn axiom_set_deref_key_to_value<Q>(m: Set<Q>, k: &Q, v: &Q)
+pub broadcast axiom fn axiom_set_deref_key_to_value<Q>(m: Set<Q>, k: &Q, v: &Q)
     ensures
         #[trigger] sets_borrowed_key_to_key::<Q, Q>(m, k, v) <==> m.contains(*k) && k == v,
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &Box<Q>)
+pub broadcast axiom fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &Box<Q>)
     ensures
         #[trigger] sets_borrowed_key_to_key::<Box<Q>, Q>(m, q, v) <==> (m.contains(*v) && Box::new(
             *q,
         ) == v),
-{
-    admit();
-}
+;
 
 pub assume_specification<
     'a,
-    Key: Borrow<Q> + Hash + Eq,
-    S: BuildHasher,
-    Q: Hash + Eq + ?Sized,
->[ HashSet::<Key, S>::get::<Q> ](m: &'a HashSet<Key, S>, k: &Q) -> (result: Option<&'a Key>)
+    Key: Borrow<Q> + Ord,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>[ BTreeSet::<Key, A>::get::<Q> ](m: &'a BTreeSet<Key, A>, k: &Q) -> (result: Option<&'a Key>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
+        obeys_cmp_spec::<Key>() ==> match result {
             Some(v) => sets_borrowed_key_to_key(m@, k, v),
             None => !set_contains_borrowed_key(m@, k),
         },
@@ -1379,94 +1117,77 @@ pub uninterp spec fn sets_differ_by_borrowed_key<Key, Q: ?Sized>(
     k: &Q,
 ) -> bool;
 
-pub broadcast proof fn axiom_set_deref_key_removed<Q>(old_m: Set<Q>, new_m: Set<Q>, k: &Q)
+pub broadcast axiom fn axiom_set_deref_key_removed<Q>(old_m: Set<Q>, new_m: Set<Q>, k: &Q)
     ensures
         #[trigger] sets_differ_by_borrowed_key::<Q, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
             *k,
         ),
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: Set<Box<Q>>, q: &Q)
+pub broadcast axiom fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: Set<Box<Q>>, q: &Q)
     ensures
         #[trigger] sets_differ_by_borrowed_key::<Box<Q>, Q>(old_m, new_m, q) <==> new_m
             == old_m.remove(Box::new(*q)),
-{
-    admit();
-}
+;
 
-pub assume_specification<
-    Key: Borrow<Q> + Hash + Eq,
-    S: BuildHasher,
-    Q: Hash + Eq + ?Sized,
->[ HashSet::<Key, S>::remove::<Q> ](m: &mut HashSet<Key, S>, k: &Q) -> (result: bool)
+pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>[ BTreeSet::<
+    Key,
+    A,
+>::remove::<Q> ](m: &mut BTreeSet<Key, A>, k: &Q) -> (result: bool)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        obeys_cmp_spec::<Key>() ==> {
             &&& sets_differ_by_borrowed_key(old(m)@, m@, k)
             &&& result == set_contains_borrowed_key(old(m)@, k)
         },
 ;
 
-pub assume_specification<Key, S>[ HashSet::<Key, S>::clear ](m: &mut HashSet<Key, S>)
+pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::clear ](
+    m: &mut BTreeSet<Key, A>,
+) where A: Clone
     ensures
         m@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<Key, S>) -> (r:
-    hash_set::Iter<'a, Key>)
+pub assume_specification<'a, Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::iter ](
+    m: &'a BTreeSet<Key, A>,
+) -> (r: btree_set::Iter<'a, Key>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        key_obeys_cmp_spec::<Key>() ==> {
             let (index, s) = r@;
             &&& index == 0
             &&& s.to_set() == m@
             &&& s.no_duplicates()
+            &&& increasing_seq(s)
         },
 ;
 
-pub broadcast proof fn axiom_hashset_decreases<Key, S>(m: HashSet<Key, S>)
+pub broadcast axiom fn axiom_btree_set_decreases<Key, A: Allocator + Clone>(m: BTreeSet<Key, A>)
     ensures
         #[trigger] (decreases_to!(m => m@)),
-{
-    admit();
-}
+;
 
-pub broadcast group group_hash_axioms {
+pub broadcast group group_btree_axioms {
+    axiom_key_obeys_cmp_spec_meaning,
+    axiom_increasing_seq_meaning,
     axiom_box_key_removed,
     axiom_contains_deref_key,
     axiom_contains_box,
     axiom_deref_key_removed,
     axiom_maps_deref_key_to_value,
     axiom_maps_box_key_to_value,
-    axiom_hashmap_deepview_borrow,
-    axiom_hashmap_view_finite_dom,
-    axiom_bool_obeys_hash_table_key_model,
-    axiom_u8_obeys_hash_table_key_model,
-    axiom_u16_obeys_hash_table_key_model,
-    axiom_u32_obeys_hash_table_key_model,
-    axiom_u64_obeys_hash_table_key_model,
-    axiom_u128_obeys_hash_table_key_model,
-    axiom_usize_obeys_hash_table_key_model,
-    axiom_i8_obeys_hash_table_key_model,
-    axiom_i16_obeys_hash_table_key_model,
-    axiom_i32_obeys_hash_table_key_model,
-    axiom_i64_obeys_hash_table_key_model,
-    axiom_i128_obeys_hash_table_key_model,
-    axiom_isize_obeys_hash_table_key_model,
-    axiom_box_bool_obeys_hash_table_key_model,
-    axiom_box_integer_type_obeys_hash_table_key_model,
-    axiom_random_state_builds_valid_hashers,
-    axiom_spec_hash_map_len,
+    axiom_btree_map_deepview_borrow,
+    axiom_btree_map_view_finite_dom,
+    axiom_spec_btree_map_len,
     axiom_set_box_key_removed,
     axiom_set_contains_deref_key,
     axiom_set_contains_box,
     axiom_set_deref_key_removed,
     axiom_set_deref_key_to_value,
     axiom_set_box_key_to_value,
-    axiom_spec_hash_set_len,
-    axiom_spec_hash_map_iter,
-    axiom_hashmap_decreases,
-    axiom_hashset_decreases,
+    axiom_spec_btree_set_len,
+    axiom_spec_btree_map_iter,
+    axiom_btree_map_decreases,
+    axiom_btree_set_decreases,
 }
 
 } // verus!
