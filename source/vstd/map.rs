@@ -1,5 +1,4 @@
 pub use super::gmap::{
-    Map, IMap,
     axiom_map_finite_from_type,
     axiom_map_index_decreases_finite,
     axiom_map_index_decreases_infinite,
@@ -18,6 +17,9 @@ pub use super::gmap::{
     imap,
     assert_maps_equal,
 };
+
+pub type Map<K, V> = super::gmap::GMap<K, V, super::gset::Finite>;
+pub type IMap<K, V> = super::gmap::GMap<K, V, super::gset::Infinite>;
 
 pub(crate) type GenericMap<K, V, FINITE> = super::gmap::GMap<K, V, FINITE>;
 
