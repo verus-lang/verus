@@ -38,7 +38,7 @@ pub tracked struct GMap<K, V, FINITE: Finiteness> {
 }
 
 /// Map<K,V> is a type synonym for map whose membership is finite (known at typechecking time).
-pub type Map<K, V> = GMap<K, V, Finite>;
+pub(crate) type Map<K, V> = GMap<K, V, Finite>;
 
 pub broadcast proof fn axiom_map_finite_from_trait<K, V, FINITE: Finiteness>(m: GMap<K, V, FINITE>)
     requires
@@ -106,7 +106,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
 
 /// IMap<K,V> is a type synonym a map whose domain may be infinite (but can be
 /// proven finite at verification time).
-pub type IMap<K, V> = GMap<K, V, Infinite>;
+pub(crate) type IMap<K, V> = GMap<K, V, Infinite>;
 
 impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     /// An empty map.
