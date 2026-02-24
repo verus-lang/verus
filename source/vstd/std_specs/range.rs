@@ -117,7 +117,7 @@ impl<A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl fo
         true
     }
 
-    open spec fn seq(&self) -> Seq<Self::Item> {
+    open spec fn remaining(&self) -> Seq<Self::Item> {
         Seq::new(
             self.start.spec_steps_between_int(self.end) as nat,
             |i: int| self.start.spec_forward_checked_int(i).unwrap(),
@@ -129,12 +129,12 @@ impl<A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl fo
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         // Standard invariants for the iterator itself
-        &&& IteratorSpec::seq(self) == Seq::new(
+        &&& IteratorSpec::remaining(self) == Seq::new(
             self.start.spec_steps_between_int(self.end) as nat,
             |i: int| self.start.spec_forward_checked_int(i).unwrap(),
         )
         &&& self.start.spec_steps_between_int(self.end) >= 0
-            || IteratorSpec::seq(self).len() == 0
+            || IteratorSpec::remaining(self).len() == 0
         // &&& (forall|index|
         //     0 <= index <= self.start.spec_steps_between_int(self.end) ==> {
         //         let cur = #[trigger] self.start.spec_forward_checked_int(index).unwrap();
@@ -146,7 +146,7 @@ impl<A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl fo
         // Connections to init
         &&& self.start == init.start
         &&& self.end == init.end
-        &&& IteratorSpec::seq(self) == Seq::new(
+        &&& IteratorSpec::remaining(self) == Seq::new(
             init.start.spec_steps_between_int(init.end) as nat,
             |i: int| init.start.spec_forward_checked_int(i).unwrap(),
         )

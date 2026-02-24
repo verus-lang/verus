@@ -32,7 +32,7 @@ pub trait ExIterator {
 
     /// Sequence of items that will (eventually) be returned
     #[verifier::prophetic]
-    spec fn seq(&self) -> Seq<Self::Item>;
+    spec fn remaining(&self) -> Seq<Self::Item>;
 
     /// Does this iterator complete with a `None` after the above sequence?
     /// (As opposed to hanging indefinitely on a `next()` call)
@@ -48,18 +48,18 @@ pub trait ExIterator {
             self.obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
             self.obeys_prophetic_iter_laws() ==> self.completes() == old(self).completes(),
             self.obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
-            // `next` pops the head of the prophesized seq(), or returns None
+            // `next` pops the head of the prophesized remaining(), or returns None
             self.obeys_prophetic_iter_laws() ==>
             ({
-                if old(self).seq().len() > 0 {
-                    &&& self.seq() == old(self).seq().drop_first()
-                    &&& ret == Some(old(self).seq()[0])
+                if old(self).remaining().len() > 0 {
+                    &&& self.remaining() == old(self).remaining().drop_first()
+                    &&& ret == Some(old(self).remaining()[0])
                 } else {
-                    self.seq() === old(self).seq() && ret === None && self.completes()
+                    self.remaining() === old(self).remaining() && ret === None && self.completes()
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
-            self.obeys_prophetic_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==>
+            self.obeys_prophetic_iter_laws() && old(self).remaining().len() > 0 && self.decrease() is Some ==>
                 decreases_to!(old(self).decrease()->0 => self.decrease()->0),
     ;
 
@@ -95,15 +95,15 @@ pub struct VerusForLoopWrapper<'a, I: Iterator> {
 impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     #[verifier::prophetic]
     pub open spec fn seq(self) -> Seq<I::Item> {
-        self.snapshot@.seq()
+        self.snapshot@.remaining()
     }
 
     /// These properties help maintain the properties in wf,
     /// but they don't need to be exposed to the client
     #[verifier::prophetic]
     pub closed spec fn wf_inner(self) -> bool {
-        &&& self.iter.seq().len() == self.seq().len() - self.index@
-        &&& forall |i| 0 <= i < self.iter.seq().len() ==> #[trigger] self.iter.seq()[i] == self.seq()[self.index@ + i]
+        &&& self.iter.remaining().len() == self.seq().len() - self.index@
+        &&& forall |i| 0 <= i < self.iter.remaining().len() ==> #[trigger] self.iter.remaining()[i] == self.seq()[self.index@ + i]
         &&& self.iter.completes() ==> self.snapshot@.completes()
     }
 
@@ -156,14 +156,14 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             self.iter.obeys_prophetic_iter_laws() ==> (old(self).iter.decrease() is Some <==> self.iter.decrease() is Some),
             self.iter.obeys_prophetic_iter_laws() ==>
             ({
-                if old(self).iter.seq().len() > 0 {
-                    &&& self.iter.seq() == old(self).iter.seq().drop_first()
-                    &&& ret == Some(old(self).iter.seq()[0])
+                if old(self).iter.remaining().len() > 0 {
+                    &&& self.iter.remaining() == old(self).iter.remaining().drop_first()
+                    &&& ret == Some(old(self).iter.remaining()[0])
                 } else {
-                    self.iter.seq() === old(self).iter.seq() && ret === None && self.iter.completes()
+                    self.iter.remaining() === old(self).iter.remaining() && ret === None && self.iter.completes()
                 }
             }),
-            self.iter.obeys_prophetic_iter_laws() && old(self).iter.seq().len() > 0 && self.iter.decrease() is Some ==>
+            self.iter.obeys_prophetic_iter_laws() && old(self).iter.remaining().len() > 0 && self.iter.decrease() is Some ==>
                 decreases_to!(old(self).iter.decrease()->0 => self.iter.decrease()->0),
     {
         let ret = self.iter.next();

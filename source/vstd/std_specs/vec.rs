@@ -366,13 +366,13 @@ impl <T, A: Allocator> crate::std_specs::iter::IteratorSpecImpl for IntoIter<T, 
         true
     }
 
-    uninterp spec fn seq(&self) -> Seq<Self::Item>;
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
-        &&& IteratorSpec::seq(init) == IteratorSpec::seq(self)
-        &&& into_iter_elts(*self) == IteratorSpec::seq(self)
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -405,7 +405,7 @@ pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Ve
 
 pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
     ensures
-        #[trigger] spec_into_iter(v).seq() == v@,
+        #[trigger] spec_into_iter(v).remaining() == v@,
 {
     admit();
 }
