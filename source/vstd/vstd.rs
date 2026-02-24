@@ -106,6 +106,7 @@ pub broadcast group group_vstd_default {
     //
     slice::group_slice_axioms,
     array::group_array_axioms,
+    #[cfg(not(verus_verify_core))]
     string::group_string_axioms,
     raw_ptr::group_raw_ptr_axioms,
     layout::group_layout_axioms,

@@ -705,7 +705,6 @@ pub broadcast proof fn is_ascii_chars_nat_bound(chars: Seq<char>)
         #[trigger] is_ascii_chars(chars) ==> forall|i: int| 0 <= i < chars.len() ==> (chars.index(i) as nat) < 128
 {}
 
-//todo - add cfg
 pub broadcast proof fn is_ascii_chars_concat(c1: Seq<char>, c2: Seq<char>, c3: Seq<char>)
     requires
         c1 =~= c2 + c3,
@@ -718,5 +717,7 @@ pub broadcast proof fn is_ascii_chars_concat(c1: Seq<char>, c2: Seq<char>, c3: S
         assert(c3 =~= c1.subrange(c2.len() as int, c1.len() as int));
     }
 }
+
+// todo - create broadcast group
 
 } // verus!

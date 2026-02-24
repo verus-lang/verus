@@ -62,10 +62,11 @@ pub use super::std_specs::vec::VecAdditionalSpecFns;
 #[cfg(feature = "alloc")]
 pub use super::pervasive::VecAdditionalExecFns;
 
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub use super::string::StrSliceExecFns;
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub use super::string::StringExecFns;
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub use super::string::StringExecFnsIsAscii;
 
 #[cfg(verus_keep_ghost)]
