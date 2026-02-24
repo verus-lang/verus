@@ -520,6 +520,7 @@ test_verify_one_file! {
             ensures
                 ret@.len() > 10
         {
+            broadcast use vstd::utf8::is_ascii_chars_encode_utf8;
             x.as_bytes_vec()
         }
     } => Ok(())

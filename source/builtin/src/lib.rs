@@ -1468,13 +1468,6 @@ pub fn f64_to_bits(_f: f64) -> u64 {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::strslice_is_ascii"]
-#[verifier::spec]
-pub fn strslice_is_ascii<A>(_a: A) -> bool {
-    unimplemented!()
-}
-
-#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::strslice_len"]
 #[verifier::spec]
 pub fn strslice_len<A>(_a: A) -> nat {

@@ -71,11 +71,6 @@ pub assume_specification[ str::is_ascii ](s: &str) -> (b: bool)
         b == is_ascii(s),
 ;
 
-//#[cfg(feature = "alloc")]
-pub open spec fn new_strlit_spec(s: &str) -> &str {
-    s
-}
-
 #[cfg(feature = "alloc")]
 use crate::alloc::borrow::ToOwned;
 
@@ -261,12 +256,6 @@ impl StrSliceExecFns for str {
 }
 
 #[cfg(feature = "alloc")]
-pub broadcast axiom fn axiom_str_literal_is_ascii<'a>(s: &'a str)
-    ensures
-        #[trigger] s.is_ascii() == strslice_is_ascii(s),
-;
-
-#[cfg(feature = "alloc")]
 pub broadcast axiom fn axiom_str_literal_len<'a>(s: &'a str)
     ensures
         #[trigger] s@.len() == strslice_len(s),
@@ -280,14 +269,14 @@ pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
 
 #[cfg(not(feature = "alloc"))]
 pub broadcast group group_string_axioms {
-    axiom_str_literal_is_ascii,
+    //axiom_str_literal_is_ascii,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
 }
 
 #[cfg(feature = "alloc")]
 pub broadcast group group_string_axioms {
-    axiom_str_literal_is_ascii,
+    //axiom_str_literal_is_ascii,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
     to_string_from_display_ensures_for_str,
