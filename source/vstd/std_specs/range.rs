@@ -140,6 +140,14 @@ impl<A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl fo
                 |i: int| v.start.spec_forward_checked_int(i).unwrap(),
             )
         }
+        &&& forall|index|
+            0 <= index <= self.start.spec_steps_between_int(self.end) ==> {
+                let cur = #[trigger] self.start.spec_forward_checked_int(index).unwrap();
+                &&& self.start.spec_is_lt(cur) || self.start == cur
+                &&& self.start.spec_is_lt(self.end) || self.start == self.end ==> cur.spec_is_lt(
+                    self.end,
+                ) || cur == self.end
+            }
     }
 
     open spec fn decrease(&self) -> Option<nat> {
