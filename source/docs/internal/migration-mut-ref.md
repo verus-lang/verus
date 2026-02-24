@@ -56,7 +56,7 @@ Below, we cover the breaking changes.
 <strong>(relevant to nearly anyone)</strong>
 
 The most important breaking change is in the way mutable references are referred to in a specification.
-Since this change is so substantial, there is a "deprectation grace period" (see below).
+Since this change is so substantial, there is a "deprecation grace period" (see below).
 
 Previously, mutable references work like this:
 
