@@ -274,11 +274,9 @@ pub broadcast proof fn axiom_random_state_builds_valid_hashers()
 #[verifier::accept_recursive_types(Value)]
 pub struct ExKeys<'a, Key: 'a, Value: 'a>(Keys<'a, Key, Value>);
 
-pub trait KeysAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<Key>);
-}
+impl<'a, Key, Value> View for Keys<'a, Key, Value> {
+    type V = (int, Seq<Key>);
 
-impl<'a, Key: 'a, Value: 'a> KeysAdditionalSpecFns<'a, Key, Value> for Keys<'a, Key, Value> {
     uninterp spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
 }
 
@@ -383,11 +381,9 @@ impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
 #[verifier::accept_recursive_types(Value)]
 pub struct ExValues<'a, Key: 'a, Value: 'a>(Values<'a, Key, Value>);
 
-pub trait ValuesAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<Value>);
-}
+impl<'a, Key: 'a, Value: 'a> View for Values<'a, Key, Value> {
+    type V = (int, Seq<Value>);
 
-impl<'a, Key: 'a, Value: 'a> ValuesAdditionalSpecFns<'a, Key, Value> for Values<'a, Key, Value> {
     uninterp spec fn view(self: &Values<'a, Key, Value>) -> (int, Seq<Value>);
 }
 
@@ -492,15 +488,9 @@ impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
 #[verifier::accept_recursive_types(Value)]
 pub struct ExMapIter<'a, Key: 'a, Value: 'a>(hash_map::Iter<'a, Key, Value>);
 
-pub trait MapIterAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<(Key, Value)>);
-}
+impl<'a, Key: 'a, Value: 'a> View for hash_map::Iter<'a, Key, Value> {
+    type V = (int, Seq<(Key, Value)>);
 
-impl<'a, Key: 'a, Value: 'a> MapIterAdditionalSpecFns<'a, Key, Value> for hash_map::Iter<
-    'a,
-    Key,
-    Value,
-> {
     uninterp spec fn view(self: &hash_map::Iter<'a, Key, Value>) -> (int, Seq<(Key, Value)>);
 }
 
@@ -1084,11 +1074,9 @@ pub broadcast proof fn axiom_hashmap_decreases<Key, Value, S>(m: HashMap<Key, Va
 #[verifier::accept_recursive_types(Key)]
 pub struct ExSetIter<'a, Key: 'a>(hash_set::Iter<'a, Key>);
 
-pub trait SetIterAdditionalSpecFns<'a, Key: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<Key>);
-}
+impl<'a, Key: 'a> View for hash_set::Iter<'a, Key> {
+    type V = (int, Seq<Key>);
 
-impl<'a, Key: 'a> SetIterAdditionalSpecFns<'a, Key> for hash_set::Iter<'a, Key> {
     uninterp spec fn view(self: &hash_set::Iter<'a, Key>) -> (int, Seq<Key>);
 }
 

@@ -62,11 +62,9 @@ pub broadcast axiom fn axiom_increasing_seq_meaning<K: Ord>(s: Seq<K>)
 #[verifier::accept_recursive_types(Value)]
 pub struct ExKeys<'a, Key, Value>(Keys<'a, Key, Value>);
 
-pub trait KeysAdditionalSpecFns<'a, Key, Value> {
-    spec fn view(self: &Self) -> (int, Seq<Key>);
-}
+impl<'a, Key, Value> View for Keys<'a, Key, Value> {
+    type V = (int, Seq<Key>);
 
-impl<'a, Key, Value> KeysAdditionalSpecFns<'a, Key, Value> for Keys<'a, Key, Value> {
     uninterp spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
 }
 
@@ -171,11 +169,9 @@ impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
 #[verifier::accept_recursive_types(Value)]
 pub struct ExValues<'a, Key, Value>(Values<'a, Key, Value>);
 
-pub trait ValuesAdditionalSpecFns<'a, Key, Value> {
-    spec fn view(self: &Self) -> (int, Seq<Value>);
-}
+impl<'a, Key, Value> View for Values<'a, Key, Value> {
+    type V = (int, Seq<Value>);
 
-impl<'a, Key, Value> ValuesAdditionalSpecFns<'a, Key, Value> for Values<'a, Key, Value> {
     uninterp spec fn view(self: &Values<'a, Key, Value>) -> (int, Seq<Value>);
 }
 
@@ -284,7 +280,9 @@ pub trait MapIterAdditionalSpecFns<'a, Key, Value> {
     spec fn view(self: &Self) -> (int, Seq<(Key, Value)>);
 }
 
-impl<'a, K: 'a, V: 'a> MapIterAdditionalSpecFns<'a, K, V> for btree_map::Iter<'a, K, V> {
+impl<'a, K: 'a, V: 'a> View for btree_map::Iter<'a, K, V> {
+    type V = (int, Seq<(K, V)>);
+
     uninterp spec fn view(self: &btree_map::Iter<'a, K, V>) -> (int, Seq<(K, V)>);
 }
 
@@ -844,11 +842,9 @@ pub broadcast axiom fn axiom_btree_map_decreases<Key, Value, A: Allocator + Clon
 #[verifier::accept_recursive_types(K)]
 pub struct ExSetIter<'a, K: 'a>(btree_set::Iter<'a, K>);
 
-pub trait SetIterAdditionalSpecFns<'a, Key> {
-    spec fn view(self: &Self) -> (int, Seq<Key>);
-}
+impl<'a, Key> View for btree_set::Iter<'a, Key> {
+    type V = (int, Seq<Key>);
 
-impl<'a, Key> SetIterAdditionalSpecFns<'a, Key> for btree_set::Iter<'a, Key> {
     uninterp spec fn view(self: &btree_set::Iter<'a, Key>) -> (int, Seq<Key>);
 }
 
