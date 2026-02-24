@@ -2244,7 +2244,7 @@ test_verify_one_file_with_options! {
         }
 
         fn set_to_20(x: &mut u64, y: u64)
-            ensures *fin(x) == 20
+            ensures *final(x) == 20
             no_unwind
         {
             *x = 20;
@@ -2270,7 +2270,7 @@ test_verify_one_file_with_options! {
         }
 
         fn set_to_20(x: &mut u64, y: u64)
-            ensures *fin(x) == 20
+            ensures *final(x) == 20
             no_unwind
         {
             *x = 20;
@@ -2304,7 +2304,7 @@ test_verify_one_file_with_options! {
         }
 
         fn set_to(a: &mut u64, b: u64)
-            ensures *fin(a) == b
+            ensures *final(a) == b
             no_unwind
         {
             *a = b;
@@ -2358,7 +2358,7 @@ test_verify_one_file_with_options! {
         }
 
         fn set_to(a: &mut u64, b: u64)
-            ensures *fin(a) == b
+            ensures *final(a) == b
             no_unwind
         {
             *a = b;
@@ -2405,7 +2405,7 @@ test_verify_one_file_with_options! {
         }
 
         fn set_to(a: &mut u64, b: u64)
-            ensures *fin(a) == b
+            ensures *final(a) == b
             no_unwind
         {
             *a = b;
@@ -2451,7 +2451,7 @@ test_verify_one_file_with_options! {
         }
 
         fn set_to(a: &mut u64, b: u64)
-            ensures *fin(a) == b
+            ensures *final(a) == b
             no_unwind
         {
             *a = b;
@@ -2470,7 +2470,7 @@ test_verify_one_file_with_options! {
         }
 
         proof fn tra_set_to(tracked a: &mut u64, b: u64)
-            ensures *fin(a) == b
+            ensures *final(a) == b
         {
             assume(false);
         }
@@ -2507,7 +2507,7 @@ test_verify_one_file_with_options! {
         }
 
         fn set_to(Tracked(a): Tracked<&mut u64>, b: u64)
-            ensures *fin(a) == b
+            ensures *final(a) == b
             no_unwind
         {
             assume(false);

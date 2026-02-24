@@ -791,6 +791,10 @@ impl Hash for crate::Expr {
                 state.write_u8(52u8);
                 v0.hash(state);
             }
+            crate::Expr::Final(v0) => {
+                state.write_u8(53u8);
+                v0.hash(state);
+            }
             #[cfg(not(feature = "full"))]
             _ => unreachable!(),
         }
@@ -958,6 +962,16 @@ impl Hash for crate::ExprField {
         self.attrs.hash(state);
         self.base.hash(state);
         self.member.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ExprFinal {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.arg.hash(state);
     }
 }
 #[cfg(feature = "full")]

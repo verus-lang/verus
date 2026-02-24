@@ -709,7 +709,7 @@ fn check_one_expr<Emit: EmitError>(
                 if *migrated {
                     "This `&mut` parameter must be dereferenced (either explicitly, as in `*x`, or implicitly, as in `x.field`). For more flexible mutable reference support, disable the backwards-compatability (add #[verifier::deprecated_postcondition_mut_ref_style(false)] to the function)"
                 } else {
-                    "The result of `fin` must be dereferenced (either explicitly, as in `*fin(x)`, or implicitly, as in `fin(x).field`)"
+                    "The result of `final` must be dereferenced (either explicitly, as in `*final(x)`, or implicitly, as in `final(x).field`)"
                 },
             ));
         }

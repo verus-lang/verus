@@ -552,9 +552,9 @@ mod whitespace;
 mod verus;
 pub use crate::verus::{
     Assert, AssertForall, Assume, AssumeSpecification, BigAnd, BigAndExpr, BigOr, BigOrExpr,
-    BroadcastUse, Closed, ClosureArg, DataMode, Decreases, DefaultEnsures, Ensures, ExprGetField,
-    ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnMode, FnProofArg, FnProofOptions,
-    Global, GlobalInner, GlobalLayout, GlobalSizeOf, Invariant, InvariantEnsures,
+    BroadcastUse, Closed, ClosureArg, DataMode, Decreases, DefaultEnsures, Ensures, ExprFinal,
+    ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnMode, FnProofArg,
+    FnProofOptions, Global, GlobalInner, GlobalLayout, GlobalSizeOf, Invariant, InvariantEnsures,
     InvariantExceptBreak, InvariantNameSet, InvariantNameSetAny, InvariantNameSetList,
     InvariantNameSetNone, InvariantNameSetSet, ItemBroadcastGroup, LoopSpec, MatchesOpExpr,
     MatchesOpToken, Mode, ModeExec, ModeGhost, ModeProof, ModeProofAxiom, ModeSpec,
