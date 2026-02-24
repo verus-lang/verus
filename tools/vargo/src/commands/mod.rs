@@ -94,14 +94,9 @@ fn test_rust_min_stack() -> String {
 }
 
 pub(crate) fn log_command(cmd: &std::process::Command, verbose: bool) {
-    use crate::VARGO_NEST;
     use yansi::Paint;
     if verbose {
-        let vargo_nest = *VARGO_NEST.read().unwrap();
-        eprintln!(
-            "{}",
-            format!("vargo running [{}]: {:?}", vargo_nest, cmd).magenta()
-        );
+        eprintln!("{}", format!("vargo running: {:?}", cmd).magenta());
     }
 }
 
