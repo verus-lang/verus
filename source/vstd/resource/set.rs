@@ -528,11 +528,9 @@ impl<T> GhostPersistentSubset<T> {
     }
 
     /// Duplicate the [`GhostPersistentSubset`]
-    pub proof fn duplicate(tracked &mut self) -> (tracked result: GhostPersistentSubset<T>)
+    pub proof fn duplicate(tracked &self) -> (tracked result: GhostPersistentSubset<T>)
         ensures
-            self.id() == result.id(),
-            old(self).id() == self.id(),
-            old(self)@ == self@,
+            result.id() == self.id(),
             result@ == self@,
     {
         let tracked map = self.map.duplicate();
@@ -798,11 +796,9 @@ impl<T> GhostPersistentSingleton<T> {
     }
 
     /// Duplicate the [`GhostPersistentSingleton`]
-    pub proof fn duplicate(tracked &mut self) -> (tracked result: GhostPersistentSingleton<T>)
+    pub proof fn duplicate(tracked &self) -> (tracked result: GhostPersistentSingleton<T>)
         ensures
-            self.id() == result.id(),
-            old(self).id() == self.id(),
-            old(self)@ == self@,
+            result.id() == self.id(),
             result@ == self@,
     {
         let tracked map = self.map.duplicate();
