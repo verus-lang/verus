@@ -1030,23 +1030,17 @@ impl<K, V> GhostPersistentSubmap<K, V> {
     }
 
     /// Duplicate the [`GhostPersistentSubmap`]
-    pub proof fn duplicate(tracked &mut self) -> (tracked result: GhostPersistentSubmap<K, V>)
+    pub proof fn duplicate(tracked &self) -> (tracked result: GhostPersistentSubmap<K, V>)
         ensures
-            final(self).id() == result.id(),
-            old(self).id() == final(self).id(),
-            old(self)@ == final(self)@,
-            result@ == final(self)@,
+            result.id() == self.id(),
+            result@ == self@,
     {
         use_type_invariant(&*self);
 
-        let tracked mut owned = self.empty();
-        let carrier = self.r.value();
-        assert(carrier == MapCarrier::op(carrier, carrier));
+        assert(MapCarrier::op(self.r.value(), self.r.value()) == self.r.value());
+        let tracked r = super::lib::duplicate(&self.r);
 
-        tracked_swap(self, &mut owned);
-        let tracked (mut orig, new) = owned.r.split(carrier, carrier);
-        tracked_swap(&mut self.r, &mut orig);
-        GhostPersistentSubmap { r: new }
+        GhostPersistentSubmap { r }
     }
 
     /// Agreement between a [`GhostPersistentSubmap`] and a corresponding [`GhostMapAuth`]
@@ -1501,12 +1495,10 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
     }
 
     /// Duplicate the [`GhostPersistentPointsTo`]
-    pub proof fn duplicate(tracked &mut self) -> (tracked result: GhostPersistentPointsTo<K, V>)
+    pub proof fn duplicate(tracked &self) -> (tracked result: GhostPersistentPointsTo<K, V>)
         ensures
-            final(self).id() == result.id(),
-            old(self).id() == final(self).id(),
-            old(self)@ == final(self)@,
-            result@ == final(self)@,
+            result.id() == self.id(),
+            result@ == self@,
     {
         use_type_invariant(&*self);
         let tracked submap = self.submap.duplicate();
