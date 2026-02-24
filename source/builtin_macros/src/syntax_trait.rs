@@ -126,7 +126,7 @@ fn expand_extension_trait<'tcx>(
                 f_tspec_impl.default = None;
                 f_tspec_impl.sig.mode = FnMode::Default;
                 // Remove #[verifier::prophetic] from the TSpecImpl methods.
-                // The TSpecImpl trait is marked #[verifier::external], so any Verus-specific 
+                // The TSpecImpl trait is marked #[verifier::external], so any Verus-specific
                 // attributes cause a spurious warning about having no effect.
                 f_tspec_impl.attrs.retain(|attr| {
                     !(attr.path().segments.len() == 2
