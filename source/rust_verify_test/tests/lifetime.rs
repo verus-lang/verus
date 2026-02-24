@@ -745,7 +745,11 @@ test_verify_one_file! {
         fn test2(t: Tracked<T>) {
             test(t.clone());
         }
-    } => Err(err) => assert_rust_error_msg(err, "the method `clone` exists for struct `verus_builtin::Tracked<T>`, but its trait bounds were not satisfied")
+    // The original error msg was better, but now that autoderef is allowed for Tracked,
+    // Rust will type-check t.clone() by converting to T and then calling clone, which would
+    // be a mode error if it got to VIR.
+    //} => Err(err) => assert_rust_error_msg(err, "the method `clone` exists for struct `verus_builtin::Tracked<T>`, but its trait bounds were not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {

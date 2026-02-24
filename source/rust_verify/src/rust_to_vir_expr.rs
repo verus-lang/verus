@@ -1253,17 +1253,57 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?;
-            if auto_deref_supported_for_ty(bctx.ctxt.tcx, &get_inner_ty()) {
+            let mutbl = matches!(deref.mutbl, Mutability::Mut);
+
+            let inner_ty = get_inner_ty();
+
+            if let Some((ty, is_tracked)) =
+                crate::rust_to_vir_base::is_tracked_or_ghost_ty(&bctx.ctxt.verus_items, inner_ty)
+            {
+                if bctx.new_mut_ref {
+                    let mwm = if is_tracked {
+                        vir::ast::ModeWrapperMode::Proof
+                    } else {
+                        vir::ast::ModeWrapperMode::Spec
+                    };
+                    let typ = bctx.mid_ty_to_vir(expr.span, &ty, false)?;
+                    return Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
+                        expr.span,
+                        &typ,
+                        PlaceX::ModeUnwrap(inner.to_place(), mwm),
+                    )));
+                } else {
+                    let inner = inner.consume(bctx, inner_ty);
+                    let op = UnaryOp::CoerceMode {
+                        op_mode: if mutbl { Mode::Proof } else { Mode::Spec },
+                        from_mode: Mode::Proof,
+                        to_mode: if is_tracked { Mode::Proof } else { Mode::Spec },
+                        kind: if mutbl {
+                            vir::ast::ModeCoercion::BorrowMut
+                        } else {
+                            vir::ast::ModeCoercion::Field
+                        },
+                    };
+                    let typ = bctx.mid_ty_to_vir(expr.span, &ty, false)?;
+                    return Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
+                        expr.span,
+                        &typ,
+                        ExprX::Unary(op, inner),
+                    )));
+                }
+            }
+
+            if auto_deref_supported_for_ty(bctx.ctxt.tcx, &inner_ty) {
                 Ok(inner)
             } else {
-                let inner = inner.consume(bctx, get_inner_ty());
+                let inner = inner.consume(bctx, inner_ty);
                 Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::deref_to_vir(
                     bctx,
                     expr,
                     deref.method_call(bctx.ctxt.tcx),
                     inner,
                     expr_typ()?,
-                    get_inner_ty(),
+                    inner_ty,
                     expr.span,
                 )?))
             }
@@ -2265,7 +2305,72 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 };
                 mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub(ob)), zero, varg))
             }
-            UnOp::Deref => deref_expr_to_vir(bctx, expr, arg, modifier),
+            UnOp::Deref => {
+                if bctx.types.is_method_call(expr) {
+                    // deref/deref_mut are typed:
+                    //   deref     : &T     -> &Target
+                    //   deref_mut : &mut T -> &mut Target
+                    // the HIR op is typed:
+                    //   &(mut?) T -> Target
+
+                    let ref_ty = bctx.types.expr_ty_adjusted(arg);
+                    let (inner_ty, mutbl) = match ref_ty.kind() {
+                        TyKind::Ref(_, ty, rustc_ast::Mutability::Mut) => (ty, true),
+                        TyKind::Ref(_, ty, rustc_ast::Mutability::Not) => (ty, false),
+                        _ => crate::internal_err!(expr.span, "expected TyKind::Ref"),
+                    };
+                    if let Some((ty, is_tracked)) = crate::rust_to_vir_base::is_tracked_or_ghost_ty(
+                        &bctx.ctxt.verus_items,
+                        *inner_ty,
+                    ) {
+                        if bctx.new_mut_ref {
+                            // &(mut?) Tracked<T>  -->  Tracked<T>  -->  T
+                            //                     (*)           ModeUnwrap
+
+                            let inner = expr_to_vir(bctx, arg, modifier)?.to_place();
+                            let inner = if mutbl {
+                                deref_mut(bctx, expr.span, &inner)?
+                            } else {
+                                // Implicit immut-deref
+                                inner
+                            };
+
+                            let mwm = if is_tracked {
+                                vir::ast::ModeWrapperMode::Proof
+                            } else {
+                                vir::ast::ModeWrapperMode::Spec
+                            };
+                            let typ = bctx.mid_ty_to_vir(expr.span, &ty, false)?;
+                            return Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
+                                expr.span,
+                                &typ,
+                                PlaceX::ModeUnwrap(inner, mwm),
+                            )));
+                        } else {
+                            let new_modifier = is_expr_typ_mut_ref(ref_ty, current_modifier)?;
+                            let inner = expr_to_vir_consume(bctx, arg, new_modifier)?;
+                            let op = UnaryOp::CoerceMode {
+                                op_mode: if mutbl { Mode::Proof } else { Mode::Spec },
+                                from_mode: Mode::Proof,
+                                to_mode: if is_tracked { Mode::Proof } else { Mode::Spec },
+                                kind: if mutbl {
+                                    vir::ast::ModeCoercion::BorrowMut
+                                } else {
+                                    vir::ast::ModeCoercion::Field
+                                },
+                            };
+                            let typ = bctx.mid_ty_to_vir(expr.span, &ty, false)?;
+                            return Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
+                                expr.span,
+                                &typ,
+                                ExprX::Unary(op, inner),
+                            )));
+                        }
+                    }
+                }
+
+                deref_expr_to_vir(bctx, expr, arg, modifier)
+            }
         },
         ExprKind::Binary(op, lhs, rhs) => {
             let vlhs = expr_to_vir_consume(bctx, lhs, modifier)?;

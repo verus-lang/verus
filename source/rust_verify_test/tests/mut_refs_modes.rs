@@ -1167,3 +1167,554 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] tracked_overloaded_deref_1 ["new-mut-ref"] => verus_code! {
+        fn test1(x: Tracked<u64>) {
+            let tracked y: u64 = *x;
+            assert(x == y);
+        }
+
+        fn test2(x: Tracked<u64>) {
+            let tracked y: &u64 = &*x;
+            assert(x == y);
+        }
+
+        fn test3(x: Tracked<Ghost<u64>>) {
+            let mut x = x;
+            let tracked y: &mut Ghost<u64> = &mut *x;
+            proof { *y = Ghost(3); }
+            assert(x == 3);
+        }
+
+        fn test3_fails(x: Tracked<Ghost<u64>>) {
+            let mut x = x;
+            let tracked y: &mut Ghost<u64> = &mut *x;
+            proof { *y = Ghost(3); }
+            assert(x == 3);
+            assert(false); // FAILS
+        }
+
+        fn test4(x: Tracked<Ghost<u64>>) {
+            let mut x = x;
+            proof { *x = Ghost(3); }
+            assert(x == 3);
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_overloaded_deref_2 ["new-mut-ref"] => verus_code! {
+        fn test4(x: Tracked<Ghost<u64>>) {
+            let mut x = x;
+            *x = Ghost(3);
+            assert(x == 3);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access proof-mode place in executable context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_overloaded_deref_3 ["new-mut-ref"] => verus_code! {
+        fn test4(x: Tracked<Ghost<u64>>) {
+            let mut x = x;
+            let y = &mut *x;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access proof-mode place in executable context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_overloaded_deref_lifetime_1 ["new-mut-ref"] => verus_code! {
+        fn test3(x: Tracked<Ghost<u64>>) {
+            let mut x = x;
+            let tracked y: &mut Ghost<u64> = &mut *x;
+            let tracked y2: &mut Ghost<u64> = &mut *x;
+            proof { *y = Ghost(3); }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_overloaded_deref_lifetime_2 ["new-mut-ref"] => verus_code! {
+        fn test3(x: Tracked<Ghost<u64>>) {
+            let mut x = x;
+            let tracked y: &mut Ghost<u64> = &mut *x;
+            let tracked y2: &Ghost<u64> = &*x;
+            proof { *y = Ghost(3); }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as immutable because it is also borrowed as mutable")
+}
+
+test_verify_one_file_with_options! {
+    #[test] ghost_overloaded_deref_1 ["new-mut-ref"] => verus_code! {
+        fn test1(x: Ghost<u64>) {
+            let ghost y: u64 = *x;
+            assert(x == y);
+        }
+
+        fn test2(x: Ghost<u64>) {
+            let ghost y: &u64 = &*x;
+            assert(x == y);
+        }
+
+        fn test3(x: Ghost<u64>) {
+            let mut x = x;
+            let x_ref = &mut x;
+            proof { **x_ref = 30u64; }
+            assert(x == 30);
+        }
+
+        fn test3_fails(x: Ghost<u64>) {
+            let mut x = x;
+            let x_ref = &mut x;
+            proof { **x_ref = 30u64; }
+            assert(x == 30);
+            assert(false); // FAILS
+        }
+
+        fn test4(x: Ghost<u64>) {
+            let mut x = x;
+            proof { *x = 3; }
+            assert(x == 3);
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] ghost_overloaded_deref_2 ["new-mut-ref"] => verus_code! {
+        fn test4(x: Ghost<Ghost<u64>>) {
+            let mut x = x;
+            *x = Ghost(3);
+            assert(x == 3);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] ghost_overloaded_deref_3 ["new-mut-ref"] => verus_code! {
+        fn test4(x: Ghost<Ghost<u64>>) {
+            let mut x = x;
+            let y = &mut *x;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] ghost_overloaded_deref_4 ["new-mut-ref"] => verus_code! {
+        fn test4(x: Ghost<Ghost<u64>>) {
+            let mut x = x;
+            proof { let y = &mut *x; }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+}
+
+test_verify_one_file_with_options! {
+    #[test] ghost_overloaded_deref_lifetime ["new-mut-ref"] => verus_code! {
+        fn test4(x: Ghost<u64>) {
+            let mut x = x;
+            let x_ref = &mut x;
+
+            x = Ghost(3);
+
+            proof {
+                **x_ref = 30u64;
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x` because it is borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_auto_deref_1 ["new-mut-ref"] => verus_code! {
+        fn test1(x: Tracked<(u64, u64)>) {
+            let tracked y: u64 = x.0;
+            assert(x@.0 == y);
+            assert(x.0 == y);
+        }
+
+        fn test2(x: Tracked<(u64, u64)>) {
+            let tracked y: &u64 = &x.0;
+            assert(x@.0 == y);
+            assert(x.0 == y);
+        }
+
+        fn test3(x: Tracked<(Ghost<u64>, Ghost<u64>)>) {
+            let mut x = x;
+            let tracked y: &mut Ghost<u64> = &mut x.0;
+            proof { *y = Ghost(3); }
+            assert(x.0 == 3);
+        }
+
+        fn test3_fails(x: Tracked<(Ghost<u64>, Ghost<u64>)>) {
+            let mut x = x;
+            let tracked y: &mut Ghost<u64> = &mut x.0;
+            proof { *y = Ghost(3); }
+            assert(x.0 == 3);
+            assert(false); // FAILS
+        }
+
+        fn test4(x: Tracked<(Ghost<u64>, Ghost<u64>)>) {
+            let mut x = x;
+            proof { x.0 = Ghost(3); }
+            assert(x.0 == 3);
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_auto_deref_2 ["new-mut-ref"] => verus_code! {
+        fn test4(x: Tracked<(Ghost<u64>, Ghost<u64>)>) {
+            let mut x = x;
+            x.0 = Ghost(3);
+            assert(x.0 == 3);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access proof-mode place in executable context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_auto_deref_3 ["new-mut-ref"] => verus_code! {
+        fn test4(x: Tracked<(Ghost<u64>, Ghost<u64>)>) {
+            let mut x = x;
+            let y = &mut x.0;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access proof-mode place in executable context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_auto_deref_lifetime_1 ["new-mut-ref"] => verus_code! {
+        fn test3(x: Tracked<(Ghost<u64>, Ghost<u64>)>) {
+            let mut x = x;
+            let tracked y: &mut Ghost<u64> = &mut x.0;
+            let tracked y2: &mut Ghost<u64> = &mut x.0;
+            proof { *y = Ghost(3); }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_auto_deref_lifetime_2 ["new-mut-ref"] => verus_code! {
+        fn test3(x: Tracked<(Ghost<u64>, Ghost<u64>)>) {
+            let mut x = x;
+            let tracked y: &mut Ghost<u64> = &mut x.0;
+            let tracked y2: &Ghost<u64> = &x.0;
+            proof { *y = Ghost(3); }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as immutable because it is also borrowed as mutable")
+}
+
+test_verify_one_file_with_options! {
+    #[test] ghost_auto_deref_1 ["new-mut-ref"] => verus_code! {
+        fn test1(x: Ghost<(u64, u64)>) {
+            let ghost y: u64 = x.0;
+            assert(x@.0 == y);
+            assert(x.0 == y);
+        }
+
+        fn test2(x: Ghost<(u64, u64)>) {
+            let ghost y: &u64 = &x.0;
+            assert(x.0 == y);
+        }
+
+        fn test3(x: Ghost<(u64, u64)>) {
+            let mut x = x;
+            let x_ref = &mut x;
+            proof { x_ref.0 = 30u64; }
+            assert(x.0 == 30);
+        }
+
+        fn test3_fails(x: Ghost<(u64, u64)>) {
+            let mut x = x;
+            let x_ref = &mut x;
+            proof { x_ref.0 = 30u64; }
+            assert(x.0 == 30);
+            assert(false); // FAILS
+        }
+
+        fn test4(x: Ghost<(u64, u64)>) {
+            let mut x = x;
+            proof { x.0 = 3; }
+            assert(x.0 == 3);
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] ghost_auto_deref_2 ["new-mut-ref"] => verus_code! {
+        fn test4(x: Ghost<(Ghost<u64>, Ghost<u64>)>) {
+            let mut x = x;
+            x.0 = Ghost(3);
+            assert(x.0 == 3);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] ghost_auto_deref_3 ["new-mut-ref"] => verus_code! {
+        fn test4(x: Ghost<(Ghost<u64>, Ghost<u64>)>) {
+            let mut x = x;
+            let y = &mut x.0;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] ghost_auto_deref_4 ["new-mut-ref"] => verus_code! {
+        fn test4(x: Ghost<(Ghost<u64>, Ghost<u64>)>) {
+            let mut x = x;
+            proof { let y = &mut x.0; }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+}
+
+test_verify_one_file_with_options! {
+    #[test] ghost_auto_deref_lifetime ["new-mut-ref"] => verus_code! {
+        fn test4(x: Ghost<(u64, u64)>) {
+            let mut x = x;
+            let x_ref = &mut x;
+
+            x = Ghost((3u64, 3u64));
+
+            proof {
+                x_ref.0 = 30u64;
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x` because it is borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] deref_generic_use_err_deref_tracked ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        fn foo<T: std::ops::Deref>() { }
+        fn foo2() {
+            foo::<Tracked<u64>>();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "reliance on trait bound `verus_builtin::Tracked<A>: core::ops::Deref`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] deref_generic_use_err_deref_mut_tracked ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        fn foo<T: std::ops::DerefMut>() { }
+        fn foo2() {
+            foo::<Tracked<u64>>();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "reliance on trait bound `verus_builtin::Tracked<A>: core::ops::DerefMut`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] deref_generic_use_err_deref_ghost ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        fn foo<T: std::ops::Deref>() { }
+        fn foo2() {
+            foo::<Ghost<u64>>();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "reliance on trait bound `verus_builtin::Ghost<A>: core::ops::Deref`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] deref_generic_use_err_deref_mut_ghost ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        fn foo<T: std::ops::DerefMut>() { }
+        fn foo2() {
+            foo::<Ghost<u64>>();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "reliance on trait bound `verus_builtin::Ghost<A>: core::ops::DerefMut`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_deref_explicit ["new-mut-ref"] => verus_code! {
+        use std::ops::Deref;
+        fn foo(x: Tracked<u64>) {
+            let y: &u64 = x.deref();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using Tracked::deref")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_deref_mut_explicit ["new-mut-ref"] => verus_code! {
+        use std::ops::DerefMut;
+        fn foo(x: Tracked<u64>) {
+            let mut x = x;
+            let y: &mut u64 = x.deref_mut();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using Tracked::deref_mut")
+}
+
+// TODO: delete the below cases after new-mut-ref is done, they are redundant with the above
+
+test_verify_one_file_with_options! {
+    #[test] old_mut_ref_tracked_overloaded_deref_1 [] => verus_code! {
+        fn test1(x: Tracked<u64>) {
+            let tracked y: u64 = *x;
+            assert(x == y);
+        }
+
+        fn test2(x: Tracked<u64>) {
+            let tracked y: &u64 = &*x;
+            assert(x == y);
+        }
+
+        fn test4(x: Tracked<Ghost<u64>>) {
+            let mut x = x;
+            proof { *x = Ghost(3); }
+            assert(x == 3);
+        }
+
+        proof fn f(tracked x: &mut u64)
+            ensures *x == 4
+        {
+            *x = 4;
+        }
+
+        fn test3() {
+            let mut x: Tracked<u64> = Tracked(3);
+            proof { f(&mut *x); }
+            assert(x == 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] old_mut_ref_ghost_overloaded_deref_1 [] => verus_code! {
+        fn test1(x: Ghost<u64>) {
+            let ghost y: u64 = *x;
+            assert(x == y);
+        }
+
+        fn test2(x: Ghost<u64>) {
+            let ghost y: &u64 = &*x;
+            assert(x == y);
+        }
+
+        fn test4(x: Ghost<u64>) {
+            let mut x = x;
+            proof { *x = 3; }
+            assert(x == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] old_mut_ref_tracked_auto_deref_1 [] => verus_code! {
+        fn test1(x: Tracked<(u64, u64)>) {
+            let tracked y: u64 = x.0;
+            assert(x@.0 == y);
+            assert(x.0 == y);
+        }
+
+        fn test2(x: Tracked<(u64, u64)>) {
+            let tracked y: &u64 = &x.0;
+            assert(x@.0 == y);
+            assert(x.0 == y);
+        }
+
+        fn test4(x: Tracked<(Ghost<u64>, Ghost<u64>)>) {
+            let mut x = x;
+            proof { x.0 = Ghost(3); }
+            assert(x.0 == 3);
+        }
+
+        proof fn f(tracked x: &mut u64)
+            ensures *x == 4
+        {
+            *x = 4;
+        }
+
+        fn test3() {
+            let mut x: Tracked<(u64, u64)> = Tracked((3u64, 5u64));
+            proof { f(&mut x.0); }
+            assert(x@ === (4, 5));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] old_mut_ref_ghost_auto_deref_1 [] => verus_code! {
+        fn test1(x: Ghost<(u64, u64)>) {
+            let ghost y: u64 = x.0;
+            assert(x@.0 == y);
+            assert(x.0 == y);
+        }
+
+        fn test2(x: Ghost<(u64, u64)>) {
+            let ghost y: &u64 = &x.0;
+            assert(x.0 == y);
+        }
+
+        fn test4(x: Ghost<(u64, u64)>) {
+            let mut x = x;
+            proof { x.0 = 3; }
+            assert(x.0 == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] old_mut_ref_overloaded_deref_mode_err_tracked_borrow [] => verus_code! {
+        fn foo() {
+            let x: Tracked<u64> = Tracked(0);
+            let y = &*x;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode spec")
+}
+
+test_verify_one_file_with_options! {
+    #[test] old_mut_ref_overloaded_deref_mode_err_tracked_borrow_mut [] => verus_code! {
+        fn foo() {
+            let x: Tracked<u64> = Tracked(0);
+            *x = 2;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode proof")
+}
+
+test_verify_one_file_with_options! {
+    #[test] old_mut_ref_overloaded_deref_mode_err_ghost_borrow [] => verus_code! {
+        fn foo() {
+            let x: Ghost<u64> = Ghost(0);
+            let y = &*x;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode spec")
+}
+
+test_verify_one_file_with_options! {
+    #[test] old_mut_ref_overloaded_deref_mode_err_ghost_borrow_mut [] => verus_code! {
+        fn foo() {
+            let x: Ghost<u64> = Ghost(0);
+            *x = 2;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode proof")
+}
+
+test_verify_one_file_with_options! {
+    #[test] old_mut_ref_auto_deref_mode_err_tracked_borrow [] => verus_code! {
+        fn foo() {
+            let x: Tracked<(u64, u64)> = Tracked((0, 0));
+            let y = &x.0;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode spec")
+}
+
+test_verify_one_file_with_options! {
+    #[test] old_mut_ref_auto_deref_mode_err_tracked_borrow_mut [] => verus_code! {
+        fn foo() {
+            let x: Tracked<(u64, u64)> = Tracked((0, 0));
+            x.0 = 2;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode proof")
+}
+
+test_verify_one_file_with_options! {
+    #[test] old_mut_ref_auto_deref_mode_err_ghost_borrow [] => verus_code! {
+        fn foo() {
+            let x: Ghost<(u64, u64)> = Ghost((0, 0));
+            let y = &x.0;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode spec")
+}
+
+test_verify_one_file_with_options! {
+    #[test] old_mut_ref_auto_deref_mode_err_ghost_borrow_mut [] => verus_code! {
+        fn foo() {
+            let x: Ghost<(u64, u64)> = Ghost((0, 0));
+            x.0 = 2;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode proof")
+}
