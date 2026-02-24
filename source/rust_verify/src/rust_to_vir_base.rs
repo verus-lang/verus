@@ -763,7 +763,7 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         TyKind::Uint(_) | TyKind::Int(_) => true,
         TyKind::Char => true,
         TyKind::Float(_) => true,
-        TyKind::Ref(_, _, rustc_ast::Mutability::Not) => true,
+        TyKind::Ref(_, _, _) => true,
         TyKind::Param(_) => true,
         TyKind::Tuple(_) => true,
         TyKind::Slice(_) => true,
@@ -783,9 +783,8 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, _) => false,
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => false,
         TyKind::Foreign(..) => false,
-        TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => false,
-        TyKind::FnPtr(..) => false,
         TyKind::Dynamic(..) => false,
+        TyKind::FnPtr(..) => false,
         TyKind::Coroutine(..) => false,
         TyKind::CoroutineWitness(..) => false,
         TyKind::Bound(..) => false,
@@ -794,7 +793,13 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         TyKind::Error(..) => false,
 
         TyKind::Adt(rustc_middle::ty::AdtDef(adt_def_data), _) => {
-            external_info.has_type_id(ctxt, adt_def_data.did)
+            let verus_item = ctxt.verus_items.id_to_name.get(&adt_def_data.did);
+            let is_verus_type = matches!(verus_item, Some(VerusItem::BuiltinType(_)));
+            let is_rust_type = match verus_items::get_rust_item(ctxt.tcx, adt_def_data.did) {
+                Some(RustItem::Box | RustItem::Rc | RustItem::Arc) => true,
+                _ => false,
+            };
+            is_verus_type || is_rust_type || external_info.has_type_id(ctxt, adt_def_data.did)
         }
         TyKind::Alias(
             rustc_middle::ty::AliasTyKind::Projection | rustc_middle::ty::AliasTyKind::Inherent,

@@ -653,6 +653,39 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_auto_import_special_types verus_code! {
+        #[verifier::external]
+        trait T<A> {}
+
+        #[verifier::external]
+        impl<A> T<A> for A {}
+
+        #[verifier::external]
+        impl<A> T<A> for Ghost<A> {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait ExT<A> {
+            type ExternalTraitSpecificationFor: T<A>;
+
+            spec fn s(&self) -> bool;
+        }
+
+        impl<A> TSpecImpl<A> for A {
+            spec fn s(&self) -> bool {
+                false
+            }
+        }
+
+        impl<A> TSpecImpl<A> for Ghost<A> {
+            spec fn s(&self) -> bool {
+                false
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_defaults verus_code! {
         #[verifier::external]
         trait T {
