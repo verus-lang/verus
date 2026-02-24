@@ -76,7 +76,7 @@ pub trait ExIterator {
     /// When the analysis can infer a spec initial value (by discovering a `when_used_as_spec`
     /// annotation), the analysis places the value in init.
     #[verifier::prophetic]
-    spec fn initial_value_inv(&self, init: Option<&Self>) -> bool;
+    spec fn initial_value_inv(&self, init: &Self) -> bool;
 
     // If we can make a useful guess as to what the i-th value will be, return it.
     // Otherwise, return None.
@@ -111,14 +111,14 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     #[verifier::prophetic]
     pub open spec fn wf(self) -> bool {
         &&& 0 <= self.index@ <= self.seq().len()
-        &&& self.snapshot@.initial_value_inv(self.init@)
+        &&& self.init@ matches Some(init) ==> self.snapshot@.initial_value_inv(init)
         &&& self.wf_inner()
     }
 
     /// Bundle the real iterator with its ghost state and loop invariants
     pub fn new(iter: I, init: Ghost<Option<&'a I>>) -> (s: Self)
         requires
-            iter.initial_value_inv(init@),
+            init@ matches Some(i) ==> iter.initial_value_inv(i),
         ensures
             s.index == 0,
             s.snapshot == iter,

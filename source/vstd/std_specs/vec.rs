@@ -370,12 +370,8 @@ impl <T, A: Allocator> crate::std_specs::iter::IteratorSpecImpl for IntoIter<T, 
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
-    open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
-        // &&& self.elts() == self.seq().map_values(|v: &T| *v)
-        // &&& init matches Some(v) && v.elts() == self.elts()
-        //&&& into_iter_elts(*self) == crate::std_specs::iter::IteratorSpecImpl::seq(self) //self.seq() //crate::std_specs::iter::IteratorSpecImpl::seq(self) //.map_values(|v: &T| *v)
-        //&&& init matches Some(v) && into_iter_elts(*v) == into_iter_elts(*self)
-        &&& init matches Some(v) && IteratorSpec::seq(v) == IteratorSpec::seq(self)
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::seq(init) == IteratorSpec::seq(self)
         &&& into_iter_elts(*self) == IteratorSpec::seq(self)
     }
 
@@ -422,7 +418,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
     ensures
         iter == spec_into_iter(vec),
         crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
-        crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, Some(&iter)),
+        crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, &iter),
 ;
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()

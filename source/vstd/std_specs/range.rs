@@ -127,29 +127,29 @@ impl<A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl fo
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
-    open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        // Standard invariants for the iterator itself
         &&& IteratorSpec::seq(self) == Seq::new(
             self.start.spec_steps_between_int(self.end) as nat,
             |i: int| self.start.spec_forward_checked_int(i).unwrap(),
         )
-        &&& init matches Some(v) ==> {
-            &&& self.start == v.start
-            &&& self.end == v.end
-            &&& IteratorSpec::seq(self) == Seq::new(
-                v.start.spec_steps_between_int(v.end) as nat,
-                |i: int| v.start.spec_forward_checked_int(i).unwrap(),
-            )
-        }
-        &&& forall|index|
-            0 <= index <= self.start.spec_steps_between_int(self.end) ==> {
-                let cur = #[trigger] self.start.spec_forward_checked_int(index).unwrap();
-                &&& self.start.spec_is_lt(cur) || self.start == cur
-                &&& self.start.spec_is_lt(self.end) || self.start == self.end ==> cur.spec_is_lt(
-                    self.end,
-                ) || cur == self.end
-            }
         &&& self.start.spec_steps_between_int(self.end) >= 0
             || IteratorSpec::seq(self).len() == 0
+        // &&& (forall|index|
+        //     0 <= index <= self.start.spec_steps_between_int(self.end) ==> {
+        //         let cur = #[trigger] self.start.spec_forward_checked_int(index).unwrap();
+        //         &&& self.start.spec_is_lt(cur) || self.start == cur
+        //         &&& self.start.spec_is_lt(self.end) || self.start == self.end ==> cur.spec_is_lt(
+        //             self.end,
+        //         ) || cur == self.end
+        //     })
+        // Connections to init
+        &&& self.start == init.start
+        &&& self.end == init.end
+        &&& IteratorSpec::seq(self) == Seq::new(
+            init.start.spec_steps_between_int(init.end) as nat,
+            |i: int| init.start.spec_forward_checked_int(i).unwrap(),
+        )
     }
 
     open spec fn decrease(&self) -> Option<nat> {
