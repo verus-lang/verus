@@ -1107,14 +1107,13 @@ impl<T> Ptr<T> {
         ;
 
     // AT-WRITE-SN -- release
-    // skipped mutating the history for h_sn + wrapping it with ViewAt:
-    // - adding the write to the history could be derived as follows: 
-    //    - apply view monotonicity to the returned HistorySeen to learn it at the latest view
-    //    - apply VA-ELIM to unwrap the HistorySeen
-    //    - join the two HistorySeens 
-    // - note: I don't know whether knowing the full HistorySeen _under ViewAt_ is useful (maybe would be useful if you had to transfer this to a different thread?)
-    // I also skipped mutating the ViewAt<AtomicPointsTo> to join the new view. This is easily derivable from monotonicity. We *do* need to add the new write to the history here, though.
-    pub axiom fn write_release_concurrent(&self, t: T, tracked v_sn: &ViewSeen, tracked h_sn: HistorySeen<T>, tracked pt: &mut ViewAt<AtomicPointsTo<T>>) -> (tracked out: (ViewSeen, ViewAt<HistorySeen<T>>, nat))
+    // skipped outputting the new (full) HistorySeen under ViewAt. instead, joining the write to the old HistorySeen could be derived as follows: 
+    // - apply view monotonicity to the returned (singleton) HistorySeen to learn it at the latest view
+    // - apply VA-ELIM to unwrap the HistorySeen
+    // - join the two HistorySeens 
+    // note: I don't know whether knowing the new HistorySeen under ViewAt _at exactly the new thread view_ is useful (maybe would be useful if you had to transfer this to a different thread?)
+    // - You could instead obtain the new HistorySeen under ViewAt _for some larger view than the new thread view_ using ViewAt::new_incl
+    pub axiom fn write_release_concurrent(&self, t: T, tracked v_sn: &ViewSeen, tracked h_sn: &HistorySeen<T>, tracked pt: &mut ViewAt<AtomicPointsTo<T>>) -> (tracked out: (ViewSeen, ViewAt<HistorySeen<T>>, nat))
         requires
             self.loc() == h_sn.loc(),
             self.loc() == old(pt).value().loc(),
@@ -1124,18 +1123,111 @@ impl<T> Ptr<T> {
                 let v_sn_new = out.0; // new ViewSeen
                 let h_sn_write = out.1; // HistorySeen containing singleton history for this write, known at the write view
                 let timestamp = out.2; // timestamp of the new write
-                let singleton_write_hist = History::singleton(timestamp, t, Some(v_sn_new.view()));
+                let write_view = h_sn_write.view();
+                let singleton_write_hist = History::singleton(timestamp, t, Some(write_view));
                 &&& v_sn_new.view().contains(v_sn.view()) && v_sn.view() != v_sn_new.view() // latest thread view is strictly greater than the old one
                 &&& h_sn.hist().max_timestamp() < timestamp && !old(pt).value().hist().0.dom().contains(timestamp) // timestamp is greater than all of the thread's observations and is unique for the history
-                &&& h_sn_write.view() == v_sn_new.view() // because this is a release write, the write view is the latest thread view
+                &&& write_view == v_sn_new.view() // because this is a release write, the write view is the latest thread view
                 &&& h_sn_write.value().loc() == self.loc()
                 &&& h_sn_write.value().hist() == singleton_write_hist
-                &&& pt.view() == old(pt).view()
+                &&& pt.view() == old(pt).view().join(v_sn_new.view())
                 &&& pt.value().loc() == old(pt).value().loc()
+                &&& pt.value().mode() == old(pt).value().mode()
                 &&& pt.value().hist() == old(pt).value().hist().join(singleton_write_hist) // the points-to's history has the new write
             })
         ;
-}
 
+    // AT-WRITE-SN -- relaxed
+    // see comments on write_release_concurrent
+    pub axiom fn write_relaxed_concurrent(&self, t: T, tracked v_sn: &ViewSeen, tracked h_sn: &HistorySeen<T>, tracked rel_v_sn: &Release<ViewSeen>, tracked pt: &mut ViewAt<AtomicPointsTo<T>>) -> (tracked out: (ViewSeen, ViewAt<HistorySeen<T>>, nat))
+        requires
+            self.loc() == h_sn.loc(),
+            self.loc() == old(pt).value().loc(),
+            old(pt).value().mode() == AtomicMode::Concurrent
+        ensures
+            ({
+                let v_sn_new = out.0; // new ViewSeen
+                let h_sn_write = out.1; // HistorySeen containing singleton history for this write, known at the write view
+                let timestamp = out.2; // timestamp of the new write
+                let write_view = h_sn_write.view();
+                let singleton_write_hist = History::singleton(timestamp, t, Some(write_view));
+                &&& v_sn_new.view().contains(v_sn.view()) && v_sn.view() != v_sn_new.view() && !v_sn.view().contains(write_view) // latest thread view is strictly greater than the old one, and the write view is not contained in the old thread view
+                &&& h_sn.hist().max_timestamp() < timestamp && !old(pt).value().hist().0.dom().contains(timestamp) // timestamp is greater than all of the thread's observations and is unique for the history
+                &&& write_view.contains(rel_v_sn.value().view()) && v_sn_new.view().contains(write_view) // this is a relaxed write
+                &&& h_sn_write.value().loc() == self.loc()
+                &&& h_sn_write.value().hist() == singleton_write_hist
+                &&& pt.view() == old(pt).view().join(v_sn_new.view())
+                &&& pt.value().loc() == old(pt).value().loc()
+                &&& pt.value().mode() == old(pt).value().mode()
+                &&& pt.value().hist() == old(pt).value().hist().join(singleton_write_hist) // the points-to's history has the new write
+            })
+        ;
+
+    // AT-WRITE-SW
+    // similarly to above, I skipped putting the SingleWriter under a ViewAt in the output, and instead mutated it directly
+    // - using ViewAt::new_incl, you could derive new SingleWriter under ViewAt for _some view larger than the new thread view_
+    pub proof fn write_release_single_writer(&self, t: T, tracked v_sn: &ViewSeen, tracked sw: &mut SingleWriter<T>, tracked pt: &mut ViewAt<AtomicPointsTo<T>>) -> (tracked out: (ViewSeen, nat))
+        requires
+            self.loc() == old(sw).loc(),
+            self.loc() == old(pt).value().loc(),
+            old(pt).value().mode() == AtomicMode::SingleWriter
+        ensures
+            ({
+                let v_sn_new = out.0; // new ViewSeen
+                let timestamp = out.1; // timestamp of the new write
+                let write_view = v_sn_new.view();
+                let singleton_write_hist = History::singleton(timestamp, t, Some(write_view));
+                &&& v_sn_new.view().contains(v_sn.view()) && v_sn.view() != v_sn_new.view() // latest thread view is strictly greater than the old one
+                &&& pt.value().hist().max_timestamp() < timestamp // timestamp is greater than all of the previous history
+                &&& sw.hist() == old(sw).hist().join(singleton_write_hist) // SingleWriter's history has the new write
+                &&& pt.view() == old(pt).view().join(v_sn_new.view())
+                &&& pt.value().loc() == old(pt).value().loc()
+                &&& pt.value().mode() == old(pt).value().mode()
+                &&& pt.value().hist() == old(pt).value().hist().join(singleton_write_hist) // the points-to's history has the new write
+            })
+    {
+        // tried to implement this using existing rules, since it should be possible
+
+        // pt is under a ViewAt -- we would want to do ViewAt::apply_fn to do the following:
+        //pt.single_writer_as_concurrent(sw);
+        // but how to get a proof_fn under ViewAt?
+        // to get sw under ViewAt for the same view as pt, we can apply new_incl and weakening as in write_release_single_writer_with_rsrc
+        assume(false);
+        let tracked h_sn = sw.get_history_sync().get_history_seen();
+        let tracked (v_sn_new, h_sn_write, timestamp) = self.write_release_concurrent(t, v_sn, &h_sn, pt);
+        //let tracked sw_new = pt.concurrent_as_single_writer();
+        //sw = sw_new;
+        (v_sn_new, timestamp)
+    }
+
+    // AT-WRITE-SW-REL
+    pub proof fn write_release_single_writer_with_rsrc<P>(&self, t: T, tracked v_sn: &ViewSeen, tracked sw: &mut SingleWriter<T>, tracked pt: &mut ViewAt<AtomicPointsTo<T>>, tracked rsrc: P) -> (tracked out: (ViewSeen, ViewAt<P>, nat))
+        requires
+            self.loc() == old(sw).loc(),
+            self.loc() == old(pt).value().loc(),
+            old(pt).value().mode() == AtomicMode::SingleWriter
+        ensures
+            ({
+                let v_sn_new = out.0; // new ViewSeen
+                let rsrc_new = out.1; // rsrc, under ViewAt
+                let timestamp = out.2; // timestamp of the new write
+                let write_view = v_sn_new.view();
+                let singleton_write_hist = History::singleton(timestamp, t, Some(write_view));
+                &&& v_sn_new.view().contains(v_sn.view()) && v_sn.view() != v_sn_new.view() // latest thread view is strictly greater than the old one
+                &&& pt.value().hist().max_timestamp() < timestamp // timestamp is greater than all of the previous history
+                &&& rsrc_new.view() == v_sn_new.view() && rsrc_new.value() == rsrc
+                &&& sw.hist() == old(sw).hist().join(singleton_write_hist) // SingleWriter's history has the new write
+                &&& pt.view() == old(pt).view().join(v_sn_new.view())
+                &&& pt.value().loc() == old(pt).value().loc()
+                &&& pt.value().mode() == old(pt).value().mode()
+                &&& pt.value().hist() == old(pt).value().hist().join(singleton_write_hist) // the points-to's history has the new write
+            })
+    {
+        let tracked (va_rsrc, v_sn0) = ViewAt::new_incl(rsrc, v_sn);
+        let tracked (v_sn_new, timestamp) = self.write_release_single_writer(t, &v_sn0, sw, pt);
+        let tracked rsrc_new = va_rsrc.weaken(v_sn_new.view());
+        (v_sn_new, rsrc_new, timestamp)
+    }
+}
 
 } // verus!
