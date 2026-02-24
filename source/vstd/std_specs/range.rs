@@ -148,6 +148,8 @@ impl<A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl fo
                     self.end,
                 ) || cur == self.end
             }
+        &&& self.start.spec_steps_between_int(self.end) >= 0
+            || IteratorSpec::seq(self).len() == 0
     }
 
     open spec fn decrease(&self) -> Option<nat> {
