@@ -386,36 +386,13 @@ fn format_fn_arg(arg: &FnArg) -> String {
 }
 
 fn format_pat_type(pt: &verus_syn::PatType) -> String {
-    let pat = normalize_ws(&pt.pat.to_token_stream().to_string());
-    let ty = tighten_type_spacing(&normalize_ws(&pt.ty.to_token_stream().to_string()));
+    let pat = normalize_ws(&verus_prettyplease::unparse_pat(&pt.pat));
+    let ty = normalize_ws(&verus_prettyplease::unparse_ty(&pt.ty));
     format!("{pat}: {ty}")
 }
 
 fn normalize_ws(s: &str) -> String {
     s.split_whitespace().collect::<Vec<&str>>().join(" ")
-}
-
-fn tighten_type_spacing(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = String::with_capacity(bytes.len());
-    let mut i = 0usize;
-    while i < bytes.len() {
-        let b = bytes[i];
-        if b == b' ' {
-            let prev = if i > 0 { bytes[i - 1] } else { 0 };
-            let next = if i + 1 < bytes.len() { bytes[i + 1] } else { 0 };
-            let remove =
-                matches!(prev, b'<' | b'(' | b',' | b':') || matches!(next, b'>' | b')' | b',');
-            if !remove {
-                out.push(' ');
-            }
-            i += 1;
-            continue;
-        }
-        out.push(b as char);
-        i += 1;
-    }
-    out
 }
 
 /// Create an attr that looks like #[doc = "doc_str"]
