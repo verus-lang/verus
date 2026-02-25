@@ -251,12 +251,32 @@ pub broadcast proof fn lemma_from_map_dom<V>(mymap: Map<V, nat>)
         #[trigger] Multiset::from_map(mymap).dom() == Set(mymap.dom()),
 {
     broadcast use {
+        super::set::group_set_lemmas,
         Multiset::dom_ensures,
         axiom_multiset_contained,
         axiom_multiset_new_not_contained,
     };
 
-    assert(Multiset::from_map(mymap).dom() == Set(mymap.dom()));  // trigger ensures extn
+    let lhs = Multiset::from_map(mymap).dom();
+    let rhs = Set(mymap.dom());
+    assert forall|v: V| lhs.contains(v) <==> rhs.contains(v) by {
+        if lhs.contains(v) {
+            assert(Multiset::from_map(mymap).count(v) > 0);
+            if !mymap.dom().contains(v) {
+                axiom_multiset_new_not_contained(mymap, v);
+                assert(false);
+            }
+        }
+        if rhs.contains(v) {
+            assert(mymap.dom().contains(v));
+            assert(mymap.contains_key(v));
+            axiom_multiset_contained(mymap, v);
+            assert(mymap[v] > 0);
+            assert(Multiset::from_map(mymap).count(v) > 0);
+            assert(lhs.contains(v));
+        }
+    };
+    lemma_set_ext_equal_eq(lhs, rhs);
 }
 
 // Specification of `singleton`

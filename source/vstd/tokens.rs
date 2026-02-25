@@ -378,7 +378,7 @@ impl<Key, Value, Token> IMapToken<Key, Value, Token>
     }
 
     pub closed spec fn map(self) -> IMap<Key, Value> {
-        self.m.map()
+        IMap(self.m.map())
     }
 
     #[verifier::inline]
@@ -442,7 +442,7 @@ impl<Key, Value, Token> IMapToken<Key, Value, Token>
                  && map[key].value() == self.map()[key]
     {
         let tracked IMapToken { m } = self;
-        m.into_map()
+        IMap(m.into_map())
     }
 
     pub proof fn from_map(instance_id: InstanceId, tracked map: IMap<Key, Token>) -> (tracked s: Self)
@@ -455,7 +455,7 @@ impl<Key, Value, Token> IMapToken<Key, Value, Token>
             forall |key| #[trigger] map.dom().contains(key)
                 ==> s.map()[key] == map[key].value()
     {
-        let tracked m = GMapToken::from_map(instance_id, map);
+        let tracked m = GMapToken::from_map(instance_id, map.0);
         Self { m }
     }
 }
@@ -475,7 +475,7 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
     }
 
     pub closed spec fn map(self) -> Map<Key, Value> {
-        self.m.map()
+        Map(self.m.map())
     }
 
     #[verifier::inline]
@@ -539,7 +539,7 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
                  && map[key].value() == self.map()[key]
     {
         let tracked MapToken { m } = self;
-        m.into_map()
+        Map(m.into_map())
     }
 
     pub proof fn from_map(instance_id: InstanceId, tracked map: Map<Key, Token>) -> (tracked s: Self)
@@ -552,7 +552,7 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
             forall |key| #[trigger] map.dom().contains(key)
                 ==> s.map()[key] == map[key].value()
     {
-        let tracked m = GMapToken::from_map(instance_id, map);
+        let tracked m = GMapToken::from_map(instance_id, map.0);
         Self { m }
     }
 }
@@ -721,7 +721,7 @@ impl<Element, Token> ISetToken<Element, Token>
                      && map[key].element() == key
     {
         let tracked ISetToken { m } = self;
-        m.into_map()
+        IMap(m.into_map())
     }
 
     pub proof fn from_map(instance_id: InstanceId, tracked map: IMap<Element, Token>) -> (tracked s: Self)
@@ -732,7 +732,7 @@ impl<Element, Token> ISetToken<Element, Token>
             s.instance_id() == instance_id,
             s.set() == ISet(map.dom()),
     {
-        let tracked m = GSetToken::from_map(instance_id, map);
+        let tracked m = GSetToken::from_map(instance_id, map.0);
         Self { m }
     }
 }
@@ -804,7 +804,7 @@ impl<Element, Token> SetToken<Element, Token>
                      && map[key].element() == key
     {
         let tracked SetToken { m } = self;
-        m.into_map()
+        Map(m.into_map())
     }
 
     pub proof fn from_map(instance_id: InstanceId, tracked map: Map<Element, Token>) -> (tracked s: Self)
@@ -815,7 +815,7 @@ impl<Element, Token> SetToken<Element, Token>
             s.instance_id() == instance_id,
             s.set() == Set(map.dom()),
     {
-        let tracked m = GSetToken::from_map(instance_id, map);
+        let tracked m = GSetToken::from_map(instance_id, map.0);
         Self { m }
     }
 }
