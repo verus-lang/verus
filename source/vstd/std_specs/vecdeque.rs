@@ -1,6 +1,7 @@
 /// This code adds specifications for the standard-library type
 /// `std::collections::VecDeque`.
 use super::super::prelude::*;
+use crate::std_specs::iter::IteratorSpec;
 
 use alloc::collections::vec_deque::Iter;
 use alloc::collections::vec_deque::VecDeque;
@@ -289,68 +290,37 @@ pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T
         }),
 ;
 
-pub struct IterGhostIterator<'a, T> {
-    pub pos: int,
-    pub elements: Seq<T>,
-    pub phantom: Option<&'a T>,
-}
 
-impl<'a, T> super::super::pervasive::ForLoopGhostIteratorNew for Iter<'a, T> {
-    type GhostIter = IterGhostIterator<'a, T>;
 
-    open spec fn ghost_iter(&self) -> IterGhostIterator<'a, T> {
-        IterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
-    }
-}
+// To allow reasoning about the "contents" of the Vec iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original vec.
+pub uninterp spec fn into_iter_elts<'a, T: 'a>(i: Iter<'a, T>) -> Seq<&'a T>;
 
-impl<'a, T: 'a> super::super::pervasive::ForLoopGhostIterator for IterGhostIterator<'a, T> {
-    type ExecIter = Iter<'a, T>;
-
-    type Item = T;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &Iter<'a, T>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.elements == exec_iter@.1
+impl <'a, T: 'a> crate::std_specs::iter::IteratorSpecImpl for Iter<'a, T> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.elements == self.elements
-            &&& 0 <= self.pos <= self.elements.len()
-        }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+    uninterp spec fn completes(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
     }
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.elements.len()
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.elements.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<T> {
-        if 0 <= self.pos < self.elements.len() {
-            Some(self.elements[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_elts(*self).len() {
+            Some(&into_iter_elts(*self)[index])
         } else {
             None
         }
     }
-
-    open spec fn ghost_advance(&self, _exec_iter: &Iter<'a, T>) -> IterGhostIterator<'a, T> {
-        Self { pos: self.pos + 1, ..*self }
-    }
 }
 
-impl<'a, T> View for IterGhostIterator<'a, T> {
-    type V = Seq<T>;
-
-    open spec fn view(&self) -> Seq<T> {
-        self.elements.take(self.pos)
-    }
-}
 
 // To allow reasoning about the ghost iterator when the executable
 // function `iter()` is invoked in a `for` loop header (e.g., in
@@ -362,7 +332,7 @@ pub uninterp spec fn spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>) -> (r
 
 pub broadcast proof fn axiom_spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>)
     ensures
-        (#[trigger] spec_iter(v))@ == (0int, v@),
+        #[trigger] spec_iter(v).remaining() == v@.map_values(|v| &v),
 {
     admit();
 }
@@ -370,9 +340,11 @@ pub broadcast proof fn axiom_spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A
 #[verifier::when_used_as_spec(spec_iter)]
 pub assume_specification<'a, T, A: Allocator>[ VecDeque::<T, A>::iter ](
     v: &'a VecDeque<T, A>,
-) -> (r: Iter<'a, T>)
+) -> (iter: Iter<'a, T>)
     ensures
-        r@ == (0int, v@),
+        iter == spec_iter(v),
+        crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
+        crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, &iter),
 ;
 
 pub broadcast group group_vec_dequeue_axioms {
