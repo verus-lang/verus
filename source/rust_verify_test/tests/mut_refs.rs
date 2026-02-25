@@ -115,7 +115,7 @@ test_verify_one_file_with_options! {
 
         #[verifier::prophetic]
         spec fn test3<T>(x: &mut T) -> T {
-            *fin(x)
+            *final(x)
         }
     } => Ok(())
 }
@@ -131,7 +131,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_fin_proph ["new-mut-ref"] => verus_code! {
         spec fn test<T>(x: &mut T) -> T {
-            *fin(x)
+            *final(x)
         }
     } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
@@ -163,7 +163,7 @@ test_verify_one_file_with_options! {
             let mut x = 0;
             let x_ref = &mut x;
 
-            assert(*fin(x_ref) == after_borrow(x));
+            assert(*final(x_ref) == after_borrow(x));
 
             *x_ref = 20;
         }
@@ -2421,7 +2421,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] two_phase_proof_code ["new-mut-ref"] => verus_code! {
         proof fn set_to(tracked a: &mut Ghost<int>, tracked b: Ghost<int>)
-            ensures *fin(a) == b
+            ensures *final(a) == b
         {
             *a = b;
         }
@@ -2781,7 +2781,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] fin_keyword ["new-mut-ref"] => verus_code! {
         fn foo(x: &mut u64) {
-            assert(mut_ref_future(x) == *fin(x));
+            assert(mut_ref_future(x) == *final(x));
         }
     } => Ok(())
 }
@@ -2789,9 +2789,9 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] fin_keyword2 ["new-mut-ref"] => verus_code! {
         fn foo(x: &mut bool) {
-            assert(mut_ref_current(fin(x)));
+            assert(mut_ref_current(final(x)));
         }
-    } => Err(err) => assert_vir_error_msg(err, "The result of `fin` must be dereferenced")
+    } => Err(err) => assert_vir_error_msg(err, "The result of `final` must be dereferenced")
 }
 
 test_verify_one_file_with_options! {
@@ -3140,7 +3140,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] backwards_compat ["new-mut-ref"] => verus_code! {
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(a: &mut u8)
             requires *old(a) < 255,
             ensures *a == *old(a) + 1,
@@ -3148,7 +3148,7 @@ test_verify_one_file_with_options! {
             *a = *a + 1;
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2(a: &mut u8)
             requires *old(a) < 255,
             ensures *a == *old(a) + 1,
@@ -3160,7 +3160,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] backwards_compat_unwrapped_param ["new-mut-ref"] => verus_code! {
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(Tracked(a): Tracked<&mut Ghost<u8>>)
             requires old(a)@ < 255,
             ensures a@ == old(a)@ + 1,
@@ -3168,7 +3168,7 @@ test_verify_one_file_with_options! {
             proof { *a = Ghost((a@ + 1) as u8); }
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2(Tracked(a): Tracked<&mut Ghost<u8>>)
             requires old(a)@ < 255,
             ensures a@ == old(a)@ + 1,
@@ -3176,7 +3176,7 @@ test_verify_one_file_with_options! {
             test(Tracked(a));
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2_fails(Tracked(a): Tracked<&mut Ghost<u8>>)
             requires old(a)@ < 255,
             ensures a@ == old(a)@ + 1,
@@ -3185,7 +3185,7 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2_fails2(Tracked(a): Tracked<&mut Ghost<u8>>)
             ensures a@ == old(a)@ + 1,
         {
@@ -3196,15 +3196,15 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] backwards_compat_fail ["new-mut-ref"] => verus_code! {
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(a: &mut u8)
             requires *old(a) < 255,
-            ensures *fin(a) == *old(a) + 1,
+            ensures *final(a) == *old(a) + 1,
         {
             *a = *a + 1;
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2(a: &mut u8)
             requires *old(a) < 255,
             ensures *a == *old(a) + 1,
@@ -3216,7 +3216,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] backwards_compat_fail2 ["new-mut-ref"] => verus_code! {
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(a: &mut u8)
             requires *old(a) < 255,
             ensures *a == *old(a) + 1,
@@ -3224,7 +3224,7 @@ test_verify_one_file_with_options! {
             *a = *a + 1;
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2(a: &mut u8)
             requires *old(a) < 255,
             ensures a == a
@@ -3238,7 +3238,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[ignore] #[test] false_two_phase ["new-mut-ref"] => verus_code! {
         fn set_to(Tracked(a): Tracked<&mut Ghost<int>>, Tracked(b): Tracked<Ghost<int>>)
-            ensures *fin(a) == b
+            ensures *final(a) == b
         {
             proof { *a = b; }
         }
@@ -3265,7 +3265,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] false_two_phase2 ["new-mut-ref"] => verus_code! {
         fn set_to(Tracked(a): Tracked<&mut Tracked<int>>, Tracked(b): Tracked<int>)
-            ensures *fin(a) == b
+            ensures *final(a) == b
         {
             proof { *a = Tracked(b); }
         }

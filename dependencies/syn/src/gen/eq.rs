@@ -546,6 +546,7 @@ impl PartialEq for crate::Expr {
             (crate::Expr::GetField(self0), crate::Expr::GetField(other0)) => {
                 self0 == other0
             }
+            (crate::Expr::Final(self0), crate::Expr::Final(other0)) => self0 == other0,
             _ => false,
         }
     }
@@ -689,6 +690,14 @@ impl PartialEq for crate::ExprField {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.base == other.base
             && self.member == other.member
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::ExprFinal {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::ExprFinal {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.arg == other.arg
     }
 }
 #[cfg(feature = "full")]

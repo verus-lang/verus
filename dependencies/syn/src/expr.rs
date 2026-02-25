@@ -25,8 +25,8 @@ use crate::ty::ReturnType;
 use crate::ty::Type;
 use crate::verus::{
     Assert, AssertForall, Assume, AtomicallyBlock, BigAnd, BigOr, ClosureArg, Decreases, Ensures,
-    ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions, Invariant,
-    InvariantEnsures, InvariantExceptBreak, Requires, RevealHide, View,
+    ExprFinal, ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions,
+    Invariant, InvariantEnsures, InvariantExceptBreak, Requires, RevealHide, View,
 };
 use proc_macro2::{Span, TokenStream};
 #[cfg(feature = "printing")]
@@ -265,6 +265,7 @@ ast_enum_of_structs! {
         HasNot(ExprHasNot),
         Matches(ExprMatches),
         GetField(ExprGetField),
+        Final(ExprFinal),
 
         // For testing exhaustiveness in downstream code, use the following idiom:
         //
@@ -1014,6 +1015,7 @@ impl Expr {
             | Expr::Has(ExprHas { attrs, .. })
             | Expr::HasNot(ExprHasNot { attrs, .. })
             | Expr::GetField(ExprGetField { attrs, .. })
+            | Expr::Final(ExprFinal { attrs, .. })
             | Expr::Matches(ExprMatches { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
             Expr::BigAnd(_) => Vec::new(),
@@ -2046,6 +2048,8 @@ pub(crate) mod parsing {
             input.parse().map(Expr::Infer)
         } else if input.peek(Lifetime) {
             atom_labeled(input)
+        } else if input.peek(token::Final) {
+            input.parse().map(Expr::Final)
         } else {
             Err(input.error("expected an expression"))
         }
@@ -3450,13 +3454,13 @@ pub(crate) mod printing {
         tokens.append_all(attrs.outer());
     }
 
+    #[cfg(not(feature = "full"))]
+    pub(crate) fn outer_attrs_to_tokens(_attrs: &[Attribute], _tokens: &mut TokenStream) {}
+
     #[cfg(feature = "full")]
     fn inner_attrs_to_tokens(attrs: &[Attribute], tokens: &mut TokenStream) {
         tokens.append_all(attrs.inner());
     }
-
-    #[cfg(not(feature = "full"))]
-    pub(crate) fn outer_attrs_to_tokens(_attrs: &[Attribute], _tokens: &mut TokenStream) {}
 
     pub(crate) fn print_subexpression(
         expr: &Expr,
@@ -3578,6 +3582,7 @@ pub(crate) mod printing {
             Expr::Is(e) => e.to_tokens(tokens),
             Expr::IsNot(e) => e.to_tokens(tokens),
             Expr::Matches(e) => e.to_tokens(tokens),
+            Expr::Final(e) => e.to_tokens(tokens),
 
             #[cfg(not(feature = "full"))]
             _ => unreachable!(),

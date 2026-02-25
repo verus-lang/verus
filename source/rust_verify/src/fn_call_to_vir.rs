@@ -15,8 +15,8 @@ use crate::rust_to_vir_expr::{
 };
 use crate::util::{err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
-    self, ArithItem, AssertItem, BinaryOpItem, BuiltinFunctionItem, ChainedItem, CompilableOprItem,
-    DirectiveItem, EqualityItem, ExprItem, QuantItem, RustItem, SpecArithItem,
+    self, ArithItem, AssertItem, BinaryOpItem, BuiltinDerefItem, BuiltinFunctionItem, ChainedItem,
+    CompilableOprItem, DirectiveItem, EqualityItem, ExprItem, QuantItem, RustItem, SpecArithItem,
     SpecGhostTrackedItem, SpecItem, SpecLiteralItem, SpecOrdItem, UnaryOpItem, VerusItem,
 };
 use crate::{unsupported_err, unsupported_err_unless};
@@ -172,6 +172,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         Some(args),
         rust_item,
         false,
+        outer_modifier,
     )
 }
 
@@ -184,6 +185,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
     args: Option<Vec<&'tcx Expr<'tcx>>>,
     rust_item: Option<RustItem>,
     const_var: bool,
+    outer_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     // Normal function call
     let tcx = bctx.ctxt.tcx;
@@ -219,10 +221,25 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                 impl_def_id: _,
                 impl_args: _,
                 impl_item_args: _,
-                resolved_item: ResolvedItem::FromImpl(did, args),
+                resolved_item: ResolvedItem::FromImpl(did, res_args),
             } => {
-                let typs = mk_typ_args(bctx, args, did, expr.span)?;
-                let impl_paths = get_impl_paths(bctx, did, args, None, const_var, expr.span)?;
+                let verus_item = bctx.ctxt.get_verus_item(did);
+                if matches!(verus_item, Some(VerusItem::BuiltinDeref(_))) {
+                    return verus_item_to_vir(
+                        bctx,
+                        expr,
+                        expr_typ,
+                        verus_item.unwrap(),
+                        args.as_ref().unwrap(),
+                        tcx,
+                        res_args,
+                        did,
+                        outer_modifier,
+                    );
+                }
+
+                let typs = mk_typ_args(bctx, res_args, did, expr.span)?;
+                let impl_paths = get_impl_paths(bctx, did, res_args, None, const_var, expr.span)?;
 
                 let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
                 record_name = f.clone();
@@ -328,7 +345,17 @@ pub(crate) fn const_var_to_vir<'tcx>(
         let Some(expr) = expr else {
             unsupported_err!(span, "associated constant in pattern");
         };
-        return fn_call_or_assoc_const_to_vir(bctx, expr, id, node_substs, span, None, None, true);
+        return fn_call_or_assoc_const_to_vir(
+            bctx,
+            expr,
+            id,
+            node_substs,
+            span,
+            None,
+            None,
+            true,
+            ExprModifier::REGULAR,
+        );
     }
     let typ = typ_of_node_unadjusted(bctx, span, hir_id, false)?;
     let path = bctx.ctxt.def_id_to_vir_path(id);
@@ -522,9 +549,9 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                     SpecItem::Ensures | SpecItem::Returns => (true, true),
 
-                    SpecItem::AtomicSpec
-                    | SpecItem::AtomicCallLoop
-                    | SpecItem::Atomically => (false, false)
+                    SpecItem::AtomicSpec | SpecItem::AtomicCallLoop | SpecItem::Atomically => {
+                        (false, false)
+                    }
                 };
                 if sig {
                     &BodyCtxt { in_fn_sig: sig, in_postcondition: postcondition, ..bctx.clone() }
@@ -1855,9 +1882,9 @@ fn verus_item_to_vir<'tcx, 'a>(
             // So we may end up with a nested Place expression where the ModeUnwrap projection
             // is in the middle.
             //
-            // Note: (at this time) the outer &mut HAS to cancel out with something,
+            // Note: for Ghost, the outer &mut HAS to cancel out with something,
             // or else we will error later on account of trying to take a mut borrow
-            // on a non-exec-mode place. So writing this is ok:
+            // on a spec-mode place. So writing this is ok (where x: Ghost<_>):
             //    *x.borrow_mut() = foo
             // but this is not:
             //    let y = x.borrow_mut()
@@ -2182,7 +2209,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 return err_span(
                     expr.span,
                     format!(
-                        "to use `{name}`, disable mut-ref backwards-compatability (add #[verifier::migrate_postcondition_with_mut_refs(false)] to the function)"
+                        "to use `{name}`, disable mut-ref backwards-compatability (add #[verifier::deprecated_postcondition_mut_ref_style(false)] to the function)"
                     ),
                 );
             }
@@ -2224,6 +2251,23 @@ fn verus_item_to_vir<'tcx, 'a>(
                 id: bctx.ctxt.unique_read_kind_id(),
             };
             mk_expr(ExprX::ReadPlace(p, rk))
+        }
+        VerusItem::BuiltinDeref(d) => {
+            // This would be easy to support (similar to handling borrow_mut etc.) but their usage
+            // would be very rare so I'm skipping for now
+            let tyname = match d {
+                BuiltinDerefItem::TrackedDeref | BuiltinDerefItem::TrackedDerefMut => "Tracked",
+                BuiltinDerefItem::GhostDeref | BuiltinDerefItem::GhostDerefMut => "Ghost",
+            };
+            let derefname = match d {
+                BuiltinDerefItem::TrackedDeref | BuiltinDerefItem::GhostDeref => "deref",
+                BuiltinDerefItem::TrackedDerefMut | BuiltinDerefItem::GhostDerefMut => "deref_mut",
+            };
+            return Err(vir::messages::error(
+                &crate::spans::err_air_span(expr.span),
+                format!("not supported: using {tyname}::{derefname}"),
+            )
+            .help("you can implicitly dereference this type using `*`"));
         }
         VerusItem::Vstd(_, _)
         | VerusItem::Marker(_)

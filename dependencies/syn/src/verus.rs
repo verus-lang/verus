@@ -602,6 +602,15 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct ExprFinal {
+        pub attrs: Vec<Attribute>,
+        pub final_token: Token![final],
+        pub paren_token: token::Paren,
+        pub arg: Box<Expr>,
+    }
+}
+
+ast_struct! {
     pub struct ReturnValue {
         pub token: Token![->],
         pub pat: Pat,
@@ -2016,6 +2025,23 @@ pub mod parsing {
             }
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for ExprFinal {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = Vec::new();
+            let final_token: Token![final] = input.parse()?;
+            let content;
+            let paren_token = parenthesized!(content in input);
+            let arg: Expr = content.parse()?;
+            Ok(ExprFinal {
+                attrs,
+                final_token,
+                paren_token,
+                arg: Box::new(arg),
+            })
+        }
+    }
 }
 
 #[cfg(feature = "printing")]
@@ -2589,6 +2615,17 @@ mod printing {
             self.base.to_tokens(tokens);
             self.arrow_token.to_tokens(tokens);
             self.member.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprFinal {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.final_token.to_tokens(tokens);
+            self.paren_token.surround(tokens, |tokens| {
+                self.arg.to_tokens(tokens);
+            });
         }
     }
 

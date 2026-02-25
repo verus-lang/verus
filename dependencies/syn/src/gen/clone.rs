@@ -522,6 +522,7 @@ impl Clone for crate::Expr {
             crate::Expr::HasNot(v0) => crate::Expr::HasNot(v0.clone()),
             crate::Expr::Matches(v0) => crate::Expr::Matches(v0.clone()),
             crate::Expr::GetField(v0) => crate::Expr::GetField(v0.clone()),
+            crate::Expr::Final(v0) => crate::Expr::Final(v0.clone()),
             #[cfg(not(feature = "full"))]
             _ => unreachable!(),
         }
@@ -689,6 +690,17 @@ impl Clone for crate::ExprField {
             base: self.base.clone(),
             dot_token: self.dot_token.clone(),
             member: self.member.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::ExprFinal {
+    fn clone(&self) -> Self {
+        crate::ExprFinal {
+            attrs: self.attrs.clone(),
+            final_token: self.final_token.clone(),
+            paren_token: self.paren_token.clone(),
+            arg: self.arg.clone(),
         }
     }
 }

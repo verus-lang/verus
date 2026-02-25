@@ -1,27 +1,27 @@
-/// This code adds specifications for the standard-library types
-/// `std::collections::HashMap` and `std::collections::HashSet`.
-///
-/// Most of the specification only applies if you use `HashMap<Key,
-/// Value>` or `HashSet<Key>`. If you use some custom build hasher,
-/// e.g., with`HashMap<Key, Value, CustomBuildHasher>`, the
-/// specification won't specify much.
-///
-/// Likewise, the specification is only meaningful when the `Key`
-/// obeys our hash table model, i.e., (1) `Key::hash` is
-/// deterministic, (2) any two `Key`s are identical if and only if the
-/// executable `==` operator considers them equal, and (3)
-/// `Key::clone` produces a result equal to its input. We have an
-/// axiom that all primitive types and `Box`es thereof obey this
-/// model. But if you want to use some other key type `MyKey`, you
-/// need to explicitly state your assumption that it does so with
-/// `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>());`. In
-/// the future, we plan to devise a way for you to prove that it does
-/// so, so that you don't have to make such an assumption.
-///
-/// By default, the Verus standard library brings useful axioms
-/// about the behavior of `HashMap` and `HashSet` into the ambient
-/// reasoning context by broadcasting the group
-/// `vstd::std_specs::hash::group_hash_axioms`.
+//! This code adds specifications for the standard-library types
+//! `std::collections::HashMap` and `std::collections::HashSet`.
+//!
+//! Most of the specification only applies if you use `HashMap<Key,
+//! Value>` or `HashSet<Key>`. If you use some custom build hasher,
+//! e.g., with`HashMap<Key, Value, CustomBuildHasher>`, the
+//! specification won't specify much.
+//!
+//! Likewise, the specification is only meaningful when the `Key`
+//! obeys our hash table model, i.e., (1) `Key::hash` is
+//! deterministic, (2) any two `Key`s are identical if and only if the
+//! executable `==` operator considers them equal, and (3)
+//! `Key::clone` produces a result equal to its input. We have an
+//! axiom that all primitive types and `Box`es thereof obey this
+//! model. But if you want to use some other key type `MyKey`, you
+//! need to explicitly state your assumption that it does so with
+//! `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>());`. In
+//! the future, we plan to devise a way for you to prove that it does
+//! so, so that you don't have to make such an assumption.
+//!
+//! By default, the Verus standard library brings useful axioms
+//! about the behavior of `HashMap` and `HashSet` into the ambient
+//! reasoning context by broadcasting the group
+//! `vstd::std_specs::hash::group_hash_axioms`.
 use super::super::prelude::*;
 
 use core::borrow::Borrow;
@@ -274,11 +274,9 @@ pub broadcast proof fn axiom_random_state_builds_valid_hashers()
 #[verifier::accept_recursive_types(Value)]
 pub struct ExKeys<'a, Key: 'a, Value: 'a>(Keys<'a, Key, Value>);
 
-pub trait KeysAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<Key>);
-}
+impl<'a, Key, Value> View for Keys<'a, Key, Value> {
+    type V = (int, Seq<Key>);
 
-impl<'a, Key: 'a, Value: 'a> KeysAdditionalSpecFns<'a, Key, Value> for Keys<'a, Key, Value> {
     uninterp spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
 }
 
@@ -383,11 +381,9 @@ impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
 #[verifier::accept_recursive_types(Value)]
 pub struct ExValues<'a, Key: 'a, Value: 'a>(Values<'a, Key, Value>);
 
-pub trait ValuesAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<Value>);
-}
+impl<'a, Key: 'a, Value: 'a> View for Values<'a, Key, Value> {
+    type V = (int, Seq<Value>);
 
-impl<'a, Key: 'a, Value: 'a> ValuesAdditionalSpecFns<'a, Key, Value> for Values<'a, Key, Value> {
     uninterp spec fn view(self: &Values<'a, Key, Value>) -> (int, Seq<Value>);
 }
 
@@ -492,15 +488,9 @@ impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
 #[verifier::accept_recursive_types(Value)]
 pub struct ExMapIter<'a, Key: 'a, Value: 'a>(hash_map::Iter<'a, Key, Value>);
 
-pub trait MapIterAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<(Key, Value)>);
-}
+impl<'a, Key: 'a, Value: 'a> View for hash_map::Iter<'a, Key, Value> {
+    type V = (int, Seq<(Key, Value)>);
 
-impl<'a, Key: 'a, Value: 'a> MapIterAdditionalSpecFns<'a, Key, Value> for hash_map::Iter<
-    'a,
-    Key,
-    Value,
-> {
     uninterp spec fn view(self: &hash_map::Iter<'a, Key, Value>) -> (int, Seq<(Key, Value)>);
 }
 
@@ -607,7 +597,7 @@ impl<'a, Key, Value> View for MapIterGhostIterator<'a, Key, Value> {
 // function `iter()` is invoked in a `for` loop header (e.g., in
 // `for x in it: v.iter() { ... }`), we need to specify the behavior of
 // the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
+// `#[verifier::when_used_as_spec(spec_iter)]` to the specification for
 // the executable `iter` method and define that spec function here.
 pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>) -> (r:
     hash_map::Iter<'a, Key, Value>);
@@ -665,20 +655,6 @@ impl<Key, Value, S> HashMapAdditionalSpecFns<Key, Value> for HashMap<Key, Value,
     #[verifier::inline]
     open spec fn spec_index(&self, k: Key) -> Value {
         self@.index(k)
-    }
-}
-
-impl<Key, Value, S> View for HashMap<Key, Value, S> {
-    type V = Map<Key, Value>;
-
-    uninterp spec fn view(&self) -> Map<Key, Value>;
-}
-
-impl<Key: DeepView, Value: DeepView, S> DeepView for HashMap<Key, Value, S> {
-    type V = Map<Key::V, Value::V>;
-
-    open spec fn deep_view(&self) -> Map<Key::V, Value::V> {
-        hash_map_deep_view_impl(*self)
     }
 }
 
@@ -1084,11 +1060,9 @@ pub broadcast proof fn axiom_hashmap_decreases<Key, Value, S>(m: HashMap<Key, Va
 #[verifier::accept_recursive_types(Key)]
 pub struct ExSetIter<'a, Key: 'a>(hash_set::Iter<'a, Key>);
 
-pub trait SetIterAdditionalSpecFns<'a, Key: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<Key>);
-}
+impl<'a, Key: 'a> View for hash_set::Iter<'a, Key> {
+    type V = (int, Seq<Key>);
 
-impl<'a, Key: 'a> SetIterAdditionalSpecFns<'a, Key> for hash_set::Iter<'a, Key> {
     uninterp spec fn view(self: &hash_set::Iter<'a, Key>) -> (int, Seq<Key>);
 }
 
@@ -1196,20 +1170,6 @@ impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
 #[verifier::accept_recursive_types(Key)]
 #[verifier::reject_recursive_types(S)]
 pub struct ExHashSet<Key, S>(HashSet<Key, S>);
-
-impl<Key, S> View for HashSet<Key, S> {
-    type V = Set<Key>;
-
-    uninterp spec fn view(&self) -> Set<Key>;
-}
-
-impl<Key: DeepView, S> DeepView for HashSet<Key, S> {
-    type V = Set<Key::V>;
-
-    open spec fn deep_view(&self) -> Set<Key::V> {
-        self@.map(|x: Key| x.deep_view())
-    }
-}
 
 pub uninterp spec fn spec_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> usize;
 

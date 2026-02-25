@@ -309,6 +309,8 @@ pub struct Verifier {
 
     /// Details about each function
     pub func_details: HashMap<Fun, FuncDetails>,
+    /// Errors to report after verification has run
+    deferred_errors: Vec<VirErr>,
 
     pub via_cargo_args: Option<CargoVerusArgs>,
     // Some(DepTracker) if via_cargo_args.is_some(), None otherwise
@@ -337,17 +339,19 @@ pub struct Verifier {
 
 #[derive(serde::Serialize)]
 pub struct FuncDetails {
+    pub obligation_proof_notes: HashSet<String>,
     pub failed_proof_notes: HashSet<String>,
 }
 
 impl Default for FuncDetails {
     fn default() -> Self {
-        Self { failed_proof_notes: Default::default() }
+        Self { obligation_proof_notes: Default::default(), failed_proof_notes: Default::default() }
     }
 }
 
 impl FuncDetails {
     fn absorb(&mut self, other: Self) {
+        self.obligation_proof_notes.extend(other.obligation_proof_notes);
         self.failed_proof_notes.extend(other.failed_proof_notes);
     }
 
@@ -488,6 +492,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: HashMap::new(),
+            deferred_errors: Vec::new(),
 
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
             via_cargo_args,
@@ -536,6 +541,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: HashMap::new(),
+            deferred_errors: Vec::new(),
 
             via_cargo_args: self.via_cargo_args.clone(),
             dep_tracker: None,
@@ -568,6 +574,7 @@ impl Verifier {
         self.bucket_stats.extend(other.bucket_stats);
         self.func_times.extend(other.func_times);
         self.func_details.absorb_with(other.func_details, |lhs, rhs| lhs.absorb(rhs));
+        self.deferred_errors.extend(other.deferred_errors);
     }
 
     fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
@@ -902,10 +909,10 @@ impl Verifier {
                     }
 
                     // Collect `proof_note` labels related to this failure.
-                    let mut proof_notes = vec![];
+                    let mut proof_notes = HashSet::new();
                     for label in &error.labels {
                         if label.is_proof_note {
-                            proof_notes.push(label.note.clone());
+                            proof_notes.insert(label.note.clone());
                         }
                     }
                     self.record_func_failed_proof_notes(context.fun.clone(), proof_notes);
@@ -1434,8 +1441,25 @@ impl Verifier {
 
         let mut function_decl_commands = vec![];
 
+        let func_to_requires_proof_notes =
+            HashMap::from_iter(krate.functions.iter().map(|function| {
+                (
+                    function.x.name.clone(),
+                    vir::sst_util::func_collect_requires_proof_notes(function),
+                )
+            }));
+
         // Declare the function symbols
         for function in &krate.functions {
+            let obligation_proof_notes = vir::sst_util::func_collect_obligation_proof_notes(
+                function,
+                &func_to_requires_proof_notes,
+            );
+            self.record_func_obligation_proof_notes(
+                function.x.name.clone(),
+                obligation_proof_notes,
+            );
+
             ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
             let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, function)?;
             let comment =
@@ -2817,8 +2841,22 @@ impl Verifier {
             self.args.no_verify,
             self.args.no_cheating,
         );
-        let mut first_error: Option<VirErr> =
-            check_crate_result1.err().or(check_crate_result.err());
+        let mut first_error: Option<VirErr> = check_crate_result1.err();
+        match check_crate_result {
+            Ok(check_details) => {
+                for (func, failed_proof_notes) in check_details.func_failed_proof_notes {
+                    self.record_func_failed_proof_notes(
+                        func,
+                        failed_proof_notes.into_iter().collect(),
+                    );
+                }
+            }
+            Err(err) => {
+                if first_error.is_none() {
+                    first_error = Some(err);
+                }
+            }
+        }
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
@@ -2849,6 +2887,9 @@ impl Verifier {
                     } else {
                         diagnostics.report_as(&err.to_any(), MessageLevel::Error)
                     }
+                }
+                vir::ast::VirErrAs::NonFatalError(err, _) => {
+                    self.deferred_errors.push(err);
                 }
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
@@ -2924,7 +2965,26 @@ impl Verifier {
         })
     }
 
-    fn record_func_failed_proof_notes(&mut self, func: Fun, failed_proof_notes: Vec<String>) {
+    fn record_func_obligation_proof_notes(
+        &mut self,
+        func: Fun,
+        obligation_proof_notes: HashSet<String>,
+    ) {
+        use std::collections::hash_map::Entry;
+        match self.func_details.entry(func) {
+            Entry::Occupied(mut occupied_entry) => {
+                occupied_entry.get_mut().obligation_proof_notes.extend(obligation_proof_notes);
+            }
+            Entry::Vacant(vacant_entry) => {
+                let _ = vacant_entry.insert(FuncDetails {
+                    obligation_proof_notes: obligation_proof_notes,
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
+    fn record_func_failed_proof_notes(&mut self, func: Fun, failed_proof_notes: HashSet<String>) {
         use std::collections::hash_map::Entry;
         match self.func_details.entry(func) {
             Entry::Occupied(mut occupied_entry) => {
@@ -2932,7 +2992,8 @@ impl Verifier {
             }
             Entry::Vacant(vacant_entry) => {
                 let _ = vacant_entry.insert(FuncDetails {
-                    failed_proof_notes: HashSet::from_iter(failed_proof_notes),
+                    failed_proof_notes: failed_proof_notes,
+                    ..Default::default()
                 });
             }
         }
@@ -3163,7 +3224,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         vir::ast::VirErrAs::Note(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Note)
                         }
-                        vir::ast::VirErrAs::NonBlockingError(err, _) => {
+                        vir::ast::VirErrAs::NonBlockingError(err, _)
+                        | vir::ast::VirErrAs::NonFatalError(err, _) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Error)
                         }
                     }
@@ -3288,15 +3350,19 @@ impl VerifierCallbacksEraseMacro {
 
     fn finish_verus(&mut self, compiler: &Compiler) {
         let spans = self.spans.clone().unwrap();
+        let reporter = Reporter::new(&spans, compiler);
         match self.verifier.verify_crate(compiler, &spans) {
             Ok(()) => {}
             Err(err) => {
                 if let VerifyErr::Vir(err) = err {
-                    let reporter = Reporter::new(&spans, compiler);
                     reporter.report_as(&err.to_any(), MessageLevel::Error);
                 }
                 self.verifier.encountered_vir_error = true;
             }
+        }
+        for err in std::mem::take(&mut self.verifier.deferred_errors) {
+            reporter.report_as(&err.to_any(), MessageLevel::Error);
+            self.verifier.encountered_vir_error = true;
         }
         if !self.verifier.args.output_json
             && !self.verifier.encountered_error

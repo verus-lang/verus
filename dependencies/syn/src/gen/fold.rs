@@ -266,6 +266,9 @@ pub trait Fold {
     fn fold_expr_field(&mut self, i: crate::ExprField) -> crate::ExprField {
         fold_expr_field(self, i)
     }
+    fn fold_expr_final(&mut self, i: crate::ExprFinal) -> crate::ExprFinal {
+        fold_expr_final(self, i)
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn fold_expr_for_loop(&mut self, i: crate::ExprForLoop) -> crate::ExprForLoop {
@@ -2001,6 +2004,9 @@ where
         crate::Expr::GetField(_binding_0) => {
             crate::Expr::GetField(f.fold_expr_get_field(_binding_0))
         }
+        crate::Expr::Final(_binding_0) => {
+            crate::Expr::Final(f.fold_expr_final(_binding_0))
+        }
     }
 }
 #[cfg(feature = "full")]
@@ -2179,6 +2185,17 @@ where
         base: Box::new(f.fold_expr(*node.base)),
         dot_token: node.dot_token,
         member: f.fold_member(node.member),
+    }
+}
+pub fn fold_expr_final<F>(f: &mut F, node: crate::ExprFinal) -> crate::ExprFinal
+where
+    F: Fold + ?Sized,
+{
+    crate::ExprFinal {
+        attrs: f.fold_attributes(node.attrs),
+        final_token: node.final_token,
+        paren_token: node.paren_token,
+        arg: Box::new(f.fold_expr(*node.arg)),
     }
 }
 #[cfg(feature = "full")]

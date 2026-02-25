@@ -1960,6 +1960,14 @@ impl Debug for Lite<syn::Expr> {
                 formatter.field("member", Lite(&_val.member));
                 formatter.finish()
             }
+            syn::Expr::Final(_val) => {
+                let mut formatter = formatter.debug_struct("Expr::Final");
+                if !_val.attrs.is_empty() {
+                    formatter.field("attrs", Lite(&_val.attrs));
+                }
+                formatter.field("arg", Lite(&_val.arg));
+                formatter.finish()
+            }
         }
     }
 }
@@ -2249,6 +2257,16 @@ impl Debug for Lite<syn::ExprField> {
         }
         formatter.field("base", Lite(&self.value.base));
         formatter.field("member", Lite(&self.value.member));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ExprFinal> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ExprFinal");
+        if !self.value.attrs.is_empty() {
+            formatter.field("attrs", Lite(&self.value.attrs));
+        }
+        formatter.field("arg", Lite(&self.value.arg));
         formatter.finish()
     }
 }

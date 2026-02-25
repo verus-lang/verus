@@ -512,6 +512,8 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
             });
             match candidate {
                 Ok(rustc_middle::traits::ImplSource::UserDefined(u)) => {
+                    err_for_builtin_tracked_ghost_deref(tcx, verus_items, u.impl_def_id, span)?;
+
                     let impl_path = def_id_to_vir_path(
                         tcx,
                         verus_items,
@@ -625,6 +627,69 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
         }
     }
     Ok(Arc::new(impl_paths))
+}
+
+/// Err if the given impl is the builtin impl for (Tracked<T>/Ghost<T>) : Deref(Mut)
+fn err_for_builtin_tracked_ghost_deref<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    verus_items: &crate::verus_items::VerusItems,
+    impl_def_id: DefId,
+    span: Span,
+) -> Result<(), VirErr> {
+    let trait_polarity = tcx.impl_polarity(impl_def_id);
+    if trait_polarity == rustc_middle::ty::ImplPolarity::Negative {
+        return Ok(());
+    }
+
+    let trait_ref = tcx.impl_trait_ref(impl_def_id).skip_binder();
+    let trait_name = if Some(trait_ref.def_id) == tcx.lang_items().deref_trait() {
+        "Deref"
+    } else if Some(trait_ref.def_id) == tcx.lang_items().deref_mut_trait() {
+        "DerefMut"
+    } else {
+        return Ok(());
+    };
+
+    let ty = trait_ref.args[0].as_type().unwrap();
+    let ty_name = match ty.kind() {
+        TyKind::Adt(AdtDef(adt_def_data), _args) => {
+            let did = adt_def_data.did;
+            match verus_items.id_to_name.get(&did) {
+                Some(VerusItem::BuiltinType(BuiltinTypeItem::Ghost)) => "Ghost",
+                Some(VerusItem::BuiltinType(BuiltinTypeItem::Tracked)) => "Tracked",
+                _ => {
+                    return Ok(());
+                }
+            }
+        }
+        _ => {
+            return Ok(());
+        }
+    };
+
+    Err(crate::util::err_span_bare(span, format!("reliance on trait bound `{ty}: core::ops::{trait_name}`"))
+        .help(format!("The trait bound `{ty_name}<_>: {trait_name}` is treated specially by Verus, and it is not meant to be used generically")))
+}
+
+pub(crate) fn is_tracked_or_ghost_ty<'tcx>(
+    verus_items: &crate::verus_items::VerusItems,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> Option<(rustc_middle::ty::Ty<'tcx>, bool)> {
+    match ty.kind() {
+        TyKind::Adt(AdtDef(adt_def_data), args) => {
+            let did = adt_def_data.did;
+            match verus_items.id_to_name.get(&did) {
+                Some(VerusItem::BuiltinType(BuiltinTypeItem::Ghost)) => {
+                    Some((args[0].as_type().unwrap(), false))
+                }
+                Some(VerusItem::BuiltinType(BuiltinTypeItem::Tracked)) => {
+                    Some((args[0].as_type().unwrap(), true))
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn mk_visibility<'tcx>(ctxt: &Context<'tcx>, def_id: DefId) -> vir::ast::Visibility {
@@ -763,7 +828,7 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         TyKind::Uint(_) | TyKind::Int(_) => true,
         TyKind::Char => true,
         TyKind::Float(_) => true,
-        TyKind::Ref(_, _, rustc_ast::Mutability::Not) => true,
+        TyKind::Ref(_, _, _) => true,
         TyKind::Param(_) => true,
         TyKind::Tuple(_) => true,
         TyKind::Slice(_) => true,
@@ -783,9 +848,8 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, _) => false,
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => false,
         TyKind::Foreign(..) => false,
-        TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => false,
-        TyKind::FnPtr(..) => false,
         TyKind::Dynamic(..) => false,
+        TyKind::FnPtr(..) => false,
         TyKind::Coroutine(..) => false,
         TyKind::CoroutineWitness(..) => false,
         TyKind::Bound(..) => false,
@@ -794,7 +858,13 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         TyKind::Error(..) => false,
 
         TyKind::Adt(rustc_middle::ty::AdtDef(adt_def_data), _) => {
-            external_info.has_type_id(ctxt, adt_def_data.did)
+            let verus_item = ctxt.verus_items.id_to_name.get(&adt_def_data.did);
+            let is_verus_type = matches!(verus_item, Some(VerusItem::BuiltinType(_)));
+            let is_rust_type = match verus_items::get_rust_item(ctxt.tcx, adt_def_data.did) {
+                Some(RustItem::Box | RustItem::Rc | RustItem::Arc) => true,
+                _ => false,
+            };
+            is_verus_type || is_rust_type || external_info.has_type_id(ctxt, adt_def_data.did)
         }
         TyKind::Alias(
             rustc_middle::ty::AliasTyKind::Projection | rustc_middle::ty::AliasTyKind::Inherent,

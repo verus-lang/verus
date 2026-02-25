@@ -250,6 +250,9 @@ pub trait Visit<'ast> {
     fn visit_expr_field(&mut self, i: &'ast crate::ExprField) {
         visit_expr_field(self, i);
     }
+    fn visit_expr_final(&mut self, i: &'ast crate::ExprFinal) {
+        visit_expr_final(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_expr_for_loop(&mut self, i: &'ast crate::ExprForLoop) {
@@ -1987,6 +1990,9 @@ where
         crate::Expr::GetField(_binding_0) => {
             v.visit_expr_get_field(_binding_0);
         }
+        crate::Expr::Final(_binding_0) => {
+            v.visit_expr_final(_binding_0);
+        }
     }
 }
 #[cfg(feature = "full")]
@@ -2195,6 +2201,17 @@ where
     v.visit_expr(&*node.base);
     skip!(node.dot_token);
     v.visit_member(&node.member);
+}
+pub fn visit_expr_final<'ast, V>(v: &mut V, node: &'ast crate::ExprFinal)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    skip!(node.final_token);
+    skip!(node.paren_token);
+    v.visit_expr(&*node.arg);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]

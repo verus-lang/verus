@@ -425,6 +425,7 @@ impl MessageX {
 
 pub enum MessageAs {
     NonBlockingError(Message, Option<crate::ast::Path>),
+    NonFatalError(Message, Option<crate::ast::Path>),
     Warning(Message),
     Note(Message),
 }
@@ -435,6 +436,7 @@ impl MessageAs {
     pub fn merge(&self, other: &MessageAs) -> MessageAs {
         let added_msg = match other {
             MessageAs::NonBlockingError(message_x, _)
+            | MessageAs::NonFatalError(message_x, _)
             | MessageAs::Warning(message_x)
             | MessageAs::Note(message_x) => message_x,
         };
@@ -445,12 +447,21 @@ impl MessageAs {
             (MessageAs::NonBlockingError(orig_msg, p), _) => {
                 MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
             }
+            (MessageAs::NonFatalError(orig_msg, p), _) => {
+                MessageAs::NonFatalError(new_msg_builder(orig_msg), p.clone())
+            }
             (MessageAs::Warning(orig_msg), MessageAs::NonBlockingError(_, p)) => {
                 MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
+            }
+            (MessageAs::Warning(orig_msg), MessageAs::NonFatalError(_, p)) => {
+                MessageAs::NonFatalError(new_msg_builder(orig_msg), p.clone())
             }
             (MessageAs::Warning(orig_msg), _) => MessageAs::Warning(new_msg_builder(orig_msg)),
             (MessageAs::Note(orig_msg), MessageAs::NonBlockingError(_, p)) => {
                 MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
+            }
+            (MessageAs::Note(orig_msg), MessageAs::NonFatalError(_, p)) => {
+                MessageAs::NonFatalError(new_msg_builder(orig_msg), p.clone())
             }
             (MessageAs::Note(orig_msg), MessageAs::Warning(..)) => {
                 MessageAs::Warning(new_msg_builder(orig_msg))

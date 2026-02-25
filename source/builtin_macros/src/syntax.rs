@@ -1836,7 +1836,19 @@ impl Visitor {
         for item in items.iter_mut() {
             match &item {
                 Item::Global(global) => {
-                    let Global { attrs: _, global_token: _, inner, semi: _ } = global;
+                    let Global { attrs, global_token: _, inner, semi: _ } = global;
+                    let pass_through_attrs: Vec<&Attribute> = attrs
+                        .iter()
+                        .filter(|a| {
+                            let prefix = a
+                                .path()
+                                .segments
+                                .first()
+                                .map(|s| s.ident.to_string())
+                                .unwrap_or_default();
+                            prefix != "verus" && prefix != "verifier"
+                        })
+                        .collect();
                     let (type_, size_lit, align_lit) = match inner {
                         verus_syn::GlobalInner::SizeOf(size_of) => {
                             (&size_of.type_, &size_of.expr_lit, None)
@@ -1869,10 +1881,13 @@ impl Visitor {
                         quote! {}
                     };
                     if self.erase_ghost.erase() {
-                        *item = Item::Verbatim(quote_spanned! { span => const _: () = {
-                            #static_assert_size
-                            #static_assert_align
-                        }; });
+                        *item = Item::Verbatim(quote_spanned! { span =>
+                            #(#pass_through_attrs)*
+                            const _: () = {
+                                #static_assert_size
+                                #static_assert_align
+                            };
+                        });
                     } else {
                         let type_name_escaped = format!("{}", type_.into_token_stream())
                             .replace(" ", "")
@@ -1895,6 +1910,7 @@ impl Visitor {
 
                             *item = Item::Verbatim(
                                 quote_spanned_builtin_builtin_macros_vstd! { verus_builtin, verus_builtin_macros, vstd, span =>
+                                #(#pass_through_attrs)*
                                 #[verus::internal(size_of)] const _: () = {
                                     #verus_builtin::global_size_of::<#type_>(#size_lit);
 
@@ -1902,6 +1918,7 @@ impl Visitor {
                                     #static_assert_align
                                 };
 
+                                #(#pass_through_attrs)*
                                 #verus_builtin_macros::verus! {
                                     #[verus::internal(size_of_broadcast_proof)]
                                     #[verifier::external_body]
@@ -2598,6 +2615,7 @@ impl Visitor {
                 | Expr::HasNot(_)
                 | Expr::Matches(_)
                 | Expr::GetField(_)
+                | Expr::Final(_)
         ) {
             return false;
         }
@@ -2703,6 +2721,13 @@ impl Visitor {
                 let member_ident = quote::format_ident!("arrow_{}", gf.member);
                 let get_call = quote_spanned!(gf.arrow_token.span() => .#member_ident());
                 *expr = Expr::Verbatim(quote_spanned!(span => (#base#get_call)));
+            }
+            Expr::Final(expr_final) => {
+                let span = expr_final.span();
+                let arg = expr_final.arg;
+                *expr = Expr::Verbatim(
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::final_(#arg)),
+                )
             }
             _ => unreachable!(),
         }
