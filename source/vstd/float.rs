@@ -92,4 +92,14 @@ impl FloatBitsProperties for f64 {
     }
 }
 
+pub assume_specification[ <f32 as Clone>::clone ](f: &f32) -> (res: f32)
+    ensures
+        res == f,
+;
+
+pub assume_specification[ <f64 as Clone>::clone ](f: &f64) -> (res: f64)
+    ensures
+        res == f,
+;
+
 } // verus!

@@ -81,6 +81,7 @@ fn expr_get_early_exits_rec(
             | ExprX::ImplicitReborrowOrSpecRead(..)
             | ExprX::ReadPlace(..)
             | ExprX::EvalAndResolve(..)
+            | ExprX::Old(..)
             | ExprX::Block(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)

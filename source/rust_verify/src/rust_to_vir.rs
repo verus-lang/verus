@@ -191,7 +191,7 @@ fn check_item<'tcx>(
                 visibility(),
                 module_path,
                 ctxt.tcx.hir_attrs(item.hir_id()),
-                sig,
+                crate::rust_to_vir_func::FnOrConstSig::sig(sig),
                 None,
                 generics,
                 CheckItemFnEither::BodyId(body_id),

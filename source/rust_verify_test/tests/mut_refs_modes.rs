@@ -1047,21 +1047,21 @@ test_verify_one_file_with_options! {
     #[test] wrapped_params ["new-mut-ref"] => verus_code! {
         fn f(Tracked(x): Tracked<&mut Ghost<int>>)
             requires x.view() < 20,
-            ensures fin(x).view() == x.view() + 1,
+            ensures fin(x).view() == old(x).view() + 1,
         {
             proof { *x = Ghost(x.view() + 1); }
         }
 
         fn f2(Tracked(x): Tracked<&mut Ghost<int>>)
             requires x.view() < 20,
-            ensures fin(x).view() == x.view() + 1,
+            ensures fin(x).view() == old(x).view() + 1,
         {
             f(Tracked(x));
         }
 
         fn f3(Tracked(x): Tracked<&mut Ghost<int>>)
             requires x.view() < 20,
-            ensures fin(x).view() == x.view() + 1,
+            ensures fin(x).view() == old(x).view() + 1,
         {
             f(Tracked(&mut *x));
         }
@@ -1081,7 +1081,7 @@ test_verify_one_file_with_options! {
 
         fn f_fails(Tracked(x): Tracked<&mut Ghost<int>>)
             requires x.view() < 20,
-            ensures fin(x).view() == x.view() + 1,
+            ensures fin(x).view() == old(x).view() + 1,
         {
             proof { *x = Ghost(x.view() + 1); }
             assert(false); // FAILS
@@ -1089,7 +1089,7 @@ test_verify_one_file_with_options! {
 
         fn f2_fails(Tracked(x): Tracked<&mut Ghost<int>>)
             requires x.view() < 20,
-            ensures fin(x).view() == x.view() + 1,
+            ensures fin(x).view() == old(x).view() + 1,
         {
             f(Tracked(x));
             assert(false); // FAILS
@@ -1097,7 +1097,7 @@ test_verify_one_file_with_options! {
 
         fn f3_fails(Tracked(x): Tracked<&mut Ghost<int>>)
             requires x.view() < 20,
-            ensures fin(x).view() == x.view() + 1,
+            ensures fin(x).view() == old(x).view() + 1,
         {
             f(Tracked(&mut *x));
             assert(false); // FAILS
@@ -1124,7 +1124,7 @@ test_verify_one_file_with_options! {
     #[test] wrapped_params_reborrow ["new-mut-ref"] => verus_code! {
         fn f(Tracked(x): Tracked<&mut Ghost<int>>)
             requires x.view() < 20,
-            ensures fin(x).view() == x.view() + 1,
+            ensures fin(x).view() == old(x).view() + 1,
         {
             proof { *x = Ghost(x.view() + 1); }
         }
@@ -1146,4 +1146,24 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] wrapped_mut_ref_params_resolved ["new-mut-ref"] => verus_code! {
+        fn test(Ghost(x): Ghost<&mut u64>) {
+            assert(has_resolved(x)); // FAILS
+        }
+
+        fn test2(Tracked(x): Tracked<&mut u64>) {
+            assert(has_resolved(x));
+        }
+
+        fn test3(x: Ghost<&mut u64>) {
+            assert(has_resolved(x@)); // FAILS
+        }
+
+        fn test4(x: Tracked<&mut u64>) {
+            assert(has_resolved(x@));
+        }
+    } => Err(err) => assert_fails(err, 2)
 }

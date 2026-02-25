@@ -272,6 +272,9 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::ReadPlace(..)
             // all borrow types checked in the main function
             | ExprX::ImplicitReborrowOrSpecRead(..)
+            | ExprX::BorrowMut(..)
+            | ExprX::TwoPhaseBorrowMut(..)
+            | ExprX::Old(..)
         => None,
         ExprX::NonSpecClosure { .. } => Some(OuterProphReason::NonSpecClosure),
         ExprX::Loop { .. } => Some(OuterProphReason::Loop),
@@ -279,8 +282,6 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
         ExprX::Return(..) => Some(OuterProphReason::Return),
         ExprX::BreakOrContinue { is_break: true, .. } => Some(OuterProphReason::Break),
         ExprX::BreakOrContinue { is_break: false, .. } => Some(OuterProphReason::Continue),
-        ExprX::BorrowMut(..) => Some(OuterProphReason::MutBorrow),
-        ExprX::TwoPhaseBorrowMut(..) => Some(OuterProphReason::MutBorrow),
 
         // todo
         ExprX::TryOpenAtomicUpdate(..) |
@@ -1611,7 +1612,9 @@ fn check_expr_handle_mut_arg(
             record.erasure_modes.var_modes.push((expr.span.clone(), mode));
             return Ok((mode, Some(x_mode), proph));
         }
-        ExprX::ConstVar(x, _) | ExprX::StaticVar(x) => {
+        ExprX::ConstVar(x, _)
+        | ExprX::StaticVar(x)
+        | ExprX::Call(CallTarget::Fun(_, x, _, _, _, true), _, _) => {
             let function = match ctxt.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
@@ -1647,7 +1650,7 @@ fn check_expr_handle_mut_arg(
             Ok((mode, Proph::No))
         }
         ExprX::Call(
-            CallTarget::Fun(crate::ast::CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),
+            CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _, _),
             es,
             None,
         ) => {
@@ -1695,8 +1698,9 @@ fn check_expr_handle_mut_arg(
 
             Ok((*ret_mode, Proph::No))
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage), es, None) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage, const_var), es, None) => {
             assert!(*autospec_usage == AutospecUsage::Final);
+            assert!(!const_var); // const_var is handled in ConstVar/StaticVar case
 
             let function = match ctxt.funs.get(x) {
                 None => {
@@ -3343,6 +3347,11 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::EvalAndResolve(..) => {
             panic!("EvalAndResolve shouldn't be created yet");
+        }
+        ExprX::Old(e) => {
+            let proph =
+                check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
+            Ok((Mode::Spec, proph))
         }
     };
     let (mode, proph) = mode_proph?;

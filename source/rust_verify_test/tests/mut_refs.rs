@@ -3159,6 +3159,42 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] backwards_compat_unwrapped_param ["new-mut-ref"] => verus_code! {
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test(Tracked(a): Tracked<&mut Ghost<u8>>)
+            requires old(a)@ < 255,
+            ensures a@ == old(a)@ + 1,
+        {
+            proof { *a = Ghost((a@ + 1) as u8); }
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2(Tracked(a): Tracked<&mut Ghost<u8>>)
+            requires old(a)@ < 255,
+            ensures a@ == old(a)@ + 1,
+        {
+            test(Tracked(a));
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2_fails(Tracked(a): Tracked<&mut Ghost<u8>>)
+            requires old(a)@ < 255,
+            ensures a@ == old(a)@ + 1,
+        {
+            test(Tracked(a));
+            assert(false); // FAILS
+        }
+
+        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        fn test2_fails2(Tracked(a): Tracked<&mut Ghost<u8>>)
+            ensures a@ == old(a)@ + 1,
+        {
+            test(Tracked(a)); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
     #[test] backwards_compat_fail ["new-mut-ref"] => verus_code! {
         #[verifier::migrate_postconditions_with_mut_refs(true)]
         fn test(a: &mut u8)

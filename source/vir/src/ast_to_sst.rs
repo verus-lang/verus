@@ -790,7 +790,7 @@ fn expr_get_call(
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
-            CallTarget::Fun(kind, x, typs, _impl_paths, autospec_usage) => {
+            CallTarget::Fun(kind, x, typs, _impl_paths, autospec_usage, _) => {
                 if *autospec_usage != AutospecUsage::Final {
                     return Err(internal_error(&expr.span, "autospec not discharged"));
                 }
@@ -941,7 +941,7 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Maybe<ReturnedCall>)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), _, _)
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, _, _), _, _)
             if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? =>
         {
             expr_get_call(ctx, state, disallow_poly_ret, expr)
@@ -3489,6 +3489,7 @@ pub(crate) fn expr_to_stm_opt(
             stms.append(&mut stms2);
             Ok((stms, Maybe::Some(Value::Exp(exp1))))
         }
+        ExprX::Old(e) => expr_to_stm_opt(ctx, state, e),
     }
 }
 

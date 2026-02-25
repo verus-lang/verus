@@ -23,7 +23,7 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
             Ok(SpannedTyped::new(&expr.span, &expr.typ, var))
         }
         ExprX::Call(
-            CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage),
+            CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage, const_var),
             args,
             post_args,
         ) => {
@@ -72,7 +72,7 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
                 }
             };
             let call = ExprX::Call(
-                CallTarget::Fun(kind, tgt, typs, impl_paths, AutospecUsage::Final),
+                CallTarget::Fun(kind, tgt, typs, impl_paths, AutospecUsage::Final, *const_var),
                 args.clone(),
                 post_args.clone(),
             );

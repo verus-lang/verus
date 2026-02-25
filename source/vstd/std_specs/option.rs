@@ -358,7 +358,7 @@ pub assume_specification<T, E>[ Option::ok_or ](option: Option<T>, err: E) -> (r
 #[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::as_mut ](option: &mut Option<T>) -> (res: Option<&mut T>)
     ensures
-        (match *option {
+        (match *old(option) {
             None => fin(option).is_none() && res.is_none(),
             Some(r) => fin(option).is_some() && res.is_some() && *res.unwrap() === r && *fin(
                 res.unwrap(),
@@ -378,12 +378,12 @@ pub assume_specification<T>[ Option::as_slice ](option: &Option<T>) -> (res: &[T
 #[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::as_mut_slice ](option: &mut Option<T>) -> (res: &mut [T])
     ensures
-        res@ == (match *option {
+        res@ == (match *old(option) {
             Some(x) => seq![x],
             None => seq![],
         }),
         fin(res)@.len() == res@.len(),  // TODO this should be broadcast for all `&mut [T]`
-        fin(option)@ == (match *option {
+        fin(option)@ == (match *old(option) {
             Some(_) => Some(fin(res)@[0]),
             None => None,
         }),
@@ -402,7 +402,7 @@ pub assume_specification<T>[ Option::insert ](option: &mut Option<T>, value: T) 
 pub assume_specification<T>[ Option::get_or_insert ](option: &mut Option<T>, value: T) -> (res:
     &mut T)
     ensures
-        *res == (match *option {
+        *res == (match *old(option) {
             Some(x) => x,
             None => value,
         }),

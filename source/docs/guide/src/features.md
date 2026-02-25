@@ -4,7 +4,7 @@ Quick reference for supported Rust features. Note that this list does not includ
 
 Note that Verus is in active development. If a feature is unsupported, it might be genuinely hard, or it might just be low priority. See the [github issues](https://github.com/verus-lang/verus/issues) or [discussions](https://github.com/verus-lang/verus/discussions) for information on planned features.
 
-**Last Updated: 2026-02-17**
+**Last Updated: 2026-02-18**
 
 <div class="table-wrapper"><table>
   <thead><tr><th colspan="2"><strong>Items</strong></th></tr></thead>
@@ -15,7 +15,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Associated constants</td>
-    <td>Not supported</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Structs</td>
