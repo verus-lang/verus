@@ -5,9 +5,9 @@ use crate::ast::{
     VarIdent, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
-    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
-    path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
-    undecorate_typ,
+    ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name,
+    is_body_visible_to, is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr,
+    typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
@@ -577,9 +577,13 @@ fn check_one_expr<Emit: EmitError>(
                 },
             )?;
         }
-        ExprX::AssertAssume { is_assume, .. } => {
+        ExprX::AssertAssume { is_assume, expr: inner_expr, .. } => {
             if ctxt.no_cheating && *is_assume {
-                return Err(error(&expr.span, "assume/admit not allowed with --no-cheating"));
+                let mut msg = error(&expr.span, "assume/admit not allowed with --no-cheating");
+                if let Some(label) = ast_expr_get_proof_note(inner_expr) {
+                    msg = msg.secondary_label(&expr.span, format!("note: {label}"));
+                }
+                return Err(msg);
             }
         }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {

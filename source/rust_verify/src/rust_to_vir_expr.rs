@@ -1,6 +1,6 @@
 use crate::attributes::{
-    Attr, GhostBlockAttr, get_custom_err_annotations, get_ghost_block_opt, get_trigger,
-    get_var_mode, parse_attrs, parse_attrs_opt,
+    Attr, GhostBlockAttr, get_custom_err_annotations, get_ghost_block_opt,
+    get_proof_note_annotation, get_trigger, get_var_mode, parse_attrs, parse_attrs_opt,
 };
 use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
@@ -411,6 +411,12 @@ pub(crate) fn expr_to_vir<'tcx>(
         let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
         vir_expr = vir_expr
             .new_x(ExprX::UnaryOpr(UnaryOpr::CustomErr(Arc::new(err_msg)), vir_expr.clone()));
+        vir_expr_or_place = ExprOrPlace::Expr(vir_expr);
+    }
+    if let Some(label) = get_proof_note_annotation(attrs)? {
+        let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
+        vir_expr =
+            vir_expr.new_x(ExprX::UnaryOpr(UnaryOpr::ProofNote(Arc::new(label)), vir_expr.clone()));
         vir_expr_or_place = ExprOrPlace::Expr(vir_expr);
     }
     Ok(vir_expr_or_place)
@@ -4128,6 +4134,9 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
         }
         PlaceX::Index(..) => {
             panic!("Verus Internal Error: PlaceX::Index should not be created outside new-mut-ref")
+        }
+        PlaceX::UserDefinedTypInvariantObligation(..) => {
+            panic!("Verus Internal Error: unexpected PlaceX::UserDefinedTypInvariantObligation")
         }
     };
     Ok(SpannedTyped::new(&place.span, &place.typ, x))

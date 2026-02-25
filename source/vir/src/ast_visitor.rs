@@ -280,7 +280,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
             | UnaryOpr::IntegerTypeBound(..)
-            | UnaryOpr::CustomErr(..) => R::ret(|| uopr.clone()),
+            | UnaryOpr::CustomErr(..)
+            | UnaryOpr::ProofNote(..) => R::ret(|| uopr.clone()),
         }
     }
 
@@ -891,6 +892,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let idx = self.visit_expr(idx)?;
                 R::ret(|| {
                     place_new(PlaceX::Index(R::get(p), R::get(idx), *kind, *needs_bounds_check))
+                })
+            }
+            PlaceX::UserDefinedTypInvariantObligation(p, fun) => {
+                let p = self.visit_place(p)?;
+                R::ret(|| {
+                    place_new(PlaceX::UserDefinedTypInvariantObligation(R::get(p), fun.clone()))
                 })
             }
         }

@@ -1381,6 +1381,14 @@ fn check_place_rec_inner(
                 &format!("Verus Internal Error: WithExpr node shouldn't exist yet"),
             ));
         }
+        PlaceX::UserDefinedTypInvariantObligation(..) => {
+            return Err(error(
+                &place.span,
+                &format!(
+                    "Verus Internal Error: UserDefinedTypInvariantObligation node shouldn't exist yet"
+                ),
+            ));
+        }
         PlaceX::Index(p, idx, _kind, _needs_bounds_check) => {
             let idx_expect = match typing.block_ghostness {
                 Ghost::Exec => Expect(Mode::Exec),
@@ -1471,6 +1479,7 @@ fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place) -> bool {
             PlaceX::Field(_, p)
             | PlaceX::ModeUnwrap(p, _)
             | PlaceX::WithExpr(_, p)
+            | PlaceX::UserDefinedTypInvariantObligation(p, _)
             | PlaceX::Index(p, ..) => {
                 place = p;
             }
@@ -2129,6 +2138,11 @@ fn check_expr_handle_mut_arg(
             let p =
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
             Ok((Mode::Spec, p))
+        }
+        ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1) => {
+            let proph =
+                check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
+            Ok((Mode::Spec, proph))
         }
         ExprX::Loc(e) => {
             return check_expr_handle_mut_arg(
@@ -3707,7 +3721,7 @@ fn check_function(
                             )))
                         } else {
                             match &place.x {
-                                PlaceX::Temporary(e) => {
+                                PlaceX::Temporary(e) if !*two_phase => {
                                     // &mut * Temporary(e) simplifies to e
                                     Ok(e.clone())
                                 }
@@ -3716,11 +3730,22 @@ fn check_function(
                                         TypX::MutRef(t) => t,
                                         _ => panic!("expected MutRef type"),
                                     };
-                                    let deref_e = SpannedTyped::new(
-                                        &inner_span,
-                                        dtyp,
-                                        PlaceX::DerefMut(place.clone()),
-                                    );
+                                    let deref_e = match &place.x {
+                                        PlaceX::Temporary(e)
+                                            if matches!(&e.x, ExprX::BorrowMut(_)) =>
+                                        {
+                                            // * &mut P simplifies to P
+                                            let ExprX::BorrowMut(inner) = &e.x else {
+                                                unreachable!();
+                                            };
+                                            inner.clone()
+                                        }
+                                        _ => SpannedTyped::new(
+                                            &inner_span,
+                                            dtyp,
+                                            PlaceX::DerefMut(place.clone()),
+                                        ),
+                                    };
                                     let borrowx = if *two_phase {
                                         ExprX::TwoPhaseBorrowMut(deref_e)
                                     } else {
@@ -3741,14 +3766,14 @@ fn check_function(
 
         if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
             let functionx = &mut Arc::make_mut(&mut *function).x;
-            crate::user_defined_type_invariants::annotate_user_defined_invariants(
-                functionx,
-                &record.type_inv_info,
-                &ctxt.funs,
-                &ctxt.datatypes,
-                new_mut_ref,
-            )?;
-            if new_mut_ref {
+            if !new_mut_ref {
+                crate::user_defined_type_invariants::annotate_user_defined_invariants(
+                    functionx,
+                    &record.type_inv_info,
+                    &ctxt.funs,
+                    &ctxt.datatypes,
+                )?;
+            } else if new_mut_ref {
                 if let Some(body) = &mut functionx.body {
                     *body = crate::resolution_inference::infer_resolution(
                         &functionx.params,
@@ -3756,9 +3781,11 @@ fn check_function(
                         &record.read_kind_finals,
                         &ctxt.datatypes,
                         &ctxt.funs,
+                        &record.type_inv_info,
+                        functionx.owning_module.as_ref().unwrap(),
                         &record.var_modes,
                         &record.temporary_modes,
-                    );
+                    )?;
                 }
             }
         }

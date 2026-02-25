@@ -517,6 +517,9 @@ impl ExpX {
                     CustomErr(_msg) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }
+                    ProofNote(_label) => {
+                        (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
+                    }
                 }
             }
             Binary(op, e1, e2) => {
@@ -730,6 +733,16 @@ impl ExpX {
             Old(..) | WithTriggers(..) => ("".to_string(), 99), // We don't show the user these internal expressions
         };
         if precedence <= inner_precedence { s } else { format!("({})", s) }
+    }
+}
+
+pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<Arc<String>> {
+    match &exp.x {
+        ExpX::UnaryOpr(UnaryOpr::Box(_), e) => sst_exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => sst_exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e) => sst_exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
+        _ => None,
     }
 }
 

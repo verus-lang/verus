@@ -664,8 +664,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): need to elide implicit reborrow in this test case
-    #[ignore] #[test] ghost_places_dont_resolve ["new-mut-ref"] => verus_code! {
+    #[test] ghost_places_dont_resolve ["new-mut-ref"] => verus_code! {
         fn test() {
             let mut x: u64 = 0;
 

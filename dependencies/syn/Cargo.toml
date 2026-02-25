@@ -1,6 +1,6 @@
 [package]
 name = "verus_syn"
-version = "0.0.0-2026-01-25-0057"
+version = "0.0.0-2026-02-15-0106"
 authors = ["David Tolnay <dtolnay@gmail.com>", "The Verus Contributors"]
 categories = ["development-tools::procedural-macro-helpers", "parser-implementations"]
 description = "Parser for Rust source code extended to support Verus"

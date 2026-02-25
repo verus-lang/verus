@@ -29,6 +29,10 @@ pub fn main() -> Result<ExitCode> {
     let parsed_cli =
         CargoVerusCli::parse_from(normalized_args.iter().cloned()).clap_trailing_args_hotfix();
 
+    if parsed_cli.has_inadvisable_verus_arg() {
+        return Ok(ExitCode::from(2));
+    }
+
     let cfg = match parsed_cli.command {
         VerusSubcommand::New(new_cmd) => {
             match (new_cmd.bin, new_cmd.lib) {

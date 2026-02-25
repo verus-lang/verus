@@ -382,6 +382,9 @@ fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
 
             (stmts, p)
         }
+        PlaceX::UserDefinedTypInvariantObligation(..) => {
+            panic!("Verus internal error: unexpected UserDefinedTypInvariantObligation");
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::ast::{Dt, NullaryOpr, SpannedTyped, Typ, TypX, UnaryOp};
 use crate::messages::{Message, Span};
-use crate::sst::{Exp, ExpX, UniqueIdent};
+use crate::sst::{Exp, ExpX};
+use crate::sst_vars::HavocSet;
 use std::sync::Arc;
 
 pub(crate) fn make_option_exp(opt: Option<Exp>, span: &Span, typ: &Typ) -> Exp {
@@ -21,7 +22,7 @@ pub(crate) fn make_option_exp(opt: Option<Exp>, span: &Span, typ: &Typ) -> Exp {
 
 // InferSpecForLoopIter produces None if any variables in the express are modified in the loop
 fn vars_unmodified(
-    modified_vars: &Arc<Vec<UniqueIdent>>,
+    modified_vars: &HavocSet,
     exp: &Exp,
     print_hint: bool,
     hint_message: &mut Option<Message>,
@@ -29,7 +30,7 @@ fn vars_unmodified(
     let mut map = air::scope_map::ScopeMap::new();
     let r = crate::sst_visitor::exp_visitor_check(exp, &mut map, &mut |e: &Exp, _| match &e.x {
         ExpX::Var(x) => {
-            if modified_vars.contains(x) {
+            if modified_vars.vars.contains_key(x) {
                 if print_hint && hint_message.is_none() {
                     let msg = "hint: because the iterator uses a variable that may be mutated \
                         inside the loop, \
@@ -70,7 +71,7 @@ fn vars_unmodified(
 }
 
 pub(crate) fn finalize_inv(
-    modified_vars: &Arc<Vec<UniqueIdent>>,
+    modified_vars: &HavocSet,
     exp: &Exp,
     hint_message: &mut Option<Message>,
 ) -> Exp {

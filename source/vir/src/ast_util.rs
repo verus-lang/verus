@@ -903,6 +903,15 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
     )
 }
 
+pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<Arc<String>> {
+    match &expr.x {
+        // NOTE: `UnaryOpr::Box` and `Unbox` not relevant; only introduced later in `ast_to_sst`.
+        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => ast_expr_get_proof_note(e),
+        ExprX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
+        _ => None,
+    }
+}
+
 pub fn int_range_to_type_string(range: &IntRange) -> String {
     match range {
         IntRange::Int => "int".to_string(),
@@ -1389,6 +1398,7 @@ impl PlaceX {
             PlaceX::ModeUnwrap(p, _) => p.x.uses_unnamed_temporary(),
             PlaceX::WithExpr(_e, p) => p.x.uses_unnamed_temporary(),
             PlaceX::Index(p, _idx, _k, _needs_bounds_check) => p.x.uses_unnamed_temporary(),
+            PlaceX::UserDefinedTypInvariantObligation(p, _) => p.x.uses_unnamed_temporary(),
         }
     }
 }
@@ -1402,6 +1412,7 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
         PlaceX::ModeUnwrap(p, _) => place_get_local(p),
         PlaceX::WithExpr(_e, p) => place_get_local(p),
         PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_get_local(p),
+        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_get_local(p),
     }
 }
 
@@ -1414,9 +1425,11 @@ pub fn place_has_deref_mut(p: &Place) -> bool {
         PlaceX::ModeUnwrap(p, _) => place_has_deref_mut(p),
         PlaceX::WithExpr(_e, p) => place_has_deref_mut(p),
         PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_has_deref_mut(p),
+        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_has_deref_mut(p),
     }
 }
 
+/// Returns an expression that reads from the place
 pub fn place_to_expr(place: &Place) -> Expr {
     let x = match &place.x {
         PlaceX::Local(var_ident) => ExprX::Var(var_ident.clone()),
@@ -1444,6 +1457,13 @@ pub fn place_to_expr(place: &Place) -> Expr {
         PlaceX::Index(p, idx, kind, bounds_check) => {
             let e = place_to_expr(p);
             ExprX::Binary(BinaryOp::Index(*kind, *bounds_check), e, idx.clone())
+        }
+        PlaceX::UserDefinedTypInvariantObligation(..) => {
+            // place_to_expr should only be called for reading; this node should only
+            // appear in mutable contexts
+            panic!(
+                "Verus internal error: place_to_expr cannot handle UserDefinedTypInvariantObligation"
+            );
         }
     };
     SpannedTyped::new(&place.span, &place.typ, x)
