@@ -135,6 +135,7 @@ pub const exec fn layout_for_type_is_valid<V>()
 /// Note that, unusually for a lemma, this is an `exec`-mode function. (This is necessary to
 /// ensure that the types are really compilable, as ghost code can reason about "virtual" types
 /// that exceed these bounds.) Despite being `exec`-mode, it is a no-op.
+#[allow(unused_variables)]
 #[verifier::external_body]
 #[inline(always)]
 pub const exec fn layout_for_val_is_valid<V: ?Sized>(val: Tracked<&V>)

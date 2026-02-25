@@ -1637,6 +1637,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] decrease_through_abstract_type verus_code! {
+        use vstd::std_specs::alloc::*;
         mod m1 {
             use verus_builtin::*;
             pub struct S<A, B>(A, B);
@@ -1708,6 +1709,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] height_intrinsic verus_code! {
+        use vstd::std_specs::alloc::*;
         #[is_variant]
         enum Tree {
             Node(Box<Tree>, Box<Tree>),
@@ -1745,6 +1747,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] height_intrinsic_mode verus_code! {
+        use vstd::std_specs::alloc::*;
         #[is_variant]
         enum Tree {
             Node(Box<Tree>, Box<Tree>),
@@ -1759,6 +1762,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] datatype_height_axiom_checks_the_variant verus_code! {
+        use vstd::std_specs::alloc::*;
         #[is_variant]
         enum List {
             Cons(Box<List>),

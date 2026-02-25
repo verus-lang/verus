@@ -2386,6 +2386,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails_type_invariant_error(err, 2)
 }
 
+// TODO(new_mut_ref): this is a bad user experience
 test_verify_one_file_with_options! {
     #[test] struct_of_vec ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
@@ -2412,7 +2413,7 @@ test_verify_one_file_with_options! {
 
         fn test1() {
             let mut x = A { vec: vec![0, 10] };
-            x.vec[0] = 1;
+            x.vec[0] = 1; // FAILS
         }
 
         fn fails1() {
@@ -2422,14 +2423,14 @@ test_verify_one_file_with_options! {
 
         fn test2() {
             let mut x = A { vec: vec![0, 10] };
-            set_to(&mut x.vec[0], 1);
+            set_to(&mut x.vec[0], 1); // FAILS
         }
 
         fn fails2() {
             let mut x = A { vec: vec![0, 10] };
             set_to(&mut x.vec[0], 15); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "not supported: taking a mutable reference to a field of a datatype with a user-defined type invariant")
+    } => Err(err) => assert_fails_type_invariant_error(err, 4)
 }
 
 test_verify_one_file_with_options! {
@@ -2489,7 +2490,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] with_tracked_wrapper ["new-mut-ref"] => verus_code! {
+    #[test] with_tracked_wrapper ["new-mut-ref"] => verus_code! {
         struct X {
             i: (u64, u64),
             j: (u64, u64),

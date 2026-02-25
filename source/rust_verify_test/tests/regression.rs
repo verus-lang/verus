@@ -340,6 +340,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file! {
     #[test] air_function_names_issue_376 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum Nat {
             Zero,
             Succ(Box<Nat>),

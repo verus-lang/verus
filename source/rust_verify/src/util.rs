@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use rustc_span::Span;
 use vir::ast::VirErr;
@@ -301,3 +301,31 @@ macro_rules! backtrace {
 
 #[allow(unused_imports)]
 pub(crate) use backtrace;
+
+pub trait HashMapAbsorbWith<K, V> {
+    fn absorb_with<F>(&mut self, other: HashMap<K, V>, absorb_value: F)
+    where
+        F: Fn(&mut V, V);
+}
+
+impl<K, V> HashMapAbsorbWith<K, V> for HashMap<K, V>
+where
+    K: Eq + std::hash::Hash,
+{
+    fn absorb_with<F>(&mut self, other: HashMap<K, V>, absorb_value: F)
+    where
+        F: Fn(&mut V, V),
+    {
+        use std::collections::hash_map::Entry;
+        for (key, rhs) in other {
+            match self.entry(key) {
+                Entry::Vacant(vacant_entry) => {
+                    vacant_entry.insert(rhs);
+                }
+                Entry::Occupied(mut occupied_entry) => {
+                    absorb_value(occupied_entry.get_mut(), rhs);
+                }
+            }
+        }
+    }
+}

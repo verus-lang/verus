@@ -996,13 +996,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             } else {
                 let rust_item = verus_items::get_rust_item(tcx, did);
 
-                if let Some(RustItem::AllocGlobal) = rust_item {
-                    return Ok((
-                        Arc::new(TypX::Primitive(Primitive::Global, Arc::new(vec![]))),
-                        false,
-                    ));
-                }
-
                 let typ_args = mk_typ_args(&args)?;
                 if Some(did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
                     let (t0, ghost) = &typ_args[0];
@@ -2276,9 +2269,12 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             span,
                             trait_def_id,
                             substs,
-                        )?
-                        .unwrap();
-                        trait_bounds.push(generic_bound);
+                        )?;
+                        if let Some(generic_bound) = generic_bound {
+                            trait_bounds.push(generic_bound);
+                        } else {
+                            unsupported_err!(span, "this type of bound");
+                        }
                     }
                     ClauseKind::Projection(pred) => {
                         let item_def_id = pred.projection_term.def_id;

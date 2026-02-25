@@ -453,12 +453,17 @@ fn req_ens_to_air(
             }
             let mut labels: Vec<ArcDynMessageLabel> = Vec::new();
             if let Some(msg) = msg {
-                labels.push(Arc::new(MessageLabel { span: exp.span.clone(), note: msg.clone() }));
+                labels.push(Arc::new(MessageLabel {
+                    span: exp.span.clone(),
+                    note: msg.clone(),
+                    is_proof_note: false,
+                }));
             }
             if let Some(label) = sst_exp_get_proof_note(exp) {
                 labels.push(Arc::new(MessageLabel {
                     span: exp.span.clone(),
-                    note: format!("note: {label}"),
+                    note: label.to_string(),
+                    is_proof_note: true,
                 }));
             }
             let labeled_expr = if labels.is_empty() {
@@ -706,7 +711,12 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             }
         }
     } else {
-        assert!(!function.x.has.has_ensures); // no ensures allowed on spec functions yet
+        if function.x.has.has_ensures {
+            return Err(crate::messages::error(
+                &function.x.ret.span,
+                "ensures clause unsupported on spec function",
+            ));
+        }
     }
 
     if is_trait_method_impl {
