@@ -179,4 +179,4 @@ impl_int_try_from_spec! { i16 => [u8 u16 u32 u64 u128 i8 usize isize] }
 impl_int_try_from_spec! { i32 => [u8 u16 u32 u64 u128 i8 i16 usize isize] }
 impl_int_try_from_spec! { i64 => [u8 u16 u32 u64 u128 i8 i16 i32 usize isize] }
 impl_int_try_from_spec! { i128 => [u8 u16 u32 u64 u128 i8 i16 i32 i64 usize isize] }
-impl_int_try_from_spec! { isize => [u8 u16 u32 u64 u128 i8 i16 i32 i64 usize] }
+impl_int_try_from_spec! { isize => [u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 usize] }
