@@ -1,4 +1,4 @@
-use super::prelude::*;
+use crate::prelude::*;
 use crate::cell::CellId;
 use crate::invariant::AtomicInvariant;
 use crate::invariant::InvariantPredicate;
@@ -8,15 +8,57 @@ use std::marker::PhantomData;
 
 verus! {
 
+broadcast use crate::group_vstd_default;
+
 // Location = CellId
 // Timestamp = nat
 /// Represents "simple" view
+#[verifier::ext_equal]
 pub ghost struct View(pub Map<CellId, nat>);
 
 impl View {
     /// True when `other` is contained in this View
     pub open spec fn contains(self, other: Self) -> bool {
-        other.0.submap_of(self.0)
+        &&& other.0.dom().subset_of(self.0.dom())
+        &&& forall |k| 
+            #![trigger self.0.dom().contains(k)]
+            #![trigger other.0.dom().contains(k)]
+            self.0.dom().contains(k) ==> !other.0.dom().contains(k) || (other.0.dom().contains(k) && other.0[k] <= self.0[k])
+    }
+
+    pub open spec fn contains_strict(self, other: Self) -> bool {
+        &&& self.contains(other)
+        &&& self != other
+    }
+
+    // sanity check
+    // this should fail
+    proof fn contains_strict_contra(v1: Self, v2: Self)
+        requires
+            v1.contains_strict(v2)
+        ensures
+            false
+    {}
+
+    // sanity check
+    proof fn contains_po(v1: View, v2: View, v3: View)
+        ensures
+            v1.contains(v1), //refl
+            v1.contains(v2) && v1 != v2 ==> !v2.contains(v1), // anti-sym
+            v1.contains(v2) && v2.contains(v3) ==> v1.contains(v3) // trans
+    {
+        if (v1.contains(v2) && v1 != v2) {
+            if (!(v1.0.dom() =~= v2.0.dom())) {
+                assert forall|k| #[trigger] v2.0.dom().contains(k) implies v1.0.dom().contains(k) by {}
+                assert(!v2.contains(v1));
+            } else {
+                assert(v1.0.dom() =~= v2.0.dom());
+                assert(!(v1 =~= v2));
+                assert(!(forall|k| #[trigger] v1.0.dom().contains(k) && v2.0.dom().contains(k) ==> v1.0[k] == v2.0[k]));
+                let k = choose|k: CellId| #[trigger] v1.0.dom().contains(k) && v2.0.dom().contains(k) && v1.0[k] != v2.0[k];
+                assert(v2.0[k] <= v1.0[k]);
+            }
+        }
     }
 
     pub open spec fn join(self, other: Self) -> Self {
@@ -1030,11 +1072,26 @@ impl<T> CompareAndSwap<T> {
     ;
 }
 
+/// This trait is implemented on types which support atomic operations.
+pub unsafe trait AtomicType {}
+
+macro_rules! declare_type_is_atomic {
+    ($($a:ty),*) => {
+        verus! {
+            $(unsafe impl AtomicType for $a {})*
+        }
+    }
+}
+
+declare_type_is_atomic!(bool, u8, u16, u32, u64, usize, i8, i16, i32, i64);
+
+unsafe impl<T> AtomicType for *mut T {}
+
 // this is just a placeholder type for now, we can refine what the internal representation should be later
 // (Rust's atomic types use an UnsafeCell internally)
-pub struct Ptr<T>(pub T);
+pub struct Ptr<T: AtomicType>(pub T);
 
-impl<T> Ptr<T> {
+impl<T: AtomicType> Ptr<T> {
     pub uninterp spec fn loc(&self) -> CellId;
 
     pub uninterp spec fn value(&self) -> T;
@@ -1128,39 +1185,43 @@ impl<T> Ptr<T> {
     }
 
     // AT-READ-SN -- acquire, and also AT-READ-SN-ACQ
-    // I skipped mutating the ViewAt<AtomicPointsTo> to join the new view. This is easily derivable from monotonicity.
-    // I also skipped outputting the new HistorySeen under ViewAt _at exactly the new thread view_,
+    // I skipped outputting the new HistorySeen under ViewAt _at exactly the new thread view_,
     // and instead just mutated the existing HistorySeen.
     // - You could instead obtain the new HistorySeen under ViewAt _for some view larger than the new thread view_
     //   using ViewAt::new_incl
     pub axiom fn read_acquire(
         &self,
-        tracked v_sn: &ViewSeen,
+        tracked v_sn: &mut ViewSeen,
         tracked h_sn: &mut HistorySeen<T>,
-        tracked pt: &ViewAt<AtomicPointsTo<T>>,
-    ) -> (tracked out: (T, ViewSeen, nat))
+        tracked pt: &mut ViewAt<AtomicPointsTo<T>>,
+    ) -> (tracked out: (T, nat))
         requires
-            self.loc() == pt.value().loc(),
+            self.loc() == old(pt).value().loc(),
             self.loc() == old(h_sn).loc(),
         ensures
             ({
-                let v = out.0;  // returned value
-                let v_sn_new = out.1;  // new ViewSeen
-                let new_hist_sn = h_sn.hist();  // new history for HistorySeen
-                let timestamp = out.2;  // timestamp of the write that was read
-                let message_view = new_hist_sn.view(timestamp);  // message view for the write that was read
-                &&& v_sn_new.view().contains(v_sn.view())
-                &&& pt.value().hist().contains(new_hist_sn) && new_hist_sn.contains(
+                let v = out.0;  // read value
+                let timestamp = out.1;  // timestamp of the write that was read
+                let message_view = h_sn.hist().view(timestamp);  // message view for the write that was read
+                &&& v_sn.view().contains(old(v_sn).view())
+                &&& pt.value().hist().contains(h_sn.hist())
+                // the new HistorySeen will include the write we just read
+                &&& h_sn.loc() == old(
+                    h_sn,
+                ).loc()
+                &&& h_sn.hist().contains(
                     old(h_sn).hist(),
                 )
-                &&& new_hist_sn.value(timestamp)
-                    == v  // the new HistorySeen will include the write we just read
+                &&& h_sn.hist().value(timestamp)
+                    == v
+                // the write is no earlier than the last write that this thread has seen
                 &&& old(h_sn).hist().max_timestamp()
-                    <= timestamp  // the write is no earlier than the last write that was read at this loc
-                &&& v_sn_new.view().contains(
-                    message_view,
-                )  // because this is an acquire read, the latest ViewSeen will contain the message view
-                &&& h_sn.loc() == old(h_sn).loc()
+                    <= timestamp
+                // because this is an acquire read, the message view is joined to the thread's current view
+                &&& v_sn.view().contains(message_view)
+                // the view at which the points-to is known is joined with the updated ViewSeen
+                &&& pt.view() == old(pt).view().join(v_sn.view())
+                &&& pt.value() == old(pt).value()
             }),
     ;
 
@@ -1168,82 +1229,86 @@ impl<T> Ptr<T> {
     // see comments on read_acquire
     pub axiom fn read_relaxed(
         &self,
-        tracked v_sn: &ViewSeen,
+        tracked v_sn: &mut ViewSeen,
         tracked h_sn: &mut HistorySeen<T>,
-        tracked pt: &ViewAt<AtomicPointsTo<T>>,
-    ) -> (tracked out: (T, ViewSeen, Acquire<ViewSeen>, nat))
+        tracked pt: &mut ViewAt<AtomicPointsTo<T>>,
+    ) -> (tracked out: (T, Acquire<ViewSeen>, nat))
         requires
-            self.loc() == pt.value().loc(),
+            self.loc() == old(pt).value().loc(),
             self.loc() == old(h_sn).loc(),
         ensures
             ({
-                let v = out.0;  // returned value
-                let v_sn_new = out.1;  // new ViewSeen
-                let acq_v_sn = out.2;  // the view for the write that was read, under the acquire modality
-                let new_hist_sn = h_sn.hist();  // new history for HistorySeen
-                let timestamp = out.3;  // timestamp of the write that was read
-                let message_view = new_hist_sn.view(timestamp);  // message view for the write that was read
-                &&& v_sn_new.view().contains(v_sn.view())
-                &&& pt.value().hist().contains(new_hist_sn) && new_hist_sn.contains(
+                let v = out.0;  // read value
+                let acq_v_sn = out.1;  // new ViewSeen, under the acquire modality
+                let timestamp = out.2;  // timestamp of the write that was read
+                let message_view = h_sn.hist().view(timestamp);  // message view for the write that was read
+                &&& v_sn.view().contains(v_sn.view())
+                &&& pt.value().hist().contains(h_sn.hist())
+                // the new HistorySeen will include the write we just read
+                &&& h_sn.loc() == old(
+                    h_sn,
+                ).loc()
+                &&& h_sn.hist().contains(
                     old(h_sn).hist(),
                 )
-                &&& new_hist_sn.value(timestamp)
-                    == v  // the new HistorySeen will include the write we just read
+                &&& h_sn.hist().value(timestamp)
+                    == v
+                // the write is no earlier than the last write that this thread has seen
                 &&& old(h_sn).hist().max_timestamp()
-                    <= timestamp  // the write is no earlier than the last write that was read at this loc
-                &&& acq_v_sn.value().view()
-                    == message_view  // because this is a relaxed read, the Acquire<ViewSeen> will be the message view
-                &&& h_sn.loc() == old(h_sn).loc()
+                    <= timestamp
+                // because this is a relaxed read, the message view is joined to the thread's acquire view
+                &&& acq_v_sn.value().view() == message_view
+                // the view at which the points-to is known is joined with the updated ViewSeen
+                &&& pt.view() == old(pt).view().join(v_sn.view())
+                &&& pt.value() == old(pt).value()
             }),
     ;
 
     // AT-WRITE-SN -- release
-    // skipped outputting the new (full) HistorySeen under ViewAt.
-    // instead, joining the write to the old HistorySeen could be derived as follows:
-    // - apply view monotonicity to the returned (singleton) HistorySeen to learn it at the latest view
-    // - apply VA-ELIM to unwrap the HistorySeen
-    // - join the two HistorySeens
-    // I don't know whether knowing the new HistorySeen under ViewAt _at exactly the new thread view_ is useful
-    // (maybe would be useful if you had to transfer this to a different thread?)
+    // Skipped outputting the new (full) HistorySeen under ViewAt, as well as outputting the singleton HistorySeen under ViewAt at the write view.
+    // The mutation of the HistorySeen here (joining the write to its history) could be obtained from the original spec by view monotonicity, VA-ELIM, and history seen join.
+    // I don't know whether knowing the new HistorySeen under ViewAt _at exactly the new thread view_ is necessary (it is stronger than the output here).
     // - You could instead obtain the new HistorySeen under ViewAt _for some view larger than the new thread view_
     //   using ViewAt::new_incl
+    // ^Same for the singleton history, except at the write view
+    // - You could also obtain the singleton history at an arbitrarily larger view using the same technique and by the monotonicity of HistorySeen
     pub axiom fn write_release_concurrent(
         &self,
         t: T,
-        tracked v_sn: &ViewSeen,
-        tracked h_sn: &HistorySeen<T>,
+        tracked v_sn: &mut ViewSeen,
+        tracked h_sn: &mut HistorySeen<T>,
         tracked pt: &mut ViewAt<AtomicPointsTo<T>>,
-    ) -> (tracked out: (ViewSeen, ViewAt<HistorySeen<T>>, nat))
+    ) -> (tracked out: (View, nat))
         requires
-            self.loc() == h_sn.loc(),
+            self.loc() == old(h_sn).loc(),
             self.loc() == old(pt).value().loc(),
             old(pt).value().mode() == AtomicMode::Concurrent,
         ensures
             ({
-                let v_sn_new = out.0;  // new ViewSeen
-                let h_sn_write = out.1;  // HistorySeen containing singleton history for this write, known at the write view
-                let timestamp = out.2;  // timestamp of the new write
-                let write_view = h_sn_write.view();
+                let write_view = out.0;  // view for the write message
+                let timestamp = out.1;  // timestamp of the new write
                 let singleton_write_hist = History::singleton(timestamp, t, Some(write_view));
-                // latest thread view is strictly greater than the old one
-                &&& v_sn_new.view().contains(v_sn.view())
-                &&& v_sn.view()
-                    != v_sn_new.view()
-                // timestamp is greater than all of the thread's observations and is unique for the history
-                &&& h_sn.hist().max_timestamp() < timestamp
+                // the thread's current view is strictly greater than the old one
+                &&& v_sn.view().contains_strict(old(v_sn).view())
+                // timestamp is greater than all of the thread's observations and is unique for this location's history
+                &&& old(h_sn).hist().max_timestamp() < timestamp
                 &&& !old(pt).value().hist().0.dom().contains(
                     timestamp,
                 )
-                // because this is a release write, the write view is the latest thread view
-                &&& write_view == v_sn_new.view()
-                &&& h_sn_write.value().loc() == self.loc()
-                &&& h_sn_write.value().hist() == singleton_write_hist
-                &&& pt.view() == old(pt).view().join(v_sn_new.view())
+                // because this is a release write, the write view is the thread's current view
+                &&& write_view == v_sn.view()
+                // the history seen is updated to contain the write
+                &&& h_sn.loc() == old(
+                    h_sn,
+                ).loc()
+                &&& h_sn.hist() == old(h_sn).hist().join(singleton_write_hist)
+                // the points-to's history is updated to contain the new write, 
+                // and the view at which it is known is joined with the updated ViewSeen
+                &&& pt.view() == old(pt).view().join(v_sn.view())
                 &&& pt.value().loc() == old(pt).value().loc()
                 &&& pt.value().mode() == old(
                     pt,
                 ).value().mode()
-                // the points-to's history has the new write
                 &&& pt.value().hist() == old(pt).value().hist().join(singleton_write_hist)
             }),
     ;
@@ -1253,27 +1318,24 @@ impl<T> Ptr<T> {
     pub axiom fn write_relaxed_concurrent(
         &self,
         t: T,
-        tracked v_sn: &ViewSeen,
-        tracked h_sn: &HistorySeen<T>,
-        tracked rel_v_sn: &Release<ViewSeen>,
+        tracked v_sn: &mut ViewSeen,
+        tracked h_sn: &mut HistorySeen<T>,
+        tracked rel_v_sn: Release<ViewSeen>,
         tracked pt: &mut ViewAt<AtomicPointsTo<T>>,
-    ) -> (tracked out: (ViewSeen, ViewAt<HistorySeen<T>>, nat))
+    ) -> (tracked out: (View, nat))
         requires
-            self.loc() == h_sn.loc(),
+            self.loc() == old(h_sn).loc(),
             self.loc() == old(pt).value().loc(),
             old(pt).value().mode() == AtomicMode::Concurrent,
         ensures
             ({
-                let v_sn_new = out.0;  // new ViewSeen
-                let h_sn_write = out.1;  // HistorySeen containing singleton history for this write, known at the write view
-                let timestamp = out.2;  // timestamp of the new write
-                let write_view = h_sn_write.view();
+                let write_view = out.0; // view for the write message
+                let timestamp = out.1;  // timestamp of the new write
                 let singleton_write_hist = History::singleton(timestamp, t, Some(write_view));
                 // latest thread view is strictly greater than the old one,
                 // and the write view is not contained in the old thread view
-                &&& v_sn_new.view().contains(v_sn.view())
-                &&& v_sn.view() != v_sn_new.view()
-                &&& !v_sn.view().contains(
+                &&& v_sn.view().contains_strict(old(v_sn).view())
+                &&& !old(v_sn).view().contains(
                     write_view,
                 )
                 // timestamp is greater than all of the thread's observations and is unique for the history
@@ -1284,15 +1346,19 @@ impl<T> Ptr<T> {
                 // because this is a relaxed write, the write view contains the release view
                 // and the new thread view contains the write view
                 &&& write_view.contains(rel_v_sn.value().view())
-                &&& v_sn_new.view().contains(write_view)
-                &&& h_sn_write.value().loc() == self.loc()
-                &&& h_sn_write.value().hist() == singleton_write_hist
-                &&& pt.view() == old(pt).view().join(v_sn_new.view())
+                &&& v_sn.view().contains(write_view)
+                // the history seen is updated to contain the write
+                &&& h_sn.loc() == old(
+                    h_sn,
+                ).loc()
+                &&& h_sn.hist() == old(h_sn).hist().join(singleton_write_hist)
+                // the points-to's history is updated to contain the new write, 
+                // and the view at which it is known is joined with the updated ViewSeen
+                &&& pt.view() == old(pt).view().join(v_sn.view())
                 &&& pt.value().loc() == old(pt).value().loc()
                 &&& pt.value().mode() == old(
                     pt,
                 ).value().mode()
-                // the points-to's history has the new write
                 &&& pt.value().hist() == old(pt).value().hist().join(singleton_write_hist)
             }),
     ;
@@ -1303,95 +1369,105 @@ impl<T> Ptr<T> {
     pub proof fn write_release_single_writer(
         &self,
         t: T,
-        tracked v_sn: &ViewSeen,
+        tracked v_sn: &mut ViewSeen,
         tracked sw: &mut SingleWriter<T>,
         tracked pt: &mut ViewAt<AtomicPointsTo<T>>,
-    ) -> (tracked out: (ViewSeen, nat))
+    ) -> (tracked out: nat)
         requires
             self.loc() == old(sw).loc(),
             self.loc() == old(pt).value().loc(),
             old(pt).value().mode() == AtomicMode::SingleWriter,
         ensures
             ({
-                let v_sn_new = out.0;  // new ViewSeen
-                let timestamp = out.1;  // timestamp of the new write
-                let write_view = v_sn_new.view();
+                let timestamp = out;  // timestamp of the new write
+                let write_view = v_sn.view();
                 let singleton_write_hist = History::singleton(timestamp, t, Some(write_view));
-                &&& v_sn_new.view().contains(v_sn.view()) && v_sn.view()
-                    != v_sn_new.view()  // latest thread view is strictly greater than the old one
-                &&& pt.value().hist().max_timestamp()
-                    < timestamp  // timestamp is greater than all of the previous history
-                &&& sw.hist() == old(sw).hist().join(
-                    singleton_write_hist,
-                )  // SingleWriter's history has the new write
-                &&& pt.view() == old(pt).view().join(v_sn_new.view())
+                // latest thread view is strictly greater than the old one
+                &&& v_sn.view().contains_strict(old(v_sn).view())
+                // timestamp is greater than all of the previous history
+                &&& old(pt).value().hist().max_timestamp() < timestamp  
+                // SingleWriter's history has the new write
+                &&& sw.loc() == old(sw).loc()
+                &&& sw.hist() == old(sw).hist().join(singleton_write_hist)  
+                // the points-to's history is updated to contains the new write, 
+                // and the view at which it is known is joined with the updated ViewSeen
+                &&& pt.view() == old(pt).view().join(v_sn.view())
                 &&& pt.value().loc() == old(pt).value().loc()
                 &&& pt.value().mode() == old(pt).value().mode()
                 &&& pt.value().hist() == old(pt).value().hist().join(
                     singleton_write_hist,
-                )  // the points-to's history has the new write
+                )
 
             }),
     {
-        // tried to implement this using existing rules, since it should be possible
+        // tried to implement this using existing rules, since it should be possible.
         // pt is under a ViewAt -- we would want to do ViewAt::apply_fn to do the following:
         //pt.single_writer_as_concurrent(sw);
         // but how to get a proof_fn under ViewAt?
         // to get sw under ViewAt for the same view as pt, we can apply new_incl and weakening as in write_release_single_writer_with_rsrc
+        // actually, there is another problem: here sw is &mut, but single_writer_as_concurrent expects full ownership
         assume(false);
-        let tracked h_sn = sw.get_history_sync().get_history_seen();
-        let tracked (v_sn_new, h_sn_write, timestamp) = self.write_release_concurrent(
+        let tracked mut h_sn = sw.get_history_sync().get_history_seen();
+        let tracked (_, ts) = self.write_release_concurrent(
             t,
             v_sn,
-            &h_sn,
+            &mut h_sn,
             pt,
         );
         //let tracked sw_new = pt.concurrent_as_single_writer();
         //sw = sw_new;
-        (v_sn_new, timestamp)
+        ts
     }
 
     // AT-WRITE-SW-REL
     pub proof fn write_release_single_writer_with_rsrc<P>(
         &self,
         t: T,
-        tracked v_sn: &ViewSeen,
+        tracked v_sn: &mut ViewSeen,
         tracked sw: &mut SingleWriter<T>,
         tracked pt: &mut ViewAt<AtomicPointsTo<T>>,
         tracked rsrc: P,
-    ) -> (tracked out: (ViewSeen, ViewAt<P>, nat))
+    ) -> (tracked out: (ViewAt<P>, nat))
         requires
             self.loc() == old(sw).loc(),
             self.loc() == old(pt).value().loc(),
             old(pt).value().mode() == AtomicMode::SingleWriter,
         ensures
             ({
-                let v_sn_new = out.0;  // new ViewSeen
-                let rsrc_new = out.1;  // rsrc, under ViewAt
-                let timestamp = out.2;  // timestamp of the new write
-                let write_view = v_sn_new.view();
+                let va_rsrc = out.0;  // rsrc, under ViewAt
+                let timestamp = out.1;  // timestamp of the new write
+                let write_view = v_sn.view();
                 let singleton_write_hist = History::singleton(timestamp, t, Some(write_view));
-                &&& v_sn_new.view().contains(v_sn.view()) && v_sn.view()
-                    != v_sn_new.view()  // latest thread view is strictly greater than the old one
-                &&& pt.value().hist().max_timestamp()
-                    < timestamp  // timestamp is greater than all of the previous history
-                &&& rsrc_new.view() == v_sn_new.view() && rsrc_new.value() == rsrc
+                // latest thread view is strictly greater than the old one
+                &&& v_sn.view().contains_strict(old(v_sn).view())
+                // timestamp is greater than all of the previous history
+                &&& old(pt).value().hist().max_timestamp() < timestamp
+                &&& va_rsrc.view() == v_sn.view() && va_rsrc.value() == rsrc
+                // SingleWriter's history has the new write
+                &&& sw.loc() == old(sw).loc()
                 &&& sw.hist() == old(sw).hist().join(
                     singleton_write_hist,
-                )  // SingleWriter's history has the new write
-                &&& pt.view() == old(pt).view().join(v_sn_new.view())
+                )  
+                // the points-to's history is updated to contains the new write, 
+                // and the view at which it is known is joined with the updated ViewSeen
+                &&& pt.view() == old(pt).view().join(v_sn.view())
                 &&& pt.value().loc() == old(pt).value().loc()
                 &&& pt.value().mode() == old(pt).value().mode()
                 &&& pt.value().hist() == old(pt).value().hist().join(
                     singleton_write_hist,
-                )  // the points-to's history has the new write
-
+                )
             }),
     {
-        let tracked (va_rsrc, v_sn0) = ViewAt::new_incl(rsrc, v_sn);
-        let tracked (v_sn_new, timestamp) = self.write_release_single_writer(t, &v_sn0, sw, pt);
-        let tracked rsrc_new = va_rsrc.weaken(v_sn_new.view());
-        (v_sn_new, rsrc_new, timestamp)
+        let tracked (va_rsrc, mut v_sn0) = ViewAt::new_incl(rsrc, v_sn);
+        let tracked timestamp = self.write_release_single_writer(t, &mut v_sn0, sw, pt);
+        // why?????
+        // i have determined that it has to do with the v_sn.view().contains_strict(old(v_sn).view()) postcondition
+        // you can also prove false from v_sn.view() != old(v_sn).view() of even *v_sn != old(v_sn)* as a postcondition
+        // hypothesis: it is because ViewSeen is a struct with no fields
+        assert(false);
+        let tracked va_rsrc = va_rsrc.weaken(v_sn0.view());
+        *v_sn = v_sn0;
+        (va_rsrc, timestamp)
     }
 }
 
