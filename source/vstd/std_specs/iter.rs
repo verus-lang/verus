@@ -98,7 +98,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     pub open spec fn seq(self) -> Seq<I::Item> {
         self.snapshot@.remaining()
     }
-    
+
     // Keep the interface for history and seq the same
     pub open spec fn history(self) -> Seq<I::Item> {
         self.history@

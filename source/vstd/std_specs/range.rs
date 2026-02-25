@@ -133,8 +133,8 @@ impl<A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl fo
             self.start.spec_steps_between_int(self.end) as nat,
             |i: int| self.start.spec_forward_checked_int(i).unwrap(),
         )
-        &&& self.start.spec_steps_between_int(self.end) >= 0
-            || IteratorSpec::remaining(self).len() == 0
+        &&& self.start.spec_steps_between_int(self.end) >= 0 || IteratorSpec::remaining(self).len()
+            == 0
         // &&& (forall|index|
         //     0 <= index <= self.start.spec_steps_between_int(self.end) ==> {
         //         let cur = #[trigger] self.start.spec_forward_checked_int(index).unwrap();
