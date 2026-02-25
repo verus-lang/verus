@@ -1118,6 +1118,25 @@ test_verify_one_file_with_options! {
     } => Err(e) => assert_one_fails(e)
 }
 
+test_verify_one_file! {
+    #[test] for_loop_history => verus_code! {
+        use vstd::prelude::*;
+        fn test_basic() {
+            let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
+            let mut w: Vec<u8> = Vec::new();
+
+            for x in y: v 
+                invariant
+                    w@ == y.history(),
+            {
+                w.push(x);
+            }
+            assert(w.len() == v.len());
+            assert(w@ == v@);
+        }
+    } => Ok(())
+}
+
 test_verify_one_file_with_options! {
     #[test] for_loop1 ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;

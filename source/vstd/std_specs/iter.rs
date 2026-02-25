@@ -89,13 +89,19 @@ pub struct VerusForLoopWrapper<'a, I: Iterator> {
     pub index: Ghost<int>,
     pub snapshot: Ghost<I>,
     pub init: Ghost<Option<&'a I>>,
-    pub iter: I
+    pub iter: I,
+    pub history: Ghost<Seq<I::Item>>,
 }
 
 impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     #[verifier::prophetic]
     pub open spec fn seq(self) -> Seq<I::Item> {
         self.snapshot@.remaining()
+    }
+    
+    // Keep the interface for history and seq the same
+    pub open spec fn history(self) -> Seq<I::Item> {
+        self.history@
     }
 
     /// These properties help maintain the properties in wf,
@@ -113,6 +119,10 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
         &&& 0 <= self.index@ <= self.seq().len()
         &&& self.init@ matches Some(init) ==> self.snapshot@.initial_value_inv(init)
         &&& self.wf_inner()
+        &&& self.iter.obeys_prophetic_iter_laws() ==> {
+                &&& self.history@.len() == self.index@
+                &&& forall |i| 0 <= i < self.index@ ==> #[trigger] self.history@[i] == self.seq()[i]
+            }
     }
 
     /// Bundle the real iterator with its ghost state and loop invariants
@@ -124,13 +134,16 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             s.snapshot == iter,
             s.init == init,
             s.iter == iter,
+            s.history@ == Seq::<I::Item>::empty(),
             s.wf(),
     {
+        broadcast use crate::seq::axiom_seq_empty;
         VerusForLoopWrapper {
             index: Ghost(0),
             snapshot: Ghost(iter),
             init: init,
             iter,
+            history: Ghost(Seq::empty()),
         }
     }
 
@@ -149,6 +162,9 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
                 self.snapshot@.completes() && self.index@ == self.seq().len(),
             self.iter.obeys_prophetic_iter_laws() ==> (ret matches Some(r) ==>
                 r == old(self).seq()[old(self).index@]),
+            // History updates always hold
+            ret matches Some(i) ==> self.history@ == old(self).history@.push(i),
+            ret is None ==> self.history@ == old(self).history@,
             // TODO: Uncomment this line to replace everything below, once general mutable refs are supported
             // call_ensures(I::next, (&mut old(self).iter,), ret),
             self.iter.obeys_prophetic_iter_laws() == old(self).iter.obeys_prophetic_iter_laws(),
@@ -166,12 +182,15 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             self.iter.obeys_prophetic_iter_laws() && old(self).iter.remaining().len() > 0 && self.iter.decrease() is Some ==>
                 decreases_to!(old(self).iter.decrease()->0 => self.iter.decrease()->0),
     {
+        let ghost old_history = self.history@;
         let ret = self.iter.next();
+        if ret.is_some() {
+            self.history = Ghost(old_history.push(ret->0));
+        }
         proof {
+            broadcast use crate::seq::group_seq_axioms;
             if ret.is_some() {
                 self.index@ = self.index@ + 1;
-                // These aren't automatically broadcasted but are needed to prove self.wf_inner()
-                broadcast use {axiom_seq_subrange_len, axiom_seq_subrange_index};
             }
         }
         ret
