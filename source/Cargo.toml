@@ -124,6 +124,7 @@ writeln_empty_string = "allow"
 write_with_newline = "allow"
 wrong_self_convention = "allow"
 zero_ptr = "allow"
+empty_line_after_doc_comments = "allow"
 
 # complexity
 bind_instead_of_map = "allow"
