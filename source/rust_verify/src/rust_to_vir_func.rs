@@ -1538,7 +1538,6 @@ pub(crate) fn check_item_fn<'tcx>(
                     format!("'unsafe' only makes sense on exec-mode functions"),
                 );
             }
-            let output = fn_sig.output().skip_binder();
             let ret_typ_mode = check_fn_decl(
                 sig.span,
                 ctxt,
