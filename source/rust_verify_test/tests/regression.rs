@@ -1555,3 +1555,19 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: block with label")
 }
+
+test_verify_one_file! {
+    #[test] tuple_copy_bound_issue2211 verus_code! {
+        fn requires_copy<T: Copy>(i: T) {
+        }
+
+        fn copy_fails() {
+            let a = 5u8;
+            let b = 5u8;
+            let ref_a = &a;
+            let ref_b = &b;
+            requires_copy((a, b));
+            requires_copy((ref_a, ref_b));
+        }
+    } => Ok(())
+}
