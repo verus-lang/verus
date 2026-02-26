@@ -386,13 +386,27 @@ impl <T, A: Allocator> crate::std_specs::iter::IteratorSpecImpl for IntoIter<T, 
     }
 }
 
+/*
+impl <T, A: Allocator> crate::std_specs::iter::DoubleEndedIteratorSpecImpl for IntoIter<T, A> {
+
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        let len = into_iter_elts(*self).len();
+        if 0 <= index < len {
+            Some(into_iter_elts(*self)[len - index - 1])
+        } else {
+            None
+        }
+    }
+}
+*/
+
 // This is used by `vec![x; n]`
 pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -> (v: Vec<T>)
     ensures
         v.len() == n,
         forall |i| 0 <= i < n ==> cloned(elem, #[trigger] v@[i]);
 
-// To allow reasoning about the ghost iterator when the executable
+// To allow reasoning about the returned iterator when the executable
 // function `into_iter()` is invoked in a `for` loop header (e.g., in
 // `for x in it: v.into_iter() { ... }`), we need to specify the behavior of
 // the iterator in spec mode. To do that, we add
@@ -417,8 +431,8 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
 > as core::iter::IntoIterator>::IntoIter)
     ensures
         iter == spec_into_iter(vec),
-        crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
-        crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, &iter),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_inv(&iter, &iter),
 ;
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()

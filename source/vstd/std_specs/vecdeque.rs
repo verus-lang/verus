@@ -292,7 +292,7 @@ pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T
 
 
 
-// To allow reasoning about the "contents" of the Vec iterator, without using
+// To allow reasoning about the "contents" of the VecDeque iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original vec.
 pub uninterp spec fn into_iter_elts<'a, T: 'a>(i: Iter<'a, T>) -> Seq<&'a T>;
 
@@ -343,8 +343,8 @@ pub assume_specification<'a, T, A: Allocator>[ VecDeque::<T, A>::iter ](
 ) -> (iter: Iter<'a, T>)
     ensures
         iter == spec_iter(v),
-        crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
-        crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, &iter),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_inv(&iter, &iter),
 ;
 
 pub broadcast group group_vec_dequeue_axioms {
