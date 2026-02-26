@@ -107,6 +107,7 @@ pub(crate) enum SpecItem {
     InvMaskNone,
     InvMaskAny,
     InvMaskList,
+    InvMaskListCompl,
     InvMaskSet,
     Atomically,
     NoUnwind,
@@ -466,6 +467,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::inv_mask_none",           VerusItem::Spec(SpecItem::InvMaskNone)),
         ("verus::verus_builtin::inv_mask_any",            VerusItem::Spec(SpecItem::InvMaskAny)),
         ("verus::verus_builtin::inv_mask_list",           VerusItem::Spec(SpecItem::InvMaskList)),
+        ("verus::verus_builtin::inv_mask_list_compl",     VerusItem::Spec(SpecItem::InvMaskListCompl)),
         ("verus::verus_builtin::inv_mask_set",            VerusItem::Spec(SpecItem::InvMaskSet)),
 
         ("verus::verus_builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),

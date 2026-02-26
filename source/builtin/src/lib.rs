@@ -315,6 +315,13 @@ pub fn inv_mask_list<A, E>(_e: E) -> A {
 }
 
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_list_compl"]
+#[verifier::proof]
+pub fn inv_mask_list_compl<A, E>(_e: E) -> A {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_set"]
 #[verifier::proof]
 pub fn inv_mask_set<A, E>(_e: E) -> A {

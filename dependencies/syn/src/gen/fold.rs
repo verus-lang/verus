@@ -626,6 +626,12 @@ pub trait Fold {
     ) -> crate::InvariantNameSetList {
         fold_invariant_name_set_list(self, i)
     }
+    fn fold_invariant_name_set_list_compl(
+        &mut self,
+        i: crate::InvariantNameSetListCompl,
+    ) -> crate::InvariantNameSetListCompl {
+        fold_invariant_name_set_list_compl(self, i)
+    }
     fn fold_invariant_name_set_none(
         &mut self,
         i: crate::InvariantNameSetNone,
@@ -3217,6 +3223,11 @@ where
         crate::InvariantNameSet::List(_binding_0) => {
             crate::InvariantNameSet::List(f.fold_invariant_name_set_list(_binding_0))
         }
+        crate::InvariantNameSet::ListCompl(_binding_0) => {
+            crate::InvariantNameSet::ListCompl(
+                f.fold_invariant_name_set_list_compl(_binding_0),
+            )
+        }
         crate::InvariantNameSet::Set(_binding_0) => {
             crate::InvariantNameSet::Set(f.fold_invariant_name_set_set(_binding_0))
         }
@@ -3241,6 +3252,20 @@ where
     F: Fold + ?Sized,
 {
     crate::InvariantNameSetList {
+        bracket_token: node.bracket_token,
+        exprs: crate::punctuated::fold(node.exprs, f, F::fold_expr),
+    }
+}
+pub fn fold_invariant_name_set_list_compl<F>(
+    f: &mut F,
+    node: crate::InvariantNameSetListCompl,
+) -> crate::InvariantNameSetListCompl
+where
+    F: Fold + ?Sized,
+{
+    crate::InvariantNameSetListCompl {
+        any_token: node.any_token,
+        op_token: node.op_token,
         bracket_token: node.bracket_token,
         exprs: crate::punctuated::fold(node.exprs, f, F::fold_expr),
     }

@@ -571,6 +571,12 @@ pub trait Visit<'ast> {
     fn visit_invariant_name_set_list(&mut self, i: &'ast crate::InvariantNameSetList) {
         visit_invariant_name_set_list(self, i);
     }
+    fn visit_invariant_name_set_list_compl(
+        &mut self,
+        i: &'ast crate::InvariantNameSetListCompl,
+    ) {
+        visit_invariant_name_set_list_compl(self, i);
+    }
     fn visit_invariant_name_set_none(&mut self, i: &'ast crate::InvariantNameSetNone) {
         visit_invariant_name_set_none(self, i);
     }
@@ -3236,6 +3242,9 @@ where
         crate::InvariantNameSet::List(_binding_0) => {
             v.visit_invariant_name_set_list(_binding_0);
         }
+        crate::InvariantNameSet::ListCompl(_binding_0) => {
+            v.visit_invariant_name_set_list_compl(_binding_0);
+        }
         crate::InvariantNameSet::Set(_binding_0) => {
             v.visit_invariant_name_set_set(_binding_0);
         }
@@ -3257,6 +3266,21 @@ pub fn visit_invariant_name_set_list<'ast, V>(
 where
     V: Visit<'ast> + ?Sized,
 {
+    skip!(node.bracket_token);
+    for el in Punctuated::pairs(&node.exprs) {
+        let it = el.value();
+        v.visit_expr(it);
+    }
+}
+pub fn visit_invariant_name_set_list_compl<'ast, V>(
+    v: &mut V,
+    node: &'ast crate::InvariantNameSetListCompl,
+)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.any_token);
+    skip!(node.op_token);
     skip!(node.bracket_token);
     for el in Punctuated::pairs(&node.exprs) {
         let it = el.value();

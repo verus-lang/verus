@@ -5,7 +5,6 @@ use proc_macro2::{Group, Span, TokenStream, TokenTree};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::token::Comma;
 use verus_syn::parse::{Parse, ParseStream};
-use verus_syn::parse_quote_spanned;
 use verus_syn::punctuated::Punctuated;
 use verus_syn::spanned::Spanned;
 use verus_syn::token;
@@ -30,6 +29,7 @@ use verus_syn::{
     Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath, TypeReference,
     UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
 };
+use verus_syn::{InvariantNameSetListCompl, parse_quote_spanned};
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
 
@@ -578,6 +578,20 @@ impl Visitor {
 
                 quote_spanned_builtin!(verus_builtin, bracket_token.span.join() =>
                     #verus_builtin::inv_mask_list([#exprs])
+                )
+            }
+
+            InvariantNameSet::ListCompl(InvariantNameSetListCompl {
+                bracket_token,
+                mut exprs,
+                ..
+            }) => {
+                for expr in exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+
+                quote_spanned_builtin!(verus_builtin, bracket_token.span.join() =>
+                    #verus_builtin::inv_mask_list_compl([#exprs])
                 )
             }
 

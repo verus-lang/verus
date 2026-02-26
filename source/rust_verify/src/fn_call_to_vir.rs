@@ -34,10 +34,10 @@ use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArrayKind, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
     BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX,
-    FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
-    ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place, PlaceX, Quant, Typ,
-    TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck,
-    VirErr,
+    FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind,
+    MaskSpec, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place, PlaceX, Quant,
+    Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent,
+    VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -543,6 +543,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     | SpecItem::InvMaskNone
                     | SpecItem::InvMaskAny
                     | SpecItem::InvMaskList
+                    | SpecItem::InvMaskListCompl
                     | SpecItem::InvMaskSet
                     | SpecItem::NoUnwind
                     | SpecItem::NoUnwindWhen => (true, false),
@@ -633,19 +634,19 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 SpecItem::InvMaskNone => {
                     record_spec_fn_no_proof_args(bctx, expr);
-                    mk_expr(ExprX::InvMask(vir::ast::MaskSpec::InvariantOpens(
+                    mk_expr(ExprX::InvMask(MaskSpec::InvariantOpens(
                         bctx.ctxt.spans.to_air_span(expr.span.clone()),
                         Default::default(),
                     )))
                 }
                 SpecItem::InvMaskAny => {
                     record_spec_fn_no_proof_args(bctx, expr);
-                    mk_expr(ExprX::InvMask(vir::ast::MaskSpec::InvariantOpensExcept(
+                    mk_expr(ExprX::InvMask(MaskSpec::InvariantOpensExcept(
                         bctx.ctxt.spans.to_air_span(expr.span.clone()),
                         Default::default(),
                     )))
                 }
-                SpecItem::InvMaskList => {
+                SpecItem::InvMaskList | SpecItem::InvMaskListCompl => {
                     record_spec_fn_no_proof_args(bctx, expr);
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                     let subargs = extract_array(args[0]);
@@ -660,10 +661,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                         vir_args.push(vir_arg);
                     }
 
-                    mk_expr(ExprX::InvMask(vir::ast::MaskSpec::InvariantOpens(
-                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
-                        Arc::new(vir_args),
-                    )))
+                    let span = bctx.ctxt.spans.to_air_span(expr.span.clone());
+                    let args = Arc::new(vir_args);
+                    mk_expr(ExprX::InvMask(match spec_item {
+                        SpecItem::InvMaskList => MaskSpec::InvariantOpens(span, args),
+                        SpecItem::InvMaskListCompl => MaskSpec::InvariantOpensExcept(span, args),
+                        _ => unreachable!(),
+                    }))
                 }
                 SpecItem::InvMaskSet => {
                     pub fn typ_is_int_set(typ: &Typ) -> bool {
@@ -703,7 +707,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         );
                     }
 
-                    mk_expr(ExprX::InvMask(vir::ast::MaskSpec::InvariantOpensSet(set_expr)))
+                    mk_expr(ExprX::InvMask(MaskSpec::InvariantOpensSet(set_expr)))
                 }
                 SpecItem::Ensures => {
                     record_spec_fn_no_proof_args(bctx, expr);

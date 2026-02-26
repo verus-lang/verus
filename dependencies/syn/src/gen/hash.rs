@@ -1957,8 +1957,12 @@ impl Hash for crate::InvariantNameSet {
                 state.write_u8(2u8);
                 v0.hash(state);
             }
-            crate::InvariantNameSet::Set(v0) => {
+            crate::InvariantNameSet::ListCompl(v0) => {
                 state.write_u8(3u8);
+                v0.hash(state);
+            }
+            crate::InvariantNameSet::Set(v0) => {
+                state.write_u8(4u8);
                 v0.hash(state);
             }
         }
@@ -1973,6 +1977,15 @@ impl Hash for crate::InvariantNameSetAny {
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::InvariantNameSetList {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::InvariantNameSetListCompl {
     fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,

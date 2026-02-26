@@ -266,13 +266,6 @@ impl MaskSet {
     }
 
     pub fn from_list_complement(exps: &Vec<Exp>, span: &Span) -> MaskSet {
-        assert!(
-            exps.is_empty(),
-            "The error messages generated in this module have been designed with \
-            the assumption that `opens_invariants_except` is not implemented. \
-            If you remove this panic, please also adjust the diagnostics."
-        );
-
         exps.into_iter().fold(Self::full(span), |mask, exp| mask.remove(exp))
     }
 

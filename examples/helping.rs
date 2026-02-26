@@ -171,7 +171,7 @@ impl Flag {
                 new_token@.value@ == !old_token.value@,
                 new_token@.id() == old_token.id(),
 
-            outer_mask Set::<int>::full().remove(FLAG_INV),
+            outer_mask any / [FLAG_INV],
             inner_mask none,
         },
         requires self.wf(),

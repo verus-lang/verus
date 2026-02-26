@@ -1518,6 +1518,10 @@ impl PartialEq for crate::InvariantNameSet {
                 crate::InvariantNameSet::List(other0),
             ) => self0 == other0,
             (
+                crate::InvariantNameSet::ListCompl(self0),
+                crate::InvariantNameSet::ListCompl(other0),
+            ) => self0 == other0,
+            (
                 crate::InvariantNameSet::Set(self0),
                 crate::InvariantNameSet::Set(other0),
             ) => self0 == other0,
@@ -1537,6 +1541,14 @@ impl PartialEq for crate::InvariantNameSetAny {
 impl Eq for crate::InvariantNameSetList {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::InvariantNameSetList {
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::InvariantNameSetListCompl {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::InvariantNameSetListCompl {
     fn eq(&self, other: &Self) -> bool {
         self.exprs == other.exprs
     }
