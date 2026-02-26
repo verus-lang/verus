@@ -81,7 +81,7 @@ where
 
         let ident = field_ident_from_rust(&field_def_ident.as_str());
 
-        let typ = ctxt.mid_ty_to_vir(item_id.owner_id.to_def_id(), span, &field_ty, false)?;
+        let typ = ctxt.mid_ty_to_vir(item_id.owner_id.to_def_id(), span, &field_ty, false, None)?;
         let mode = match hir_field_def_opt {
             Some(hir_field_def) => get_mode(Mode::Exec, ctxt.tcx.hir_attrs(hir_field_def.hir_id)),
             None => Mode::Exec,
@@ -359,7 +359,7 @@ pub(crate) fn check_item_union<'tcx>(
             total_vis = total_vis.join(&vis);
 
             let field_ty = ctxt.tcx.type_of(field_def.did).skip_binder();
-            let typ = ctxt.mid_ty_to_vir(def_id, span, &field_ty, false)?;
+            let typ = ctxt.mid_ty_to_vir(def_id, span, &field_ty, false, None)?;
 
             let field = (typ, Mode::Exec, vis);
             let variant = Variant {
@@ -505,7 +505,7 @@ fn get_sized_constraint<'tcx>(
         sized_constraint = sc3;
     }
 
-    Ok(Some(ctxt.mid_ty_to_vir(adt_def.did(), span, &sized_constraint, false)?))
+    Ok(Some(ctxt.mid_ty_to_vir(adt_def.did(), span, &sized_constraint, false, None)?))
 }
 
 pub(crate) fn check_item_external<'tcx>(
