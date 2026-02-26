@@ -106,7 +106,7 @@ To delay the transition, you can use the attribute `#[verifier::deprecated_postc
 #[verifier::deprecated_postcondition_mut_ref_style(true)]
 fn test(a: &mut u8)
     requires *old(a) < 255,
-    ensures *a == *old(a)
+    ensures *a == *old(a) + 1
 {
     *a = *a + 1;
 }
