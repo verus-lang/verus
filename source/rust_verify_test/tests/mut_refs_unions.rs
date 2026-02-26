@@ -491,3 +491,169 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_fails(e, 5)
 }
+
+// TODO(new_mut_ref): fix (false negative)
+test_verify_one_file_with_options! {
+    #[ignore] #[test] eval_order_union_array_issue1 ["new-mut-ref"] => verus_code! {
+        union U { a: [u64; 2], b: bool }
+
+        // fails
+        fn test_union_array_issue() {
+            unsafe {
+                let mut u = U { a: [0, 1] };
+                let x = u.a[{
+                  u = U { b: false };
+                  0
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "some error")
+}
+
+// TODO(new_mut_ref): fix (shouldn't error)
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_array_issue2 ["new-mut-ref"] => verus_code! {
+        union U { a: [u64; 2], b: bool }
+
+        // ok
+        fn test_union_array_issue2() {
+            unsafe {
+                let mut u = U { b: false };
+                let x = u.a[{
+                  u = U { a: [0, 1] };
+                  0
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_array_issue3 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union U { a: [u64; 2], b: bool }
+
+        // out-of-bounds index panics before UB happens
+        // because reading from u.a is _not_ needed to do the bounds-check
+        fn test_union_array_issue3() {
+            unsafe {
+                let mut u = U { a: [0, 1] };
+                let x = u.a[{
+                  u = U { b: false };
+                  3
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
+}
+
+// TODO(new_mut_ref): wrong error message, should error about the bounds-check instead
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_array_issue4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union U { a: [u64; 2], b: bool }
+
+        // out-of-bounds index panics before UB happens
+        // because reading from u.a is _not_ needed to do the bounds-check
+        fn test_union_array_issue4() {
+            unsafe {
+                let mut u = U { b: false };
+                let x = u.a[3];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+// TODO(new_mut_ref): fix (false negative)
+test_verify_one_file_with_options! {
+    #[ignore] #[test] eval_order_union_slice_issue1 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union V { a: &'static [u64], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // fails
+        fn test_union_slice_issue() {
+            let r: &'static [u64] = leak(Box::new([0, 1]));
+
+            unsafe {
+                let mut u = V { a: r };
+                let x = u.a[{
+                  u = V { b: false };
+                  1
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "some error")
+}
+
+// TODO(new_mut_ref): fix (shouldn't error)
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_slice_issue2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union V { a: &'static [u64], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // ok
+        fn test_union_slice_issue2() {
+            let r: &'static [u64] = leak(Box::new([0, 1]));
+
+            unsafe {
+                let mut u = V { b: false };
+                let x = u.a[{
+                  u = V { a: r };
+                  1
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+// TODO(new_mut_ref): wrong error message, should error about the union instead
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_slice_issue3 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union V { a: &'static [u64], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // UB happens before bounds-check
+        // because reading from u.a is needed to do the bounds-check
+        fn test_union_slice_issue3() {
+            let r: &'static [u64] = leak(Box::new([0, 1]));
+
+            unsafe {
+                let mut u = V { a: r };
+                let x = u.a[{
+                  u = V { b: false };
+                  3
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_slice_issue4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union V { a: &'static [u64], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // UB happens before bounds-check
+        // because reading from u.a is needed to do the bounds-check
+        fn test_union_slice_issue4() {
+            let r: &'static [u64] = leak(Box::new([0, 1]));
+
+            unsafe {
+                let mut u = V { b: false };
+                let x = u.a[3];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
