@@ -60,8 +60,7 @@ pub mod relations;
 pub mod rwlock;
 pub mod seq;
 pub mod seq_lib;
-#[doc(hidden)]
-pub mod gset;
+mod gset;
 pub mod iset;
 pub mod set;
 pub mod set_lib;

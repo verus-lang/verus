@@ -176,7 +176,7 @@ impl<K, V> GhostMapAuth<K, V> {
     }
 
     pub closed spec fn dom(self) -> ISet<K> {
-        ISet(self@.dom())
+        self@.dom()
     }
 
     pub closed spec fn spec_index(self, key: K) -> V
@@ -308,7 +308,7 @@ impl<K, V> GhostSubmap<K, V> {
     }
 
     pub closed spec fn dom(self) -> ISet<K> {
-        ISet(self@.dom())
+        self@.dom()
     }
 
     pub closed spec fn spec_index(self, key: K) -> V
@@ -396,17 +396,17 @@ impl<K, V> GhostSubmap<K, V> {
             self.id() == old(self).id(),
             result.id() == self.id(),
             old(self)@ == self@.union_prefer_right(result@),
-            result@.dom() =~= s.0,
-            self@.dom() =~= (old(self).dom() - s).0,
+            result@.dom() =~= s,
+            self@.dom() =~= (old(self).dom() - s),
     {
         use_type_invariant(&*self);
 
         let tracked mut r = Resource::alloc(MapCarrier::<K, V>::unit());
         tracked_swap(&mut self.r, &mut r);
 
-        let rr1 = MapCarrier { auth: None, frac: Some(r.value().frac.unwrap().remove_keys(s.0)) };
+        let rr1 = MapCarrier { auth: None, frac: Some(r.value().frac.unwrap().remove_keys(s)) };
 
-        let rr2 = MapCarrier { auth: None, frac: Some(r.value().frac.unwrap().restrict(s.0)) };
+        let rr2 = MapCarrier { auth: None, frac: Some(r.value().frac.unwrap().restrict(s)) };
 
         assert(r.value().frac == MapCarrier::op(rr1, rr2).frac);
         let tracked (r1, r2) = r.split(rr1, rr2);

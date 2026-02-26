@@ -337,7 +337,7 @@ impl<A> Set<A> {
     /// Creates a [`Map`] whose domain is the given set.
     #[deprecated = "Use `Map::from_set` instead"]
     pub open spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> Map<A, V> {
-        Map::from_set(self.0, f)
+        Map::from_set(self, f)
     }
 
     /// The "full" set. Always returns an ISet since the full set is typically infinite.

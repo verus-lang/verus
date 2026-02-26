@@ -383,7 +383,7 @@ impl<Key, Value, Token> IMapToken<Key, Value, Token>
 
     #[verifier::inline]
     pub open spec fn dom(self) -> ISet<Key> {
-        ISet(self.map().dom())
+        self.map().dom()
     }
 
     #[verifier::inline]
@@ -455,6 +455,12 @@ impl<Key, Value, Token> IMapToken<Key, Value, Token>
             forall |key| #[trigger] map.dom().contains(key)
                 ==> s.map()[key] == map[key].value()
     {
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map[key].instance_id() == instance_id by {
+            assert(map.dom().contains(key));
+        }
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map[key].key() == key by {
+            assert(map.dom().contains(key));
+        }
         let tracked m = GMapToken::from_map(instance_id, map.0);
         Self { m }
     }
@@ -480,7 +486,7 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
 
     #[verifier::inline]
     pub open spec fn dom(self) -> Set<Key> {
-        Set(self.map().dom())
+        self.map().dom()
     }
 
     #[verifier::inline]
@@ -552,6 +558,12 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
             forall |key| #[trigger] map.dom().contains(key)
                 ==> s.map()[key] == map[key].value()
     {
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map[key].instance_id() == instance_id by {
+            assert(map.dom().contains(key));
+        }
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map[key].key() == key by {
+            assert(map.dom().contains(key));
+        }
         let tracked m = GMapToken::from_map(instance_id, map.0);
         Self { m }
     }
@@ -712,7 +724,7 @@ impl<Element, Token> ISetToken<Element, Token>
 
     pub proof fn into_map(tracked self) -> (tracked map: IMap<Element, Token>)
         ensures
-            ISet(map.dom()) == self.set(),
+            map.dom() == self.set(),
             forall |key|
                 #![trigger(map.dom().contains(key))]
                 #![trigger(map.index(key))]
@@ -730,8 +742,14 @@ impl<Element, Token> ISetToken<Element, Token>
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].element() == key,
         ensures
             s.instance_id() == instance_id,
-            s.set() == ISet(map.dom()),
+            s.set() == map.dom(),
     {
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map[key].instance_id() == instance_id by {
+            assert(map.dom().contains(key));
+        }
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map[key].element() == key by {
+            assert(map.dom().contains(key));
+        }
         let tracked m = GSetToken::from_map(instance_id, map.0);
         Self { m }
     }
@@ -795,7 +813,7 @@ impl<Element, Token> SetToken<Element, Token>
 
     pub proof fn into_map(tracked self) -> (tracked map: Map<Element, Token>)
         ensures
-            Set(map.dom()) == self.set(),
+            map.dom() == self.set(),
             forall |key|
                 #![trigger(map.dom().contains(key))]
                 #![trigger(map.index(key))]
@@ -813,8 +831,14 @@ impl<Element, Token> SetToken<Element, Token>
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].element() == key,
         ensures
             s.instance_id() == instance_id,
-            s.set() == Set(map.dom()),
+            s.set() == map.dom(),
     {
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map[key].instance_id() == instance_id by {
+            assert(map.dom().contains(key));
+        }
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map[key].element() == key by {
+            assert(map.dom().contains(key));
+        }
         let tracked m = GSetToken::from_map(instance_id, map.0);
         Self { m }
     }
@@ -913,8 +937,8 @@ impl<Element, Token> MultisetToken<Element, Token>
             self.multiset() == old(self).multiset().insert(token.element()),
     {
         use_type_invariant(&*self);
-        let f = fresh(Set(self.m.dom()));
-        fresh_is_fresh(Set(self.m.dom()));
+        let f = fresh(self.m.dom());
+        fresh_is_fresh(self.m.dom());
         map_values_insert_not_in(
             Self::map_elems(self.m),
             f,

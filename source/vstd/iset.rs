@@ -173,7 +173,7 @@ impl<A> ISet<A> {
     /// Creates a map whose domain is this set.
     #[deprecated = "Use `IMap::from_set` instead"]
     pub open spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> IMap<A, V> {
-        IMap::from_set(self.0, f)
+        IMap::from_set(self, f)
     }
 
     /// Returns `true` if the set is empty.

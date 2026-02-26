@@ -1,12 +1,15 @@
 use super::gset::{Finite, Finiteness, GSet, Infinite};
 use super::iset::ISet;
-use super::set::Set;
+use super::set::{
+    Set,
+    lemma_set_ext_equal_eq,
+};
 #[allow(unused_imports)]
 use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
 
-pub type GenericMap<K, V, FINITE> = super::gmap::GMap<K, V, FINITE>;
+pub(crate) type GenericMap<K, V, FINITE> = super::gmap::GMap<K, V, FINITE>;
 
 #[doc(hidden)]
 pub use super::gmap::{
@@ -31,13 +34,17 @@ pub tracked struct Map<K, V>(pub super::gmap::GMap<K, V, Finite>);
 pub tracked struct IMap<K, V>(pub super::gmap::GMap<K, V, Infinite>);
 
 impl<K, V> Map<K, V> {
-    pub open spec fn from_set(key_set: GSet<K, Finite>, fv: spec_fn(K) -> V) -> Self {
+    pub open spec fn from_set(key_set: Set<K>, fv: spec_fn(K) -> V) -> Self {
+        Map(super::gmap::GMap::from_set(key_set.0, fv))
+    }
+
+    pub(crate) open spec fn from_gset(key_set: GSet<K, Finite>, fv: spec_fn(K) -> V) -> Self {
         Map(super::gmap::GMap::from_set(key_set, fv))
     }
 
     #[verifier::inline]
     pub open spec fn new(key_set: Set<K>, fv: spec_fn(K) -> V) -> Self {
-        Map::from_set(key_set.0, fv)
+        Map::from_set(key_set, fv)
     }
 
     pub open spec fn empty() -> Self {
@@ -48,8 +55,8 @@ impl<K, V> Map<K, V> {
         self.0.idom()
     }
 
-    pub open spec fn dom(self) -> GSet<K, Finite> {
-        self.0.dom()
+    pub open spec fn dom(self) -> Set<K> {
+        Set(self.0.dom())
     }
 
     pub open spec fn contains_key(self, k: K) -> bool {
@@ -96,12 +103,12 @@ impl<K, V> Map<K, V> {
         Map(self.0.union_prefer_right(m2.0))
     }
 
-    pub open spec fn remove_keys(self, keys: GSet<K, Finite>) -> Self {
-        Map(self.0.remove_keys(keys))
+    pub open spec fn remove_keys(self, keys: Set<K>) -> Self {
+        Map(self.0.remove_keys(keys.0))
     }
 
-    pub open spec fn restrict(self, keys: GSet<K, Finite>) -> Self {
-        Map(self.0.restrict(keys))
+    pub open spec fn restrict(self, keys: Set<K>) -> Self {
+        Map(self.0.restrict(keys.0))
     }
 
     pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> Map<K, W> {
@@ -116,8 +123,8 @@ impl<K, V> Map<K, V> {
         Map(self.0.invert())
     }
 
-    pub open spec fn values(self) -> GSet<V, Finite> {
-        self.0.values()
+    pub open spec fn values(self) -> Set<V> {
+        Set(self.0.values())
     }
 
     pub open spec fn submap_of(self, m2: Self) -> bool {
@@ -141,7 +148,11 @@ impl<K, V> Map<K, V> {
         self.0.is_injective()
     }
 
-    pub open spec fn congruent<FINITE2: Finiteness>(self, m2: GenericMap<K, V, FINITE2>) -> bool {
+    pub open spec fn congruent(self, m2: Self) -> bool {
+        self.0.congruent(m2.0)
+    }
+
+    pub(crate) open spec fn congruent_generic<FINITE2: Finiteness>(self, m2: GenericMap<K, V, FINITE2>) -> bool {
         self.0.congruent(m2)
     }
 
@@ -152,8 +163,11 @@ impl<K, V> Map<K, V> {
     pub proof fn lemma_union_prefer_right(self, m2: Self)
         ensures
             #![trigger (self.union_prefer_right(m2))]
-            self.union_prefer_right(m2).dom().to_infinite() == self.dom().generic_union(m2.dom()),
-            self.union_prefer_right(m2).dom().congruent(self.dom().generic_union(m2.dom())),
+            self.union_prefer_right(m2).dom().to_infinite()
+                == self.dom().to_infinite().union(m2.dom().to_infinite()),
+            self.union_prefer_right(m2).dom().to_infinite().congruent(
+                self.dom().to_infinite().union(m2.dom().to_infinite()),
+            ),
             forall|k|
                 #![auto]
                 self.union_prefer_right(m2).dom().contains(k) ==> self.union_prefer_right(m2)[k]
@@ -166,7 +180,7 @@ impl<K, V> Map<K, V> {
         self.0.lemma_union_prefer_right(m2.0);
     }
 
-    pub proof fn lemma_remove_keys_len(self, keys: GSet<K, Finite>)
+    pub proof fn lemma_remove_keys_len(self, keys: Set<K>)
         requires
             keys <= self.dom(),
             keys.finite(),
@@ -175,7 +189,7 @@ impl<K, V> Map<K, V> {
             self.remove_keys(keys).dom().len() == self.dom().len() - keys.len(),
         decreases keys.len(),
     {
-        self.0.lemma_remove_keys_len(keys);
+        self.0.lemma_remove_keys_len(keys.0);
     }
 
     pub axiom fn tracked_empty() -> (tracked out_v: Self)
@@ -203,7 +217,7 @@ impl<K, V> Map<K, V> {
             *v === self.index(key),
     ;
 
-    pub axiom fn tracked_remove_keys(tracked &mut self, keys: GSet<K, Finite>) -> (tracked out_map: Self)
+    pub axiom fn tracked_remove_keys(tracked &mut self, keys: Set<K>) -> (tracked out_map: Self)
         requires
             keys.subset_of(old(self).dom()),
         ensures
@@ -234,7 +248,11 @@ impl<K, V> Map<K, V> {
 }
 
 impl<K, V> IMap<K, V> {
-    pub open spec fn from_set<FINITE2: Finiteness>(key_set: GSet<K, FINITE2>, fv: spec_fn(K) -> V) -> Self {
+    pub open spec fn from_set(key_set: ISet<K>, fv: spec_fn(K) -> V) -> Self {
+        IMap(super::gmap::GMap::from_set(key_set.0, fv))
+    }
+
+    pub(crate) open spec fn from_gset<FINITE2: Finiteness>(key_set: GSet<K, FINITE2>, fv: spec_fn(K) -> V) -> Self {
         IMap(super::gmap::GMap::from_set(key_set.to_infinite(), fv))
     }
 
@@ -254,8 +272,8 @@ impl<K, V> IMap<K, V> {
         self.0.idom()
     }
 
-    pub open spec fn dom(self) -> GSet<K, Infinite> {
-        self.0.dom()
+    pub open spec fn dom(self) -> ISet<K> {
+        ISet(self.0.dom())
     }
 
     pub open spec fn contains_key(self, k: K) -> bool {
@@ -302,12 +320,12 @@ impl<K, V> IMap<K, V> {
         IMap(self.0.union_prefer_right(m2.0))
     }
 
-    pub open spec fn remove_keys(self, keys: GSet<K, Infinite>) -> Self {
-        IMap(self.0.remove_keys(keys))
+    pub open spec fn remove_keys(self, keys: ISet<K>) -> Self {
+        IMap(self.0.remove_keys(keys.0))
     }
 
-    pub open spec fn restrict(self, keys: GSet<K, Infinite>) -> Self {
-        IMap(self.0.restrict(keys))
+    pub open spec fn restrict(self, keys: ISet<K>) -> Self {
+        IMap(self.0.restrict(keys.0))
     }
 
     pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> IMap<K, W> {
@@ -322,8 +340,8 @@ impl<K, V> IMap<K, V> {
         IMap(self.0.invert())
     }
 
-    pub open spec fn values(self) -> GSet<V, Infinite> {
-        self.0.values()
+    pub open spec fn values(self) -> ISet<V> {
+        ISet(self.0.values())
     }
 
     pub open spec fn submap_of(self, m2: Self) -> bool {
@@ -335,7 +353,11 @@ impl<K, V> IMap<K, V> {
         self.submap_of(m2)
     }
 
-    pub open spec fn congruent<FINITE2: Finiteness>(self, m2: GenericMap<K, V, FINITE2>) -> bool {
+    pub open spec fn congruent(self, m2: Self) -> bool {
+        self.0.congruent(m2.0)
+    }
+
+    pub(crate) open spec fn congruent_generic<FINITE2: Finiteness>(self, m2: GenericMap<K, V, FINITE2>) -> bool {
         self.0.congruent(m2)
     }
 
@@ -377,14 +399,14 @@ pub broadcast proof fn lemma_infinite_new_ensures<K, V>(fk: spec_fn(K) -> bool, 
             #![auto]
             fk(k) <==> IMap::new(fk, fv).dom().contains(k),
         forall|k| #![auto] fk(k) ==> IMap::new(fk, fv)[k] == fv(k),
-        IMap::new(fk, fv).dom() == ISet::new(fk).0,
+        IMap::new(fk, fv).dom() == ISet::new(fk),
 {
     super::gmap::lemma_infinite_new_ensures(fk, fv);
 }
 
 pub broadcast proof fn lemma_map_empty<K, V>()
     ensures
-        #[trigger] Map::<K, V>::empty().dom() == Set::<K>::empty().0,
+        #[trigger] Map::<K, V>::empty().dom() == Set::<K>::empty(),
 {
     broadcast use super::gmap::lemma_map_empty;
 }
@@ -394,6 +416,13 @@ pub broadcast proof fn lemma_map_insert_domain<K, V>(m: Map<K, V>, key: K, value
         #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
     super::gmap::lemma_map_insert_domain(m.0, key, value);
+    reveal(Set::insert);
+    assert forall|k: K| #[trigger] m.insert(key, value).dom().contains(k) == m.dom().insert(key).contains(k) by {
+        assert(m.insert(key, value).dom().contains(k) == m.0.insert(key, value).dom().contains(k));
+        assert(m.0.insert(key, value).dom().contains(k) == m.0.dom().insert(key).contains(k));
+        assert(m.dom().insert(key).contains(k) == m.0.dom().insert(key).contains(k));
+    }
+    lemma_set_ext_equal_eq(m.insert(key, value).dom(), m.dom().insert(key));
 }
 
 pub broadcast proof fn lemma_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
@@ -417,6 +446,13 @@ pub broadcast proof fn lemma_map_remove_domain<K, V>(m: Map<K, V>, key: K)
         #[trigger] m.remove(key).dom() == m.dom().remove(key),
 {
     super::gmap::lemma_map_remove_domain(m.0, key);
+    reveal(Set::remove);
+    assert forall|k: K| #[trigger] m.remove(key).dom().contains(k) == m.dom().remove(key).contains(k) by {
+        assert(m.remove(key).dom().contains(k) == m.0.remove(key).dom().contains(k));
+        assert(m.0.remove(key).dom().contains(k) == m.0.dom().remove(key).contains(k));
+        assert(m.dom().remove(key).contains(k) == m.0.dom().remove(key).contains(k));
+    }
+    lemma_set_ext_equal_eq(m.remove(key).dom(), m.dom().remove(key));
 }
 
 pub broadcast proof fn lemma_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)

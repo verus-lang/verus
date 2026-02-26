@@ -248,7 +248,7 @@ pub broadcast proof fn lemma_from_map_dom<V>(mymap: Map<V, nat>)
     requires
         forall|k| #[trigger] mymap.contains_key(k) ==> mymap[k] > 0,
     ensures
-        #[trigger] Multiset::from_map(mymap).dom() == Set(mymap.dom()),
+        #[trigger] Multiset::from_map(mymap).dom() == mymap.dom(),
 {
     broadcast use {
         super::set::group_set_lemmas,
@@ -258,7 +258,7 @@ pub broadcast proof fn lemma_from_map_dom<V>(mymap: Map<V, nat>)
     };
 
     let lhs = Multiset::from_map(mymap).dom();
-    let rhs = Set(mymap.dom());
+    let rhs = mymap.dom();
     assert forall|v: V| lhs.contains(v) <==> rhs.contains(v) by {
         if lhs.contains(v) {
             assert(Multiset::from_map(mymap).count(v) > 0);

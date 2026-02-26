@@ -544,19 +544,19 @@ pub broadcast proof fn lemma_union_remove_right<K, V>(m1: Map<K, V>, m2: Map<K, 
 
 pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
-        #[trigger] m1.union_prefer_right(m2).dom() == (Set(m1.dom()) + Set(m2.dom())).0,
+        #[trigger] m1.union_prefer_right(m2).dom() == (m1.dom() + m2.dom()),
 {
     let lhs = m1.union_prefer_right(m2).dom();
-    let rhs = (Set(m1.dom()) + Set(m2.dom())).0;
+    let rhs = (m1.dom() + m2.dom());
     m1.lemma_union_prefer_right(m2);
     assert(lhs =~= rhs) by {
         assert forall|k: K| #[trigger] lhs.contains(k) == rhs.contains(k) by {
-            assert(lhs.contains(k) <==> m1.dom().generic_union(m2.dom()).contains(k));
-            lemma_set_generic_union(m1.dom(), m2.dom(), k);
-            lemma_set_union(Set(m1.dom()), Set(m2.dom()), k);
+            assert(lhs.contains(k) <==> m1.dom().to_infinite().generic_union(m2.dom().0).contains(k));
+            lemma_set_generic_union(m1.dom().0, m2.dom().0, k);
+            lemma_set_union(m1.dom(), m2.dom(), k);
         }
     }
-    lemma_gset_ext_equal_eq(lhs, rhs);
+    lemma_set_ext_equal_eq(lhs, rhs);
     assert(lhs == rhs);
 }
 
@@ -571,7 +571,7 @@ pub broadcast proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K,
 {
     let u = m1.union_prefer_right(m2);
     lemma_union_dom(m1, m2);
-    assert(u.dom() == (Set(m1.dom()) + Set(m2.dom())).0);  //proves u.dom() is finite
+    assert(u.dom() == (m1.dom() + m2.dom()));  //proves u.dom() is finite
     assert(u.remove_keys(m1.dom()).dom() =~= m2.dom());
     assert(u.remove_keys(m1.dom()).dom().len() == u.dom().len() - m1.dom().len()) by {
         u.lemma_remove_keys_len(m1.dom());
@@ -609,17 +609,17 @@ pub broadcast proof fn lemma_submap_of_trans<K, V, FINITE: Finiteness>(
 /// The domain of a map constructed with `IMap::new(fk, fv)` is equivalent to the set constructed with `ISet::new(fk)`.
 pub broadcast proof fn lemma_imap_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] IMap::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)).0,
+        #[trigger] IMap::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)),
 {
-    assert(IMap::new(fk, fv).dom() =~= ISet::<K>::new(|k: K| fk(k)).0);
+    assert(IMap::new(fk, fv).dom() =~= ISet::<K>::new(|k: K| fk(k)));
 }
 
 /// The domain of a map constructed with `Map::new(key_set, fv)` is equivalent to `key_set`.
 pub broadcast proof fn lemma_map_new_domain<K, V>(key_set: Set<K>, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(key_set, fv).dom() == key_set.0,
+        #[trigger] Map::<K, V>::new(key_set, fv).dom() == key_set,
 {
-    assert(Map::<K, V>::new(key_set, fv).dom() =~= key_set.0);  // issue #1534
+    assert(Map::<K, V>::new(key_set, fv).dom() =~= key_set);  // issue #1534
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -630,17 +630,17 @@ pub broadcast proof fn lemma_imap_new_values<K, V>(fk: spec_fn(K) -> bool, fv: s
     ensures
         #[trigger] IMap::<K, V>::new(fk, fv).values() == ISet::<V>::new(
             |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
-        ).0,
+        ),
 {
     let keys = ISet::<K>::new(fk);
     let values = IMap::<K, V>::new(fk, fv).values();
     let map = IMap::<K, V>::new(fk, fv);
-    assert(map.dom() =~= keys.0);
+    assert(map.dom() =~= keys);
     assert(forall|k: K| #[trigger] fk(k) ==> keys.contains(k));
 
     assert(values =~= ISet::<V>::new(
         |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
-    ).0);
+    ));
 }
 
 /// Properties of maps from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
@@ -648,11 +648,11 @@ pub broadcast proof fn lemma_imap_new_values<K, V>(fk: spec_fn(K) -> bool, fv: s
 pub proof fn lemma_map_properties<K, V>()
     ensures
         forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
-            IMap::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)).0,  //from lemma_imap_new_domain
+            IMap::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)),  //from lemma_imap_new_domain
         forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
             IMap::<K, V>::new(fk, fv).values() == ISet::<V>::new(
                 |v: V| exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v,
-            ).0,  //from lemma_imap_new_values
+            ),  //from lemma_imap_new_values
 {
     broadcast use group_map_properties;
 

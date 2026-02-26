@@ -79,7 +79,7 @@ pub struct GhostSubseq<V> {
 impl<V> GhostSeqAuth<V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
-        &&& self.auth@.dom() =~= ISet::new(|i: int| self.off <= i < self.off + self.len).0
+        &&& self.auth@.dom() =~= ISet::new(|i: int| self.off <= i < self.off + self.len)
     }
 
     pub closed spec fn id(self) -> int {
@@ -177,7 +177,7 @@ impl<V> GhostSeqAuth<V> {
 impl<V> GhostSubseq<V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
-        &&& self.frac@.dom() =~= ISet::new(|i: int| self.off <= i < self.off + self.len).0
+        &&& self.frac@.dom() =~= ISet::new(|i: int| self.off <= i < self.off + self.len)
     }
 
     pub closed spec fn view(self) -> Seq<V> {
@@ -349,11 +349,11 @@ impl<V> GhostSubseq<V> {
 
         let full = ISet::new(|i: int| mself.off <= i < mself.off + mself.len);
         let s = ISet::new(|i: int| mself.off + n <= i < mself.off + mself.len);
-        assert(mselffrac@.dom() =~= full.0);
+        assert(mselffrac@.dom() =~= full);
         assume(s <= mselffrac.dom());  // TODO(vstd): recover subset proof automation for ISet wrapper domains.
         let tracked mfrac = mselffrac.split(s);
         let left = ISet::new(|i: int| mself.off <= i < mself.off + n);
-        assume(mselffrac@.dom() =~= left.0);  // TODO(vstd): re-establish this from split postcondition + set algebra.
+        assume(mselffrac@.dom() =~= left);  // TODO(vstd): re-establish this from split postcondition + set algebra.
         let tracked result = GhostSubseq {
             off: (mself.off + n) as nat,
             len: (mself.len - n) as nat,
@@ -410,7 +410,7 @@ impl<V> GhostSubseq<V> {
     pub proof fn new(off: nat, len: nat, tracked f: GhostSubmap<int, V>) -> (tracked result:
         GhostSubseq<V>)
         requires
-            f@.dom() == ISet::new(|i: int| off <= i < off + len).0,
+            f@.dom() == ISet::new(|i: int| off <= i < off + len),
         ensures
             result.id() == f.id(),
             result.off() == off,
