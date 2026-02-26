@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, Ident,
     InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Quant, SpannedTyped,
-    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarBinders,
+    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
@@ -9,10 +9,12 @@ use crate::def::{Spanned, unique_bound, user_local_name};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{
-    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDeclKind, Stm, Trig, Trigs, UniqueIdent,
+    BndX, CallFun, Exp, ExpX, Exps, FuncCheckSst, FunctionSst, InternalFun, LocalDeclKind, Stm,
+    StmX, Trig, Trigs, UniqueIdent,
 };
+use crate::sst_visitor::{NoScoper, Visitor, Walk};
 use air::scope_map::ScopeMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 fn free_vars_exp_scope(
@@ -479,7 +481,9 @@ impl ExpX {
                 UnaryOp::MutRefFuture(_) => {
                     (format!("mut_ref_future({})", exp.x.to_string_prec(global, 99)), 0)
                 }
-                UnaryOp::MutRefFinal => (format!("fin({})", exp.x.to_string_prec(global, 99)), 0),
+                UnaryOp::MutRefFinal(_) => {
+                    (format!("final({})", exp.x.to_string_prec(global, 99)), 0)
+                }
                 UnaryOp::Length(_kind) => {
                     (format!("length({})", exp.x.to_string_prec(global, 99)), 0)
                 }
@@ -513,6 +517,9 @@ impl ExpX {
                         (format!("{}.{}", exp.x.to_user_string(global), field.field), 99)
                     }
                     CustomErr(_msg) => {
+                        (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
+                    }
+                    ProofNote(_label) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }
                 }
@@ -731,6 +738,98 @@ impl ExpX {
     }
 }
 
+pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<Arc<String>> {
+    match &exp.x {
+        ExpX::UnaryOpr(UnaryOpr::Box(_), e) => sst_exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => sst_exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e) => sst_exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
+        _ => None,
+    }
+}
+
+/// Collect proof notes from a function's `requires` clauses.
+pub fn func_collect_requires_proof_notes(func: &FunctionSst) -> HashSet<String> {
+    func.x.decl.reqs.iter().filter_map(sst_exp_get_proof_note).map(|s| s.to_string()).collect()
+}
+
+/// Collect proof notes from a function's proof obligations.
+///
+/// Each proof obligation is one of the following cases:
+/// - an `assert` statement
+/// - a `requires` clause of a callee (another function called by this function)
+/// - an `ensures` clause of this function
+pub fn func_collect_obligation_proof_notes(
+    func: &FunctionSst,
+    func_to_requires_proof_notes: &HashMap<Fun, HashSet<String>>,
+) -> HashSet<String> {
+    let mut collector = ObligationProofNoteCollector::new(func_to_requires_proof_notes);
+    if let Some(func_check) = func.x.exec_proof_check.as_ref() {
+        collector.collect_func_check(func_check);
+    }
+    if let Some(spec_axioms) = func.x.axioms.spec_axioms.as_ref()
+        && let Some(func_check) = spec_axioms.termination_check.as_ref()
+    {
+        collector.collect_func_check(func_check);
+    }
+    collector.proof_notes
+}
+
+struct ObligationProofNoteCollector<'a> {
+    proof_notes: HashSet<String>,
+    func_to_requires_proof_notes: &'a HashMap<Fun, HashSet<String>>,
+}
+
+impl<'a> ObligationProofNoteCollector<'a> {
+    fn new(func_to_requires_proof_notes: &'a HashMap<Fun, HashSet<String>>) -> Self {
+        Self { proof_notes: HashSet::new(), func_to_requires_proof_notes }
+    }
+
+    fn collect_func_check(&mut self, func_check: &FuncCheckSst) {
+        // NOTE: Skip `func_check.reqs` to exclude `requires` clauses.
+        // Collect proof notes from this function's own `ensures` clauses.
+        for ens in func_check.post_condition.ens_exps.iter() {
+            if let Some(label) = sst_exp_get_proof_note(ens) {
+                self.proof_notes.insert(label.to_string());
+            }
+        }
+        for stm in func_check.post_condition.ens_spec_precondition_stms.iter() {
+            self.visit_stm(stm).expect("proof-note collector should not fail");
+        }
+        self.visit_unwind(&func_check.unwind).expect("proof-note collector should not fail");
+        self.visit_stm(&func_check.body).expect("proof-note collector should not fail");
+    }
+}
+
+impl<'a> Visitor<Walk, (), NoScoper> for ObligationProofNoteCollector<'a> {
+    fn visit_stm(&mut self, stm: &Stm) -> Result<(), ()> {
+        match &stm.x {
+            // Collect proof note labels from callee `requires` clauses.
+            StmX::Call { fun, .. } => {
+                if let Some(callee_req_notes) = self.func_to_requires_proof_notes.get(fun) {
+                    self.proof_notes.extend(callee_req_notes.iter().cloned());
+                }
+            }
+            // Collect proof note labels from `assert` statements.
+            StmX::Assert(_, maybe_msg, exp) => {
+                if let Some(label) = sst_exp_get_proof_note(exp) {
+                    self.proof_notes.insert(label.to_string());
+                }
+                if let Some(msg) = maybe_msg {
+                    // This is likely unnecessary; here for future-proofing.
+                    for label in msg.labels.iter() {
+                        if label.is_proof_note {
+                            self.proof_notes.insert(label.note.clone());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        self.visit_stm_rec(stm)
+    }
+}
+
 pub fn sst_arch_word_bits(span: &Span) -> Exp {
     SpannedTyped::new(
         span,
@@ -749,7 +848,6 @@ pub fn sst_arch_word_bits(span: &Span) -> Exp {
 /// type. For example:
 ///   - If the input type is `u8`, then it returns a constant `8`
 ///   - If the input type is `usize`, then it returns the symbolic `arch_word_bits`
-
 pub fn sst_bitwidth(span: &Span, w: &IntegerTypeBitwidth, arch: &crate::ast::ArchWordBits) -> Exp {
     match w.to_exact(arch) {
         Some(w) => sst_int_literal(span, w as i128),
@@ -860,6 +958,7 @@ impl LocalDeclKind {
         match self {
             LocalDeclKind::Param { mutable } => *mutable,
             LocalDeclKind::StmtLet { mutable } => *mutable,
+            LocalDeclKind::ExecClosureParam { mutable } => *mutable,
             LocalDeclKind::Return
             | LocalDeclKind::TempViaAssign
             | LocalDeclKind::Decreases
@@ -871,7 +970,6 @@ impl LocalDeclKind {
             | LocalDeclKind::ChooseBinder
             | LocalDeclKind::ClosureBinder
             | LocalDeclKind::ExecClosureId
-            | LocalDeclKind::ExecClosureParam
             | LocalDeclKind::ExecClosureRet
             | LocalDeclKind::Nondeterministic
             | LocalDeclKind::OpenInvariantInnerTemp
@@ -1008,4 +1106,18 @@ pub(crate) fn sst_call_ensures(
         Arc::new(vec![fndef_value, args_tuple, return_value]),
     );
     SpannedTyped::new(span, &Arc::new(TypX::Bool), expx)
+}
+
+pub(crate) fn exp_with_vars_at_pre_state(exp: &Exp, vars: &HashSet<UniqueIdent>) -> Exp {
+    crate::sst_visitor::map_exp_visitor(exp, &mut |e| match &e.x {
+        ExpX::Var(uid) if vars.contains(uid) => e.new_x(ExpX::VarAt(uid.clone(), VarAt::Pre)),
+        _ => e.clone(),
+    })
+}
+
+pub(crate) fn stm_with_vars_at_pre_state(stm: &Stm, vars: &HashSet<UniqueIdent>) -> Stm {
+    crate::sst_visitor::map_exps_in_stm_visitor(stm, &mut |e| match &e.x {
+        ExpX::Var(uid) if vars.contains(uid) => e.new_x(ExpX::VarAt(uid.clone(), VarAt::Pre)),
+        _ => e.clone(),
+    })
 }

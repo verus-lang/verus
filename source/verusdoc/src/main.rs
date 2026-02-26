@@ -167,7 +167,6 @@ fn interpret_as_verusdoc_attribute(node: &NodeRef) -> Option<VerusDocAttr> {
 }
 
 /// If this node has a single child, return it. Otherwise, None.
-
 fn get_single_child(node: &NodeRef) -> Option<NodeRef> {
     let child = node.first_child()?;
     if child.next_sibling().is_some() {
@@ -177,18 +176,16 @@ fn get_single_child(node: &NodeRef) -> Option<NodeRef> {
 }
 
 /// Check if the node is an element with the given tag name
-
 fn is_element(node: &NodeRef, name: &str) -> bool {
     match node.as_element() {
         None => false,
-        Some(data) => data.name.local == name.to_string(),
+        Some(data) => *data.name.local == *name,
     }
 }
 
 /// Returns node that looks like
 ///     <span class="verus-spec-keyword">requires</span>
 /// (the inner text is given by `spec_name`
-
 fn mk_spec_keyword_node(spec_name: &str) -> NodeRef {
     let t = NodeRef::new_text(spec_name);
 
@@ -201,7 +198,6 @@ fn mk_spec_keyword_node(spec_name: &str) -> NodeRef {
 }
 
 /// <span class="verus-sig-keyword">{spec name}</span>
-
 fn mk_sig_keyword_node(spec_name: &str) -> NodeRef {
     let t = NodeRef::new_text(spec_name);
 
@@ -214,7 +210,6 @@ fn mk_sig_keyword_node(spec_name: &str) -> NodeRef {
 }
 
 /// <span class="verus-ret-name">{spec name}</span>
-
 fn mk_ret_name_node(spec_name: &str) -> NodeRef {
     let t = NodeRef::new_text(spec_name);
 
@@ -227,7 +222,6 @@ fn mk_ret_name_node(spec_name: &str) -> NodeRef {
 }
 
 /// <div class="verus-spec"></div>
-
 fn mk_spec_node() -> NodeRef {
     let qual_name = QualName::new(None, ns!(html), local_name!("div"));
     let nr = NodeRef::new_element(qual_name, vec![]);
@@ -720,8 +714,7 @@ fn write_css(dir_path: &Path) {
 
     let rustdoc_css_path = rustdoc_css_path.unwrap();
 
-    let mut rustdoc_css =
-        std::fs::OpenOptions::new().write(true).append(true).open(rustdoc_css_path).unwrap();
+    let mut rustdoc_css = std::fs::OpenOptions::new().append(true).open(rustdoc_css_path).unwrap();
     rustdoc_css
         .write_all(
             r#"

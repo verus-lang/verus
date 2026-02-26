@@ -16,6 +16,8 @@ impl AddOptions for VargoCheck {
 
         if let Some(p) = self.package.as_deref() {
             cargo.args(["--package", p]);
+        } else {
+            cargo.arg("--workspace");
         }
 
         for exclude in &self.exclude {
@@ -32,13 +34,6 @@ impl AddOptions for VargoCheck {
 }
 
 impl VargoCheck {
-    fn cmd_for_package(&self, package: &str) -> Self {
-        let mut cpy = self.clone();
-        cpy.package = Some(package.to_owned());
-        cpy.apply_feature_filter();
-        cpy
-    }
-
     fn apply_feature_filter(&mut self) {
         match self.package.as_deref() {
             Some("rust_verify") => {
@@ -61,18 +56,6 @@ pub fn check(
     context: &VargoContext,
     vargo_cmd: &VargoCheck,
 ) -> anyhow::Result<()> {
-    const PACKAGES: &[&str] = &[
-        "air",
-        "cargo-verus",
-        "rust_verify",
-        "verus",
-        "verus_builtin",
-        "verus_builtin_macros",
-        "verusdoc",
-        "verus_state_machines_macros",
-        "vstd_build",
-    ];
-
     if context.in_nextest {
         return Ok(());
     }
@@ -80,15 +63,11 @@ pub fn check(
     if vargo_cmd.package.is_some() {
         let mut vargo_cmd = vargo_cmd.clone();
         vargo_cmd.apply_feature_filter();
-        check_target(options, context, &vargo_cmd)?;
+        check_target(options, context, &vargo_cmd)
     } else {
-        for package in PACKAGES.iter().filter(|p| !vargo_cmd.exclude.contains(**p)) {
-            let vargo_cmd = vargo_cmd.cmd_for_package(package);
-            check_target(options, context, &vargo_cmd)?;
-        }
+        info!("running cargo-check",);
+        cargo_run(options, context, vargo_cmd)
     }
-
-    Ok(())
 }
 
 fn check_target(

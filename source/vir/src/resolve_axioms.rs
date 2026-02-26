@@ -341,7 +341,7 @@ pub fn resolve_axioms(ctx: &Ctx) -> Vec<Command> {
                 nodes.push(resolve_decoration_axiom(dec));
             }
             ResolvableType::Slice | ResolvableType::Array => {
-                // TODO(new_mut_ref)
+                // exported through vstd broadcast axioms
             }
         }
     }

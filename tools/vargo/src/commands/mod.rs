@@ -12,6 +12,7 @@ use crate::VSTD_FILES;
 mod build;
 mod check;
 mod clean;
+mod clippy;
 mod cmd;
 mod fmt;
 mod metadata;
@@ -24,6 +25,7 @@ use anyhow::Context;
 pub use build::build;
 pub use check::check;
 pub use clean::clean;
+pub use clippy::clippy;
 pub use cmd::cmd;
 pub use fmt::fmt;
 pub use metadata::metadata;
@@ -92,14 +94,9 @@ fn test_rust_min_stack() -> String {
 }
 
 pub(crate) fn log_command(cmd: &std::process::Command, verbose: bool) {
-    use crate::VARGO_NEST;
     use yansi::Paint;
     if verbose {
-        let vargo_nest = *VARGO_NEST.read().unwrap();
-        eprintln!(
-            "{}",
-            format!("vargo running [{}]: {:?}", vargo_nest, cmd).magenta()
-        );
+        eprintln!("{}", format!("vargo running: {:?}", cmd).magenta());
     }
 }
 

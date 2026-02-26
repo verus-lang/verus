@@ -236,6 +236,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_founded1 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List {
             Cons(int, Box<List>)
         }
@@ -244,6 +245,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_founded2 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List {
             Cons1(int, Box<List>),
             Cons2(int, Box<List>),
@@ -253,6 +255,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_founded3 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List1 {
             Cons(int, Box<List2>)
         }
@@ -264,6 +267,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_founded4 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List {
             Cons(int, (Box<List>, bool))
         }
@@ -272,6 +276,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_field_unbox verus_code! {
+        use vstd::std_specs::alloc::*;
         struct B { b: bool }
         fn foo(s1: Box<B>, s2: &Box<B>, s3: Box<&B>, s4: Box<(bool, bool)>) {
             let z1 = s1.b;
@@ -1319,10 +1324,10 @@ test_verify_one_file! {
         }
 
         proof fn test1(t: S<nat>)
-            requires ({
+            requires {
                 &&& t is That ==> t->v == 3
                 &&& t is This ==> t->0 == 2
-            })
+            },
         {
             match t {
                 S::This(a) => {
@@ -1346,10 +1351,10 @@ test_verify_one_file! {
         }
 
         proof fn test1(t: S<nat>)
-            requires ({
+            requires {
                 &&& t is That ==> t->v == 3
                 &&& t is This ==> t->0 == 2
-            })
+            },
         {
             match t {
                 S::This(a) => {
@@ -1439,10 +1444,10 @@ const MATCHES_SYNTAX_COMMON: &str = verus_code_str! {
 test_verify_one_file! {
     #[test] matches_syntax_1_pass MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
+            requires {
                 &&& t matches S::That { v: a } ==> a == 3
                 &&& t matches S::This(v) ==> v == 4
-            })
+            },
         {
             match t {
                 S::This(v) => assert(v == 4),
@@ -1456,10 +1461,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] matches_syntax_1_fails MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
+            requires {
                 &&& t matches S::That { v: a } ==> a == 3
                 &&& t matches S::This(v) ==> v == 4
-            })
+            },
         {
             match t {
                 S::This(v) => assert(v == 3), // FAILS
@@ -1472,9 +1477,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] matches_syntax_2 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
+            requires {
                 &&& t matches S::That { v: _ }
-            })
+            },
         {
             assert(t is That);
         }
@@ -1484,10 +1489,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] matches_syntax_3 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
+            requires {
                 && t matches S::That { v: a }
                 && a == 3
-            })
+            },
         {
             assert(t is That);
             assert(match t {
@@ -1501,11 +1506,11 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] matches_syntax_4 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
+            requires {
                 &&& t matches S::That { v: a }
                 &&& a > 3
                 &&& a < 5
-            })
+            },
         {
             assert(t is That);
             assert(match t {

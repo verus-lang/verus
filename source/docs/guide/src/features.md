@@ -4,7 +4,7 @@ Quick reference for supported Rust features. Note that this list does not includ
 
 Note that Verus is in active development. If a feature is unsupported, it might be genuinely hard, or it might just be low priority. See the [github issues](https://github.com/verus-lang/verus/issues) or [discussions](https://github.com/verus-lang/verus/discussions) for information on planned features.
 
-**Last Updated: 2024-06-26**
+**Last Updated: 2026-02-18**
 
 <div class="table-wrapper"><table>
   <thead><tr><th colspan="2"><strong>Items</strong></th></tr></thead>
@@ -15,7 +15,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Associated constants</td>
-    <td>Not supported</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Structs</td>
@@ -43,7 +43,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Const items</td>
-    <td>Partially supported</td>
+    <td><a href="const.html">Partially supported</a></td>
   </tr>
   <tr>
     <td>Static items</td>
@@ -70,7 +70,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Custom discriminants</td>
-    <td>Not supported</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>public / private fields</td>
@@ -133,7 +133,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td><code>==</code>, <code>!=</code></td>
-    <td>Supported, for certain types</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Type cast (<code>as</code>)</td>
@@ -191,12 +191,8 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td><a href="integers.html">Supported</a></td>
   </tr>
   <tr>
-    <td>Arithmetic for signed (<code>+</code>, <code>-</code>, <code>*</code>)</td>
+    <td>Arithmetic for signed</td>
     <td><a href="integers.html">Supported</a></td>
-  </tr>
-  <tr>
-    <td>Arithmetic for signed (<code>/</code>, <code>%</code>)</td>
-    <td>Not supported</td>
   </tr>
   <tr>
     <td>Bitwise operations (<code>&</code>, <code>|</code>, <code>!</code>, <code>&gt;&gt;</code>, <code>&lt;&lt;</code>)</td>
@@ -231,7 +227,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Floating point</td>
-    <td>Not supported</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Slices</td>
@@ -255,7 +251,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Never type</td>
-    <td>Not supported</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Function pointer types</td>
@@ -267,7 +263,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Trait objects (dyn)</td>
-    <td>Not supported</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>impl types</td>
@@ -279,11 +275,11 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Iterators</td>
-    <td>Not supported</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
-    <td><code>HashMap</code></td>
-    <td>Not supported</td>
+    <td><code>Vec</code>, <code>HashMap</code>, <code>HashSet</code>, <code>VecDeque</code></td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Smart pointers (<code>Box</code>, <code>Rc</code>, <code>Arc</code>)</td>
@@ -303,7 +299,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Panic-unwinding</td>
-    <td>Not supported</td>
+    <td>Partially supported</td>
   </tr>
   </tbody>
   <thead><tr><th colspan="2"><strong>Traits</strong></th></tr></thead>
@@ -322,11 +318,11 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Traits with type arguments</td>
-    <td>Partially supported</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Associated types</td>
-    <td>Partially supported</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Generic associated types</td>
@@ -337,15 +333,15 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Supported</td>
   </tr>
   <tr>
-    <td><code>Clone</code></td>
-    <td>Supported</td>
-  </tr>
-  <tr>
     <td>Marker traits (<code>Copy</code>, <code>Send</code>, <code>Sync</code>)</td>
     <td>Supported</td>
   </tr>
   <tr>
-    <td>Standard traits (<code>Hash</code>, <code>Debug</code>)</td>
+    <td>Standard traits (<code>Clone</code>, <code>Default</code>, <code>Step</code>, <code>From</code>, <code>TryFrom</code>, <code>Into</code>, <code>PartialEq</code>, <code>Eq</code>, <code>PartialOrd</code>, <code>Ord</code>, <code>Neg</code>, <code>Not</code>, <code>Add</code>, <code>Sub</code>, <code>Mul</code>, <code>Div</code>, <code>Rem</code>, <code>BitAnd</code>, <code>BitOr</code>, <code>BitXor</code>, <code>Shl</code>, <code>Shr</code>)</td>
+    <td>Partially supported</td>
+  </tr>
+  <tr>
+    <td>Standard traits (<code>Debug</code>, <code>serde::Serialize</code>)</td>
     <td>Not supported</td>
   </tr>
   <tr>
@@ -357,7 +353,11 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Supported</td>
   </tr>
   <tr>
-    <td><code>Deref</code>, <code>DerefMut</code></td>
+    <td><code>Deref</code></td>
+    <td>Supported</td>
+  </tr>
+  <tr>
+    <td><code>DerefMut</code></td>
     <td>Not supported</td>
   </tr>
   </tbody>
@@ -388,7 +388,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   <tbody>
   <tr>
     <td>Raw pointers</td>
-    <td><a href="https://verus-lang.github.io/verus/verusdoc/vstd/ptr/struct.PPtr.html">Supported (only pointers from global allocator)</a></td>
+    <td><a href="https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html">Partially supported</a></td>
   </tr>
   <tr>
     <td>Transmute</td>

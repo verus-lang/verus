@@ -468,7 +468,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::StaticVar(name) => {
                         reach_function(ctxt, state, name);
                     }
-                    ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, autospec), _, _) => {
+                    ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, autospec, _), _, _) => {
                         // REVIEW: maybe we can be more precise if we use impl_paths here
                         assert!(ctxt.module.is_none() || *autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
@@ -548,7 +548,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             .unwrap();
             let methods = reached_methods(
                 ctxt,
-                state.reached_types.iter().chain(vec![ReachedType::None].iter()).map(|t| (t, &f)),
+                state.reached_types.iter().chain([ReachedType::None].iter()).map(|t| (t, &f)),
             );
             reach_methods(ctxt, state, methods);
             continue;
@@ -623,7 +623,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
         }
         if let Some(a) = state.worklist_assoc_type_decls.pop() {
             let typs: Vec<ReachedType> =
-                state.reached_types.iter().chain(vec![ReachedType::None].iter()).cloned().collect();
+                state.reached_types.iter().chain([ReachedType::None].iter()).cloned().collect();
             for t in typs {
                 reach_assoc_type_impl(ctxt, state, &(t.clone(), a.clone()));
             }
@@ -767,7 +767,7 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
         let mut f_get_calls = |_: &mut VisitorScopeMap, expr: &Expr| {
             ft(&expr.typ);
             match &expr.x {
-                ExprX::Call(CallTarget::Fun(_, name, ts, _, _), _, _) => {
+                ExprX::Call(CallTarget::Fun(_, name, ts, _, _, _), _, _) => {
                     for typ in ts.iter() {
                         ft(typ);
                     }

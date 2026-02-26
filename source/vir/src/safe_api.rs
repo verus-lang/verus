@@ -148,7 +148,6 @@ fn mask_spec_restricts_implementation(mask_spec: &MaskSpec) -> bool {
 ///
 /// Therefore we always handle exec functions, and only handle proof functions if
 /// they don't have a body.
-
 pub fn function_has_obligation(ctx: &Ctx, function: &Function) -> bool {
     ctx.global.check_api_safety
         && is_decl_in_safe_public_trait(&ctx.trait_map, function)
@@ -157,7 +156,6 @@ pub fn function_has_obligation(ctx: &Ctx, function: &Function) -> bool {
 }
 
 /// Create a body where all outputs are havoced, this represents "any safe implementation".
-
 pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
     // For each mut param, output:
     //  let tmp;
@@ -198,7 +196,6 @@ pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
 
 /// When emitting a proof obligation, we need axioms that the trait spec fns are given
 /// their default bodies.
-
 pub fn axioms_for_default_spec_fns(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,

@@ -2,6 +2,7 @@
 
  - `accept_recursive_types`
  - [`all_triggers`](#all_triggers)
+ - [`allow_complex_invariants`](#verifierallow_complex_invariants)
  - [`allow_in_spec`](#verifierallow_in_spec)
  - [`atomic`](#verifieratomic)
  - [`auto`](#auto)
@@ -32,6 +33,23 @@ See [the trigger specification procedure](./trigger-annotations.md#selecting-tri
 for more information.
 
 Unlike most Verus attributes, this does not require the `verifier::` prefix.
+
+## `#[verifier::allow_complex_invariants]`
+
+By default, `invariant_except_break` and `ensures` are not supported with
+[`#[verifier::loop_isolation(false)]`](#verifierloop_isolation) because they
+aren't needed. When loop isolation is disabled, the weakest precondition
+calculation automatically tracks all paths through breaks into the code after
+the loop, making these complex invariant types unnecessary.
+
+However, in some cases (such as experimenting with toggling the loop isolation setting,
+or for our de-sugaring of for-loops), it can be useful to use these invariant types even with loop isolation disabled.
+The `allow_complex_invariants` attribute enables this by transforming the invariants:
+ * `invariant_except_break` clauses are converted to regular `invariant` clauses
+ * `ensures` clauses are ignored (since they are redundant with the weakest precondition calculation)
+
+**This attribute only applies when `loop_isolation` is false.** Using it with `loop_isolation(true)`
+(or the default) will produce an error.
 
 ## `#![verifier::allow_in_spec]`
 

@@ -19,3 +19,6 @@ indexmap = { version = "1" }
 
 [features]
 singular = ["air/singular"]
+
+[lints]
+workspace = true

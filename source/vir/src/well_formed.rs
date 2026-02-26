@@ -5,9 +5,9 @@ use crate::ast::{
     VarIdent, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
-    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
-    path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
-    undecorate_typ,
+    ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name,
+    is_body_visible_to, is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr,
+    typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
@@ -27,14 +27,22 @@ struct Ctxt<'a> {
     no_cheating: bool,
 }
 
+/// Details from well-formedness checking.
+pub struct CheckDetails {
+    /// For each function, collects proof notes that fail due to `--no-cheating`.
+    pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
+}
+
 trait EmitError {
     fn emit(&mut self, path: Option<Path>, err: VirErrAs);
     fn has_fatal_errors(&self) -> bool;
+    fn record_func_failed_proof_note(&mut self, func: Fun, note: String);
 }
 
 struct EmitErrorState {
     diags: Vec<VirErrAs>,
     diag_map: HashMap<Path, usize>,
+    func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
 }
 
 impl EmitError for EmitErrorState {
@@ -56,6 +64,10 @@ impl EmitError for EmitErrorState {
             VirErrAs::NonBlockingError(..) => true,
             _ => false,
         })
+    }
+
+    fn record_func_failed_proof_note(&mut self, func: Fun, note: String) {
+        self.func_failed_proof_notes.entry(func).or_default().insert(note);
     }
 }
 
@@ -414,7 +426,7 @@ fn check_one_expr<Emit: EmitError>(
         ExprX::ConstVar(x, _) => {
             check_function_access(ctxt, x, disallow_private_access, &expr.span, emit)?;
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), args, _post_args) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, _, _), args, _post_args) => {
             let f =
                 check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span, emit)?;
             let Ok(f) = f else {
@@ -577,9 +589,15 @@ fn check_one_expr<Emit: EmitError>(
                 },
             )?;
         }
-        ExprX::AssertAssume { is_assume, .. } => {
+        ExprX::AssertAssume { is_assume, expr: inner_expr, .. } => {
             if ctxt.no_cheating && *is_assume {
-                return Err(error(&expr.span, "assume/admit not allowed with --no-cheating"));
+                let mut msg = error(&expr.span, "assume/admit not allowed with --no-cheating");
+                if let Some(label) = ast_expr_get_proof_note(inner_expr) {
+                    let label = label.to_string();
+                    msg = msg.proof_note_label(&expr.span, label.clone());
+                    emit.record_func_failed_proof_note(function.x.name.clone(), label);
+                }
+                emit.emit(None, VirErrAs::NonFatalError(msg, None));
             }
         }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
@@ -685,14 +703,18 @@ fn check_one_expr<Emit: EmitError>(
                 ),
             ));
         }
-        ExprX::Unary(UnaryOp::MutRefFinal, _) => {
+        ExprX::Unary(UnaryOp::MutRefFinal(migrated), _) => {
             return Err(error(
                 &expr.span,
-                "The result of `fin` must be dereferenced (e.g., `*fin(x)`)",
+                if *migrated {
+                    "This `&mut` parameter must be dereferenced (either explicitly, as in `*x`, or implicitly, as in `x.field`). For more flexible mutable reference support, disable the backwards-compatability (add #[verifier::deprecated_postcondition_mut_ref_style(false)] to the function)"
+                } else {
+                    "The result of `final` must be dereferenced (either explicitly, as in `*final(x)`, or implicitly, as in `final(x).field`)"
+                },
             ));
         }
         ExprX::Match(_place, arms) => {
-            for arm in arms.iter() {
+            for (i, arm) in arms.iter().enumerate() {
                 // Error if the arm contains more than 1 of these 3 nontrivial features:
                 let has_guard = !matches!(&arm.x.guard.x, ExprX::Const(Constant::Bool(true)));
                 let has_or = crate::patterns::pattern_has_or(&arm.x.pattern);
@@ -702,12 +724,12 @@ fn check_one_expr<Emit: EmitError>(
                     // This is nontrivial because we might need to evaluate the guard condition more than once
                     return Err(error(
                         &arm.x.pattern.span,
-                        "Not supported: pattern containing both an or-pattern (|) and an if-guard",
+                        "Not supported: match arm containing both an or-pattern (|) and a match-guard",
                     ));
                 }
                 if let Some(span) = has_ref_mut_binding {
                     if has_or {
-                        // This probably isn't that bad
+                        // This probably isn't that bad to support
                         return Err(error(
                             &span,
                             "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
@@ -718,11 +740,25 @@ fn check_one_expr<Emit: EmitError>(
                         // the test condition, but the mutable borrow is immutable until it ends
                         return Err(error(
                             &span,
-                            "Not supported: pattern containing both an if-guard and a binding by mutable reference",
+                            "Not supported: match arm containing both a match-guard and a binding by mutable reference",
                         ));
                     }
                 }
+
+                // Error if the last arm has a guard (this would just be a warning from Rust)
+                if i == arms.len() - 1 && has_guard {
+                    return Err(error(
+                        &arm.x.guard.span,
+                        "Not supported: match where the last arm has a match guard (this would necessarily mean the entire arm is unreachable)",
+                    ));
+                }
             }
+        }
+        ExprX::Old(..) if function.x.mode == Mode::Spec => {
+            return Err(error(
+                &expr.span,
+                "`old` is meaningless in spec functions",
+            ).help("You can dereference the mutable reference normally to get the \"current\"/\"old\" value"));
         }
         _ => {}
     }
@@ -1099,10 +1135,9 @@ fn check_function<Emit: EmitError>(
     }
 
     if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
-        return Err(error(
-            &function.span,
-            "#[verifier::assume_termination] not allowed with --no-cheating",
-        ));
+        let msg =
+            error(&function.span, "#[verifier::assume_termination] not allowed with --no-cheating");
+        emit.emit(None, VirErrAs::NonFatalError(msg, None));
     }
 
     #[cfg(feature = "singular")]
@@ -1421,10 +1456,11 @@ fn check_function<Emit: EmitError>(
             // Allow external_body/assume_specification inside vstd
             Some(path) if path.is_vstd_path() => {}
             _ => {
-                return Err(error(
+                let msg = error(
                     &function.span,
                     "external_body/assume_specification not allowed with --no-cheating",
-                ));
+                );
+                emit.emit(None, VirErrAs::NonFatalError(msg, None));
             }
         }
     }
@@ -1643,7 +1679,7 @@ pub fn check_crate(
     diags: &mut Vec<VirErrAs>,
     no_verify: bool,
     no_cheating: bool,
-) -> Result<(), VirErr> {
+) -> Result<CheckDetails, VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
         match funs.get(&function.x.name) {
@@ -1892,7 +1928,8 @@ pub fn check_crate(
 
     let diag_map: HashMap<Path, usize> = HashMap::new();
     let new_diags: Vec<VirErrAs> = Vec::new();
-    let mut emit = EmitErrorState { diag_map, diags: new_diags };
+    let mut emit =
+        EmitErrorState { diag_map, diags: new_diags, func_failed_proof_notes: HashMap::new() };
     let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
@@ -1916,8 +1953,8 @@ pub fn check_crate(
     diags.append(&mut emit.diags);
     // There is no point in checking for well-founded types if we already have a fatal error:
     if diags.iter().any(|x| matches!(x, VirErrAs::NonBlockingError(..))) {
-        return Ok(());
+        return Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes });
     }
     crate::recursive_types::check_recursive_types(krate)?;
-    Ok(())
+    Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes })
 }

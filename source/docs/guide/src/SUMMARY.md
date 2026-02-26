@@ -117,6 +117,7 @@
   - [Working with crates]()
   - [Invoking Verus code from Rust]()
   - [Documentation with Rustdoc](./verusdoc.md)
+  - [Ghost Erasure](./erasure.md)
 
 # Reference
 
@@ -167,6 +168,7 @@
     - [recommends](./reference-recommends.md)
   - [Traits and signature inheritance](./reference-signature-inheritance.md)
   - [Specifications on FnOnce](./reference-signature-fnonce.md)
+- [External trait specifications](./external_trait_specifications.md)
 - [Loop specifications]()
   - [invariant]()
   - [invariant_except_break / ensures]()

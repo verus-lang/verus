@@ -340,10 +340,16 @@ pub enum TriggerAnnotation {
 pub enum ModeCoercion {
     /// Mutable borrows (Ghost::borrow_mut and Tracked::borrow_mut) are treated specially by
     /// the mode checker when checking assignments.
+    /// (Only used outside new-mut-ref)
     BorrowMut,
-    /// All other cases are treated uniformly by the mode checker based on their op/from/to-mode.
-    /// (This includes Ghost::borrow, Tracked::get, etc.)
-    Other,
+    /// This operation behaves like a datatype constructor with a mode annotation
+    /// `from_mode` on its field.
+    /// (e.g., Tracked(...) is proof -> exec, Ghost(...) is spec -> exec.
+    /// Like with ordinary constructors, the input can be spec and if so, the whole thing is spec.
+    Constructor,
+    /// This behaves like a field-getter,
+    /// returning the contents of the Tracked or Ghost value.
+    Field,
 }
 
 /// Primitive 0-argument operations
@@ -436,9 +442,11 @@ pub enum UnaryOp {
     CastToInteger,
     MutRefCurrent,
     MutRefFuture(MutRefFutureSourceName),
-    /// The `final` keyword. `*final(e)` should be replaced with `mut_ref_future(e)`
-    /// and `final` on its own is unsupported.
-    MutRefFinal,
+    /// The `final` keyword.
+    /// Note: `final` on its own is unsupported.
+    /// `*final(e)` should be replaced with `mut_ref_future(e)`; other appearances are an error
+    /// boolean param = did this arise from migration?
+    MutRefFinal(bool),
 
     /// Length of an array or slice
     Length(ArrayKind),
@@ -504,6 +512,8 @@ pub enum UnaryOpr {
     IntegerTypeBound(IntegerTypeBoundKind, Mode),
     /// Custom diagnostic message
     CustomErr(Arc<String>),
+    /// Label from a `proof_note` attribute.
+    ProofNote(Arc<String>),
     /// Predicate over any type that indicates its mutable references has resolved.
     /// For &mut T this says the prophetic value == the current value.
     /// For primitive types this is trivially true.
@@ -898,7 +908,8 @@ pub enum CallTargetKind {
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
     /// Regular function, passing some type arguments
-    Fun(CallTargetKind, Fun, Typs, ImplPaths, AutospecUsage),
+    /// If the final bool is true, represents an associated const var
+    Fun(CallTargetKind, Fun, Typs, ImplPaths, AutospecUsage, bool),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
@@ -973,6 +984,8 @@ pub enum ExprX {
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(VarIdent, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
+    /// ConstVar is not used for associated consts; associated consts use Call directly.
+    /// REVIEW: do we still need ConstVar, or is it just a special case of Call?
     ConstVar(Fun, AutospecUsage),
     /// Use of a static variable.
     StaticVar(Fun),
@@ -1072,6 +1085,7 @@ pub enum ExprX {
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
         loop_isolation: bool,
+        allow_complex_invariants: bool,
         is_for_loop: bool,
         label: Option<String>,
         cond: Option<Expr>,
@@ -1114,15 +1128,25 @@ pub enum ExprX {
     ///
     /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
+    /// In exec/tracked code ExprX::BorrowMut(PlaceX::DerefMut(place))
+    /// (with bool true = TwoPhaseBorrowMut)
+    /// In spec code, it's just a spec snapshot of the place without a borrow
+    ImplicitReborrowOrSpecRead(Place, bool, Span),
     /// Indicates a move or a copy from the given place.
     /// These over-approximate the actual set of copies/moves.
     /// (That is, many reads marked Move or Copy should really be marked Spec).
     /// We don't know for sure if something is a "real" move or copy until mode-checking.
     ReadPlace(Place, UnfinalizedReadKind),
     /// Evaluate both in sequence and return the left value.
-    /// The right side MUST NOT have any assigns it, this lets us avoid creating temporary
-    /// vars that would clutter everything up.
-    UseLeftWhereRightCanHaveNoAssignments(Expr, Expr),
+    /// The right side should only contain `assume(has_resolved(...))` statements
+    /// emitted by the resolution analysis.
+    EvalAndResolve(Expr, Expr),
+    /// The `old` node. (new-mut-ref only)
+    /// Note: to explicitly refer to the pre-state of a variable, the ExprX::VarAt(e, Pre)
+    /// node should be used. The 'old' node itself is used for some bookkeeping purposes
+    /// and well-formedness checks, but otherwise has no meaning. The `Old` node is
+    /// ignored after these checks are complete.
+    Old(Expr),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
@@ -1175,18 +1199,81 @@ pub enum ModeWrapperMode {
 /// A `Place` tree is always a sequence of modifiers that terminates in either a Local
 /// or a Temporary. Note that there are no modifier nodes for dereferencing a box or dereferencing
 /// a shared reference. These are implicit.
+///
+/// ### Evaluation order and side-effects (more than you wanted to know)
+///
+/// A Place expression can have arbitrary side-effects, INCLUDING modifying the place that
+/// is being referred to. As a result, we have to be very careful about evaluation order.
+/// In general, you evaluate the "place" first, then read/write whatever from the place.
+/// That means if you write something like `a[{ a = b; i }]` this is equivalent to `a = b; a[i]`.
+///
+/// Things get more complicated when dealing with bounds-checks.
+/// Consider: `a[i][{ a = b; j }]`. In this expression, we bounds-check `a[i]` first, then
+/// evaluate the second index. Does that mean the `a = b` assignment could invalidate the
+/// bounds-check that was performed previously?
+///  - If `a` is an array then no, because the length of the array is fixed
+///  - If `a` is a slice then yes, so rustc checks for this case and disallows it.
+///    (See [https://doc.rust-lang.org/1.93.0/nightly-rustc/rustc_middle/mir/enum.FakeReadCause.html#variant.ForIndex])
+/// Either way this is fine for us; either we don't have to worry about it or the bounds-check
+/// is unaffected by the assignment.
+///
+/// What about unions? In Verus, we naturally have a precondition that a union access, but
+/// in Rust there's no actual check (except in the Abstract Machine state to determine UB).
+/// Anyway, despite the fact that union fields have a "precondition",
+/// there's no analogous check like there is for slice indexing.
+/// Thus, Rust's borrow-checker accepts this: `a.union_field[{a = b}]`
+/// and reading this is non-UB provided `b.union_field` is a valid union field read.
+/// Counter-intuitively, it doesn't even matter if `a.union_field` is valid _before_ the assignment,
+/// since that memory location isn't actually read from.
+/// Note, though, that the ordering of the bounds-check and the ordering of the field access
+/// depends on whether the index is for an array or slice (since for the slice, we need to do
+/// the field access to get the length).
+///
+/// To summarize, the evaluation order for a place expression with only array accesses:
+///   local.foo[e1].bar[e2]
+/// Would be:
+///   - evaluate e1
+///   - bounds-check e1
+///   - evaluate e2
+///   - bounds-check e2
+///   - check all field accesses are safe
+/// However, if any of the indices are _slice_ indices, then the relevant field safety checks
+/// need to be moved earlier. (Though, again, index checks actually block subsequent mutations,
+/// so we wouldn't need to do any field safety check more than once.)
+/// Also, the order of the checks doesn't really matter to Verus, as long as both are hard
+/// requirements, but it might matter if we model unwinding.
+///
+/// TODO(new_mut_ref): fix or error on these cases and then document what we actually support
+
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PlaceX {
     /// Place of the given field. May have a precondition if VariantCheck is set to Union
     Field(FieldOpr, Place),
-    /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
+    /// Place pointed to by the given mutable reference.
+    /// (i.e., `*` operator in Rust when applied to a mutable reference).
+    /// Encoding-wise, this is conceptually like Field, if you think of mutable references
+    /// as a struct with MutRefCurrent as a field.
     DerefMut(Place),
     /// Unwrap a Ghost or a Tracked
     ModeUnwrap(Place, ModeWrapperMode),
-    /// Index into an array or slice (`place[expr]`)
-    /// The bool = needs bounds check
+    /// Index into an array or slice (`place[expr]`).
+    /// May have a precondition if BoundsCheck is set.
+    ///
+    /// Note: typically, the index operator [] in Rust is lowered to an `index` or `index_mut`
+    /// call, which can handle via a Call node. However, indexing into a slice or array is
+    /// treated specially in a way which is more permissive with respect to borrow checking,
+    /// and in particular, two-phase borrows, than it otherwise would be if it were just treated
+    /// as a call. (See, for example, the `two_phase_arrays_slices` test cases in mut_refs.rs).
+    ///
+    /// Therefore, to properly handle programs with are admitted due to these special
+    /// cases, we also need to treat array indexing and slice indexing via a Place node.
+    /// That's why `PlaceX::Index` exists.
+    ///
+    /// There are also subtle differences involving evaluation order (see above);
+    /// so Array and Slice need to be handled as Place nodes, while Vec indexing
+    /// (and others) needs to be handled as method calls.
     Index(Place, Expr, ArrayKind, BoundsCheck),
     /// Named local variable.
     Local(VarIdent),
@@ -1199,6 +1286,11 @@ pub enum PlaceX {
     /// `WithExpr({ tmp = expr; }, Local(tmp))`.
     /// Without this node, such a transformation would be significantly more complicated.
     WithExpr(Expr, Place),
+    /// Establish a type obligation to restore the type invariant.
+    /// This node can appear in any Place that is used in assignment or mutable ref.
+    ///
+    /// These nodes are inserted by resolution analysis.
+    UserDefinedTypInvariantObligation(Place, Fun),
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -1212,7 +1304,21 @@ pub enum StmtX {
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
     /// (The mode is only allowed to be None for one special case; see modes.rs)
-    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Place>, els: Option<Expr> },
+    Decl {
+        pattern: Pattern,
+        mode: Option<(Mode, DeclProph)>,
+        init: Option<Place>,
+        els: Option<Expr>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq, Clone, Copy)]
+pub enum DeclProph {
+    /// Default; can be inferred as prophetic if the mode is ghost
+    Default,
+    /// Prophetic, only allowed if mode is ghost
+    Prophetic,
+    DelayedInfer,
 }
 
 /// Function parameter

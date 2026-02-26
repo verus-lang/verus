@@ -745,7 +745,7 @@ impl FunctionX {
 pub(crate) fn call_no_unwind(call_target: &CallTarget, funs: &HashMap<Fun, Function>) -> bool {
     match call_target {
         CallTarget::FnSpec(_) | CallTarget::BuiltinSpecFun(..) => true,
-        CallTarget::Fun(kind, fun, _, _, _) => match kind {
+        CallTarget::Fun(kind, fun, _, _, _, _) => match kind {
             CallTargetKind::ProofFn(..) => true,
             CallTargetKind::Static
             | CallTargetKind::Dynamic
@@ -781,6 +781,16 @@ impl DatatypeX {
 
     pub fn get_variant(&self, variant: &Ident) -> &Variant {
         get_variant(&self.variants, variant)
+    }
+}
+
+impl TraitX {
+    pub fn typ_param_names_with_self(&self) -> Vec<Ident> {
+        let mut typ_params = vec![crate::def::trait_self_type_param()];
+        for (x, _) in self.typ_params.iter() {
+            typ_params.push(x.clone());
+        }
+        typ_params
     }
 }
 
@@ -891,6 +901,15 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
         &expr.typ,
         ExprX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(None)), expr.clone()),
     )
+}
+
+pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<Arc<String>> {
+    match &expr.x {
+        // NOTE: `UnaryOpr::Box` and `Unbox` not relevant; only introduced later in `ast_to_sst`.
+        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => ast_expr_get_proof_note(e),
+        ExprX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
+        _ => None,
+    }
 }
 
 pub fn int_range_to_type_string(range: &IntRange) -> String {
@@ -1250,7 +1269,7 @@ pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, boo
                             PlaceX::Local(ident) if ident == &ret.x.name => {
                                 assert!(is_unit(&undecorate_typ(&place.typ)));
                                 let e = mk_tuple(&place.span, &Arc::new(vec![]));
-                                Ok(PlaceX::temporary(e))
+                                Ok(PlaceX::spec_temporary(e))
                             }
                             _ => Ok(place.clone()),
                         },
@@ -1363,7 +1382,11 @@ impl Opaqueness {
 }
 
 impl PlaceX {
-    pub fn temporary(e: Expr) -> Place {
+    /// Wraps the given expression in a Temporary node.
+    /// Be wary of types (the type of the place is determined by the type of the Expr,
+    /// which is only correct up to decoration) and only use this for simplifications
+    /// post-resolution-analysis.
+    pub(crate) fn spec_temporary(e: Expr) -> Place {
         SpannedTyped::new(&e.span, &e.typ, PlaceX::Temporary(e.clone()))
     }
 
@@ -1376,6 +1399,7 @@ impl PlaceX {
             PlaceX::ModeUnwrap(p, _) => p.x.uses_unnamed_temporary(),
             PlaceX::WithExpr(_e, p) => p.x.uses_unnamed_temporary(),
             PlaceX::Index(p, _idx, _k, _needs_bounds_check) => p.x.uses_unnamed_temporary(),
+            PlaceX::UserDefinedTypInvariantObligation(p, _) => p.x.uses_unnamed_temporary(),
         }
     }
 }
@@ -1389,9 +1413,24 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
         PlaceX::ModeUnwrap(p, _) => place_get_local(p),
         PlaceX::WithExpr(_e, p) => place_get_local(p),
         PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_get_local(p),
+        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_get_local(p),
     }
 }
 
+pub fn place_has_deref_mut(p: &Place) -> bool {
+    match &p.x {
+        PlaceX::Local(_) => false,
+        PlaceX::DerefMut(_p) => true,
+        PlaceX::Field(_opr, p) => place_has_deref_mut(p),
+        PlaceX::Temporary(_) => false,
+        PlaceX::ModeUnwrap(p, _) => place_has_deref_mut(p),
+        PlaceX::WithExpr(_e, p) => place_has_deref_mut(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_has_deref_mut(p),
+        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_has_deref_mut(p),
+    }
+}
+
+/// Returns an expression that reads from the place
 pub fn place_to_expr(place: &Place) -> Expr {
     let x = match &place.x {
         PlaceX::Local(var_ident) => ExprX::Var(var_ident.clone()),
@@ -1419,6 +1458,13 @@ pub fn place_to_expr(place: &Place) -> Expr {
         PlaceX::Index(p, idx, kind, bounds_check) => {
             let e = place_to_expr(p);
             ExprX::Binary(BinaryOp::Index(*kind, *bounds_check), e, idx.clone())
+        }
+        PlaceX::UserDefinedTypInvariantObligation(..) => {
+            // place_to_expr should only be called for reading; this node should only
+            // appear in mutable contexts
+            panic!(
+                "Verus internal error: place_to_expr cannot handle UserDefinedTypInvariantObligation"
+            );
         }
     };
     SpannedTyped::new(&place.span, &place.typ, x)
@@ -1475,7 +1521,7 @@ impl MutRefFutureSourceName {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             MutRefFutureSourceName::MutRefFuture => "mut_ref_future",
-            MutRefFutureSourceName::Final => "fin",
+            MutRefFutureSourceName::Final => "final",
         }
     }
 }
@@ -1483,5 +1529,23 @@ impl MutRefFutureSourceName {
 impl ArmX {
     pub(crate) fn has_guard(&self) -> bool {
         !matches!(&self.guard.x, ExprX::Const(Constant::Bool(true)))
+    }
+}
+
+impl BinaryOp {
+    pub fn short_circuits(&self) -> bool {
+        match self {
+            BinaryOp::And | BinaryOp::Or | BinaryOp::Implies => true,
+            BinaryOp::Xor
+            | BinaryOp::HeightCompare { .. }
+            | BinaryOp::Eq(_)
+            | BinaryOp::Ne
+            | BinaryOp::Inequality(_)
+            | BinaryOp::Arith(_)
+            | BinaryOp::RealArith(_)
+            | BinaryOp::Bitwise(..)
+            | BinaryOp::StrGetChar
+            | BinaryOp::Index(..) => false,
+        }
     }
 }

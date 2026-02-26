@@ -40,7 +40,6 @@ use verus_syn::{
 };
 
 /// Check if VERUSDOC=1.
-
 #[cfg(verus_keep_ghost)]
 pub fn env_rustdoc() -> bool {
     match proc_macro::tracked_env::var("VERUSDOC") {
@@ -49,6 +48,7 @@ pub fn env_rustdoc() -> bool {
     }
 }
 
+/// Check if VERUSDOC=1.
 #[cfg(not(verus_keep_ghost))]
 pub fn env_rustdoc() -> bool {
     false
@@ -94,7 +94,6 @@ pub fn process_trait_item_method(item: &mut TraitItemFn) {
 /// Process a signature to get all the information, apply the codeblock
 /// formatting tricks, and then package it all up into a #[doc = "..."] attribute
 /// (as a verus_syn::Attribute object) that we can apply to the item.
-
 fn attr_for_sig(
     sig: &Signature,
     block: Option<&Block>,
@@ -172,7 +171,6 @@ fn is_spec(sig: &Signature) -> bool {
 
 /// Do we want to show the body for the given spec function?
 /// If it's 'open', then yes
-
 fn show_body(sig: &Signature) -> bool {
     matches!(sig.publish, Publish::Open(_))
 }

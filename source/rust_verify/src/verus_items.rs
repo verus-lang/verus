@@ -169,6 +169,14 @@ pub(crate) enum CompilableOprItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum BuiltinDerefItem {
+    TrackedDeref,
+    TrackedDerefMut,
+    GhostDeref,
+    GhostDerefMut,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum ArithItem {
     BuiltinAdd,
     BuiltinSub,
@@ -319,6 +327,7 @@ pub(crate) enum VstdItem {
     RefMutArrayUnsizingCoercion,
     VecIndex,
     VecIndexMut,
+    SharedReference,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -388,6 +397,7 @@ pub(crate) enum VerusItem {
     BuiltinType(BuiltinTypeItem),
     BuiltinTrait(BuiltinTraitItem),
     BuiltinFunction(BuiltinFunctionItem),
+    BuiltinDeref(BuiltinDerefItem),
     Global(GlobalItem),
     External(ExternalItem),
     HasResolved,
@@ -475,6 +485,11 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::Tracked::get",            VerusItem::CompilableOpr(CompilableOprItem::TrackedGet)),
         ("verus::verus_builtin::Tracked::borrow",         VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrow)),
         ("verus::verus_builtin::Tracked::borrow_mut",     VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)),
+
+        ("verus::verus_builtin::Tracked::deref",          VerusItem::BuiltinDeref(BuiltinDerefItem::TrackedDeref)),
+        ("verus::verus_builtin::Tracked::deref_mut",      VerusItem::BuiltinDeref(BuiltinDerefItem::TrackedDerefMut)),
+        ("verus::verus_builtin::Ghost::deref",            VerusItem::BuiltinDeref(BuiltinDerefItem::GhostDeref)),
+        ("verus::verus_builtin::Ghost::deref_mut",        VerusItem::BuiltinDeref(BuiltinDerefItem::GhostDerefMut)),
 
         ("verus::verus_builtin::add",                     VerusItem::BinaryOp(BinaryOpItem::Arith(ArithItem::BuiltinAdd))),
         ("verus::verus_builtin::sub",                     VerusItem::BinaryOp(BinaryOpItem::Arith(ArithItem::BuiltinSub))),
@@ -589,6 +604,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::raw_ptr::cast_slice_ptr_to_str_ptr", VerusItem::Vstd(VstdItem::CastSlicePtrToStrPtr, Some(Arc::new("raw_ptr::cast_slice_ptr_to_str_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_str_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastStrPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_str_ptr_to_slice_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
+        ("verus::vstd::raw_ptr::SharedReference", VerusItem::Vstd(VstdItem::SharedReference, Some(Arc::new("raw_ptr::SharedReference".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
         ("verus::verus_builtin::Structural",              VerusItem::Marker(MarkerItem::Structural)),
@@ -623,7 +639,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::has_resolved_unsized",     VerusItem::HasResolvedUnsized),
         ("verus::verus_builtin::mut_ref_current",  VerusItem::MutRefCurrent),
         ("verus::verus_builtin::mut_ref_future",   VerusItem::MutRefFuture),
-        ("verus::verus_builtin::fin",              VerusItem::Final),
+        ("verus::verus_builtin::final_",           VerusItem::Final),
         ("verus::verus_builtin::after_borrow",     VerusItem::AfterBorrow),
     ]
 }
@@ -694,6 +710,7 @@ pub(crate) enum RustItem {
     Copy,
     Send,
     Sync,
+    Any,
     Clone,
     StructuralPartialEq,
     Eq,
@@ -711,8 +728,6 @@ pub(crate) enum RustItem {
     CloneClone,
     CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
-    AllocGlobal,
-    Allocator,
     TryTraitBranch,
     ResidualTraitFromResidual,
     IntoIterFn,
@@ -721,6 +736,7 @@ pub(crate) enum RustItem {
     Destruct,
     SliceSealed,
     Vec,
+    Thin,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -825,12 +841,6 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
         return Some(RustItem::CloneFrom);
     }
 
-    if rust_path == Some("alloc::alloc::Global") {
-        return Some(RustItem::AllocGlobal);
-    }
-    if rust_path == Some("core::alloc::Allocator") {
-        return Some(RustItem::Allocator);
-    }
     if rust_path == Some("core::slice::index::private_slice_index::Sealed") {
         return Some(RustItem::SliceSealed);
     }
@@ -848,6 +858,12 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("alloc::vec::Vec") {
         return Some(RustItem::Vec);
+    }
+    if rust_path == Some("core::ptr::metadata::Thin") {
+        return Some(RustItem::Thin);
+    }
+    if rust_path == Some("core::any::Any") {
+        return Some(RustItem::Any);
     }
 
     if let Some(rust_path) = rust_path {

@@ -1,11 +1,10 @@
-use std::sync::Arc;
-
-use rustc_hir::{Item, ItemKind};
+use rustc_hir::{ConstItemRhs, Item, ItemKind};
 use vir::ast::{IntRange, Typ, TypX, VirErr};
 
-use crate::{context::Context, unsupported_err_unless, verus_items::VerusItem};
+use crate::context::ContextX;
+use crate::{unsupported_err_unless, verus_items::VerusItem};
 
-#[derive(Debug, Hash)]
+#[derive(Debug)]
 pub(crate) struct TypIgnoreImplPaths(pub Typ);
 
 impl PartialEq for TypIgnoreImplPaths {
@@ -14,10 +13,22 @@ impl PartialEq for TypIgnoreImplPaths {
     }
 }
 
+// Manual implementation of Hash is consistent with eq (i.e., a == b ==> a.hash() == b.hash())
+// Because `vir::ast_util::types_equal` is consistent with eq.
+// Note that if a: Typ, b: Type -- a == b ==> types_equal(a, b) ==> a.hash() == b.hash()
+//
+// If at some point we have `types_equal` folded into the normal Eq impl,
+// we can then make this the default derive impl.
+impl std::hash::Hash for TypIgnoreImplPaths {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
 impl Eq for TypIgnoreImplPaths {}
 
 pub(crate) fn process_const_early<'tcx>(
-    ctxt: &mut Context<'tcx>,
+    ctxt: &mut ContextX<'tcx>,
     typs_sizes_set: &mut std::collections::HashMap<TypIgnoreImplPaths, u128>,
     item: &Item<'tcx>,
 ) -> Result<(), VirErr> {
@@ -25,7 +36,7 @@ pub(crate) fn process_const_early<'tcx>(
     let vattrs = ctxt.get_verifier_attrs_no_check(attrs)?;
     if vattrs.size_of_global {
         let err = || crate::util::err_span(item.span, "invalid global size_of");
-        let ItemKind::Const(_ident, generics, _ty, body_id) = item.kind else {
+        let ItemKind::Const(_ident, generics, _ty, ConstItemRhs::Body(body_id)) = item.kind else {
             return err();
         };
         unsupported_err_unless!(
@@ -94,19 +105,18 @@ pub(crate) fn process_const_early<'tcx>(
         }
 
         if let TypX::Int(IntRange::USize | IntRange::ISize) = &*ty {
-            let arch_word_bits = &mut Arc::make_mut(ctxt).arch_word_bits;
-            if let Some(arch_word_bits) = arch_word_bits {
+            if let Some(arch_word_bits) = ctxt.arch_word_bits {
                 let vir::ast::ArchWordBits::Exactly(size_bits_set) = arch_word_bits else {
                     panic!("unexpected ArchWordBits");
                 };
-                if (size * 8) as u32 != *size_bits_set {
+                if (size * 8) as u32 != size_bits_set {
                     return crate::util::err_span(
                         item.span,
-                        format!("usize or isize have already been set to {} bits", *size_bits_set),
+                        format!("usize or isize have already been set to {} bits", size_bits_set),
                     );
                 }
             }
-            *arch_word_bits = Some(match size {
+            ctxt.arch_word_bits = Some(match size {
                 4 | 8 => vir::ast::ArchWordBits::Exactly((size * 8) as u32),
                 _ => {
                     return crate::util::err_span(

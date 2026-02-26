@@ -400,11 +400,63 @@ impl<A> core::fmt::Debug for Tracked<A> {
     }
 }
 
+/// Dereferencing a `Ghost<A>` returns a reference to a ghost-mode location.
+///
+/// Note: This special behavior requires support from Verus,
+/// and this trait impl cannot be used generically.
+#[cfg(verus_keep_ghost)]
+impl<A> core::ops::Deref for Ghost<A> {
+    type Target = A;
+    #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::deref"]
+    fn deref(&self) -> &Self::Target {
+        unimplemented!();
+    }
+}
+
+/// Dereferencing a `Ghost<A>` returns a reference to a ghost-mode location.
+///
+/// Note: This special behavior requires support from Verus,
+/// and this trait impl cannot be used generically.
+#[cfg(verus_keep_ghost)]
+impl<A> core::ops::DerefMut for Ghost<A> {
+    #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::deref_mut"]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unimplemented!();
+    }
+}
+
+/// Dereferencing a `Tracked<A>` returns a reference to a tracked-mode location.
+///
+/// Note: This special behavior requires support from Verus,
+/// and this trait impl cannot be used generically.
+#[cfg(verus_keep_ghost)]
+impl<A> core::ops::Deref for Tracked<A> {
+    type Target = A;
+    #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::deref"]
+    fn deref(&self) -> &Self::Target {
+        unimplemented!();
+    }
+}
+
+/// Dereferencing a `Tracked<A>` returns a reference to a tracked-mode location.
+///
+/// Note: This special behavior requires support from Verus,
+/// and this trait impl cannot be used generically.
+#[cfg(verus_keep_ghost)]
+impl<A> core::ops::DerefMut for Tracked<A> {
+    #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::deref_mut"]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unimplemented!();
+    }
+}
+
 impl<A> Ghost<A> {
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::view"]
     #[verifier::spec]
+    #[allow(clippy::uninit_assumed_init)]
     pub fn view(self) -> A {
+        // SAFETY: this is never called in an execution, so it's safe to do
         unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
@@ -463,7 +515,9 @@ impl<A> Tracked<A> {
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::view"]
     #[verifier::spec]
+    #[allow(clippy::uninit_assumed_init)]
     pub fn view(self) -> A {
+        // SAFETY: this is never called in an execution, so it's safe to do
         unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
@@ -495,7 +549,9 @@ impl<A> Tracked<A> {
     #[verifier::proof]
     #[verifier::external_body]
     #[verifier::returns(proof)]
+    #[allow(clippy::uninit_assumed_init)]
     pub const fn get(#[verifier::proof] self) -> A {
+        // SAFETY: this is never called in an execution, so it's safe to do
         unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
@@ -530,17 +586,16 @@ impl<A> Clone for Ghost<A> {
     #[cfg_attr(verus_keep_ghost, verifier::external_body)]
     #[inline(always)]
     fn clone(&self) -> Self {
-        Ghost { phantom: PhantomData }
+        *self
     }
 }
 
 impl<A> Copy for Ghost<A> {}
-
 impl<A: Copy> Clone for Tracked<A> {
     #[cfg_attr(verus_keep_ghost, verifier::external_body)]
     #[inline(always)]
     fn clone(&self) -> Self {
-        Tracked { phantom: PhantomData }
+        *self
     }
 }
 
@@ -631,6 +686,8 @@ impl PartialEq for int {
 
 impl Eq for int {}
 
+// int is a ghost type, so this is never run in exec
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl core::cmp::PartialOrd for int {
     fn partial_cmp(&self, _other: &Self) -> Option<core::cmp::Ordering> {
         unimplemented!()
@@ -691,6 +748,8 @@ impl PartialEq for nat {
 
 impl Eq for nat {}
 
+// nat is a ghost type, so this is never run in exec
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl core::cmp::PartialOrd for nat {
     fn partial_cmp(&self, _other: &Self) -> Option<core::cmp::Ordering> {
         unimplemented!()
@@ -795,7 +854,7 @@ unsafe impl<T: Sync + Send> Send for SyncSendIfSyncSend<T> {}
 
 impl<T> Clone for SyncSendIfSyncSend<T> {
     fn clone(&self) -> Self {
-        unimplemented!();
+        *self
     }
 }
 
@@ -1688,7 +1747,7 @@ impl<'a, Options: Copy, ArgModes, OutMode, Args, Output> Clone
     for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
 {
     fn clone(&self) -> Self {
-        unimplemented!()
+        *self
     }
 }
 
@@ -1968,9 +2027,9 @@ pub fn mut_ref_future<T>(_mut_ref: &mut T) -> T {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::fin"]
+#[rustc_diagnostic_item = "verus::verus_builtin::final_"]
 #[verifier::spec]
-pub fn fin<T: ?Sized>(_mut_ref: &mut T) -> &mut T {
+pub fn final_<T: ?Sized>(_mut_ref: &mut T) -> &mut T {
     unimplemented!()
 }
 
