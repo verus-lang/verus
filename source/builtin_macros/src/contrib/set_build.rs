@@ -8,21 +8,21 @@ use verus_syn::{parse_quote_spanned, parse2};
 
 #[derive(Debug)]
 struct Element {
-    expr: Expr,
-    typ: Option<Type>,
+    expr: Box<Expr>,
+    typ: Option<Box<Type>>,
 }
 
 #[derive(Debug)]
 enum Source {
     FiniteType,
-    Set(Expr),
-    Range { start: Expr, end: Expr, inclusive_end: bool },
+    Set(Box<Expr>),
+    Range { start: Box<Expr>, end: Box<Expr>, inclusive_end: bool },
 }
 
 #[derive(Debug)]
 struct Decl {
     x: Ident,
-    typ: Type,
+    typ: Box<Type>,
     source: Source,
     is_exists: bool,
 }
@@ -30,7 +30,7 @@ struct Decl {
 #[derive(Debug)]
 enum DeclOrCond {
     Decl(Decl),
-    Cond(Expr),
+    Cond(Box<Expr>),
 }
 
 #[derive(Debug)]
@@ -42,11 +42,11 @@ struct SetBuild {
 
 impl Parse for Element {
     fn parse(input: ParseStream) -> Result<Self, Error> {
-        let expr = Expr::parse(input)?;
+        let expr = Box::new(Expr::parse(input)?);
         let typ = if input.peek(Token![:]) {
             let _ = input.parse::<Token![:]>()?;
             let typ = Type::parse(input)?;
-            Some(typ)
+            Some(Box::new(typ))
         } else {
             None
         };
@@ -66,7 +66,7 @@ impl Parse for DeclOrCond {
             // x: typ in expr
             let x = Ident::parse(input)?;
             let _ = input.parse::<Token![:]>()?;
-            let typ = Type::parse(input)?;
+            let typ = Box::new(Type::parse(input)?);
             let source = if input.peek(Token![in]) {
                 let _ = input.parse::<Token![in]>()?;
                 let expr = Expr::parse(input)?;
@@ -80,20 +80,20 @@ impl Parse for DeclOrCond {
                         };
                         let span = range.span();
                         let start = match range.start {
-                            Some(start) => *start,
+                            Some(start) => Box::new(*start),
                             None => {
                                 return Err(Error::new(span, "unexpected `..`"));
                             }
                         };
                         let end = match range.end {
-                            Some(end) => *end,
+                            Some(end) => Box::new(*end),
                             None => {
                                 return Err(Error::new(span, "missing expression after `..`"));
                             }
                         };
                         Source::Range { start, end, inclusive_end }
                     }
-                    _ => Source::Set(expr),
+                    _ => Source::Set(Box::new(expr)),
                 }
             } else {
                 Source::FiniteType
@@ -101,7 +101,7 @@ impl Parse for DeclOrCond {
             let decl = Decl { x, typ, source, is_exists };
             Ok(DeclOrCond::Decl(decl))
         } else {
-            let expr = Expr::parse(input)?;
+            let expr = Box::new(Expr::parse(input)?);
             Ok(DeclOrCond::Cond(expr))
         }
     }
@@ -161,7 +161,7 @@ fn parse_set_build(input: TokenStream2) -> Result<SetBuild, Error> {
         let stream = TokenStream2::from_iter(decl_cond.into_iter());
         match parse2::<DeclOrCond>(stream)? {
             DeclOrCond::Decl(decl) => decls.push(decl),
-            DeclOrCond::Cond(cond) => conds.push(cond),
+            DeclOrCond::Cond(cond) => conds.push(*cond),
         }
     }
     if decls.len() == 0 {
@@ -183,7 +183,7 @@ fn parse_set_build(input: TokenStream2) -> Result<SetBuild, Error> {
                 ));
             }
         };
-        let expr = Expr::Path(ExprPath { attrs: vec![], qself: None, path: x.into() });
+        let expr = Box::new(Expr::Path(ExprPath { attrs: vec![], qself: None, path: x.into() }));
         Element { expr, typ }
     };
     Ok(SetBuild { element, decls, conds })
@@ -199,7 +199,7 @@ fn decl_to_expr(d: &Decl) -> Expr {
                 #vstd::set::Set::<#typ>::from_finite_type(|x: #typ| true)
             )
         }
-        Source::Set(expr) => expr.clone(),
+        Source::Set(expr) => *(*expr).clone(),
         Source::Range { start, end, inclusive_end } => {
             if *inclusive_end {
                 parse_quote_spanned_vstd!(vstd, span => #vstd::set::Set::<#typ>::range_inclusive(#start, #end))
@@ -210,7 +210,7 @@ fn decl_to_expr(d: &Decl) -> Expr {
     }
 }
 
-fn conds_to_expr(conds: &Vec<Expr>) -> Expr {
+fn conds_to_expr(conds: &Vec<Expr>) -> Box<Expr> {
     assert!(conds.len() != 0);
     let mut expr = conds[0].clone();
     for cond in conds.iter().skip(1) {
@@ -218,7 +218,7 @@ fn conds_to_expr(conds: &Vec<Expr>) -> Expr {
         let span = cond.span();
         expr = parse_quote_spanned!(span => (#expr) && (#cond));
     }
-    expr
+    Box::new(expr)
 }
 
 fn is_exactly_x(x: &Ident, e: &Expr) -> bool {

@@ -120,3 +120,37 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_set_build verus_code! {
+        use vstd::set::*;
+
+        proof fn test1() {
+            let s = set_build!{ (x, x): (u8, u8) | x: u8 };
+            assert(s.finite());
+            let z = Set::new(|p: (u8, u8)| p.0 == p.1);
+            assert(s == z);
+        }
+
+        proof fn test2() {
+            let s = set_build!{ (x, x): (u8, u8) | exists x: u8 };
+            let z = Set::new(|p: (u8, u8)| p.0 == p.1);
+
+            // assert(s == z); // FAILS by itself, because of the "exists x: u8"
+
+            assert(s == z) by {
+                assert forall|p: (u8, u8)| p.0 == p.1 implies #[trigger] s.contains(p) by {
+                    // Exhibit the witness x of type u8 to trigger the "exists":
+                    assert(set_build!{ x: u8 }.contains(p.0));
+                }
+            }
+        }
+
+        proof fn test3() {
+            let s = set_build!{ (x, y, x - y): (int, int, int) | x: int in 10..20, y: int in x..20, x + y != 25 };
+            assert(s.finite());
+            let z = Set::new(|t: (int, int, int)| 10 <= t.0 < 20 && t.0 <= t.1 < 20 && t.0 + t.1 != 25 && t.2 == t.0 - t.1);
+            assert(s == z);
+        }
+    } => Ok(())
+}
