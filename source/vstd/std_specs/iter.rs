@@ -83,40 +83,40 @@ pub trait ExIterator {
     spec fn peek(&self, index: int) -> Option<Self::Item>;
 }
 
-#[verifier::external_trait_specification]
-#[verifier::external_trait_extension(DoubleEndedIteratorSpec via DoubleEndedIteratorSpecImpl)]
-pub trait ExDoubleEndedIterator : Iterator {
-    type ExternalTraitSpecificationFor: DoubleEndedIterator;
+// #[verifier::external_trait_specification]
+// #[verifier::external_trait_extension(DoubleEndedIteratorSpec via DoubleEndedIteratorSpecImpl)]
+// pub trait ExDoubleEndedIterator : Iterator {
+//     type ExternalTraitSpecificationFor: DoubleEndedIterator;
 
-    fn next_back(&mut self) -> (ret: Option<<Self as core::iter::Iterator>::Item>)
-        ensures
-            true,
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            //self.obeys_prophetic_iter_laws() == 
-            old(self).obeys_prophetic_iter_laws(),
-            // self.obeys_prophetic_iter_laws() ==> self.completes() == old(self).completes(),
-            // self.obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
-            // // `next` pops the tail of the prophesized remaining(), or returns None
-            // self.obeys_prophetic_iter_laws() ==> 
-            // ({
-            //     if old(self).remaining().len() > 0 {
-            //         self.remaining() == old(self).remaining().drop_last()
-            //             && ret == Some(old(self).remaining().last())
-            //     } else {
-            //         self.remaining() === old(self).remaining() && ret === None && self.completes()
-            //     }
-            // }),
-            // // If the iterator isn't done yet, then it successfully decreases its metric (if any)
-            // self.obeys_prophetic_iter_laws() && old(self).remaining().len() > 0 && self.decrease() is Some ==> 
-            //     old(self).decrease()->0 > self.decrease()->0,
-    ;
+//     fn next_back(&mut self) -> (ret: Option<<Self as core::iter::Iterator>::Item>)
+//         ensures
+//             true,
+//             // The iterator consistently obeys, completes, and decreases throughout its lifetime
+//             //self.obeys_prophetic_iter_laws() == 
+//             old(self).obeys_prophetic_iter_laws(),
+//             // self.obeys_prophetic_iter_laws() ==> self.completes() == old(self).completes(),
+//             // self.obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
+//             // // `next` pops the tail of the prophesized remaining(), or returns None
+//             // self.obeys_prophetic_iter_laws() ==> 
+//             // ({
+//             //     if old(self).remaining().len() > 0 {
+//             //         self.remaining() == old(self).remaining().drop_last()
+//             //             && ret == Some(old(self).remaining().last())
+//             //     } else {
+//             //         self.remaining() === old(self).remaining() && ret === None && self.completes()
+//             //     }
+//             // }),
+//             // // If the iterator isn't done yet, then it successfully decreases its metric (if any)
+//             // self.obeys_prophetic_iter_laws() && old(self).remaining().len() > 0 && self.decrease() is Some ==> 
+//             //     old(self).decrease()->0 > self.decrease()->0,
+//     ;
     
-    /******* Mechanisms that support ergonomic `for` loops *********/
+//     /******* Mechanisms that support ergonomic `for` loops *********/
 
-    // If we can make a useful guess as to what the i-th value from the back will be, return it.
-    // Otherwise, return None.
-    spec fn peek_back(&self, index: int) -> Option<Self::Item>;
-}
+//     // If we can make a useful guess as to what the i-th value from the back will be, return it.
+//     // Otherwise, return None.
+//     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
+// }
 
 /// REVIEW: Despite the name, VerusForLoopWrapper doesn't implement Iterator.
 ///         What would be a better name?
