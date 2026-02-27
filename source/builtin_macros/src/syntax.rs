@@ -1794,9 +1794,9 @@ impl Visitor {
         // We wrap the function call in an 'unsafe' block, since the user might be applying
         // a specification to an unsafe function.
         let e = if is_const {
-            Expr::Verbatim(quote!(unsafe { #callee }))
+            Expr::Verbatim(quote_spanned!(span => unsafe { #callee }))
         } else {
-            Expr::Verbatim(quote! {
+            Expr::Verbatim(quote_spanned! { span =>
                 unsafe { #callee(#(#args),*) }
             })
         };
