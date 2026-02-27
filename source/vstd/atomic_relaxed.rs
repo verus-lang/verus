@@ -32,15 +32,6 @@ impl View {
     }
 
     // sanity check
-    // this should fail
-    proof fn contains_strict_contra(v1: Self, v2: Self)
-        requires
-            v1.contains_strict(v2)
-        ensures
-            false
-    {}
-
-    // sanity check
     proof fn contains_po(v1: View, v2: View, v3: View)
         ensures
             v1.contains(v1), //refl
@@ -59,6 +50,13 @@ impl View {
                 assert(v2.0[k] <= v1.0[k]);
             }
         }
+    }
+
+    pub broadcast proof fn contains_and_contains_strict(v1: View, v2: View, v3: View)
+        ensures
+            #[trigger] v1.contains_strict(v2) && #[trigger] v2.contains(v3) ==> v1.contains_strict(v3)
+    {
+        admit(); // todo
     }
 
     pub open spec fn join(self, other: Self) -> Self {
@@ -182,7 +180,7 @@ impl<T> HistorySingleton<T> {
 
 // Fence modalities
 pub tracked struct Release<T> {
-    _phantom: PhantomData<T>,
+    v: T
 }
 
 impl<T> Release<T> {
@@ -190,7 +188,7 @@ impl<T> Release<T> {
 }
 
 pub tracked struct Acquire<T> {
-    _phantom: PhantomData<T>,
+    v: T
 }
 
 impl<T> Acquire<T> {
@@ -399,6 +397,7 @@ pub axiom fn objective_from_acquire<T: Objective>(tracked a: Acquire<T>) -> (tra
 // todo - can the tracked types be Send/Sync? Should either impl Send or !Send
 // Explicit views
 #[derive(Clone, Copy)]
+#[verifier::external_body]
 pub tracked struct ViewSeen;
 
 impl ViewSeen {
@@ -457,7 +456,7 @@ impl EmptyViewSeen {
 // the #[derive] attribute will ensure that ViewAt<T>: Copy only when T: Copy
 #[derive(Copy)]
 pub tracked struct ViewAt<T> {
-    _phantom: PhantomData<T>,
+    v: T
 }
 
 impl<T: Clone> Clone for ViewAt<T> {
@@ -543,7 +542,7 @@ impl<T: Objective> ViewAt<T> {
 
 #[derive(Copy)]
 pub tracked struct ViewJoin<T> {
-    _phantom: PhantomData<T>,
+    v: T
 }
 
 impl<T: Clone> Clone for ViewJoin<T> {
@@ -620,7 +619,7 @@ impl<T> ViewJoin<T> {
 
 // Non-Atomic Points-To
 pub tracked struct PrimitiveNonAtomicPointsTo<T> {
-    _phantom: PhantomData<T>,
+    v: T
 }
 
 impl<T> PrimitiveNonAtomicPointsTo<T> {
@@ -649,7 +648,7 @@ impl<T> PrimitiveNonAtomicPointsTo<T> {
 }
 
 pub tracked struct NonAtomicPointsTo<T> {
-    _phantom: PhantomData<T>,
+    v: T
 }
 
 impl<T> NonAtomicPointsTo<T> {
@@ -734,7 +733,7 @@ pub enum AtomicMode {
 
 // note: skipped ghost name, single-writer timestamp
 pub tracked struct AtomicPointsTo<T> {
-    _phantom: PhantomData<T>,
+    v: T
 }
 
 impl<T> AtomicPointsTo<T> {
@@ -898,7 +897,7 @@ impl<T> AtomicPointsTo<T> {
 // note: #[derive(Clone)] doesn't seem to work due to PhantomData
 #[derive(Copy)]
 pub tracked struct HistorySeen<T> {
-    _phantom: PhantomData<T>,
+    v: T
 }
 
 impl<T> Clone for HistorySeen<T> {
@@ -949,7 +948,7 @@ impl<T> HistorySeen<T> {
 
 #[derive(Copy)]
 pub tracked struct HistorySync<T> {
-    _phantom: PhantomData<T>,
+    v: T
 }
 
 impl<T> Clone for HistorySync<T> {
@@ -1007,7 +1006,7 @@ impl<T> HistorySync<T> {
 }
 
 pub tracked struct SingleWriter<T> {
-    _phantom: PhantomData<T>,
+    v: T
 }
 
 impl<T> SingleWriter<T> {
@@ -1042,7 +1041,7 @@ impl<T> SingleWriter<T> {
 
 // note: skipped timestamp
 pub tracked struct CompareAndSwap<T> {
-    _phantom: PhantomData<T>,
+    v: T
 }
 
 impl<T> CompareAndSwap<T> {
@@ -1458,13 +1457,11 @@ impl<T: AtomicType> Ptr<T> {
                 )
             }),
     {
+        broadcast use View::contains_and_contains_strict;
+
         let tracked (va_rsrc, mut v_sn0) = ViewAt::new_incl(rsrc, v_sn);
+        let ghost v_sn0_old = v_sn0;
         let tracked timestamp = self.write_release_single_writer(t, &mut v_sn0, sw, pt);
-        // why?????
-        // i have determined that it has to do with the v_sn.view().contains_strict(old(v_sn).view()) postcondition
-        // you can also prove false from v_sn.view() != old(v_sn).view() of even *v_sn != old(v_sn)* as a postcondition
-        // hypothesis: it is because ViewSeen is a struct with no fields
-        assert(false);
         let tracked va_rsrc = va_rsrc.weaken(v_sn0.view());
         *v_sn = v_sn0;
         (va_rsrc, timestamp)
