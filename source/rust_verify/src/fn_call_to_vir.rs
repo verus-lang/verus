@@ -1765,17 +1765,19 @@ fn verus_item_to_vir<'tcx, 'a>(
             if !bctx.ctxt.cmd_line_args.new_mut_ref {
                 let check = &|ty: rustc_middle::ty::Ty, span| match ty.kind() {
                     TyKind::Ref(_, _, rustc_middle::ty::Mutability::Mut) => {
-                        bctx.ctxt.diagnostics.borrow_mut().push(vir::ast::VirErrAs::Warning(crate::util::err_span_bare(
-                                span,
-                                format!("Dereference this mutable reference to compare the value via Verus spec equality. In the future, this will be a hard error or not work as expected."),
-                            )));
+                        Err(crate::util::err_span_bare(
+                            span,
+                            format!(
+                                "Dereference this mutable reference to compare the value via Verus spec equality."
+                            ),
+                        ))
                     }
-                    _ => {}
+                    _ => Ok(()),
                 };
                 let ty = bctx.types.expr_ty_adjusted(&args[0]);
-                check(ty, args[0].span);
+                check(ty, args[0].span)?;
                 let ty = bctx.types.expr_ty_adjusted(&args[1]);
-                check(ty, args[1].span);
+                check(ty, args[1].span)?;
             }
 
             let vir_args = mk_vir_args_auto_skip_mut_refs(bctx, node_substs, f, &args)?;

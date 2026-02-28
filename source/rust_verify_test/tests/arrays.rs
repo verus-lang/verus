@@ -76,7 +76,7 @@ test_verify_one_file! {
         requires
             *old(i) < 10,
         ensures
-            ret == old(i),
+            ret == *old(i),
             *i == *old(i) + 1,
         {
             let oldi = *i;
