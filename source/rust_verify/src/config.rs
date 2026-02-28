@@ -826,7 +826,7 @@ pub fn parse_args_with_imports(
         solver: if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         axiom_usage_info: extended.contains_key(EXTENDED_AXIOM_USAGE_INFO),
         check_api_safety: extended.contains_key(EXTENDED_CHECK_API_SAFETY),
-        new_mut_ref: extended.contains_key(EXTENDED_NEW_MUT_REF),
+        new_mut_ref: true, //extended.contains_key(EXTENDED_NEW_MUT_REF),
         no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
     };
 
