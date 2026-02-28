@@ -394,7 +394,33 @@ impl<V> GhostSubseq<V> {
         *self = mself;
 
         assert(self@ =~= v);
-        assume(auth@ =~= old(auth)@.update_subrange_with(self.off() - auth.off(), v));  // TODO(vstd): derive seq-level update_subrange relation from update_map post.
+        let rel = self.off() - auth.off();
+        assert(auth@.len() == old(auth)@.update_subrange_with(rel, v).len());
+        assert forall|i: int| 0 <= i < auth@.len() implies auth@[i] == old(auth)@.update_subrange_with(rel, v)[i] by {
+            let abs = auth.off() + i;
+            assert(auth@[i] == auth.auth@[abs]);
+            assert(old(auth)@[i] == old_map[abs]);
+            super::super::iset::lemma_iset_new(|ii: int| off <= ii < off + len, abs);
+            assert(0 <= abs - off < len);
+            assert(abs == off + (abs - off));
+            assert(auth.auth@.dom() =~= full);
+            super::super::iset::lemma_iset_ext_equal(auth.auth@.dom(), full);
+            assert(auth.auth@.dom().contains(abs));
+            assert(auth.auth@.contains_key(abs));
+            super::super::map::lemma_imap_ext_equal(auth.auth@, rhs_map);
+            assert(auth.auth@[abs] == rhs_map[abs]);
+            if self.off() <= abs < self.off() + v.len() {
+                assert(rel <= i < rel + v.len());
+                assert(i - rel == abs - self.off());
+                assert(rhs_map[abs] == v[abs - self.off()]);
+                assert(old(auth)@.update_subrange_with(rel, v)[i] == v[i - rel]);
+            } else {
+                assert(!(rel <= i < rel + v.len()));
+                assert(rhs_map[abs] == old_map[abs]);
+                assert(old(auth)@.update_subrange_with(rel, v)[i] == old(auth)@[i]);
+            }
+        }
+        assert(auth@ =~= old(auth)@.update_subrange_with(rel, v));
     }
 
     pub proof fn update_map(
