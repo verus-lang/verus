@@ -308,6 +308,8 @@ pub fn run_verus(
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
+        } else if *option == "--no-erasure-check" {
+            verus_args.push("--no-erasure-check".to_string());
         } else if *option == "--no-verify" {
             verus_args.push("--no-verify".to_string());
         } else if *option == "--no-report-long-running" {
@@ -802,6 +804,13 @@ pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
             || err.errors[0].message.contains("lifetime may not live long enough")
     ); // thus a Rust error
     assert!(err.errors[0].message.contains(expected_msg));
+}
+
+#[allow(dead_code)]
+pub fn assert_rust_error_msg_skip_spec_msgs(err: TestErr, expected_msg: &str) {
+    let mut err = err;
+    err.errors = err.errors.into_iter().filter(|e| !e.message.contains("(Verus spec")).collect();
+    assert_rust_error_msg(err, expected_msg)
 }
 
 #[allow(dead_code)]

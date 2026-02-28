@@ -404,7 +404,9 @@ impl Expect {
 #[derive(Clone, Debug)]
 pub struct ErasureModes {
     // Modes of variables in Var, Assign, Decl
-    pub var_modes: Vec<(Span, Mode)>,
+    // first mode = canonical mode of the variable
+    // second mode = mode of this usage (might be greater)
+    pub var_modes: Vec<(Span, (Mode, Mode))>,
     // Modes of calls and struct Ctors
     pub ctor_modes: Vec<(Span, Mode)>,
 }
@@ -847,7 +849,7 @@ fn add_pattern_rec(
         && !matches!(&pattern.x, PatternX::ImmutRef(_))
         && !matches!(&pattern.x, PatternX::MutRef(_))
     {
-        record.erasure_modes.var_modes.push((pattern.span.clone(), mode));
+        record.erasure_modes.var_modes.push((pattern.span.clone(), (mode, mode)));
     }
 
     match &pattern.x {
@@ -997,7 +999,7 @@ fn get_var_loc_mode(
             let (x_mode, x_proph) = typing.get(x, &expr.span)?;
             let x_proph = x_proph.to_proph(x, &expr.span);
 
-            record.erasure_modes.var_modes.push((expr.span.clone(), x_mode));
+            record.erasure_modes.var_modes.push((expr.span.clone(), (x_mode, x_mode)));
 
             if ctxt.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
@@ -1221,7 +1223,11 @@ fn check_place(
     // we stor the mode of the local (the second case is in `check_place_rec`).
     if !access.is_mut() {
         if let Some(var_place) = crate::ast_util::place_get_local(place) {
-            record.erasure_modes.var_modes.push((var_place.span.clone(), final_mode));
+            let var_mode = match &var_place.x {
+                PlaceX::Local(var) => typing.get(var, &place.span)?.0,
+                _ => unreachable!(),
+            };
+            record.erasure_modes.var_modes.push((var_place.span.clone(), (var_mode, final_mode)));
         }
     }
 
@@ -1340,7 +1346,7 @@ fn check_place_rec_inner(
 
             // Other case is handled in `check_place`; see the explanation there.
             if access.is_mut() {
-                record.erasure_modes.var_modes.push((place.span.clone(), mode));
+                record.erasure_modes.var_modes.push((place.span.clone(), (mode, mode)));
             }
 
             Ok((mode, proph))
@@ -1609,7 +1615,7 @@ fn check_expr_handle_mut_arg(
 
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
-            record.erasure_modes.var_modes.push((expr.span.clone(), mode));
+            record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
             return Ok((mode, Some(x_mode), proph));
         }
         ExprX::ConstVar(x, _)
@@ -1646,7 +1652,7 @@ fn check_expr_handle_mut_arg(
             let mode = function.x.ret.x.mode;
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
-            record.erasure_modes.var_modes.push((expr.span.clone(), mode));
+            record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
             Ok((mode, Proph::No))
         }
         ExprX::Call(
@@ -2348,7 +2354,7 @@ fn check_expr_handle_mut_arg(
                 ));
             }
 
-            record.erasure_modes.var_modes.push((expr.span.clone(), Mode::Exec));
+            record.erasure_modes.var_modes.push((expr.span.clone(), (Mode::Exec, Mode::Exec)));
 
             Ok((outer_mode, Proph::No))
         }
@@ -2424,7 +2430,7 @@ fn check_expr_handle_mut_arg(
                         let (mode, pv) = typing.get(xr, &rhs.span)?;
                         typing.infer_as(xl, mode, pv.clone());
                         record.var_modes.insert(xl.clone(), mode);
-                        record.erasure_modes.var_modes.push((span, mode));
+                        record.erasure_modes.var_modes.push((span, (mode, mode)));
                     }
                 }
             }
@@ -2504,7 +2510,7 @@ fn check_expr_handle_mut_arg(
                         let (mode, pv) = typing.get(xr, &rhs.span)?;
                         typing.infer_as(xl, mode, pv.clone());
                         record.var_modes.insert(xl.clone(), mode);
-                        record.erasure_modes.var_modes.push((span, mode));
+                        record.erasure_modes.var_modes.push((span, (mode, mode)));
                     }
                 }
             }

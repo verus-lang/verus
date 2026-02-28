@@ -98,7 +98,7 @@ test_verify_one_file_with_options! {
                 mut_ref1.borrow_mut().y = Y { };
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file_with_options! {
@@ -113,7 +113,7 @@ test_verify_one_file_with_options! {
                 mut_ref1.borrow_mut().y = Y { };
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file_with_options! {
@@ -1007,9 +1007,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-// TODO(new_mut_ref): un-ignore this
 test_verify_one_file_with_options! {
-    #[ignore] #[test] read_from_borrowed_ghost_location_and_then_assign_to_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] read_from_borrowed_ghost_location_and_then_assign_to_mut_ref ["new-mut-ref"] => verus_code! {
         fn test() {
             let mut x: Ghost<bool> = Ghost(false);
 
@@ -1023,7 +1022,7 @@ test_verify_one_file_with_options! {
 
             assert(false);
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot use `x` because it was mutably borrowed")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `(Verus spec x)` as immutable because it is also borrowed as mutable")
 }
 
 // TODO(new_mut_ref): un-ignore this test; swap needs to be restricted to non-exec types
@@ -1230,7 +1229,7 @@ test_verify_one_file_with_options! {
             let tracked y2: &mut Ghost<u64> = &mut *x;
             proof { *y = Ghost(3); }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file_with_options! {
@@ -1319,7 +1318,7 @@ test_verify_one_file_with_options! {
                 **x_ref = 30u64;
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x` because it is borrowed")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot assign to `x` because it is borrowed")
 }
 
 test_verify_one_file_with_options! {
@@ -1476,7 +1475,7 @@ test_verify_one_file_with_options! {
                 x_ref.0 = 30u64;
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x` because it is borrowed")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot assign to `x` because it is borrowed")
 }
 
 test_verify_one_file_with_options! {

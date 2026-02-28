@@ -76,7 +76,12 @@ pub struct OpaqueDef {
 #[derive(Debug, Clone)]
 pub enum VerifOrExternal {
     /// Path is the *module path* containing this item
-    VerusAware { module_path: Path, const_directive: bool, external_body: bool },
+    VerusAware {
+        module_path: Path,
+        const_directive: bool,
+        external_body: bool,
+        external_fn_specification: bool,
+    },
     /// Path/String to refer to this item for diagnostics
     /// Path is an Option because there are some items we can't compute a Path for
     External { path: Option<Path>, path_string: String, explicit: bool },
@@ -334,6 +339,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                     module_path: module_path,
                     const_directive: eattrs.size_of_global || eattrs.item_broadcast_use,
                     external_body: my_eattrs.external_body,
+                    external_fn_specification: my_eattrs.external_fn_specification,
                 }
             } else {
                 self.errors.push(crate::util::err_span_bare(
@@ -443,6 +449,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                             module_path,
                             const_directive: false,
                             external_body: false,
+                            external_fn_specification: false,
                         }
                     } else {
                         self.errors.push(crate::util::err_span_bare(

@@ -1535,7 +1535,7 @@ where
     }
 }
 
-pub(crate) fn ast_visitor_check<ERR, E, FE, FS, FP, FT, FPL>(
+pub fn ast_visitor_check<ERR, E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
     env: &mut E,
     fe: &mut FE,

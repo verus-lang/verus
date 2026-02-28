@@ -303,6 +303,7 @@ fn body_to_vir<'tcx>(
         in_fn_sig: false,
         in_postcondition: false,
         in_old: false,
+        in_explicit_prophecy_node: false,
         params: std::rc::Rc::new(vec![param_names]),
         header_setting: HeaderSetting::Fn,
         unwrap_param_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
