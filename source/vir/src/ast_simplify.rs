@@ -437,6 +437,20 @@ fn simplify_one_expr(
                 _ => Ok(expr.new_x(ExprX::VarLoc(rename_var(state, scope_map, x)))),
             }
         }
+        ExprX::AssignToPlace { place, .. } => {
+            if let Some(local) = crate::ast_util::place_get_local(place) {
+                let PlaceX::Local(x) = &local.x else { unreachable!() };
+                match scope_map.get(x) {
+                    None => { return Err(error(&expr.span, "Verus Internal Error: cannot find this variable")); }
+                    Some(entry) if entry.user_mut == Some(false) && entry.init => {
+                        let name = user_local_name(x);
+                        return Err(error(&expr.span, format!("variable `{name:}` is not marked mutable")));
+                    }
+                    _ => { }
+                }
+            }
+            Ok(expr.clone())
+        }
         ExprX::ConstVar(x, autospec) => {
             let call = ExprX::Call(
                 CallTarget::Fun(
