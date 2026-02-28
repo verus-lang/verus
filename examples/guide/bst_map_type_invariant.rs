@@ -94,8 +94,8 @@ impl<V> Node<V> {
         requires
             old(node).is_some() ==> old(node).unwrap().well_formed(),
         ensures
-            node.is_some() ==> node.unwrap().well_formed(),
-            Node::<V>::optional_as_map(*node) =~= Node::<V>::optional_as_map(*old(node)).insert(key, value),
+            final(node).is_some() ==> final(node).unwrap().well_formed(),
+            Node::<V>::optional_as_map(*final(node)) =~= Node::<V>::optional_as_map(*old(node)).insert(key, value),
         decreases *old(node),
     {
         if node.is_none() {
@@ -120,8 +120,8 @@ impl<V> Node<V> {
         requires
             old(self).well_formed(),
         ensures
-            self.well_formed(),
-            self.as_map() =~= old(self).as_map().insert(key, value),
+            final(self).well_formed(),
+            final(self).as_map() =~= old(self).as_map().insert(key, value),
         decreases *old(self),
     {
         if key == self.key {
@@ -146,7 +146,7 @@ impl<V> TreeMap<V> {
 // ANCHOR: insert_signature
     pub fn insert(&mut self, key: u64, value: V)
         ensures
-            self@ == old(self)@.insert(key, value),
+            final(self)@ == old(self)@.insert(key, value),
 // ANCHOR_END: insert_signature
     {
         proof { use_type_invariant(&*self); }
@@ -163,8 +163,8 @@ impl<V> Node<V> {
         requires
             old(node).is_some() ==> old(node).unwrap().well_formed(),
         ensures
-            node.is_some() ==> node.unwrap().well_formed(),
-            Node::<V>::optional_as_map(*node) =~= Node::<V>::optional_as_map(*old(node)).remove(key),
+            final(node).is_some() ==> final(node).unwrap().well_formed(),
+            Node::<V>::optional_as_map(*final(node)) =~= Node::<V>::optional_as_map(*old(node)).remove(key),
         decreases *old(node),
     {
         if node.is_some() {
@@ -205,8 +205,8 @@ impl<V> Node<V> {
             old(node).is_some(),
             old(node).unwrap().well_formed(),
         ensures
-            node.is_some() ==> node.unwrap().well_formed(),
-            Node::<V>::optional_as_map(*node) =~= Node::<V>::optional_as_map(*old(node)).remove(popped.0),
+            final(node).is_some() ==> final(node).unwrap().well_formed(),
+            Node::<V>::optional_as_map(*final(node)) =~= Node::<V>::optional_as_map(*old(node)).remove(popped.0),
             Node::<V>::optional_as_map(*old(node)).dom().contains(popped.0),
             Node::<V>::optional_as_map(*old(node))[popped.0] == popped.1,
             forall |elem| Node::<V>::optional_as_map(*old(node)).dom().contains(elem) ==> popped.0 >= elem,
@@ -235,7 +235,7 @@ impl<V> TreeMap<V> {
 // ANCHOR: delete_signature
     pub fn delete(&mut self, key: u64)
         ensures
-            self@ == old(self)@.remove(key),
+            final(self)@ == old(self)@.remove(key),
 // ANCHOR_END: delete_signature
     {
         proof { use_type_invariant(&*self); }

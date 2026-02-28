@@ -150,7 +150,7 @@ exec fn g(v1: &mut Vec<u64>, v2: &mut Vec<u64>)
         old(v1)@.len() == 2,
         old(v2)@.len() == 3,
     ensures
-        v1@.len() == v2@.len(),
+        final(v1)@.len() == final(v2)@.len(),
 {
     v1.push(42);
     v1.push(43);

@@ -49,20 +49,20 @@ fn exec_with_proof() {
 // ANCHOR: proof_with
 #[verus_spec(ret =>
 with
-  Tracked(y): Tracked<&mut u32>,
+  Tracked(y): Tracked<&mut Ghost<u32>>,
   Ghost(w): Ghost<u32> 
      -> z: Ghost<u32>
 requires
   x < 100,
   *old(y) < 100,
 ensures
-  *y == x,
+  *final(y) == x,
   ret == x + 1,
   z@ == x,
 )]
 fn exec_tracked(x: u32) -> u32 {
   proof! {
-    *y = x;
+    *y = Ghost(x);
   }
   proof_with!(|= Ghost(x));
   (x + 1)
@@ -73,7 +73,7 @@ fn exec_tracked(x: u32) -> u32 {
 fn exec_tracked_test(x: u32) {
   proof_decl!{
     let ghost mut z = 0u32;
-    let tracked mut y = 0u32;
+    let tracked mut y = Ghost(0u32);
   }
 
   proof_with!{Tracked(&mut y), Ghost(0) => Ghost(z)}

@@ -123,7 +123,7 @@ fn mut_triangle(n: u32, sum: &mut u32)
     requires
         triangle(n as nat) < 0x1_0000_0000,
     ensures
-        *sum == triangle(n as nat),
+        *final(sum) == triangle(n as nat),
     decreases n,
 {
     if n == 0 {
@@ -199,7 +199,7 @@ fn tail_triangle(n: u32, idx: u32, sum: &mut u32)
         *old(sum) == triangle(idx as nat),
         triangle(n as nat) < 0x1_0000_0000,
     ensures
-        *sum == triangle(n as nat),
+        *final(sum) == triangle(n as nat),
     decreases n - idx,
 {
     if idx < n {

@@ -121,8 +121,8 @@ impl<K: TotalOrdered, V> Node<K, V> {
         requires
             old(node).is_some() ==> old(node).unwrap().well_formed(),
         ensures
-            node.is_some() ==> node.unwrap().well_formed(),
-            Node::<K, V>::optional_as_map(*node) =~= Node::<K, V>::optional_as_map(*old(node)).insert(key, value),
+            final(node).is_some() ==> final(node).unwrap().well_formed(),
+            Node::<K, V>::optional_as_map(*final(node)) =~= Node::<K, V>::optional_as_map(*old(node)).insert(key, value),
         decreases *old(node),
     {
         if node.is_none() {
@@ -147,8 +147,8 @@ impl<K: TotalOrdered, V> Node<K, V> {
         requires
             old(self).well_formed(),
         ensures
-            self.well_formed(),
-            self.as_map() =~= old(self).as_map().insert(key, value),
+            final(self).well_formed(),
+            final(self).as_map() =~= old(self).as_map().insert(key, value),
         decreases *old(self),
     {
         match key.compare(&self.key) {
@@ -185,7 +185,7 @@ impl<K: TotalOrdered, V> Node<K, V> {
 impl<K: TotalOrdered, V> TreeMap<K, V> {
     pub fn insert(&mut self, key: K, value: V)
         ensures
-            self@ == old(self)@.insert(key, value)
+            final(self)@ == old(self)@.insert(key, value)
     {
         proof { use_type_invariant(&*self); }
         let mut root = None;
@@ -200,8 +200,8 @@ impl<K: TotalOrdered, V> Node<K, V> {
         requires
             old(node).is_some() ==> old(node).unwrap().well_formed(),
         ensures
-            node.is_some() ==> node.unwrap().well_formed(),
-            Node::<K, V>::optional_as_map(*node) =~= Node::<K, V>::optional_as_map(*old(node)).remove(key),
+            final(node).is_some() ==> final(node).unwrap().well_formed(),
+            Node::<K, V>::optional_as_map(*final(node)) =~= Node::<K, V>::optional_as_map(*old(node)).remove(key),
         decreases *old(node),
     {
         if node.is_some() {
@@ -268,8 +268,8 @@ impl<K: TotalOrdered, V> Node<K, V> {
             old(node).is_some(),
             old(node).unwrap().well_formed(),
         ensures
-            node.is_some() ==> node.unwrap().well_formed(),
-            Node::<K, V>::optional_as_map(*node) =~= Node::<K, V>::optional_as_map(*old(node)).remove(popped.0),
+            final(node).is_some() ==> final(node).unwrap().well_formed(),
+            Node::<K, V>::optional_as_map(*final(node)) =~= Node::<K, V>::optional_as_map(*old(node)).remove(popped.0),
             Node::<K, V>::optional_as_map(*old(node)).dom().contains(popped.0),
             Node::<K, V>::optional_as_map(*old(node))[popped.0] == popped.1,
             forall |elem| #[trigger] Node::<K, V>::optional_as_map(*old(node)).dom().contains(elem) ==> elem.le(popped.0),
@@ -310,7 +310,7 @@ impl<K: TotalOrdered, V> Node<K, V> {
 impl<K: TotalOrdered, V> TreeMap<K, V> {
     pub fn delete(&mut self, key: K)
         ensures
-            self@ == old(self)@.remove(key),
+            final(self)@ == old(self)@.remove(key),
     {
         proof { use_type_invariant(&*self); }
         let mut root = None;
