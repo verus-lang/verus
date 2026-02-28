@@ -653,10 +653,10 @@ test_verify_one_file! {
     #[test] test_field_update_param_1_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
         fn test(t: &mut T)
             requires
-                old(t).s.a < 30,
-                old(t).s.b < 30,
+                t.s.a < 30,
+                t.s.b < 30,
             ensures
-                *t == (T { s: S { a: (old(t).s.a + 1) as usize, b: (old(t).s.b + 1) as i32 }, ..*old(t) })
+                *final(t) == (T { s: S { a: (old(t).s.a + 1) as usize, b: (old(t).s.b + 1) as i32 }, ..*old(t) })
         {
             t.s.a = t.s.a + 1;
             t.s.b = t.s.b + 1;
@@ -668,10 +668,10 @@ test_verify_one_file! {
     #[test] test_field_update_param_1_fail FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
         fn test(t: &mut T)
             requires
-                old(t).s.a < 30,
-                old(t).s.b < 30,
+                t.s.a < 30,
+                t.s.b < 30,
             ensures
-                *t == (T { s: S { a: (old(t).s.a + 1) as usize, b: (old(t).s.b + 1) as i32 }, ..*old(t) })
+                *final(t) == (T { s: S { a: (old(t).s.a + 1) as usize, b: (old(t).s.b + 1) as i32 }, ..*old(t) })
         {
             t.s.a = t.s.a + 1;
             t.s.b = t.s.b + 1;
@@ -683,8 +683,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_field_update_param_2_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
         fn test(t: &mut T, v: usize)
-            requires old(t).s.a < 30, v < 30
-            ensures *t == (T { s: S { a: (old(t).s.a + v) as usize, ..old(t).s }, ..*old(t) })
+            requires t.s.a < 30, v < 30
+            ensures *final(t) == (T { s: S { a: (old(t).s.a + v) as usize, ..old(t).s }, ..*old(t) })
         {
             t.s.a = t.s.a + v;
         }
@@ -694,8 +694,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_field_update_param_mut_ref_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
         fn foo(s: &mut S, v: usize)
-            requires old(s).a < 30, v < 30
-            ensures *s == (S { a: (old(s).a + v) as usize, ..*old(s) })
+            requires s.a < 30, v < 30
+            ensures *final(s) == (S { a: (old(s).a + v) as usize, ..*old(s) })
         {
             s.a = s.a + v;
         }
@@ -1814,7 +1814,7 @@ test_verify_one_file! {
 
         fn mutate_int_2(i: &mut u8)
             requires *old(i) == 19,
-            ensures *i == 30,
+            ensures *final(i) == 30,
         {
             *i = 30;
         }
@@ -1855,8 +1855,8 @@ test_verify_one_file! {
         }
 
         fn update_u64(a: &mut u64)
-            requires *old(a) == 5,
-            ensures *a == 19,
+            requires *a == 5,
+            ensures *final(a) == 19,
         {
             *a = 19;
         }

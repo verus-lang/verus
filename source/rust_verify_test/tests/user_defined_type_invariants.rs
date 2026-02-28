@@ -458,7 +458,7 @@ test_verify_one_file! {
         }
 
         fn mutate_int2(i: &mut u8, j: &mut u8)
-            ensures *i == *j
+            ensures *final(i) == *final(j)
             no_unwind
         {
             *i = 100;
@@ -488,22 +488,22 @@ test_verify_one_file! {
         }
 
         fn mutate_int4_meet_all(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 10, *b == 30, *c == 10, *d == 10
+            ensures *final(a) == 10, *final(b) == 30, *final(c) == 10, *final(d) == 10
             no_unwind
         { assume(false); }
 
         fn mutate_int4_fail_x(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 20, *b == 30, *c == 20, *d == 20
+            ensures *final(a) == 20, *final(b) == 30, *final(c) == 20, *final(d) == 20
             no_unwind
         { assume(false); }
 
         fn mutate_int4_fail_y(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 10, *b == 30, *c == 10, *d == 11
+            ensures *final(a) == 10, *final(b) == 30, *final(c) == 10, *final(d) == 11
             no_unwind
         { assume(false); }
 
         fn mutate_int4_fail_z(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 10, *b == 30, *c == 11, *d == 11
+            ensures *final(a) == 10, *final(b) == 30, *final(c) == 11, *final(d) == 11
             no_unwind
         { assume(false); }
 
@@ -576,7 +576,7 @@ test_verify_one_file! {
         }
 
         fn mutate_int2(i: &mut u8, j: &mut u8)
-            ensures *i == *j
+            ensures *final(i) == *final(j)
             no_unwind
         {
             *i = 100;
@@ -594,17 +594,17 @@ test_verify_one_file! {
         }
 
         fn mutate_int4_meet_all(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 10, *b == 30, *c == 10, *d == 10
+            ensures *final(a) == 10, *final(b) == 30, *final(c) == 10, *final(d) == 10
             no_unwind
         { assume(false); }
 
         fn mutate_int4_fail_x(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 20, *b == 30, *c == 20, *d == 20
+            ensures *final(a) == 20, *final(b) == 30, *final(c) == 20, *final(d) == 20
             no_unwind
         { assume(false); }
 
         fn mutate_int4_fail_y(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 10, *b == 30, *c == 10, *d == 11
+            ensures *final(a) == 10, *final(b) == 30, *final(c) == 10, *final(d) == 11
             no_unwind
         { assume(false); }
 
@@ -646,7 +646,7 @@ test_verify_one_file! {
         }
 
         fn set_to(i: &mut u8, x: u8, y: u8) -> (ret: u8)
-            ensures *i == x, ret == y
+            ensures *final(i) == x, ret == y
             no_unwind
         {
             *i = x;
@@ -700,7 +700,7 @@ test_verify_one_file! {
         }
 
         fn set_to(i: &mut u8, x: u8, y: u8) -> (ret: u8)
-            ensures *i == x, ret == y
+            ensures *final(i) == x, ret == y
             no_unwind
         {
             *i = x;
@@ -718,7 +718,7 @@ test_verify_one_file! {
                   assert(x.the_inv());
                  0 });
         }
-    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `(Verus spec x)` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file! {
@@ -736,7 +736,7 @@ test_verify_one_file! {
         }
 
         fn set_to(i: &mut u8, x: u8, y: u8) -> (ret: u8)
-            ensures *i == x, ret == y
+            ensures *final(i) == x, ret == y
             no_unwind
         {
             *i = x;
@@ -772,7 +772,7 @@ test_verify_one_file! {
 
         impl Y {
             fn set_to(&mut self, x: u8, y: u8) -> (ret: u8)
-                ensures self.0 == x, ret == y
+                ensures final(self).0 == x, ret == y
                 no_unwind
             {
                 self.0 = x;
@@ -811,7 +811,7 @@ test_verify_one_file! {
 
         impl Y {
             fn set_to(&mut self, x: u8, y: u8) -> (ret: u8)
-                ensures self.0 == x, ret == y
+                ensures final(self).0 == x, ret == y
                 no_unwind
             {
                 self.0 = x;
@@ -850,7 +850,7 @@ test_verify_one_file! {
 
         impl Y {
             fn set_to(&mut self, x: u8, y: u8) -> (ret: u8)
-                ensures self.0 == x, ret == y
+                ensures final(self).0 == x, ret == y
                 no_unwind
             {
                 self.0 = x;
@@ -975,7 +975,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_nested_compound verus_code! {
+    #[test] test_mut_ref_nested_compound1 verus_code! {
         struct X {
             i: u8,
             j: u8,
@@ -1002,13 +1002,68 @@ test_verify_one_file! {
         fn test_assign_op(y: &mut Y)
             requires old(y).x.i < 100
         {
+            proof {
+                use_type_invariant(&*y);
+                use_type_invariant(&y.x);
+            }
             y.x.i += 2; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_nested_compound2 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                20 <= self.x.j < 30
+            }
         }
 
         fn test2_assign_op(y: &mut Y)
             requires old(y).x.j < 100
         {
+            proof {
+                use_type_invariant(&*y);
+                use_type_invariant(&y.x);
+            }
             y.x.j += 2; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_nested_compound3 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
         }
 
         fn test3_assign_op(x: &mut X)
@@ -1016,9 +1071,7 @@ test_verify_one_file! {
         {
             x.i += 4; // FAILS
         }
-
-    } => Err(err) => assert_vir_error_msg(err, "not yet implemented: lhs of compound assignment")
-        //assert_fails_type_invariant_error(err, 3)
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
 }
 
 test_verify_one_file! {
@@ -1159,7 +1212,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_normal_var_nested_compound verus_code! {
+    #[test] test_normal_var_nested_compound1 verus_code! {
         struct X {
             i: u8,
             j: u8,
@@ -1185,17 +1238,7 @@ test_verify_one_file! {
 
         fn test_assign_op() {
             let mut y = Y { x: X { i: 12, j: 25 } };
-            y.x.i += 2; // FAILS
-        }
-
-        fn test2_assign_op() {
-            let mut y = Y { x: X { i: 12, j: 25 } };
-            y.x.j += 2; // FAILS
-        }
-
-        fn test3_assign_op() {
-            let mut x = X { i: 14, j: 123 };
-            x.i += 4; // FAILS
+            y.x.i += 4; // FAILS
         }
 
         fn test4_assign_op_ok() {
@@ -1203,28 +1246,171 @@ test_verify_one_file! {
             x.i += 4;
         }
 
+        fn tup_test4_assign_op_ok() {
+            let mut x = (X { i: 2, j: 123 }, 19);
+            x.0.i += 4;
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_normal_var_nested_compound2 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                20 <= self.x.j < 30
+            }
+        }
+
+        fn test2_assign_op() {
+            let mut y = Y { x: X { i: 12, j: 25 } };
+            y.x.j += 7; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_normal_var_nested_compound3 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                20 <= self.x.j < 30
+            }
+        }
+
+        fn test3_assign_op() {
+            let mut x = X { i: 14, j: 123 };
+            x.i += 4; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_normal_var_nested_compound4 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                20 <= self.x.j < 30
+            }
+        }
+
         fn tup_test_assign_op() {
             let mut y = (Y { x: X { i: 12, j: 25 } }, 19);
-            y.0.x.i += 2; // FAILS
+            y.0.x.i += 4; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_normal_var_nested_compound5 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                20 <= self.x.j < 30
+            }
         }
 
         fn tup_test2_assign_op() {
             let mut y = (Y { x: X { i: 12, j: 25 } }, 19);
-            y.0.x.j += 2; // FAILS
+            y.0.x.j += 7; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_normal_var_nested_compound6 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                20 <= self.x.j < 30
+            }
         }
 
         fn tup_test3_assign_op() {
             let mut x = (X { i: 14, j: 123 }, 19);
             x.0.i += 4; // FAILS
         }
-
-        fn tup_test4_assign_op_ok() {
-            let mut x = (X { i: 2, j: 123 }, 19);
-            x.0.i += 4;
-        }
-
-    } => Err(err) => assert_vir_error_msg(err, "not yet implemented: lhs of compound assignment")
-    //assert_fails_type_invariant_error(err, 3)
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
 }
 
 test_verify_one_file! {
@@ -1912,8 +2098,8 @@ test_verify_one_file! {
 
         fn mutate_int2(i: &mut u8, j: &mut u8)
             ensures
-                *i == 14,
-                *j == 16
+                *final(i) == 14,
+                *final(j) == 16
             no_unwind
         {
             *i = 14;
@@ -1939,8 +2125,8 @@ test_verify_one_file! {
 
         proof fn proof_mutate_int2(tracked i: &mut u8, tracked j: &mut u8)
             ensures
-                *i == 14,
-                *j == 16
+                *final(i) == 14,
+                *final(j) == 16
         {
             assume(false);
         }
@@ -2004,7 +2190,7 @@ test_verify_one_file! {
         }
 
         proof fn mutate_int2(tracked i: &mut u8, tracked j: &mut u8)
-            ensures *i == *j
+            ensures *final(i) == *final(j)
         {
             assume(false);
         }
