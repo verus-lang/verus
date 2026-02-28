@@ -3560,6 +3560,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
     match &stmt.kind {
         StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
             if is_ignorable_dummy_capture_operation(bctx, expr) {
+                record_ignore_dummy_capture_operation(bctx, expr);
                 return Ok(vec![]);
             }
 
@@ -3619,6 +3620,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
         StmtKind::Let(LetStmt { pat, ty: _, init, els, .. }) => {
             if let Some(init) = init {
                 if is_ignorable_dummy_capture_operation(bctx, init) {
+                    record_ignore_dummy_capture_operation(bctx, init);
                     return Ok(vec![]);
                 }
             }
@@ -3669,6 +3671,13 @@ pub(crate) fn is_ignorable_dummy_capture_operation<'tcx>(
         },
         _ => false,
     }
+}
+
+pub(crate) fn record_ignore_dummy_capture_operation<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) {
+    crate::fn_call_to_vir::record_call(bctx, expr, ResolvedCall::MiscEraseAbsolutely);
 }
 
 pub(crate) fn closure_to_vir<'tcx>(

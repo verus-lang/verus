@@ -2782,7 +2782,7 @@ fn record_spec_fn_no_proof_args<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
     record_call(bctx, expr, ResolvedCall::Spec)
 }
 
-fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
+pub(crate) fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
     let resolved_call = match (resolved_call, &bctx.external_trait_from_to) {
         (ResolvedCall::Call(ufun, rfun, in_ghost), Some(paths)) if paths.2.is_some() => {
             let (from_path, _to_path, to_spec_path) = &**paths;

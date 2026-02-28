@@ -703,3 +703,47 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] quant1 ["new-mut-ref"] => verus_code! {
+        fn test1() {
+            let mut x = 0;
+            let x_ref = &mut x;
+            let ghost quant = forall|z: u64| z == x;
+            *x_ref = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "x")
+}
+
+test_verify_one_file_with_options! {
+    #[test] quant2 ["new-mut-ref"] => verus_code! {
+        fn test2() {
+            let mut x = 0;
+            let x_ref = &mut x;
+            assert(forall|z: u64| z == x);
+            *x_ref = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "x")
+}
+
+test_verify_one_file_with_options! {
+    #[test] quant3 ["new-mut-ref"] => verus_code! {
+        fn test3() {
+            let mut x = 0;
+            let x_ref = &mut x;
+            let ghost quant = ::verus_builtin::forall(|z: u64| z == x);
+            *x_ref = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "x")
+}
+
+test_verify_one_file_with_options! {
+    #[test] quant4 ["new-mut-ref"] => verus_code! {
+        fn test4() {
+            let mut x = 0;
+            let x_ref = &mut x;
+            assert(::verus_builtin::forall(|z: u64| z == x));
+            *x_ref = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "x")
+}
