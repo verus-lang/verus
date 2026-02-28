@@ -112,7 +112,7 @@ impl BitMap {
         requires
             index < old(self)@.len(),
         ensures
-            self@ == old(self)@.update(index as int, bit),
+            final(self)@ == old(self)@.update(index as int, bit),
     {
         // REVEIW: Same problem here with above regarding `usize`.
         let seq_index: usize = (index / 64) as usize;

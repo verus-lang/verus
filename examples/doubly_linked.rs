@@ -109,8 +109,8 @@ mod doubly_linked_list {
                 old(self).well_formed(),
                 old(self).ghost_state@.ptrs.len() == 0,
             ensures
-                self.well_formed(),
-                self@ =~= old(self)@.push(v),
+                final(self).well_formed(),
+                final(self)@ =~= old(self)@.push(v),
         {
             // Allocate a node to contain the payload
             let (ptr, Tracked(points_to)) = PPtr::<Node<V>>::new(
@@ -124,8 +124,9 @@ mod doubly_linked_list {
             // Update proof state
             proof {
                 self.ghost_state.borrow_mut().ptrs = self.ghost_state@.ptrs.push(ptr);
+                let ghost len = self.ghost_state@.ptrs.len();
                 self.ghost_state.borrow_mut().points_to_map.tracked_insert(
-                    (self.ghost_state@.ptrs.len() - 1) as nat,
+                    (len - 1) as nat,
                     points_to,
                 );
             }
@@ -136,8 +137,8 @@ mod doubly_linked_list {
             requires
                 old(self).well_formed(),
             ensures
-                self.well_formed(),
-                self@ == old(self)@.push(v),
+                final(self).well_formed(),
+                final(self)@ == old(self)@.push(v),
         {
             match self.tail {
                 None => {
@@ -164,14 +165,15 @@ mod doubly_linked_list {
 
                     // Update the 'next' pointer of the previous tail node
                     // This is all equivalent to `(*old_tail_ptr).next = new_tail_ptr;`
+                    let ghost idx = (self.ghost_state@.ptrs.len() - 1) as nat;
                     let tracked mut old_tail_pointsto: PointsTo<Node<V>> =
-                        self.ghost_state.borrow_mut().points_to_map.tracked_remove((self.ghost_state@.ptrs.len() - 1) as nat);
+                        self.ghost_state.borrow_mut().points_to_map.tracked_remove(idx);
                     let mut old_tail_node = old_tail_ptr.take(Tracked(&mut old_tail_pointsto));
                     old_tail_node.next = Some(new_tail_ptr);
                     old_tail_ptr.put(Tracked(&mut old_tail_pointsto), old_tail_node);
                     proof {
                         self.ghost_state.borrow_mut().points_to_map.tracked_insert(
-                            (self.ghost_state@.ptrs.len() - 1) as nat,
+                            idx,
                             old_tail_pointsto,
                         );
                     }
@@ -181,7 +183,8 @@ mod doubly_linked_list {
 
                     proof {
                         // Put the new tail's PointsTo into the map
-                        self.ghost_state.borrow_mut().points_to_map.tracked_insert(self.ghost_state@.ptrs.len(), new_tail_pointsto);
+                        let len = self.ghost_state@.ptrs.len();
+                        self.ghost_state.borrow_mut().points_to_map.tracked_insert(len, new_tail_pointsto);
                         self.ghost_state@.ptrs = self.ghost_state@.ptrs.push(new_tail_ptr);
 
                         // Additional proof work to help the solver show that
@@ -209,8 +212,8 @@ mod doubly_linked_list {
                 old(self).well_formed(),
                 old(self)@.len() > 0,
             ensures
-                self.well_formed(),
-                self@ == old(self)@.drop_last(),
+                final(self).well_formed(),
+                final(self)@ == old(self)@.drop_last(),
                 v == old(self)@[old(self)@.len() as int - 1],
         {
             assert(self.well_formed_node((self.ghost_state@.ptrs.len() - 1) as nat));
@@ -218,8 +221,9 @@ mod doubly_linked_list {
             // Deallocate the last node in the list and get the payload.
             // Note self.tail.unwrap() will always succeed because of the precondition `len > 0`
             let last_ptr = self.tail.unwrap();
+            let ghost idx = (self.ghost_state@.ptrs.len() - 1) as nat;
             let tracked last_pointsto = self.ghost_state.borrow_mut().points_to_map.tracked_remove(
-                (self.ghost_state@.ptrs.len() - 1) as nat,
+                idx,
             );
             let last_node = last_ptr.into_inner(Tracked(last_pointsto));
             let v = last_node.payload;
@@ -246,14 +250,16 @@ mod doubly_linked_list {
                     self.tail = Some(penultimate_ptr);
 
                     // And we need to set the 'next' pointer of the new tail node to None.
+                    let ghost idx = (self.ghost_state@.ptrs.len() - 2) as nat;
                     let tracked mut penultimate_pointsto =
-                        self.ghost_state.borrow_mut().points_to_map.tracked_remove((self.ghost_state@.ptrs.len() - 2) as nat);
+                        self.ghost_state.borrow_mut().points_to_map.tracked_remove(idx);
                     let mut penultimate_node = penultimate_ptr.take(Tracked(&mut penultimate_pointsto));
                     penultimate_node.next = None;
                     penultimate_ptr.put(Tracked(&mut penultimate_pointsto), penultimate_node);
                     proof {
+                        let idx = (self.ghost_state@.ptrs.len() - 2) as nat;
                         self.ghost_state.borrow_mut().points_to_map.tracked_insert(
-                            (self.ghost_state@.ptrs.len() - 2) as nat,
+                            idx,
                             penultimate_pointsto,
                         );
                     }
@@ -286,8 +292,8 @@ mod doubly_linked_list {
             requires
                 old(self).well_formed(),
             ensures
-                self.well_formed(),
-                self@ == seq![v].add(old(self)@),
+                final(self).well_formed(),
+                final(self)@ == seq![v].add(old(self)@),
         {
             match self.head {
                 None => {
@@ -371,8 +377,8 @@ mod doubly_linked_list {
                 old(self).well_formed(),
                 old(self).view().len() > 0,
             ensures
-                self.well_formed(),
-                self@ == old(self)@.subrange(1, old(self)@.len() as int),
+                final(self).well_formed(),
+                final(self)@ == old(self)@.subrange(1, old(self)@.len() as int),
                 v == old(self)@[0],
         {
             assert(self.well_formed_node(0));
@@ -546,9 +552,9 @@ mod doubly_linked_list {
             requires
                 old(self).valid(),
             ensures
-                old(self).list() == self.list(),
+                old(self).list() == final(self).list(),
                 good == (old(self).index() < old(self).list()@.len() - 1),
-                good ==> (self.valid() && self.index() == old(self).index() + 1),
+                good ==> (final(self).valid() && final(self).index() == old(self).index() + 1),
         {
             assert(self.l.well_formed_node(self.index()));
             let cur = self.cur.unwrap();

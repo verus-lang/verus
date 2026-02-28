@@ -129,8 +129,8 @@ impl<V> DListXor<V> {
             old(self).wf(),
             old(self).ptrs@.len() == 0,
         ensures
-            self.wf(),
-            self@ == old(self)@.push(v),
+            final(self).wf(),
+            final(self)@ == old(self)@.push(v),
     {
         let (ptr, Tracked(perm)) = PPtr::new(Node::<V> { xored: 0, v });
         proof {
@@ -148,8 +148,8 @@ impl<V> DListXor<V> {
         requires
             old(self).wf(),
         ensures
-            self.wf(),
-            self@ == old(self)@.push(v),
+            final(self).wf(),
+            final(self)@ == old(self)@.push(v),
     {
         if self.tail == 0 {
             // Special case: list is empty
@@ -224,8 +224,8 @@ impl<V> DListXor<V> {
             old(self).wf(),
             old(self)@.len() > 0,
         ensures
-            self.wf(),
-            self@ == old(self)@.drop_last(),
+            final(self).wf(),
+            final(self)@ == old(self)@.drop_last(),
             v == old(self)@[old(self)@.len() - 1],
     {
         assert(self.wf_perm((self.ptrs@.len() - 1) as nat));
@@ -318,8 +318,8 @@ impl<V> DListXor<V> {
             old(self).wf(),
             old(self)@.len() > 0,
         ensures
-            self.wf(),
-            self@ == old(self)@.subrange(1, old(self)@.len() as int),
+            final(self).wf(),
+            final(self)@ == old(self)@.subrange(1, old(self)@.len() as int),
             v == old(self)@[0],
     {
         assert(self.wf_perm(0));
@@ -405,8 +405,8 @@ impl<V> DListXor<V> {
         requires
             old(self).wf(),
         ensures
-            self.wf(),
-            self@ == seq![v].add(old(self)@),
+            final(self).wf(),
+            final(self)@ == seq![v].add(old(self)@),
     {
         if self.tail == 0 {
             // Special case: list is empty
