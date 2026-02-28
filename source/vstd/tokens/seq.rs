@@ -338,7 +338,63 @@ impl<V> GhostSubseq<V> {
             self.off() == old(self).off(),
             auth.off() == old(auth).off(),
     {
-        admit();  // TODO(vstd): re-prove via update_map and GhostSeqAuth invariant-safe staging.
+        use_type_invariant(&*self);
+        use_type_invariant(&*auth);
+        self.agree(auth);
+
+        let tracked mut mself = GhostSubseq::<V>::dummy();
+        tracked_swap(self, &mut mself);
+        let tracked mut mauth = GhostSeqAuth::<V>::dummy();
+        tracked_swap(auth, &mut mauth);
+        use_type_invariant(&mauth);
+
+        let off = mauth.off;
+        let len = mauth.len;
+        let tracked mut map_auth = mauth.auth;
+        let old_map = map_auth@;
+        mself.update_map(&mut map_auth, v);
+
+        let full = ISet::new(|i: int| off <= i < off + len);
+        assert(old_map.dom() =~= full);
+        super::super::map::lemma_infinite_new_ensures(
+            |i: int| old_map.contains_key(i),
+            |i: int|
+                if mself.off() <= i < mself.off() + v.len() {
+                    v[i - mself.off()]
+                } else {
+                    old_map[i]
+                },
+        );
+        let rhs_map = IMap::new(
+            |i: int| old_map.contains_key(i),
+            |i: int|
+                if mself.off() <= i < mself.off() + v.len() {
+                    v[i - mself.off()]
+                } else {
+                    old_map[i]
+                },
+        );
+        assert(map_auth@ =~= rhs_map);
+        super::super::map::lemma_imap_ext_equal(map_auth@, rhs_map);
+        assert(rhs_map.dom() =~= old_map.dom()) by {
+            assert forall|i: int| rhs_map.dom().contains(i) == old_map.dom().contains(i) by {
+                assert(rhs_map.dom().contains(i) == old_map.contains_key(i));
+                assert(old_map.contains_key(i) == old_map.dom().contains(i));
+            }
+            super::super::iset::lemma_iset_ext_equal(rhs_map.dom(), old_map.dom());
+        }
+        assert(map_auth@.dom() =~= rhs_map.dom());
+        super::super::iset::lemma_iset_ext_equal(map_auth@.dom(), rhs_map.dom());
+        assert(map_auth@.dom() =~= old_map.dom());
+        super::super::iset::lemma_iset_ext_equal(map_auth@.dom(), old_map.dom());
+        assert(map_auth@.dom() =~= full);
+
+        let tracked nauth = GhostSeqAuth { off: off, len: len, auth: map_auth };
+        *auth = nauth;
+        *self = mself;
+
+        assert(self@ =~= v);
+        assume(auth@ =~= old(auth)@.update_subrange_with(self.off() - auth.off(), v));  // TODO(vstd): derive seq-level update_subrange relation from update_map post.
     }
 
     pub proof fn update_map(
@@ -468,7 +524,7 @@ impl<V> GhostSubseq<V> {
         let tracked mut mselffrac = mself.frac;
         let olddom = mselffrac@.dom();
         let s = ISet::new(|i: int| mself.off + n <= i < mself.off + mself.len);
-        assume(s <= mselffrac.dom());  // TODO(vstd): recover subset proof automation for ISet wrapper domains.
+        assume(s <= mselffrac@.dom());  // TODO(vstd): recover subset proof automation for ISet wrapper domains.
         let tracked mfrac = mselffrac.split(s);
         super::super::iset::lemma_iset_ext_equal_eq(mfrac@.dom(), s);
         assert(mfrac@.dom() == ISet::new(|i: int| mself.off + n <= i < mself.off + mself.len));

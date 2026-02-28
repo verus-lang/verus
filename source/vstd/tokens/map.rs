@@ -391,7 +391,7 @@ impl<K, V> GhostSubmap<K, V> {
 
     pub proof fn split(tracked &mut self, s: ISet<K>) -> (tracked result: GhostSubmap<K, V>)
         requires
-            s <= old(self).dom(),
+            s <= old(self)@.dom(),
         ensures
             self.id() == old(self).id(),
             result.id() == self.id(),
