@@ -7,9 +7,7 @@ use crate::ast::{
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{
-    QUANT_FORALL, bool_typ, place_to_expr, types_equal, undecorate_typ, unit_typ,
-};
+use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_typ};
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
@@ -929,6 +927,18 @@ fn expr_must_be_call_stm(
         {
             expr_get_call(ctx, state, disallow_poly_ret, expr)
         }
+        _ => Ok(None),
+    }
+}
+
+fn place_must_be_call_stm(
+    ctx: &Ctx,
+    state: &mut State,
+    disallow_poly_ret: Option<&Typ>,
+    place: &Place,
+) -> Result<Option<(Vec<Stm>, Maybe<ReturnedCall>)>, VirErr> {
+    match &place.x {
+        PlaceX::Temporary(t) => expr_must_be_call_stm(ctx, state, disallow_poly_ret, t),
         _ => Ok(None),
     }
 }
@@ -2831,9 +2841,9 @@ pub(crate) fn expr_to_stm_opt(
             panic!("TwoPhaseBorrowMut should have been handled by the parent node");
         }
         ExprX::ReadPlace(place, _) | ExprX::ImplicitReborrowOrSpecRead(place, _, _) => {
-            // Any ImplicitReborrowOrSpecRead which are left are assumed to be SpecRead
-            let expr = place_to_expr(place);
-            expr_to_stm_opt(ctx, state, &expr)
+            let (stms, e) = place_to_exp_for_read(ctx, state, place)?;
+            let e = unwrap_or_return_never!(e, stms);
+            Ok((stms, Maybe::Some(Value::Exp(e))))
         }
         ExprX::EvalAndResolve(e1, e2) => {
             let (mut stms, exp1) = expr_to_stm_opt(ctx, state, e1)?;
@@ -3107,6 +3117,81 @@ struct Obligation {
     exp: Exp,
 }
 
+/// Compute the place expression and read from the place
+fn place_to_exp_for_read(
+    ctx: &Ctx,
+    state: &mut State,
+    place: &Place,
+) -> Result<(Vec<Stm>, Maybe<Exp>), VirErr> {
+    // Try to lower without creating unnecessary temporaries if we can
+    if place_is_simple(place) {
+        return place_to_exp_simple(ctx, state, place);
+    }
+    let (stms, res) = place_to_exp_pair(ctx, state, place)?;
+    let (_lhs, rhs, obligations) = unwrap_or_return_never!(res, stms);
+    if obligations.len() > 0 {
+        // Shouldn't have these for reads
+        return Err(error(
+            &place.span,
+            "Verus internal error: place_to_expr_for_read does not expect any UserDefinedTypInvariantObligation",
+        ));
+    }
+    Ok((stms, Maybe::Some(rhs)))
+}
+
+fn place_is_simple(place: &Place) -> bool {
+    match &place.x {
+        PlaceX::Local(_) => true,
+        PlaceX::Temporary(_) => true,
+        PlaceX::DerefMut(p) | PlaceX::ModeUnwrap(p, _) => place_is_simple(p),
+        PlaceX::Field(field_opr, p) => {
+            matches!(field_opr.check, VariantCheck::None) && place_is_simple(p)
+        }
+        PlaceX::WithExpr(..) => false,
+        PlaceX::Index(..) => false,
+        PlaceX::UserDefinedTypInvariantObligation(..) => false,
+    }
+}
+
+/// Precondition: place_is_simple
+fn place_to_exp_simple(
+    ctx: &Ctx,
+    state: &mut State,
+    place: &Place,
+) -> Result<(Vec<Stm>, Maybe<Exp>), VirErr> {
+    let mk_exp = |expx: ExpX| SpannedTyped::new(&place.span, &place.typ, expx);
+    match &place.x {
+        PlaceX::Local(x) => {
+            let unique_id = state.get_var_unique_id(&x);
+            let e_r = mk_exp(ExpX::Var(unique_id));
+            let e_r = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_r));
+            Ok((vec![], Maybe::Some(e_r)))
+        }
+        PlaceX::Temporary(e) => {
+            let (stms, v) = expr_to_stm_opt(ctx, state, e)?;
+            let exp = to_exp_or_return_never!(v, stms);
+            Ok((stms, Maybe::Some(exp)))
+        }
+        PlaceX::ModeUnwrap(p, _) => place_to_exp_simple(ctx, state, p),
+        PlaceX::DerefMut(p) => {
+            let (stms, e) = place_to_exp_simple(ctx, state, p)?;
+            let e = unwrap_or_return_never!(e, stms);
+            let e = mk_exp(ExpX::Unary(UnaryOp::MutRefCurrent, e));
+            Ok((stms, Maybe::Some(e)))
+        }
+        PlaceX::Field(field_opr, p) => {
+            assert!(matches!(field_opr.check, VariantCheck::None));
+            let (stms, e) = place_to_exp_simple(ctx, state, p)?;
+            let e = unwrap_or_return_never!(e, stms);
+            let e = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e));
+            Ok((stms, Maybe::Some(e)))
+        }
+        PlaceX::WithExpr(..) => unreachable!(),
+        PlaceX::Index(..) => unreachable!(),
+        PlaceX::UserDefinedTypInvariantObligation(..) => unreachable!(),
+    }
+}
+
 /// Use this when you need to both read and write to a given place
 ///
 /// Returns:
@@ -3291,12 +3376,10 @@ fn stmt_to_stm(
             let ident = rename.clone();
             let decl = PreLocalDecl { ident, typ: typ.clone(), kind: PreLocalDeclKind::StmtLet };
 
-            let init = init.as_ref().map(|init| place_to_expr(init));
-
             // First check if the initializer needs to be translate to a Call instead
             // of an Exp. If so, translate it that way.
             if let Some(init) = &init {
-                match expr_must_be_call_stm(ctx, state, Some(&typ), init)? {
+                match place_must_be_call_stm(ctx, state, Some(&typ), init)? {
                     Some((stms, Maybe::Never)) => {
                         return Ok((stms, Maybe::Never, None));
                     }
@@ -3351,8 +3434,8 @@ fn stmt_to_stm(
             let (mut stms, exp) = match &init {
                 None => (vec![], None),
                 Some(init) => {
-                    let (stms, exp) = expr_to_stm_opt(ctx, state, init)?;
-                    let exp = match exp.to_maybe_exp() {
+                    let (stms, exp) = place_to_exp_for_read(ctx, state, init)?;
+                    let exp = match exp {
                         Maybe::Some(exp) => exp,
                         Maybe::Never => {
                             return Ok((stms, Maybe::Never, None));
