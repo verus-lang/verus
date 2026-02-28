@@ -30,7 +30,7 @@ pub(crate) fn thir_body(
     crate::verus::check_this_query_isnt_running_early(owner_def);
 
     let expr = if crate::verus::erase_body(&mut cx, owner_def) {
-        crate::verus::erase_tree(&mut cx, body.value)
+        crate::verus::erase_tree(&mut cx, body.value, crate::verus::TreeErase::IncludeBasicChecks)
     } else {
         cx.mirror_expr(body.value)
     };

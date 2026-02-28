@@ -2317,7 +2317,7 @@ fn check_expr_handle_mut_arg(
                 }
 
                 let mut ens_typing = ghost_typing.push_var_scope();
-                ens_typing.insert(&ret.name, ret_mode, Some(ProphVar::No));
+                ens_typing.insert(&ret.name, Mode::Spec, Some(ProphVar::No));
                 for ens in ensures.iter() {
                     check_expr_has_mode(
                         ctxt,
@@ -3441,7 +3441,7 @@ fn check_function(
 
     let mut ens_typing = fun_typing.push_var_scope();
     if function.x.ens_has_return {
-        ens_typing.insert(&function.x.ret.x.name, function.x.ret.x.mode, Some(ProphVar::No));
+        ens_typing.insert(&function.x.ret.x.name, Mode::Spec, Some(ProphVar::No));
     }
     for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let mut ens_typing = ens_typing.push_block_ghostness(Ghost::Ghost);

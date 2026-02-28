@@ -9,8 +9,8 @@ use vir::modes::ErasureModes;
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
-    BodyErasure, CallErasure, NodeErase, VarErasure, VerusErasureCtxt, set_verus_aware_def_ids,
-    set_verus_erasure_ctxt,
+    BodyErasure, CallErasure, NodeErase, TreeErase, VarErasure, VerusErasureCtxt,
+    set_verus_aware_def_ids, set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -59,6 +59,9 @@ pub enum ResolvedCall {
     NonStaticExec,
     /// The call is to a dynamically computed function, and is proof
     NonStaticProof(Arc<Vec<Mode>>),
+    /// Erase the node and all subtrees completely. Suitable for ad hoc directives
+    /// like `constraint_type`.
+    MiscEraseAbsolutely,
 }
 
 #[derive(Clone)]
@@ -121,7 +124,7 @@ fn resolved_call_to_call_erase(
     ctor_mode: Option<Mode>,
 ) -> Result<CallErasure, VirErr> {
     Ok(match resolved_call {
-        ResolvedCall::Spec => CallErasure::EraseTree,
+        ResolvedCall::Spec => CallErasure::EraseTree(TreeErase::IncludeBasicChecks),
         ResolvedCall::SpecAllowProofArgs => CallErasure::Call(NodeErase::Erase),
         ResolvedCall::Call(ufun, rfun, in_ghost) => {
             // Note: in principle, the unresolved function ufun should always be present,
@@ -149,7 +152,7 @@ fn resolved_call_to_call_erase(
         ResolvedCall::CompilableOperator(co) => match co {
             CompilableOperator::IntIntrinsic => CallErasure::Call(NodeErase::Erase),
 
-            CompilableOperator::GhostExec => CallErasure::EraseTree,
+            CompilableOperator::GhostExec => CallErasure::EraseTree(TreeErase::IncludeBasicChecks),
 
             CompilableOperator::Implies
             | CompilableOperator::RcNew
@@ -167,6 +170,7 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::GhostBorrowMut
             | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
         },
+        ResolvedCall::MiscEraseAbsolutely => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
     })
 }
 

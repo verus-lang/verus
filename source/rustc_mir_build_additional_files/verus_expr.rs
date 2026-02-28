@@ -45,7 +45,7 @@ pub(crate) fn mirror_expr_pre<'tcx>(
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
             let call_erasure = handle_call(&cx.verus_ctxt, expr);
             match call_erasure {
-                CallErasure::EraseTree => Some(erase_tree_kind(cx, expr)),
+                CallErasure::EraseTree(t) => Some(erase_tree_kind(cx, expr, t)),
                 _ => None,
             }
         }

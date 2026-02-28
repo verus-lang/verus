@@ -2128,6 +2128,7 @@ fn check_is_builtin_constrain_typ<'tcx>(bctx: &BodyCtxt<'tcx>, e: &'tcx Expr<'tc
                 if bctx.ctxt.get_verus_item(def_id)
                     == Some(&VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType))
                 {
+                    record_call(bctx, e, ResolvedCall::MiscEraseAbsolutely);
                     return false;
                 }
             }

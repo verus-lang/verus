@@ -596,10 +596,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_spec_borrowed(err, "a")
 }
 
-// TODO(new_mut_ref): fix issue with spec closures:
-
 test_verify_one_file_with_options! {
-    #[ignore] #[test] spec_closure_use ["new-mut-ref"] => verus_code! {
+    #[test] spec_closure_use ["new-mut-ref"] => verus_code! {
         spec fn foo(t: u64, y: u64) -> bool { true }
 
         fn closure_test() {
@@ -612,7 +610,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] assert_forall_use ["new-mut-ref"] => verus_code! {
+    #[test] assert_forall_use ["new-mut-ref"] => verus_code! {
         spec fn foo(t: u64, y: u64) -> bool { true }
 
         fn closure_test() {

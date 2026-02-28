@@ -47,10 +47,19 @@ pub enum NodeErase {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub enum TreeErase {
+    /// Check match exhaustiveness and emit shadow vars if necessary.
+    /// Suitable for pure spec expressions with no side effects (e.g., assert).
+    IncludeBasicChecks,
+    /// Erase the tree entirely.
+    EraseAbsolutely,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CallErasure {
     /// Erase the call and ALL subexpressions. This can only be used when the node is guaranteed
     /// to have no proof code in the subtree (outer_mode = spec in modes.rs)
-    EraseTree,
+    EraseTree(TreeErase),
     Call(NodeErase),
 }
 
@@ -216,7 +225,7 @@ impl CallErasure {
 
     pub(crate) fn should_erase(&self) -> bool {
         match self {
-            CallErasure::EraseTree => panic!("EraseTree should be handled by mirror_expr_opt"),
+            CallErasure::EraseTree(_) => panic!("EraseTree should be handled by mirror_expr_opt"),
             CallErasure::Call(node_erase) => node_erase.should_erase(),
         }
     }
@@ -280,8 +289,9 @@ pub(crate) fn expr_id_from_kind<'tcx>(
 pub(crate) fn erase_tree<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,
+    t: TreeErase,
 ) -> ExprId {
-    let kind = erase_tree_kind(cx, hir_expr);
+    let kind = erase_tree_kind(cx, hir_expr, t);
     let ty = cx.typeck_results.expr_ty(hir_expr);
 
     let expr = Expr { temp_scope_id: hir_expr.hir_id.local_id, ty, span: hir_expr.span, kind };
@@ -304,21 +314,28 @@ pub(crate) fn erase_tree<'tcx>(
 pub(crate) fn erase_tree_kind<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
+    t: TreeErase,
 ) -> ExprKind<'tcx> {
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
         panic!("erased_expr_id_from_expr called without erasure ctxt");
     };
 
-    // We have to preserve all match statements
-    let (mut exprs, local_uses) = get_all_stmts_with_pattern_checking(cx, &erasure_ctxt, expr);
-
-    if cx.verus_ctxt.do_time_travel_prevention {
-        exprs.append(&mut crate::verus_time_travel_prevention::shadow_var_uses(
-            cx,
-            &erasure_ctxt,
-            local_uses,
-        ));
-    }
+    let exprs = match t {
+        TreeErase::IncludeBasicChecks => {
+            // We have to preserve all match statements
+            let (mut exprs, local_uses) =
+                get_all_stmts_with_pattern_checking(cx, &erasure_ctxt, expr);
+            if cx.verus_ctxt.do_time_travel_prevention {
+                exprs.append(&mut crate::verus_time_travel_prevention::shadow_var_uses(
+                    cx,
+                    &erasure_ctxt,
+                    local_uses,
+                ));
+            }
+            exprs
+        }
+        TreeErase::EraseAbsolutely => vec![],
+    };
 
     let ty = cx.typeck_results.expr_ty(expr);
     erased_ghost_value_kind_with_args(cx, &erasure_ctxt, expr.hir_id, expr.span, ty, exprs)
@@ -725,17 +742,20 @@ fn get_all_stmts_with_pattern_checking<'tcx>(
     erasure_ctxt: &VerusErasureCtxt,
     expr: &'tcx hir::Expr<'tcx>,
 ) -> (Vec<ExprId>, Vec<LocalUse<'tcx>>) {
-    let root_hir_id = expr.hir_id;
-    let mut vis = VisitTreeForPats {
-        cx,
-        erasure_ctxt,
-        root_hir_id,
-        output_exprs: vec![],
-        output_local_uses: vec![],
-    };
     use crate::rustc_hir::intravisit::Visitor;
+
+    // We use two visitors, one that visits closure bodies and one that doesn't.
+
+    let root_hir_id = expr.hir_id;
+    let mut vis = VisitTreeForPats { cx, erasure_ctxt, root_hir_id, output_exprs: vec![] };
     vis.visit_expr(expr);
-    (vis.output_exprs, vis.output_local_uses)
+    let output_exprs = vis.output_exprs;
+
+    let mut vis2 =
+        VisitTreeForLocalUses { cx, erasure_ctxt, root_hir_id, output_local_uses: vec![] };
+    vis2.visit_expr(expr);
+
+    (output_exprs, vis2.output_local_uses)
 }
 
 struct VisitTreeForPats<'a, 'tcx> {
@@ -743,7 +763,6 @@ struct VisitTreeForPats<'a, 'tcx> {
     erasure_ctxt: &'a VerusErasureCtxt,
     root_hir_id: HirId,
     output_exprs: Vec<ExprId>,
-    output_local_uses: Vec<LocalUse<'tcx>>,
 }
 
 impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tcx> {
@@ -752,6 +771,14 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tc
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
         match &expr.kind {
+            hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
+                if matches!(
+                    self.erasure_ctxt.calls.get(&expr.hir_id),
+                    Some(CallErasure::EraseTree(TreeErase::EraseAbsolutely))
+                ) {
+                    return;
+                }
+            }
             hir::ExprKind::Match(..) => {
                 self.output_exprs.push(erase_match_for_pattern_checking(
                     self.cx,
@@ -768,6 +795,38 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tc
                     expr,
                 ) {
                     self.output_exprs.push(b);
+                }
+            }
+            _ => {}
+        }
+
+        rustc_hir::intravisit::walk_expr(self, expr);
+    }
+}
+
+struct VisitTreeForLocalUses<'a, 'tcx> {
+    cx: &'a mut ThirBuildCx<'tcx>,
+    erasure_ctxt: &'a VerusErasureCtxt,
+    root_hir_id: HirId,
+    output_local_uses: Vec<LocalUse<'tcx>>,
+}
+
+impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForLocalUses<'a, 'tcx> {
+    // Recurse into closures
+    type NestedFilter = rustc_middle::hir::nested_filter::OnlyBodies;
+
+    fn maybe_tcx(&mut self) -> TyCtxt<'tcx> {
+        self.cx.tcx
+    }
+
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        match &expr.kind {
+            hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
+                if matches!(
+                    self.erasure_ctxt.calls.get(&expr.hir_id),
+                    Some(CallErasure::EraseTree(TreeErase::EraseAbsolutely))
+                ) {
+                    return;
                 }
             }
             hir::ExprKind::Path(QPath::Resolved(
