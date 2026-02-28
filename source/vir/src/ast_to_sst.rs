@@ -3123,7 +3123,8 @@ fn place_to_exp_for_read(
     state: &mut State,
     place: &Place,
 ) -> Result<(Vec<Stm>, Maybe<Exp>), VirErr> {
-    // Try to lower without creating unnecessary temporaries if we can
+    // Try to lower without creating unnecessary temporaries if we can.
+    // As always, we need to generate a pure Exp with no Stms if it's possible.
     if place_is_simple(place) {
         return place_to_exp_simple(ctx, state, place);
     }
@@ -3148,7 +3149,20 @@ fn place_is_simple(place: &Place) -> bool {
             matches!(field_opr.check, VariantCheck::None) && place_is_simple(p)
         }
         PlaceX::WithExpr(..) => false,
-        PlaceX::Index(..) => false,
+        PlaceX::Index(p, i, _k, bounds_check) => {
+            // An Index with no bounds check could show up from an Assert added
+            // by ast_simplify, so we need to allow this in order to generate a pure Exp
+            let index_is_simple = match &i.x {
+                ExprX::Const(_) => true,
+                ExprX::Var(_) => true,
+                ExprX::ReadPlace(place, _) => match &place.x {
+                    PlaceX::Local(_) => true,
+                    _ => false,
+                },
+                _ => false,
+            };
+            matches!(bounds_check, BoundsCheck::Allow) && index_is_simple && place_is_simple(p)
+        }
         PlaceX::UserDefinedTypInvariantObligation(..) => false,
     }
 }
@@ -3187,7 +3201,15 @@ fn place_to_exp_simple(
             Ok((stms, Maybe::Some(e)))
         }
         PlaceX::WithExpr(..) => unreachable!(),
-        PlaceX::Index(..) => unreachable!(),
+        PlaceX::Index(p, i, kind, bounds_check) => {
+            assert!(matches!(bounds_check, BoundsCheck::Allow));
+            let (stms, e) = place_to_exp_simple(ctx, state, p)?;
+            let e = unwrap_or_return_never!(e, stms);
+            let i = expr_to_pure_exp_skip_checks(ctx, state, i)?;
+            let op = BinaryOp::Index(*kind, BoundsCheck::Allow);
+            let e = mk_exp(ExpX::Binary(op, e, i));
+            Ok((stms, Maybe::Some(e)))
+        }
         PlaceX::UserDefinedTypInvariantObligation(..) => unreachable!(),
     }
 }

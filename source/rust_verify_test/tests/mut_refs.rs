@@ -4036,9 +4036,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 5)
 }
 
-// TODO(new_mut_ref) fix test
 test_verify_one_file_with_options! {
-    #[ignore] #[test] overwrite_during_ctor_tail ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_during_ctor_tail ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
         struct Foo {
             i: u64,
@@ -4101,6 +4100,77 @@ test_verify_one_file_with_options! {
             assert(j == Foo { i: 12, j: 7, k: 8 });
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_ctor_tail_fails ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        struct Foo {
+            i: u64,
+            j: u64,
+            k: u64,
+        }
+
+        fn array_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let j = Foo { i: 12, .. a[({ a = b; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let mut x = &mut a;
+            let j = Foo { i: 12, .. x[({ x = &mut b; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x = &mut a_ref;
+            let j = Foo { i: 12, .. x[({ x = &mut b_ref; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_ctor_tail() {
+            let mut a: [[Foo; 2]; 2] = [
+                [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}],
+                [Foo{i: 200, j: 201, k: 202}, Foo{i: 203, j: 204, k: 205}],
+            ];
+            let mut b: [[Foo; 2]; 2] = [
+                [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}],
+                [Foo{i: 206, j: 207, k: 208}, Foo{i: 209, j: 2010, k: 2011}],
+            ];
+
+            let mut x = &mut a;
+            let j = Foo { i: 12, .. x[1][({ x = &mut b; 0 })] };
+            assert(j == Foo { i: 12, j: 207, k: 208 });
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let slice1: &mut [Foo] = &mut a;
+            let slice2: &mut [Foo] = &mut b;
+
+            let mut x = slice1;
+            let j = Foo { i: 12, .. x[({ x = slice2; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
 }
 
 test_verify_one_file_with_options! {
@@ -4177,4 +4247,85 @@ test_verify_one_file_with_options! {
             assert(j === (6, 7, 8));
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_scrutinee_fails ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        struct Foo {
+            i: u64,
+            j: u64,
+            k: u64,
+        }
+
+        fn array_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let j = match a[({ a = b; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let mut x = &mut a;
+            let j = match x[({ x = &mut b; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x = &mut a_ref;
+            let j = match x[({ x = &mut b_ref; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_read() {
+            let mut a: [[Foo; 2]; 2] = [
+                [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}],
+                [Foo{i: 200, j: 201, k: 202}, Foo{i: 203, j: 204, k: 205}],
+            ];
+            let mut b: [[Foo; 2]; 2] = [
+                [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}],
+                [Foo{i: 206, j: 207, k: 208}, Foo{i: 209, j: 2010, k: 2011}],
+            ];
+
+            let mut x = &mut a;
+            let j = match x[1][({ x = &mut b; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (206, 207, 208));
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let slice1: &mut [Foo] = &mut a;
+            let slice2: &mut [Foo] = &mut b;
+
+            let mut x = slice1;
+            let j = match x[({ x = slice2; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
 }
