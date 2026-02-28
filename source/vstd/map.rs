@@ -178,6 +178,15 @@ impl<K, V> Map<K, V> {
                 },
     {
         self.0.lemma_union_prefer_right(m2.0);
+        let lhs = self.union_prefer_right(m2).dom().to_infinite();
+        let rhs = self.dom().to_infinite().union(m2.dom().to_infinite());
+        assert forall|k| lhs.contains(k) == rhs.contains(k) by {
+            super::iset::lemma_iset_union(self.dom().to_infinite(), m2.dom().to_infinite(), k);
+            super::gset::lemma_gset_generic_union(self.0.dom(), m2.0.dom(), k);
+        }
+        super::iset::lemma_iset_ext_equal(lhs, rhs);
+        assert(lhs =~= rhs);
+        super::iset::lemma_iset_ext_equal_eq(lhs, rhs);
     }
 
     pub proof fn lemma_remove_keys_len(self, keys: Set<K>)
@@ -318,6 +327,32 @@ impl<K, V> IMap<K, V> {
 
     pub open spec fn union_prefer_right(self, m2: Self) -> Self {
         IMap(self.0.union_prefer_right(m2.0))
+    }
+
+    pub proof fn lemma_union_prefer_right(self, m2: Self)
+        ensures
+            #![trigger (self.union_prefer_right(m2))]
+            self.union_prefer_right(m2).dom() == self.dom().union(m2.dom()),
+            self.union_prefer_right(m2).dom().congruent(self.dom().union(m2.dom())),
+            forall|k|
+                #![auto]
+                self.union_prefer_right(m2).dom().contains(k) ==> self.union_prefer_right(m2)[k]
+                    == if m2.dom().contains(k) {
+                    m2[k]
+                } else {
+                    self[k]
+                },
+    {
+        self.0.lemma_union_prefer_right(m2.0);
+        let lhs = self.union_prefer_right(m2).dom();
+        let rhs = self.dom().union(m2.dom());
+        assert forall|k| lhs.contains(k) == rhs.contains(k) by {
+            super::iset::lemma_iset_union(self.dom(), m2.dom(), k);
+            super::gset::lemma_gset_generic_union(self.0.dom(), m2.0.dom(), k);
+        }
+        super::iset::lemma_iset_ext_equal(lhs, rhs);
+        assert(lhs =~= rhs);
+        super::iset::lemma_iset_ext_equal_eq(lhs, rhs);
     }
 
     pub open spec fn remove_keys(self, keys: ISet<K>) -> Self {
@@ -482,6 +517,16 @@ pub broadcast proof fn lemma_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, 
         },
 {
     lemma_map_ext_equal(m1, m2);
+}
+
+pub broadcast proof fn lemma_imap_ext_equal<K, V>(m1: IMap<K, V>, m2: IMap<K, V>)
+    ensures
+        #[trigger] (m1 =~= m2) <==> {
+            &&& m1.dom() =~= m2.dom()
+            &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
+        },
+{
+    super::gmap::lemma_map_ext_equal(m1.0, m2.0);
 }
 
 pub broadcast proof fn lemma_congruence_extensionality<K, V, FINITE: Finiteness>(
