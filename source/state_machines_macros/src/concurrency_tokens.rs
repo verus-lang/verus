@@ -3,7 +3,7 @@
 //!
 //!  * The Instance type
 //!  * All the Token types for shardable fields
-//!  * #[cfg_attr(verus_keep_ghost, verifier::proof)] methods for each transition (including init and readonly transitions)
+//!  * Proof methods for each transition (including init and readonly transitions)
 
 use crate::ast::{
     Arm, Field, Lemma, LetKind, MonoidElt, MonoidStmtType, SM, ShardableType, SpecialOp, SplitKind,

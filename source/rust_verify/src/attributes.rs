@@ -1195,6 +1195,7 @@ pub(crate) fn get_external_attrs(
             }
             Attr::UsesUnerasedProxy => es.uses_unerased_proxy = true,
             Attr::StructuralConstWrapper => es.structural_const_wrapper = true,
+            Attr::MigratePostconditionsWithMutRefs(_) => {}
             Attr::UnsupportedRustcAttr(..) => {}
             _ => {
                 es.any_other_verus_specific_attribute = true;
