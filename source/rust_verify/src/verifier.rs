@@ -2651,7 +2651,7 @@ impl Verifier {
         other_vir_crates: Vec<Krate>,
         diagnostics: &impl air::messages::Diagnostics,
         crate_name: String,
-    ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
+    ) -> Result<bool, (Vec<VirErr>, Vec<vir::ast::VirErrAs>)> {
         if self.args.no_lifetime {
             rustc_mir_build_verus::verus::set_verus_aware_def_ids(Arc::new(HashSet::new()));
         }
@@ -2719,9 +2719,11 @@ impl Verifier {
 
         let ctxt_diagnostics = ctxtx.diagnostics.clone();
         let map_err_diagnostics =
-            |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
+            |err: VirErr| (vec![err], ctxt_diagnostics.borrow_mut().drain(..).collect());
+        let map_errs_diagnostics =
+            |errs: Vec<VirErr>| (errs, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
-        let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_err_diagnostics)?;
+        let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_errs_diagnostics)?;
 
         check_no_opaque_types_in_trait(ctxtx.tcx, &crate_items).map_err(map_err_diagnostics)?;
 
@@ -2758,7 +2760,7 @@ impl Verifier {
 
         let (ctxt, vir_crate) =
             crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
-                .map_err(map_err_diagnostics)?;
+                .map_err(map_errs_diagnostics)?;
 
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
@@ -2827,12 +2829,12 @@ impl Verifier {
             vir::traits::demote_external_traits(diagnostics, &path_to_well_known_item, &vir_crate)
                 .map_err(map_err_diagnostics)?;
         let vir_crate =
-            vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (e, Vec::new()))?;
+            vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         let vir_crate = vir::traits::fixup_ens_has_return_for_trait_method_impls(vir_crate)
-            .map_err(|e| (e, Vec::new()))?;
+            .map_err(|e| (vec![e], Vec::new()))?;
 
         if self.args.check_api_safety {
-            vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (e, Vec::new()))?;
+            vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         }
 
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
@@ -2902,13 +2904,14 @@ impl Verifier {
             }
         }
         if let Some(first_error) = first_error {
-            return Err((first_error, Vec::new()));
+            return Err((vec![first_error], Vec::new()));
         }
 
-        let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        let vir_crate =
+            vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         let (vir_crate, erasure_modes, _read_kind_finals) =
             vir::modes::check_crate(&vir_crate, self.args.new_mut_ref)
-                .map_err(|e| (e, Vec::new()))?;
+                .map_err(|e| (vec![e], Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_name = Some(crate_name);
@@ -2945,7 +2948,7 @@ impl Verifier {
                 &self.verus_items.as_ref().unwrap(),
                 self.erasure_hints.as_ref().unwrap(),
             )
-            .map_err(|e| (e, Vec::new()))?;
+            .map_err(|e| (vec![e], Vec::new()))?;
         }
 
         // These can invoke mir_borrowck when opaque types are involved.
@@ -3222,7 +3225,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             if self.verifier.args.trace {
                 reporter.report_now(&note_bare("preparing crate for verification").to_any());
             }
-            if let Err((err, mut diagnostics)) = self.verifier.construct_vir_crate(
+            if let Err((errs, mut diagnostics)) = self.verifier.construct_vir_crate(
                 tcx,
                 verus_items.clone(),
                 &spans,
@@ -3231,7 +3234,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 &reporter,
                 crate_name.clone(),
             ) {
-                reporter.report_as(&err.to_any(), MessageLevel::Error);
+                assert!(errs.len() > 0);
+                for err in errs.into_iter() {
+                    reporter.report_as(&err.to_any(), MessageLevel::Error);
+                }
                 self.verifier.encountered_vir_error = true;
 
                 for diag in diagnostics.drain(..) {

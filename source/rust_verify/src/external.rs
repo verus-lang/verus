@@ -134,7 +134,7 @@ impl CrateItems {
 ///     individual items can be treated as external individually.
 ///     Trait impls need to be "whole" so we forbid external_body on individual
 ///     ImplItems in a trait_impl.
-pub(crate) fn get_crate_items<'tcx>(ctxt: &ContextX<'tcx>) -> Result<CrateItems, VirErr> {
+pub(crate) fn get_crate_items<'tcx>(ctxt: &ContextX<'tcx>) -> Result<CrateItems, Vec<VirErr>> {
     let default_state = if ctxt.cmd_line_args.no_external_by_default {
         VerifState::Verify
     } else {
@@ -156,7 +156,7 @@ pub(crate) fn get_crate_items<'tcx>(ctxt: &ContextX<'tcx>) -> Result<CrateItems,
     visitor.visit_mod(root_module, owner.span(), rustc_hir::CRATE_HIR_ID);
 
     if visitor.errors.len() > 0 {
-        return Err(visitor.errors[0].clone());
+        return Err(visitor.errors);
     }
 
     let mut map = HashMap::<OwnerId, VerifOrExternal>::new();

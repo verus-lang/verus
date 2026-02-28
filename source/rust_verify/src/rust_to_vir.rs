@@ -370,7 +370,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     mut ctxtx: ContextX<'tcx>,
     imported: &Vec<Krate>,
     crate_items: &CrateItems,
-) -> Result<(Context<'tcx>, Krate), VirErr> {
+) -> Result<(Context<'tcx>, Krate), Vec<VirErr>> {
     let mut vir: KrateX = KrateX {
         functions: Vec::new(),
         reveal_groups: Vec::new(),
@@ -400,20 +400,28 @@ pub fn crate_to_vir<'a, 'tcx>(
         .trait_id_set
         .insert(tcx.get_diagnostic_item(rustc_span::sym::Send).expect("send"));
 
+    let mut errors = vec![];
+
     let mut typs_sizes_set: HashMap<TypIgnoreImplPaths, u128> = HashMap::new();
     for (_, owner_opt) in ctxtx.krate.owners.iter_enumerated() {
         if let MaybeOwner::Owner(owner) = owner_opt {
             match owner.node() {
                 OwnerNode::Item(item) => {
-                    crate::rust_to_vir_global::process_const_early(
+                    if let Err(err) = crate::rust_to_vir_global::process_const_early(
                         &mut ctxtx,
                         &mut typs_sizes_set,
                         item,
-                    )?;
+                    ) {
+                        errors.push(err);
+                    }
                 }
                 _ => (),
             }
         }
+    }
+
+    if errors.len() > 0 {
+        return Err(errors);
     }
 
     let arch_word_bits = ctxtx.arch_word_bits.unwrap_or(vir::ast::ArchWordBits::Either32Or64);
@@ -475,7 +483,8 @@ pub fn crate_to_vir<'a, 'tcx>(
         &mut external_info,
         imported,
         &crate_items,
-    )?;
+    )
+    .map_err(|e| vec![e])?;
 
     for crate_item in crate_items.items.iter() {
         match &crate_item.verif {
@@ -488,7 +497,7 @@ pub fn crate_to_vir<'a, 'tcx>(
                 match crate_item.id {
                     GeneralItemId::ItemId(item_id) => {
                         let item = ctxt.tcx.hir_item(item_id);
-                        check_item(
+                        if let Err(err) = check_item(
                             &ctxt,
                             &mut vir,
                             &module_path,
@@ -496,11 +505,17 @@ pub fn crate_to_vir<'a, 'tcx>(
                             item,
                             &mut external_info,
                             &crate_items,
-                        )?;
+                        ) {
+                            errors.push(err);
+                        }
                     }
                     GeneralItemId::ForeignItemId(foreign_item_id) => {
                         let foreign_item = ctxt.tcx.hir_foreign_item(foreign_item_id);
-                        check_foreign_item(&ctxt, &mut vir, &foreign_item_id, foreign_item)?;
+                        if let Err(err) =
+                            check_foreign_item(&ctxt, &mut vir, &foreign_item_id, foreign_item)
+                        {
+                            errors.push(err);
+                        }
                     }
                     GeneralItemId::ImplItemId(_impl_item_id) => {
                         // Processed as part of the impl (which is an Item)
@@ -550,6 +565,10 @@ pub fn crate_to_vir<'a, 'tcx>(
         }
     }
 
+    if errors.len() > 0 {
+        return Err(errors);
+    }
+
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&ctxt.vstd_crate_name);
 
     crate::rust_to_vir_impl::collect_external_trait_impls(
@@ -557,9 +576,10 @@ pub fn crate_to_vir<'a, 'tcx>(
         imported,
         &mut vir,
         &mut external_info,
-    )?;
+    )
+    .map_err(|e| vec![e])?;
 
-    crate::rust_to_vir_adts::setup_type_invariants(&mut vir)?;
+    crate::rust_to_vir_adts::setup_type_invariants(&mut vir).map_err(|e| vec![e])?;
     vir::traits::set_krate_dyn_compatibility(imported, &mut vir);
 
     Ok((ctxt, Arc::new(vir)))

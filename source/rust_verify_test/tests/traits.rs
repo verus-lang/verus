@@ -163,7 +163,10 @@ test_verify_one_file_with_options! {
                 no_method_body() // can't appear in implementation
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "no_method_body can only appear in trait method declarations",
+        "no_method_body can only appear in trait method declarations",
+    ])
 }
 
 test_verify_one_file! {
@@ -2712,7 +2715,10 @@ test_verify_one_file_with_options! {
             assert(false);
         }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: foreign types")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "The verifier does not yet support the following Rust feature: foreign types",
+        "The verifier does not yet support the following Rust feature: foreign types",
+    ])
 }
 
 test_verify_one_file! {
