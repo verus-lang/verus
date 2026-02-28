@@ -639,9 +639,22 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] broadcast_mut_params verus_code! {
-        pub broadcast proof fn seq_reverse_len<A>(s: &mut u8)
+        #[verifier::opaque]
+        #[verifier::prophetic]
+        pub closed spec fn foo<A>(s: &mut A) -> bool {
+            has_resolved(s)
+        }
+
+        pub broadcast proof fn test_broadcast<A>(s: &mut A)
             ensures
-                *s == *s
-        { }
-    } => Err(err) => assert_vir_error_msg(err, "broadcast function cannot have &mut parameters")
+                #[trigger] foo(s) <==> has_resolved(s)
+        {
+            reveal(foo);
+        }
+
+        proof fn test<A>(x: &mut A) {
+            broadcast use test_broadcast;
+            assert(foo(x) <==> has_resolved(x));
+        }
+    } => Ok(())
 }
