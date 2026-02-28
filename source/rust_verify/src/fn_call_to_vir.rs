@@ -1427,12 +1427,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 ((TypX::Int(IntRange::USize), _), TypX::Int(IntRange::Nat)) => Ok(source_vir),
                 ((TypX::Int(IntRange::Nat), _), TypX::Int(IntRange::Nat)) => Ok(source_vir),
                 ((TypX::Int(IntRange::Int), _), TypX::Int(IntRange::Nat)) => {
-                    Ok(mk_ty_clip(&to_ty, &source_vir, true))
+                    Ok(mk_ty_clip(bctx, &to_ty, &source_vir, true))
                 }
                 ((TypX::Int(_), _), TypX::Int(_)) => {
                     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
-                    Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
+                    Ok(mk_ty_clip(bctx, &to_ty, &source_vir, expr_vattrs.truncate))
                 }
                 ((TypX::Bool, _), TypX::Int(_)) => {
                     let zero = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(0)))?;
@@ -1447,7 +1447,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))?;
                     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
-                    Ok(mk_ty_clip(&to_ty, &cast_to_integer, expr_vattrs.truncate))
+                    Ok(mk_ty_clip(bctx, &to_ty, &cast_to_integer, expr_vattrs.truncate))
                 }
                 ((_, false), TypX::Int(_)) if bctx.types.node_type(args[0].hir_id).is_enum() => {
                     let cast_to = crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
@@ -1458,7 +1458,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     )?;
                     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
-                    Ok(mk_ty_clip(&to_ty, &cast_to, expr_vattrs.truncate))
+                    Ok(mk_ty_clip(bctx, &to_ty, &cast_to, expr_vattrs.truncate))
                 }
                 ((TypX::Real, _), TypX::Int(_)) => err_span(
                     expr.span,

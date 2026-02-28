@@ -300,13 +300,14 @@ fn closure_ret_typ<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<Typ
 }
 
 fn mk_clip<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     range: &IntRange,
     expr: &vir::ast::Expr,
     recommends_assume_truncate: bool,
 ) -> vir::ast::Expr {
     match range {
         IntRange::Int => expr.clone(),
-        range => SpannedTyped::new(
+        range => bctx.ctxt.spanned_typed_new_vir(
             &expr.span,
             &Arc::new(TypX::Int(*range)),
             ExprX::Unary(
@@ -318,11 +319,12 @@ fn mk_clip<'tcx>(
 }
 
 pub(crate) fn mk_ty_clip<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     typ: &Typ,
     expr: &vir::ast::Expr,
     recommends_assume_truncate: bool,
 ) -> vir::ast::Expr {
-    mk_clip(&get_range(typ), expr, recommends_assume_truncate)
+    mk_clip(bctx, &get_range(typ), expr, recommends_assume_truncate)
 }
 
 pub(crate) fn check_lit_int(
@@ -2188,6 +2190,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let to_vir_ty = expr_typ()?;
             match (&*undecorate_typ(source_vir_ty), &*undecorate_typ(&to_vir_ty)) {
                 (TypX::Int(_), TypX::Int(_)) => Ok(ExprOrPlace::Expr(mk_ty_clip(
+                    bctx,
                     &to_vir_ty,
                     &source_vir_expr,
                     expr_vattrs.truncate,
@@ -2204,7 +2207,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         move |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
                     let cast_to =
                         expr_cast_enum_int_to_vir(bctx, source, source_vir.to_place(), mk_expr)?;
-                    Ok(ExprOrPlace::Expr(mk_ty_clip(&to_vir_ty, &cast_to, expr_vattrs.truncate)))
+                    Ok(ExprOrPlace::Expr(mk_ty_clip(
+                        bctx,
+                        &to_vir_ty,
+                        &cast_to,
+                        expr_vattrs.truncate,
+                    )))
                 }
                 _ => {
                     let to_ty = bctx.types.expr_ty(expr);
@@ -2387,7 +2395,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     match mk_range(&bctx.ctxt.verus_items, &tc.node_type(expr.hir_id)) {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
                             // Euclidean division
-                            Ok(ExprOrPlace::Expr(mk_ty_clip(&expr_typ()?, &e, true)))
+                            Ok(ExprOrPlace::Expr(mk_ty_clip(bctx, &expr_typ()?, &e, true)))
                         }
                         IntRange::I(_) | IntRange::ISize => {
                             // Handled by operator_overload_to_vir
@@ -3910,7 +3918,7 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
 
                 let expr =
                     bctx.spanned_typed_new(dst_expr.span, &Arc::new(TypX::Int(IntRange::USize)), x);
-                return Ok(Some(mk_ty_clip(&expr_typ, &expr, expr_vattrs.truncate)));
+                return Ok(Some(mk_ty_clip(bctx, &expr_typ, &expr, expr_vattrs.truncate)));
             } else {
                 let expr = bctx.spanned_typed_new(dst_expr.span, &expr_typ, x);
                 return Ok(Some(expr));
