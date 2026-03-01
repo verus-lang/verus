@@ -262,36 +262,6 @@ pub broadcast proof fn axiom_vec_dequeue_index_decreases<A>(v: VecDeque<A>, i: i
 #[verifier::accept_recursive_types(T)]
 pub struct ExIter<'a, T: 'a>(Iter<'a, T>);
 
-impl<'a, T: 'a> View for Iter<'a, T> {
-    type V = (int, Seq<T>);
-
-    uninterp spec fn view(self: &Iter<'a, T>) -> (int, Seq<T>);
-}
-
-pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T>) -> (r: Option<
-    &'a T,
->)
-    ensures
-        ({
-            let (old_index, old_seq) = old(elements)@;
-            match r {
-                None => {
-                    &&& elements@ == old(elements)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(element) => {
-                    let (new_index, new_seq) = elements@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
-                },
-            }
-        }),
-;
-
-
-
 // To allow reasoning about the "contents" of the VecDeque iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original vec.
 pub uninterp spec fn into_iter_elts<'a, T: 'a>(i: Iter<'a, T>) -> Seq<&'a T>;
