@@ -1,7 +1,7 @@
 use crate::ast::{
     Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind,
-    LoopInvariants, MaskSpec, Sizedness, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent,
-    VirErr, Visibility,
+    LoopInvariants, MaskSpec, PlaceX, Sizedness, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter,
+    VarIdent, VirErr, Visibility,
 };
 use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
@@ -618,12 +618,18 @@ fn peel(expr: &Expr) -> &Expr {
     }
 }
 
+/// Skip past nodes that can result from implicit adjustments
 fn peel_mut(expr: &mut Expr) -> &mut Expr {
     match &expr.x {
-        ExprX::NeverToAny(_) => match &mut Arc::make_mut(expr).x {
-            ExprX::NeverToAny(e) => e,
-            _ => unreachable!(),
-        },
+        ExprX::NeverToAny(_) => {
+            let ExprX::NeverToAny(e) = &mut Arc::make_mut(expr).x else { unreachable!() };
+            peel_mut(e)
+        }
+        ExprX::ReadPlace(place, _) if matches!(place.x, PlaceX::Temporary(_)) => {
+            let ExprX::ReadPlace(place, _) = &mut Arc::make_mut(expr).x else { unreachable!() };
+            let PlaceX::Temporary(e) = &mut Arc::make_mut(place).x else { unreachable!() };
+            peel_mut(e)
+        }
         _ => expr,
     }
 }
