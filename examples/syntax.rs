@@ -514,7 +514,7 @@ fn test_ghost_tuple_match(t: (Tracked<S>, Tracked<S>, Ghost<int>, Ghost<int>)) -
 
 /// Exec code can use a Tracked(...) unwrapped parameter
 /// to create a mutable ghost or tracked parameter:
-fn test_ghost_mut(Tracked(g): Tracked<&mut int>)
+fn test_tracked_mut(Tracked(g): Tracked<&mut int>)
     ensures
         *final(g) == *old(g) + 1,
 {
@@ -524,8 +524,8 @@ fn test_ghost_mut(Tracked(g): Tracked<&mut int>)
 }
 
 fn test_call_ghost_mut() {
-    let ghost mut g = 10int;
-    test_ghost_mut(Tracked(&mut g));
+    let tracked mut g = 10int;
+    test_tracked_mut(Tracked(&mut g));
     assert(g == 11);
 }
 
