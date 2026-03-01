@@ -31,7 +31,7 @@ use vir::ast::{
     BodyVisibility, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind,
     KrateX, Mode, Opaqueness, ParamX, Typ, TypDecoration, TypX, VarIdent, VirErr, Visibility,
 };
-use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
+use vir::ast_util::{air_unique_var, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 use vir::sst_util::subst_typ;
 
@@ -1713,8 +1713,8 @@ pub(crate) fn check_item_fn<'tcx>(
     // Note: ens_has_return isn't final; it may need to be changed later to make
     // sure it's in sync for trait method impls and trait method decls.
     // See `fixup_ens_has_return_for_trait_method_impls`.
-    let (ensure0, ens_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure.0);
-    let (ensure1, _ns_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure.1);
+    let (ensure0, ens_has_return) = clean_ensures_for_unit_return(ctxt, &ret, &header.ensure.0);
+    let (ensure1, _ns_has_return) = clean_ensures_for_unit_return(ctxt, &ret, &header.ensure.1);
 
     let (publish, mode, ensure, returns, item_kind, body) =
         match (is_external_const, header.returns) {
@@ -2480,7 +2480,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     )?;
 
     let (ensure, ens_has_return) =
-        clean_ensures_for_unit_return(&ret, &header.const_static_ensures(&name, is_static));
+        clean_ensures_for_unit_return(ctxt, &ret, &header.const_static_ensures(&name, is_static));
 
     let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
         span,
@@ -2745,5 +2745,69 @@ fn get_body_visibility_and_fuel(
         };
 
         Ok((BodyVisibility::Visibility(body_visibility), opaqueness))
+    }
+}
+
+/// If the function has a unit return type, then we will elide the return value
+/// in the AIR encoding later (e.g., in the %ens functions). However, it is still
+/// possible that the user refers to the unit return value by name, e.g.,
+/// ```
+/// fn example() -> (ret: ())
+///     ensures ret == (),
+/// ```
+/// Therefore, we substitute out the name here so it be safely elided.
+pub fn clean_ensures_for_unit_return<'tcx>(
+    ctxt: &Context<'tcx>,
+    ret: &vir::ast::Param,
+    ensure: &vir::ast::Exprs,
+) -> (vir::ast::Exprs, bool) {
+    match &*vir::ast_util::undecorate_typ(&ret.x.typ) {
+        TypX::Datatype(vir::ast::Dt::Tuple(0), ..) => {
+            if ret.x.name == air_unique_var(vir::def::RETURN_VALUE) {
+                (ensure.clone(), false)
+            } else {
+                let mut es = vec![];
+                for e in ensure.iter() {
+                    let e1 = vir::ast_visitor::map_expr_place_visitor(
+                        e,
+                        &|expr| match &expr.x {
+                            vir::ast::ExprX::Var(ident) if ident == &ret.x.name => {
+                                assert!(vir::ast_util::is_unit(&vir::ast_util::undecorate_typ(
+                                    &expr.typ
+                                )));
+                                ctxt.erasure_info
+                                    .borrow_mut()
+                                    .extra_erase_ast_ids
+                                    .push(expr.span.clone());
+                                Ok(vir::ast_util::mk_tuple(&expr.span, &Arc::new(vec![])))
+                            }
+                            _ => Ok(expr.clone()),
+                        },
+                        &|place| match &place.x {
+                            vir::ast::PlaceX::Local(ident) if ident == &ret.x.name => {
+                                assert!(vir::ast_util::is_unit(&vir::ast_util::undecorate_typ(
+                                    &place.typ
+                                )));
+                                ctxt.erasure_info
+                                    .borrow_mut()
+                                    .extra_erase_ast_ids
+                                    .push(place.span.clone());
+                                let e = vir::ast_util::mk_tuple(&place.span, &Arc::new(vec![]));
+                                Ok(ctxt.spanned_typed_new_vir(
+                                    &place.span,
+                                    &place.typ,
+                                    vir::ast::PlaceX::Temporary(e),
+                                ))
+                            }
+                            _ => Ok(place.clone()),
+                        },
+                    )
+                    .unwrap();
+                    es.push(e1);
+                }
+                (Arc::new(es), false)
+            }
+        }
+        _ => (ensure.clone(), true),
     }
 }
