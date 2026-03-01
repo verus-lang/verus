@@ -55,7 +55,7 @@ test_verify_one_file! {
     #[test] test_mut_ref_arg_exec verus_code! {
         fn add1(a: &mut u64)
             requires *old(a) < 10
-            ensures *a == *old(a) + 1
+            ensures *final(a) == *old(a) + 1
         {
             *a = *a + 1;
         }
@@ -71,7 +71,7 @@ test_verify_one_file! {
 const MUT_REF_PROOF_COMMON: &str = verus_code_str! {
     fn add1(Tracked(a): Tracked<&mut int>)
         requires old(a) < 10,
-        ensures a == old(a) + 1,
+        ensures *final(a) == old(a) + 1,
     {
         proof {
             *a = *a + 1;
@@ -101,30 +101,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_invalid_spec verus_code! {
-        fn add1(a: &mut u64)
-            requires *a < 10
-        {
-            *a = *a + 1;
-        }
-    } => Err(err) => assert_vir_error_msg(err, "in requires, use `old(a)` to refer to the pre-state of an &mut variable") // error: in requires, use `old(a)` to refer to the pre-state of an &mut variable
-}
-
-test_verify_one_file! {
-    #[test] test_mut_ref_arg_invalid_spec_decreases verus_code! {
-        proof fn add1(a: &mut u64)
-            decreases (*a as int),
-        {
-        }
-    } => Err(err) => assert_vir_error_msg(err, "in decreases clause, use `old(a)` to refer to the pre-state of an &mut variable")
-}
-
-test_verify_one_file! {
     #[test] test_mut_ref_arg_spec verus_code! {
         spec fn add1(a: &mut u64) {
             *a = add(*a, 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "&mut parameter not allowed for spec functions")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate through a spec-mode mutable reference")
 }
 
 test_verify_one_file! {
@@ -145,7 +126,7 @@ const MUT_REF_ARG_SELF_COMMON: &str = verus_code_str! {
     impl Value {
         pub fn add1(&mut self)
             requires old(self).v < 10
-            ensures self.v == old(self).v + 1
+            ensures final(self).v == old(self).v + 1
         {
             let Value { v } = *self;
             *self = Value { v: v + 1 };
@@ -230,13 +211,13 @@ test_verify_one_file! {
                 *self = Value { v: add(v, 1) };
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "&mut parameter not allowed for spec functions")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate through a spec-mode mutable reference")
 }
 
 test_verify_one_file! {
     #[test] test_mut_ref_generic_1 verus_code! {
         fn add1<A>(a: &mut A)
-            ensures equal(*old(a), *a)
+            ensures equal(*old(a), *final(a))
         {
         }
 
@@ -270,13 +251,13 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_mut_ref_forward verus_code! {
         fn div2(a: &mut u64)
-            ensures *a == *old(a) / 2
+            ensures *final(a) == *old(a) / 2
         {
             *a = *a / 2;
         }
 
         fn test(b: &mut u64)
-            ensures *b == *old(b) / 2
+            ensures *final(b) == *old(b) / 2
         {
             div2(b);
         }
@@ -297,7 +278,7 @@ test_verify_one_file! {
 
         exec fn add1(a: &mut A, i: usize)
             ensures
-                forall|j: nat| a.index(j) == old(a).index(j) + 1
+                forall|j: nat| final(a).index(j) == old(a).index(j) + 1
         {
             assume(false);
         }
@@ -327,7 +308,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_mut_ref_shadow verus_code! {
         fn foo(x: &mut u32)
-            ensures equal(*x, *old(x))
+            ensures equal(*final(x), *old(x))
         {
         }
 
@@ -351,7 +332,7 @@ test_verify_one_file! {
         {
             ensures(|ret: (int, int)|
                 { let (a, b) = ret;
-                    a + b == (*x)
+                    a + b == (*final_(x))
                 });
 
             unimplemented!();
@@ -368,7 +349,7 @@ test_verify_one_file! {
 test_verify_one_file_with_options! {
     #[test] test_regression_115_mut_ref_pattern_case_2 ["--no-external-by-default"] => code! {
         fn foo(x: &mut bool) -> (u8, u8) {
-            ensures(|ret: (u8, u8)| (*x) == ! *old(x));
+            ensures(|ret: (u8, u8)| (*final_(x)) == ! *old(x));
 
             *x = ! *x;
             (0, 0)
@@ -391,7 +372,7 @@ test_verify_one_file! {
         }
 
         fn do_mut(x: &mut u64) -> (b: u64)
-            ensures *x == 1 && b == 1
+            ensures *final(x) == 1 && b == 1
         {
             *x = 1;
             1
@@ -430,8 +411,8 @@ test_verify_one_file! {
                 *old(a) < 10,
                 *old(b) < 10,
             ensures
-                *a == *old(a) + 1,
-                *b == *old(b) + 1,
+                *final(a) == *old(a) + 1,
+                *final(b) == *old(b) + 1,
         {
             *a = *a + 1;
             *b = *b + 1;
@@ -455,7 +436,7 @@ test_verify_one_file! {
 
         fn add1(a: &mut u32)
             requires *old(a) < 10
-            ensures *a == *old(a) + 1
+            ensures *final(a) == *old(a) + 1
         {
             *a = *a + 1;
         }
@@ -480,7 +461,7 @@ test_verify_one_file! {
             requires
                 *old(a) < 10
             ensures
-                *a == *old(a) + 1,
+                *final(a) == *old(a) + 1,
                 ret == *old(a)
         {
             *a = *a + 1;
@@ -591,8 +572,9 @@ test_verify_one_file! {
         fn test() {
             let mut y: u8 = 0;
             stuff(&mut &y); // this does NOT modify y
+            assert(y == 0);
         }
-    } => Err(err) => assert_vir_error_msg(err, "complex arguments to &mut parameters are currently unsupported")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -606,7 +588,7 @@ test_verify_one_file! {
                 *old(a) < 10,
             ensures
                 //*a == *old(a) + 1,
-                check_inc(a, old(a)),
+                check_inc(final(a), old(a)),
         {
             *a = *a + 1;
         }
