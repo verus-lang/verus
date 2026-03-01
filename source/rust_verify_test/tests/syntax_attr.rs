@@ -367,20 +367,20 @@ test_verify_one_file! {
     #[test] test_with code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 -> z: Ghost<u32>
             requires
                 x < 100,
                 *old(y) < 100,
             ensures
-                *y == x,
+                *final(y) == x,
                 ret == x,
                 z@ == x,
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             #[verus_spec(with |= Ghost(x))]
             x
@@ -389,7 +389,7 @@ test_verify_one_file! {
         #[verus_spec]
         fn test_call_mut_tracked(x: u32) {
             proof_decl!{
-                let tracked mut y = 0u32;
+                let tracked mut y = 0;
             }
             {#[verus_spec(with Tracked(&mut y), Ghost(0) => _)]
             test_mut_tracked(1);
@@ -428,13 +428,13 @@ test_verify_one_file! {
     #[test] test_unverified_code_signature code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 -> z: Ghost<u32>
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             #[verus_spec(with |= Ghost(x))]
             x
@@ -457,13 +457,13 @@ test_verify_one_file! {
     #[test] test_verified_call_unverified_signature code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 -> z: Ghost<u32>
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             #[verus_spec(with |= Ghost(x))]
             x
@@ -483,20 +483,20 @@ test_verify_one_file! {
     #[test] test_with2 code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 ->  z: Ghost<u32>
             requires
                 x < 100,
                 *old(y) < 100,
             ensures
-                *y == x,
+                *final(y) == x,
                 ret == x,
                 z@ == x,
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             #[verus_spec(with |= Ghost(x))]
             x
@@ -506,7 +506,7 @@ test_verify_one_file! {
         fn test_cal_mut_tracked(x: u32) {
             proof_decl!{
                 let ghost mut z = 0u32;
-                let tracked mut y = 0u32;
+                let tracked mut y = 0;
             }
             if #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))] test_mut_tracked(1) == 0 {
                 proof!{
@@ -526,20 +526,20 @@ test_verify_one_file! {
     #[test] test_proof_with code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 ->  z: Ghost<u32>
             requires
                 x < 100,
                 *old(y) < 100,
             ensures
-                *y == x,
+                *final(y) == x,
                 ret == x,
                 z@ == x,
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             proof_with!{|= Ghost(x)}
             x
@@ -549,7 +549,7 @@ test_verify_one_file! {
         fn test_cal_mut_tracked(x: u32) {
             proof_decl!{
                 let ghost mut z = 0u32;
-                let tracked mut y = 0u32;
+                let tracked mut y = 0;
             }
             if {
                 proof_with!{Tracked(&mut y), Ghost(0) => Ghost(z)} test_mut_tracked(1)

@@ -166,18 +166,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] index_vec_mut_error verus_code! {
-        use vstd::*;
-
-        fn foo(t: &mut u8) { }
-
-        fn stuff(v: Vec<u8>) {
-            foo(&mut v[0]);
-        }
-    } => Err(err) => assert_vir_error_msg(err, "index for &mut not supported")
-}
-
-test_verify_one_file! {
     #[test] unsigned_wrapping_mul verus_code! {
         use vstd::*;
 

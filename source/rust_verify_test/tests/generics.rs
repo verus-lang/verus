@@ -127,7 +127,7 @@ test_verify_one_file! {
         }
 
         fn test(x: &mut Obj<Node>)
-            ensures x@.y@.len() == old(x)@.y@.len(),
+            ensures final(x)@.y@.len() == old(x)@.y@.len(),
         {
         }
 
