@@ -1457,7 +1457,9 @@ fn check_place_rec_inner(
 fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place) -> bool {
     // Always say no if this doesn't involve a mutable reference.
     // This isn't really necessary as a restriction, but it's only for mutable references
-    // that we need this extra allowance in the first place.
+    // that we need this extra allowance in the first place, i.e., if it's not a mutable
+    // reference, then we can just check directly if it's a tracked location and there's
+    // no need for all this guesswork.
     if !crate::ast_util::place_has_deref_mut(place) {
         return false;
     }
@@ -1466,6 +1468,9 @@ fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place) -> bool {
     // for this check to make sense
     match &*place.typ {
         TypX::Decorate(TypDecoration::Ghost | TypDecoration::Tracked, _, _) => {
+            return true;
+        }
+        TypX::Int(crate::ast::IntRange::Int | crate::ast::IntRange::Nat) => {
             return true;
         }
         _ => {}
