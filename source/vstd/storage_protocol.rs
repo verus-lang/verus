@@ -3,7 +3,11 @@ use super::prelude::*;
 
 verus! {
 
-broadcast use {super::set::group_set_lemmas, super::map::group_map_axioms};
+broadcast use {
+    super::set::group_set_lemmas,
+    super::map::group_map_axioms,
+    super::map::group_map_internal_axioms,
+};
 
 /// Interface for "storage protocol" ghost state.
 /// This is an extension-slash-variant on the more well-known concept
@@ -241,17 +245,23 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         P::op_unit(p.value());
         let tracked (selff, unit) = p.split(p.value(), P::unit());
         let new_values0 = set_op(new_values, P::unit());
-        super::set_lib::assert_sets_equal!(new_values0.0, new_values.0, v => {
-            P::op_unit(v.0);
-            if new_values.contains(v) {
-                assert(new_values0.contains(v));
+        assert(new_values0 =~= new_values) by {
+            assert forall|v: (P, Map<K, V>)| new_values0.contains(v) <==> new_values.contains(v) by {
+                P::op_unit(v.0);
+                if new_values.contains(v) {
+                    assert(new_values0.contains(v));
+                }
+                if new_values0.contains(v) {
+                    let q = choose|q|
+                        new_values.contains((q, v.1)) && v.0 == #[trigger] P::op(q, P::unit());
+                    P::op_unit(q);
+                    assert(new_values.contains(v));
+                }
             }
-            if new_values0.contains(v) {
-                let q = choose |q| new_values.contains((q, v.1)) && v.0 == #[trigger] P::op(q, P::unit());
-                P::op_unit(q);
-                assert(new_values.contains(v));
-            }
-        });
+            super::iset::lemma_iset_ext_equal(new_values0, new_values);
+        }
+        super::iset::lemma_iset_ext_equal_eq(new_values0, new_values);
+        assert(new_values0 == new_values);
         Self::exchange_nondeterministic_with_shared(selff, &unit, s, new_values)
     }
 

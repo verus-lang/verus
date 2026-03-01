@@ -449,7 +449,7 @@ impl<V> GhostSubseq<V> {
         use_type_invariant(&*self);
 
         let vmap = seq_to_map(v, self.off as int);
-        assert(self.frac@.dom() == vmap.dom());
+        assert(self.frac@.dom() =~= vmap.dom());
         self.frac.agree(auth);
         assert(self.frac@ <= auth@);
         self.frac.update(auth, vmap);
@@ -548,13 +548,37 @@ impl<V> GhostSubseq<V> {
 
         use_type_invariant(&mself);
         let tracked mut mselffrac = mself.frac;
+        assert(mselffrac@ == mself.frac@);
         let olddom = mselffrac@.dom();
-        let s = ISet::new(|i: int| mself.off + n <= i < mself.off + mself.len);
-        assume(s <= mselffrac@.dom());  // TODO(vstd): recover subset proof automation for ISet wrapper domains.
-        let tracked mfrac = mselffrac.split(s);
+        let s_raw = ISet::new(|i: int| mself.off + n <= i < mself.off + mself.len);
+        let s = olddom.intersect(s_raw);
+        assert(s <= olddom) by {
+            assert forall|i: int| s.contains(i) implies olddom.contains(i) by {
+                super::super::iset::lemma_iset_intersect(olddom, s_raw, i);
+                assert(s.contains(i));
+            }
+        }
+        let tracked mfrac = mselffrac.split_with_olddom(s, olddom);
         super::super::iset::lemma_iset_ext_equal_eq(mfrac@.dom(), s);
-        assert(mfrac@.dom() == ISet::new(|i: int| mself.off + n <= i < mself.off + mself.len));
+        assert(mfrac@.dom() =~= s);
         let full = ISet::new(|i: int| mself.off <= i < mself.off + mself.len);
+        assert(olddom =~= full);
+        super::super::iset::lemma_iset_ext_equal(olddom, full);
+        assert forall|i: int| s.contains(i) == s_raw.contains(i) by {
+            super::super::iset::lemma_iset_intersect(olddom, s_raw, i);
+            super::super::iset::lemma_iset_new(|ii: int| mself.off + n <= ii < mself.off + mself.len, i);
+            super::super::iset::lemma_iset_new(|ii: int| mself.off <= ii < mself.off + mself.len, i);
+            if s_raw.contains(i) {
+                assert(full.contains(i));
+                assert(olddom.contains(i));
+                assert(s.contains(i));
+            }
+        }
+        super::super::iset::lemma_iset_ext_equal(s, s_raw);
+        assert(s =~= s_raw);
+        super::super::iset::lemma_iset_ext_equal_eq(s, s_raw);
+        assert(s == s_raw);
+        assert(mfrac@.dom() =~= s_raw);
         let left = ISet::new(|i: int| mself.off <= i < mself.off + n);
         assert forall|i: int| (olddom - s).contains(i) == left.contains(i) by {
             super::super::iset::lemma_iset_difference(olddom, s, i);
@@ -578,13 +602,16 @@ impl<V> GhostSubseq<V> {
         super::super::iset::lemma_iset_ext_equal(olddom - s, left);
         assert(olddom - s =~= left);
         super::super::iset::lemma_iset_ext_equal_eq(olddom - s, left);
-        assert(mselffrac@.dom() =~= olddom - s);
-        super::super::iset::lemma_iset_ext_equal_eq(mselffrac@.dom(), olddom - s);
-        assert(mselffrac@.dom() == olddom - s);
+        assert(mself.frac@.dom() == olddom);
         assert(olddom - s == left);
+        assert(mselffrac@.dom() == olddom - s);
+        super::super::iset::lemma_iset_ext_equal(mselffrac@.dom(), olddom - s);
+        assert(mselffrac@.dom() =~= olddom - s);
+        assert(mselffrac@.dom() =~= left);
+        super::super::iset::lemma_iset_ext_equal_eq(mselffrac@.dom(), left);
         assert(mselffrac@.dom() == left);
         assert(mself.frac@ == mselffrac@.union_prefer_right(mfrac@));
-        mselffrac@.0.lemma_union_prefer_right(mfrac@.0);
+        mselffrac@.lemma_union_prefer_right(mfrac@);
         let tracked result = GhostSubseq::new((mself.off + n) as nat, (mself.len - n) as nat, mfrac);
         let tracked nself = GhostSubseq::new(mself.off, n as nat, mselffrac);
         *self = nself;
@@ -597,11 +624,19 @@ impl<V> GhostSubseq<V> {
             super::super::iset::lemma_iset_new(|ii: int| mself.off <= ii < mself.off + mself.len, k);
             super::super::iset::lemma_iset_new(|ii: int| mself.off + n <= ii < mself.off + mself.len, k);
             assert(left.contains(k));
+            assert(mselffrac@.dom().contains(k) == (olddom - s).contains(k));
+            assert((olddom - s).contains(k));
             assert(mselffrac@.dom().contains(k));
             assert(!s.contains(k));
             assert(!mfrac@.dom().contains(k));
             assert(mself.frac@.dom().contains(k));
             assert((mselffrac@.union_prefer_right(mfrac@)).dom().contains(k));
+            mselffrac@.lemma_union_prefer_right(mfrac@);
+            assert((mselffrac@.union_prefer_right(mfrac@))[k] == if mfrac@.dom().contains(k) {
+                mfrac@[k]
+            } else {
+                mselffrac@[k]
+            });
             assert((mselffrac@.union_prefer_right(mfrac@))[k] == mselffrac@[k]);
             assert(mself.frac@[k] == mselffrac@[k]);
             assert(self@[i] == mselffrac@[k]);
@@ -620,6 +655,12 @@ impl<V> GhostSubseq<V> {
             assert(s.contains(k));
             assert(mfrac@.dom().contains(k));
             assert((mselffrac@.union_prefer_right(mfrac@)).dom().contains(k));
+            mselffrac@.lemma_union_prefer_right(mfrac@);
+            assert((mselffrac@.union_prefer_right(mfrac@))[k] == if mfrac@.dom().contains(k) {
+                mfrac@[k]
+            } else {
+                mselffrac@[k]
+            });
             assert((mselffrac@.union_prefer_right(mfrac@))[k] == mfrac@[k]);
             assert(mself.frac@[k] == mfrac@[k]);
             assert(result@[i] == mfrac@[k]);
@@ -692,6 +733,12 @@ impl<V> GhostSubseq<V> {
                 assert(k == r.off + j);
                 super::super::iset::lemma_iset_new(|ii: int| r.off <= ii < r.off + r.len, k);
                 assert(r.frac@.dom().contains(k));
+                assert((mself.frac@.union_prefer_right(r.frac@)).dom().contains(k));
+                assert((mself.frac@.union_prefer_right(r.frac@))[k] == if r.frac@.dom().contains(k) {
+                    r.frac@[k]
+                } else {
+                    mself.frac@[k]
+                });
                 assert((mself.frac@.union_prefer_right(r.frac@))[k] == r.frac@[k]);
                 assert(mselffrac@[k] == r.frac@[k]);
                 assert(self@[i] == r@[j]);

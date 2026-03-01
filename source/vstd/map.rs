@@ -2,6 +2,7 @@ use super::gset::{Finite, Finiteness, GSet, Infinite};
 use super::iset::ISet;
 use super::set::{
     Set,
+    lemma_set_ext_equal,
     lemma_set_ext_equal_eq,
 };
 #[allow(unused_imports)]
@@ -26,20 +27,30 @@ verus! {
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(K)]
 #[verifier::accept_recursive_types(V)]
-pub tracked struct Map<K, V>(pub super::gmap::GMap<K, V, Finite>);
+pub tracked struct Map<K, V>(pub(crate) super::gmap::GMap<K, V, Finite>);
 
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(K)]
 #[verifier::accept_recursive_types(V)]
-pub tracked struct IMap<K, V>(pub super::gmap::GMap<K, V, Infinite>);
+pub tracked struct IMap<K, V>(pub(crate) super::gmap::GMap<K, V, Infinite>);
 
 impl<K, V> Map<K, V> {
+    #[doc(hidden)]
+    pub closed spec fn from_gmap(m: super::gmap::GMap<K, V, Finite>) -> Self {
+        Map(m)
+    }
+
+    #[doc(hidden)]
+    pub closed spec fn to_gmap(self) -> super::gmap::GMap<K, V, Finite> {
+        self.0
+    }
+
     pub open spec fn from_set(key_set: Set<K>, fv: spec_fn(K) -> V) -> Self {
-        Map(super::gmap::GMap::from_set(key_set.0, fv))
+        Map::from_gmap(super::gmap::GMap::from_set(key_set.to_gset(), fv))
     }
 
     pub(crate) open spec fn from_gset(key_set: GSet<K, Finite>, fv: spec_fn(K) -> V) -> Self {
-        Map(super::gmap::GMap::from_set(key_set, fv))
+        Map::from_gmap(super::gmap::GMap::from_set(key_set, fv))
     }
 
     #[verifier::inline]
@@ -48,27 +59,27 @@ impl<K, V> Map<K, V> {
     }
 
     pub open spec fn empty() -> Self {
-        Map(super::gmap::GMap::empty())
+        Map::from_gmap(super::gmap::GMap::empty())
     }
 
     pub open spec fn idom(self) -> ISet<K> {
-        self.0.idom()
+        self.to_gmap().idom()
     }
 
     pub open spec fn dom(self) -> Set<K> {
-        Set(self.0.dom())
+        Set::from_gset(self.to_gmap().dom())
     }
 
     pub open spec fn contains_key(self, k: K) -> bool {
-        self.0.contains_key(k)
+        self.to_gmap().contains_key(k)
     }
 
     pub open spec fn contains_value(self, v: V) -> bool {
-        self.0.contains_value(v)
+        self.to_gmap().contains_value(v)
     }
 
     pub open spec fn contains_pair(self, k: K, v: V) -> bool {
-        self.0.contains_pair(k, v)
+        self.to_gmap().contains_pair(k, v)
     }
 
     #[verifier::inline]
@@ -76,7 +87,7 @@ impl<K, V> Map<K, V> {
         recommends
             self.dom().contains(key),
     {
-        self.0.index(key)
+        self.to_gmap().index(key)
     }
 
     #[verifier::inline]
@@ -88,47 +99,47 @@ impl<K, V> Map<K, V> {
     }
 
     pub open spec fn insert(self, key: K, value: V) -> Self {
-        Map(self.0.insert(key, value))
+        Map::from_gmap(self.to_gmap().insert(key, value))
     }
 
     pub open spec fn remove(self, key: K) -> Self {
-        Map(self.0.remove(key))
+        Map::from_gmap(self.to_gmap().remove(key))
     }
 
     pub open spec fn len(self) -> nat {
-        self.0.len()
+        self.to_gmap().len()
     }
 
     pub open spec fn union_prefer_right(self, m2: Self) -> Self {
-        Map(self.0.union_prefer_right(m2.0))
+        Map::from_gmap(self.to_gmap().union_prefer_right(m2.to_gmap()))
     }
 
     pub open spec fn remove_keys(self, keys: Set<K>) -> Self {
-        Map(self.0.remove_keys(keys.0))
+        Map::from_gmap(self.to_gmap().remove_keys(keys.to_gset()))
     }
 
     pub open spec fn restrict(self, keys: Set<K>) -> Self {
-        Map(self.0.restrict(keys.0))
+        Map::from_gmap(self.to_gmap().restrict(keys.to_gset()))
     }
 
     pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> Map<K, W> {
-        Map(self.0.map_entries(f))
+        Map::from_gmap(self.to_gmap().map_entries(f))
     }
 
     pub open spec fn map_values<W>(self, f: spec_fn(V) -> W) -> Map<K, W> {
-        Map(self.0.map_values(f))
+        Map::from_gmap(self.to_gmap().map_values(f))
     }
 
     pub open spec fn invert(self) -> Map<V, K> {
-        Map(self.0.invert())
+        Map::from_gmap(self.to_gmap().invert())
     }
 
     pub open spec fn values(self) -> Set<V> {
-        Set(self.0.values())
+        Set::from_gset(self.to_gmap().values())
     }
 
     pub open spec fn submap_of(self, m2: Self) -> bool {
-        self.0.submap_of(m2.0)
+        self.to_gmap().submap_of(m2.to_gmap())
     }
 
     #[verifier::inline]
@@ -137,27 +148,27 @@ impl<K, V> Map<K, V> {
     }
 
     pub open spec fn is_equal_on_key(self, m2: Self, key: K) -> bool {
-        self.0.is_equal_on_key(m2.0, key)
+        self.to_gmap().is_equal_on_key(m2.to_gmap(), key)
     }
 
     pub open spec fn agrees(self, m2: Self) -> bool {
-        self.0.agrees(m2.0)
+        self.to_gmap().agrees(m2.to_gmap())
     }
 
     pub open spec fn is_injective(self) -> bool {
-        self.0.is_injective()
+        self.to_gmap().is_injective()
     }
 
     pub open spec fn congruent(self, m2: Self) -> bool {
-        self.0.congruent(m2.0)
+        self.to_gmap().congruent(m2.to_gmap())
     }
 
     pub(crate) open spec fn congruent_generic<FINITE2: Finiteness>(self, m2: GenericMap<K, V, FINITE2>) -> bool {
-        self.0.congruent(m2)
+        self.to_gmap().congruent(m2)
     }
 
     pub open spec fn to_infinite(self) -> IMap<K, V> {
-        IMap(self.0.to_infinite())
+        IMap::from_gmap(self.to_gmap().to_infinite())
     }
 
     pub proof fn lemma_union_prefer_right(self, m2: Self)
@@ -177,12 +188,34 @@ impl<K, V> Map<K, V> {
                     self[k]
                 },
     {
-        self.0.lemma_union_prefer_right(m2.0);
+        self.to_gmap().lemma_union_prefer_right(m2.to_gmap());
+        lemma_map_dom_bridge(self.union_prefer_right(m2));
+        lemma_map_dom_bridge(self);
+        lemma_map_dom_bridge(m2);
+        axiom_map_finite_from_type(self.union_prefer_right(m2));
+        axiom_map_finite_from_type(self);
+        axiom_map_finite_from_type(m2);
+        self.union_prefer_right(m2).dom().to_gset().to_infinite_ensures();
+        self.dom().to_gset().to_infinite_ensures();
+        m2.dom().to_gset().to_infinite_ensures();
         let lhs = self.union_prefer_right(m2).dom().to_infinite();
         let rhs = self.dom().to_infinite().union(m2.dom().to_infinite());
         assert forall|k| lhs.contains(k) == rhs.contains(k) by {
+            super::set::lemma_set_to_infinite_contains(self.union_prefer_right(m2).dom(), k);
+            super::set::lemma_set_to_infinite_contains(self.dom(), k);
+            super::set::lemma_set_to_infinite_contains(m2.dom(), k);
+            self.to_gmap().union_prefer_right(m2.to_gmap()).dom().to_infinite_ensures();
+            super::gset::lemma_gset_generic_union(self.to_gmap().dom(), m2.to_gmap().dom(), k);
             super::iset::lemma_iset_union(self.dom().to_infinite(), m2.dom().to_infinite(), k);
-            super::gset::lemma_gset_generic_union(self.0.dom(), m2.0.dom(), k);
+            assert(self.union_prefer_right(m2).dom().to_gset().contains(k) == self.to_gmap().union_prefer_right(m2.to_gmap()).dom().contains(k));
+            assert(self.to_gmap().dom().contains(k) == self.dom().to_gset().contains(k));
+            assert(m2.to_gmap().dom().contains(k) == m2.dom().to_gset().contains(k));
+            assert(self.to_gmap().union_prefer_right(m2.to_gmap()).dom().contains(k) == self.to_gmap().union_prefer_right(m2.to_gmap()).dom().to_infinite().contains(k));
+            assert(self.to_gmap().union_prefer_right(m2.to_gmap()).dom().to_infinite().contains(k) == self.to_gmap().dom().generic_union(m2.to_gmap().dom()).contains(k));
+            assert(self.union_prefer_right(m2).dom().contains(k) == (self.dom().contains(k) || m2.dom().contains(k)));
+            assert(lhs.contains(k) == self.union_prefer_right(m2).dom().contains(k));
+            assert(rhs.contains(k) == (self.dom().to_infinite().contains(k) || m2.dom().to_infinite().contains(k)));
+            assert(rhs.contains(k) == (self.dom().contains(k) || m2.dom().contains(k)));
         }
         super::iset::lemma_iset_ext_equal(lhs, rhs);
         assert(lhs =~= rhs);
@@ -198,12 +231,14 @@ impl<K, V> Map<K, V> {
             self.remove_keys(keys).dom().len() == self.dom().len() - keys.len(),
         decreases keys.len(),
     {
-        self.0.lemma_remove_keys_len(keys.0);
+        lemma_map_dom_bridge(self);
+        self.to_gmap().lemma_remove_keys_len(keys.to_gset());
+        lemma_map_dom_bridge(self.remove_keys(keys));
     }
 
     pub axiom fn tracked_empty() -> (tracked out_v: Self)
         ensures
-            out_v == Map(super::gmap::GMap::<K, V, Finite>::empty()),
+            out_v == Map::from_gmap(super::gmap::GMap::<K, V, Finite>::empty()),
     ;
 
     pub axiom fn tracked_insert(tracked &mut self, key: K, tracked value: V)
@@ -256,17 +291,39 @@ impl<K, V> Map<K, V> {
     ;
 }
 
+pub broadcast proof fn lemma_map_from_to_gmap<K, V>(m: Map<K, V>)
+    ensures
+        #[trigger] Map::from_gmap(m.to_gmap()) == m,
+{
+}
+
+pub(crate) broadcast proof fn lemma_map_to_from_gmap<K, V>(m: super::gmap::GMap<K, V, Finite>)
+    ensures
+        #[trigger] Map::from_gmap(m).to_gmap() == m,
+{
+}
+
 impl<K, V> IMap<K, V> {
+    #[doc(hidden)]
+    pub closed spec fn from_gmap(m: super::gmap::GMap<K, V, Infinite>) -> Self {
+        IMap(m)
+    }
+
+    #[doc(hidden)]
+    pub closed spec fn to_gmap(self) -> super::gmap::GMap<K, V, Infinite> {
+        self.0
+    }
+
     pub open spec fn from_set(key_set: ISet<K>, fv: spec_fn(K) -> V) -> Self {
-        IMap(super::gmap::GMap::from_set(key_set.0, fv))
+        IMap::from_gmap(super::gmap::GMap::from_set(key_set.to_gset(), fv))
     }
 
     pub(crate) open spec fn from_gset<FINITE2: Finiteness>(key_set: GSet<K, FINITE2>, fv: spec_fn(K) -> V) -> Self {
-        IMap(super::gmap::GMap::from_set(key_set.to_infinite(), fv))
+        IMap::from_gmap(super::gmap::GMap::from_set(key_set.to_infinite(), fv))
     }
 
     pub open spec fn new(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V) -> Self {
-        IMap(super::gmap::IMap::new(fk, fv))
+        IMap::from_gmap(super::gmap::IMap::new(fk, fv))
     }
 
     pub open spec fn total(fv: spec_fn(K) -> V) -> Self {
@@ -274,27 +331,27 @@ impl<K, V> IMap<K, V> {
     }
 
     pub open spec fn empty() -> Self {
-        IMap(super::gmap::GMap::empty())
+        IMap::from_gmap(super::gmap::GMap::empty())
     }
 
     pub open spec fn idom(self) -> ISet<K> {
-        self.0.idom()
+        self.to_gmap().idom()
     }
 
     pub open spec fn dom(self) -> ISet<K> {
-        ISet(self.0.dom())
+        ISet::from_gset(self.to_gmap().dom())
     }
 
     pub open spec fn contains_key(self, k: K) -> bool {
-        self.0.contains_key(k)
+        self.to_gmap().contains_key(k)
     }
 
     pub open spec fn contains_value(self, v: V) -> bool {
-        self.0.contains_value(v)
+        self.to_gmap().contains_value(v)
     }
 
     pub open spec fn contains_pair(self, k: K, v: V) -> bool {
-        self.0.contains_pair(k, v)
+        self.to_gmap().contains_pair(k, v)
     }
 
     #[verifier::inline]
@@ -302,7 +359,7 @@ impl<K, V> IMap<K, V> {
         recommends
             self.dom().contains(key),
     {
-        self.0.index(key)
+        self.to_gmap().index(key)
     }
 
     #[verifier::inline]
@@ -314,19 +371,19 @@ impl<K, V> IMap<K, V> {
     }
 
     pub open spec fn insert(self, key: K, value: V) -> Self {
-        IMap(self.0.insert(key, value))
+        IMap::from_gmap(self.to_gmap().insert(key, value))
     }
 
     pub open spec fn remove(self, key: K) -> Self {
-        IMap(self.0.remove(key))
+        IMap::from_gmap(self.to_gmap().remove(key))
     }
 
     pub open spec fn len(self) -> nat {
-        self.0.len()
+        self.to_gmap().len()
     }
 
     pub open spec fn union_prefer_right(self, m2: Self) -> Self {
-        IMap(self.0.union_prefer_right(m2.0))
+        IMap::from_gmap(self.to_gmap().union_prefer_right(m2.to_gmap()))
     }
 
     pub proof fn lemma_union_prefer_right(self, m2: Self)
@@ -343,12 +400,15 @@ impl<K, V> IMap<K, V> {
                     self[k]
                 },
     {
-        self.0.lemma_union_prefer_right(m2.0);
+        self.to_gmap().lemma_union_prefer_right(m2.to_gmap());
+        lemma_imap_dom_bridge(self.union_prefer_right(m2));
+        lemma_imap_dom_bridge(self);
+        lemma_imap_dom_bridge(m2);
         let lhs = self.union_prefer_right(m2).dom();
         let rhs = self.dom().union(m2.dom());
         assert forall|k| lhs.contains(k) == rhs.contains(k) by {
             super::iset::lemma_iset_union(self.dom(), m2.dom(), k);
-            super::gset::lemma_gset_generic_union(self.0.dom(), m2.0.dom(), k);
+            super::gset::lemma_gset_generic_union(self.to_gmap().dom(), m2.to_gmap().dom(), k);
         }
         super::iset::lemma_iset_ext_equal(lhs, rhs);
         assert(lhs =~= rhs);
@@ -356,31 +416,31 @@ impl<K, V> IMap<K, V> {
     }
 
     pub open spec fn remove_keys(self, keys: ISet<K>) -> Self {
-        IMap(self.0.remove_keys(keys.0))
+        IMap::from_gmap(self.to_gmap().remove_keys(keys.to_gset()))
     }
 
     pub open spec fn restrict(self, keys: ISet<K>) -> Self {
-        IMap(self.0.restrict(keys.0))
+        IMap::from_gmap(self.to_gmap().restrict(keys.to_gset()))
     }
 
     pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> IMap<K, W> {
-        IMap(self.0.map_entries(f))
+        IMap::from_gmap(self.to_gmap().map_entries(f))
     }
 
     pub open spec fn map_values<W>(self, f: spec_fn(V) -> W) -> IMap<K, W> {
-        IMap(self.0.map_values(f))
+        IMap::from_gmap(self.to_gmap().map_values(f))
     }
 
     pub open spec fn invert(self) -> IMap<V, K> {
-        IMap(self.0.invert())
+        IMap::from_gmap(self.to_gmap().invert())
     }
 
     pub open spec fn values(self) -> ISet<V> {
-        ISet(self.0.values())
+        ISet::from_gset(self.to_gmap().values())
     }
 
     pub open spec fn submap_of(self, m2: Self) -> bool {
-        self.0.submap_of(m2.0)
+        self.to_gmap().submap_of(m2.to_gmap())
     }
 
     #[verifier::inline]
@@ -389,19 +449,31 @@ impl<K, V> IMap<K, V> {
     }
 
     pub open spec fn congruent(self, m2: Self) -> bool {
-        self.0.congruent(m2.0)
+        self.to_gmap().congruent(m2.to_gmap())
     }
 
     pub(crate) open spec fn congruent_generic<FINITE2: Finiteness>(self, m2: GenericMap<K, V, FINITE2>) -> bool {
-        self.0.congruent(m2)
+        self.to_gmap().congruent(m2)
     }
 
     pub open spec fn to_finite(self) -> Map<K, V>
         recommends
             self.dom().finite(),
     {
-        Map(self.0.to_finite())
+        Map::from_gmap(self.to_gmap().to_finite())
     }
+}
+
+pub broadcast proof fn lemma_imap_from_to_gmap<K, V>(m: IMap<K, V>)
+    ensures
+        #[trigger] IMap::from_gmap(m.to_gmap()) == m,
+{
+}
+
+pub(crate) broadcast proof fn lemma_imap_to_from_gmap<K, V>(m: super::gmap::GMap<K, V, Infinite>)
+    ensures
+        #[trigger] IMap::from_gmap(m).to_gmap() == m,
+{
 }
 
 pub broadcast proof fn axiom_map_finite_from_type<K, V>(m: Map<K, V>)
@@ -409,7 +481,169 @@ pub broadcast proof fn axiom_map_finite_from_type<K, V>(m: Map<K, V>)
         #[trigger] m.idom().finite(),
         #[trigger] m.dom().finite(),
 {
-    super::gmap::axiom_map_finite_from_type(m.0);
+    super::gmap::axiom_map_finite_from_type(m.to_gmap());
+    super::set::lemma_set_to_from_gset(m.to_gmap().dom());
+    assert(m.dom().to_gset() == m.to_gmap().dom());
+    assert(m.dom().finite() == m.dom().to_gset().finite());
+    assert(m.dom().finite());
+}
+
+pub proof fn lemma_map_dom_bridge<K, V>(m: Map<K, V>)
+    ensures
+        #[trigger] m.dom().to_gset() == m.to_gmap().dom(),
+{
+    super::set::lemma_set_to_from_gset(m.to_gmap().dom());
+}
+
+pub proof fn lemma_imap_dom_bridge<K, V>(m: IMap<K, V>)
+    ensures
+        #[trigger] m.dom().to_gset() == m.to_gmap().dom(),
+{
+    super::iset::lemma_iset_to_from_gset(m.to_gmap().dom());
+}
+
+pub proof fn lemma_map_dom_contains_bridge<K, V>(m: Map<K, V>, k: K)
+    ensures
+        #[trigger] m.to_gmap().dom().contains(k) == m.dom().contains(k),
+        #[trigger] m.dom().contains(k) == m.to_gmap().dom().contains(k),
+{
+    lemma_map_dom_bridge(m);
+    assert(m.dom().contains(k) == m.dom().to_gset().contains(k));
+    assert(m.dom().to_gset().contains(k) == m.to_gmap().dom().contains(k));
+}
+
+pub(crate) proof fn lemma_map_dom_contains_field_bridge<K, V>(m: Map<K, V>, k: K)
+    ensures
+        #[trigger] m.dom().contains(k) == m.0.dom().contains(k),
+        #[trigger] m.0.dom().contains(k) == m.dom().contains(k),
+{
+    lemma_map_dom_contains_bridge(m, k);
+    assert(m.to_gmap().dom().contains(k) == m.0.dom().contains(k));
+}
+
+pub(crate) proof fn lemma_map_index_field_bridge<K, V>(m: Map<K, V>, k: K)
+    ensures
+        m.dom().contains(k) ==> m[k] == m.0[k],
+        m.0.dom().contains(k) ==> m[k] == m.0[k],
+{
+    lemma_map_dom_contains_field_bridge(m, k);
+    if m.dom().contains(k) {
+        assert(m.to_gmap().dom().contains(k));
+        assert(m[k] == m.to_gmap()[k]);
+        assert(m.to_gmap()[k] == m.0[k]);
+    }
+    if m.0.dom().contains(k) {
+        assert(m.dom().contains(k));
+        assert(m.to_gmap().dom().contains(k));
+        assert(m[k] == m.to_gmap()[k]);
+        assert(m.to_gmap()[k] == m.0[k]);
+    }
+}
+
+pub proof fn lemma_imap_dom_contains_bridge<K, V>(m: IMap<K, V>, k: K)
+    ensures
+        #[trigger] m.to_gmap().dom().contains(k) == m.dom().contains(k),
+        #[trigger] m.dom().contains(k) == m.to_gmap().dom().contains(k),
+{
+    lemma_imap_dom_bridge(m);
+    assert(m.dom().contains(k) == m.dom().to_gset().contains(k));
+    assert(m.dom().to_gset().contains(k) == m.to_gmap().dom().contains(k));
+}
+
+pub(crate) proof fn lemma_imap_dom_contains_field_bridge<K, V>(m: IMap<K, V>, k: K)
+    ensures
+        #[trigger] m.dom().contains(k) == m.0.dom().contains(k),
+        #[trigger] m.0.dom().contains(k) == m.dom().contains(k),
+{
+    lemma_imap_dom_contains_bridge(m, k);
+    assert(m.to_gmap().dom().contains(k) == m.0.dom().contains(k));
+}
+
+pub(crate) proof fn lemma_imap_index_field_bridge<K, V>(m: IMap<K, V>, k: K)
+    ensures
+        m.dom().contains(k) ==> m[k] == m.0[k],
+        m.0.dom().contains(k) ==> m[k] == m.0[k],
+{
+    lemma_imap_dom_contains_field_bridge(m, k);
+    if m.dom().contains(k) {
+        assert(m.to_gmap().dom().contains(k));
+        assert(m[k] == m.to_gmap()[k]);
+        assert(m.to_gmap()[k] == m.0[k]);
+    }
+    if m.0.dom().contains(k) {
+        assert(m.dom().contains(k));
+        assert(m.to_gmap().dom().contains(k));
+        assert(m[k] == m.to_gmap()[k]);
+        assert(m.to_gmap()[k] == m.0[k]);
+    }
+}
+
+pub(crate) proof fn lemma_imap_remove_keys_dom<K, V>(m: IMap<K, V>, keys: ISet<K>)
+    ensures
+        m.remove_keys(keys).dom() =~= (m.dom() - keys),
+{
+    m.to_gmap().lemma_remove_keys(keys.to_gset());
+    lemma_imap_dom_bridge(m.remove_keys(keys));
+    lemma_imap_dom_bridge(m);
+    let lhs = m.remove_keys(keys).dom();
+    let rhs = m.dom() - keys;
+    assert forall|k: K| lhs.contains(k) == rhs.contains(k) by {
+        super::iset::lemma_iset_difference(m.dom(), keys, k);
+        super::gset::lemma_gset_generic_difference(m.to_gmap().dom(), keys.to_gset(), k);
+        assert(m.remove_keys(keys).dom().to_gset().contains(k) == m.remove_keys(keys).to_gmap().dom().contains(k));
+        assert(m.remove_keys(keys).to_gmap().dom().contains(k)
+            == m.to_gmap().remove_keys(keys.to_gset()).dom().contains(k));
+        assert(m.to_gmap().remove_keys(keys.to_gset()).dom().contains(k)
+            == m.to_gmap().dom().generic_difference(keys.to_gset()).contains(k));
+        assert(m.to_gmap().dom().generic_difference(keys.to_gset()).contains(k)
+            == (m.to_gmap().dom().contains(k) && !keys.to_gset().contains(k)));
+        assert(m.to_gmap().dom().contains(k) == m.dom().to_gset().contains(k));
+        super::iset::lemma_iset_to_from_gset(keys.to_gset());
+        assert(keys.to_gset().contains(k) == keys.contains(k));
+        assert(m.dom().contains(k) == m.dom().to_gset().contains(k));
+    }
+    super::iset::lemma_iset_ext_equal(lhs, rhs);
+}
+
+pub(crate) proof fn lemma_imap_restrict_dom<K, V>(m: IMap<K, V>, keys: ISet<K>)
+    ensures
+        m.restrict(keys).dom() =~= m.dom().intersect(keys),
+{
+    m.to_gmap().lemma_restrict(keys.to_gset());
+    lemma_imap_dom_bridge(m.restrict(keys));
+    lemma_imap_dom_bridge(m);
+    let lhs = m.restrict(keys).dom();
+    let rhs = m.dom().intersect(keys);
+    assert forall|k: K| lhs.contains(k) == rhs.contains(k) by {
+        super::iset::lemma_iset_intersect(m.dom(), keys, k);
+        super::gset::lemma_gset_generic_intersect(m.to_gmap().dom(), keys.to_gset(), k);
+        assert(m.restrict(keys).dom().to_gset().contains(k) == m.restrict(keys).to_gmap().dom().contains(k));
+        assert(m.restrict(keys).to_gmap().dom().contains(k)
+            == m.to_gmap().restrict(keys.to_gset()).dom().contains(k));
+        assert(m.to_gmap().restrict(keys.to_gset()).dom().contains(k)
+            == m.to_gmap().dom().generic_intersect(keys.to_gset()).contains(k));
+        assert(m.to_gmap().dom().generic_intersect(keys.to_gset()).contains(k)
+            == (m.to_gmap().dom().contains(k) && keys.to_gset().contains(k)));
+        assert(m.to_gmap().dom().contains(k) == m.dom().to_gset().contains(k));
+        super::iset::lemma_iset_to_from_gset(keys.to_gset());
+        assert(keys.to_gset().contains(k) == keys.contains(k));
+        assert(m.dom().contains(k) == m.dom().to_gset().contains(k));
+    }
+    super::iset::lemma_iset_ext_equal(lhs, rhs);
+}
+
+pub proof fn lemma_map_insert_bridge<K, V>(m: Map<K, V>, key: K, value: V)
+    ensures
+        #[trigger] m.insert(key, value).to_gmap() == m.to_gmap().insert(key, value),
+{
+    lemma_map_to_from_gmap(m.to_gmap().insert(key, value));
+}
+
+pub proof fn lemma_map_remove_bridge<K, V>(m: Map<K, V>, key: K)
+    ensures
+        #[trigger] m.remove(key).to_gmap() == m.to_gmap().remove(key),
+{
+    lemma_map_to_from_gmap(m.to_gmap().remove(key));
 }
 
 pub broadcast axiom fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key: K)
@@ -437,6 +671,17 @@ pub broadcast proof fn lemma_infinite_new_ensures<K, V>(fk: spec_fn(K) -> bool, 
         IMap::new(fk, fv).dom() == ISet::new(fk),
 {
     super::gmap::lemma_infinite_new_ensures(fk, fv);
+    lemma_imap_to_from_gmap(super::gmap::IMap::new(fk, fv));
+    assert(IMap::new(fk, fv).to_gmap() == super::gmap::IMap::new(fk, fv));
+    lemma_imap_dom_bridge(IMap::new(fk, fv));
+    assert(IMap::new(fk, fv).dom().to_gset() == ISet::new(fk).to_gset());
+    assert forall|k| fk(k) <==> IMap::new(fk, fv).dom().contains(k) by {
+        super::iset::lemma_iset_new(fk, k);
+    }
+    assert forall|k| IMap::new(fk, fv).dom().contains(k) == ISet::new(fk).contains(k) by {
+    }
+    super::iset::lemma_iset_ext_equal(IMap::new(fk, fv).dom(), ISet::new(fk));
+    super::iset::lemma_iset_ext_equal_eq(IMap::new(fk, fv).dom(), ISet::new(fk));
 }
 
 pub broadcast proof fn lemma_map_empty<K, V>()
@@ -450,12 +695,16 @@ pub broadcast proof fn lemma_map_insert_domain<K, V>(m: Map<K, V>, key: K, value
     ensures
         #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
-    super::gmap::lemma_map_insert_domain(m.0, key, value);
+    super::gmap::lemma_map_insert_domain(m.to_gmap(), key, value);
+    lemma_map_insert_bridge(m, key, value);
+    lemma_map_dom_bridge(m.insert(key, value));
+    lemma_map_dom_bridge(m);
     reveal(Set::insert);
+    super::set::lemma_set_to_from_gset(m.to_gmap().dom().insert(key));
     assert forall|k: K| #[trigger] m.insert(key, value).dom().contains(k) == m.dom().insert(key).contains(k) by {
-        assert(m.insert(key, value).dom().contains(k) == m.0.insert(key, value).dom().contains(k));
-        assert(m.0.insert(key, value).dom().contains(k) == m.0.dom().insert(key).contains(k));
-        assert(m.dom().insert(key).contains(k) == m.0.dom().insert(key).contains(k));
+        assert(m.insert(key, value).dom().to_gset().contains(k) == m.to_gmap().insert(key, value).dom().contains(k));
+        assert(m.to_gmap().insert(key, value).dom().contains(k) == m.to_gmap().dom().insert(key).contains(k));
+        assert(m.dom().insert(key).to_gset().contains(k) == m.to_gmap().dom().insert(key).contains(k));
     }
     lemma_set_ext_equal_eq(m.insert(key, value).dom(), m.dom().insert(key));
 }
@@ -464,7 +713,7 @@ pub broadcast proof fn lemma_map_insert_same<K, V>(m: Map<K, V>, key: K, value: 
     ensures
         #[trigger] m.insert(key, value)[key] == value,
 {
-    super::gmap::lemma_map_insert_same(m.0, key, value);
+    super::gmap::lemma_map_insert_same(m.to_gmap(), key, value);
 }
 
 pub broadcast proof fn lemma_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
@@ -473,19 +722,23 @@ pub broadcast proof fn lemma_map_insert_different<K, V>(m: Map<K, V>, key1: K, k
     ensures
         #[trigger] m.insert(key2, value)[key1] == m[key1],
 {
-    super::gmap::lemma_map_insert_different(m.0, key1, key2, value);
+    super::gmap::lemma_map_insert_different(m.to_gmap(), key1, key2, value);
 }
 
 pub broadcast proof fn lemma_map_remove_domain<K, V>(m: Map<K, V>, key: K)
     ensures
         #[trigger] m.remove(key).dom() == m.dom().remove(key),
 {
-    super::gmap::lemma_map_remove_domain(m.0, key);
+    super::gmap::lemma_map_remove_domain(m.to_gmap(), key);
+    lemma_map_remove_bridge(m, key);
+    lemma_map_dom_bridge(m.remove(key));
+    lemma_map_dom_bridge(m);
     reveal(Set::remove);
+    super::set::lemma_set_to_from_gset(m.to_gmap().dom().remove(key));
     assert forall|k: K| #[trigger] m.remove(key).dom().contains(k) == m.dom().remove(key).contains(k) by {
-        assert(m.remove(key).dom().contains(k) == m.0.remove(key).dom().contains(k));
-        assert(m.0.remove(key).dom().contains(k) == m.0.dom().remove(key).contains(k));
-        assert(m.dom().remove(key).contains(k) == m.0.dom().remove(key).contains(k));
+        assert(m.remove(key).dom().to_gset().contains(k) == m.to_gmap().remove(key).dom().contains(k));
+        assert(m.to_gmap().remove(key).dom().contains(k) == m.to_gmap().dom().remove(key).contains(k));
+        assert(m.dom().remove(key).to_gset().contains(k) == m.to_gmap().dom().remove(key).contains(k));
     }
     lemma_set_ext_equal_eq(m.remove(key).dom(), m.dom().remove(key));
 }
@@ -496,7 +749,7 @@ pub broadcast proof fn lemma_map_remove_different<K, V>(m: Map<K, V>, key1: K, k
     ensures
         #[trigger] m.remove(key2)[key1] == m[key1],
 {
-    super::gmap::lemma_map_remove_different(m.0, key1, key2);
+    super::gmap::lemma_map_remove_different(m.to_gmap(), key1, key2);
 }
 
 pub broadcast proof fn lemma_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
@@ -506,7 +759,67 @@ pub broadcast proof fn lemma_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
             &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
         },
 {
-    super::gmap::lemma_map_ext_equal(m1.0, m2.0);
+    super::gmap::lemma_map_ext_equal(m1.to_gmap(), m2.to_gmap());
+    lemma_map_dom_bridge(m1);
+    lemma_map_dom_bridge(m2);
+    if m1 =~= m2 {
+        assert(m1.to_gmap() =~= m2.to_gmap());
+        assert(m1.to_gmap().dom() =~= m2.to_gmap().dom());
+        assert forall|k: K| m1.dom().contains(k) == m2.dom().contains(k) by {
+            assert(m1.dom().to_gset().contains(k) == m1.to_gmap().dom().contains(k));
+            assert(m2.dom().to_gset().contains(k) == m2.to_gmap().dom().contains(k));
+        }
+        lemma_set_ext_equal(m1.dom(), m2.dom());
+        assert forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k] by {
+            if m1.dom().contains(k) {
+                lemma_map_dom_contains_bridge(m1, k);
+                lemma_map_dom_contains_bridge(m2, k);
+                assert(m1.to_gmap().dom().contains(k) == m1.dom().contains(k));
+                assert(m1.to_gmap().dom().contains(k));
+                assert(m1.to_gmap().dom().contains(k) == m2.to_gmap().dom().contains(k));
+                assert(m2.to_gmap().dom().contains(k));
+                assert(m1.to_gmap()[k] == m2.to_gmap()[k]);
+                assert(m1[k] == m1.to_gmap()[k]);
+                assert(m2[k] == m2.to_gmap()[k]);
+            }
+        }
+    }
+    if ({
+        &&& m1.dom() =~= m2.dom()
+        &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
+    }) {
+        lemma_set_ext_equal(m1.dom(), m2.dom());
+        assert forall|k: K| m1.to_gmap().dom().contains(k) == m2.to_gmap().dom().contains(k) by {
+            assert(m1.dom().to_gset().contains(k) == m1.to_gmap().dom().contains(k));
+            assert(m2.dom().to_gset().contains(k) == m2.to_gmap().dom().contains(k));
+            assert(m1.dom().contains(k) == m2.dom().contains(k));
+        }
+        super::gset::lemma_gset_ext_equal(m1.to_gmap().dom(), m2.to_gmap().dom());
+        assert forall|k: K| #![auto] m1.to_gmap().dom().contains(k) ==> m1.to_gmap()[k] == m2.to_gmap()[k] by {
+            if m1.to_gmap().dom().contains(k) {
+                lemma_map_dom_contains_bridge(m1, k);
+                lemma_map_dom_contains_bridge(m2, k);
+                assert(m1.to_gmap().dom().contains(k) == m1.dom().contains(k));
+                assert(m1.dom().contains(k));
+                assert(m1[k] == m2[k]);
+                assert(m1[k] == m1.to_gmap()[k]);
+                assert(m2[k] == m2.to_gmap()[k]);
+            }
+        }
+        assert(m1.to_gmap() =~= m2.to_gmap());
+        assert(m1 =~= m2);
+    }
+}
+
+pub broadcast proof fn lemma_map_ext_equal_eq<K, V>(m1: Map<K, V>, m2: Map<K, V>)
+    ensures
+        #[trigger] (m1 =~= m2) ==> m1 == m2,
+{
+    if m1 =~= m2 {
+        super::gmap::lemma_map_ext_equal_eq(m1.to_gmap(), m2.to_gmap());
+        assert(m1.to_gmap() == m2.to_gmap());
+        assert(m1 == m2);
+    }
 }
 
 pub broadcast proof fn lemma_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, V>)
@@ -526,7 +839,67 @@ pub broadcast proof fn lemma_imap_ext_equal<K, V>(m1: IMap<K, V>, m2: IMap<K, V>
             &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
         },
 {
-    super::gmap::lemma_map_ext_equal(m1.0, m2.0);
+    super::gmap::lemma_map_ext_equal(m1.to_gmap(), m2.to_gmap());
+    lemma_imap_dom_bridge(m1);
+    lemma_imap_dom_bridge(m2);
+    if m1 =~= m2 {
+        assert(m1.to_gmap() =~= m2.to_gmap());
+        assert(m1.to_gmap().dom() =~= m2.to_gmap().dom());
+        assert forall|k: K| m1.dom().contains(k) == m2.dom().contains(k) by {
+            assert(m1.dom().to_gset().contains(k) == m1.to_gmap().dom().contains(k));
+            assert(m2.dom().to_gset().contains(k) == m2.to_gmap().dom().contains(k));
+        }
+        super::iset::lemma_iset_ext_equal(m1.dom(), m2.dom());
+        assert forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k] by {
+            if m1.dom().contains(k) {
+                lemma_imap_dom_contains_bridge(m1, k);
+                lemma_imap_dom_contains_bridge(m2, k);
+                assert(m1.to_gmap().dom().contains(k) == m1.dom().contains(k));
+                assert(m1.to_gmap().dom().contains(k));
+                assert(m1.to_gmap().dom().contains(k) == m2.to_gmap().dom().contains(k));
+                assert(m2.to_gmap().dom().contains(k));
+                assert(m1.to_gmap()[k] == m2.to_gmap()[k]);
+                assert(m1[k] == m1.to_gmap()[k]);
+                assert(m2[k] == m2.to_gmap()[k]);
+            }
+        }
+    }
+    if ({
+        &&& m1.dom() =~= m2.dom()
+        &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
+    }) {
+        super::iset::lemma_iset_ext_equal(m1.dom(), m2.dom());
+        assert forall|k: K| m1.to_gmap().dom().contains(k) == m2.to_gmap().dom().contains(k) by {
+            assert(m1.dom().to_gset().contains(k) == m1.to_gmap().dom().contains(k));
+            assert(m2.dom().to_gset().contains(k) == m2.to_gmap().dom().contains(k));
+            assert(m1.dom().contains(k) == m2.dom().contains(k));
+        }
+        super::gset::lemma_gset_ext_equal(m1.to_gmap().dom(), m2.to_gmap().dom());
+        assert forall|k: K| #![auto] m1.to_gmap().dom().contains(k) ==> m1.to_gmap()[k] == m2.to_gmap()[k] by {
+            if m1.to_gmap().dom().contains(k) {
+                lemma_imap_dom_contains_bridge(m1, k);
+                lemma_imap_dom_contains_bridge(m2, k);
+                assert(m1.to_gmap().dom().contains(k) == m1.dom().contains(k));
+                assert(m1.dom().contains(k));
+                assert(m1[k] == m2[k]);
+                assert(m1[k] == m1.to_gmap()[k]);
+                assert(m2[k] == m2.to_gmap()[k]);
+            }
+        }
+        assert(m1.to_gmap() =~= m2.to_gmap());
+        assert(m1 =~= m2);
+    }
+}
+
+pub broadcast proof fn lemma_imap_ext_equal_eq<K, V>(m1: IMap<K, V>, m2: IMap<K, V>)
+    ensures
+        #[trigger] (m1 =~= m2) ==> m1 == m2,
+{
+    if m1 =~= m2 {
+        super::gmap::lemma_map_ext_equal_eq(m1.to_gmap(), m2.to_gmap());
+        assert(m1.to_gmap() == m2.to_gmap());
+        assert(m1 == m2);
+    }
 }
 
 pub broadcast proof fn lemma_congruence_extensionality<K, V, FINITE: Finiteness>(
@@ -547,9 +920,11 @@ pub open spec fn check_argument_is_map<K, V>(m: Map<K, V>) -> Map<K, V> {
     m
 }
 
-pub broadcast group group_map_axioms {
+pub(crate) broadcast group group_map_internal_axioms {
+    lemma_map_to_from_gmap,
+    lemma_imap_to_from_gmap,
     super::gmap::lemma_new_from_set_ensures,
-    lemma_infinite_new_ensures,
+    super::gmap::lemma_infinite_new_ensures,
     super::gmap::lemma_map_empty,
     super::gmap::lemma_map_insert_domain,
     super::gmap::lemma_map_insert_same,
@@ -557,12 +932,21 @@ pub broadcast group group_map_axioms {
     super::gmap::lemma_map_remove_domain,
     super::gmap::lemma_map_remove_different,
     super::gmap::lemma_map_ext_equal,
+    super::gmap::lemma_map_ext_equal_eq,
     super::gmap::lemma_map_ext_equal_deep,
     super::gmap::GMap::lemma_remove_keys,
     super::gmap::GMap::lemma_invert_ensures,
     super::gmap::GMap::lemma_restrict,
     super::gmap::GMap::lemma_map_entries,
     super::gmap::GMap::lemma_map_values_ensures,
+    super::gmap::GMap::lemma_union_prefer_right,
+    super::gmap::lemma_congruence_extensionality,
+}
+
+pub broadcast group group_map_axioms {
+    lemma_infinite_new_ensures,
+    lemma_map_from_to_gmap,
+    lemma_imap_from_to_gmap,
     axiom_map_index_decreases_finite,
     axiom_map_index_decreases_infinite,
     lemma_map_empty,
@@ -572,8 +956,9 @@ pub broadcast group group_map_axioms {
     lemma_map_remove_domain,
     lemma_map_remove_different,
     lemma_map_ext_equal,
+    lemma_map_ext_equal_eq,
     lemma_map_ext_equal_deep,
-    super::gmap::GMap::lemma_union_prefer_right,
+    lemma_imap_ext_equal_eq,
     lemma_congruence_extensionality,
 }
 

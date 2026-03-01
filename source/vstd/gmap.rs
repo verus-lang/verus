@@ -7,6 +7,8 @@ use super::set::*;
 
 verus! {
 
+broadcast use super::set::group_set_lemmas;
+
 /// `Map<K, V>` is an abstract map type for specifications.
 /// To use a "map" in compiled code, use an `exec` type like HashMap (TODO)
 /// that has a `Map<K, V>` as its specification type.
@@ -93,6 +95,10 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
             self.to_infinite().dom().congruent(self.dom()),
     {
         broadcast use super::set::group_set_lemmas;
+        lemma_infinite_new_ensures(|k| self.contains_key(k), |k| self[k]);
+        assert forall|k| self.to_infinite().dom().contains(k) <==> self.dom().contains(k) by {
+            super::iset::lemma_iset_new(|x| self.contains_key(x), k);
+        }
 
     }
 
@@ -100,7 +106,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
         recommends
             self.dom().finite(),
     {
-        Map::new(Set(self.dom().to_finite()), |k| self[k])
+        Map::new(Set::from_gset(self.dom().to_finite()), |k| self[k])
     }
 }
 
@@ -276,10 +282,33 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     {
         broadcast use super::set::group_set_lemmas;
         broadcast use axiom_dom_ensures;
+        broadcast use super::gset::lemma_gset_ext_equal_eq;
 
-        assert(self.union_prefer_right(m2).dom().to_infinite() == self.dom().generic_union(
-            m2.dom(),
-        ));
+        reveal(GMap::union_prefer_right);
+        reveal(GMap::idom);
+
+        assert forall|k|
+            self.union_prefer_right(m2).dom().to_infinite().contains(k)
+                <==> self.dom().generic_union(m2.dom()).contains(k) by {
+            super::iset::lemma_iset_new(|x| (self.union_prefer_right(m2).mapping)(x) is Some, k);
+            super::gset::lemma_gset_generic_union(self.dom(), m2.dom(), k);
+        }
+        assert(self.union_prefer_right(m2).dom().to_infinite() =~= self.dom().generic_union(m2.dom()));
+        lemma_gset_ext_equal_eq(
+            self.union_prefer_right(m2).dom().to_infinite(),
+            self.dom().generic_union(m2.dom()),
+        );
+
+        assert forall|k|
+            self.union_prefer_right(m2).dom().contains(k) implies self.union_prefer_right(m2)[k]
+                == if m2.dom().contains(k) {
+                m2[k]
+            } else {
+                self[k]
+            } by {
+            super::iset::lemma_iset_new(|x| (self.union_prefer_right(m2).mapping)(x) is Some, k);
+            reveal(GMap::index);
+        }
     }
 
     pub broadcast proof fn lemma_remove_keys(self, keys: GSet<K, FINITE>)
@@ -299,9 +328,37 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     {
         broadcast use super::set::group_set_lemmas;
         broadcast use axiom_dom_ensures;
-        // trigger extn
+        broadcast use super::gset::lemma_gset_ext_equal_eq;
 
-        assert(self.remove_keys(keys).dom().to_infinite() == self.dom().generic_difference(keys));
+        reveal(GMap::remove_keys);
+        reveal(GMap::idom);
+
+        assert forall|k|
+            self.remove_keys(keys).dom().to_infinite().contains(k)
+                <==> self.dom().generic_difference(keys).contains(k) by {
+            super::iset::lemma_iset_new(|x| (self.remove_keys(keys).mapping)(x) is Some, k);
+            super::gset::lemma_gset_generic_difference(self.dom(), keys, k);
+        }
+        assert(self.remove_keys(keys).dom().to_infinite() =~= self.dom().generic_difference(keys));
+        lemma_gset_ext_equal_eq(
+            self.remove_keys(keys).dom().to_infinite(),
+            self.dom().generic_difference(keys),
+        );
+
+        assert forall|k|
+            self.remove_keys(keys).dom().contains(k) implies self.remove_keys(keys)[k] == self[k] by {
+            super::iset::lemma_iset_new(|x| (self.remove_keys(keys).mapping)(x) is Some, k);
+            assert(self.remove_keys(keys).dom().contains(k) <==> self.dom().contains(k) && !keys.contains(k));
+            assert(self.dom().contains(k) && !keys.contains(k));
+            reveal(GMap::index);
+        }
+        assert forall|k|
+            self.dom().contains(k) && !keys.contains(k) implies self.remove_keys(keys)[k] == self[k] by {
+            super::iset::lemma_iset_new(|x| (self.remove_keys(keys).mapping)(x) is Some, k);
+            assert(self.remove_keys(keys).dom().contains(k) <==> self.dom().contains(k) && !keys.contains(k));
+            assert(self.remove_keys(keys).dom().contains(k));
+            reveal(GMap::index);
+        }
     }
 
     pub broadcast proof fn lemma_restrict(self, keys: GSet<K, FINITE>)
@@ -318,9 +375,37 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     {
         broadcast use super::set::group_set_lemmas;
         broadcast use axiom_dom_ensures;
-        // trigger extn
+        broadcast use super::gset::lemma_gset_ext_equal_eq;
 
-        assert(self.restrict(keys).dom().to_infinite() == self.dom().generic_intersect(keys));
+        reveal(GMap::restrict);
+        reveal(GMap::idom);
+
+        assert forall|k|
+            self.restrict(keys).dom().to_infinite().contains(k)
+                <==> self.dom().generic_intersect(keys).contains(k) by {
+            super::iset::lemma_iset_new(|x| (self.restrict(keys).mapping)(x) is Some, k);
+            super::gset::lemma_gset_generic_intersect(self.dom(), keys, k);
+        }
+        assert(self.restrict(keys).dom().to_infinite() =~= self.dom().generic_intersect(keys));
+        lemma_gset_ext_equal_eq(
+            self.restrict(keys).dom().to_infinite(),
+            self.dom().generic_intersect(keys),
+        );
+
+        assert forall|k|
+            self.restrict(keys).dom().contains(k) implies self.restrict(keys)[k] == self[k] by {
+            super::iset::lemma_iset_new(|x| (self.restrict(keys).mapping)(x) is Some, k);
+            assert(self.restrict(keys).dom().contains(k) <==> self.dom().contains(k) && keys.contains(k));
+            assert(self.dom().contains(k) && keys.contains(k));
+            reveal(GMap::index);
+        }
+        assert forall|k|
+            self.dom().contains(k) && keys.contains(k) implies self.restrict(keys)[k] == self[k] by {
+            super::iset::lemma_iset_new(|x| (self.restrict(keys).mapping)(x) is Some, k);
+            assert(self.restrict(keys).dom().contains(k) <==> self.dom().contains(k) && keys.contains(k));
+            assert(self.restrict(keys).dom().contains(k));
+            reveal(GMap::index);
+        }
     }
 
     // Preserves finite soundness because, when FINITE=Finite, key_set is finite by its type.
@@ -355,9 +440,13 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     {
         broadcast use super::set::group_set_lemmas;
         broadcast use axiom_dom_ensures;
-        // trigger extn
-
+        reveal(GMap::map_entries);
+        lemma_new_from_set_ensures(self.dom(), |k| f(k, self[k]));
         assert(self.map_entries(f).dom() == self.dom());
+        assert forall|k|
+            self.map_entries(f).contains_key(k) implies self.map_entries(f)[k] == f(k, self[k]) by {
+            assert(self.map_entries(f).dom().contains(k));
+        }
     }
 
     /// Map a function `f` over the values in `self`.
@@ -374,8 +463,12 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     {
         broadcast use super::set::group_set_lemmas;
         broadcast use axiom_dom_ensures;
-
-        assert(self.dom() =~= self.map_values(f).dom());  // trigger-it-yourself
+        reveal(GMap::map_values);
+        lemma_new_from_set_ensures(self.dom(), |k| f(self[k]));
+        assert(self.dom() == self.map_values(f).dom());
+        assert forall|k|
+            self.map_values(f).dom().contains(k) implies self.map_values(f)[k] == f(self[k]) by {
+        }
     }
 
     /// Swaps map keys and values. Values are not required to be unique; no
@@ -395,7 +488,34 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     {
         broadcast use super::set::group_set_lemmas;
         broadcast use axiom_dom_ensures;
+        broadcast use super::gset::lemma_gset_map_contains;
 
+        let fk = |v: V| self.contains_value(v);
+        let fv = |v: V| choose|k: K| self.contains_pair(k, v);
+
+        lemma_new_from_set_ensures(self.dom().map(|k: K| self[k]), fv);
+        lemma_infinite_new_ensures(fk, fv);
+        lemma_gset_map_contains(self.dom(), |k: K| self[k]);
+
+        assert(GMap::congruent(self.invert(), IMap::new(fk, fv))) by {
+            assert forall|v: V| #[trigger] self.invert().dom().contains(v) <==> IMap::new(
+                fk,
+                fv,
+            ).dom().contains(v) by {
+                assert(self.invert().dom() == self.dom().map(|k: K| self[k]));
+            }
+
+            assert forall|v: V|
+                #[trigger] self.invert().contains_key(v) implies self.invert()[v] == IMap::new(
+                    fk,
+                    fv,
+                )[v] by {
+                assert(self.invert().dom().contains(v));
+                assert(IMap::new(fk, fv).dom().contains(v));
+                assert(self.invert()[v] == fv(v));
+                assert(IMap::new(fk, fv)[v] == fv(v));
+            }
+        }
     }
 }
 
@@ -486,13 +606,13 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
 // finite mappings inside GMaps with FINITE=true.
 broadcast axiom fn axiom_dom_ensures<K, V, FINITE: Finiteness>(m: GMap<K, V, FINITE>)
     ensures
-        (#[trigger] m.dom()).congruent(ISet::new(|k| (m.mapping)(k) is Some).0),
+        (#[trigger] m.dom()).congruent(ISet::new(|k| (m.mapping)(k) is Some).to_gset()),
 ;
 
 impl<K, V> Map<K, V> {
     #[verifier::inline]
     pub open spec fn new(key_set: Set<K>, fv: spec_fn(K) -> V) -> Map<K, V> {
-        Map::from_set(key_set.0, fv)
+        Map::from_set(key_set.to_gset(), fv)
     }
 }
 
@@ -509,6 +629,21 @@ pub broadcast proof fn lemma_new_from_set_ensures<K, V, FINITE: Finiteness>(
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
+    broadcast use super::gset::lemma_gset_ext_equal_eq;
+
+    reveal(GMap::from_set);
+    reveal(GMap::idom);
+
+    assert forall|k|
+        key_set.contains(k) <==> #[trigger] GMap::from_set(key_set, fv).dom().contains(k) by {
+        super::iset::lemma_iset_new(|x| (GMap::from_set(key_set, fv).mapping)(x) is Some, k);
+    }
+    assert(key_set =~= GMap::from_set(key_set, fv).dom());
+
+    assert forall|k| key_set.contains(k) implies #[trigger] GMap::from_set(key_set, fv)[k] == fv(k) by {
+        reveal(GMap::index);
+    }
+    lemma_gset_ext_equal_eq(key_set, GMap::from_set(key_set, fv).dom());
 
 }
 
@@ -541,10 +676,28 @@ pub broadcast proof fn lemma_infinite_new_ensures<K, V>(fk: spec_fn(K) -> bool, 
             #![auto]
             fk(k) <==> IMap::new(fk, fv).dom().contains(k),
         forall|k| #![auto] fk(k) ==> IMap::new(fk, fv)[k] == fv(k),
-        IMap::new(fk, fv).dom() == ISet::new(fk).0,
+        IMap::new(fk, fv).dom() == ISet::new(fk).to_gset(),
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
+    broadcast use super::gset::lemma_gset_ext_equal_eq;
+
+    reveal(GMap::idom);
+
+    assert forall|k|
+        fk(k) <==> IMap::new(fk, fv).dom().contains(k) by {
+        super::iset::lemma_iset_new(|x| (IMap::new(fk, fv).mapping)(x) is Some, k);
+    }
+
+    assert forall|k| fk(k) implies IMap::new(fk, fv)[k] == fv(k) by {
+        reveal(GMap::index);
+    }
+
+    assert forall|k| IMap::new(fk, fv).dom().contains(k) <==> ISet::new(fk).to_gset().contains(k) by {
+        super::iset::lemma_iset_new(fk, k);
+    }
+    assert(IMap::new(fk, fv).dom() =~= ISet::new(fk).to_gset());
+    lemma_gset_ext_equal_eq(IMap::new(fk, fv).dom(), ISet::new(fk).to_gset());
 
 }
 
@@ -580,8 +733,17 @@ pub broadcast proof fn lemma_map_empty<K, V, FINITE: Finiteness>()
         #[trigger] GMap::<K, V, FINITE>::empty().dom() == GSet::<K, FINITE>::empty(),
 {
     broadcast use {super::set::group_set_lemmas, axiom_dom_ensures};
+    broadcast use super::gset::lemma_gset_ext_equal_eq;
 
-    assert(GMap::<K, V, FINITE>::empty().dom() == GSet::<K, FINITE>::empty());
+    reveal(GMap::empty);
+    reveal(GMap::idom);
+    assert forall|k|
+        GMap::<K, V, FINITE>::empty().dom().contains(k) <==> GSet::<K, FINITE>::empty().contains(k) by {
+        super::iset::lemma_iset_new(|x| (GMap::<K, V, FINITE>::empty().mapping)(x) is Some, k);
+        super::gset::lemma_gset_empty::<K, FINITE>(k);
+    }
+    assert(GMap::<K, V, FINITE>::empty().dom() =~= GSet::<K, FINITE>::empty());
+    lemma_gset_ext_equal_eq(GMap::<K, V, FINITE>::empty().dom(), GSet::<K, FINITE>::empty());
 }
 
 /// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
@@ -596,8 +758,25 @@ pub broadcast proof fn lemma_map_insert_domain<K, V, FINITE: Finiteness>(
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
+    broadcast use super::gset::lemma_gset_ext_equal_eq;
 
+    reveal(GMap::insert);
+    reveal(GMap::idom);
+    assert forall|k| m.insert(key, value).dom().contains(k) <==> m.dom().insert(key).contains(k) by {
+        super::iset::lemma_iset_new(|x| (m.insert(key, value).mapping)(x) is Some, k);
+        super::iset::lemma_iset_new(|x| (m.mapping)(x) is Some, k);
+        assert(m.dom().contains(k) <==> (m.mapping)(k) is Some) by {
+            assert(m.dom().congruent(ISet::new(|x| (m.mapping)(x) is Some).to_gset()));
+        }
+        if k == key {
+            super::gset::lemma_gset_insert_same(m.dom(), key);
+        } else {
+            assert(m.insert(key, value).dom().contains(k) <==> (m.mapping)(k) is Some);
+            super::gset::lemma_gset_insert_different(m.dom(), k, key);
+        }
+    }
     assert(m.insert(key, value).dom() =~= m.dom().insert(key));
+    lemma_gset_ext_equal_eq(m.insert(key, value).dom(), m.dom().insert(key));
 }
 
 /// Inserting `value` at `key` in `m` results in a map that maps `key` to `value`
@@ -636,8 +815,25 @@ pub broadcast proof fn lemma_map_remove_domain<K, V, FINITE: Finiteness>(
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
+    broadcast use super::gset::lemma_gset_ext_equal_eq;
 
+    reveal(GMap::remove);
+    reveal(GMap::idom);
+    assert forall|k| m.remove(key).dom().contains(k) <==> m.dom().remove(key).contains(k) by {
+        super::iset::lemma_iset_new(|x| (m.remove(key).mapping)(x) is Some, k);
+        super::iset::lemma_iset_new(|x| (m.mapping)(x) is Some, k);
+        assert(m.dom().contains(k) <==> (m.mapping)(k) is Some) by {
+            assert(m.dom().congruent(ISet::new(|x| (m.mapping)(x) is Some).to_gset()));
+        }
+        if k == key {
+            super::gset::lemma_gset_remove_same(m.dom(), key);
+        } else {
+            assert(m.remove(key).dom().contains(k) <==> (m.mapping)(k) is Some);
+            super::gset::lemma_gset_remove_different(m.dom(), k, key);
+        }
+    }
     assert(m.remove(key).dom() =~= m.dom().remove(key));
+    lemma_gset_ext_equal_eq(m.remove(key).dom(), m.dom().remove(key));
 }
 
 /// Removing a key-value pair from a map does not change the value mapped to by
@@ -679,12 +875,54 @@ pub broadcast proof fn lemma_map_ext_equal<K, V, FINITE: Finiteness>(
         if m1.mapping != m2.mapping {
             assert(exists|k| #[trigger] (m1.mapping)(k) != (m2.mapping)(k));
             let k = choose|k| #[trigger] (m1.mapping)(k) != (m2.mapping)(k);
+            super::iset::lemma_iset_new(|x| (m1.mapping)(x) is Some, k);
+            super::iset::lemma_iset_new(|x| (m2.mapping)(x) is Some, k);
+            assert(m1.dom().contains(k) <==> (m1.mapping)(k) is Some) by {
+                assert(m1.dom().congruent(ISet::new(|x| (m1.mapping)(x) is Some).to_gset()));
+            }
+            assert(m2.dom().contains(k) <==> (m2.mapping)(k) is Some) by {
+                assert(m2.dom().congruent(ISet::new(|x| (m2.mapping)(x) is Some).to_gset()));
+            }
             if m1.dom().contains(k) {
                 assert(m1[k] == m2[k]);
+                reveal(GMap::index);
+                assert((m1.mapping)(k) == (m2.mapping)(k));
+            } else {
+                assert(!m2.dom().contains(k));
+                assert(!((m1.mapping)(k) is Some));
+                assert(!((m2.mapping)(k) is Some));
+                assert((m1.mapping)(k) is None);
+                assert((m2.mapping)(k) is None);
+                assert((m1.mapping)(k) == (m2.mapping)(k));
             }
             assert(false);
         }
         assert(m1 =~= m2);
+    }
+}
+
+/// Maps `m1` and `m2` are definitionally equal if they are extensionally equal.
+pub broadcast proof fn lemma_map_ext_equal_eq<K, V, FINITE: Finiteness>(
+    m1: GMap<K, V, FINITE>,
+    m2: GMap<K, V, FINITE>,
+)
+    ensures
+        #[trigger] (m1 =~= m2) ==> m1 == m2,
+{
+    if m1 =~= m2 {
+        lemma_map_ext_equal(m1, m2);
+        super::gset::lemma_gset_ext_equal(m1.dom(), m2.dom());
+        assert(m1.congruent(m2)) by {
+            assert(m1.dom().congruent(m2.dom()));
+            assert forall|k: K| #[trigger] m1.contains_key(k) implies m1[k] == m2[k] by {
+                if m1.contains_key(k) {
+                    assert(m1.dom().contains(k));
+                    assert(m1[k] == m2[k]);
+                }
+            }
+        }
+        lemma_congruence_extensionality(m1, m2);
+        assert(m1 == m2);
     }
 }
 
@@ -703,7 +941,7 @@ pub broadcast proof fn lemma_map_ext_equal_deep<K, V, FINITE: Finiteness>(
 
 proof fn lemma_dom_congruence<K, V, FINITE: Finiteness>(m: GMap<K, V, FINITE>)
     ensures
-        ISet::new(|k| (m.mapping)(k) is Some).0.congruent(m.dom()),
+        ISet::new(|k| (m.mapping)(k) is Some).to_gset().congruent(m.dom()),
 {
     broadcast use super::set::group_set_lemmas;
 
@@ -725,9 +963,37 @@ pub broadcast proof fn lemma_congruence_extensionality<K, V, FINITE: Finiteness>
 
     lemma_dom_congruence(x);
     lemma_dom_congruence(y);
-    // Trigger our way through .contains
+    assert(x.dom().congruent(y.dom()));
+
     assert forall|e| #[trigger] (x.mapping)(e) == (y.mapping)(e) by {
-        assert(((x.mapping)(e) is Some) <==> x.dom().contains(e));
+        super::iset::lemma_iset_new(|k| (x.mapping)(k) is Some, e);
+        super::iset::lemma_iset_new(|k| (y.mapping)(k) is Some, e);
+        assert(((x.mapping)(e) is Some) <==> x.dom().contains(e)) by {
+            assert(ISet::new(|k| (x.mapping)(k) is Some).to_gset().congruent(x.dom()));
+        }
+        assert(((y.mapping)(e) is Some) <==> y.dom().contains(e)) by {
+            assert(ISet::new(|k| (y.mapping)(k) is Some).to_gset().congruent(y.dom()));
+        }
+
+        if (x.mapping)(e) is Some {
+            assert(x.dom().contains(e));
+            assert(y.dom().contains(e));
+            assert(x[e] == y[e]);
+            reveal(GMap::index);
+            assert((x.mapping)(e) is Some);
+            assert((y.mapping)(e) is Some);
+            assert((x.mapping)(e)->Some_0 == x[e]);
+            assert((y.mapping)(e)->Some_0 == y[e]);
+            assert((x.mapping)(e)->Some_0 == (y.mapping)(e)->Some_0);
+            assert((x.mapping)(e) == (y.mapping)(e));
+        } else {
+            assert(!x.dom().contains(e));
+            assert(!y.dom().contains(e));
+            assert(!((y.mapping)(e) is Some));
+            assert((x.mapping)(e) is None);
+            assert((y.mapping)(e) is None);
+            assert((x.mapping)(e) == (y.mapping)(e));
+        }
     }
 }
 
@@ -749,6 +1015,7 @@ pub(crate) broadcast group group_map_axioms {
     lemma_map_remove_domain,
     lemma_map_remove_different,
     lemma_map_ext_equal,
+    lemma_map_ext_equal_eq,
     lemma_map_ext_equal_deep,
     GMap::lemma_union_prefer_right,
     //     lemma_union_prefer_right_noself,

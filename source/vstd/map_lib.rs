@@ -12,7 +12,11 @@ use super::set_lib::*;
 
 verus! {
 
-broadcast use {super::map::group_map_axioms, super::set::group_set_lemmas};
+broadcast use {
+    super::map::group_map_axioms,
+    super::map::group_map_internal_axioms,
+    super::set::group_set_lemmas,
+};
 
 impl<K, V, FINITE: Finiteness> GenericMap<K, V, FINITE> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
@@ -337,6 +341,25 @@ impl<K, V, FINITE: Finiteness> GenericMap<K, V, FINITE> {
 }
 
 impl<K, V> IMap<Seq<K>, V> {
+    proof fn lemma_seq_add_left_cancel(prefix: Seq<K>, s1: Seq<K>, s2: Seq<K>)
+        ensures
+            #[trigger] (prefix + s1 == prefix + s2) ==> s1 == s2,
+    {
+        broadcast use super::seq::group_seq_axioms;
+        if prefix + s1 == prefix + s2 {
+            assert((prefix + s1).len() == (prefix + s2).len());
+            assert(s1.len() == s2.len());
+            assert forall|i: int| 0 <= i < s1.len() implies s1[i] == s2[i] by {
+                assert(0 <= prefix.len() + i < (prefix + s1).len());
+                assert((prefix + s1)[prefix.len() + i] == s1[i]);
+                assert((prefix + s2)[prefix.len() + i] == s2[i]);
+                assert((prefix + s1)[prefix.len() + i] == (prefix + s2)[prefix.len() + i]);
+            }
+            assert(s1 =~= s2);
+            assert(s1 == s2);
+        }
+    }
+
     /// Returns a sub-map of all entries whose key begins with `prefix`,
     /// re-indexed so that the stored keys have that prefix removed.
     ///
@@ -380,7 +403,10 @@ impl<K, V> IMap<Seq<K>, V> {
             self.prefixed_entries(prefix)[k] == #[trigger] self[prefix + k],
     {
         broadcast use group_map_properties;
-
+        let fk = |kk: Seq<K>| self.contains_key(prefix + kk);
+        let fv = |kk: Seq<K>| self[prefix + kk];
+        super::gmap::lemma_infinite_new_ensures(fk, fv);
+        assert(self.prefixed_entries(prefix)[k] == fv(k));
     }
 
     /// A key `k` is in `prefixed_entries(prefix)` exactly when the original map
@@ -409,8 +435,9 @@ impl<K, V> IMap<Seq<K>, V> {
     {
         broadcast use group_map_properties;
 
-        let lhs = self.prefixed_entries(prefix);
-        let rhs = self;
+        let fk = |kk: Seq<K>| self.contains_key(prefix + kk);
+        lemma_imap_new_domain(fk, |kk: Seq<K>| self[prefix + kk]);
+        super::iset::lemma_iset_new(fk, k);
     }
 
     /// Inserting `(prefix + k, v)` before taking `prefixed_entries(prefix)`
@@ -446,9 +473,69 @@ impl<K, V> IMap<Seq<K>, V> {
 
         let lhs = self.insert(prefix + k, v).prefixed_entries(prefix);
         let rhs = self.prefixed_entries(prefix).insert(k, v);
-        assert(lhs =~= rhs) by {
-            assert(forall|key| key != k ==> prefix.is_prefix_of(#[trigger] (prefix + key)));
+        super::gmap::lemma_map_insert_domain(self.prefixed_entries(prefix).to_gmap(), k, v);
+        super::gmap::lemma_map_insert_domain(self.to_gmap(), prefix + k, v);
+        assert forall|key: Seq<K>| lhs.contains_key(key) <==> rhs.contains_key(key) by {
+            self.insert(prefix + k, v).lemma_prefixed_entries_contains(prefix, key);
+            self.lemma_prefixed_entries_contains(prefix, key);
+            if lhs.contains_key(key) {
+                assert(self.insert(prefix + k, v).contains_key(prefix + key));
+                if prefix + key == prefix + k {
+                    Self::lemma_seq_add_left_cancel(prefix, key, k);
+                    assert(key == k);
+                } else {
+                    super::gset::lemma_gset_insert_different(self.dom().to_gset(), prefix + key, prefix + k);
+                    assert(self.dom().to_gset().insert(prefix + k).contains(prefix + key));
+                    assert(self.contains_key(prefix + key));
+                }
+                assert(rhs.contains_key(key));
+            } else {
+                assert(!self.insert(prefix + k, v).contains_key(prefix + key));
+                assert(!rhs.contains_key(key));
+            }
         }
+        assert forall|key: Seq<K>| lhs.contains_key(key) implies lhs[key] == rhs[key] by {
+            assert(lhs.contains_key(key));
+            if key == k {
+                self.insert(prefix + k, v).lemma_prefixed_entries_contains(prefix, key);
+                self.insert(prefix + k, v).lemma_prefixed_entries_get(prefix, key);
+                super::gmap::lemma_map_insert_same(self.to_gmap(), prefix + k, v);
+                super::gmap::lemma_map_insert_same(self.prefixed_entries(prefix).to_gmap(), k, v);
+            } else {
+                assert(prefix + key != prefix + k) by {
+                    if prefix + key == prefix + k {
+                        Self::lemma_seq_add_left_cancel(prefix, key, k);
+                        assert(key == k);
+                        assert(false);
+                    }
+                }
+                self.insert(prefix + k, v).lemma_prefixed_entries_get(prefix, key);
+                self.lemma_prefixed_entries_get(prefix, key);
+                super::gmap::lemma_map_insert_different(self.to_gmap(), prefix + key, prefix + k, v);
+                super::gmap::lemma_map_insert_different(self.prefixed_entries(prefix).to_gmap(), key, k, v);
+            }
+        }
+        super::map::lemma_imap_ext_equal(lhs, rhs);
+        assert(lhs.to_gmap().congruent(rhs.to_gmap())) by {
+            assert forall|key: Seq<K>| lhs.to_gmap().contains_key(key) <==> rhs.to_gmap().contains_key(key) by {
+                super::map::lemma_imap_dom_contains_bridge(lhs, key);
+                super::map::lemma_imap_dom_contains_bridge(rhs, key);
+                assert(lhs.to_gmap().contains_key(key) == lhs.contains_key(key));
+                assert(rhs.to_gmap().contains_key(key) == rhs.contains_key(key));
+            }
+            assert forall|key: Seq<K>| lhs.to_gmap().contains_key(key) implies lhs.to_gmap()[key] == rhs.to_gmap()[key] by {
+                if lhs.to_gmap().contains_key(key) {
+                    super::map::lemma_imap_dom_contains_bridge(lhs, key);
+                    super::map::lemma_imap_dom_contains_bridge(rhs, key);
+                    assert(lhs.contains_key(key));
+                    assert(lhs[key] == rhs[key]);
+                    assert(lhs[key] == lhs.to_gmap()[key]);
+                    assert(rhs[key] == rhs.to_gmap()[key]);
+                }
+            }
+        }
+        super::gmap::lemma_congruence_extensionality(lhs.to_gmap(), rhs.to_gmap());
+        assert(lhs == rhs);
     }
 
     /// Taking the entries that share `prefix` commutes with `union_prefer_right`:
@@ -483,6 +570,48 @@ impl<K, V> IMap<Seq<K>, V> {
 
         let lhs = self.union_prefer_right(m).prefixed_entries(prefix);
         let rhs = self.prefixed_entries(prefix).union_prefer_right(m.prefixed_entries(prefix));
+        self.0.lemma_union_prefer_right(m.0);
+        self.prefixed_entries(prefix).0.lemma_union_prefer_right(m.prefixed_entries(prefix).0);
+
+        assert forall|key: Seq<K>| lhs.contains_key(key) <==> rhs.contains_key(key) by {
+            self.union_prefer_right(m).lemma_prefixed_entries_contains(prefix, key);
+            self.lemma_prefixed_entries_contains(prefix, key);
+            m.lemma_prefixed_entries_contains(prefix, key);
+            super::iset::lemma_iset_union(
+                self.prefixed_entries(prefix).dom(),
+                m.prefixed_entries(prefix).dom(),
+                key,
+            );
+        }
+        assert forall|key: Seq<K>| lhs.contains_key(key) implies lhs[key] == rhs[key] by {
+            assert(lhs.contains_key(key));
+            self.union_prefer_right(m).lemma_prefixed_entries_get(prefix, key);
+            if m.prefixed_entries(prefix).contains_key(key) {
+                m.lemma_prefixed_entries_get(prefix, key);
+            } else {
+                self.lemma_prefixed_entries_get(prefix, key);
+            }
+        }
+        super::map::lemma_imap_ext_equal(lhs, rhs);
+        assert(lhs.to_gmap().congruent(rhs.to_gmap())) by {
+            assert forall|key: Seq<K>| lhs.to_gmap().contains_key(key) <==> rhs.to_gmap().contains_key(key) by {
+                super::map::lemma_imap_dom_contains_bridge(lhs, key);
+                super::map::lemma_imap_dom_contains_bridge(rhs, key);
+                assert(lhs.to_gmap().contains_key(key) == lhs.contains_key(key));
+                assert(rhs.to_gmap().contains_key(key) == rhs.contains_key(key));
+            }
+            assert forall|key: Seq<K>| lhs.to_gmap().contains_key(key) implies lhs.to_gmap()[key] == rhs.to_gmap()[key] by {
+                if lhs.to_gmap().contains_key(key) {
+                    super::map::lemma_imap_dom_contains_bridge(lhs, key);
+                    super::map::lemma_imap_dom_contains_bridge(rhs, key);
+                    assert(lhs.contains_key(key));
+                    assert(lhs[key] == rhs[key]);
+                    assert(lhs[key] == lhs.to_gmap()[key]);
+                    assert(rhs[key] == rhs.to_gmap()[key]);
+                }
+            }
+        }
+        super::gmap::lemma_congruence_extensionality(lhs.to_gmap(), rhs.to_gmap());
         assert(lhs == rhs);
     }
 }
@@ -551,8 +680,10 @@ pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     m1.lemma_union_prefer_right(m2);
     assert(lhs =~= rhs) by {
         assert forall|k: K| #[trigger] lhs.contains(k) == rhs.contains(k) by {
-            assert(lhs.contains(k) <==> m1.dom().to_infinite().generic_union(m2.dom().0).contains(k));
-            lemma_set_generic_union(m1.dom().0, m2.dom().0, k);
+            super::set::lemma_set_to_infinite_contains(lhs, k);
+            super::set::lemma_set_to_infinite_contains(m1.dom(), k);
+            super::set::lemma_set_to_infinite_contains(m2.dom(), k);
+            super::iset::lemma_iset_union(m1.dom().to_infinite(), m2.dom().to_infinite(), k);
             lemma_set_union(m1.dom(), m2.dom(), k);
         }
     }
@@ -611,7 +742,14 @@ pub broadcast proof fn lemma_imap_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: s
     ensures
         #[trigger] IMap::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)),
 {
-    assert(IMap::new(fk, fv).dom() =~= ISet::<K>::new(|k: K| fk(k)));
+    let map = IMap::<K, V>::new(fk, fv);
+    let keys = ISet::<K>::new(|k: K| fk(k));
+    super::gmap::lemma_infinite_new_ensures(fk, fv);
+    assert forall|k: K| map.dom().contains(k) == keys.contains(k) by {
+        super::iset::lemma_iset_new(|x| fk(x), k);
+    }
+    super::iset::lemma_iset_ext_equal(map.dom(), keys);
+    super::iset::lemma_iset_ext_equal_eq(map.dom(), keys);
 }
 
 /// The domain of a map constructed with `Map::new(key_set, fv)` is equivalent to `key_set`.
@@ -635,12 +773,33 @@ pub broadcast proof fn lemma_imap_new_values<K, V>(fk: spec_fn(K) -> bool, fv: s
     let keys = ISet::<K>::new(fk);
     let values = IMap::<K, V>::new(fk, fv).values();
     let map = IMap::<K, V>::new(fk, fv);
-    assert(map.dom() =~= keys);
-    assert(forall|k: K| #[trigger] fk(k) ==> keys.contains(k));
-
-    assert(values =~= ISet::<V>::new(
-        |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
-    ));
+    let target = ISet::<V>::new(|v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v));
+    lemma_imap_new_domain(fk, fv);
+    super::iset::lemma_iset_map_contains(map.dom(), |k: K| map[k]);
+    assert forall|v: V| values.contains(v) == target.contains(v) by {
+        super::iset::lemma_iset_new(|vv: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == vv), v);
+        if values.contains(v) {
+            let k = choose|k: K| map.dom().contains(k) && map[k] == v;
+            assert(map.dom().contains(k));
+            assert(map[k] == v);
+            assert(keys.contains(k));
+            super::iset::lemma_iset_new(fk, k);
+            assert(fk(k));
+            assert(fv(k) == map[k]);
+        }
+        if target.contains(v) {
+            let k = choose|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v;
+            super::iset::lemma_iset_new(fk, k);
+            assert(keys.contains(k));
+            assert(map.dom().contains(k));
+            assert(map[k] == fv(k));
+            assert(map[k] == v);
+            assert(values.contains(v));
+        }
+    }
+    super::iset::lemma_iset_ext_equal(values, target);
+    assert(values =~= target);
+    super::iset::lemma_iset_ext_equal_eq(values, target);
 }
 
 /// Properties of maps from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
