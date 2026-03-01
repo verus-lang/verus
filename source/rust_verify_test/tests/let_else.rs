@@ -105,6 +105,51 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_let_else_dots_pattern_ret verus_code! {
+        struct A {
+            x: usize,
+            y: bool,
+            z: i32,
+        }
+        enum X {
+            U(usize),
+            B(bool),
+            A(A, usize, bool),
+        }
+        #[verifier(external_body)]
+        fn call_panic() -> ! {
+            panic!();
+        }
+        spec fn is_a(x: X) -> bool {
+            if let X::A(..) = x {
+                true
+            } else {
+                false
+            }
+        }
+        spec fn check_x_b(x: X, val1: usize, val2: bool) -> bool {
+            match x {
+                X::A(A{x, ..}, ..,b) => {
+                    x == val1 && b == val2
+                }
+                _ => {
+                    false
+                }
+            }
+        }
+        fn f(x: X) -> ((val1, val2): (usize, bool))
+        ensures check_x_b(x, val1, val2)
+        no_unwind when is_a(x)
+        {
+            let X::A(A {x, ..}, .., b) = x else {
+                call_panic();
+            };
+            (x, b)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] let_else_not_supported_in_proof verus_code! {
         enum X {
             A(usize),
