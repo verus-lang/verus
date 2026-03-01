@@ -603,6 +603,7 @@ impl<A> Set<A> {
             self.finite(),
         ensures
             self.map(f).finite(),
+            self.map(f).len() <= self.len(),
         decreases self.len(),
     {
         broadcast use group_set_axioms;
@@ -674,6 +675,45 @@ impl<A> Set<A> {
             self.remove(elem).lemma_to_seq_to_set_id();
             assert(self =~= self.remove(elem).insert(elem));
             assert(self.to_seq().to_set() =~= self.remove(elem).to_seq().to_set().insert(elem));
+        }
+    }
+
+    /// Any sequence converted from set has no duplicates
+    pub broadcast proof fn lemma_set_to_seq_no_duplicates(self)
+        requires
+            self.finite(),
+        ensures
+            #[trigger] self.to_seq().no_duplicates(),
+        decreases self.len(),
+    {
+        broadcast use super::seq::group_seq_axioms;
+
+        if self.len() == 0 {
+        } else {
+            let x = choose|x: A| #[trigger]
+                self.contains(x) && self.to_seq() =~= seq![x] + self.remove(x).to_seq();
+            assert(self.remove(x).to_seq().no_duplicates()) by {
+                self.remove(x).lemma_set_to_seq_no_duplicates()
+            }
+            self.remove(x).lemma_to_seq_to_set_id();
+        }
+    }
+
+    /// Conversion from finite set to seq preserves the length
+    pub broadcast proof fn lemma_set_to_seq_len(self)
+        requires
+            self.finite(),
+        ensures
+            #[trigger] self.to_seq().len() == self.len(),
+        decreases self.len(),
+    {
+        broadcast use super::seq::group_seq_axioms;
+
+        if self.len() == 0 {
+        } else {
+            let x = choose|x: A| #[trigger]
+                self.contains(x) && self.to_seq() =~= seq![x] + self.remove(x).to_seq();
+            self.remove(x).lemma_set_to_seq_len();
         }
     }
 }
