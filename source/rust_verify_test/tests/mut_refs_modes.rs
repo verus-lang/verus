@@ -914,6 +914,18 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] deref_ghost_mut_ref_is_ghost ["new-mut-ref"] => verus_code! {
+        struct X { }
+
+        proof fn g(tracked m: X) { }
+
+        proof fn f(m: &mut X) {
+            g(*m);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file_with_options! {
     #[test] dont_resolve_ghost_field ["new-mut-ref"] => verus_code! {
         broadcast proof fn stronger_resolver_axiom<A, B>(pair: TGPair<A, B>)
             ensures #[trigger] has_resolved(pair) ==> has_resolved(pair.t)

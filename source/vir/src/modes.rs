@@ -1338,7 +1338,8 @@ fn check_place_rec_inner(
                 *note = Some(ProofModeMutRefNote(place.clone(), p.clone()));
             }
 
-            Ok((Mode::Exec, proph))
+            let deref_mode = if mode == Mode::Spec { Mode::Spec } else { Mode::Exec };
+            Ok((deref_mode, proph))
         }
         PlaceX::Local(var) => {
             let (mode, proph) = typing.get(var, &place.span)?;
