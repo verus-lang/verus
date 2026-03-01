@@ -30,12 +30,14 @@
 //! assert(r2@ == r1@);
 //! ```
 #![allow(unused_imports)]
+use std::result::*;
 use verus_builtin::*;
 use verus_builtin_macros::*;
-use std::result::*;
-use vstd::pcm::*;
-use vstd::pcm_lib::*;
 use vstd::prelude::*;
+use vstd::resource;
+use vstd::resource::pcm::Resource;
+use vstd::resource::pcm::PCM;
+use vstd::resource::Loc;
 
 verus! {
 
@@ -56,17 +58,17 @@ impl<T> PCM for AgreementResourceValue<T> {
         !(self is Invalid)
     }
 
-    open spec fn op(self, other: Self) -> Self {
-        match (self, other) {
-            (AgreementResourceValue::<T>::Empty, _) => other,
-            (_, AgreementResourceValue::<T>::Empty) => self,
+    open spec fn op(a: Self, b: Self) -> Self {
+        match (a, b) {
+            (AgreementResourceValue::<T>::Empty, _) => b,
+            (_, AgreementResourceValue::<T>::Empty) => a,
             (AgreementResourceValue::<T>::Invalid, _) => AgreementResourceValue::<T>::Invalid {  },
             (_, AgreementResourceValue::<T>::Invalid) => AgreementResourceValue::<T>::Invalid {  },
             (
                 AgreementResourceValue::<T>::Chosen { c: c1 },
                 AgreementResourceValue::<T>::Chosen { c: c2 },
             ) => if c1 == c2 {
-                self
+                a
             } else {
                 AgreementResourceValue::<T>::Invalid {  }
             },
@@ -77,7 +79,7 @@ impl<T> PCM for AgreementResourceValue<T> {
         AgreementResourceValue::<T>::Empty {  }
     }
 
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn valid_op(a: Self, b: Self) {
     }
 
     proof fn commutative(a: Self, b: Self) {
@@ -86,7 +88,7 @@ impl<T> PCM for AgreementResourceValue<T> {
     proof fn associative(a: Self, b: Self, c: Self) {
     }
 
-    proof fn op_unit(a: Self) {
+    proof fn op_unit(self) {
     }
 
     proof fn unit_valid() {
@@ -130,11 +132,12 @@ impl<T> AgreementResource<T> {
         ensures
             self.inv(),
             result.inv(),
-            self.id() == result.id() == old(self).id(),
+            self.id() == old(self).id(),
+            result.id() == old(self).id(),
             self@ == result@,
             self@ == old(self)@,
     {
-        let tracked r = duplicate(&self.r);
+        let tracked r = resource::duplicate(&self.r);
         AgreementResource::<T> { r }
     }
 
