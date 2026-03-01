@@ -707,6 +707,7 @@ pub broadcast proof fn lemma_hashmap_deepview_dom<K: DeepView, V: DeepView>(m: H
 {
     reveal(hash_map_deep_view_impl);
     broadcast use group_hash_axioms;
+    broadcast use crate::map::group_map_internal_axioms;
     broadcast use crate::vstd::group_vstd_default;
 
     assert(m.deep_view().dom() =~= m@.dom().map(|k: K| k.deep_view()));
@@ -728,6 +729,7 @@ pub broadcast proof fn lemma_hashmap_deepview_properties<K: DeepView, V: DeepVie
 {
     reveal(hash_map_deep_view_impl);
     broadcast use group_hash_axioms;
+    broadcast use crate::map::group_map_internal_axioms;
     broadcast use crate::vstd::group_vstd_default;
 
     assert(m.deep_view().dom() == m@.dom().map(|k: K| k.deep_view()));
@@ -752,6 +754,7 @@ pub broadcast proof fn lemma_hashmap_deepview_values<K: DeepView, V: DeepView>(m
     reveal(hash_map_deep_view_impl);
     broadcast use group_hash_axioms;
     broadcast use lemma_hashmap_deepview_properties;
+    broadcast use crate::map::group_map_internal_axioms;
     broadcast use crate::vstd::group_vstd_default;
 
     let lhs = m.deep_view().values();
@@ -1410,6 +1413,7 @@ pub broadcast proof fn lemma_hashmap_view_ensures_contains_key<K, V>(m: HashMap<
         #[trigger] m@.contains_key(k) <==> m@.to_infinite().contains_key(k),
 {
     broadcast use crate::map::group_map_axioms;
+    broadcast use crate::map::group_map_internal_axioms;
 
 }
 
@@ -1419,12 +1423,14 @@ pub broadcast proof fn lemma_hashmap_view_ensures_to_infinite<K, V>(m: HashMap<K
 {
     // TODO(jonh): minimize
     broadcast use super::super::map::group_map_axioms;
+    broadcast use super::super::map::group_map_internal_axioms;
     broadcast use super::super::set::group_set_lemmas;
     broadcast use crate::gset::GSet::congruent_infiniteness;
     broadcast use super::super::map::lemma_congruence_extensionality;
 
+    super::super::map::axiom_map_finite_from_type(m@);
     m@.to_infinite_ensures();
-    assert(m@.to_gmap().to_infinite().congruent(m@.to_gmap()));
+    assert(m@.to_infinite().congruent_generic(m@.to_gmap()));
     assert(m@.dom().finite());
     assert(m@.to_infinite().dom().finite());
     assert(m@.to_infinite().to_finite().congruent(m@));
