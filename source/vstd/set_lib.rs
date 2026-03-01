@@ -30,6 +30,32 @@ impl<A> Set<A> {
         Set::new(|a: B| exists|x: A| self.contains(x) && a == f(x))
     }
 
+    /// Set::map_by is like Set::map, but map only takes a forward function fwd: spec_fn(A) -> B,
+    /// while map_by also takes a reverse function rev: spec_fn(B) -> A.
+    /// This reverse function can make proofs easier
+    /// by avoiding the "exists" that appears in lemmas about Set::map.
+    /// Example: for a set s: Set<int>, to map each i in s to (i, 10 * i),
+    /// we can write either s.map(|i: int| (i, 10 * i))
+    /// or s.map_by(|i: int| (i, 10 * i), |p: (int, int)| p.0);
+    /// the version with map_by is usually easier to use in proofs.
+    /// Also see the `set_build!` macro for a convenient interface to map_by.
+    pub open spec fn map_by<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A) -> Set<B> {
+        Set::new(|b: B| self.contains(rev(b)) && b == fwd(rev(b)))
+    }
+
+    /// Similar to Set::map_by, but the forward function returns Set<B> rather than B,
+    /// and map_flatten_by flattens the final result from Set<Set<B>> to just Set<B>.
+    /// This can be easier to work with in proofs than calling map and flatten separately,
+    /// since map and flatten introduce "exists", while map_flatten_by does not.
+    /// Also see the `set_build!` macro for a convenient interface to map_flatten_by.
+    pub open spec fn map_flatten_by<B>(
+        self,
+        fwd: spec_fn(A) -> Set<B>,
+        rev: spec_fn(B) -> A,
+    ) -> Set<B> {
+        Set::new(|b: B| self.contains(rev(b)) && fwd(rev(b)).contains(b))
+    }
+
     /// Converts a set into a sequence with an arbitrary ordering.
     pub open spec fn to_seq(self) -> Seq<A>
         recommends
@@ -623,6 +649,41 @@ impl<A> Set<A> {
         }
     }
 
+    pub broadcast proof fn lemma_map_by_finite<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A)
+        requires
+            self.finite(),
+        ensures
+            #[trigger] self.map_by(fwd, rev).finite(),
+    {
+        broadcast use lemma_set_subset_finite;
+
+        assert(self.map_by(fwd, rev).subset_of(self.map(fwd)));
+        self.lemma_map_finite(fwd);
+    }
+
+    pub broadcast proof fn lemma_map_flatten_by_finite<B>(
+        self,
+        fwd: spec_fn(A) -> Set<B>,
+        rev: spec_fn(B) -> A,
+    )
+        requires
+            self.finite(),
+            forall|a: A| self.contains(a) ==> fwd(a).finite(),
+        ensures
+            #[trigger] self.map_flatten_by(fwd, rev).finite(),
+    {
+        broadcast use lemma_set_subset_finite;
+
+        let s1 = self.map_flatten_by(fwd, rev);
+        let s2 = self.map(fwd).flatten();
+        assert forall|b: B| s1.contains(b) implies s2.contains(b) by {
+            assert(self.map(fwd).contains(fwd(rev(b))));
+        }
+        assert(s1.subset_of(s2));
+        self.lemma_map_finite(fwd);
+        self.map(fwd).lemma_flatten_finite();
+    }
+
     pub broadcast proof fn lemma_set_all_subset(self, s2: Set<A>, p: spec_fn(A) -> bool)
         requires
             #[trigger] self.subset_of(s2),
@@ -704,7 +765,146 @@ impl<A> Set<Set<A>> {
             }
         }
     }
+
+    pub proof fn lemma_flatten_finite(self)
+        requires
+            self.finite(),
+            forall|s: Set<A>| self.contains(s) ==> #[trigger] s.finite(),
+        ensures
+            self.flatten().finite(),
+        decreases self.len(),
+    {
+        broadcast use group_set_axioms;
+
+        if self.len() == 0 {
+            assert(self.flatten() =~= Set::<A>::empty());
+        } else {
+            let s = self.choose();
+            let self2 = self.remove(s);
+            self2.lemma_flatten_finite();
+            self2.flatten_insert_union_commute(s);
+        }
+    }
 }
+
+pub trait FiniteRange: Sized {
+    spec fn range_set(lo: Self, hi: Self) -> Set<Self>;
+
+    spec fn range_len(lo: Self, hi: Self) -> nat;
+
+    proof fn range_properties(lo: Self, hi: Self)
+        ensures
+            Self::range_set(lo, hi).finite(),
+            Self::range_set(lo, hi).len() == Self::range_len(lo, hi),
+    ;
+}
+
+pub broadcast proof fn range_set_properties<A: FiniteRange>(lo: A, hi: A)
+    ensures
+        (#[trigger] A::range_set(lo, hi)).finite(),
+        A::range_set(lo, hi).len() == A::range_len(lo, hi),
+{
+    A::range_properties(lo, hi);
+}
+
+pub trait FiniteFull: Sized {
+    proof fn full_properties()
+        ensures
+            Set::<Self>::full().finite(),
+    ;
+}
+
+pub broadcast proof fn full_set_properties<A: FiniteFull>()
+    ensures
+        #![trigger Set::<A>::full()]
+        (Set::<A>::full()).finite(),
+{
+    A::full_properties();
+}
+
+impl<A: FiniteRange> Set<A> {
+    #[verifier::inline]
+    pub open spec fn range(lo: A, hi: A) -> Set<A> {
+        A::range_set(lo, hi)
+    }
+
+    #[verifier::inline]
+    pub open spec fn range_inclusive(lo: A, hi: A) -> Set<A> {
+        A::range_set(lo, hi).insert(hi)
+    }
+}
+
+impl<A: FiniteFull> Set<A> {
+    #[verifier::inline]
+    pub open spec fn from_finite_type(f: spec_fn(A) -> bool) -> Set<A> {
+        Set::<A>::full().filter(f)
+    }
+}
+
+// Macro to implement the trait for every numeric type. We need a macro here
+// because 'as nat' can't be written as a type generic.
+macro_rules! range_impls {
+    ([$($t:ty)*]) => {
+        $(
+            verus! {
+                impl FiniteRange for $t {
+                    open spec fn range_set(lo: Self, hi: Self) -> Set<Self> {
+                        Set::new(|i: Self| lo <= i < hi)
+                    }
+                    open spec fn range_len(lo: Self, hi: Self) -> nat {
+                        if lo <= hi { (hi - lo) as nat } else { 0 }
+                    }
+                    proof fn range_properties(lo: Self, hi: Self)
+                        decreases hi - lo
+                    {
+                        broadcast use axiom_set_empty_finite;
+                        broadcast use axiom_set_empty_len;
+                        broadcast use axiom_set_insert_finite;
+
+                        if hi <= lo {
+                            assert(Self::range_set(lo, hi).is_empty());
+                        } else {
+                            let hi1 = (hi - 1) as $t;
+                            Self::range_properties(lo, hi1);
+                            assert(Self::range_set(lo, hi) == Self::range_set(lo, hi1).insert(hi1));
+                            axiom_set_insert_finite(Self::range_set(lo, hi1), hi1);
+                        }
+                    }
+                }
+            } // verus!
+        )*
+    }
+}
+
+macro_rules! full_impls {
+    ([$($t:ty)*]) => {
+        $(
+            verus! {
+                impl FiniteFull for $t {
+                    proof fn full_properties() {
+                        broadcast use axiom_set_insert_finite;
+
+                        assert(Set::<$t>::full() == Set::range_inclusive($t::MIN, $t::MAX));
+                        <$t as FiniteRange>::range_properties($t::MIN, $t::MAX);
+                    }
+                }
+            } // verus!
+        )*
+    }
+}
+
+// Make Set::range available for all of the Verus numeric types
+range_impls!([
+    int nat
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+// Make Set::full available for all of the Verus numeric types
+full_impls!([
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
 
 /// Two sets are equal iff mapping `f` results in equal sets, if `f` is injective.
 pub proof fn lemma_sets_eq_iff_injective_map_eq<T, S>(s1: Set<T>, s2: Set<T>, f: spec_fn(T) -> S)
@@ -1313,6 +1513,10 @@ pub broadcast group group_set_lib_default {
     axiom_is_empty,
     axiom_is_empty_len0,
     lemma_set_subset_finite,
+    Set::lemma_map_by_finite,
+    Set::lemma_map_flatten_by_finite,
+    range_set_properties,
+    full_set_properties,
 }
 
 pub use assert_sets_equal_internal;
