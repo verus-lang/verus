@@ -812,11 +812,11 @@ test_verify_one_file! {
             let mut num_as = 0usize;
             let ghost is_a = |c: char| c == 'a';
             for c in it: chars_it
-                invariant num_as == it@.filter(is_a).len()
+                invariant num_as == it.seq().take(it.index@).filter(is_a).len()
             {
                 reveal(Seq::filter);
-                let ghost prev_chars = it.chars.take(it.pos);
-                let ghost next_chars = it.chars.take(it.pos + 1);
+                let ghost prev_chars = it.seq().take(it.index@);
+                let ghost next_chars = it.seq().take(it.index@ + 1);
                 assert(next_chars =~= prev_chars + seq![c]);
                 if c == 'a' {
                     assert(seq![c].filter(is_a) =~= seq![c]);
