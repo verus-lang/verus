@@ -599,7 +599,7 @@ impl<T> Producer<T> {
         requires
             old(self).wf(),
         ensures
-            self.wf(),
+            final(self).wf(),
     {
         // Loop: if the queue is full, then block until it is not.
         loop
@@ -668,7 +668,7 @@ impl<T> Consumer<T> {
         requires
             old(self).wf(),
         ensures
-            self.wf(),
+            final(self).wf(),
     {
         loop
             invariant

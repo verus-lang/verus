@@ -185,8 +185,8 @@ impl<T> Instance<T> {
             old(counter).instance_id() == self.id(),
             old(counter).value() === None,
         ensures
-            counter.instance_id() == self.id(),
-            counter.value() === Some((0, t)),
+            final(counter).instance_id() == self.id(),
+            final(counter).value() === Some((0, t)),
     {
         self.instance.writeable_to_readable(t, t, &mut counter.token);
     }
@@ -202,8 +202,8 @@ impl<T> Instance<T> {
                 Some((count, _)) => count == 0,
             }
         ensures
-            counter.instance_id() == self.id(),
-            counter.value() === None,
+            final(counter).instance_id() == self.id(),
+            final(counter).value() === None,
             t == old(counter).value().unwrap().1,
     {
         self.instance.readable_to_writeable(&mut counter.token)
@@ -217,11 +217,11 @@ impl<T> Instance<T> {
             old(counter).instance_id() == self.id(),
             old(counter).value().is_some()
         ensures
-            counter.instance_id() == self.id(),
+            final(counter).instance_id() == self.id(),
             match old(counter).value() {
                 None => false,
                 Some((count, t)) =>
-                    counter.value() == Some((count + 1, t))
+                    final(counter).value() == Some((count + 1, t))
                       && read_ref.value() == t
             },
     {
@@ -238,12 +238,12 @@ impl<T> Instance<T> {
             old(counter).value().is_some(),
             read_ref.instance_id() == self.id(),
         ensures
-            counter.instance_id() == self.id(),
+            final(counter).instance_id() == self.id(),
             match old(counter).value() {
                 None => false,
                 Some((count, t)) =>
                     count >= 1
-                      && counter.value() == Some(((count - 1) as nat, t))
+                      && final(counter).value() == Some(((count - 1) as nat, t))
             },
     {
         self.instance.delete_ref(read_ref.token.element(), &mut counter.token, read_ref.token)

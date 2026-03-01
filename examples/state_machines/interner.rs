@@ -180,7 +180,7 @@ impl<T> Interner<T> {
         requires
             old(self).wf(inst),
         ensures
-            self.wf(inst) && st.wf(inst) && st@ === val,
+            final(self).wf(inst) && st.wf(inst) && st@ === val,
     {
         let idx: usize = 0;
         while idx < self.store.len()
