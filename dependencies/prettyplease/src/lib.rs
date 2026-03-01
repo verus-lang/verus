@@ -369,6 +369,8 @@ mod ty;
 use crate::algorithm::Printer;
 use verus_syn::Expr;
 use verus_syn::File;
+use verus_syn::Pat;
+use verus_syn::Type;
 
 // Target line width.
 const MARGIN: isize = 89;
@@ -388,5 +390,17 @@ pub fn unparse(file: &File) -> String {
 pub fn unparse_expr(e: &Expr) -> String {
     let mut p = Printer::new();
     p.expr(e, crate::fixup::FixupContext::NONE);
+    p.eof()
+}
+
+pub fn unparse_pat(pat: &Pat) -> String {
+    let mut p = Printer::new();
+    p.pat(pat);
+    p.eof()
+}
+
+pub fn unparse_ty(ty: &Type) -> String {
+    let mut p = Printer::new();
+    p.ty(ty);
     p.eof()
 }
