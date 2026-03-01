@@ -264,8 +264,8 @@ ast_struct! {
     pub struct WithSpecOnExpr {
         pub with: Token![with],
         pub inputs: Punctuated<Expr, Token![,]>,
-        pub outputs: Option<(Token![=>], Pat)>,
-        pub follows: Option<(Token![|=], Pat)>,
+        pub outputs: Option<(Token![=>], Punctuated<Pat, Token![,]>)>,
+        pub follows: Option<(Token![|=], Punctuated<Pat, Token![,]>)>,
     }
 }
 
@@ -2653,15 +2653,43 @@ impl parse::Parse for WithSpecOnExpr {
         }
         let outputs = if input.peek(Token![=>]) {
             let token = input.parse()?;
-            let outs = Pat::parse_single(&input)?;
+            let mut outs = Punctuated::new();
+            loop {
+                let pat = Pat::parse_single(&input)?;
+                outs.push(pat);
+                if !input.peek(Token![,]) {
+                    break;
+                }
+                let fork = input.fork();
+                let _comma: Token![,] = fork.parse()?;
+                let has_next_pat = Pat::parse_single(&fork).is_ok();
+                let _comma: Token![,] = input.parse()?;
+                if !has_next_pat {
+                    break;
+                }
+            }
             Some((token, outs))
         } else {
             None
         };
         let follows = if input.peek(Token![|=]) {
             let token = input.parse()?;
-            let outs = Pat::parse_single(&input)?;
-            Some((token, outs))
+            let mut follows_pats = Punctuated::new();
+            loop {
+                let pat = Pat::parse_single(&input)?;
+                follows_pats.push(pat);
+                if !input.peek(Token![,]) {
+                    break;
+                }
+                let fork = input.fork();
+                let _comma: Token![,] = fork.parse()?;
+                let has_next_pat = Pat::parse_single(&fork).is_ok();
+                let _comma: Token![,] = input.parse()?;
+                if !has_next_pat {
+                    break;
+                }
+            }
+            Some((token, follows_pats))
         } else {
             None
         };
