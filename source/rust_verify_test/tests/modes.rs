@@ -273,7 +273,7 @@ test_verify_one_file_with_options! {
             }
             a
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot assign to exec variable from proof mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
 }
 
 test_verify_one_file_with_options! {
@@ -428,7 +428,7 @@ test_verify_one_file_with_options! {
     #[test] test_mut_ref_field_fail ["--no-external-by-default"] => FIELD_UPDATE.to_string() + code_str! {
         fn muts_exec(a: &mut u64) {
             requires(*old(a) < 30);
-            ensures(*a == *old(a) + 1);
+            ensures(*final_(a) == *old(a) + 1);
             *a = *a + 1;
         }
 
@@ -436,7 +436,7 @@ test_verify_one_file_with_options! {
             let mut s = S { a: 5, b: false };
             muts_exec(&mut s.a);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode exec, &mut argument has mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
 }
 
 const PROOF_FN_COMMON: &str = code_str! {
@@ -451,7 +451,7 @@ test_verify_one_file_with_options! {
         #[verifier::proof]
         fn f(#[verifier::proof] x: &mut bool, #[verifier::proof] b: bool) {
             requires(b);
-            ensures(*x);
+            ensures(*final_(x));
 
             *x = b;
         }
@@ -466,13 +466,13 @@ test_verify_one_file_with_options! {
             }
             verus_builtin::assert_(e);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode proof, &mut argument has mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
 }
 
 test_verify_one_file! {
     #[test] test_mut_arg_fail2 verus_code! {
         proof fn f(x: &mut bool)
-            ensures *x
+            ensures *final(x)
         {
             *x = true;
         }
@@ -484,7 +484,7 @@ test_verify_one_file! {
             }
             assert(e);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode spec, &mut argument has mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate through a spec-mode mutable reference")
 }
 
 test_verify_one_file! {
@@ -499,7 +499,7 @@ test_verify_one_file! {
             let mut e = e;
             f(&mut e.g); // fails, exec <- ghost assign
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode exec, &mut argument has mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
 }
 
 test_verify_one_file! {
@@ -514,7 +514,7 @@ test_verify_one_file! {
             let mut g = g;
             f(&mut g.e); // fails, tracked <- ghost assign
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode proof, &mut argument has mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
 }
 
 test_verify_one_file! {
@@ -531,7 +531,7 @@ test_verify_one_file! {
                 f(&mut e.e); // fails, exec <- ghost out assign
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode spec, &mut argument has mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "mutable borrow is not allowed in spec context")
 }
 
 test_verify_one_file! {
@@ -548,7 +548,7 @@ test_verify_one_file! {
                 f(&mut e.t); // fails, tracked <- ghost out assign
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode spec, &mut argument has mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "mutable borrow is not allowed in spec context")
 }
 
 test_verify_one_file! {
@@ -629,7 +629,7 @@ test_verify_one_file_with_options! {
             }
             b
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot assign to exec variable from proof mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
 }
 
 test_verify_one_file! {
@@ -679,7 +679,7 @@ test_verify_one_file! {
                 e = true; // fails: exec assign from proof mode
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot assign to exec variable from proof mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
 }
 
 test_verify_one_file! {
@@ -748,7 +748,7 @@ test_verify_one_file! {
             let mut g = g;
             f(g.borrow_mut()); // fails, exec <- ghost assign
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
 }
 
 test_verify_one_file! {
@@ -762,7 +762,7 @@ test_verify_one_file! {
             let mut t = t;
             f(t.borrow_mut()); // fails, exec <- tracked assign
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot access proof-mode place in executable context")
 }
 
 test_verify_one_file! {
@@ -778,7 +778,7 @@ test_verify_one_file! {
                 f(g.borrow_mut()); // fails, tracked <- ghost assign
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode proof, &mut argument has mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
 }
 
 test_verify_one_file! {
@@ -794,7 +794,7 @@ test_verify_one_file! {
                 f(t.borrow_mut()); // fails, tracked <- ghost out assign
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode spec, &mut argument has mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "mutable borrow is not allowed in spec context")
 }
 
 test_verify_one_file! {
@@ -1074,7 +1074,7 @@ test_verify_one_file! {
             let tracked b;
             b = false;
         }
-    } => Err(err) => assert_vir_error_msg(err, "exec code cannot mutate non-exec variable")
+    } => Err(err) => assert_vir_error_msg(err, "cannot access proof-mode place in executable context")
 }
 
 test_verify_one_file! {
@@ -1083,7 +1083,7 @@ test_verify_one_file! {
             let ghost b;
             b = false;
         }
-    } => Err(err) => assert_vir_error_msg(err, "exec code cannot mutate non-exec variable")
+    } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
 }
 
 test_verify_one_file! {
@@ -1170,7 +1170,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] fn_param_wrappers_mut verus_code! {
+    #[test] fn_param_wrappers_mut_no_modify_ghost verus_code! {
         struct S(int);
 
         fn test1(Ghost(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
@@ -1178,33 +1178,41 @@ test_verify_one_file! {
                 *old(g) > 100,
                 old(t).0 > 100,
             ensures
-                *g == *old(g) + *old(g),
-                *g > 200,
-                *t == *old(t),
+                *final(g) == *old(g) + *old(g),
+                *final(g) > 200,
+                *final(t) == *old(t),
         {
             assert(*g >= 100);
             proof {
                 *g = *g * 2;
             }
         }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate through a spec-mode mutable reference")
+}
+
+test_verify_one_file! {
+    #[test] fn_param_wrappers_mut verus_code! {
+        struct S(int);
+
+        fn test1(Tracked(t): Tracked<&mut S>)
+            requires
+                old(t).0 > 100,
+            ensures
+                *final(t) == *old(t),
+        {
+        }
 
         fn test2(Tracked(t1): Tracked<S>) {
             assume(t1.0 > 100);
             let tracked mut t2 = t1;
-            let ghost mut i = 1000;
-            assert(i == 1000);
-            test1(Ghost(&mut i), Tracked(&mut t2));
-            assert(i == 2000);
+            test1(Tracked(&mut t2));
             assert(t2.0 > 100);
         }
 
         fn test3(Tracked(t1): Tracked<S>) {
             assume(t1.0 > 100);
             let tracked mut t2 = t1;
-            let ghost mut i = 1000;
-            assert(i == 1000);
-            test1(Ghost(&mut i), Tracked(&mut t2));
-            assert(i == 2000);
+            test1(Tracked(&mut t2));
             assert(t2.0 > 101); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -1263,18 +1271,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] fn_param_wrappers_mut_ill_formed1 verus_code! {
-        struct S(int);
-
-        fn test1(tmp_g: Ghost<&mut int>, tmp_h: Ghost<&mut int>) {
-            #[verus::internal(header_unwrap_parameter)] let g;
-            #[verifier(proof_block)] { g = tmp_g.view() };
-            // fails to unwrap h
-        }
-    } => Err(err) => assert_vir_error_msg(err, "must be unwrapped")
-}
-
-test_verify_one_file! {
     #[test] fn_param_wrappers_mut_ill_formed2 verus_code! {
         struct S(int);
 
@@ -1300,7 +1296,7 @@ test_verify_one_file! {
             let ghost mut i = 1000;
             test1(Ghost(&mut i), Tracked(&mut t2));
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
 }
 
 test_verify_one_file! {
@@ -1313,9 +1309,11 @@ test_verify_one_file! {
 
         fn test2(Tracked(t1): Tracked<S>) {
             let tracked mut t2 = t1;
+            // this is ok: we can coerce the mut ref to spec mode, you just won't be able
+            // to write to it
             test1(Ghost(&mut t2));
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot write to argument with mode exec")
+    } => Ok(())
 }
 
 test_verify_one_file! {

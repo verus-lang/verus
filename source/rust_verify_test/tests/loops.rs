@@ -949,7 +949,7 @@ test_verify_one_file_with_options! {
 
         fn test_old_in_ensures(a: &mut u64)
             requires *old(a) < 2000,
-            ensures *a as int === *old(a) + 25,
+            ensures *final(a) as int === *old(a) + 25,
         {
             let mut i: u64 = 0;
             loop
@@ -967,7 +967,7 @@ test_verify_one_file_with_options! {
 
         fn test_old_in_ensures_fail(a: &mut u64)
             requires *old(a) < 2000,
-            ensures *a as int === *old(a) + 26,
+            ensures *final(a) as int === *old(a) + 26,
         {
             let mut i: u64 = 0;
             loop
@@ -1550,8 +1550,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] recursive_call_in_loop_mut_ref verus_code! {
         fn test1(x: &mut usize)
-            ensures *x <= *old(x),
-            decreases old(x),
+            ensures *final(x) <= *old(x),
+            decreases *old(x),
         {
             if *x == 0 {
                 return;
@@ -1579,7 +1579,7 @@ test_verify_one_file! {
                 hi <= src.len(),
                 hi <= old(dst).len(),
             ensures
-                src@.subrange(lo as int, hi as int) == dst@.subrange(lo as int, hi as int),
+                src@.subrange(lo as int, hi as int) == final(dst)@.subrange(lo as int, hi as int),
         {
             for n in lo..hi
                 invariant
