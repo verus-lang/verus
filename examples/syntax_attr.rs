@@ -306,18 +306,18 @@ trait T {
 
 #[verus_spec(ret =>
     with
-        Tracked(y): Tracked<&mut u32>, Ghost(w): Ghost<u64> -> z: Ghost<u32>
+        Tracked(y): Tracked<&mut Ghost<u32>>, Ghost(w): Ghost<u64> -> z: Ghost<u32>
     requires
         x < 100,
         *old(y) < 100,
     ensures
-        *y == x,
+        *final(y) == x,
         ret == x,
         z == x,
 )]
 fn test_mut_tracked(x: u32) -> u32 {
     proof!{
-        *y = x;
+        *y = Ghost(x);
     }
     #[verus_spec(with |=Ghost(x))]
     x
@@ -326,7 +326,7 @@ fn test_mut_tracked(x: u32) -> u32 {
 fn test_cal_mut_tracked(x: u32) {
     proof_decl!{
         let ghost mut z;
-        let tracked mut y = 0u32;
+        let tracked mut y = Ghost(0u32);
         z = 0u32;
     }
     #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))]
