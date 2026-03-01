@@ -1424,7 +1424,7 @@ pub broadcast proof fn lemma_hashmap_view_ensures_to_infinite<K, V>(m: HashMap<K
     broadcast use super::super::map::lemma_congruence_extensionality;
 
     m@.to_infinite_ensures();
-    assert(m@.to_infinite().congruent(m@));
+    assert(m@.to_gmap().to_infinite().congruent(m@.to_gmap()));
     assert(m@.dom().finite());
     assert(m@.to_infinite().dom().finite());
     assert(m@.to_infinite().to_finite().congruent(m@));

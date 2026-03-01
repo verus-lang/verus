@@ -110,6 +110,15 @@ impl<K, V> Map<K, V> {
         self.to_gmap().len()
     }
 
+    #[verifier::inline]
+    pub open spec fn is_empty(self) -> bool {
+        self.dom().is_empty()
+    }
+
+    pub open spec fn kv_pairs(self) -> Set<(K, V)> {
+        Set::from_gset(self.to_gmap().dom().map(|k: K| (k, self[k])))
+    }
+
     pub open spec fn union_prefer_right(self, m2: Self) -> Self {
         Map::from_gmap(self.to_gmap().union_prefer_right(m2.to_gmap()))
     }
@@ -169,6 +178,13 @@ impl<K, V> Map<K, V> {
 
     pub open spec fn to_infinite(self) -> IMap<K, V> {
         IMap::from_gmap(self.to_gmap().to_infinite())
+    }
+
+    pub proof fn to_infinite_ensures(self)
+        ensures
+            self.to_gmap().to_infinite().dom().congruent(self.to_gmap().dom()),
+    {
+        self.to_gmap().to_infinite_ensures();
     }
 
     pub proof fn lemma_union_prefer_right(self, m2: Self)
