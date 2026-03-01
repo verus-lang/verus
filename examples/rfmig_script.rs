@@ -96,8 +96,8 @@ pub fn transfer(orig: &mut Account, dest: &mut Account, amount: u64)
         old(orig).balance >= amount,
         old(dest).balance + amount < u64::MAX,
     ensures
-        dest.balance == old(dest).balance + amount,
-        orig.balance == old(orig).balance - amount,
+        final(dest).balance == old(dest).balance + amount,
+        final(orig).balance == old(orig).balance - amount,
 {
     /*+*/
     let accounts_pre: Ghost<(Account, Account)> = Ghost((*orig, *dest));
@@ -138,7 +138,7 @@ exec fn g(v1: &mut Vec<u64>, v2: &mut Vec<u64>)
         old(v1)@.len() == 2,
         old(v2)@.len() == 3,
     ensures
-        v1@.len() == v2@.len(),
+        final(v1)@.len() == final(v2)@.len(),
 {
     v1.push(42);
     v1.push(43);
@@ -224,8 +224,8 @@ mod F1 {
             counter == old(perm).pptr(),
             old(perm).is_init() && old(perm).value() < 100,
         ensures
-            perm.pptr() == old(perm).pptr(),
-            perm.opt_value() == MemContents::Init((old(perm).value() + 1) as u64),
+            final(perm).pptr() == old(perm).pptr(),
+            final(perm).opt_value() == MemContents::Init((old(perm).value() + 1) as u64),
     {
         // pub fn borrow<'a>(&self, perm: &'a Tracked<PointsTo<V>>) -> (v: &'a V)
         let cur_i: u64 = *counter.borrow(Tracked(&*perm));
