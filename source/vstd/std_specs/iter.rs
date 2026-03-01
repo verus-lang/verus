@@ -118,8 +118,6 @@ pub trait ExIterator {
 //     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
 // }
 
-/// REVIEW: Despite the name, VerusForLoopWrapper doesn't implement Iterator.
-///         What would be a better name?
 pub struct VerusForLoopWrapper<'a, I: Iterator> {
     pub index: Ghost<int>,
     pub snapshot: Ghost<I>,
