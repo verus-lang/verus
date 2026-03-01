@@ -19,6 +19,19 @@ fi
 HOST_WORK_DIR="${HOST_WORK_DIR:-/tmp/veritas-work}"
 mkdir -p "$HOST_WORK_DIR" output
 
+# Optional: mount a local Verus checkout for file:// verus_git_url in config.
+# Example:
+#   LOCAL_VERUS_REPO=/home/user/work/verus \
+#   bash run.sh run_configuration_local.toml
+EXTRA_MOUNTS=()
+if [ -n "${LOCAL_VERUS_REPO:-}" ]; then
+    if [ ! -d "$LOCAL_VERUS_REPO" ]; then
+        echo "LOCAL_VERUS_REPO is not a directory: $LOCAL_VERUS_REPO"
+        exit 1
+    fi
+    EXTRA_MOUNTS+=("-v" "$LOCAL_VERUS_REPO:/root/local-verus")
+fi
+
 "$RUNTIME" run --platform=linux/amd64 \
     -v verus-veritas-repo-cache:/root/repos-cache \
     -v $(pwd):/root/veritas \
@@ -27,5 +40,6 @@ mkdir -p "$HOST_WORK_DIR" output
     -v verus-veritas-z3-cache:/root/z3-cache \
     -v verus-veritas-rustup-$RUST_VERSION:/root/.rustup \
     -v $(pwd)/output:/root/output \
+    "${EXTRA_MOUNTS[@]}" \
     --rm \
     veritas:rust-$RUST_VERSION $@

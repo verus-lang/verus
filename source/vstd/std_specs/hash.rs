@@ -1420,7 +1420,7 @@ pub broadcast proof fn lemma_hashmap_view_ensures_to_infinite<K, V>(m: HashMap<K
     // TODO(jonh): minimize
     broadcast use super::super::map::group_map_axioms;
     broadcast use super::super::set::group_set_lemmas;
-    broadcast use super::super::set::GSet::congruent_infiniteness;
+    broadcast use crate::gset::GSet::congruent_infiniteness;
     broadcast use super::super::map::lemma_congruence_extensionality;
 
     m@.to_infinite_ensures();

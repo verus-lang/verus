@@ -1,0 +1,40 @@
+verus_git_url = "file:///root/local-verus"
+verus_revspec = "HEAD"
+verus_features = ["singular"]
+verus_verify_vstd = true
+
+[[project]]
+name = "page-table"
+git_url = "https://github.com/jonhnet/verified-nrkernel.git"
+revspec = "jonh/sets-typed-finite"
+crate_root = "page-table/src/lib.rs"
+extra_args = ["--crate-type=lib", "--rlimit", "60", "--cfg", "feature=\"impl\""]
+
+[[project]]
+name = "verified-storage"
+git_url = "https://github.com/jonhnet/verified-storage.git"
+revspec = "jonh/sets-typed-finite"
+crate_root = "storage_node/src/lib.rs"
+extra_args = [
+    "-L", "dependency=deps_hack/target/debug/deps",
+    "--extern=deps_hack=deps_hack/target/debug/libdeps_hack.rlib",
+]
+prepare_script = """
+DEBIAN_FRONTEND=noninteractive apt-get update; apt-get install -y libpmem1 libpmemlog1 libpmem-dev libpmemlog-dev llvm-dev clang libclang-dev
+
+cd pmsafe
+cargo clean
+cargo build
+cd ..
+
+cd deps_hack
+cargo clean
+cargo build
+"""
+
+[[project]]
+name = "node-replication"
+git_url = "https://github.com/jonhnet/verified-node-replication.git"
+revspec = "jonh/sets-typed-finite"
+crate_root = "verified-node-replication/src/lib.rs"
+extra_args = ["--crate-type=dylib"]
