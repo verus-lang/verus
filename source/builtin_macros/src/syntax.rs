@@ -2771,6 +2771,14 @@ impl Visitor {
             return false;
         };
 
+        if self.rustdoc && self.inside_const {
+            let Expr::Assert(assert) = take_expr(expr) else { unreachable!() };
+            let span = assert.assert_token.span;
+            let attrs = assert.attrs;
+            *expr = quote_verbatim!(span, attrs => ());
+            return true;
+        }
+
         self.inside_ghost += 1;
         self.visit_expr_with_arith(expr, InsideArith::None);
         self.inside_ghost -= 1;
