@@ -433,7 +433,7 @@ pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
 
 pub broadcast proof fn axiom_spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>)
     ensures
-        #[trigger] spec_into_iter_borrowed(v).seq() == v@.map_values(|x| &x),
+        #[trigger] spec_into_iter_borrowed(v).remaining() == v@.map_values(|x| &x),
 {
     admit();
 }
@@ -454,8 +454,8 @@ pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::Int
     (iter: <&'a Vec<T, A> as core::iter::IntoIterator>::IntoIter)
     ensures
         iter == spec_into_iter_borrowed(vec),
-        crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
-        crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, Some(&iter)),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_inv(&iter, &iter),
 ;
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()

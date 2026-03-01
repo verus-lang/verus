@@ -1137,6 +1137,28 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+
+test_verify_one_file! {
+    #[test] for_loop_slice verus_code! {
+        use vstd::prelude::*;
+        fn all_positive(v: &Vec<u8>) -> (b: bool)
+            ensures
+                b <==> (forall|i: int| 0 <= i < v.len() ==> v[i] > 0),
+        {
+            let mut b: bool = true;
+
+            for x in iter: v
+                invariant
+                    b <==> (forall|i: int| 0 <= i < iter.index@ ==> v[i] > 0),
+            {
+                b = b && *x > 0;
+            }
+            b
+        }     
+    } => Ok(())
+}
+
+
 test_verify_one_file_with_options! {
     #[test] for_loop1 ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;

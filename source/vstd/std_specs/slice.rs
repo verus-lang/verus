@@ -45,43 +45,37 @@ pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
 #[verifier::accept_recursive_types(T)]
 pub struct ExIter<'a, T: 'a>(Iter<'a, T>);
 
+// To allow reasoning about the "contents" of the slice iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original slice.
+pub uninterp spec fn into_iter_elts<'a, T: 'a>(i: Iter<'a, T>) -> Seq<T>;
 
 impl <'a, T: 'a> crate::std_specs::iter::IteratorSpecImpl for Iter<'a, T> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
 
-    uninterp spec fn seq(&self) -> Seq<Self::Item>;
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
-    open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
-        init matches Some(v) && IteratorSpec::seq(v) == IteratorSpec::seq(self)
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter_elts(*self) == IteratorSpec::remaining(self).map_values(|e: Self::Item| *e)
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
-}
 
-
-/*
-impl<T> View for Iter<'_, T> {
-    type V = (int, Seq<T>);
-
-    uninterp spec fn view(&self) -> (int, Seq<T>);
-}
-
-impl<T: DeepView> DeepView for Iter<'_, T> {
-    type V = (int, Seq<T::V>);
-
-    open spec fn deep_view(&self) -> Self::V {
-        let (i, v) = self@;
-        (i, Seq::new(v.len(), |i: int| v[i].deep_view()))
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_elts(*self).len() {
+            Some(&into_iter_elts(*self)[index])
+        } else {
+            None
+        }
     }
 }
-*/
 
 
-// To allow reasoning about the ghost iterator when the executable
+// To allow reasoning about the returned iterator when the executable
 // function `iter()` is invoked in a `for` loop header (e.g., in
 // `for x in it: s.iter() { ... }`), we need to specify the behavior of
 // the iterator in spec mode. To do that, we add
@@ -91,7 +85,7 @@ pub uninterp spec fn spec_slice_iter<'a, T>(s: &'a [T]) -> (iter: Iter<'a, T>);
 
 pub broadcast proof fn axiom_spec_slice_iter<'a, T>(s: &'a [T])
     ensures
-        #[trigger] spec_slice_iter(s).seq() == s@.map_values(|v| &v),
+        #[trigger] spec_slice_iter(s).remaining() == s@.map_values(|v| &v),
 {
     admit();
 }
@@ -100,8 +94,8 @@ pub broadcast proof fn axiom_spec_slice_iter<'a, T>(s: &'a [T])
 pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>)
     ensures
         iter == spec_slice_iter(s),
-        crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
-        crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, Some(&iter)),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_inv(&iter, &iter),
 ;
 
 pub assume_specification<T> [ <[T]>::first ](slice: &[T]) -> (res: Option<&T>)
