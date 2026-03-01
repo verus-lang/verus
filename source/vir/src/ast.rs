@@ -409,8 +409,6 @@ pub enum UnaryOp {
         to_mode: Mode,
         kind: ModeCoercion,
     },
-    /// Coerce from concrete type to dyn T
-    ToDyn,
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
@@ -519,6 +517,8 @@ pub enum UnaryOpr {
     /// For primitive types this is trivially true.
     /// For datatypes this is recursive in the natural way.
     HasResolved(Typ),
+    /// Coerce from concrete type to `dyn T`. Typ arg is the Self type
+    ToDyn(Typ),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]

@@ -464,7 +464,6 @@ impl ExpX {
                 }
                 UnaryOp::Trigger(..)
                 | UnaryOp::CoerceMode { .. }
-                | UnaryOp::ToDyn
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated => {
                     return exp.x.to_string_prec(global, precedence);
@@ -491,7 +490,7 @@ impl ExpX {
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
                 match op {
-                    Box(_) | Unbox(_) => {
+                    Box(_) | Unbox(_) | ToDyn(_) => {
                         return exp.x.to_string_prec(global, precedence);
                     }
                     HasType(t) => {

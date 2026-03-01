@@ -1432,12 +1432,15 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
 
             let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
             let op = match (tyr1.kind(), tyr2.kind()) {
-                (_, TyKind::Dynamic(_, _)) => Some(UnaryOp::ToDyn),
+                (_, TyKind::Dynamic(_, _)) => {
+                    let vir_ty = bctx.mid_ty_to_vir(expr.span, &tyr1, false)?;
+                    Some(UnaryOpr::ToDyn(vir_ty))
+                }
                 _ => None,
             };
             if let Some(op) = op {
                 let arg = arg.consume(bctx, get_inner_ty());
-                let x = ExprX::Unary(op, arg);
+                let x = ExprX::UnaryOpr(op, arg);
                 let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2, false)?;
                 return Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ, x)));
             }
