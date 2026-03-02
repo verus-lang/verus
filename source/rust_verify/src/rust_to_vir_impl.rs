@@ -6,7 +6,7 @@ use crate::rust_to_vir_base::{
 };
 use crate::rust_to_vir_func::{CheckItemFnEither, check_item_fn};
 use crate::unsupported_err;
-use crate::util::{err_span, vir_err_span_str};
+use crate::util::{err_span, err_span_vec, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::{ConstItemRhs, ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
@@ -235,7 +235,7 @@ pub(crate) fn translate_impl<'tcx>(
     external_info: &mut ExternalInfo,
     crate_items: &CrateItems,
     attrs: &[rustc_hir::Attribute],
-) -> Result<(), VirErr> {
+) -> Result<(), Vec<VirErr>> {
     let impl_def_id = item.owner_id.to_def_id();
     let impl_path = ctxt.def_id_to_vir_path(impl_def_id);
 
@@ -246,7 +246,7 @@ pub(crate) fn translate_impl<'tcx>(
 
         let rust_item = verus_items::get_rust_item(ctxt.tcx, trait_def_id);
         if matches!(rust_item, Some(RustItem::Fn | RustItem::FnOnce | RustItem::FnMut)) {
-            return err_span(
+            return err_span_vec(
                 item.span,
                 "Verus does not support implementing this trait via an `impl` block",
             );
@@ -256,10 +256,10 @@ pub(crate) fn translate_impl<'tcx>(
 
         if *safety != Safety::Safe {
             if matches!(rust_item, Some(RustItem::Send)) {
-                return err_span(item.span, "unsafe impl for `Send` is not allowed");
+                return err_span_vec(item.span, "unsafe impl for `Send` is not allowed");
             }
             if matches!(rust_item, Some(RustItem::Sync)) {
-                return err_span(item.span, "unsafe impl for `Sync` is not allowed");
+                return err_span_vec(item.span, "unsafe impl for `Sync` is not allowed");
             }
         }
 
@@ -291,11 +291,13 @@ pub(crate) fn translate_impl<'tcx>(
             };
             let ty_applied_never = ctxt.tcx.mk_ty_from_kind(ty_kind_applied_never);
             if !ty_applied_never.is_structural_eq_shallow(ctxt.tcx) {
-                return Err(vir_err_span_str(
-                    item.span,
-                    &format!("structural impl for non-structural type {:?}", ty),
-                )
-                .help("make sure `PartialEq` is also auto-derived for this type"));
+                return Err(vec![
+                    vir_err_span_str(
+                        item.span,
+                        &format!("structural impl for non-structural type {:?}", ty),
+                    )
+                    .help("make sure `PartialEq` is also auto-derived for this type"),
+                ]);
             }
             true
         } else {
@@ -327,15 +329,16 @@ pub(crate) fn translate_impl<'tcx>(
             let sealed = crate::attributes::is_sealed(
                 trait_attrs,
                 Some(&mut *ctxt.diagnostics.borrow_mut()),
-            )?;
+            )
+            .map_err(|e| vec![e])?;
 
             if sealed {
-                return err_span(item.span, "cannot implement `sealed` trait");
+                return err_span_vec(item.span, "cannot implement `sealed` trait");
             }
         }
     }
 
-    let vattrs = ctxt.get_verifier_attrs(attrs)?;
+    let vattrs = ctxt.get_verifier_attrs(attrs).map_err(|e| vec![e])?;
     let trait_path_typ_args =
         if let Some(TraitImplHeader { trait_ref: TraitRef { path, .. }, .. }) = &impll.of_trait {
             let impl_def_id = item.owner_id.to_def_id();
@@ -351,7 +354,9 @@ pub(crate) fn translate_impl<'tcx>(
                 module_path.clone(),
                 false,
                 vattrs.external_trait_blanket,
-            )? {
+            )
+            .map_err(|e| vec![e])?
+            {
                 Some((trait_path, types, trait_impl)) => {
                     vir.trait_impls.push(trait_impl);
                     Some((trait_path, types))
@@ -373,155 +378,187 @@ pub(crate) fn translate_impl<'tcx>(
         None
     };
 
+    let mut errors = vec![];
     for impl_item_id in impll.items {
         if vattrs.external_trait_blanket {
-            continue;
+            return Ok(());
         }
-        let impl_item = ctxt.tcx.hir_impl_item(*impl_item_id);
-        let fn_attrs = ctxt.tcx.hir_attrs(impl_item.hir_id());
+        let r = translate_impl_item(
+            ctxt,
+            vir,
+            item,
+            impll,
+            &module_path,
+            external_info,
+            crate_items,
+            impl_item_id,
+            &trait_path_typ_args,
+            impl_def_id,
+            &impl_path,
+            &autoderive_action,
+        );
+        if let Err(r) = r {
+            errors.push(r);
+        }
+    }
+    if errors.len() > 0 { Err(errors) } else { Ok(()) }
+}
 
-        if crate_items.is_impl_item_external(*impl_item_id) {
-            if trait_path_typ_args.is_some() {
-                // sanity check - this should be redundant with prior check in external.rs
-                return err_span(
+pub(crate) fn translate_impl_item<'tcx>(
+    ctxt: &Context<'tcx>,
+    vir: &mut KrateX,
+    item: &'tcx Item<'tcx>,
+    impll: &rustc_hir::Impl<'tcx>,
+    module_path: &Path,
+    external_info: &mut ExternalInfo,
+    crate_items: &CrateItems,
+    impl_item_id: &rustc_hir::ImplItemId,
+    trait_path_typ_args: &Option<(Path, Typs)>,
+    impl_def_id: DefId,
+    impl_path: &Path,
+    autoderive_action: &Option<crate::automatic_derive::AutomaticDeriveAction>,
+) -> Result<(), VirErr> {
+    let impl_item = ctxt.tcx.hir_impl_item(*impl_item_id);
+    let fn_attrs = ctxt.tcx.hir_attrs(impl_item.hir_id());
+
+    if crate_items.is_impl_item_external(*impl_item_id) {
+        if trait_path_typ_args.is_some() {
+            // sanity check - this should be redundant with prior check in external.rs
+            return err_span(
+                item.span,
+                "an item in a trait impl cannot be marked external - you can either use external_body, or mark the entire trait impl as external",
+            );
+        }
+        return Ok(());
+    }
+    let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().owner.to_def_id());
+    let mk_trait_function_kind = || -> FunctionKind {
+        if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
+            let ident = impl_item.ident.to_string();
+            let ident = Arc::new(ident);
+            let path = typ_path_and_ident_to_vir_path(&trait_path, ident);
+            let fun = FunX { path };
+            let method = Arc::new(fun);
+            FunctionKind::TraitMethodImpl {
+                method,
+                impl_path: impl_path.clone(),
+                trait_path,
+                trait_typ_args,
+                inherit_body_from: None,
+            }
+        } else {
+            FunctionKind::Static
+        }
+    };
+    match assoc_item.kind {
+        AssocKind::Fn { name: _name, has_self: true | false } => {
+            let impl_item_visibility = mk_visibility(&ctxt, impl_item.owner_id.to_def_id());
+            match &impl_item.kind {
+                ImplItemKind::Fn(sig, body_id) => {
+                    let kind = mk_trait_function_kind();
+
+                    let _ = crate::rust_to_vir_base::check_fn_opaque_ty(
+                        ctxt,
+                        vir,
+                        &impl_item.owner_id.to_def_id(),
+                    )?;
+
+                    check_item_fn(
+                        ctxt,
+                        &mut vir.functions,
+                        Some(&mut vir.reveal_groups),
+                        impl_item.owner_id.to_def_id(),
+                        kind,
+                        impl_item_visibility,
+                        &module_path,
+                        fn_attrs,
+                        crate::rust_to_vir_func::FnOrConstSig::sig(&sig),
+                        Some((&impll.generics, impl_def_id)),
+                        &impl_item.generics,
+                        CheckItemFnEither::BodyId(&body_id),
+                        None,
+                        None,
+                        external_info,
+                        autoderive_action.as_ref(),
+                    )?;
+                }
+                _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_id),
+            }
+        }
+        AssocKind::Type { .. } => {
+            if impl_item.generics.predicates.len() != 0
+                || impl_item.generics.has_where_clause_predicates
+            {
+                unsupported_err!(
                     item.span,
-                    "an item in a trait impl cannot be marked external - you can either use external_body, or mark the entire trait impl as external",
+                    "unsupported generics on associated type",
+                    impl_item_id
                 );
             }
-            continue;
-        }
-        let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().owner.to_def_id());
-        let mk_trait_function_kind = || -> FunctionKind {
-            if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
-                let ident = impl_item.ident.to_string();
-                let ident = Arc::new(ident);
-                let path = typ_path_and_ident_to_vir_path(&trait_path, ident);
-                let fun = FunX { path };
-                let method = Arc::new(fun);
-                FunctionKind::TraitMethodImpl {
-                    method,
-                    impl_path: impl_path.clone(),
-                    trait_path,
-                    trait_typ_args,
-                    inherit_body_from: None,
+            if let ImplItemKind::Type(_ty) = impl_item.kind {
+                if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
+                    let name = Arc::new(impl_item.ident.to_string());
+                    let assoc_type_impl = translate_assoc_type(
+                        ctxt,
+                        name,
+                        impll.generics.span,
+                        Some(&impll.generics),
+                        impl_item.span,
+                        impl_item.owner_id.to_def_id(),
+                        impl_def_id,
+                        trait_path,
+                        trait_typ_args,
+                    )?;
+                    vir.assoc_type_impls.push(assoc_type_impl);
+                } else {
+                    unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
                 }
             } else {
-                FunctionKind::Static
+                unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
             }
-        };
-        match assoc_item.kind {
-            AssocKind::Fn { name: _name, has_self: true | false } => {
-                let impl_item_visibility = mk_visibility(&ctxt, impl_item.owner_id.to_def_id());
-                match &impl_item.kind {
-                    ImplItemKind::Fn(sig, body_id) => {
-                        let kind = mk_trait_function_kind();
-
-                        let _ = crate::rust_to_vir_base::check_fn_opaque_ty(
-                            ctxt,
-                            vir,
-                            &impl_item.owner_id.to_def_id(),
-                        )?;
-
-                        check_item_fn(
-                            ctxt,
-                            &mut vir.functions,
-                            Some(&mut vir.reveal_groups),
-                            impl_item.owner_id.to_def_id(),
-                            kind,
-                            impl_item_visibility,
-                            &module_path,
-                            fn_attrs,
-                            crate::rust_to_vir_func::FnOrConstSig::sig(&sig),
-                            Some((&impll.generics, impl_def_id)),
-                            &impl_item.generics,
-                            CheckItemFnEither::BodyId(&body_id),
-                            None,
-                            None,
-                            external_info,
-                            autoderive_action.as_ref(),
-                        )?;
-                    }
-                    _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_id),
-                }
-            }
-            AssocKind::Type { .. } => {
-                if impl_item.generics.predicates.len() != 0
-                    || impl_item.generics.has_where_clause_predicates
-                {
-                    unsupported_err!(
-                        item.span,
-                        "unsupported generics on associated type",
-                        impl_item_id
-                    );
-                }
-                if let ImplItemKind::Type(_ty) = impl_item.kind {
-                    if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
-                        let name = Arc::new(impl_item.ident.to_string());
-                        let assoc_type_impl = translate_assoc_type(
-                            ctxt,
-                            name,
-                            impll.generics.span,
-                            Some(&impll.generics),
-                            impl_item.span,
-                            impl_item.owner_id.to_def_id(),
-                            impl_def_id,
-                            trait_path,
-                            trait_typ_args,
-                        )?;
-                        vir.assoc_type_impls.push(assoc_type_impl);
-                    } else {
-                        unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
-                    }
+        }
+        AssocKind::Const { name: _name } => {
+            if let ImplItemKind::Const(_ty, ConstItemRhs::Body(body_id)) = &impl_item.kind {
+                let def_id = body_id.hir_id.owner.to_def_id();
+                let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
+                let vir_ty = ctxt.mid_ty_to_vir(def_id, impl_item.span, &mid_ty, false)?;
+                if trait_path_typ_args.is_none() {
+                    crate::rust_to_vir_func::check_item_const_or_static(
+                        ctxt,
+                        &mut vir.functions,
+                        impl_item.span,
+                        impl_item.owner_id.to_def_id(),
+                        mk_visibility(ctxt, impl_item.owner_id.to_def_id()),
+                        &module_path,
+                        ctxt.tcx.hir_attrs(impl_item.hir_id()),
+                        &vir_ty,
+                        &body_id,
+                        false,
+                        false,
+                    )?;
                 } else {
-                    unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
+                    let kind = mk_trait_function_kind();
+                    crate::rust_to_vir_func::check_item_fn(
+                        ctxt,
+                        &mut vir.functions,
+                        Some(&mut vir.reveal_groups),
+                        impl_item.owner_id.to_def_id(),
+                        kind,
+                        mk_visibility(ctxt, impl_item.owner_id.to_def_id()),
+                        &module_path,
+                        ctxt.tcx.hir_attrs(impl_item.hir_id()),
+                        crate::rust_to_vir_func::FnOrConstSig::const_var(impl_item.span, vir_ty),
+                        Some((&impll.generics, impl_def_id)),
+                        &impl_item.generics,
+                        crate::rust_to_vir_func::CheckItemFnEither::BodyId(&body_id),
+                        None,
+                        None,
+                        external_info,
+                        None,
+                    )?;
                 }
-            }
-            AssocKind::Const { name: _name } => {
-                if let ImplItemKind::Const(_ty, ConstItemRhs::Body(body_id)) = &impl_item.kind {
-                    let def_id = body_id.hir_id.owner.to_def_id();
-                    let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
-                    let vir_ty = ctxt.mid_ty_to_vir(def_id, impl_item.span, &mid_ty, false)?;
-                    if trait_path_typ_args.is_none() {
-                        crate::rust_to_vir_func::check_item_const_or_static(
-                            ctxt,
-                            &mut vir.functions,
-                            impl_item.span,
-                            impl_item.owner_id.to_def_id(),
-                            mk_visibility(ctxt, impl_item.owner_id.to_def_id()),
-                            &module_path,
-                            ctxt.tcx.hir_attrs(impl_item.hir_id()),
-                            &vir_ty,
-                            &body_id,
-                            false,
-                            false,
-                        )?;
-                    } else {
-                        let kind = mk_trait_function_kind();
-                        crate::rust_to_vir_func::check_item_fn(
-                            ctxt,
-                            &mut vir.functions,
-                            Some(&mut vir.reveal_groups),
-                            impl_item.owner_id.to_def_id(),
-                            kind,
-                            mk_visibility(ctxt, impl_item.owner_id.to_def_id()),
-                            &module_path,
-                            ctxt.tcx.hir_attrs(impl_item.hir_id()),
-                            crate::rust_to_vir_func::FnOrConstSig::const_var(
-                                impl_item.span,
-                                vir_ty,
-                            ),
-                            Some((&impll.generics, impl_def_id)),
-                            &impl_item.generics,
-                            crate::rust_to_vir_func::CheckItemFnEither::BodyId(&body_id),
-                            None,
-                            None,
-                            external_info,
-                            None,
-                        )?;
-                    }
-                } else {
-                    unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
-                }
+            } else {
+                unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
             }
         }
     }

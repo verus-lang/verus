@@ -1712,12 +1712,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 ((TypX::Int(IntRange::USize), _), TypX::Int(IntRange::Nat)) => Ok(source_vir),
                 ((TypX::Int(IntRange::Nat), _), TypX::Int(IntRange::Nat)) => Ok(source_vir),
                 ((TypX::Int(IntRange::Int), _), TypX::Int(IntRange::Nat)) => {
-                    Ok(mk_ty_clip(&to_ty, &source_vir, true))
+                    Ok(mk_ty_clip(bctx, &to_ty, &source_vir, true))
                 }
                 ((TypX::Int(_), _), TypX::Int(_)) => {
                     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
-                    Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
+                    Ok(mk_ty_clip(bctx, &to_ty, &source_vir, expr_vattrs.truncate))
                 }
                 ((TypX::Bool, _), TypX::Int(_)) => {
                     let zero = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(0)))?;
@@ -1732,7 +1732,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))?;
                     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
-                    Ok(mk_ty_clip(&to_ty, &cast_to_integer, expr_vattrs.truncate))
+                    Ok(mk_ty_clip(bctx, &to_ty, &cast_to_integer, expr_vattrs.truncate))
                 }
                 ((_, false), TypX::Int(_)) if bctx.types.node_type(args[0].hir_id).is_enum() => {
                     let cast_to = crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
@@ -1743,7 +1743,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     )?;
                     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
-                    Ok(mk_ty_clip(&to_ty, &cast_to, expr_vattrs.truncate))
+                    Ok(mk_ty_clip(bctx, &to_ty, &cast_to, expr_vattrs.truncate))
                 }
                 ((TypX::Real, _), TypX::Int(_)) => err_span(
                     expr.span,
@@ -2050,17 +2050,19 @@ fn verus_item_to_vir<'tcx, 'a>(
             if !bctx.ctxt.cmd_line_args.new_mut_ref {
                 let check = &|ty: rustc_middle::ty::Ty, span| match ty.kind() {
                     TyKind::Ref(_, _, rustc_middle::ty::Mutability::Mut) => {
-                        bctx.ctxt.diagnostics.borrow_mut().push(vir::ast::VirErrAs::Warning(crate::util::err_span_bare(
-                                span,
-                                format!("Dereference this mutable reference to compare the value via Verus spec equality. In the future, this will be a hard error or not work as expected."),
-                            )));
+                        Err(crate::util::err_span_bare(
+                            span,
+                            format!(
+                                "Dereference this mutable reference to compare the value via Verus spec equality."
+                            ),
+                        ))
                     }
-                    _ => {}
+                    _ => Ok(()),
                 };
                 let ty = bctx.types.expr_ty_adjusted(&args[0]);
-                check(ty, args[0].span);
+                check(ty, args[0].span)?;
                 let ty = bctx.types.expr_ty_adjusted(&args[1]);
-                check(ty, args[1].span);
+                check(ty, args[1].span)?;
             }
 
             let vir_args = mk_vir_args_auto_skip_mut_refs(bctx, node_substs, f, &args)?;
@@ -2243,7 +2245,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                 None,
             ));
         }
-        VerusItem::ErasedGhostValue | VerusItem::DummyCapture(_) => {
+        VerusItem::ErasedGhostValue
+        | VerusItem::DummyCapture(_)
+        | VerusItem::MutableReferenceTie => {
             return err_span(
                 expr.span,
                 format!("this builtin item should not appear in user code",),
@@ -2259,7 +2263,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             if !bctx.in_ghost {
                 return err_span(expr.span, "has_resolved must be in a 'proof' block");
             }
-            let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+            let bctx = BodyCtxt { in_explicit_prophecy_node: true, ..bctx.clone() };
+            let exp = expr_to_vir_consume(&bctx, &args[0], ExprModifier::REGULAR)?;
             let arg_typ = bctx.types.expr_ty_adjusted(&args[0]);
             let arg_typ = match item {
                 VerusItem::HasResolved => arg_typ,
@@ -2317,7 +2322,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             if !bctx.in_ghost {
                 return err_span(expr.span, "`after_borrow` must be in a 'proof' block");
             }
-            let p = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?.to_place();
+            let bctx = BodyCtxt { in_explicit_prophecy_node: true, ..bctx.clone() };
+            let p = expr_to_vir(&bctx, &args[0], ExprModifier::REGULAR)?.to_place();
             if !is_place_ok_for_spec_after_borrow(&p) {
                 return err_span(
                     expr.span,
@@ -2409,6 +2415,7 @@ fn check_is_builtin_constrain_typ<'tcx>(bctx: &BodyCtxt<'tcx>, e: &'tcx Expr<'tc
                 if bctx.ctxt.get_verus_item(def_id)
                     == Some(&VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType))
                 {
+                    record_call(bctx, e, ResolvedCall::MiscEraseAbsolutely);
                     return false;
                 }
             }
@@ -3051,7 +3058,7 @@ fn record_spec_fn_no_proof_args<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
     record_call(bctx, expr, ResolvedCall::Spec)
 }
 
-fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
+pub(crate) fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
     let resolved_call = match (resolved_call, &bctx.external_trait_from_to) {
         (ResolvedCall::Call(ufun, rfun, in_ghost), Some(paths)) if paths.2.is_some() => {
             let (from_path, _to_path, to_spec_path) = &**paths;

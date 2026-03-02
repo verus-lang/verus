@@ -63,7 +63,7 @@ Previously, mutable references work like this:
 ```rust
 fn test(a: &mut u8)
     requires *old(a) < 255,
-    ensures *a == *old(a)
+    ensures *a == *old(a) + 1
 {
     *a = *a + 1;
 }
@@ -80,7 +80,7 @@ In the post-condition, you either use `*old(a)` to refer to the value at entry, 
 ```rust
 fn test(a: &mut u8)
     requires *a < 255,
-    ensures *final(a) == *old(a)
+    ensures *final(a) == *old(a) + 1
 {
     *a = *a + 1;
 }
@@ -106,7 +106,7 @@ To delay the transition, you can use the attribute `#[verifier::deprecated_postc
 #[verifier::deprecated_postcondition_mut_ref_style(true)]
 fn test(a: &mut u8)
     requires *old(a) < 255,
-    ensures *a == *old(a)
+    ensures *a == *old(a) + 1
 {
     *a = *a + 1;
 }

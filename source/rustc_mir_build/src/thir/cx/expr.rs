@@ -738,7 +738,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         fake_reads,
                     }))
                 } else if self.verus_ctxt.skip_closure(def_id) {
-                    crate::verus::erase_tree_kind(self, expr)
+                    crate::verus::erase_tree_kind(self, expr, crate::verus::TreeErase::IncludeBasicChecks)
                 } else {
                 // leave unindented for easier merging
 
@@ -1486,7 +1486,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         }
     }
 
-    fn is_upvar(&mut self, var_hir_id: hir::HirId) -> bool {
+    pub(crate) fn is_upvar(&mut self, var_hir_id: hir::HirId) -> bool {
         self.tcx
             .upvars_mentioned(self.body_owner)
             .is_some_and(|upvars| upvars.contains_key(&var_hir_id))
