@@ -2112,6 +2112,9 @@ fn check_expr_handle_mut_arg(
         ExprX::Unary(_, e1) => {
             check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
         }
+        ExprX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
+            check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
+        }
         ExprX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
         ExprX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
         ExprX::UnaryOpr(UnaryOpr::HasType(_), _) => panic!("internal error: HasType in modes.rs"),
