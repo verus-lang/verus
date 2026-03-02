@@ -162,7 +162,8 @@ fn check_item<'tcx>(
         }
 
         let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
-        let vir_ty = ctxt.mid_ty_to_vir(def_id, item.span, &mid_ty, false).map_err(|e| vec![e], None)?;
+        let vir_ty =
+            ctxt.mid_ty_to_vir(def_id, item.span, &mid_ty, false, None).map_err(|e| vec![e])?;
 
         crate::rust_to_vir_func::check_item_const_or_static(
             ctxt,
@@ -184,8 +185,8 @@ fn check_item<'tcx>(
 
     match &item.kind {
         ItemKind::Fn { sig, generics, body: body_id, .. } => {
-            let _ =
-                check_fn_opaque_ty(ctxt, vir, &item.owner_id.to_def_id()).map_err(|e| vec![e])?;
+            // let _ =
+            //     check_fn_opaque_ty(ctxt, &mut vir.opaque_types, &item.owner_id.to_def_id()).map_err(|e| vec![e])?;
             check_item_fn(
                 ctxt,
                 &mut vir.functions,

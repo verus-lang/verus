@@ -457,12 +457,6 @@ pub(crate) fn translate_impl_item<'tcx>(
                 ImplItemKind::Fn(sig, body_id) => {
                     let kind = mk_trait_function_kind();
 
-                    let _ = crate::rust_to_vir_base::check_fn_opaque_ty(
-                        ctxt,
-                        vir,
-                        &impl_item.owner_id.to_def_id(),
-                    )?;
-
                     check_item_fn(
                         ctxt,
                         &mut vir.functions,
@@ -522,8 +516,7 @@ pub(crate) fn translate_impl_item<'tcx>(
             if let ImplItemKind::Const(_ty, ConstItemRhs::Body(body_id)) = &impl_item.kind {
                 let def_id = body_id.hir_id.owner.to_def_id();
                 let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
-                let vir_ty =
-                        ctxt.mid_ty_to_vir(def_id, impl_item.span, &mid_ty, false, None)?;
+                let vir_ty = ctxt.mid_ty_to_vir(def_id, impl_item.span, &mid_ty, false, None)?;
                 if trait_path_typ_args.is_none() {
                     crate::rust_to_vir_func::check_item_const_or_static(
                         ctxt,
@@ -557,7 +550,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                         None,
                         external_info,
                         None,
-                            &mut vir.opaque_types,
+                        &mut vir.opaque_types,
                     )?;
                 }
             } else {
