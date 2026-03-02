@@ -37,11 +37,20 @@ const TOKEN_LIB: &'static str = verus_code_str! {
             Self::with_state(2000)
         }
 
+        pub proof fn visit(tracked &self)
+            requires self.is_valid(),
+            ensures self.is_valid(),
+        {}
+
         pub proof fn modify(tracked &mut self)
             requires old(self).is_valid(),
             ensures self.is_valid(),
         {
             self.state = (1000 - self.state) as u16;
+        }
+
+        pub proof fn consume(tracked self) {
+            let _ = self;
         }
     }
 };
@@ -168,6 +177,51 @@ test_verify_one_file! {
 
             assert(res@ is Ok);
             assert(atomic_update.resolves());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_lifetime_escape
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        pub fn atomic_function()
+            atomically (atomic_update) {
+                (x: Token) -> (y: Result<Token, Token>),
+                requires x.is_valid(),
+                ensures match y {
+                    Ok(t) => t.is_valid(),
+                    Err(t) => t == x,
+                },
+            },
+        {
+            let tracked escape;
+            let res = try_open_atomic_update!(atomic_update, token => {
+                proof { escape = &token };
+                Tracked(Ok(Token::new()))
+            });
+
+            proof { escape.visit() };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_lifetime_escape_ref
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        pub fn atomic_function()
+            atomically (atomic_update) {
+                (x: &Token) -> (y: I<&Token>),
+                requires x.is_valid(),
+                ensures true,
+            },
+        {
+            let tracked escape;
+            let res = try_open_atomic_update!(atomic_update, token => {
+                proof { escape = token };
+                Tracked(I(token))
+            });
+
+            proof { escape.visit() };
         }
     } => Ok(())
 }
