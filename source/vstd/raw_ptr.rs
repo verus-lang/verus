@@ -20,7 +20,6 @@ they can be seamlessly cast to and fro.
 
 #[cfg(verus_keep_ghost)]
 use super::arithmetic::div_mod::*;
-use super::arithmetic::div_mod::*;
 #[cfg(verus_keep_ghost)]
 use super::arithmetic::mul::*;
 #[cfg(verus_keep_ghost)]
@@ -282,6 +281,9 @@ impl<T: ?Sized> PointsTo<T> {
         self.inner.ptr()
     }
 
+    /// https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    /// https://doc.rust-lang.org/std/ptr/index.html#alignment
+    /// Guarantee that the `PointsTo` points to an aligned address.
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
         let v: &T = arbitrary();
@@ -345,13 +347,6 @@ impl<T> PointsTo<T> {
         self.as_unaligned().is_nonnull()
     }
 
-    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-    // https://doc.rust-lang.org/std/ptr/index.html#alignment
-    /// Guarantee that the `PointsTo` points to an aligned address.
-    // pub axiom fn is_aligned(tracked &self)
-    // ensures
-    // self.ptr()@.addr as nat % align_of::<T>() == 0,
-    // ;
     /// "Forgets" about the value stored behind the pointer.
     /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
     /// Note that this is a `proof` function, i.e.,
@@ -603,21 +598,8 @@ impl<T> PointsTo<[T]> {
         self.inner.is_nonnull();
     }
 
-    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-    // https://doc.rust-lang.org/std/ptr/index.html#alignment
-    /// Guarantee that the `PointsTo` points to an aligned address.
-    // pub axiom fn is_aligned(tracked &self)
-    // ensures
-    // self.ptr()@.addr as nat % align_of::<T>() == 0,
-    // ;
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
-    pub proof fn ptr_bounds(
-        tracked &self,
-    )
-    // Q: do I need this requires? When the memory is zero-sized, is it true that we don't expect it to be "in bounds"?
-
-        requires
-            self.mem_contents_seq().len() * size_of::<T>() != 0,
+    pub proof fn ptr_bounds(tracked &self)
         ensures
             self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
             self.ptr()@.addr + self.mem_contents_seq().len() * size_of::<T>()
@@ -644,7 +626,6 @@ impl<T> PointsTo<[T]> {
                 start_index as int + len as int,
             ),
     {
-        // self.is_aligned();
         broadcast use axiom_ptr_mut_from_data;
         broadcast use crate::vstd::group_vstd_default;
         broadcast use group_layout_axioms;
@@ -965,8 +946,6 @@ impl<T> PointsToUnaligned<[T]> {
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub axiom fn ptr_bounds(tracked &self)
-        requires
-            self.mem_contents_seq().len() * size_of::<T>() != 0,
         ensures
             self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
             self.ptr()@.addr + self.mem_contents_seq().len() * size_of::<T>()
@@ -1084,10 +1063,10 @@ impl<T> PointsToUnaligned<[T]> {
             points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
     ;
 
-    /// We can always convert a `PointsTo<[T]>` into a `MapPointsTo<T>` for the same pointer,
-    /// whose keys are the valid slice indices
-    /// and whose values are individual `PointsTo<T>` with the same memory contents.
-    /// Requires the pointer address to be properly aligned.
+    /// We can always convert a PointsToUnaligned<[T]> into a MapPointsTo<T> for the
+    /// same pointer, whose keys are the valid slice indices and whose values are individual
+    /// PointsTo<T> with the same memory contents. Requires the pointer address to be
+    /// properly aligned.
     pub axiom fn into_map(tracked self) -> (tracked m: MapPointsTo<T>)
         requires
             self.ptr()@.addr as int % align_of::<T>() as int == 0,
@@ -1500,10 +1479,10 @@ impl<T> MapPointsTo<T> {
 
     /// Guarantees that the pointer address is non-null,
     /// because it falls within an allocation and the start address of an allocation is non-null.
-    // /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
-    // ///
-    // // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    // // See https://doc.rust-lang.org/std/ptr/#safety
+    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
+    ///
+    /// ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
+    /// See https://doc.rust-lang.org/std/ptr/#safety
     pub proof fn is_nonnull(tracked &self)
         ensures
             self.ptr()@.addr != 0,
@@ -1511,52 +1490,7 @@ impl<T> MapPointsTo<T> {
         use_type_invariant(self);
         broadcast use is_nonnull;
 
-    }  // // https:
-    //doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-    // // https://doc.rust-lang.org/std/ptr/index.html#alignment
-    // /// Guarantee that the `PointsTo` points to an aligned address.
-    // ///
-    // // Note that even for ZSTs, pointers need to be aligned.
-    // pub proof fn is_aligned(tracked &self)
-    //     ensures
-    //         self.ptr()@.addr as nat % align_of::<T>() == 0,
-    // {
-    // Make it an invariant instead?
-    // Does this imply that the addresses for the individual PointsTo's are aligned?
-    // Yes, because the addresses are `size_of::<T>()` away from the initial address as per the invariant,
-    // and `size_of::<T>() % align_of::<T>() == 0`.
-    // Does the alignment of the individual PointsTo's imply alignment of the initial pointer?
-    // What if the map is empty?
-    // }
-    // /// The memory associated with a pointer should always be within bounds of its spatial provenance.
-    // pub proof fn ptr_bounds(
-    //     tracked &self,
-    // )
-    // // TODO: do I need this requires?
-    //     requires
-    //         size_of::<T>() * self.ptr()@.metadata != 0,
-    //     ensures
-    //         self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
-    //         self.ptr()@.addr + self.ptr()@.metadata * size_of::<T>()
-    //             <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
-    // {
-    // }
-    // /// "Forgets" about the value stored behind the pointer.
-    // /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
-    // /// Note that this is a `proof` function, i.e.,
-    // /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
-    // /// Only the proof-code representation changes.
-    // ///
-    // /// TODO-E: replace w/version that forgets about entry - entry in sequence, by index
-    // /// ie add index param
-    // /// skip unless i need it
-    // /// Q: What does this mean?
-    // pub axiom fn leak_contents(tracked &mut self)
-    //     ensures
-    //         self.ptr() == old(self).ptr(),
-    //         self.is_uninit(),
-    // ;
-
+    }
 }
 
 impl<T> MemContents<T> {
