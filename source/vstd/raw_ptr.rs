@@ -141,7 +141,6 @@ pub broadcast axiom fn is_nonnull(p: Provenance)
 
 pub broadcast group group_provenance_properties {
     alloc_bound,
-    prov_alignment_properties,
     start_addr_aligned,
     is_nonnull,
 }
@@ -755,7 +754,7 @@ impl<T> PointsTo<[T]> {
                 },
             ),
             points_to.is_init(),
-            points_to.value() as int == to_big_ne::<V, T>(self.value()).index(0),
+            points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
     {
         broadcast use axiom_ptr_mut_from_data;
 
@@ -793,7 +792,7 @@ impl<T> PointsTo<[T]> {
                 },
             ),
             points_to.is_init(),
-            points_to.value() as int == to_big_ne::<V, T>(self.value()).index(0),
+            points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
     {
         self.inner.cast_points_to_unaligned::<V>()
     }
@@ -1019,7 +1018,7 @@ impl<T> PointsToUnaligned<[T]> {
                 },
             ),
             points_to.is_init(),
-            points_to.value() as int == to_big_ne::<V, T>(self.value()).index(0),
+            points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
     ;
 
     /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
@@ -1063,34 +1062,6 @@ impl<T> PointsToUnaligned<[T]> {
             ),
             points_to.is_init(),
             points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
-    ;
-
-    /// "Forgets" about the value stored behind the pointer.
-    /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
-    /// Note that this is a `proof` function, i.e.,
-    /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
-    /// Only the proof-code representation changes.
-    ///
-    /// TODO-E: replace w/version that forgets about entry - entry in sequence, by index
-    /// ie add index param
-    /// skip unless i need it
-    /// Q: What does this mean?
-    // pub axiom fn leak_contents(tracked &mut self)
-    //     ensures
-    //         self.ptr() == old(self).ptr(),
-    //         self.is_uninit(),
-    // ;
-    /// Guarantees that the memory ranges associated with two permissions will not overlap,
-    /// since you cannot have two permissions to the same memory.
-    ///
-    /// Note: If both S and T are non-zero-sized, then this implies the pointers
-    /// have distinct addresses.
-    pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<[S]>)
-        ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<T>() * self.mem_contents_seq().len() <= other.ptr() as int
-                || other.ptr() as int + size_of::<S>() * other.mem_contents_seq().len()
-                <= self.ptr() as int,
     ;
 
     /// We can always convert a `PointsTo<[T]>` into a `MapPointsTo<T>` for the same pointer,
