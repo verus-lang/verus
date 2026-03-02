@@ -757,8 +757,17 @@ impl<T> PointsTo<[T]> {
             points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
     {
         broadcast use axiom_ptr_mut_from_data;
+        broadcast use crate::vstd::group_vstd_default;
 
-        let tracked pt_unaligned = self.inner.cast_points_to_unaligned::<V>();
+        let tracked ua = self.as_unaligned();
+
+        assert(ua.is_init());
+        assert(ua.value().len() * size_of::<T>() == size_of::<V>());
+
+        let tracked pt_unaligned = ua.cast_points_to_unaligned::<V>();
+
+        assert(self.value() =~= ua.value());
+
         pt_unaligned.as_aligned()
     }
 
@@ -794,7 +803,18 @@ impl<T> PointsTo<[T]> {
             points_to.is_init(),
             points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
     {
-        self.inner.cast_points_to_unaligned::<V>()
+        broadcast use crate::vstd::group_vstd_default;
+
+        let tracked ua = self.as_unaligned();
+
+        assert(ua.is_init());
+        assert(ua.value().len() * size_of::<T>() == size_of::<V>());
+
+        let tracked pt = ua.cast_points_to_unaligned::<V>();
+
+        assert(self.value() =~= ua.value());
+
+        pt
     }
 
     /// Guarantees that the memory ranges associated with two permissions will not overlap,
