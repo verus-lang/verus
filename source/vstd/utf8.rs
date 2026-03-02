@@ -673,8 +673,7 @@ pub proof fn decode_utf8_encode_utf8(bytes: Seq<u8>)
 /* ascii */
 
 pub open spec fn is_ascii_chars(chars: Seq<char>) -> bool {
-    forall |i| 0 <= i < chars.len() ==> '\0' <= #[trigger] chars[i] <= '\x7f'
-
+    forall|i| 0 <= i < chars.len() ==> '\0' <= #[trigger] chars[i] <= '\x7f'
 }
 
 // todo - add to a broadcast group
@@ -702,15 +701,17 @@ pub broadcast proof fn is_ascii_chars_encode_utf8(chars: Seq<char>)
 
 pub broadcast proof fn is_ascii_chars_nat_bound(chars: Seq<char>)
     ensures
-        #[trigger] is_ascii_chars(chars) ==> forall|i: int| 0 <= i < chars.len() ==> (chars.index(i) as nat) < 128
-{}
+        #[trigger] is_ascii_chars(chars) ==> forall|i: int|
+            0 <= i < chars.len() ==> (chars.index(i) as nat) < 128,
+{
+}
 
 pub broadcast proof fn is_ascii_chars_concat(c1: Seq<char>, c2: Seq<char>, c3: Seq<char>)
     requires
         c1 =~= c2 + c3,
     ensures
         #![trigger c2 + c3, is_ascii_chars(c1), is_ascii_chars(c2), is_ascii_chars(c3)]
-        is_ascii_chars(c1) <==> is_ascii_chars(c2) && is_ascii_chars(c3)
+        is_ascii_chars(c1) <==> is_ascii_chars(c2) && is_ascii_chars(c3),
 {
     if (is_ascii_chars(c1)) {
         assert(c2 =~= c1.subrange(0, c2.len() as int));
@@ -719,5 +720,4 @@ pub broadcast proof fn is_ascii_chars_concat(c1: Seq<char>, c2: Seq<char>, c3: S
 }
 
 // todo - create broadcast group
-
 } // verus!

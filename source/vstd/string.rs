@@ -32,7 +32,7 @@ impl DeepView for str {
     open spec fn deep_view(&self) -> Seq<char> {
         self.view()
     }
-}  
+}
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub trait StringSliceAdditionalSpecFns {
@@ -54,7 +54,10 @@ pub open spec fn is_ascii(s: &str) -> bool {
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub broadcast proof fn is_ascii_spec_bytes(s: &str)
     ensures
-        #[trigger] is_ascii(s) ==> #[trigger] s.spec_bytes() =~= Seq::new(s@.len(), |i| s@.index(i) as u8)
+        #[trigger] is_ascii(s) ==> #[trigger] s.spec_bytes() =~= Seq::new(
+            s@.len(),
+            |i| s@.index(i) as u8,
+        ),
 {
     if (is_ascii(s)) {
         is_ascii_chars_encode_utf8(s@);
@@ -67,9 +70,10 @@ pub broadcast proof fn is_ascii_concat(s1: &str, s2: &str, s3: &str)
         s1@ =~= s2@ + s3@,
     ensures
         #![trigger s2@ + s3@, is_ascii(s1), is_ascii(s2), is_ascii(s3)]
-        is_ascii(s1) <==> is_ascii(s2) && is_ascii(s3)
+        is_ascii(s1) <==> is_ascii(s2) && is_ascii(s3),
 {
     broadcast use is_ascii_chars_concat;
+
     if (is_ascii(s1)) {
         is_ascii_chars_concat(s1@, s2@, s3@);
     }
@@ -118,18 +122,18 @@ pub assume_specification[ str::is_char_boundary ](s: &str, index: usize) -> (res
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &str))
     requires
-        is_char_boundary(s.spec_bytes(), mid as int)
+        is_char_boundary(s.spec_bytes(), mid as int),
     ensures
         res.0.spec_bytes() =~= s.spec_bytes().subrange(0, mid as int),
-        res.1.spec_bytes() =~= s.spec_bytes().subrange(mid as int, s.spec_bytes().len() as int)
+        res.1.spec_bytes() =~= s.spec_bytes().subrange(mid as int, s.spec_bytes().len() as int),
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification[ str::from_utf8_unchecked ](v: &[u8]) -> (res: &str)
     requires
-        valid_utf8(v@)
+        valid_utf8(v@),
     ensures
-        res.spec_bytes() =~= v@
+        res.spec_bytes() =~= v@,
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
@@ -199,7 +203,9 @@ impl StrSliceExecFns for str {
     fn substring_ascii<'a>(&'a self, from: usize, to: usize) -> (ret: &'a str)
         requires
             self.is_ascii(),
-            from <= to <= self@.len(), // MODIFIED - Range::index panics if from > to
+            from <= to
+                <= self@.len(),  // MODIFIED - Range::index panics if from > to
+
         ensures
             ret@ == self@.subrange(from as int, to as int),
             ret.is_ascii(),
@@ -210,7 +216,9 @@ impl StrSliceExecFns for str {
     #[verifier::external_body]
     fn substring_char<'a>(&'a self, from: usize, to: usize) -> (ret: &'a str)
         requires
-            from <= to <= self@.len(), // MODIFIED - Range::index panics if from > to
+            from <= to
+                <= self@.len(),  // MODIFIED - Range::index panics if from > to
+
         ensures
             ret@ == self@.subrange(from as int, to as int),
     {
@@ -242,7 +250,8 @@ impl StrSliceExecFns for str {
     fn get_ascii(&self, i: usize) -> (b: u8)
         requires
             self.is_ascii(),
-            0 <= i < self@.len() // NEW - would panic if i is not a valid index
+            0 <= i < self@.len(),  // NEW - would panic if i is not a valid index
+
         ensures
             self@.index(i as int) as u8 == b,
     {
@@ -365,9 +374,9 @@ pub trait StringExecFnsIsAscii: Sized {
 impl StringExecFnsIsAscii for String {
     #[inline(always)]
     #[verifier::when_used_as_spec(string_is_ascii)]
-    fn is_ascii(&self) -> (ret: bool) 
+    fn is_ascii(&self) -> (ret: bool)
         ensures
-            ret == string_is_ascii(self)
+            ret == string_is_ascii(self),
     {
         self.as_str().is_ascii()
     }
