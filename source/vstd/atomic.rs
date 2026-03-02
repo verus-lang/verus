@@ -839,12 +839,21 @@ pub struct BlockGuard<T> {
 }
 
 #[cfg(verus_keep_ghost)]
+#[doc(hidden)]
+#[verifier::external]  /* vattr */
+pub fn bind_lifetime_internal<'a, X: 'a, Y, P>(
+    _block_guard: &'a BlockGuard<AtomicUpdate<X, Y, P>>
+) -> X {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::vstd::atomic::try_open_atomic_update_begin"]
 #[doc(hidden)]
 #[verifier::external]  /* vattr */
 pub fn try_open_atomic_update_begin<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
     _atomic_update: AtomicUpdate<X, Y, P>,
-) -> (BlockGuard<AtomicUpdate<X, Y, P>>, X) {
+) -> BlockGuard<AtomicUpdate<X, Y, P>> {
     unimplemented!()
 }
 
@@ -1051,7 +1060,9 @@ macro_rules! try_open_atomic_update_internal {
     ($au:expr, $x:pat => $body:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            let (guard, $x) = $crate::atomic::try_open_atomic_update_begin($au);
+            let guard = $crate::atomic::try_open_atomic_update_begin($au);
+            #[cfg(verus_keep_ghost_body)]
+            let $x = $crate::atomic::bind_lifetime_internal(&guard);
             let res = $body;
 
             match res {
