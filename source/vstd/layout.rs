@@ -431,6 +431,12 @@ pub broadcast axiom fn layout_of_str(x: &str)
 
 ;
 
+// JAKE TODO: link to where in the documentation this axiom is justified!
+pub broadcast axiom fn layout_of_sized<T>(v: &T)
+    ensures
+        #[trigger] spec_align_of_val::<T>(v) == align_of::<T>(),
+;
+
 pub broadcast group group_align_properties {
     align_properties,
     align_nonzero,
@@ -443,6 +449,7 @@ pub broadcast group group_layout_axioms {
     layout_of_references_and_pointers_for_sized_types,
     layout_of_references_and_pointers_for_unsized_types,
     layout_of_slices,
+    layout_of_sized,
     layout_of_str,
     group_align_properties,
 }
