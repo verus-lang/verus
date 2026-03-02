@@ -336,10 +336,9 @@ impl<T> PointsTo<T> {
     // https://doc.rust-lang.org/std/ptr/index.html#alignment
     /// Guarantee that the `PointsTo` points to an aligned address.
     // pub axiom fn is_aligned(tracked &self)
-        // ensures
-            // self.ptr()@.addr as nat % align_of::<T>() == 0,
+    // ensures
+    // self.ptr()@.addr as nat % align_of::<T>() == 0,
     // ;
-
     /// "Forgets" about the value stored behind the pointer.
     /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
     /// Note that this is a `proof` function, i.e.,
@@ -353,6 +352,7 @@ impl<T> PointsTo<T> {
             self.is_uninit(),
     {
         broadcast use layout_of_sized;
+
         use_type_invariant(&*self);
         self.inner.leak_contents();
     }
@@ -382,6 +382,7 @@ impl<T> PointsTo<T> {
                 + size_of::<S>() <= self.ptr() as int,
     {
         broadcast use layout_of_sized;
+
         use_type_invariant(&*self);
         self.inner.is_disjoint(&other.inner)
     }
@@ -486,6 +487,7 @@ impl<T> PointsToUnaligned<T> {
     {
         broadcast use layout_of_sized;
         // use_type_invariant(self);
+
         PointsTo { inner: self }
     }
 
@@ -581,10 +583,9 @@ impl<T> PointsTo<[T]> {
     // https://doc.rust-lang.org/std/ptr/index.html#alignment
     /// Guarantee that the `PointsTo` points to an aligned address.
     // pub axiom fn is_aligned(tracked &self)
-        // ensures
-            // self.ptr()@.addr as nat % align_of::<T>() == 0,
+    // ensures
+    // self.ptr()@.addr as nat % align_of::<T>() == 0,
     // ;
-
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub proof fn ptr_bounds(
         tracked &self,
@@ -667,6 +668,7 @@ impl<T> PointsTo<[T]> {
             broadcast use lemma_mul_mod_noop_right;
             broadcast use lemma_add_mod_noop;
             broadcast use layout_of_sized;
+
         };
 
         let tracked unaligned_sub = self.inner.subrange(start_index, len);
@@ -784,6 +786,7 @@ impl<T> PointsTo<[T]> {
                 <= self.ptr() as int,
     {
         broadcast use layout_of_sized;
+
         use_type_invariant(&*self);
         self.inner.is_disjoint(&other.inner)
     }
@@ -830,6 +833,7 @@ impl<T> PointsTo<[T]> {
     {
         broadcast use layout_of_sized;
         broadcast use layout_of_slices;
+
         let ghost v: &[T] = arbitrary();
         assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
         use_type_invariant(&self);
@@ -857,6 +861,7 @@ impl<T> PointsTo<[T]> {
     {
         broadcast use layout_of_sized;
         broadcast use layout_of_slices;
+
         let ghost v: &[T] = arbitrary();
         assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
         use_type_invariant(&*self);
@@ -944,6 +949,7 @@ impl<T> PointsToUnaligned<[T]> {
     {
         broadcast use layout_of_sized;
         broadcast use layout_of_slices;
+
         let ghost v: &[T] = arbitrary();
         assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
         assert(self.ptr()@.addr as int % spec_align_of_val::<[T]>(v) as int == 0);
