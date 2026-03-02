@@ -363,6 +363,14 @@ impl<V> PPtr<V> {
                     p != 0,
             ;
             let tracked emp = PointsToRaw::empty(Provenance::null());
+            proof {
+                assert forall|i: int|
+                    #[trigger] Set::<int>::range(p as int, p as int).contains(i) == Set::<int>::empty().contains(i) by {
+                    super::set::lemma_set_range_int_contains(p as int, p as int, i);
+                }
+                super::set::lemma_set_ext_equal(Set::<int>::range(p as int, p as int), Set::<int>::empty());
+                assert(emp.is_range(p as int, 0));
+            }
             let tracked points_to = emp.into_typed(p);
             let tracked pt = PointsTo { points_to, exposed: IsExposed::null(), dealloc: None };
             let pptr = PPtr(p, PhantomData);
