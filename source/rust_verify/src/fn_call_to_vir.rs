@@ -550,9 +550,10 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                     SpecItem::Ensures | SpecItem::Returns => (true, true),
 
-                    SpecItem::AtomicSpec | SpecItem::AtomicCallLoop | SpecItem::Atomically => {
-                        (false, false)
-                    }
+                    SpecItem::AtomicSpec
+                    | SpecItem::AtomicCallLoop
+                    | SpecItem::Atomically
+                    | SpecItem::TryOpenAU => (false, false),
                 };
                 if sig {
                     &BodyCtxt { in_fn_sig: sig, in_postcondition: postcondition, ..bctx.clone() }
@@ -809,6 +810,81 @@ fn verus_item_to_vir<'tcx, 'a>(
                     record_spec_fn_no_proof_args(bctx, expr);
                     let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
                     mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg, msg: None })
+                }
+                SpecItem::TryOpenAU => {
+                    // ```
+                    // let _verus_internal_identifier_for_closures = ::vstd::prelude::dummy_capture_new();
+                    // ::vstd::atomic::try_open_au($au, |$x| {
+                    //     ::verus_builtin::dummy_capture_consume(_verus_internal_identifier_for_closures);
+                    //     $body
+                    // })
+                    // ```
+
+                    fn malformed_err<'tcx, X>(expr: &Expr<'tcx>) -> Result<X, VirErr> {
+                        err_span(
+                            expr.span,
+                            "malformed atomic update block; use `try_open_atomic_update!` macro instead",
+                        )
+                    }
+
+                    let [
+                        au_expr,
+                        Expr {
+                            kind:
+                                ExprKind::Block(
+                                    Block {
+                                        expr: Some(Expr { kind: ExprKind::Closure(closure), .. }),
+                                        ..
+                                    },
+                                    None,
+                                ),
+                            ..
+                        },
+                    ] = args.as_slice()
+                    else {
+                        return malformed_err(expr);
+                    };
+
+                    let body = tcx.hir_body(closure.body);
+                    let [x_param] = body.params else {
+                        panic!("the closure should take exactly two argument")
+                    };
+
+                    let x_pat @ rustc_hir::Pat {
+                        kind:
+                            rustc_hir::PatKind::Binding(
+                                rustc_ast::BindingMode(rustc_ast::ByRef::No, x_mut),
+                                x_bind,
+                                _,
+                                None,
+                            ),
+                        default_binding_modes: true,
+                        ..
+                    } = &x_param.pat
+                    else {
+                        return malformed_err(expr);
+                    };
+
+                    let ExprKind::Block(Block { expr: Some(body_expr), .. }, None) =
+                        &body.value.kind
+                    else {
+                        return malformed_err(expr);
+                    };
+
+                    let au_vir_arg = expr_to_vir_consume(bctx, au_expr, outer_modifier)?;
+                    let au_vir_binder = Arc::new(VarBinderX {
+                        name: pat_to_var(x_pat)?,
+                        a: typ_of_node_unadjusted(bctx, x_pat.span, x_bind, true)?,
+                    });
+
+                    let vir_body = expr_to_vir_consume(bctx, body_expr, outer_modifier)?;
+
+                    mk_expr(ExprX::TryOpenAtomicUpdate(
+                        au_vir_arg,
+                        au_vir_binder,
+                        x_mut.is_mut(),
+                        vir_body,
+                    ))
                 }
                 SpecItem::Atomically => {
                     // The atomic function call expands as follows:

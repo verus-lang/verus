@@ -194,7 +194,9 @@ test_verify_one_file! {
                 },
             },
         {
-            let tracked escape;
+            let tracked dummy = Token::invalid();
+            let tracked mut escape = &dummy;
+
             let res = try_open_atomic_update!(atomic_update, token => {
                 proof { escape = &token };
                 Tracked(Ok(Token::new()))
@@ -202,7 +204,7 @@ test_verify_one_file! {
 
             proof { escape.visit() };
         }
-    } => Ok(())
+    } => Err(err) => assert_rust_error_msg_any(err, "borrowed data escapes outside of closure")
 }
 
 test_verify_one_file! {
@@ -215,7 +217,9 @@ test_verify_one_file! {
                 ensures true,
             },
         {
-            let tracked escape;
+            let tracked dummy = Token::invalid();
+            let tracked mut escape = &dummy;
+
             let res = try_open_atomic_update!(atomic_update, token => {
                 proof { escape = token };
                 Tracked(I(token))
@@ -223,7 +227,7 @@ test_verify_one_file! {
 
             proof { escape.visit() };
         }
-    } => Ok(())
+    } => Ok(()) //Err(err) => assert_rust_error_msg_any(err, "borrowed data escapes outside of closure")
 }
 
 static ATOMIC_FUNCTION: LazyLock<String> = LazyLock::new(|| {

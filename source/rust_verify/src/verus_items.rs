@@ -110,6 +110,7 @@ pub(crate) enum SpecItem {
     InvMaskListCompl,
     InvMaskSet,
     Atomically,
+    TryOpenAU,
     NoUnwind,
     NoUnwindWhen,
 }
@@ -622,6 +623,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
         ("verus::vstd::atomic::atomically",               VerusItem::Spec(SpecItem::Atomically)),
+        ("verus::vstd::atomic::try_open_au",              VerusItem::Spec(SpecItem::TryOpenAU)),
         ("verus::vstd::atomic::pred_args",                VerusItem::Vstd(VstdItem::PredArgs,                                              Some(Arc::new("atomic::pred_args".to_owned())))),
         ("verus::vstd::atomic::branch_bool",              VerusItem::Vstd(VstdItem::BranchBool,                                            Some(Arc::new("atomic::branch_bool".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::req",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateReq),       Some(Arc::new("atomic::AtomicUpdate::req".to_owned())))),

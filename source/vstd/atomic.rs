@@ -833,6 +833,18 @@ pub fn atomically<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
 }
 
 // Definitions for `try_open_atomic_update` macro
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::atomic::try_open_au"]
+#[doc(hidden)]
+#[verifier::external_body]
+pub fn try_open_au<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
+    _atomic_update: AtomicUpdate<X, Y, P>,
+    _body: impl FnOnce(X) -> Tracked<Y>,
+) -> Tracked<Result<(), AtomicUpdate<X, Y, P>>> {
+    arbitrary()
+}
+
+// Definitions for `try_open_atomic_update` macro
 #[doc(hidden)]
 pub struct BlockGuard<T> {
     _inner: core::marker::PhantomData<T>,
@@ -1057,21 +1069,40 @@ macro_rules! try_open_atomic_update_internal {
         })
     };
 
+    // ($au:expr, $x:pat => $body:block) => {
+    //     #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
+    //         #[cfg(verus_keep_ghost_body)]
+    //         let guard = $crate::atomic::try_open_atomic_update_begin($au);
+    //         #[cfg(verus_keep_ghost_body)]
+    //         let $x = $crate::atomic::bind_lifetime_internal(&guard);
+    //         let res = $body;
+
+    //         match res {
+    //             #[cfg(verus_keep_ghost_body)]
+    //             res => $crate::atomic::try_open_atomic_update_end(guard, res),
+
+    //             #[cfg(not(verus_keep_ghost_body))]
+    //             _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+    //         }
+    //     }
+    // };
+
     ($au:expr, $x:pat => $body:block) => {
-        #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
+        match () {
             #[cfg(verus_keep_ghost_body)]
-            let guard = $crate::atomic::try_open_atomic_update_begin($au);
-            #[cfg(verus_keep_ghost_body)]
-            let $x = $crate::atomic::bind_lifetime_internal(&guard);
-            let res = $body;
+            _ => $crate::atomic::try_open_au($au, {
+                let _verus_internal_identifier_for_closures = ::verus_builtin::dummy_capture_new();
+                |$x| {
+                    ::verus_builtin::dummy_capture_consume(_verus_internal_identifier_for_closures);
+                    $body
+                }
+            }),
 
-            match res {
-                #[cfg(verus_keep_ghost_body)]
-                res => $crate::atomic::try_open_atomic_update_end(guard, res),
-
-                #[cfg(not(verus_keep_ghost_body))]
-                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
-            }
+            #[cfg(not(verus_keep_ghost_body))]
+            _ => {
+                let _ = $body;
+                ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!())
+            },
         }
     };
 }

@@ -1408,6 +1408,17 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
 }
 
 pub(crate) fn get_closure_expr<'tcx>(e: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
+    // NOTE: We expect every closuse to have exactly this form:
+    //
+    // {
+    //     let _verus_internal_dummy_capture = ::builtin::dummy_capture_new();
+    //     || { ... }
+    // }
+    //
+    // This function is invoked when we detect the capture dummy, and tries
+    // to find the corresponding closure expression. Is there are any other
+    // statements in the block, this function will fail.
+
     match &e.kind {
         hir::ExprKind::Closure(_) => e,
         hir::ExprKind::Call(_f, args) => get_closure_expr(&args[0]),
