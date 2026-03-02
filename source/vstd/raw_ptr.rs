@@ -121,6 +121,13 @@ pub broadcast axiom fn prov_alignment(p: Provenance)
             + 1,
 ;
 
+/// The start address of an allocation should be aligned to the allocation's alignment,
+/// as per the postcondition of `Allocator::allocate`.
+pub broadcast axiom fn start_addr_aligned(p: Provenance)
+    ensures
+        #[trigger] p.start_addr() as nat % #[trigger] p.alignment() == 0,
+;
+
 /// Allocations should always start with a non-null address, even zero-sized allocations.
 /// `Allocator::allocate` returns a `NonNull` pointer, and documentation here
 /// (https://doc.rust-lang.org/1.88.0/core/alloc/trait.Allocator.html)
@@ -131,6 +138,13 @@ pub broadcast axiom fn is_nonnull(p: Provenance)
     ensures
         #[trigger] p.start_addr() != 0,
 ;
+
+pub broadcast group group_provenance_properties {
+    alloc_bound,
+    prov_alignment_properties,
+    start_addr_aligned,
+    is_nonnull,
+}
 
 /// Metadata
 ///
@@ -529,12 +543,11 @@ impl<T> PointsTo<[T]> {
 
     /// Returns `true` if all of the permission's associated memory is initialized.
     pub open spec fn is_init(&self) -> bool {
-        forall|i|
-            0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
+        self.is_init_subrange(0, self.mem_contents_seq().len())
     }
 
     /// Returns `true` if all of the permission's associated memory in the given subrange is initialized.
-    pub open spec fn is_init_subrange(&self, start_index: int, len: int) -> bool
+    pub open spec fn is_init_subrange(&self, start_index: int, len: nat) -> bool
         recommends
             0 <= start_index <= start_index + len <= self.mem_contents_seq().len(),
     {
@@ -561,7 +574,19 @@ impl<T> PointsTo<[T]> {
         recommends
             self.is_init(),
     {
-        Seq::new(self.mem_contents_seq().len(), |i| self.mem_contents_seq().index(i).value())
+        self.value_subrange(0, self.mem_contents_seq().len())
+    }
+
+    /// Returns a sequence where for each index in the given range,
+    /// if the permission's associated memory at that index is initialized,
+    /// the corresponding index in the sequence holds that value.
+    /// Otherwise, the value at that index is meaningless.
+    pub open spec fn value_subrange(&self, start_index: int, len: nat) -> Seq<T>
+        recommends
+            0 <= start_index <= start_index + len <= self.mem_contents_seq().len(),
+            self.is_init_subrange(start_index, len),
+    {
+        Seq::new(len, |i| self.mem_contents_seq().index(start_index + i).value())
     }
 
     /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
@@ -1017,6 +1042,58 @@ impl<T> PointsToUnaligned<[T]> {
     ;
 
     /// We can always convert a `PointsToUnaligned<[T]>` into a `MapPointsTo<T>` for the same pointer,
+    /// Provided that memory is initialized, the pointer's address is aligned to `V`,
+    /// and `self.value().len() * size_of::<T>() == size_of::<V>()`,
+    /// we can always cast a `[T]` permission to a `V` permission.
+    pub axiom fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>) where
+        T: CompatibleSmallerBaseFor<V> + Integer,
+        V: BasePow2 + Integer,
+
+        requires
+            self.is_init(),
+            self.ptr()@.addr as int % align_of::<V>() as int == 0,
+            self.value().len() * size_of::<T>() == size_of::<V>(),
+        ensures
+            points_to.ptr() == ptr_mut_from_data::<V>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (),
+                },
+            ),
+            points_to.is_init(),
+            points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
+    ;
+
+    /// "Forgets" about the value stored behind the pointer.
+    /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
+    /// Note that this is a `proof` function, i.e.,
+    /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
+    /// Only the proof-code representation changes.
+    ///
+    /// TODO-E: replace w/version that forgets about entry - entry in sequence, by index
+    /// ie add index param
+    /// skip unless i need it
+    /// Q: What does this mean?
+    // pub axiom fn leak_contents(tracked &mut self)
+    //     ensures
+    //         self.ptr() == old(self).ptr(),
+    //         self.is_uninit(),
+    // ;
+    /// Guarantees that the memory ranges associated with two permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    ///
+    /// Note: If both S and T are non-zero-sized, then this implies the pointers
+    /// have distinct addresses.
+    pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<[S]>)
+        ensures
+            *old(self) == *self,
+            self.ptr() as int + size_of::<T>() * self.mem_contents_seq().len() <= other.ptr() as int
+                || other.ptr() as int + size_of::<S>() * other.mem_contents_seq().len()
+                <= self.ptr() as int,
+    ;
+
+    /// We can always convert a `PointsTo<[T]>` into a `MapPointsTo<T>` for the same pointer,
     /// whose keys are the valid slice indices
     /// and whose values are individual `PointsTo<T>` with the same memory contents.
     /// Requires the pointer address to be properly aligned.
@@ -1105,7 +1182,7 @@ impl PointsTo<str> {
     ;
 }
 
-pub struct MapPointsTo<T> {
+pub tracked struct MapPointsTo<T> {
     points_to: Map<nat, PointsTo<T>>,
     ghost ptr: *mut [T],
 }
@@ -2064,11 +2141,9 @@ pub tracked struct Dealloc {
 
 /// Data associated with a `Dealloc` permission.
 pub ghost struct DeallocData {
-    pub addr: usize,
+    /// The originally requested size to be allocated. May be smaller than the actual allocated size.
     pub size: nat,
-    pub align: nat,
-    /// This should probably be some kind of "allocation ID" (with "allocation ID" being
-    /// only one part of a full Provenance definition).
+    /// The provenance of the allocation.
     pub provenance: Provenance,
 }
 
@@ -2078,7 +2153,7 @@ impl Dealloc {
     /// Start address of the allocation you are allowed to deallocate.
     #[verifier::inline]
     pub open spec fn addr(self) -> usize {
-        self.view().addr
+        self.view().provenance.start_addr()
     }
 
     /// Size of the allocation you are allowed to deallocate.
@@ -2090,7 +2165,7 @@ impl Dealloc {
     /// Alignment of the allocation you are allowed to deallocate.
     #[verifier::inline]
     pub open spec fn align(self) -> nat {
-        self.view().align
+        self.view().provenance.alignment()
     }
 
     /// Provenance of the allocation you are allowed to deallocate.
@@ -2103,6 +2178,10 @@ impl Dealloc {
 /// Allocate with the global allocator.
 /// The precondition should be consistent with the [documented safety conditions on `alloc`](https://doc.rust-lang.org/alloc/alloc/trait.GlobalAlloc.html#tymethod.alloc).
 /// Returns a pointer with a corresponding [`PointsToRaw`] and [`Dealloc`] permissions.
+///
+/// Here we allocate exactly the size of memory requested
+/// (shown by having both the `Dealloc` size and the `Provenance` `alloc_len` be the provided `size`)
+/// This is a stronger guarantee than `Allocator::allocate`, which may allocate a larger block of memory.
 #[cfg(feature = "std")]
 #[verifier::external_body]
 pub fn allocate(size: usize, align: usize) -> (pt: (
@@ -2116,15 +2195,12 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
     ensures
         pt.1@.is_range(pt.0.addr() as int, size as int),
         pt.0.addr() + size <= usize::MAX + 1,
-        pt.2@@ == (DeallocData {
-            addr: pt.0.addr(),
-            size: size as nat,
-            align: align as nat,
-            provenance: pt.1@.provenance(),
-        }),
+        pt.2@@ == (DeallocData { size: size as nat, provenance: pt.1@.provenance() }),
         pt.0.addr() as int % align as int == 0,
         pt.0@.provenance == pt.1@.provenance(),
         pt.1@.provenance().alloc_len() == size,
+        pt.1@.provenance().start_addr() == pt.0.addr(),
+        pt.1@.provenance().alignment() == align as nat,
     opens_invariants none
 {
     // SAFETY: valid_layout is a precondition
@@ -2144,6 +2220,11 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
 /// are satisfied; by also giving up permission of the [`PointsToRaw`] permission,
 /// we ensure there can be no use-after-free bug as a result of this deallocation.
 /// In order to do so, the parameters of the [`PointsToRaw`] and [`Dealloc`] permissions must match the parameters of the deallocation.
+///
+/// We have two different ways to track size within `dealloc`:
+/// `dealloc.size`, the original requested size, and `dealloc.provenance.alloc_len()`, the size of memory actually allocated.
+/// According to the `Allocator` documentation, it's possible to have `dealloc.size <= dealloc.provenance.alloc_len()`.
+/// Here, we restrict them to be the same.
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub fn deallocate(
@@ -2155,7 +2236,7 @@ pub fn deallocate(
 )
     requires
         dealloc.addr() == p.addr(),
-        dealloc.size() == size,
+        dealloc.size() == size == dealloc.provenance().alloc_len(),
         dealloc.align() == align,
         dealloc.provenance() == pt.provenance(),
         pt.is_range(dealloc.addr() as int, dealloc.size() as int),
