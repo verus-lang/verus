@@ -2003,7 +2003,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     };
 
                     let (target, vir_args, resolved_call) = if is_spec_fn {
-                        (CallTarget::FnSpec(vir_fun), vir_args, ResolvedCall::Spec)
+                        (CallTarget::FnSpec(vir_fun), vir_args, ResolvedCall::SpecPure)
                     } else {
                         if bctx.ctxt.no_vstd {
                             return err_span(
@@ -3519,7 +3519,7 @@ fn unwrap_parameter_to_vir<'tcx>(
         let mode = match verus_item {
             Some(VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(
                 SpecGhostTrackedItem::GhostView,
-            ))) => Some((Mode::Spec, ResolvedCall::Spec)),
+            ))) => Some((Mode::Spec, ResolvedCall::SpecAllowProofArgs)),
             Some(VerusItem::CompilableOpr(CompilableOprItem::TrackedGet)) => Some((
                 Mode::Proof,
                 ResolvedCall::CompilableOperator(CompilableOperator::TrackedGet),
