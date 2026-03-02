@@ -352,7 +352,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", arg)
             }
-            UnaryOp::StrLen | UnaryOp::StrIsAscii => panic!(
+            UnaryOp::StrLen => panic!(
                 "internal error: matching for bit vector ops on this match should be impossible"
             ),
             UnaryOp::InferSpecForLoopIter { .. } => {

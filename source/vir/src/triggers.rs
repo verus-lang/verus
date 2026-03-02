@@ -127,7 +127,6 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::RealToInt
             | UnaryOp::BitNot(_)
             | UnaryOp::StrLen
-            | UnaryOp::StrIsAscii
             | UnaryOp::CastToInteger
             | UnaryOp::MutRefCurrent
             | UnaryOp::MutRefFuture(_)
@@ -261,7 +260,6 @@ fn check_trigger_expr(
             }
             ExpX::Unary(op, arg) => match op {
                 UnaryOp::StrLen
-                | UnaryOp::StrIsAscii
                 | UnaryOp::BitNot(_)
                 | UnaryOp::MutRefCurrent
                 | UnaryOp::MutRefFuture(_)

@@ -1179,7 +1179,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | ToDyn
                         | StrLen
                         | Length(..)
-                        | StrIsAscii
                         | MutRefCurrent
                         | MutRefFuture(_)
                         | MutRefFinal(_)
@@ -1300,7 +1299,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | ToDyn
                         | StrLen
                         | Length(..)
-                        | StrIsAscii
                         | MutRefCurrent
                         | MutRefFuture(_)
                         | MutRefFinal(_)

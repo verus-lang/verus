@@ -1119,14 +1119,12 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
 
 pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {
     let strslice = str_to_node(strslice_name);
-    let strslice_is_ascii = str_to_node(STRSLICE_IS_ASCII);
     let strslice_len = str_to_node(STRSLICE_LEN);
     let strslice_get_char = str_to_node(STRSLICE_GET_CHAR);
     let new_strlit = str_to_node(STRSLICE_NEW_STRLIT);
     let from_strlit = str_to_node(STRSLICE_FROM_STRLIT);
     nodes_vec!(
         // Strings
-        (declare-fun [strslice_is_ascii] ([strslice]) Bool)
         (declare-fun [strslice_len] ([strslice]) Int)
         (declare-fun [strslice_get_char] ([strslice] Int) Int)
         (declare-fun [new_strlit] (Int) [strslice])
