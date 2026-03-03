@@ -10,7 +10,7 @@ use common::*;
 // Test 1: Union types are not supported
 test_verify_one_file! {
     #[test] test_union_not_supported (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type]
@@ -24,7 +24,7 @@ test_verify_one_file! {
 // Test 2: Generic type parameters are not supported (based on validate_input function)
 test_verify_one_file! {
     #[test] test_generic_type_params_not_supported (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type]
@@ -37,7 +37,7 @@ test_verify_one_file! {
 // Test 3: Self-referential types are not supported
 test_verify_one_file! {
     #[test] test_self_referential_not_supported (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type]
@@ -51,7 +51,7 @@ test_verify_one_file! {
 // Test 4: Wrong attribute name - using 'skip' instead of 'exclude'
 test_verify_one_file! {
     #[test] test_wrong_attribute_name (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type(skip(y))] // FAILS - 'skip' not recognized
@@ -65,7 +65,7 @@ test_verify_one_file! {
 // Test 5: Applying make_spec_type to a function (should fail)
 test_verify_one_file! {
     #[test] test_macro_on_function (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type]
@@ -78,7 +78,7 @@ test_verify_one_file! {
 // Test 6: Applying make_spec_type to a trait (should fail)
 test_verify_one_file! {
     #[test] test_macro_on_trait (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type]
@@ -91,7 +91,7 @@ test_verify_one_file! {
 // Test 7: self_view with attributes (not supported - takes no parameters)
 test_verify_one_file! {
     #[test] test_self_view_with_attributes (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[self_view(some_attribute)] // FAILS - self_view takes no parameters
@@ -105,7 +105,7 @@ test_verify_one_file! {
 // Test 8: Macro on module (should fail)
 test_verify_one_file! {
     #[test] test_macro_on_module (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type]
@@ -120,7 +120,7 @@ test_verify_one_file! {
 // Test 9: Types that don't implement DeepView (should fail at verification)
 test_verify_one_file! {
     #[test] test_missing_deep_view_trait (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         // Custom type that doesn't implement DeepView
@@ -138,7 +138,7 @@ test_verify_one_file! {
 // Test 10: Excluding non-existent fields should fail
 test_verify_one_file! {
     #[test] test_exclude_nonexistent_field_fails (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type(exclude(nonexistent_field))]
@@ -158,7 +158,7 @@ test_verify_one_file! {
 // Test 11: Excluding all fields from a struct should work
 test_verify_one_file! {
     #[test] test_exclude_all_fields_works (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type(exclude(x, y))]
@@ -179,7 +179,7 @@ test_verify_one_file! {
 // Test 12: Lifetimes are supported (not generic type parameters)
 test_verify_one_file! {
     #[test] test_lifetimes_supported (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type]
@@ -199,7 +199,7 @@ test_verify_one_file! {
 // Test 13: Self-referential types don't work even with Box
 test_verify_one_file! {
     #[test] test_recursive_with_box_works (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type]
@@ -213,7 +213,7 @@ test_verify_one_file! {
 // Test 14: self_view on Copy types should work
 test_verify_one_file! {
     #[test] test_self_view_copy_works (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[derive(Copy, Clone)]
@@ -235,7 +235,7 @@ test_verify_one_file! {
 // Test 15: Basic struct with make_spec_type (no exclude)
 test_verify_one_file! {
     #[test] test_basic_struct_make_spec_type (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type]
@@ -256,7 +256,7 @@ test_verify_one_file! {
 // Test 16: Complex struct with exclude and lifetimes
 test_verify_one_file! {
     #[test] test_complex_struct_with_exclude_and_lifetimes (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use std::collections::HashMap;
         use vstd::prelude::*;
 
@@ -339,7 +339,7 @@ test_verify_one_file! {
 // Test 19: Enum with make_spec_type - variant testing
 test_verify_one_file! {
     #[test] test_enum_make_spec_type_comprehensive (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[make_spec_type]
@@ -383,7 +383,7 @@ test_verify_one_file! {
 // Test 21: self_view on enum
 test_verify_one_file! {
     #[test] test_self_view_enum_comprehensive (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[self_view]
@@ -411,7 +411,7 @@ test_verify_one_file! {
 // Test 22: self_view on struct with complex types
 test_verify_one_file! {
     #[test] test_self_view_struct_comprehensive (code_str! {
-        use verus_builtin_macros::{make_spec_type, self_view};
+        use vstd::contrib::{make_spec_type, self_view};
         use vstd::prelude::*;
 
         #[self_view]
