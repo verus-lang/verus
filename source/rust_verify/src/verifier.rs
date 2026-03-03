@@ -1,11 +1,13 @@
+use crate::boundary_suggestions::build_boundary_suggestion;
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
+use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
-use crate::util::error;
+use crate::util::{HashMapAbsorbWith, error};
 use crate::verus_items::VerusItems;
 use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
@@ -23,6 +25,7 @@ use vir::messages::{
 
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
+use rustc_index::bit_set::DenseBitSet;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use rustc_span::def_id::LOCAL_CRATE;
@@ -91,9 +94,10 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         let mut multispan = MultiSpan::from_spans(v);
 
-        for MessageLabel { note, span: sp } in &msg.labels {
+        for MessageLabel { note, span: sp, is_proof_note } in &msg.labels {
+            let note = if *is_proof_note { format!("note: {}", note) } else { note.clone() };
             if let Some(span) = self.spans.from_air_span(&sp, Some(self.source_map)) {
-                multispan.push_span_label(span, note.clone());
+                multispan.push_span_label(span, note);
             } else {
                 dbg!(&note, &sp.as_string);
             }
@@ -132,7 +136,7 @@ impl air::messages::Diagnostics for Reporter<'_> {
         if let Some(fancy_note) = &msg.fancy_note {
             // The fancy_note might use terminal colors, which will get escaped if we use
             // the Rust emitter. Thus, we have to emit this note out-of-band.
-            eprintln!("{:}{:}", console::style("note: ").bright().blue().to_string(), fancy_note);
+            eprintln!("{:}{:}", console::style("note: ").bright().blue(), fancy_note);
         }
     }
 
@@ -253,16 +257,16 @@ impl Diagnostics for QueuedReporter {
 
 #[derive(Default)]
 pub struct BucketStats {
-    /// cummulative time in AIR to verify the bucket (this includes SMT solver time)
+    /// cumulative time in AIR to verify the bucket (this includes SMT solver time)
     pub time_air: Duration,
     /// time to initialize the SMT solver
     pub time_smt_init: Duration,
-    /// cummulative time of all SMT queries
+    /// cumulative time of all SMT queries
     pub time_smt_run: Duration,
     /// total time to verify the bucket
     pub time_verify: Duration,
-    /// total rlimit count for the bucket
-    pub rlimit_count: Option<u64>,
+    /// rlimit used to initialize and run the SMT solver
+    pub rlimit_count: Option<(u64, u64)>,
 }
 
 pub struct FunctionSmtStats {
@@ -283,6 +287,7 @@ pub struct Verifier {
     pub args: Args,
     pub user_filter: Option<UserFilter>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
+    pub(crate) verus_items: Option<Arc<VerusItems>>,
 
     /// total real time to verify all activated buckets of the crate, including real time for
     /// the parallel bucket verification
@@ -302,6 +307,11 @@ pub struct Verifier {
     /// smt runtimes for each function per bucket
     pub func_times: HashMap<BucketId, HashMap<Fun, FunctionSmtStats>>,
 
+    /// Details about each function
+    pub func_details: HashMap<Fun, FuncDetails>,
+    /// Errors to report after verification has run
+    deferred_errors: Vec<VirErr>,
+
     pub via_cargo_args: Option<CargoVerusArgs>,
     // Some(DepTracker) if via_cargo_args.is_some(), None otherwise
     // In both cases, is set to None when VerifierCallbacksEraseMacro.config finishes with it
@@ -318,13 +328,36 @@ pub struct Verifier {
     crate_names: Option<Vec<String>>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
-    item_to_module_map: Option<Arc<crate::external::CrateItems>>,
+    crate_items: Option<Arc<crate::external::CrateItems>>,
     buckets: HashMap<BucketId, Bucket>,
 
     // proof debugging purposes
     expand_flag: bool,
 
     error_format: Option<ErrorOutputType>,
+}
+
+#[derive(serde::Serialize)]
+pub struct FuncDetails {
+    pub obligation_proof_notes: HashSet<String>,
+    pub failed_proof_notes: HashSet<String>,
+}
+
+impl Default for FuncDetails {
+    fn default() -> Self {
+        Self { obligation_proof_notes: Default::default(), failed_proof_notes: Default::default() }
+    }
+}
+
+impl FuncDetails {
+    fn absorb(&mut self, other: Self) {
+        self.obligation_proof_notes.extend(other.obligation_proof_notes);
+        self.failed_proof_notes.extend(other.failed_proof_notes);
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap()
+    }
 }
 
 fn report_chosen_triggers(
@@ -415,7 +448,7 @@ impl std::ops::Add for RunCommandQueriesResult {
 struct VerifyBucketOut {
     time_smt_init: Duration,
     time_smt_run: Duration,
-    rlimit_count: Option<u64>,
+    rlimit_count: Option<(u64, u64)>,
 }
 pub(crate) enum VerifyErr {
     Vir(VirErr),
@@ -447,6 +480,7 @@ impl Verifier {
             args,
             user_filter: None,
             erasure_hints: None,
+            verus_items: None,
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
             time_hir: Duration::new(0, 0),
@@ -456,6 +490,9 @@ impl Verifier {
 
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
+
+            func_details: HashMap::new(),
+            deferred_errors: Vec::new(),
 
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
             via_cargo_args,
@@ -470,7 +507,7 @@ impl Verifier {
             crate_names: None,
             air_no_span: None,
             current_crate_modules: None,
-            item_to_module_map: None,
+            crate_items: None,
             buckets: HashMap::new(),
 
             expand_flag: false,
@@ -492,6 +529,7 @@ impl Verifier {
             args: self.args.clone(),
             user_filter: self.user_filter.clone(),
             erasure_hints: self.erasure_hints.clone(),
+            verus_items: self.verus_items.clone(),
 
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
@@ -501,6 +539,9 @@ impl Verifier {
             time_vir_rust_to_vir: Duration::new(0, 0),
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
+
+            func_details: HashMap::new(),
+            deferred_errors: Vec::new(),
 
             via_cargo_args: self.via_cargo_args.clone(),
             dep_tracker: None,
@@ -515,7 +556,7 @@ impl Verifier {
             crate_names: self.crate_names.clone(),
             air_no_span: self.air_no_span.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
-            item_to_module_map: self.item_to_module_map.clone(),
+            crate_items: self.crate_items.clone(),
             buckets: self.buckets.clone(),
 
             expand_flag: self.expand_flag,
@@ -532,6 +573,8 @@ impl Verifier {
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
         self.bucket_stats.extend(other.bucket_stats);
         self.func_times.extend(other.func_times);
+        self.func_details.absorb_with(other.func_details, |lhs, rhs| lhs.absorb(rhs));
+        self.deferred_errors.extend(other.deferred_errors);
     }
 
     fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
@@ -645,14 +688,14 @@ impl Verifier {
             );
             let bnd_info = qid_map
                 .get(&cost.quant)
-                .expect(format!("Failed to find quantifier {}", cost.quant).as_str());
+                .unwrap_or_else(|| panic!("Failed to find quantifier {}", cost.quant));
             let mut msg = note_bare(note);
 
             // Summarize the triggers it used
             let triggers = &bnd_info.user.as_ref().unwrap().trigs;
             for trigger in triggers.iter() {
-                // HACK: we do not have span info for the builtin crate
-                if !trigger.iter().any(|t| t.span.as_string.contains("builtin")) {
+                // HACK: we do not have span info for the verus_builtin crate
+                if !trigger.iter().any(|t| t.span.as_string.contains("verus_builtin")) {
                     msg = trigger.iter().fold(msg, |m, e| m.primary_span(&e.span));
                 }
             }
@@ -662,41 +705,6 @@ impl Verifier {
             );
 
             diagnostics.report(&msg.to_any());
-        }
-    }
-
-    fn print_internal_profile_stats(
-        &self,
-        diagnostics: &impl air::messages::Diagnostics,
-        profile: Vec<(String, u64, Vec<(String, u64)>)>,
-        qid_map: &HashMap<String, vir::sst::BndInfo>,
-    ) {
-        let max = 50;
-        for (index, (name, count, identcounts)) in profile.iter().take(max).enumerate() {
-            let index = index + 1;
-            // Report the quantifier
-            if let Some(bnd_info) = qid_map.get(name) {
-                let mut msg =
-                    format!("{:2}. Quantifier {}, instantiations: {}\n", index, name, count);
-                for (ident, count) in identcounts {
-                    msg += format!("    at: {}, instantiations: {}\n", ident, count).as_str();
-                }
-
-                let mut msg = note_bare(msg);
-                if let Some(span) = bnd_info.user.as_ref().map(|u| &u.span) {
-                    msg = msg.primary_span(span);
-                }
-                diagnostics.report(&msg.to_any());
-            } else {
-                let mut msg =
-                    format!("{:2}. Quantifier {}, instantiations: {}\n", index, name, count);
-                for (ident, count) in identcounts {
-                    msg += format!("    at: {}, instantiations: {}\n", ident, count).as_str();
-                }
-
-                let msg = note_bare(msg);
-                diagnostics.report(&msg.to_any());
-            }
         }
     }
 
@@ -719,7 +727,7 @@ impl Verifier {
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         command: &Command,
         context: &CommandContext,
-        hint_upon_failure: &std::cell::RefCell<Option<Message>>,
+        hint_upon_failure: &Option<Message>,
         prover_choice: vir::def::ProverChoice,
         default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
@@ -879,7 +887,7 @@ impl Verifier {
                         self.count_errors += 1;
                         self.func_fails.insert(context.fun.clone());
                         invalidity = true;
-                        if let Some(hint) = hint_upon_failure.take() {
+                        if let Some(hint) = hint_upon_failure.clone() {
                             reporter.report_as(&hint.to_any(), MessageLevel::Note);
                         }
                     }
@@ -889,13 +897,25 @@ impl Verifier {
                     let error: Message = error.downcast().unwrap();
                     if let Some(level) = level {
                         if !self.expand_flag {
-                            if let Some(collected) = &mut *diagnostics_to_report.borrow_mut() {
-                                collected.as_mut().push((error.clone(), level));
-                            } else {
-                                reporter.report_as(&error.clone().to_any(), level);
+                            match &mut *diagnostics_to_report.borrow_mut() {
+                                Some(collected) => {
+                                    collected.as_mut().push((error.clone(), level));
+                                }
+                                _ => {
+                                    reporter.report_as(&error.clone().to_any(), level);
+                                }
                             }
                         }
                     }
+
+                    // Collect `proof_note` labels related to this failure.
+                    let mut proof_notes = HashSet::new();
+                    for label in &error.labels {
+                        if label.is_proof_note {
+                            proof_notes.insert(label.note.clone());
+                        }
+                    }
+                    self.record_func_failed_proof_notes(context.fun.clone(), proof_notes);
 
                     if level == Some(MessageLevel::Error) {
                         if self.args.expand_errors {
@@ -1038,6 +1058,7 @@ impl Verifier {
             skip_recommends: _,
             hint_upon_failure,
         } = &*commands_with_context;
+        let hint_guard = hint_upon_failure.lock().expect("we abort on poisoning");
         let context = context.with_desc_prefix(desc_prefix);
         if commands.len() > 0 {
             air_context.blank_line();
@@ -1057,7 +1078,7 @@ impl Verifier {
                     snap_map,
                     &command,
                     &context,
-                    hint_upon_failure,
+                    &hint_guard,
                     *prover_choice,
                     default_prover_failed_assert_ids,
                 );
@@ -1200,9 +1221,10 @@ impl Verifier {
         diagnostics: &impl air::messages::Diagnostics,
         bucket_id: &BucketId,
         function_path: &vir::ast::Path,
+        trait_decl_commands: Commands,
         datatype_commands: Commands,
         assoc_type_decl_commands: Commands,
-        trait_commands: Commands,
+        trait_type_bounds_commands: Commands,
         assoc_type_impl_commands: Commands,
         function_decl_commands: Arc<Vec<(Commands, String)>>,
         ops: &Vec<Op>,
@@ -1242,29 +1264,36 @@ impl Verifier {
             bucket_id,
             diagnostics,
             &mut air_context,
+            &trait_decl_commands,
+            "Trait-Decls",
+        );
+        self.run_commands(
+            bucket_id,
+            diagnostics,
+            &mut air_context,
             &assoc_type_decl_commands,
-            &("Associated-Type-Decls".to_string()),
+            "Associated-Type-Decls",
         );
         self.run_commands(
             bucket_id,
             diagnostics,
             &mut air_context,
             &datatype_commands,
-            &("Datatypes".to_string()),
+            "Datatypes",
         );
         self.run_commands(
             bucket_id,
             diagnostics,
             &mut air_context,
-            &trait_commands,
-            &("Traits".to_string()),
+            &trait_type_bounds_commands,
+            "Trait-Bounds",
         );
         self.run_commands(
             bucket_id,
             diagnostics,
             &mut air_context,
             &assoc_type_impl_commands,
-            &("Associated-Type-Impls".to_string()),
+            "Associated-Type-Impls",
         );
         for commands in &*function_decl_commands {
             self.run_commands(bucket_id, diagnostics, &mut air_context, &commands.0, &commands.1);
@@ -1333,8 +1362,8 @@ impl Verifier {
 
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
-        let mut spunoff_rlimit_count: Option<u64> = match self.args.solver {
-            SmtSolver::Z3 => Some(0),
+        let mut spunoff_rlimit_count: Option<(u64, u64)> = match self.args.solver {
+            SmtSolver::Z3 => Some((0, 0)),
             SmtSolver::Cvc5 => None,
         };
 
@@ -1350,6 +1379,15 @@ impl Verifier {
             ));
         }
 
+        let trait_decl_commands = vir::traits::trait_decls_to_air(ctx, &krate);
+        self.run_commands(
+            bucket_id,
+            reporter,
+            &mut air_context,
+            &trait_decl_commands,
+            "Trait-Decls",
+        );
+
         let assoc_type_decl_commands =
             vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
         self.run_commands(
@@ -1357,7 +1395,7 @@ impl Verifier {
             reporter,
             &mut air_context,
             &assoc_type_decl_commands,
-            &("Associated-Type-Decls".to_string()),
+            "Associated-Type-Decls",
         );
 
         let datatype_commands = vir::datatype_to_air::datatypes_and_primitives_to_air(
@@ -1365,29 +1403,19 @@ impl Verifier {
             &krate
                 .datatypes
                 .iter()
-                .cloned()
                 .filter(|d| is_visible_to(&d.x.visibility, module))
+                .cloned()
                 .collect(),
         );
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &datatype_commands,
-            &("Datatypes".to_string()),
-        );
+        self.run_commands(bucket_id, reporter, &mut air_context, &datatype_commands, "Datatypes");
 
-        let trait_commands = vir::traits::traits_to_air(ctx, &krate);
         let trait_type_bounds_commands = vir::traits::trait_bound_axioms(ctx, &krate.traits);
-        let trait_commands = Arc::new(
-            trait_commands.iter().chain(trait_type_bounds_commands.iter()).cloned().collect(),
-        );
         self.run_commands(
             bucket_id,
             reporter,
             &mut air_context,
-            &trait_commands,
-            &("Traits".to_string()),
+            &trait_type_bounds_commands,
+            "Trait-Bounds",
         );
 
         let assoc_type_impl_commands =
@@ -1397,13 +1425,41 @@ impl Verifier {
             reporter,
             &mut air_context,
             &assoc_type_impl_commands,
-            &("Associated-Type-Impls".to_string()),
+            "Associated-Type-Impls",
+        );
+
+        // Declare opaque type defs
+        let opaque_type_impl_commands =
+            vir::opaque_type_to_air::opaque_types_to_air(ctx, &krate.opaque_types);
+        self.run_commands(
+            bucket_id,
+            reporter,
+            &mut air_context,
+            &opaque_type_impl_commands,
+            "Opaque-Type-Constructors",
         );
 
         let mut function_decl_commands = vec![];
 
+        let func_to_requires_proof_notes =
+            HashMap::from_iter(krate.functions.iter().map(|function| {
+                (
+                    function.x.name.clone(),
+                    vir::sst_util::func_collect_requires_proof_notes(function),
+                )
+            }));
+
         // Declare the function symbols
         for function in &krate.functions {
+            let obligation_proof_notes = vir::sst_util::func_collect_obligation_proof_notes(
+                function,
+                &func_to_requires_proof_notes,
+            );
+            self.record_func_obligation_proof_notes(
+                function.x.name.clone(),
+                obligation_proof_notes,
+            );
+
             ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
             let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, function)?;
             let comment =
@@ -1558,9 +1614,10 @@ impl Verifier {
                                     reporter,
                                     bucket_id,
                                     &(function.x.name).path,
+                                    trait_decl_commands.clone(),
                                     datatype_commands.clone(),
                                     assoc_type_decl_commands.clone(),
-                                    trait_commands.clone(),
+                                    trait_type_bounds_commands.clone(),
                                     assoc_type_impl_commands.clone(),
                                     function_decl_commands.clone(),
                                     &all_context_ops,
@@ -1580,7 +1637,8 @@ impl Verifier {
                                 &mut air_context
                             };
                             let iter_curr_smt_time = query_air_context.get_time().1;
-                            let iter_curr_smt_rlimit_count = query_air_context.get_rlimit_count();
+                            let iter_curr_smt_rlimit_count =
+                                query_air_context.get_rlimit_count().map(|x| x.1);
                             if let Some(rlimit) = function.x.attrs.rlimit {
                                 Self::set_rlimit(&mut query_air_context, rlimit);
                             }
@@ -1612,6 +1670,7 @@ impl Verifier {
                                 *func_curr_smt_rlimit_count += query_air_context
                                     .get_rlimit_count()
                                     .expect("rlimit count in query context")
+                                    .1
                                     - iter_curr_smt_rlimit_count
                                         .expect("rlimit count in query context");
                             }
@@ -1620,9 +1679,11 @@ impl Verifier {
                                 spunoff_time_smt_init += time_smt_init;
                                 spunoff_time_smt_run += time_smt_run;
                                 if let Some(spunoff_rlimit_count) = &mut spunoff_rlimit_count {
-                                    *spunoff_rlimit_count += query_air_context
+                                    let (init, run) = query_air_context
                                         .get_rlimit_count()
                                         .expect("rlimit count in query context");
+                                    (*spunoff_rlimit_count).0 += init;
+                                    (*spunoff_rlimit_count).1 += run;
                                 }
                             }
                             if function.x.attrs.rlimit.is_some() {
@@ -1674,77 +1735,48 @@ impl Verifier {
                                         op.to_friendly_desc().map(|x| x + " ").unwrap_or("".into())
                                             + &fun_as_friendly_rust_name(&function.x.name);
 
-                                    if !self.args.use_internal_profiler {
-                                        match Profiler::parse(
-                                            message_interface.clone(),
-                                            &profile_file_name,
-                                            Some(&current_profile_description),
-                                            self.args.profile || self.args.profile_all,
-                                            reporter,
-                                            self.args.capture_profiles,
-                                        ) {
-                                            Ok(profiler) => {
-                                                if self.args.capture_profiles {
-                                                    // if capture profiles was passed, silence the report
-                                                    // as we are only interested in the graph/profile data
-                                                    crate::profiler::write_instantiation_graph(
-                                                        &bucket_id,
-                                                        Some(&op),
-                                                        &function_opgen.ctx().func_map,
-                                                        profiler.instantiation_graph().unwrap(),
-                                                        &function_opgen
-                                                            .ctx()
-                                                            .global
-                                                            .qid_map
-                                                            .borrow(),
-                                                        profile_file_name,
-                                                    );
-                                                } else {
-                                                    reporter.report(
-                                                        &note_bare(format!(
-                                                            "Profile statistics for {}",
-                                                            fun_as_friendly_rust_name(
-                                                                &function.x.name
-                                                            )
-                                                        ))
-                                                        .to_any(),
-                                                    );
-                                                    self.print_profile_stats(
-                                                        reporter,
-                                                        profiler,
-                                                        &function_opgen
-                                                            .ctx()
-                                                            .global
-                                                            .qid_map
-                                                            .borrow(),
-                                                    );
-                                                }
-                                            }
-                                            Err(err) => {
-                                                reporter.report_now(
-                                                    &warning_bare(format!(
-                                                        "Failed parsing profile file for {}: {}",
-                                                        current_profile_description, err
+                                    match Profiler::parse(
+                                        message_interface.clone(),
+                                        &profile_file_name,
+                                        Some(&current_profile_description),
+                                        reporter,
+                                    ) {
+                                        Ok(profiler) => {
+                                            if self.args.capture_profiles {
+                                                // if capture profiles was passed, silence the report
+                                                // as we are only interested in the graph/profile data
+                                                crate::profiler::write_instantiation_graph(
+                                                    &bucket_id,
+                                                    Some(&op),
+                                                    &function_opgen.ctx().func_map,
+                                                    profiler.instantiation_graph(),
+                                                    &function_opgen.ctx().global.qid_map.borrow(),
+                                                    profile_file_name,
+                                                );
+                                            } else {
+                                                reporter.report(
+                                                    &note_bare(format!(
+                                                        "Profile statistics for {}",
+                                                        fun_as_friendly_rust_name(&function.x.name)
                                                     ))
                                                     .to_any(),
                                                 );
+                                                self.print_profile_stats(
+                                                    reporter,
+                                                    profiler,
+                                                    &function_opgen.ctx().global.qid_map.borrow(),
+                                                );
                                             }
                                         }
-                                    } else {
-                                        reporter.report(
-                                            &note_bare(format!(
-                                                "Internal profile statistics for {}",
-                                                fun_as_friendly_rust_name(&function.x.name)
-                                            ))
-                                            .to_any(),
-                                        );
-                                        let profiler =
-                                            air::profiler::internal::profile(&profile_file_name);
-                                        self.print_internal_profile_stats(
-                                            reporter,
-                                            profiler,
-                                            &function_opgen.ctx().global.qid_map.borrow(),
-                                        );
+                                        Err(err) => {
+                                            reporter.report_now(
+                                                &warning_bare(format!(
+                                                    "Failed parsing profile file for {}: {}",
+                                                    current_profile_description, err
+                                                ))
+                                                .to_any(),
+                                            );
+                                        }
                                     }
                                 }
                             } else {
@@ -1838,67 +1870,49 @@ impl Verifier {
         if let (Some(profile_all_file_name), false) = (profile_all_file_name, self.args.spinoff_all)
         {
             if air_context.check_valid_used() {
-                if !self.args.use_internal_profiler {
-                    match Profiler::parse(
-                        message_interface.clone(),
-                        &profile_all_file_name,
-                        Some(&bucket_id.friendly_name()),
-                        self.args.profile || self.args.profile_all,
-                        reporter,
-                        self.args.capture_profiles,
-                    ) {
-                        Ok(profiler) => {
-                            if self.args.capture_profiles {
-                                // if capture profiles was passed, silence the report
-                                // as we are only interested in the graph/profile data
-                                crate::profiler::write_instantiation_graph(
-                                    &bucket_id,
-                                    None,
-                                    &opgen.ctx.func_map,
-                                    profiler.instantiation_graph().unwrap(),
-                                    &opgen.ctx.global.qid_map.borrow(),
-                                    profile_all_file_name,
-                                );
-                            } else {
-                                reporter.report(
-                                    &note_bare(format!(
-                                        "Profile statistics for {}",
-                                        bucket_id.friendly_name()
-                                    ))
-                                    .to_any(),
-                                );
-                                self.print_profile_stats(
-                                    reporter,
-                                    profiler,
-                                    &opgen.ctx.global.qid_map.borrow(),
-                                );
-                            }
-                        }
-                        Err(err) => {
-                            reporter.report_now(
-                                &warning_bare(format!(
-                                    "Failed parsing profile file for {}: {}",
-                                    bucket_id.friendly_name(),
-                                    err
+                match Profiler::parse(
+                    message_interface.clone(),
+                    &profile_all_file_name,
+                    Some(&bucket_id.friendly_name()),
+                    reporter,
+                ) {
+                    Ok(profiler) => {
+                        if self.args.capture_profiles {
+                            // if capture profiles was passed, silence the report
+                            // as we are only interested in the graph/profile data
+                            crate::profiler::write_instantiation_graph(
+                                &bucket_id,
+                                None,
+                                &opgen.ctx.func_map,
+                                profiler.instantiation_graph(),
+                                &opgen.ctx.global.qid_map.borrow(),
+                                profile_all_file_name,
+                            );
+                        } else {
+                            reporter.report(
+                                &note_bare(format!(
+                                    "Profile statistics for {}",
+                                    bucket_id.friendly_name()
                                 ))
                                 .to_any(),
                             );
+                            self.print_profile_stats(
+                                reporter,
+                                profiler,
+                                &opgen.ctx.global.qid_map.borrow(),
+                            );
                         }
                     }
-                } else {
-                    reporter.report(
-                        &note_bare(format!(
-                            "Internal profile statistics for {}",
-                            bucket_id.friendly_name()
-                        ))
-                        .to_any(),
-                    );
-                    let profiler = air::profiler::internal::profile(&profile_all_file_name);
-                    self.print_internal_profile_stats(
-                        reporter,
-                        profiler,
-                        &opgen.ctx.global.qid_map.borrow(),
-                    );
+                    Err(err) => {
+                        reporter.report_now(
+                            &warning_bare(format!(
+                                "Failed parsing profile file for {}: {}",
+                                bucket_id.friendly_name(),
+                                err
+                            ))
+                            .to_any(),
+                        );
+                    }
                 }
             }
         }
@@ -1912,7 +1926,9 @@ impl Verifier {
             time_smt_init: time_smt_init + spunoff_time_smt_init,
             time_smt_run: time_smt_run + spunoff_time_smt_run,
             rlimit_count: rlimit_count.map(|rlimit_count| {
-                rlimit_count + spunoff_rlimit_count.expect("spunoff rlimit count should be present")
+                let spunoff_rlimit_count =
+                    spunoff_rlimit_count.expect("spunoff rlimit count should be present");
+                (rlimit_count.0 + spunoff_rlimit_count.0, rlimit_count.1 + spunoff_rlimit_count.1)
             }),
         })
     }
@@ -1937,15 +1953,23 @@ impl Verifier {
             reporter
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
-        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, used_builtins, fndef_types) =
-            vir::prune::prune_krate_for_module_or_krate(
-                &krate,
-                &Arc::new(self.crate_name.clone().expect("crate_name")),
-                None,
-                Some(bucket_id.module().clone()),
-                bucket_id.function(),
-                true,
-            );
+        let (pruned_krate, prune_info) = vir::prune::prune_krate_for_module_or_krate(
+            &krate,
+            &Arc::new(self.crate_name.clone().expect("crate_name")),
+            None,
+            Some(bucket_id.module().clone()),
+            bucket_id.function(),
+            true,
+            true,
+        );
+        let vir::prune::PruneInfo {
+            mono_abstract_datatypes,
+            spec_fn_types,
+            used_builtins,
+            fndef_types,
+            resolved_typs,
+            dyn_traits,
+        } = prune_info;
         let mono_abstract_datatypes = mono_abstract_datatypes.unwrap();
         let module = pruned_krate
             .modules
@@ -1959,8 +1983,10 @@ impl Verifier {
             module,
             mono_abstract_datatypes,
             spec_fn_types,
+            dyn_traits,
             used_builtins,
             fndef_types,
+            resolved_typs.unwrap(),
             self.args.debugger,
         )?;
         if self.args.log_all || self.args.log_args.log_vir_poly {
@@ -2047,6 +2073,9 @@ impl Verifier {
             false,
             self.args.check_api_safety,
             self.args.axiom_usage_info,
+            self.args.new_mut_ref,
+            self.args.no_bv_simplify,
+            self.args.report_long_running,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
@@ -2205,10 +2234,9 @@ impl Verifier {
             let mut local_msgs: VecDeque<ReporterMessage> = VecDeque::new();
             let reporter = Reporter::new(spans, compiler);
             loop {
-                let msg = if let Some(msg) = local_msgs.pop_front() {
-                    msg
-                } else {
-                    receiver.recv().expect("receiving message failed")
+                let msg = match local_msgs.pop_front() {
+                    Some(msg) => msg,
+                    _ => receiver.recv().expect("receiving message failed"),
                 };
                 match msg {
                     ReporterMessage::Messages(id, mut msgs, now) => {
@@ -2475,7 +2503,7 @@ impl Verifier {
                 }
             }
 
-            // join with all worker threads, theys should all have exited by now.
+            // join with all worker threads, they should all have exited by now.
             // merge the verifier and global contexts
             for worker in workers {
                 let res = worker.join().unwrap();
@@ -2586,7 +2614,7 @@ impl Verifier {
                 (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),\n  \
                 (3) accept the automatically chosen trigger using #![auto]\n      \
                 (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))\n  \
-                (4) use the --triggers-silent command-line option to suppress all printing of triggers.\n\
+                (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.\n\
                 (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;\n\
                 the theorem prover instantiates a quantifier whenever some expression matches the\n\
                 pattern specified by one of the quantifier's triggers.)\
@@ -2623,19 +2651,10 @@ impl Verifier {
         other_vir_crates: Vec<Krate>,
         diagnostics: &impl air::messages::Diagnostics,
         crate_name: String,
-    ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
-        let time_hir0 = Instant::now();
-
-        rustc_hir_analysis::check_crate(tcx);
-        if tcx.dcx().err_count() != 0 {
-            return Ok(false);
+    ) -> Result<bool, (Vec<VirErr>, Vec<vir::ast::VirErrAs>)> {
+        if self.args.no_lifetime {
+            rustc_mir_build_verus::verus::set_verus_aware_def_ids(Arc::new(HashSet::new()));
         }
-
-        tcx.par_hir_body_owners(|def_id| tcx.ensure_ok().check_match(def_id).expect("check_match"));
-        tcx.ensure_ok().check_private_in_public(());
-        tcx.hir_for_each_module(|module| {
-            tcx.ensure_ok().check_mod_privacy(module);
-        });
 
         self.air_no_span = {
             let no_span = tcx
@@ -2661,40 +2680,11 @@ impl Verifier {
             })
         };
 
-        let time_hir1 = Instant::now();
-        self.time_hir = time_hir1 - time_hir0;
-
-        let time0 = Instant::now();
-
         let mut crate_names: Vec<String> = vec![crate_name.clone()];
         crate_names.extend(other_crate_names.into_iter());
-        // TODO vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
+        // TODO vec![vir::verus_builtins::verus_builtin_krate(&self.air_no_span.clone().unwrap())];
 
-        let erasure_info = ErasureInfo {
-            hir_vir_ids: vec![],
-            resolved_calls: vec![],
-            resolved_exprs: vec![],
-            resolved_pats: vec![],
-            direct_var_modes: vec![],
-            external_functions: vec![],
-            ignored_functions: vec![],
-        };
-        let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
         let import_len = self.args.import.len();
-        let vstd_crate_name = Arc::new(vir::def::VERUSLIB.to_string());
-        let mut ctxt = Arc::new(ContextX {
-            cmd_line_args: self.args.clone(),
-            tcx,
-            krate: tcx.hir_crate(()),
-            erasure_info,
-            spans: spans.clone(),
-            verus_items,
-            diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
-            no_vstd: self.args.vstd == crate::config::Vstd::NoVstd,
-            arch_word_bits: None,
-            crate_name: Arc::new(crate_name.clone()),
-            vstd_crate_name,
-        });
         let multi_crate = self.args.export.is_some()
             || import_len > 0
             || self.args.use_crate_name
@@ -2702,20 +2692,80 @@ impl Verifier {
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
-        let ctxt_diagnostics = ctxt.diagnostics.clone();
+        let erasure_info = ErasureInfo {
+            hir_vir_ids: vec![],
+            resolved_calls: vec![],
+            resolved_pats: vec![],
+            direct_var_modes: vec![],
+            external_functions: vec![],
+            ignored_functions: vec![],
+            bodies: vec![],
+            shadow_check: vec![],
+            extra_erase_ast_ids: vec![],
+        };
+        let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
+
+        let vstd_crate_name = Arc::new(vir::def::VERUSLIB.to_string());
+        let ctxtx = ContextX::new(
+            self.args.clone(),
+            tcx,
+            erasure_info,
+            spans.clone(),
+            verus_items,
+            self.args.vstd == crate::config::Vstd::NoVstd,
+            Arc::new(crate_name.clone()),
+            vstd_crate_name,
+        );
+
+        let ctxt_diagnostics = ctxtx.diagnostics.clone();
         let map_err_diagnostics =
-            |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
+            |err: VirErr| (vec![err], ctxt_diagnostics.borrow_mut().drain(..).collect());
+        let map_errs_diagnostics =
+            |errs: Vec<VirErr>| (errs, ctxt_diagnostics.borrow_mut().drain(..).collect());
+
+        let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_errs_diagnostics)?;
+
+        check_no_opaque_types_in_trait(ctxtx.tcx, &crate_items).map_err(map_err_diagnostics)?;
+
+        if !self.args.no_lifetime {
+            crate::erase::setup_verus_aware_ids(&crate_items);
+        }
+
+        let time_hir0 = Instant::now();
+
+        rustc_hir_analysis::check_crate(tcx);
+        if tcx.dcx().err_count() != 0 {
+            return Ok(false);
+        }
+
+        let time_hir1 = Instant::now();
+        self.time_hir = time_hir1 - time_hir0;
+
+        let time0 = Instant::now();
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
-        let (vir_crate, item_to_module_map) =
-            crate::rust_to_vir::crate_to_vir(&mut ctxt, &other_vir_crates)
-                .map_err(map_err_diagnostics)?;
+
+        let other_vir_crates = if self.args.new_mut_ref {
+            other_vir_crates
+                .into_iter()
+                .map(|krate| vir::migrate_mut_refs::migrate_mut_ref_krate(krate))
+                .collect()
+        } else {
+            other_vir_crates
+                .into_iter()
+                .map(|krate| vir::migrate_mut_refs::ignore_mut_ref_only_fns(krate))
+                .collect()
+        };
+
+        let (ctxt, vir_crate) =
+            crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
+                .map_err(map_errs_diagnostics)?;
 
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
         self.current_crate_modules = Some(vir_crate.modules.clone());
-        self.item_to_module_map = Some(Arc::new(item_to_module_map));
+        self.crate_items = Some(Arc::new(crate_items));
 
         // Export crate if requested.
         let crate_metadata = crate::import_export::CrateMetadata {
@@ -2745,12 +2795,13 @@ impl Verifier {
         vir_crates.push(vir_crate);
         let unpruned_crate =
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
-        let (vir_crate, _, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
+        let (vir_crate, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
             &Arc::new(crate_name.clone()),
             Some(&current_vir_crate),
             None,
             None,
+            false,
             false,
         );
         let vir_crate =
@@ -2778,25 +2829,72 @@ impl Verifier {
             vir::traits::demote_external_traits(diagnostics, &path_to_well_known_item, &vir_crate)
                 .map_err(map_err_diagnostics)?;
         let vir_crate =
-            vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (e, Vec::new()))?;
+            vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         let vir_crate = vir::traits::fixup_ens_has_return_for_trait_method_impls(vir_crate)
-            .map_err(|e| (e, Vec::new()))?;
+            .map_err(|e| (vec![e], Vec::new()))?;
 
         if self.args.check_api_safety {
-            vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (e, Vec::new()))?;
+            vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         }
 
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(
             &vir_crate,
-            unpruned_crate,
-            &mut ctxt.diagnostics.borrow_mut(),
+            &unpruned_crate,
+            &mut *ctxt.diagnostics.borrow_mut(),
             self.args.no_verify,
             self.args.no_cheating,
         );
-
+        let mut first_error: Option<VirErr> = check_crate_result1.err();
+        match check_crate_result {
+            Ok(check_details) => {
+                for (func, failed_proof_notes) in check_details.func_failed_proof_notes {
+                    self.record_func_failed_proof_notes(
+                        func,
+                        failed_proof_notes.into_iter().collect(),
+                    );
+                }
+            }
+            Err(err) => {
+                if first_error.is_none() {
+                    first_error = Some(err);
+                }
+            }
+        }
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
+                vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
+                    // This diagnostic message may be a verification boundary violation.
+                    // In that case, we want to try to construct a suggestion to deal with the problem.
+
+                    let err = match maybe_p {
+                        Some(p) => {
+                            // Try to build a DefId, then check if the corresponding Def is an Adt or Fun-like
+                            // let did = vir_path_to_def_id(tcx, &ctxt.verus_items, &p);
+                            let map = ctxt.name_def_id_map.borrow();
+                            let did = map.get(&p);
+                            match did {
+                                Some(did) => match build_boundary_suggestion(&ctxt, *did, &p) {
+                                    Ok(s) => err.help(format!(
+                                        "The following declaration may resolve this error:\n{}",
+                                        s
+                                    )),
+                                    Err(_) => err,
+                                },
+                                None => err,
+                            }
+                        }
+                        None => err,
+                    };
+                    if first_error.is_none() {
+                        first_error = Some(err.clone().into())
+                    } else {
+                        diagnostics.report_as(&err.to_any(), MessageLevel::Error)
+                    }
+                }
+                vir::ast::VirErrAs::NonFatalError(err, _) => {
+                    self.deferred_errors.push(err);
+                }
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
                 }
@@ -2805,11 +2903,15 @@ impl Verifier {
                 }
             }
         }
-        check_crate_result1.map_err(|e| (e, Vec::new()))?;
-        check_crate_result.map_err(|e| (e, Vec::new()))?;
-        let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
-        let (vir_crate, erasure_modes) =
-            vir::modes::check_crate(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        if let Some(first_error) = first_error {
+            return Err((vec![first_error], Vec::new()));
+        }
+
+        let vir_crate =
+            vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
+        let (vir_crate, erasure_modes, _read_kind_finals) =
+            vir::modes::check_crate(&vir_crate, self.args.new_mut_ref)
+                .map_err(|e| (vec![e], Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_name = Some(crate_name);
@@ -2818,23 +2920,43 @@ impl Verifier {
         let erasure_info = ctxt.erasure_info.borrow();
         let hir_vir_ids = erasure_info.hir_vir_ids.clone();
         let resolved_calls = erasure_info.resolved_calls.clone();
-        let resolved_exprs = erasure_info.resolved_exprs.clone();
         let resolved_pats = erasure_info.resolved_pats.clone();
         let direct_var_modes = erasure_info.direct_var_modes.clone();
         let external_functions = erasure_info.external_functions.clone();
         let ignored_functions = erasure_info.ignored_functions.clone();
+        let bodies = erasure_info.bodies.clone();
+        let shadow_check = erasure_info.shadow_check.clone();
+        let extra_erase_ast_ids = erasure_info.extra_erase_ast_ids.clone();
         let erasure_hints = crate::erase::ErasureHints {
-            vir_crate,
+            vir_crate: unpruned_crate,
             hir_vir_ids,
             resolved_calls,
-            resolved_exprs,
             resolved_pats,
             erasure_modes,
             direct_var_modes,
             external_functions,
             ignored_functions,
+            bodies,
+            shadow_check,
+            extra_erase_ast_ids,
         };
         self.erasure_hints = Some(erasure_hints);
+
+        if !self.args.no_lifetime {
+            crate::erase::setup_verus_ctxt_for_thir_erasure(
+                tcx,
+                &self.verus_items.as_ref().unwrap(),
+                self.erasure_hints.as_ref().unwrap(),
+            )
+            .map_err(|e| (vec![e], Vec::new()))?;
+        }
+
+        // These can invoke mir_borrowck when opaque types are involved.
+        // Thus, we can only run these after initializing erasure_hints
+        tcx.hir_for_each_module(|module| {
+            tcx.ensure_ok().check_private_in_public(module);
+            tcx.ensure_ok().check_mod_privacy(module);
+        });
 
         let time4 = Instant::now();
         self.time_vir = time4 - time0;
@@ -2852,6 +2974,40 @@ impl Verifier {
                 .map(|function| &function.x.mode)
         })
     }
+
+    fn record_func_obligation_proof_notes(
+        &mut self,
+        func: Fun,
+        obligation_proof_notes: HashSet<String>,
+    ) {
+        use std::collections::hash_map::Entry;
+        match self.func_details.entry(func) {
+            Entry::Occupied(mut occupied_entry) => {
+                occupied_entry.get_mut().obligation_proof_notes.extend(obligation_proof_notes);
+            }
+            Entry::Vacant(vacant_entry) => {
+                let _ = vacant_entry.insert(FuncDetails {
+                    obligation_proof_notes: obligation_proof_notes,
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
+    fn record_func_failed_proof_notes(&mut self, func: Fun, failed_proof_notes: HashSet<String>) {
+        use std::collections::hash_map::Entry;
+        match self.func_details.entry(func) {
+            Entry::Occupied(mut occupied_entry) => {
+                occupied_entry.get_mut().failed_proof_notes.extend(failed_proof_notes);
+            }
+            Entry::Vacant(vacant_entry) => {
+                let _ = vacant_entry.insert(FuncDetails {
+                    failed_proof_notes: failed_proof_notes,
+                    ..Default::default()
+                });
+            }
+        }
+    }
 }
 
 fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirErr> {
@@ -2860,22 +3016,50 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
             let entries = std::fs::read_dir(dir).map_err(|err| {
                 io_vir_err(format!("could not read directory {}", dir.display()), err)
             })?;
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    if entry.path().is_file() {
-                        std::fs::remove_file(entry.path()).map_err(|err| {
-                            io_vir_err(
-                                format!("could not remove file {}", entry.path().display()),
-                                err,
-                            )
-                        })?;
-                    }
+            for entry in entries.flatten() {
+                if entry.path().is_file() {
+                    std::fs::remove_file(entry.path()).map_err(|err| {
+                        io_vir_err(format!("could not remove file {}", entry.path().display()), err)
+                    })?;
                 }
             }
         } else {
             return Err(error(format!("{} exists and is not a directory", dir.display())));
         }
     })
+}
+
+/// Currently performing an rustc_hir_analysis::check_crate() with trait methods with opaque return types
+/// will cause the thir_body to run before VerusErasureCtxt is initialized.
+/// We disallow opaque types in trait for now.
+fn check_no_opaque_types_in_trait<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    crate_items: &crate::external::CrateItems,
+) -> Result<(), VirErr> {
+    for item in crate_items.items.iter() {
+        if matches!(item.verif, VerifOrExternal::External { .. }) {
+            continue;
+        }
+        match item.id {
+            crate::external::GeneralItemId::TraitItemId(trait_item_id) => {
+                match tcx.hir_trait_item(trait_item_id).kind {
+                    rustc_hir::TraitItemKind::Fn(sig, _) => {
+                        if let rustc_hir::FnRetTy::Return(ty) = sig.decl.output {
+                            if matches!(ty.kind, rustc_hir::TyKind::OpaqueDef { .. }) {
+                                crate::unsupported_err!(
+                                    ty.span,
+                                    "Verus does not yet support Opaque types in trait def"
+                                );
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 // TODO: move the callbacks into a different file, like driver.rs
@@ -2886,11 +3070,12 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     /// time when entered the `after_expansion` callback
     pub(crate) rust_end_time: Option<Instant>,
     /// start time of lifetime analysys
-    pub(crate) lifetime_start_time: Option<Instant>,
+    pub(crate) tc_start_time: Option<Instant>,
     /// end time of lifetime analysys
-    pub(crate) lifetime_end_time: Option<Instant>,
+    pub(crate) tc_end_time: Option<Instant>,
     pub(crate) rustc_args: Vec<String>,
     pub(crate) verus_externs: Option<VerusExterns>,
+    pub(crate) spans: Option<SpanContext>,
 }
 
 pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
@@ -2936,22 +3121,51 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             dep_tracker.config_install(config);
         }
 
-        config.override_queries = Some(|_session, providers| {
-            providers.hir_crate = hir_crate;
+        if self.verifier.args.no_lifetime {
+            config.override_queries = Some(|_session, providers| {
+                providers.hir_crate = hir_crate;
+                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.lint_mod = |_, _| {};
+                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
+                providers.check_mod_deathness = |_, _| {};
 
-            // Hooking mir_const_qualif solves constness issue in function body,
-            // but const-eval will still do check-const when evaluating const
-            // value. Thus const_header_wrapper is still needed.
-            providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-            // Prevent the borrow checker from running, as we will run our own lifetime analysis.
-            // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
-            // by const evaluation through the mir interpreter.
-            providers.mir_borrowck = |tcx, _local_def_id| {
-                Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
-                    rustc_data_structures::fx::FxIndexMap::default(),
-                )))
-            };
-        });
+                providers.mir_borrowck =
+                    |tcx, _local_def_id| Ok(tcx.arena.alloc(Default::default()));
+            });
+        } else {
+            config.override_queries = Some(|_session, providers| {
+                providers.hir_crate = hir_crate;
+                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.lint_mod = |_, _| {};
+                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
+                providers.check_mod_deathness = |_, _| {};
+
+                rustc_mir_build_verus::verus_provide(providers);
+
+                providers.mir_built = |tcx, def| {
+                    // We need to override this to call our verus of build_mir.
+                    // mir_built is defined in the crate rustc_mir_transform, which I prefer
+                    // not to fork. The actual implementation of mir_built is more complicated
+                    // than this, but this seems to be the essential functionality.
+                    let body = rustc_mir_build_verus::builder::build_mir(tcx, def);
+                    //let pass = rustc_mir_transform::simplify::SimplifyCfg::Initial;
+                    //pass.run_pass(tcx, &mut body);
+                    tcx.alloc_steal_mir(body)
+                };
+
+                // check_well_formed when called on an OpaqueTy will trigger mir_borrowck to run.
+                // This happens earlier than we'd like, so we disable it.
+                // TODO: when we support opaque types we should run this check later
+                providers.check_well_formed =
+                    |tcx: TyCtxt<'_>, def_id: rustc_hir::def_id::LocalDefId| {
+                        let node = tcx.hir_node_by_def_id(def_id);
+                        if matches!(node, rustc_hir::Node::OpaqueTy(_)) {
+                            return Ok(());
+                        }
+                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.check_well_formed)(tcx, def_id)
+                    };
+            });
+        }
     }
 
     fn after_expansion<'tcx>(
@@ -2997,6 +3211,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         self.verifier.time_import = time_import1 - time_import0;
         let verus_items =
             Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
+        self.verifier.verus_items = Some(verus_items.clone());
         let spans = SpanContextX::new(
             tcx,
             tcx.stable_crate_id(LOCAL_CRATE),
@@ -3004,12 +3219,13 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             imported.metadatas.into_iter().map(|c| (c.crate_id, c.original_files)).collect(),
             self.verus_externs.as_ref(),
         );
+
         {
             let reporter = Reporter::new(&spans, compiler);
             if self.verifier.args.trace {
                 reporter.report_now(&note_bare("preparing crate for verification").to_any());
             }
-            if let Err((err, mut diagnostics)) = self.verifier.construct_vir_crate(
+            if let Err((errs, mut diagnostics)) = self.verifier.construct_vir_crate(
                 tcx,
                 verus_items.clone(),
                 &spans,
@@ -3018,7 +3234,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 &reporter,
                 crate_name.clone(),
             ) {
-                reporter.report_as(&err.to_any(), MessageLevel::Error);
+                assert!(errs.len() > 0);
+                for err in errs.into_iter() {
+                    reporter.report_as(&err.to_any(), MessageLevel::Error);
+                }
                 self.verifier.encountered_vir_error = true;
 
                 for diag in diagnostics.drain(..) {
@@ -3029,6 +3248,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         vir::ast::VirErrAs::Note(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Note)
                         }
+                        vir::ast::VirErrAs::NonBlockingError(err, _)
+                        | vir::ast::VirErrAs::NonFatalError(err, _) => {
+                            reporter.report_as(&err.to_any(), MessageLevel::Error)
+                        }
                     }
                 }
                 return rustc_driver::Compilation::Stop;
@@ -3037,15 +3260,16 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 self.verifier.encountered_error = true;
                 return rustc_driver::Compilation::Stop;
             }
-            self.lifetime_start_time = Some(Instant::now());
+            self.tc_start_time = Some(Instant::now());
             let status = if self.verifier.args.no_lifetime {
                 Ok(vec![])
             } else {
-                let log_lifetime =
-                    self.verifier.args.log_all || self.verifier.args.log_args.log_lifetime;
-                let lifetime_log_file = if log_lifetime {
-                    let file =
-                        self.verifier.create_log_file(None, crate::config::LIFETIME_FILE_SUFFIX);
+                let log_trait_conflicts =
+                    self.verifier.args.log_all || self.verifier.args.log_args.log_trait_conflicts;
+                let tc_log_file = if log_trait_conflicts {
+                    let file = self
+                        .verifier
+                        .create_log_file(None, crate::config::TRAIT_CONFLICT_FILE_SUFFIX);
                     match file {
                         Err(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Error);
@@ -3057,18 +3281,13 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 } else {
                     None
                 };
-                crate::lifetime::check_tracked_lifetimes(
-                    self.verifier.args.clone(),
-                    tcx,
-                    verus_items,
+                crate::trait_check::check_trait_conflicts(
                     &spans,
-                    self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
-                    self.verifier.item_to_module_map.as_ref().expect("item_to_module_map"),
                     self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
-                    lifetime_log_file,
+                    tc_log_file,
                 )
             };
-            self.lifetime_end_time = Some(Instant::now());
+            self.tc_end_time = Some(Instant::now());
             match status {
                 Ok(msgs) => {
                     if msgs.len() > 0 {
@@ -3088,7 +3307,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         for msg in &msgs {
                             reporter.report(&msg.clone().to_any());
                         }
-                        reporter.report(&note_bare("This error was found in Verus pass: ownership checking of tracked code").to_any());
+                        reporter.report(
+                            &note_bare("This error was found in Verus's Trait-Conflict-Checker")
+                                .to_any(),
+                        );
                         return rustc_driver::Compilation::Stop;
                     }
                 }
@@ -3104,15 +3326,68 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             return rustc_driver::Compilation::Stop;
         }
 
+        if !self.verifier.args.no_lifetime {
+            self.run_lifetime_checks_on_verus_aware_items(tcx);
+        }
+
+        if let Some(_guar) = compiler.sess.dcx().has_errors() {
+            return rustc_driver::Compilation::Stop;
+        }
+
+        self.spans = Some(spans);
+        self.finish_verus(compiler);
+
+        rustc_driver::Compilation::Stop
+    }
+
+    fn after_analysis<'tcx>(
+        &mut self,
+        _compiler: &Compiler,
+        _tcx: TyCtxt<'tcx>,
+    ) -> rustc_driver::Compilation {
+        rustc_driver::Compilation::Stop
+    }
+}
+
+impl VerifierCallbacksEraseMacro {
+    fn run_lifetime_checks_on_verus_aware_items<'tcx>(&mut self, tcx: TyCtxt<'tcx>) {
+        let crate_items = self.verifier.crate_items.as_ref().unwrap().clone();
+        tcx.par_hir_body_owners(|def_id| {
+            if !tcx.is_typeck_child(def_id.to_def_id()) {
+                let owner_id = rustc_hir::OwnerId { def_id: def_id };
+                let crate_item = crate_items.map.get(&owner_id);
+                match &crate_item {
+                    Some(VerifOrExternal::VerusAware {
+                        module_path: _,
+                        const_directive: false,
+                        external_body: false,
+                        external_fn_specification: false,
+                    }) => {
+                        tcx.ensure_ok().mir_borrowck(def_id);
+                    }
+                    Some(VerifOrExternal::VerusAware { .. })
+                    | Some(VerifOrExternal::External { .. })
+                    | None => {}
+                }
+            }
+        });
+    }
+
+    fn finish_verus(&mut self, compiler: &Compiler) {
+        let spans = self.spans.clone().unwrap();
+        let reporter = Reporter::new(&spans, compiler);
         match self.verifier.verify_crate(compiler, &spans) {
             Ok(()) => {}
             Err(err) => {
                 if let VerifyErr::Vir(err) = err {
-                    let reporter = Reporter::new(&spans, compiler);
                     reporter.report_as(&err.to_any(), MessageLevel::Error);
                 }
                 self.verifier.encountered_vir_error = true;
             }
+        }
+        for err in std::mem::take(&mut self.verifier.deferred_errors) {
+            reporter.report_as(&err.to_any(), MessageLevel::Error);
+            self.verifier.encountered_vir_error = true;
         }
         if !self.verifier.args.output_json
             && !self.verifier.encountered_error
@@ -3129,6 +3404,5 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             );
         }
-        rustc_driver::Compilation::Stop
     }
 }

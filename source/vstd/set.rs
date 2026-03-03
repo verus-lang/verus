@@ -46,9 +46,9 @@ impl<A> Set<A> {
     /// assert(forall |x: A| !Set::<A>::empty().contains(x));
     /// ```
     /// Axioms around the empty set are: <br>
-    /// * [`axiom_set_empty_finite`](crate::set::axiom_set_empty_finite) <br>
-    /// * [`axiom_set_empty_len`](crate::set::axiom_set_empty_len) <br>
-    /// * [`axiom_set_empty`](crate::set::axiom_set_empty)
+    /// * [`axiom_set_empty_finite`]
+    /// * [`axiom_set_empty_len`] <br>
+    /// * [`axiom_set_empty`]
     #[rustc_diagnostic_item = "verus::vstd::set::Set::empty"]
     pub closed spec fn empty() -> Set<A> {
         Set { set: |a| false }
@@ -901,7 +901,7 @@ pub broadcast proof fn axiom_set_difference_finite<A>(s1: Set<A>, s2: Set<A>)
 }
 
 /// An infinite set `s` contains the element `s.choose()`.
-pub broadcast proof fn axiom_set_choose_finite<A>(s: Set<A>)
+pub broadcast proof fn axiom_set_choose_infinite<A>(s: Set<A>)
     requires
         !s.finite(),
     ensures
@@ -1018,7 +1018,7 @@ pub broadcast group group_set_axioms {
     axiom_set_union_finite,
     axiom_set_intersect_finite,
     axiom_set_difference_finite,
-    axiom_set_choose_finite,
+    axiom_set_choose_infinite,
     axiom_set_empty_len,
     axiom_set_insert_len,
     axiom_set_remove_len,
@@ -1039,7 +1039,7 @@ macro_rules! set_internal {
 #[macro_export]
 macro_rules! set {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::set::set_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::set::set_internal!($($tail)*))
     };
 }
 

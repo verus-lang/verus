@@ -30,17 +30,16 @@
 
 use proc_macro2::Span;
 use std::iter::FromIterator;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::spanned::Spanned;
-use syn_verus::token;
-use syn_verus::{
+use verus_syn::punctuated::Punctuated;
+use verus_syn::spanned::Spanned;
+use verus_syn::token;
+use verus_syn::{
     AssumeSpecification, AttrStyle, Attribute, Block, Expr, ExprBlock, ExprPath, FnMode, Ident,
     ImplItemFn, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
     ReturnType, Signature, TraitItemFn, Type, TypeGroup, TypePath,
 };
 
 /// Check if VERUSDOC=1.
-
 #[cfg(verus_keep_ghost)]
 pub fn env_rustdoc() -> bool {
     match proc_macro::tracked_env::var("VERUSDOC") {
@@ -49,6 +48,7 @@ pub fn env_rustdoc() -> bool {
     }
 }
 
+/// Check if VERUSDOC=1.
 #[cfg(not(verus_keep_ghost))]
 pub fn env_rustdoc() -> bool {
     false
@@ -93,8 +93,7 @@ pub fn process_trait_item_method(item: &mut TraitItemFn) {
 
 /// Process a signature to get all the information, apply the codeblock
 /// formatting tricks, and then package it all up into a #[doc = "..."] attribute
-/// (as a syn_verus::Attribute object) that we can apply to the item.
-
+/// (as a verus_syn::Attribute object) that we can apply to the item.
 fn attr_for_sig(
     sig: &Signature,
     block: Option<&Block>,
@@ -172,7 +171,6 @@ fn is_spec(sig: &Signature) -> bool {
 
 /// Do we want to show the body for the given spec function?
 /// If it's 'open', then yes
-
 fn show_body(sig: &Signature) -> bool {
     matches!(sig.publish, Publish::Open(_))
 }
@@ -236,7 +234,7 @@ fn encoded_sig_info(sig: &Signature) -> String {
     let broadcast = sig.broadcast.is_some();
 
     // JSON blob is parsed by the verusdoc post-processor into a `DocModeInfo` object.
-    // I decided not to pull in serde as a dependency for builtin_macros,
+    // I decided not to pull in serde as a dependency for verus_builtin_macros,
     // but if serialization gets too complicated, we should probably do that instead.
 
     // We put it in a comment to avoid extra syntax highlighting or anything that would
@@ -250,20 +248,33 @@ fn encoded_sig_info(sig: &Signature) -> String {
 }
 
 /// Get the assume_specification line
-
 fn assume_specification_link_line(e: &Expr) -> String {
-    // Change `<A>::B` to `A::B` if it's reasonable to do so, so the link is more likely to work
-    let mut e = e.clone();
-    match &e {
+    // This function applies a series of heuristics to try to get the doc links to work
+    // 1. Change <A>::B to A::B
+    // 2. Not link things we know cannot be linked:
+    //  - Pointer types
+    //  - <Type as Trait>::trait_method constructions
+    let mut can_link = true;
+    let e = match e {
         Expr::Path(ExprPath {
             attrs,
             qself: Some(QSelf { lt_token: _, ty, position: 0, as_token: None, gt_token: _ }),
             path: Path { leading_colon: Some(leading_colon), segments },
         }) => {
             let mut ty = ty;
+
             if let Type::Group(TypeGroup { group_token: _, elem }) = &**ty {
                 ty = elem;
             }
+
+            match &**ty {
+                Type::Ptr(_) => {
+                    // Cannot link to pointer types in rustdoc
+                    can_link = false;
+                }
+                _ => {}
+            }
+
             if let Type::Path(TypePath { qself: None, path: inner_path }) = &**ty {
                 if !inner_path.segments.trailing_punct() && !segments.trailing_punct() {
                     let mut new_path = inner_path.clone();
@@ -274,41 +285,52 @@ fn assume_specification_link_line(e: &Expr) -> String {
                             new_path.segments.push_punct(leading_colon.clone());
                         }
                     }
-                    e = Expr::Path(ExprPath { attrs: attrs.clone(), qself: None, path: new_path });
+                    &Expr::Path(ExprPath { attrs: attrs.clone(), qself: None, path: new_path })
+                } else {
+                    e
                 }
+            } else {
+                e
             }
         }
-        _ => {}
-    }
+        Expr::Path(ExprPath { qself: Some(QSelf { as_token: Some(_), .. }), .. }) => {
+            // Cannot link to implementations of trait methods
+            // https://github.com/rust-lang/rust/issues/74563
+            // FIXME: we could instead link for both the trait method and the implementing type
+            can_link = false;
+            e
+        }
+        _ => e,
+    };
 
-    let s = prettyplease_verus::unparse_expr(&e);
-    let s = s.replace("\n", " ");
-    format!("**Specification for [`{:}`]**", s)
+    let s = verus_prettyplease::unparse_expr(&e).replace("\n", " ");
+    if can_link {
+        format!("**Specification for [`{:}`]**", s)
+    } else {
+        format!("**Specification for `{:}`**", s)
+    }
 }
 
 /// Pretty print the expression, then wrap in a code block.
-
 fn encoded_expr(kind: &str, code: &Expr) -> String {
-    let s = prettyplease_verus::unparse_expr(&code);
+    let s = verus_prettyplease::unparse_expr(&code);
     let s = format!("{s:},");
     encoded_str(kind, &s)
 }
 
 fn encoded_body(kind: &str, code: &Expr) -> String {
-    let s = prettyplease_verus::unparse_expr(&code);
+    let s = verus_prettyplease::unparse_expr(&code);
     let s = format!("{s:}");
     encoded_str(kind, &s)
 }
 
 /// Wrap the given string into a code block,
 /// into the format that the postprocessor will recognize.
-
 fn encoded_str(kind: &str, data: &str) -> String {
     "```rust\n// verusdoc_special_attr ".to_string() + kind + "\n" + data + "\n```"
 }
 
 /// Create an attr that looks like #[doc = "doc_str"]
-
 fn doc_attr_from_string(doc_str: &str, span: Span) -> Attribute {
     let path = Path {
         leading_colon: None,
@@ -317,16 +339,16 @@ fn doc_attr_from_string(doc_str: &str, span: Span) -> Attribute {
             arguments: PathArguments::None,
         }]),
     };
-    let lit = syn_verus::Lit::Str(syn_verus::LitStr::new(doc_str, span));
-    let name_value = syn_verus::MetaNameValue {
+    let lit = verus_syn::Lit::Str(verus_syn::LitStr::new(doc_str, span));
+    let name_value = verus_syn::MetaNameValue {
         path,
         eq_token: token::Eq { spans: [span] },
-        value: Expr::Lit(syn_verus::ExprLit { attrs: vec![], lit }),
+        value: Expr::Lit(verus_syn::ExprLit { attrs: vec![], lit }),
     };
     Attribute {
         pound_token: token::Pound { spans: [span] },
         style: AttrStyle::Outer,
         bracket_token: token::Bracket { span: crate::syntax::into_spans(span) },
-        meta: syn_verus::Meta::NameValue(name_value),
+        meta: verus_syn::Meta::NameValue(name_value),
     }
 }

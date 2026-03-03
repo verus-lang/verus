@@ -22,6 +22,16 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
     }
 
     for function in krate.functions.iter() {
+        if matches!(*function.x.ret.x.typ, TypX::Opaque { .. }) {
+            return Err(error(
+                &function.span,
+                &format!(
+                    "The verifier does not support opaque types together with the check-api-safety flag: `{:}`. Unverified, safe client code may be able to call this function without satisfying the precondition.",
+                    fun_as_friendly_rust_name(&function.x.name),
+                ),
+            ));
+        }
+
         if function.x.mode == Mode::Exec
             && function.x.visibility.is_public()
             && !function.x.attrs.is_unsafe
@@ -138,7 +148,6 @@ fn mask_spec_restricts_implementation(mask_spec: &MaskSpec) -> bool {
 ///
 /// Therefore we always handle exec functions, and only handle proof functions if
 /// they don't have a body.
-
 pub fn function_has_obligation(ctx: &Ctx, function: &Function) -> bool {
     ctx.global.check_api_safety
         && is_decl_in_safe_public_trait(&ctx.trait_map, function)
@@ -147,7 +156,6 @@ pub fn function_has_obligation(ctx: &Ctx, function: &Function) -> bool {
 }
 
 /// Create a body where all outputs are havoced, this represents "any safe implementation".
-
 pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
     // For each mut param, output:
     //  let tmp;
@@ -163,7 +171,6 @@ pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
                     span,
                     &crate::ast_util::unit_typ(),
                     ExprX::Assign {
-                        init_not_mut: false,
                         lhs: SpannedTyped::new(
                             span,
                             &param.x.typ,
@@ -189,7 +196,6 @@ pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
 
 /// When emitting a proof obligation, we need axioms that the trait spec fns are given
 /// their default bodies.
-
 pub fn axioms_for_default_spec_fns(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
@@ -261,7 +267,7 @@ pub fn axioms_for_default_spec_fns(
                 );
 
                 state.pop_scope();
-                state.finalize();
+                state.finalize()?;
 
                 let call_exp = SpannedTyped::new(
                     &function.span,

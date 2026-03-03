@@ -231,7 +231,56 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] pointer_cast_slice_and_str verus_code! {
+        use vstd::prelude::*;
+
+        fn test1(a: *mut [u8]) {
+            let b = a as *mut [u16];
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test2(a: *const [u8]) {
+            let b = a as *const [u16];
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test3(a: *const [u8]) {
+            let b = a as *const str;
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test4(a: *const str) {
+            let b = a as *const [u8];
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test5(a: *const [u16]) {
+            let b = a as *const str;
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test6(a: *const str) {
+            let b = a as *const [u16];
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] pointer_exec_eq_is_not_spec_eq verus_code! {
+        use vstd::prelude::*;
         fn test_const_eq(x: *const u8, y: *const u8) {
             if x == y {
                 assert(x == y); // FAILS
@@ -243,7 +292,7 @@ test_verify_one_file! {
                 assert(x == y); // FAILS
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: ==/!= for non smt equality types")
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {
@@ -258,7 +307,7 @@ test_verify_one_file! {
             test(Tracked(pt));
             test(Tracked(pt));
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `pt`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `pt`")
 }
 
 test_verify_one_file! {
@@ -278,7 +327,7 @@ test_verify_one_file! {
 
             let z = *y;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `pt` because it is borrowed")
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `pt` because it is borrowed")
 }
 
 test_verify_one_file! {
@@ -295,4 +344,30 @@ test_verify_one_file! {
             unsafe { let y = *x; }
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dereferencing a raw pointer")
+}
+
+test_verify_one_file! {
+    #[test] allocate_in_bounds verus_code! {
+        use vstd::raw_ptr::*;
+        use vstd::layout::layout_for_type_is_valid;
+        use vstd::prelude::Set;
+
+        global layout u32 is size == 4, align == 4;
+
+        fn f() {
+            layout_for_type_is_valid::<u32>();
+
+            let (block_ptr, Tracked(token), Tracked(dealloc)) = allocate(8, 4);
+
+            let b1_ptr = block_ptr as *mut u32;
+            let b2_ptr = block_ptr.with_addr(block_ptr.addr() + 4) as *mut u32;
+
+            let tracked (token1, token2) = token.split(Set::new(|x: int| block_ptr.addr() <= x < block_ptr.addr() + 4));
+            let tracked mut token1 = token1.into_typed::<u32>(b1_ptr as usize);
+            let tracked mut token2 = token2.into_typed::<u32>(b2_ptr as usize);
+
+            ptr_mut_write(b1_ptr, Tracked(&mut token1), 9);
+            ptr_mut_write(b2_ptr, Tracked(&mut token2), 14);
+        }
+    } => Ok(())
 }

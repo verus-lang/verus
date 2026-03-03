@@ -97,7 +97,7 @@ test_verify_one_file! {
         mod m {
             pub(crate) struct Seq<A>(A);
         }
-        use crate::m::*;
+        use crate::m::Seq;
         struct S;
         uninterp spec fn f<B>(s: Seq<&S>) -> Seq<B>;
         proof fn test(x: Seq<&S>) {

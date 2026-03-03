@@ -21,9 +21,9 @@ verus! {
 /// where the number of nonzero entries is finite.
 ///
 /// Multisets can be constructed in a few different ways:
-///  * [`Multiset::empty()`] constructs an empty multiset.
+///  * [`Multiset::empty`] constructs an empty multiset.
 ///  * [`Multiset::singleton`] constructs a multiset that contains a single element with multiplicity 1.
-///  * [`Multiset::new`] constructs a multiset from a map of elements to multiplicities.
+///  * [`Multiset::from_map`] constructs a multiset from a map of elements to multiplicities.
 ///  * By manipulating existings multisets with [`Multiset::add`], [`Multiset::insert`],
 ///    [`Multiset::sub`], [`Multiset::remove`], [`Multiset::update`], or [`Multiset::filter`].
 ///  * TODO: `multiset!` constructor macro, multiset from set, from map, etc.
@@ -552,22 +552,22 @@ pub broadcast proof fn lemma_difference_bottoms_out<V>(a: Multiset<V>, b: Multis
 #[macro_export]
 macro_rules! assert_multisets_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::multiset::assert_multisets_equal_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::multiset::assert_multisets_equal_internal!($($tail)*))
     };
 }
 
 #[macro_export]
 macro_rules! assert_multisets_equal_internal {
-    (::builtin::spec_eq($m1:expr, $m2:expr)) => {
+    (::verus_builtin::spec_eq($m1:expr, $m2:expr)) => {
         $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2)
     };
-    (::builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
+    (::verus_builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
         $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
     };
-    (crate::builtin::spec_eq($m1:expr, $m2:expr)) => {
+    (crate::verus_builtin::spec_eq($m1:expr, $m2:expr)) => {
         $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2)
     };
-    (crate::builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
+    (crate::verus_builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
         $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
     };
     ($m1:expr, $m2:expr $(,)?) => {
@@ -586,39 +586,6 @@ macro_rules! assert_multisets_equal_internal {
             $crate::vstd::prelude::assert_($crate::vstd::prelude::ext_equal(m1, m2));
         });
     }
-}
-
-/// Properties of multisets from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-#[deprecated = "Use `broadcast use group_multiset_properties` instead" ]
-pub proof fn lemma_multiset_properties<V>()
-    ensures
-        forall|m: Multiset<V>, v: V, mult: nat| #[trigger] m.update(v, mult).count(v) == mult,  //from lemma_update_same
-        forall|m: Multiset<V>, v1: V, mult: nat, v2: V|
-            v1 != v2 ==> #[trigger] m.update(v1, mult).count(v2) == m.count(v2),  //from lemma_update_different
-        forall|m: Multiset<V>|
-            (#[trigger] m.len() == 0 <==> m =~= Multiset::empty()) && (#[trigger] m.len() > 0
-                ==> exists|v: V| 0 < m.count(v)),  //from lemma_multiset_empty_len
-        forall|m: Multiset<V>, x: V, y: V|
-            0 < #[trigger] m.insert(x).count(y) <==> x == y || 0 < m.count(y),  //from lemma_insert_containment
-        forall|m: Multiset<V>, x: V| #[trigger] m.insert(x).count(x) == m.count(x) + 1,  //from lemma_insert_increases_count_by_1
-        forall|m: Multiset<V>, x: V, y: V| 0 < m.count(y) ==> 0 < #[trigger] m.insert(x).count(y),  //from lemma_insert_non_decreasing
-        forall|m: Multiset<V>, x: V, y: V|
-            x != y ==> #[trigger] m.count(y) == #[trigger] m.insert(x).count(y),  //from lemma_insert_other_elements_unchanged
-        forall|m: Multiset<V>, x: V| #[trigger] m.insert(x).len() == m.len() + 1,  //from lemma_insert_len
-        forall|a: Multiset<V>, b: Multiset<V>, x: V| #[trigger]
-            a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int),  //from lemma_intersection_count
-        forall|a: Multiset<V>, b: Multiset<V>| #[trigger]
-            a.intersection_with(b).intersection_with(b) == a.intersection_with(b),  //from lemma_left_pseudo_idempotence
-        forall|a: Multiset<V>, b: Multiset<V>| #[trigger]
-            a.intersection_with(a.intersection_with(b)) == a.intersection_with(b),  //from lemma_right_pseudo_idempotence
-        forall|a: Multiset<V>, b: Multiset<V>, x: V| #[trigger]
-            a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)),  //from lemma_difference_count
-        forall|a: Multiset<V>, b: Multiset<V>, x: V| #[trigger]
-            a.count(x) <= #[trigger] b.count(x) ==> (#[trigger] a.difference_with(b)).count(x)
-                == 0,  //from lemma_difference_bottoms_out
-{
-    broadcast use {group_multiset_axioms, group_multiset_properties};
-
 }
 
 pub broadcast group group_multiset_properties {

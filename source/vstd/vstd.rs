@@ -12,10 +12,13 @@
 #![cfg_attr(any(verus_keep_ghost, feature = "allocator"), feature(allocator_api))]
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
-#![cfg_attr(verus_keep_ghost, feature(strict_provenance_atomic_ptr))]
+#![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
 #![cfg_attr(verus_keep_ghost, feature(freeze))]
 #![cfg_attr(verus_keep_ghost, feature(derive_clone_copy))]
+#![cfg_attr(verus_keep_ghost, feature(derive_eq))]
+#![cfg_attr(verus_keep_ghost, verifier::deprecated_postcondition_mut_ref_style(true))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
+#![cfg_attr(verus_keep_ghost, feature(new_range_api))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -29,12 +32,19 @@ pub mod bytes;
 pub mod calc_macro;
 pub mod cell;
 pub mod compute;
+pub mod contrib;
+pub mod endian;
+pub mod float;
 pub mod function;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_set;
 pub mod invariant;
+#[cfg(verus_keep_ghost)]
+pub mod laws_cmp;
+#[cfg(verus_keep_ghost)]
+pub mod laws_eq;
 pub mod layout;
 pub mod logatom;
 pub mod map;
@@ -46,8 +56,10 @@ pub mod multiset_lib;
 pub mod pcm;
 pub mod pcm_lib;
 pub mod pervasive;
+pub mod predicate;
 pub mod proph;
 pub mod raw_ptr;
+pub mod relations;
 pub mod rwlock;
 pub mod seq;
 pub mod seq_lib;
@@ -62,16 +74,15 @@ pub mod storage_protocol;
 pub mod string;
 #[cfg(feature = "std")]
 pub mod thread;
+pub mod tokens;
 pub mod view;
 
-pub mod relations;
 #[cfg(verus_keep_ghost)]
 pub mod std_specs;
 
 // Re-exports all vstd types, traits, and functions that are commonly used or replace
 // regular `core` or `std` definitions.
 pub mod prelude;
-pub mod tokens;
 
 use prelude::*;
 
@@ -90,6 +101,8 @@ pub broadcast group group_vstd_default {
     multiset::group_multiset_axioms,
     compute::all_spec_ensures,
     function::group_function_axioms,
+    laws_eq::group_laws_eq,
+    laws_cmp::group_laws_cmp,
     //
     // Rust types
     //
@@ -105,6 +118,7 @@ pub broadcast group group_vstd_default {
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
     std_specs::slice::group_slice_axioms,
+    std_specs::manually_drop::group_manually_drop_axioms,
     //
     // std_specs for alloc (with or without std)
     //
@@ -117,6 +131,8 @@ pub broadcast group group_vstd_default {
     //
     #[cfg(all(feature = "alloc", feature = "std"))]
     std_specs::hash::group_hash_axioms,
+    #[cfg(all(feature = "alloc", feature = "std"))]
+    std_specs::btree::group_btree_axioms,
 }
 
 } // verus!

@@ -1,7 +1,7 @@
 use crate::ast::{MonoidStmtType, SM, ShardableType, SpecialOp, SplitKind, TransitionStmt};
 use proc_macro2::Span;
-use syn_verus::parse;
-use syn_verus::parse::Error;
+use verus_syn::parse;
+use verus_syn::parse::Error;
 
 /// Many of the "special ops" have inherent safety conditions.
 /// (That is, they contain an 'assert' when expanded out.)
@@ -31,7 +31,6 @@ use syn_verus::parse::Error;
 ///
 /// See `docs/command-reference.md` for more explanation, or `simplification.rs`
 /// for the expansions.
-
 fn check_inherent_condition_for_special_op(
     span: Span,
     op: &SpecialOp,
@@ -163,7 +162,7 @@ pub fn check_inherent_conditions(sm: &SM, ts: &mut TransitionStmt, errors: &mut 
             }
         }
         TransitionStmt::Split(span, kind, splits) => {
-            match kind {
+            match &mut **kind {
                 SplitKind::Special(ident, op, proof, _) => {
                     let field = crate::transitions::get_field(&sm.fields, ident);
                     let checked = check_inherent_condition_for_special_op(

@@ -4,7 +4,7 @@ fn main() {}
 // ## 11 -- 10-program.rs
 
 #[allow(unused_imports)]
-use {builtin::*, builtin_macros::*, prelude::*, seq::*, vstd::*};
+use {verus_builtin::*, verus_builtin_macros::*, prelude::*, seq::*, vstd::*};
 
 verus! {
 

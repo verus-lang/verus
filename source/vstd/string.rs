@@ -258,6 +258,14 @@ pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
         s.is_ascii() == res.is_ascii(),
 ;
 
+// same as above
+#[cfg(feature = "alloc")]
+pub assume_specification<'a>[ <String as core::ops::Deref>::deref ](s: &'a String) -> (res: &'a str)
+    ensures
+        res@ == s@,
+        s.is_ascii() == res.is_ascii(),
+;
+
 #[cfg(feature = "alloc")]
 pub assume_specification[ <String as Clone>::clone ](s: &String) -> (res: String)
     ensures
@@ -268,6 +276,20 @@ pub assume_specification[ <String as Clone>::clone ](s: &String) -> (res: String
 pub assume_specification[ <String as PartialEq>::eq ](s: &String, other: &String) -> (res: bool)
     ensures
         res == (s@ == other@),
+;
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ String::new ]() -> (res: String)
+    ensures
+        res@ == Seq::<char>::empty(),
+        string_is_ascii(&res),
+;
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ <String as core::default::Default>::default ]() -> (r: String)
+    ensures
+        r@ == Seq::<char>::empty(),
+        string_is_ascii(&r),
 ;
 
 #[cfg(feature = "alloc")]
@@ -347,6 +369,15 @@ impl<'a> View for Chars<'a> {
     type V = (int, Seq<char>);
 
     uninterp spec fn view(&self) -> (int, Seq<char>);
+}
+
+#[cfg(feature = "alloc")]
+impl<'a> DeepView for Chars<'a> {
+    type V = <Self as View>::V;
+
+    open spec fn deep_view(&self) -> Self::V {
+        self@
+    }
 }
 
 #[cfg(feature = "alloc")]

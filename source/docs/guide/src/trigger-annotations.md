@@ -73,9 +73,11 @@ The behavior can be configured through the command line:
 </colgroup>
 <thead><tr><th>Option</th><th>Behavior</th></tr></thead>
 <tbody>
-<tr><td><code>--triggers-silent</code></td><td>Do not show automatically chosen triggers</td></tr>
-<tr><td><code>--triggers-selective</code></td><td><strong>Default.</strong> Show automatically chosen triggers only when heuristics are un-confident, and when <code>#![auto]</code> has not been supplied</td></tr>
+<tr><td><code>--triggers-mode silent</code></td><td>Do not show automatically chosen triggers</td></tr>
+<tr><td><code>--triggers-mode selective</code></td><td><strong>Default.</strong> Show automatically chosen triggers only when heuristics are un-confident, and when <code>#![auto]</code> has not been supplied</td></tr>
 <tr><td><code>--triggers</code></td><td>Show all automatically chosen triggers for verified modules</td></tr>
-<tr><td><code>--triggers-verbose</code></td><td>Show all automatically chosen triggers for verified modules and imported definitions from other module</td></tr>
+<tr><td><code>--triggers-mode verbose</code></td><td>Show all automatically chosen triggers for verified modules and imported definitions from other module</td></tr>
 </tbody></table>
 </div>
+
+See more triggers logging options in `verus --help`

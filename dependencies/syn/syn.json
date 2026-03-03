@@ -1,5 +1,5 @@
 {
-  "version": "2.0.96",
+  "version": "0.0.0-2026-02-15-0106",
   "types": [
     {
       "ident": "Abi",
@@ -313,15 +313,21 @@
         "path": {
           "syn": "Path"
         },
-        "paren_token": {
-          "group": "Paren"
-        },
         "inputs": {
-          "punctuated": {
-            "element": {
-              "syn": "FnArg"
-            },
-            "punct": "Comma"
+          "option": {
+            "tuple": [
+              {
+                "group": "Paren"
+              },
+              {
+                "punctuated": {
+                  "element": {
+                    "syn": "FnArg"
+                  },
+                  "punct": "Comma"
+                }
+              }
+            ]
           }
         },
         "output": {
@@ -1388,6 +1394,11 @@
           {
             "syn": "ExprGetField"
           }
+        ],
+        "Final": [
+          {
+            "syn": "ExprFinal"
+          }
         ]
       }
     },
@@ -1795,6 +1806,30 @@
         },
         "member": {
           "syn": "Member"
+        }
+      }
+    },
+    {
+      "ident": "ExprFinal",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "final_token": {
+          "token": "Final"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "arg": {
+          "box": {
+            "syn": "Expr"
+          }
         }
       }
     },

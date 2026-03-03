@@ -8,14 +8,14 @@ use crate::precedence::Precedence;
 use crate::stmt;
 use crate::INDENT;
 use proc_macro2::TokenStream;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::{
+use verus_syn::punctuated::Punctuated;
+use verus_syn::{
     token, Arm, Attribute, BinOp, Block, Expr, ExprArray, ExprAssign, ExprAsync, ExprAwait,
     ExprBinary, ExprBlock, ExprBreak, ExprCall, ExprCast, ExprClosure, ExprConst, ExprContinue,
     ExprField, ExprForLoop, ExprGroup, ExprIf, ExprIndex, ExprInfer, ExprLet, ExprLit, ExprLoop,
     ExprMacro, ExprMatch, ExprMethodCall, ExprParen, ExprPath, ExprRange, ExprRawAddr,
     ExprReference, ExprRepeat, ExprReturn, ExprStruct, ExprTry, ExprTryBlock, ExprTuple, ExprUnary,
-    ExprUnsafe, ExprWhile, ExprYield, FieldValue, Index, Label, Member, PointerMutability,
+    ExprUnsafe, ExprWhile, ExprYield, FieldValue, Index, Label, Lit, Member, PointerMutability,
     RangeLimits, ReturnType, Stmt, Token, UnOp,
 };
 
@@ -88,10 +88,9 @@ impl Printer {
             Expr::HasNot(expr) => self.expr_hasnot(expr),
             Expr::GetField(expr) => self.expr_get_field(expr),
             Expr::Matches(m) => self.expr_matches(m),
+            Expr::Final(e) => self.expr_final(e),
 
-            Expr::Assume(_) | Expr::Assert(_) | Expr::AssertForall(_) | Expr::RevealHide(_) => {
-                unimplemented!("unknown Expr {:?}", expr)
-            }
+            Expr::Assume(_) | Expr::Assert(_) | Expr::AssertForall(_) | Expr::RevealHide(_) => {}
         }
 
         if needs_paren {
@@ -99,7 +98,7 @@ impl Printer {
         }
     }
 
-    pub fn expr_view(&mut self, expr: &syn_verus::View) {
+    pub fn expr_view(&mut self, expr: &verus_syn::View) {
         // Similar to expr_tyr
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.expr, FixupContext::NONE);
@@ -116,50 +115,50 @@ impl Printer {
         }
     }
 
-    pub fn expr_is(&mut self, expr: &syn_verus::ExprIs) {
+    pub fn expr_is(&mut self, expr: &verus_syn::ExprIs) {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.base, FixupContext::NONE);
         self.word(" is ");
         self.ident(&expr.variant_ident);
     }
 
-    pub fn expr_isnot(&mut self, expr: &syn_verus::ExprIsNot) {
+    pub fn expr_isnot(&mut self, expr: &verus_syn::ExprIsNot) {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.base, FixupContext::NONE);
         self.word(" !is ");
         self.ident(&expr.variant_ident);
     }
 
-    pub fn expr_has(&mut self, expr: &syn_verus::ExprHas) {
+    pub fn expr_has(&mut self, expr: &verus_syn::ExprHas) {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.lhs, FixupContext::NONE);
         self.word(" has ");
         self.expr(&expr.rhs, FixupContext::NONE);
     }
 
-    pub fn expr_hasnot(&mut self, expr: &syn_verus::ExprHasNot) {
+    pub fn expr_hasnot(&mut self, expr: &verus_syn::ExprHasNot) {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.lhs, FixupContext::NONE);
         self.word(" !has ");
         self.expr(&expr.rhs, FixupContext::NONE);
     }
 
-    pub fn expr_matches(&mut self, expr: &syn_verus::ExprMatches) {
+    pub fn expr_matches(&mut self, expr: &verus_syn::ExprMatches) {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.lhs, FixupContext::NONE);
         self.word(" matches ");
         self.pat(&expr.pat);
         match &expr.op_expr {
             None => {}
-            Some(syn_verus::MatchesOpExpr { op_token, rhs }) => {
+            Some(verus_syn::MatchesOpExpr { op_token, rhs }) => {
                 match op_token {
-                    syn_verus::MatchesOpToken::Implies(..) => {
+                    verus_syn::MatchesOpToken::Implies(..) => {
                         self.word(" ==> ");
                     }
-                    syn_verus::MatchesOpToken::AndAnd(..) => {
+                    verus_syn::MatchesOpToken::AndAnd(..) => {
                         self.word(" && ");
                     }
-                    syn_verus::MatchesOpToken::BigAnd => {
+                    verus_syn::MatchesOpToken::BigAnd => {
                         self.word(" &&& ");
                     }
                 }
@@ -168,11 +167,18 @@ impl Printer {
         }
     }
 
-    pub fn expr_get_field(&mut self, expr: &syn_verus::ExprGetField) {
+    pub fn expr_get_field(&mut self, expr: &verus_syn::ExprGetField) {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.base, FixupContext::NONE);
         self.word("->");
         self.member(&expr.member);
+    }
+
+    pub fn expr_final(&mut self, expr: &verus_syn::ExprFinal) {
+        self.outer_attrs(&expr.attrs);
+        self.word("final(");
+        self.expr(&expr.arg, FixupContext::NONE);
+        self.word(")");
     }
 
     pub fn expr_beginning_of_line(
@@ -263,16 +269,37 @@ impl Printer {
 
     fn expr_array(&mut self, expr: &ExprArray) {
         self.outer_attrs(&expr.attrs);
-        self.word("[");
-        self.cbox(INDENT);
-        self.zerobreak();
-        for element in expr.elems.iter().delimited() {
-            self.expr(&element, FixupContext::NONE);
-            self.trailing_comma(element.is_last);
+        if expr.elems.is_empty() {
+            self.word("[]");
+        } else if simple_array(&expr.elems) {
+            self.cbox(INDENT);
+            self.word("[");
+            self.zerobreak();
+            self.ibox(0);
+            for elem in expr.elems.iter().delimited() {
+                self.expr(&elem, FixupContext::NONE);
+                if !elem.is_last {
+                    self.word(",");
+                    self.space();
+                }
+            }
+            self.end();
+            self.trailing_comma(true);
+            self.offset(-INDENT);
+            self.word("]");
+            self.end();
+        } else {
+            self.word("[");
+            self.cbox(INDENT);
+            self.zerobreak();
+            for elem in expr.elems.iter().delimited() {
+                self.expr(&elem, FixupContext::NONE);
+                self.trailing_comma(elem.is_last);
+            }
+            self.offset(-INDENT);
+            self.end();
+            self.word("]");
         }
-        self.offset(-INDENT);
-        self.end();
-        self.word("]");
     }
 
     fn expr_assign(&mut self, expr: &ExprAssign, fixup: FixupContext) {
@@ -286,10 +313,16 @@ impl Printer {
 
         self.outer_attrs(&expr.attrs);
         self.ibox(0);
+        if !expr.attrs.is_empty() {
+            self.word("(");
+        }
         self.subexpr(&expr.left, left_prec <= Precedence::Range, left_fixup);
         self.word(" = ");
         self.neverbreak();
         self.expr(&expr.right, right_fixup);
+        if !expr.attrs.is_empty() {
+            self.word(")");
+        }
         self.end();
     }
 
@@ -368,12 +401,18 @@ impl Printer {
         self.outer_attrs(&expr.attrs);
         self.ibox(INDENT);
         self.ibox(-INDENT);
+        if !expr.attrs.is_empty() {
+            self.word("(");
+        }
         self.subexpr(&expr.left, left_needs_group, left_fixup);
         self.end();
         self.space();
         self.binary_operator(&expr.op);
         self.nbsp();
         self.subexpr(&expr.right, right_needs_group, right_fixup);
+        if !expr.attrs.is_empty() {
+            self.word(")");
+        }
         self.end();
     }
 
@@ -451,11 +490,17 @@ impl Printer {
         self.outer_attrs(&expr.attrs);
         self.ibox(INDENT);
         self.ibox(-INDENT);
+        if !expr.attrs.is_empty() {
+            self.word("(");
+        }
         self.subexpr(&expr.expr, left_prec < Precedence::Cast, left_fixup);
         self.end();
         self.space();
         self.word("as ");
         self.ty(&expr.ty);
+        if !expr.attrs.is_empty() {
+            self.word(")");
+        }
         self.end();
     }
 
@@ -853,6 +898,9 @@ impl Printer {
 
     pub fn expr_range(&mut self, expr: &ExprRange, fixup: FixupContext) {
         self.outer_attrs(&expr.attrs);
+        if !expr.attrs.is_empty() {
+            self.word("(");
+        }
         if let Some(start) = &expr.start {
             let (left_prec, left_fixup) =
                 fixup.leftmost_subexpression_with_operator(start, true, false, Precedence::Range);
@@ -868,6 +916,9 @@ impl Printer {
             let right_fixup = fixup.rightmost_subexpression_fixup(false, true, Precedence::Range);
             let right_prec = right_fixup.rightmost_subexpression_precedence(end);
             self.subexpr(end, right_prec <= Precedence::Range, right_fixup);
+        }
+        if !expr.attrs.is_empty() {
+            self.word(")");
         }
     }
 
@@ -1486,6 +1537,26 @@ pub fn simple_block(expr: &Expr) -> Option<&ExprBlock> {
         }
     }
     None
+}
+
+pub fn simple_array(elements: &Punctuated<Expr, Token![,]>) -> bool {
+    for expr in elements {
+        if let Expr::Lit(expr) = expr {
+            match expr.lit {
+                #![cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
+                Lit::Byte(_) | Lit::Char(_) | Lit::Int(_) | Lit::Bool(_) => {}
+
+                Lit::Str(_) | Lit::ByteStr(_) | Lit::CStr(_) | Lit::Float(_) | Lit::Verbatim(_) => {
+                    return false;
+                }
+
+                _ => return false,
+            }
+        } else {
+            return false;
+        }
+    }
+    true
 }
 
 // Expressions for which `$expr` and `{ $expr }` mean the same thing.

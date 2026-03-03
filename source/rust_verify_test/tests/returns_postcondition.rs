@@ -443,3 +443,31 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] returns_and_recommends_issue1834 verus_code! {
+        #[verifier::allow_in_spec]
+        fn m1(x: u64, y: u64) -> (z: u128)
+        requires
+            x < (1u64 << 52),
+            y < (1u64 << 52),
+        ensures
+            z < (1u128 << 104),
+        returns (x * y) as u128
+        {
+            assume(false); // Omit proof for brevity
+            (x as u128) * (y as u128)
+        }
+
+        fn m2(a: u64, b: u64) -> u128
+        requires
+            a < (1u64 << 52),
+            b < (1u64 << 52),
+        {
+            proof!{
+                assert(2 * m1(a, b) < (2u128 << 104)); // FAILS
+            }
+            2 * m1(a, b)
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

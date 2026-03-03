@@ -3,7 +3,9 @@ use crate::verus_items::RustItem;
 use rustc_hir::HirId;
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{BinaryOp, Expr, ExprX, FunctionX, Mode, SpannedTyped, VirErr, VirErrAs};
+use vir::ast::{
+    BinaryOp, Expr, ExprX, FunctionX, Mode, Place, PlaceX, SpannedTyped, VirErr, VirErrAs,
+};
 
 /// Traits with special handling
 #[derive(Clone, Copy, Debug)]
@@ -49,6 +51,11 @@ pub fn is_automatically_derived(attrs: &[rustc_hir::Attribute]) -> bool {
                 }
                 _ => {}
             },
+            rustc_hir::Attribute::Parsed(
+                rustc_hir::attrs::AttributeKind::AutomaticallyDerived(_),
+            ) => {
+                return true;
+            }
             _ => {}
         }
     }
@@ -82,8 +89,9 @@ fn clone_add_post_condition<'tcx>(
     functionx: &mut FunctionX,
 ) -> Result<(), VirErr> {
     let warn = |msg: &str| {
-        let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
-        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(span, msg.to_string())));
+        ctxt.diagnostics
+            .borrow_mut()
+            .push(VirErrAs::Warning(crate::util::err_span_bare(span, msg.to_string())));
     };
     let warn_unexpected = || {
         warn(
@@ -105,10 +113,16 @@ fn clone_add_post_condition<'tcx>(
 
     match &body.x {
         ExprX::Block(_stmts, Some(last_expr)) => match &last_expr.x {
-            ExprX::Var(id) if &*id.0 == "self" => {
-                uses_copy = true;
-                self_var = Some(last_expr.clone());
-            }
+            ExprX::ReadPlace(pl, _) => match &pl.x {
+                PlaceX::Local(id) if &*id.0 == "self" => {
+                    uses_copy = true;
+                    self_var = Some(last_expr.clone());
+                }
+                _ => {
+                    warn_unexpected();
+                    return Ok(());
+                }
+            },
             ExprX::Ctor { .. } => {
                 uses_copy = false;
                 self_var = None;
@@ -154,11 +168,20 @@ fn clone_add_post_condition<'tcx>(
 
 // TODO better place for this
 fn cleanup_span_ids<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, expr: &Expr) -> Expr {
-    vir::ast_visitor::map_expr_visitor(expr, &|e: &Expr| {
-        let e = ctxt.spans.spanned_typed_new(span, &e.typ, e.x.clone());
-        let mut erasure_info = ctxt.erasure_info.borrow_mut();
-        erasure_info.hir_vir_ids.push((hir_id, e.span.id));
-        Ok(e)
-    })
+    vir::ast_visitor::map_expr_place_visitor(
+        expr,
+        &|e: &Expr| {
+            let e = ctxt.spans.spanned_typed_new(span, &e.typ, e.x.clone());
+            let mut erasure_info = ctxt.erasure_info.borrow_mut();
+            erasure_info.hir_vir_ids.push((hir_id, e.span.id));
+            Ok(e)
+        },
+        &|p: &Place| {
+            let p = ctxt.spans.spanned_typed_new(span, &p.typ, p.x.clone());
+            let mut erasure_info = ctxt.erasure_info.borrow_mut();
+            erasure_info.hir_vir_ids.push((hir_id, p.span.id));
+            Ok(p)
+        },
+    )
     .unwrap()
 }

@@ -1412,3 +1412,132 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] recursive_call_in_loop2 verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test1(x: usize)
+            decreases x,
+        {
+            if x == 0 {
+                return;
+            }
+            let mut i: usize = 0;
+            while i < 10
+                decreases 10 - i,
+            {
+                test1(x - 1);
+                let mut j: usize = 0;
+                while j * 2 < 5
+                    invariant j <= 4,
+                    decreases 4 - j,
+                {
+                    test1(x - 1);
+                    j = j + 1;
+                }
+                i = i + 1;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] recursive_call_in_loop3 ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test1(x: usize)
+            decreases x,
+        {
+            if x == 0 {
+                return;
+            }
+            let mut i: usize = 0;
+            while i < 10
+            {
+                test1(x - 1);
+                let mut j: usize = 0;
+                while j * 2 < 5
+                    invariant j <= 4,
+                {
+                    test1(x - 1);
+                    j = j + 1;
+                }
+                i = i + 1;
+            }
+        }
+    } => Ok(_err) => {/* allow decreases checks warnings */ }
+}
+
+test_verify_one_file! {
+    #[test] recursive_call_in_loop_mut_ref verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test1(x: &mut usize)
+            ensures *x <= *old(x),
+            decreases old(x),
+        {
+            if *x == 0 {
+                return;
+            }
+            let mut i: usize = 0;
+            *x -= 1;
+            while i <10
+                invariant
+                    *x < *old(x),
+                decreases 10 - i
+            {
+                test1(x);
+                i += 1;
+            }
+        }
+    } => Ok(())
+}
+
+// Basic success - invariant_except_break is allowed and verified
+test_verify_one_file_with_options! {
+    #[test] allow_complex_invariants_basic ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::loop_isolation(false)]
+        #[verifier::allow_complex_invariants]
+        fn test1() {
+            let mut i: u32 = 0;
+            while i < 10
+                invariant_except_break i <= 10
+                invariant 0 <= i <= 10
+            {
+                i = i + 1;
+            }
+            assert(i == 10);
+        }
+    } => Ok(())
+}
+
+// Error when used with loop_isolation(true)
+test_verify_one_file_with_options! {
+    #[test] allow_complex_invariants_error_requires_no_isolation ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::loop_isolation(true)]
+        #[verifier::allow_complex_invariants]
+        fn test1() {
+            let mut i: u32 = 0;
+            while i < 10
+                invariant i <= 10
+            {
+                i = i + 1;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "attribute 'allow_complex_invariants' can only be used with 'loop_isolation(false)'")
+}
+
+// Invariant violation - invariant_except_break not maintained
+test_verify_one_file_with_options! {
+    #[test] allow_complex_invariants_fail ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::loop_isolation(false)]
+        #[verifier::allow_complex_invariants]
+        fn test1() {
+            let mut i: u32 = 0;
+            while i < 100
+                invariant_except_break i < 10  // FAILS
+                invariant i <= 100
+            {
+                i = i + 1;
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}

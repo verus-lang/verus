@@ -684,11 +684,11 @@ test_verify_one_file! {
     #[test] termination_checked_across_modules verus_code! {
         // We expect this to complain about the lack of 'decreases' clause
         mod M1 {
-            use builtin::*;
+            use verus_builtin::*;
             pub(crate) closed spec fn f1(i: int) -> int { crate::M2::f2(i - 1) }
         }
         mod M2 {
-            use builtin::*;
+            use verus_builtin::*;
             pub(crate) closed spec fn f2(i: int) -> int { crate::M1::f1(i - 1) }
         }
     } => Err(err) => {
@@ -703,7 +703,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] termination_checked_across_modules2 verus_code! {
         mod M1 {
-            use builtin::*;
+            use verus_builtin::*;
             pub(crate) closed spec fn f1(i: int) -> int
                 decreases i
             {
@@ -711,7 +711,7 @@ test_verify_one_file! {
             }
         }
         mod M2 {
-            use builtin::*;
+            use verus_builtin::*;
             pub(crate) closed spec fn f2(i: int) -> int
                 decreases i
             {
@@ -1308,9 +1308,9 @@ test_verify_one_file! {
             decreases *old(s)
         {
             *s = *s - 1; // FAILS
-            e(s) // FAILS
+            e(s)
         }
-    } => Err(e) => assert_fails(e, 2)
+    } => Err(e) => assert_fails(e, 1)
 }
 
 test_verify_one_file! {
@@ -1334,7 +1334,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] decreases_by_other_module_1_regression_249 verus_code! {
         mod A {
-            #[allow(unused_imports)] use builtin::*;
+            #[allow(unused_imports)] use verus_builtin::*;
             pub open spec fn f(a: nat) -> nat
                 decreases a
             {
@@ -1353,7 +1353,7 @@ test_verify_one_file! {
         }
 
         mod B {
-            #[allow(unused_imports)] use builtin::*;
+            #[allow(unused_imports)] use verus_builtin::*;
             #[allow(unused_imports)] use crate::A::f;
 
             spec fn g() -> nat {
@@ -1366,7 +1366,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] decreases_by_other_module_2 verus_code! {
         mod A {
-            #[allow(unused_imports)] use builtin::*;
+            #[allow(unused_imports)] use verus_builtin::*;
             pub open spec fn f(a: nat) -> nat
                 decreases a
             {
@@ -1381,7 +1381,7 @@ test_verify_one_file! {
         }
 
         mod B {
-            #[allow(unused_imports)] use builtin::*;
+            #[allow(unused_imports)] use verus_builtin::*;
             #[verifier(decreases_by)]
             pub proof fn termination_f(a: nat) {
                 assert(false);
@@ -1637,8 +1637,9 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] decrease_through_abstract_type verus_code! {
+        use vstd::std_specs::alloc::*;
         mod m1 {
-            use builtin::*;
+            use verus_builtin::*;
             pub struct S<A, B>(A, B);
             impl<A, B> S<A, B> {
                 pub closed spec fn get0(self) -> A { self.0 }
@@ -1654,7 +1655,7 @@ test_verify_one_file! {
         }
 
         mod m2 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::m1::*;
             enum Q {
                 Nil,
@@ -1671,7 +1672,7 @@ test_verify_one_file! {
         }
 
         mod m3 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::m1::*;
             enum Q {
                 Nil,
@@ -1687,7 +1688,7 @@ test_verify_one_file! {
         }
 
         mod m4 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::m1::*;
             enum Q {
                 Nil,
@@ -1708,6 +1709,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] height_intrinsic verus_code! {
+        use vstd::std_specs::alloc::*;
         #[is_variant]
         enum Tree {
             Node(Box<Tree>, Box<Tree>),
@@ -1745,6 +1747,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] height_intrinsic_mode verus_code! {
+        use vstd::std_specs::alloc::*;
         #[is_variant]
         enum Tree {
             Node(Box<Tree>, Box<Tree>),
@@ -1754,11 +1757,12 @@ test_verify_one_file! {
         fn test(tree: Tree) {
             let x = decreases_to!(tree => tree);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file! {
     #[test] datatype_height_axiom_checks_the_variant verus_code! {
+        use vstd::std_specs::alloc::*;
         #[is_variant]
         enum List {
             Cons(Box<List>),
@@ -2152,4 +2156,126 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lemma_decreases_generic verus_code! {
+        use vstd::prelude::*;
+
+        pub open spec fn test<T>(s:Seq<T>) -> int
+            decreases s
+        {
+            if s.len() == 0 {
+                0
+            }
+            else {
+                test(s.drop_last())
+            }
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // From: https://github.com/verus-lang/verus/issues/1372
+    #[test] lemma_decreases_generic_fail verus_code! {
+        use vstd::prelude::*;
+
+        spec fn foo<A>(s: Set<A>) -> int
+            decreases s when s.finite()
+        {
+            if s.is_empty() {
+                0
+            } else {
+                foo(s.remove(s.choose()))
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "could not prove termination")
+}
+
+test_verify_one_file! {
+    // From: https://github.com/verus-lang/verus/issues/1996
+    #[test] lemma_decreases_option verus_code! {
+        use vstd::prelude::*;
+
+        struct S {
+            s: Option<Box<S>>,
+        }
+
+        // Test recursion
+        proof fn test1(o: Option<Box<S>>)
+            decreases o
+        {
+            if let Some(b) = o {
+                test1(b.s)
+            }
+        }
+
+        // Test loops
+        fn test2(mut o: Option<Box<S>>) {
+            loop
+                decreases o
+            {
+                if let Some(b) = o {
+                    o = b.s;
+                } else {
+                    break;
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] recursive_lock_ok verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        use vstd::simple_pptr::*;
+
+        struct Node{
+            x : usize,
+            child : Vec<LockNode>,
+        }
+        impl Node{
+            spec fn wf(self) -> bool{
+                forall |i:int| 0<=i < self.child.len() ==>
+                   #[trigger] self.child[i].wf()
+            }
+        }
+
+        struct LockNode{
+            ptr : PPtr<Node>,
+            inv : Tracked<AtomicInvariant<PPtr<Node>, PointsTo<Node>, LockInv>>,
+        }
+        impl LockNode{
+            spec fn wf(self) -> bool{
+                &&& self.inv@.constant() == self.ptr
+            }
+        }
+
+        struct LockInv{}
+        impl InvariantPredicate<PPtr<Node>, PointsTo<Node>> for LockInv {
+            closed spec fn inv(a:PPtr<Node>, b:PointsTo<Node>) -> bool{
+                b.value().wf()
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] recursion_through_cloned_tuple verus_code!{
+        use vstd::prelude::*;
+
+        struct A { }
+
+        // This implementation is recursive through tuple clone
+
+        impl Clone for A {
+            fn clone(&self) -> Self {
+                let x = Some((A { }, 0));
+                let z = x.clone();
+                A { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not recognize this trait bound: <(A, i32) as std::clone::Clone>")
 }

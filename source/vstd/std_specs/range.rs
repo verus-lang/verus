@@ -1,12 +1,66 @@
 use super::super::prelude::*;
 use super::super::view::View;
-use core::ops::Range;
+use super::cmp::{PartialOrdIs, PartialOrdSpec};
+use core::ops::{Range, RangeInclusive};
 
 verus! {
 
 #[verifier::external_type_specification]
 #[verifier::reject_recursive_types_in_ground_variants(Idx)]
 pub struct ExRange<Idx>(Range<Idx>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types_in_ground_variants(Idx)]
+pub struct ExRangeInclusive<Idx>(RangeInclusive<Idx>);
+
+pub struct RangeInclusiveView<Idx> {
+    pub start: Idx,
+    pub end: Idx,
+    pub exhausted: bool,
+}
+
+pub trait ContainsSpec<Idx, U> where Idx: PartialOrd<U>, U: ?Sized + PartialOrd<Idx> {
+    spec fn obeys_contains() -> bool;
+
+    spec fn contains_spec(&self, i: &U) -> bool;
+}
+
+impl<Idx, U> ContainsSpec<Idx, U> for RangeInclusive<Idx> where
+    Idx: PartialOrd<U>,
+    U: ?Sized + PartialOrd<Idx>,
+ {
+    open spec fn obeys_contains() -> bool {
+        (U::obeys_partial_cmp_spec() && <Idx as PartialOrdSpec<U>>::obeys_partial_cmp_spec())
+    }
+
+    open spec fn contains_spec(&self, i: &U) -> bool {
+        self@.start.is_le(&i) && if self@.exhausted {
+            i.is_lt(&self@.end)
+        } else {
+            i.is_le(&self@.end)
+        }
+    }
+}
+
+impl<Idx, U> ContainsSpec<Idx, U> for Range<Idx> where
+    Idx: PartialOrd<U>,
+    U: ?Sized + PartialOrd<Idx>,
+ {
+    open spec fn obeys_contains() -> bool {
+        (U::obeys_partial_cmp_spec() && <Idx as PartialOrdSpec<U>>::obeys_partial_cmp_spec())
+    }
+
+    open spec fn contains_spec(&self, i: &U) -> bool {
+        self.start.is_le(&i) && i.is_lt(&self.end)
+    }
+}
+
+impl<Idx> View for RangeInclusive<Idx> {
+    type V = RangeInclusiveView<Idx>;
+
+    uninterp spec fn view(&self) -> Self::V;
+}
 
 pub trait StepSpec where Self: Sized {
     // REVIEW: it would be nice to be able to use SpecOrd::spec_lt (not yet supported)
@@ -31,6 +85,35 @@ pub assume_specification<A: core::iter::Step>[ Range::<A>::next ](range: &mut Ra
     Option<A>)
     ensures
         (*range, r) == spec_range_next(*old(range)),
+;
+
+/// Range::contains method is valid and safe to use only when cmp operations are implemented to satisfy
+/// obeys_partial_cmp_spec. Specifically, the comparison must be deterministic, and `lt` (less than)
+/// and `le` (less than or equal to) must define total orders.
+/// If using Range::contains with types that do not satisfy obeys_partial_cmp_spec, no spec is provided.
+pub assume_specification<Idx: PartialOrd<Idx>, U>[ Range::<Idx>::contains ](
+    r: &Range<Idx>,
+    i: &U,
+) -> (ret: bool) where Idx: PartialOrd<U>, U: ?Sized + PartialOrd<Idx>
+    ensures
+        <Range::<Idx> as ContainsSpec<Idx, U>>::obeys_contains() ==> ret == r.contains_spec(i),
+;
+
+pub assume_specification<Idx: PartialOrd<Idx>, U>[ RangeInclusive::<Idx>::contains ](
+    r: &RangeInclusive<Idx>,
+    i: &U,
+) -> (ret: bool) where Idx: PartialOrd<U>, U: ?Sized + PartialOrd<Idx>
+    ensures
+        <RangeInclusive::<Idx> as ContainsSpec<Idx, U>>::obeys_contains() ==> ret
+            == r.contains_spec(i),
+;
+
+pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx) -> (ret:
+    core::ops::RangeInclusive<Idx>)
+    ensures
+        ret@.start == start,
+        ret@.end == end,
+        ret@.exhausted == false,
 ;
 
 pub struct RangeGhostIterator<A> {

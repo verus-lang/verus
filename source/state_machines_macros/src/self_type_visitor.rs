@@ -2,16 +2,15 @@ use crate::ast::{
     MonoidElt, SM, ShardableType, SpecialOp, SplitKind, SubIdx, Transition, TransitionStmt,
 };
 use crate::to_token_stream::get_self_ty_turbofish_path;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::token;
-use syn_verus::visit_mut;
-use syn_verus::visit_mut::VisitMut;
-use syn_verus::{Expr, Ident, Pat, Path, PathSegment, Type};
+use verus_syn::punctuated::Punctuated;
+use verus_syn::token;
+use verus_syn::visit_mut;
+use verus_syn::visit_mut::VisitMut;
+use verus_syn::{Expr, Ident, Pat, Path, PathSegment, Type};
 
 /// If the user ever uses 'Self' in a transition, then change it out for the explicit
 /// self type so that it's safe to use these expressions and types in other places
 /// outside the generated `State` impl.
-
 pub fn replace_self_sm(sm: &mut SM) {
     let path = get_self_ty_turbofish_path(&*sm);
     for trans in sm.transitions.iter_mut() {
@@ -85,7 +84,7 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
             }
         }
         TransitionStmt::Split(_, split_kind, es) => {
-            match split_kind {
+            match &mut **split_kind {
                 SplitKind::Let(pat, ty, _lk, e) => {
                     replace_self_pat(pat, path);
                     match ty {
@@ -188,7 +187,7 @@ struct SelfVisitor<'a> {
 
 impl<'a> VisitMut for SelfVisitor<'a> {
     fn visit_path_mut(&mut self, path: &mut Path) {
-        if path.leading_colon.is_none() && path.segments[0].ident.to_string() == "Self" {
+        if path.leading_colon.is_none() && path.segments[0].ident == "Self" {
             let orig_span = path.segments[0].ident.span();
             let mut segments = Punctuated::<PathSegment, token::PathSep>::new();
             for seg in self.subst_path.segments.iter() {

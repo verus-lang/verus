@@ -8,6 +8,7 @@ extern crate rustc_span;
 
 use anyhow::Result;
 use quote::quote;
+use rustc_parse::lexer::StripTokens;
 use rustc_session::parse::ParseSess;
 use rustc_span::edition::Edition::Edition2021;
 use std::fs::{self, File};
@@ -35,10 +36,16 @@ fn main() -> Result<()> {
 
     // Write output.rustc.rs
     let output_path = manifest_dir.join("..").join("output.rustc.rs");
-    let mut string = rustc_span::create_session_globals_then(Edition2021, None, || {
+    let mut string = rustc_span::create_session_globals_then(Edition2021, &[], None, || {
         let locale_resources = rustc_driver::DEFAULT_LOCALE_RESOURCES.to_vec();
         let sess = ParseSess::new(locale_resources);
-        let mut parser = rustc_parse::new_parser_from_file(&sess, &input_path, None).unwrap();
+        let mut parser = rustc_parse::new_parser_from_file(
+            &sess,
+            &input_path,
+            StripTokens::ShebangAndFrontmatter,
+            None,
+        )
+        .unwrap();
         let krate = parser.parse_crate_mod().unwrap();
         rustc_ast_pretty::pprust::crate_to_string_for_macros(&krate)
     });

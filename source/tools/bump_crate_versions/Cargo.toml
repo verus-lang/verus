@@ -1,0 +1,14 @@
+[package]
+name = "bump_crate_versions"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = "0.4.41"
+regex = "1.11.1"
+toml_edit = "0.23.3"
+clap = { version = "4.5.26", features = ["derive"] }
+petgraph = "0.8.3"
+crates_io_api = "0.12.0"
+
+[workspace]

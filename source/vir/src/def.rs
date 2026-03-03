@@ -5,7 +5,7 @@ use crate::util::vec_map;
 use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /*
 In SMT-LIB format (used by Z3), symbols are built of letters, digits, and:
@@ -57,6 +57,8 @@ const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
 const PREFIX_TYPE_ID: &str = "TYPE%";
+const PREFIX_DYN_ID: &str = "DYN%";
+const PREFIX_DCR_ID: &str = "DCR%";
 const PREFIX_FNDEF_TYPE_ID: &str = "FNDEF%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
 const PREFIX_CLOSURE_TYPE: &str = "anonymous_closure%";
@@ -65,10 +67,12 @@ const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
+pub(crate) const PREFIX_DEFAULT_TYP_PARAM: &str = "def_typ_param%";
 pub(crate) const PROJECT_POINTEE_METADATA: &str = "pointee_metadata%";
 pub(crate) const PROJECT_POINTEE_METADATA_DECORATION: &str = "pointee_metadata%%";
 const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
+const PREFIX_TO_DYN: &str = "to_dyn%";
 pub(crate) const SIZED_BOUND: &str = "sized";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
@@ -80,6 +84,7 @@ const GLOBAL_TYPE: &str = "allocator_global%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
+const RES_INF_TEMP_SEPARATOR: &str = "$$$$tempplace";
 const BITVEC_TMP_DECL_SEPARATOR: &str = "$$$$bitvectmp";
 const USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR: &str = "$$$$userdeftypeinvpass";
 const KRATE_SEPARATOR: &str = "!";
@@ -96,6 +101,10 @@ const TRAIT_DEFAULT_SEPARATOR: &str = "%default%";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
 const DUMMY_PARAM: &str = "no%param";
+
+pub const MUT_REF_UPDATE_CURRENT: &str = "mut_ref_update_current%";
+pub const MUT_REF_CURRENT: &str = "mut_ref_current%";
+pub const MUT_REF_FUTURE: &str = "mut_ref_future%";
 
 pub const PREFIX_IMPL_TYPE_PARAM: &str = "impl%";
 pub const SUFFIX_SNAP_MUT: &str = "_mutation";
@@ -137,19 +146,27 @@ pub const SUB: &str = "Sub";
 pub const MUL: &str = "Mul";
 pub const EUC_DIV: &str = "EucDiv";
 pub const EUC_MOD: &str = "EucMod";
+pub const RADD: &str = "RAdd";
+pub const RSUB: &str = "RSub";
+pub const RMUL: &str = "RMul";
+pub const RDIV: &str = "RDiv";
 pub const SNAPSHOT_CALL: &str = "CALL";
 pub const SNAPSHOT_PRE: &str = "PRE";
 pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
+pub const SNAPSHOT_LOOP: &str = "LOOP";
 pub const T_HEIGHT: &str = "Height";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
+pub const BOX_REAL: &str = "R";
 pub const BOX_FNDEF: &str = "F";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
+pub const UNBOX_REAL: &str = "%R";
 pub const UNBOX_FNDEF: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
+pub const TYPE_ID_REAL: &str = "REAL";
 pub const TYPE_ID_INT: &str = "INT";
 pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_CHAR: &str = "CHAR";
@@ -157,11 +174,13 @@ pub const TYPE_ID_USIZE: &str = "USIZE";
 pub const TYPE_ID_ISIZE: &str = "ISIZE";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
+pub const TYPE_ID_FLOAT: &str = "FLOAT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
 pub const TYPE_ID_CONST_BOOL: &str = "CONST_BOOL";
 pub const DECORATION: &str = "Dcr";
 pub const DECORATE_NIL_SIZED: &str = "$";
 pub const DECORATE_NIL_SLICE: &str = "$slice"; // for 'str' and '[T]' types
+pub const DECORATE_NIL_DYN: &str = "$dyn"; // for 'dyn' types
 pub const DECORATE_DST_INHERIT: &str = "DST";
 pub const DECORATE_REF: &str = "REF";
 pub const DECORATE_MUT_REF: &str = "MUT_REF";
@@ -177,6 +196,7 @@ pub const TYPE_ID_SLICE: &str = "SLICE";
 pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_PTR: &str = "PTR";
 pub const TYPE_ID_GLOBAL: &str = "ALLOCATOR_GLOBAL";
+pub const TYPE_ID_MUT_REF: &str = "MUTREF";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
@@ -187,6 +207,7 @@ pub const CHECK_DECREASE_HEIGHT: &str = "check_decrease_height";
 pub const HEIGHT: &str = "height";
 pub const HEIGHT_LT: &str = "height_lt";
 pub const HEIGHT_REC_FUN: &str = "fun_from_recursive_field";
+pub const HAS_RESOLVED: &str = "has_resolved";
 pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 pub const DEFAULT_ENS: &str = "default_ens";
@@ -219,6 +240,7 @@ pub const QID_TRAIT_IMPL: &str = "trait_impl";
 pub const QID_TRAIT_TYPE_BOUNDS: &str = "trait_type_bounds";
 pub const QID_ASSOC_TYPE_BOUND: &str = "assoc_type_bound";
 pub const QID_ASSOC_TYPE_IMPL: &str = "assoc_type_impl";
+pub const QID_OPAQUE_TYPE_BOUND: &str = "opaque_type_bound";
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
 
@@ -234,6 +256,8 @@ pub const VERUSLIB_PREFIX: &str = "vstd::";
 pub const PERVASIVE_PREFIX: &str = "pervasive::";
 
 pub const RUST_DEF_CTOR: &str = "ctor%";
+
+pub const RUST_OPAQUE_TYPE: &str = "opaque";
 
 // used by axiom-usage-info to identify axioms from the prelude
 pub const AXIOM_NAME_PRELUDE: &str = "prelude_axiom_";
@@ -407,6 +431,54 @@ pub fn strslice_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
+pub fn fn_slice_len(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_len".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_slice_index(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_index".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_slice_update(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_update".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_array_update(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("array".to_string()),
+                Arc::new("spec_array_update".to_string()),
+            ]),
+        }),
+    })
+}
+
 pub fn array_type() -> Path {
     let ident = Arc::new(ARRAY_TYPE.to_string());
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
@@ -422,8 +494,16 @@ pub fn global_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
+pub fn prefix_dcr_id(ident: &Path) -> Ident {
+    Arc::new(PREFIX_DCR_ID.to_string() + &path_to_string(ident))
+}
+
 pub fn prefix_type_id(ident: &Path) -> Ident {
     Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(ident))
+}
+
+pub fn prefix_dyn_id(ident: &Path) -> Ident {
+    Arc::new(PREFIX_DYN_ID.to_string() + &path_to_string(ident))
 }
 
 pub fn prefix_fndef_type_id(fun: &Fun) -> Ident {
@@ -459,13 +539,7 @@ pub fn impl_ident(disambiguator: u32) -> Ident {
 
 pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
     let proj = if decoration { PREFIX_PROJECT_DECORATION } else { PREFIX_PROJECT };
-    Arc::new(format!(
-        "{}{}{}{}",
-        proj,
-        path_to_string(trait_path),
-        PROJECT_SEPARATOR,
-        name.to_string()
-    ))
+    Arc::new(format!("{}{}{}{}", proj, path_to_string(trait_path), PROJECT_SEPARATOR, name))
 }
 
 pub fn projection_pointee_metadata(decoration: bool) -> Ident {
@@ -482,6 +556,10 @@ pub fn proj_param(i: usize) -> Ident {
 
 pub fn trait_bound(trait_path: &Path) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
+}
+
+pub fn to_dyn(trait_path: &Path) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_TO_DYN, path_to_string(trait_path)))
 }
 
 pub fn sized_bound() -> Ident {
@@ -768,13 +846,12 @@ impl CommandContext {
 }
 
 #[derive(Debug)]
-#[derive(Clone)]
 pub struct CommandsWithContextX {
     pub context: CommandContext,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
-    pub hint_upon_failure: std::cell::RefCell<Option<crate::messages::Message>>,
+    pub hint_upon_failure: Mutex<Option<crate::messages::Message>>,
 }
 
 impl CommandsWithContextX {
@@ -791,8 +868,22 @@ impl CommandsWithContextX {
             commands,
             prover_choice,
             skip_recommends,
-            hint_upon_failure: std::cell::RefCell::new(None),
+            hint_upon_failure: Mutex::new(None),
         })
+    }
+}
+
+impl Clone for CommandsWithContextX {
+    fn clone(&self) -> Self {
+        CommandsWithContextX {
+            context: self.context.clone(),
+            commands: self.commands.clone(),
+            prover_choice: self.prover_choice.clone(),
+            skip_recommends: self.skip_recommends.clone(),
+            hint_upon_failure: Mutex::new(
+                self.hint_upon_failure.lock().expect("we abort on poisoning").clone(),
+            ),
+        }
     }
 }
 
@@ -1013,6 +1104,10 @@ pub fn unique_var_name(
         }
         VarIdentDisambiguate::UserDefinedTypeInvariantPass(id) => {
             out.push_str(USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
+        VarIdentDisambiguate::ResInfTemp(id) => {
+            out.push_str(RES_INF_TEMP_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
     }

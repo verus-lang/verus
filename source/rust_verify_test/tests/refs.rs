@@ -360,7 +360,7 @@ test_verify_one_file! {
         fn bar(#[verifier::proof] x: int) {
             #[verifier::proof] let mut x = x;
             #[verifier::proof] let (a, b) = foo(&mut x);
-            builtin::assert_(a + b == x); // THIS LINE FAILS
+            verus_builtin::assert_(a + b == x); // THIS LINE FAILS
         }
     } => Ok(())
 }
@@ -377,7 +377,7 @@ test_verify_one_file_with_options! {
         fn bar(#[verifier::proof] x: int) {
             let mut x = true;
             let (a, b) = foo(&mut x);
-            builtin::assert_(x == true); // FAILS
+            verus_builtin::assert_(x == true); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -622,7 +622,7 @@ test_verify_one_file! {
         }
 
         #[verifier::external_trait_specification]
-        pub trait ExDeref {
+        pub trait ExDeref: core::marker::PointeeSized {
             type ExternalTraitSpecificationFor: core::ops::Deref;
 
             type Target: ?Sized;

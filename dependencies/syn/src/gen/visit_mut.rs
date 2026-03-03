@@ -252,6 +252,9 @@ pub trait VisitMut {
     fn visit_expr_field_mut(&mut self, i: &mut crate::ExprField) {
         visit_expr_field_mut(self, i);
     }
+    fn visit_expr_final_mut(&mut self, i: &mut crate::ExprFinal) {
+        visit_expr_final_mut(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_expr_for_loop_mut(&mut self, i: &mut crate::ExprForLoop) {
@@ -942,9 +945,7 @@ pub trait VisitMut {
     fn visit_signature_unwind_mut(&mut self, i: &mut crate::SignatureUnwind) {
         visit_signature_unwind_mut(self, i);
     }
-    fn visit_span_mut(&mut self, i: &mut proc_macro2::Span) {
-        visit_span_mut(self, i);
-    }
+    fn visit_span_mut(&mut self, i: &mut proc_macro2::Span) {}
     fn visit_specification_mut(&mut self, i: &mut crate::Specification) {
         visit_specification_mut(self, i);
     }
@@ -963,6 +964,7 @@ pub trait VisitMut {
     fn visit_stmt_macro_mut(&mut self, i: &mut crate::StmtMacro) {
         visit_stmt_macro_mut(self, i);
     }
+    fn visit_token_stream_mut(&mut self, i: &mut proc_macro2::TokenStream) {}
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_trait_bound_mut(&mut self, i: &mut crate::TraitBound) {
@@ -1303,10 +1305,12 @@ where
         v.visit_qself_mut(it);
     }
     v.visit_path_mut(&mut node.path);
-    skip!(node.paren_token);
-    for mut el in Punctuated::pairs_mut(&mut node.inputs) {
-        let it = el.value_mut();
-        full!(v.visit_fn_arg_mut(it));
+    if let Some(it) = &mut node.inputs {
+        skip!((it).0);
+        for mut el in Punctuated::pairs_mut(&mut (it).1) {
+            let it = el.value_mut();
+            full!(v.visit_fn_arg_mut(it));
+        }
     }
     v.visit_return_type_mut(&mut node.output);
     if let Some(it) = &mut node.requires {
@@ -1851,7 +1855,7 @@ where
             full!(v.visit_expr_unsafe_mut(_binding_0));
         }
         crate::Expr::Verbatim(_binding_0) => {
-            skip!(_binding_0);
+            v.visit_token_stream_mut(_binding_0);
         }
         crate::Expr::While(_binding_0) => {
             full!(v.visit_expr_while_mut(_binding_0));
@@ -1897,6 +1901,9 @@ where
         }
         crate::Expr::GetField(_binding_0) => {
             v.visit_expr_get_field_mut(_binding_0);
+        }
+        crate::Expr::Final(_binding_0) => {
+            v.visit_expr_final_mut(_binding_0);
         }
     }
 }
@@ -2075,6 +2082,15 @@ where
     v.visit_expr_mut(&mut *node.base);
     skip!(node.dot_token);
     v.visit_member_mut(&mut node.member);
+}
+pub fn visit_expr_final_mut<V>(v: &mut V, node: &mut crate::ExprFinal)
+where
+    V: VisitMut + ?Sized,
+{
+    v.visit_attributes_mut(&mut node.attrs);
+    skip!(node.final_token);
+    skip!(node.paren_token);
+    v.visit_expr_mut(&mut *node.arg);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -2678,7 +2694,7 @@ where
             v.visit_foreign_item_macro_mut(_binding_0);
         }
         crate::ForeignItem::Verbatim(_binding_0) => {
-            skip!(_binding_0);
+            v.visit_token_stream_mut(_binding_0);
         }
     }
 }
@@ -2868,7 +2884,7 @@ where
             v.visit_impl_item_macro_mut(_binding_0);
         }
         crate::ImplItem::Verbatim(_binding_0) => {
-            skip!(_binding_0);
+            v.visit_token_stream_mut(_binding_0);
         }
         crate::ImplItem::BroadcastGroup(_binding_0) => {
             v.visit_item_broadcast_group_mut(_binding_0);
@@ -3095,7 +3111,7 @@ where
             v.visit_item_use_mut(_binding_0);
         }
         crate::Item::Verbatim(_binding_0) => {
-            skip!(_binding_0);
+            v.visit_token_stream_mut(_binding_0);
         }
         crate::Item::Global(_binding_0) => {
             v.visit_global_mut(_binding_0);
@@ -3553,7 +3569,7 @@ where
     v.visit_path_mut(&mut node.path);
     skip!(node.bang_token);
     v.visit_macro_delimiter_mut(&mut node.delimiter);
-    skip!(node.tokens);
+    v.visit_token_stream_mut(&mut node.tokens);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -3635,7 +3651,7 @@ where
 {
     v.visit_path_mut(&mut node.path);
     v.visit_macro_delimiter_mut(&mut node.delimiter);
-    skip!(node.tokens);
+    v.visit_token_stream_mut(&mut node.tokens);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -3792,7 +3808,7 @@ where
             v.visit_pat_type_mut(_binding_0);
         }
         crate::Pat::Verbatim(_binding_0) => {
-            skip!(_binding_0);
+            v.visit_token_stream_mut(_binding_0);
         }
         crate::Pat::Wild(_binding_0) => {
             v.visit_pat_wild_mut(_binding_0);
@@ -4380,7 +4396,7 @@ where
             v.visit_trait_item_macro_mut(_binding_0);
         }
         crate::TraitItem::Verbatim(_binding_0) => {
-            skip!(_binding_0);
+            v.visit_token_stream_mut(_binding_0);
         }
     }
 }
@@ -4498,7 +4514,7 @@ where
             v.visit_type_tuple_mut(_binding_0);
         }
         crate::Type::Verbatim(_binding_0) => {
-            skip!(_binding_0);
+            v.visit_token_stream_mut(_binding_0);
         }
         crate::Type::FnSpec(_binding_0) => {
             v.visit_type_fn_spec_mut(_binding_0);
@@ -4654,7 +4670,7 @@ where
             full!(v.visit_precise_capture_mut(_binding_0));
         }
         crate::TypeParamBound::Verbatim(_binding_0) => {
-            skip!(_binding_0);
+            v.visit_token_stream_mut(_binding_0);
         }
     }
 }

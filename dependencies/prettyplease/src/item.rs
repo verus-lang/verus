@@ -5,7 +5,7 @@ use crate::mac;
 use crate::path::PathKind;
 use crate::INDENT;
 use proc_macro2::TokenStream;
-use syn_verus::{
+use verus_syn::{
     Fields, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro, ForeignItemStatic,
     ForeignItemType, ImplItem, ImplItemConst, ImplItemFn, ImplItemMacro, ImplItemType, Item,
     ItemConst, ItemEnum, ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMod,
@@ -761,6 +761,7 @@ impl Printer {
             self.word("{}");
         } else if use_group.items.len() == 1
             && match &use_group.items[0] {
+                UseTree::Name(use_name) => use_name.ident != "self",
                 UseTree::Rename(use_rename) => use_rename.ident != "self",
                 _ => true,
             }
@@ -1379,8 +1380,8 @@ impl Printer {
             self.word("tracked ");
         }
         match &fn_arg.kind {
-            syn_verus::FnArgKind::Receiver(receiver) => self.receiver(receiver),
-            syn_verus::FnArgKind::Typed(pat_type) => self.pat_type(pat_type),
+            verus_syn::FnArgKind::Receiver(receiver) => self.receiver(receiver),
+            verus_syn::FnArgKind::Typed(pat_type) => self.pat_type(pat_type),
         }
     }
 

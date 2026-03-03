@@ -1,8 +1,8 @@
 // rust_verify/tests/example.rs expect-warnings
 
 #![allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use vstd::{prelude::*, seq::*};
 
 verus! {
@@ -331,7 +331,7 @@ proof fn test_choose_succeeds2() {
 mod M {
 #[allow(unused_imports)]
 
-use builtin::*;
+use verus_builtin::*;
 
 // ANCHOR: just_works
 spec fn is_distinct(x: int, y: int) -> bool {

@@ -1,8 +1,9 @@
+// rust_verify/tests/example.rs no-report-long-running --- Don't report long-running tests
 #![recursion_limit = "512"]
 #[allow(unused_imports)]
-use builtin::*;
+use verus_builtin::*;
 #[allow(unused_imports)]
-use builtin_macros::*;
+use verus_builtin_macros::*;
 #[allow(unused_imports)]
 use vstd::prelude::*;
 
@@ -436,7 +437,7 @@ mod veribetrkv_example_list_comprehension {
 
 //#[cfg(any())]
 mod arch_specific {
-    use builtin::SpecShl;
+    use verus_builtin::SpecShl;
 
     proof fn test_shift() {
         assert((1usize << 20usize) != 0usize) by (compute_only);

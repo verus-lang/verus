@@ -1,12 +1,12 @@
 // rust_verify/tests/example.rs expect-warnings
 #[allow(unused_imports)]
-use builtin::*;
+use verus_builtin::*;
 use vstd::cell::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
 use vstd::{pervasive::*, *};
 
-use state_machines_macros::tokenized_state_machine;
+use verus_state_machines_macros::tokenized_state_machine;
 
 // TODO make T generic
 #[verifier::verify]

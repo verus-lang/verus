@@ -1,7 +1,7 @@
 use crate::ast::SimplStmt;
 use crate::safety_conditions::has_any_assert_simpl;
 use quote::quote;
-use syn_verus::{Expr, Ident, Type};
+use verus_syn::{Expr, Ident, Type};
 
 /// Returns an equivalent SimplStmt sequence that has no 'assert' statements in it.
 ///
@@ -10,7 +10,6 @@ use syn_verus::{Expr, Ident, Type};
 ///     require b;
 /// with:
 ///     require a ==> b;
-
 pub fn simplify_asserts(sops: &Vec<SimplStmt>) -> Vec<SimplStmt> {
     let mut idx_of_first_assert = None;
     for i in 0..sops.len() {
@@ -29,7 +28,7 @@ pub fn simplify_asserts(sops: &Vec<SimplStmt>) -> Vec<SimplStmt> {
         let initial = SimplStmt::Assign(
             span,
             ident,
-            Type::Verbatim(quote! { ::core::primitive::bool }),
+            Box::new(Type::Verbatim(quote! { ::core::primitive::bool })),
             Expr::Verbatim(quote! { true }),
             false,
         );
@@ -86,7 +85,7 @@ fn simplify_asserts_stmt(sop: &SimplStmt, assert_ident: &Ident) -> SimplStmt {
         SimplStmt::Assert(span, expr, _assert_proof) => SimplStmt::Assign(
             *span,
             assert_ident.clone(),
-            Type::Verbatim(quote! { ::core::primitive::bool }),
+            Box::new(Type::Verbatim(quote! { ::core::primitive::bool })),
             Expr::Verbatim(quote! {
                 #assert_ident && (#expr)
             }),

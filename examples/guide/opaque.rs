@@ -1,14 +1,14 @@
 #[allow(unused_imports)]
-use builtin::*;
+use verus_builtin::*;
 #[allow(unused_imports)]
-use builtin_macros::*;
+use verus_builtin_macros::*;
 
 verus! {
 
 /*
 // ANCHOR: opaque
 mod M1 {
-    use builtin::*;
+    use verus_builtin::*;
 
     #[verifier::opaque]
     spec fn min(x: int, y: int) -> int {

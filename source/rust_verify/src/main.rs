@@ -27,20 +27,20 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
 pub fn main() {
     let mut dep_tracker = rust_verify::cargo_verus_dep_tracker::DepTracker::init();
     let via_cargo = dep_tracker.compare_env(rust_verify::cargo_verus::VERUS_DRIVER_VIA_CARGO, "1");
-    // For now, builtin, vstd, etc. must be rebuilt for each via_cargo crate:
+    // For now, verus_builtin, vstd, etc. must be rebuilt for each via_cargo crate:
     let via_cargo_rebuild_verus_libs = via_cargo;
 
     let mut internal_args = std::env::args();
     let internal_program = internal_args.next().unwrap();
     let (build_test_mode, has_rustc) = if let Some(first_arg) = internal_args.next() {
         match first_arg.as_str() {
-            rust_verify::lifetime::LIFETIME_DRIVER_ARG => {
+            rust_verify::trait_check::TC_DRIVER_ARG => {
                 let mut internal_args: Vec<_> = internal_args.collect();
                 internal_args.insert(0, internal_program);
                 let mut buffer = String::new();
                 use std::io::Read;
                 std::io::stdin().read_to_string(&mut buffer).expect("cannot read stdin");
-                rust_verify::lifetime::lifetime_rustc_driver(&internal_args[..], buffer);
+                rust_verify::trait_check::trait_check_rustc_driver(&internal_args[..], buffer);
                 return;
             }
             arg if arg.contains("rustc") => {
@@ -134,7 +134,8 @@ pub fn main() {
         }
     }
 
-    std::env::set_var("RUSTC_BOOTSTRAP", "1");
+    // TODO: Audit that the environment access only happens in single-threaded code.
+    unsafe { std::env::set_var("RUSTC_BOOTSTRAP", "1") };
 
     let verifier =
         rust_verify::verifier::Verifier::new(our_args, via_cargo, via_cargo_compile, dep_tracker);
@@ -154,7 +155,7 @@ pub fn main() {
             verifier: &rust_verify::verifier::Verifier,
             f: impl Fn(&rust_verify::verifier::BucketStats) -> std::time::Duration,
         ) -> u128 {
-            verifier.bucket_stats.iter().map(|(_, v)| f(v)).sum::<std::time::Duration>().as_millis()
+            verifier.bucket_stats.values().map(|v| f(v)).sum::<std::time::Duration>().as_millis()
         }
 
         #[derive(Debug, Clone)]
@@ -207,12 +208,12 @@ pub fn main() {
                     init: SmtStat {
                         time_millis: v.time_smt_init.as_millis(),
                         time_micros: v.time_smt_init.as_micros(),
-                        rlimit_count: v.rlimit_count,
+                        rlimit_count: v.rlimit_count.map(|x| x.0),
                     },
                     run: SmtStat {
                         time_millis: v.time_smt_run.as_millis(),
                         time_micros: v.time_smt_run.as_micros(),
-                        rlimit_count: v.rlimit_count,
+                        rlimit_count: v.rlimit_count.map(|x| x.1),
                     },
                 });
             }
@@ -230,15 +231,19 @@ pub fn main() {
             stats
         }
 
-        let smt_init_times = sorted_smt_stats(&smt_module_stats, |v| &v.init);
+        let smt_init_stats = sorted_smt_stats(&smt_module_stats, |v| &v.init);
         let total_smt_init: u128 = compute_total(&verifier, |v| v.time_smt_init);
 
         let smt_run_stats = sorted_smt_stats(&smt_module_stats, |v| &v.run);
         let total_smt_run: u128 = compute_total(&verifier, |v| v.time_smt_run);
-        let rlimit_counts: Option<Vec<u64>> =
+
+        let smt_init_rlimit_counts: Option<Vec<u64>> =
+            smt_init_stats.iter().map(|(_, v)| v.rlimit_count).collect();
+        let total_rlimit_init: Option<u64> = smt_init_rlimit_counts.map(|rs| rs.iter().sum());
+
+        let smt_run_rlimit_counts: Option<Vec<u64>> =
             smt_run_stats.iter().map(|(_, v)| v.rlimit_count).collect();
-        let total_rlimit_count: Option<u64> =
-            rlimit_counts.map(|rlimit_counts| rlimit_counts.iter().sum());
+        let total_rlimit_run: Option<u64> = smt_run_rlimit_counts.map(|rs| rs.iter().sum());
 
         let mut smt_function_breakdown = {
             let mod_fun_times: Vec<_> = verifier
@@ -293,9 +298,9 @@ pub fn main() {
 
         // Rust time:
         let rust_init = stats.time_rustc;
-        let lifetime = stats.time_lifetime;
+        let trait_conflicts = stats.time_trait_conflicts;
         let compile = stats.time_compile;
-        let rust = rust_init + lifetime + compile;
+        let rust = rust_init + trait_conflicts + compile;
 
         // total verification time
         let vir_rust_to_vir = verifier.time_vir_rust_to_vir; // included in verifier.time_vir
@@ -340,7 +345,7 @@ pub fn main() {
                 "rust": {
                     "total": rust.as_millis(),
                     "init-and-types": rust_init.as_millis(),
-                    "lifetime": lifetime.as_millis(),
+                    "trait-conflicts": trait_conflicts.as_millis(),
                     "compile": compile.as_millis(),
                 },
                 "verification": {
@@ -375,28 +380,30 @@ pub fn main() {
                     serde_json::json!({
                         "total": (total_smt_init + total_smt_run),
                         "smt-init": total_smt_init,
-                        "smt-init-module-times" : smt_init_times.iter().map(|(m, t)| {
+                        "rlimit-init": total_rlimit_init,
+                        "smt-init-module-times" : smt_init_stats.iter().map(|(m, t)| {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
                                 "time" : t.time_millis,
                                 "time-micros" : t.time_micros,
-                                "rlimit-count" : t.rlimit_count,
+                                "rlimit" : t.rlimit_count,
                             })
                         }).collect::<Vec<serde_json::Value>>(),
                         "smt-run": total_smt_run,
+                        "rlimit-run": total_rlimit_run,
                         "smt-run-module-times" : smt_run_stats.iter().map(|(m, t)| {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
                                 "time" : t.time_millis,
                                 "time-micros" : t.time_micros,
-                                "rlimit-count" : t.rlimit_count,
+                                "rlimit" : t.rlimit_count,
                                 "function-breakdown" : smt_function_breakdown.get_mut(*m).map(|b| b.iter().map(|(f, t)| {
                                     serde_json::json!({
                                         "function" : vir::ast_util::fun_as_friendly_rust_name(f),
                                         "mode:" : verifier.get_function_mode(f).map(|m| m.to_string()),
                                         "time" : t.time_millis,
                                         "time-micros" : t.time_micros,
-                                        "rlimit-count" : t.rlimit_count,
+                                        "rlimit" : t.rlimit_count,
                                         "success" : !verifier.func_fails.contains(f),
                                     })
                                  }).collect::<Vec<serde_json::Value>>()).unwrap_or_default(),
@@ -418,7 +425,7 @@ pub fn main() {
             }
             println!("    rust-time:          {:>10} ms", rust.as_millis());
             println!("        init-and-types:     {:>10} ms", rust_init.as_millis());
-            println!("        lifetime-time:      {:>10} ms", lifetime.as_millis());
+            println!("        trait-conflicts:    {:>10} ms", trait_conflicts.as_millis());
             println!("        compile-time:       {:>10} ms", compile.as_millis());
 
             println!("    verification-time:  {:>10} ms", verify.as_millis());
@@ -465,11 +472,15 @@ pub fn main() {
                     verifier.num_threads
                 );
                 println!(
-                    "            total smt-init:        {:>10} ms   ({} threads)",
-                    total_smt_init, verifier.num_threads
+                    "            total smt-init:        {:>10} ms{} ({} threads)",
+                    total_smt_init,
+                    total_rlimit_init
+                        .map(|rc| format!(", {:>8} rlimit", rc))
+                        .unwrap_or(format!("")),
+                    verifier.num_threads
                 );
                 if verifier.args.time_expanded {
-                    for (i, (m, t)) in smt_init_times.iter().take(3).enumerate() {
+                    for (i, (m, t)) in smt_init_stats.iter().take(3).enumerate() {
                         println!(
                             "                {}. {:<40} {:>10} ms",
                             i + 1,
@@ -481,9 +492,7 @@ pub fn main() {
                 println!(
                     "            total smt-run:         {:>10} ms{} ({} threads)",
                     total_smt_run,
-                    total_rlimit_count
-                        .map(|rc| format!(", {:>8} rlimit", rc))
-                        .unwrap_or(format!("")),
+                    total_rlimit_run.map(|rc| format!(", {:>8} rlimit", rc)).unwrap_or(format!("")),
                     verifier.num_threads,
                 );
                 if verifier.args.time_expanded {
@@ -508,6 +517,13 @@ pub fn main() {
     };
 
     if verifier.args.output_json {
+        // Render function verification details as JSON.
+        let mut func_details: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+        for (func, details) in &verifier.func_details {
+            let name = vir::ast_util::fun_as_friendly_rust_name(&func);
+            func_details.insert(name, details.to_json());
+        }
+
         let mut res = serde_json::json!({
             "encountered-error": status.is_err(),
             "encountered-vir-error": verifier.encountered_vir_error,
@@ -529,6 +545,7 @@ pub fn main() {
             );
         }
         let mut out: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+        out.insert("func-details".to_string(), serde_json::Value::Object(func_details));
         out.insert("verification-results".to_string(), res);
         if let Some(times_ms) = times_ms_json_data {
             out.insert("times-ms".to_string(), times_ms);

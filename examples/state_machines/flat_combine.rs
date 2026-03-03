@@ -1,14 +1,14 @@
 // rust_verify/tests/example.rs expect-warnings
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use vstd::map::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
 use vstd::seq::*;
 use vstd::{pervasive::*, *};
 
-use state_machines_macros::tokenized_state_machine;
+use verus_state_machines_macros::tokenized_state_machine;
 
 // Based off of the FlatCombine system from Seagull-NR.
 // A major difference is that one didn't make any use of storage, because storage was

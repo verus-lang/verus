@@ -6,5 +6,6 @@ date: 2025-08-13
 type: external 
 pdf: https://www.andrew.cmu.edu/user/bparno/papers/owlc.pdf
 code: https://github.com/secure-foundations/owl
+award: Distinguished Artifact Award
 
 ---

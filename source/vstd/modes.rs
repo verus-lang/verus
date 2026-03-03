@@ -7,8 +7,8 @@ verus! {
 
 pub axiom fn tracked_swap<V>(tracked a: &mut V, tracked b: &mut V)
     ensures
-        a == old(b),
-        b == old(a),
+        *a == *old(b),
+        *b == *old(a),
 ;
 
 /// Make any tracked object permanently shared and get a reference to it.

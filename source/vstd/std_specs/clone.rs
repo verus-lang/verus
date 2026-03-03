@@ -29,9 +29,18 @@ pub assume_specification[ <char as Clone>::clone ](c: &char) -> (res: char)
 ;
 
 #[allow(suspicious_double_ref_op)]
-pub assume_specification<'b, T: ?Sized, 'a>[ <&'b T as Clone>::clone ](b: &'a &'b T) -> (res: &'b T)
+pub assume_specification<'b, T: core::marker::PointeeSized, 'a>[ <&'b T as Clone>::clone ](
+    b: &'a &'b T,
+) -> (res: &'b T)
     ensures
         res == b,
+;
+
+pub assume_specification<T: Clone, const N: usize>[ <[T; N] as Clone>::clone ](a: &[T; N]) -> (res:
+    [T; N])
+    ensures
+        forall|i| #![all_triggers] 0 <= i < N ==> cloned::<T>(a@[i], res@[i]),
+        a@ =~= res@ ==> a@ == res@,
 ;
 
 /*

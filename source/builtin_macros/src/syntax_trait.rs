@@ -1,11 +1,11 @@
 use crate::syntax::{VERUS_SPEC, mk_rust_attr, mk_rust_attr_syn, mk_verus_attr};
 use quote::{quote, quote_spanned};
-use syn_verus::parse_quote_spanned;
-use syn_verus::spanned::Spanned;
-use syn_verus::{
+use verus_syn::spanned::Spanned;
+use verus_syn::{
     Expr, FnMode, Ident, ImplItem, ImplItemFn, Item, ItemImpl, ItemTrait, Meta, Path, Stmt, Token,
     TraitItem, TraitItemFn, Type, TypeParamBound, Visibility,
 };
+use verus_syn::{TraitBound, parse_quote_spanned};
 
 fn new_trait_from(tr: &ItemTrait, ident: Ident) -> ItemTrait {
     ItemTrait {
@@ -29,7 +29,7 @@ fn new_impl_for_trait(tr: &ItemTrait, tr_spec: &Path, self_ty: Box<Type>) -> Ite
     let span = t.span();
     let mut generics = tr.generics.clone();
     for param in &mut generics.params {
-        use syn_verus::GenericParam;
+        use verus_syn::GenericParam;
         match param {
             GenericParam::Lifetime(_) => {}
             GenericParam::Type(p) => {
@@ -83,19 +83,20 @@ Generate additional items:
         // omitted for erase_all
         fn sn(...) -> ...;
     }
-    #[verifier::external]
     #[verus::internal(external_trait_blanket)]
-    impl<A: T + ?Sized> TSpec for A {
+    impl<A: T + <size bound of T>> TSpec for A {
         // omitted for erase_all
+        #[verifier::external_body]
         fn s1(...) -> ... { panic!() }
         ...
         // omitted for erase_all
+        #[verifier::external_body]
         fn sn(...) -> ... { panic!() }
     }
 Note: these generated items are trusted;
 the code here that generates them is part of the trusted computing base.
 */
-fn expand_extension_trait(
+fn expand_extension_trait<'tcx>(
     erase_all: bool,
     new_items: &mut Vec<Item>,
     t: &Path,
@@ -113,7 +114,7 @@ fn expand_extension_trait(
                 let mut f_tspec = f.clone();
                 let mut f_tspec_impl = f.clone();
                 let mut f_blanket = ImplItemFn {
-                    attrs: vec![],
+                    attrs: vec![parse_quote_spanned!(span => #[verifier::external_body])],
                     vis: Visibility::Inherited,
                     defaultness: None,
                     sig: f.sig.clone(),
@@ -124,6 +125,14 @@ fn expand_extension_trait(
                 f_tspec.default = None;
                 f_tspec_impl.default = None;
                 f_tspec_impl.sig.mode = FnMode::Default;
+                // Remove #[verifier::prophetic] from the TSpecImpl methods.
+                // The TSpecImpl trait is marked #[verifier::external], so any Verus-specific
+                // attributes cause a spurious warning about having no effect.
+                f_tspec_impl.attrs.retain(|attr| {
+                    !(attr.path().segments.len() == 2
+                        && attr.path().segments[0].ident == "verifier"
+                        && attr.path().segments[1].ident == "prophetic")
+                });
                 f_blanket.sig.mode = FnMode::Default;
                 tspec_items.push(TraitItem::Fn(f_tspec));
                 tspec_impl_items.push(TraitItem::Fn(f_tspec_impl));
@@ -150,7 +159,7 @@ fn expand_extension_trait(
     let self_x = Ident::new(&format!("{VERUS_SPEC}A"), span);
     let self_ty = parse_quote_spanned!(span => #self_x);
     let tr_spec_path = if let Some(last) = t.segments.last() {
-        use syn_verus::PathArguments;
+        use verus_syn::PathArguments;
         if let PathArguments::AngleBracketed(args) = &last.arguments {
             let args = &args.args;
             parse_quote_spanned!(span => #tr_spec<#args>)
@@ -161,19 +170,39 @@ fn expand_extension_trait(
         parse_quote_spanned!(span => #tr_spec)
     };
     let mut blanket_impl = new_impl_for_trait(tr, &tr_spec_path, self_ty);
-    blanket_impl.attrs.push(parse_quote_spanned!(span => #[verifier::external]));
     blanket_impl.attrs.push(mk_verus_attr(span, quote_spanned!(span => external_trait_blanket)));
     blanket_impl.attrs.push(mk_rust_attr(
         span,
         "allow",
         quote_spanned!(span => non_camel_case_types),
     ));
-    blanket_impl.generics.params.push(parse_quote_spanned!(span => #self_x: #t + ?Sized));
+    let blanket_bound: TypeParamBound = {
+        tr.supertraits.iter().find(|tpb| is_sizedness_bound(tpb)).cloned().unwrap_or_else(|| {
+            let span = tr.generics.span();
+            parse_quote_spanned!(span => core::marker::MetaSized)
+        })
+    };
+    blanket_impl.generics.params.push(parse_quote_spanned!(span => #self_x: #t + #blanket_bound));
     blanket_impl.items = blanket_impl_items;
 
     new_items.push(Item::Trait(tspec));
     new_items.push(Item::Trait(tspec_impl));
     new_items.push(Item::Impl(blanket_impl));
+}
+
+/// Heuristically determines whether `tp` is a Size-related bound.  We cannot do
+/// this correctly in a macro since identifiers are not yet resolved and traits
+/// may be renamed when imported. However, this should be sufficiently rare in
+/// practice, so we ignore this issue here. Otherwise, the user would have to
+/// provide the external_trait_extension macro with an additional parameter.
+fn is_sizedness_bound(tp: &TypeParamBound) -> bool {
+    match tp {
+        TypeParamBound::Trait(TraitBound { path, .. }) => {
+            let last_segment = path.segments.last().unwrap().ident.to_string();
+            ["Sized", "MetaSized", "PointeeSized"].contains(&last_segment.as_str())
+        }
+        _ => false,
+    }
 }
 
 pub(crate) fn expand_extension_traits(erase_all: bool, items: &mut Vec<Item>) {
@@ -193,6 +222,7 @@ pub(crate) fn expand_extension_traits(erase_all: bool, items: &mut Vec<Item>) {
                 }
             }
             for attr in &tr.attrs {
+                #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
                 let is_external_trait_extension = attr.path().segments.len() == 2
                     && attr.path().segments[0].ident.to_string() == "verifier"
                     && attr.path().segments[1].ident.to_string() == "external_trait_extension";
@@ -201,6 +231,7 @@ pub(crate) fn expand_extension_traits(erase_all: bool, items: &mut Vec<Item>) {
                         let tokens: Vec<_> = list.tokens.clone().into_iter().collect();
                         use proc_macro2::TokenTree;
                         match (&t, tokens.as_slice()) {
+                            #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
                             (
                                 Some(t),
                                 [TokenTree::Ident(s), TokenTree::Ident(via), TokenTree::Ident(i)],
@@ -260,13 +291,13 @@ pub(crate) fn split_trait_method(
 ) {
     if !erase_ghost && fun.default.is_none() {
         // Copy into separate spec method, then remove spec from original method
-        use syn_verus::FnArgKind;
+        use verus_syn::FnArgKind;
         let recv = fun.sig.inputs.first().and_then(|a| match &a.kind {
             FnArgKind::Receiver(r) => Some(r),
             _ => None,
         });
         let pred = parse_quote_spanned!(fun.sig.ident.span() => Self: core::marker::Sized);
-        do_split_trait_method!(syn_verus, fun, spec_fun, mk_rust_attr, recv, pred);
+        do_split_trait_method!(verus_syn, fun, spec_fun, mk_rust_attr, recv, pred);
         spec_items.push(TraitItem::Fn(spec_fun));
         fun.sig.erase_spec_fields();
     } else if erase_ghost {
@@ -306,7 +337,9 @@ pub(crate) fn split_trait_method_syn(
         // We won't run visit_trait_item_fn_mut, so we need to add no_method_body here:
         let span = fun.sig.fn_token.span;
         let stmts = vec![Stmt::Expr(
-            Expr::Verbatim(quote_spanned_builtin!(builtin, span => #builtin::no_method_body())),
+            Expr::Verbatim(
+                quote_spanned_builtin!(verus_builtin, span => #verus_builtin::no_method_body()),
+            ),
             None,
         )];
         spec_fun.default = Some(Block { brace_token: Brace(span), stmts });

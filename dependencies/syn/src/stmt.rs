@@ -38,7 +38,7 @@ ast_enum! {
 }
 
 ast_struct! {
-    /// A local `let` binding: `let x: u64 = s.parse()?`.
+    /// A local `let` binding: `let x: u64 = s.parse()?;`.
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     pub struct Local {
         pub attrs: Vec<Attribute>,
@@ -406,7 +406,8 @@ pub(crate) mod parsing {
                 | Expr::Has(_)
                 | Expr::HasNot(_)
                 | Expr::Matches(_)
-                | Expr::GetField(_) => break,
+                | Expr::GetField(_)
+                | Expr::Final(_) => break,
             };
         }
         attrs.extend(attr_target.replace_attrs(Vec::new()));
@@ -445,7 +446,7 @@ pub(crate) mod printing {
     use crate::stmt::{Block, Local, Stmt, StmtMacro};
     use crate::token;
     use proc_macro2::TokenStream;
-    use quote::{ToTokens, TokenStreamExt};
+    use quote::{ToTokens, TokenStreamExt as _};
 
     #[cfg_attr(docsrs, doc(cfg(feature = "printing")))]
     impl ToTokens for Block {

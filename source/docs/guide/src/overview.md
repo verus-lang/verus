@@ -11,7 +11,7 @@ building on ideas from existing verification frameworks like
 [Creusot](https://github.com/xldenis/creusot),
 [Aeneas](https://github.com/AeneasVerif/aeneas),
 [Cogent](https://github.com/NICTA/cogent),
-[Coq](https://coq.inria.fr/),
+[Rocq](https://rocq-prover.org/),
 and
 [Isabelle/HOL](https://isabelle.in.tum.de/overview.html).
 Verification is static: Verus adds no run-time checks,
@@ -47,6 +47,12 @@ which takes care of much of the reasoning about memory and aliasing.
 As a result, the remaining reasoning can ignore most memory and aliasing issues,
 and treat the Rust code as if it were code written in a purely functional language,
 which makes verification easier.
+
+At present, we do not intend to:
+- support all Rust features and libraries (instead, we will focus a high-value features and libraries needed to support our users)
+- verify the verifier itself
+- verify the Rust/LLVM compilers
+
 
 # This guide
 

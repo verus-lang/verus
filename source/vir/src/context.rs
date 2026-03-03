@@ -1,6 +1,7 @@
 use crate::ast::{
     ArchWordBits, Datatype, Dt, Fun, Function, FunctionAttrs, GenericBounds, Ident, ImplPath,
-    IntRange, Krate, Mode, Module, Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
+    IntRange, Krate, Mode, Module, OpaqueType, Path, Primitive, Trait, TypPositives, TypX,
+    Variants, VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -46,6 +47,9 @@ pub struct GlobalCtx {
     pub func_call_sccs: Arc<Vec<Node>>,
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     pub(crate) datatype_graph_span_infos: Vec<Span>,
+    pub trait_impl_to_extensions: HashMap<Path, Vec<Path>>,
+    /// Map TSpec to T
+    pub(crate) extension_to_trait: HashMap<Path, Path>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
@@ -57,6 +61,9 @@ pub struct GlobalCtx {
     pub solver: SmtSolver,
     pub check_api_safety: bool,
     pub axiom_usage_info: bool,
+    pub new_mut_ref: bool,
+    pub no_bv_simplify: bool,
+    pub report_long_running: bool,
 }
 
 // Context for verifying one function
@@ -84,13 +91,16 @@ pub struct Ctx {
     pub(crate) datatypes_with_invariant: HashSet<Dt>,
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) spec_fn_types: Vec<usize>,
+    pub(crate) reached_dyn_traits: HashSet<Path>,
     pub(crate) used_builtins: crate::prune::UsedBuiltins,
     pub(crate) fndef_types: Vec<Fun>,
+    pub(crate) resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
     pub func_sst_map: HashMap<Fun, crate::sst::FunctionSst>,
     pub fun_ident_map: HashMap<Ident, Fun>,
+    pub opaque_type_map: HashMap<Path, OpaqueType>,
     pub(crate) reveal_groups: Vec<crate::ast::RevealGroup>,
     pub(crate) reveal_group_set: HashSet<Fun>,
     // Ensure a unique identifier for each quantifier in a given function
@@ -174,11 +184,13 @@ fn datatypes_invs(
                         // Should be kept in sync with vir::sst_to_air::typ_invariant
                         TypX::Int(IntRange::Int) => {}
                         TypX::Int(_)
+                        | TypX::Dyn(..)
                         | TypX::TypParam(_)
                         | TypX::Projection { .. }
                         | TypX::PointeeMetadata(_) => {
                             roots.insert(container_name.clone());
                         }
+                        TypX::Real => {}
                         TypX::SpecFn(..) => {
                             roots.insert(container_name.clone());
                         }
@@ -198,7 +210,10 @@ fn datatypes_invs(
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
-                        TypX::Bool | TypX::AnonymousClosure(..) => {}
+                        TypX::Opaque { .. } => {}
+                        TypX::Bool => {}
+                        TypX::Float(_) => {}
+                        TypX::AnonymousClosure(..) => {}
                         TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
                         TypX::ConstBool(_) => {}
@@ -213,6 +228,9 @@ fn datatypes_invs(
                         }
                         TypX::Primitive(Primitive::StrSlice, _) => {}
                         TypX::Primitive(Primitive::Global, _) => {}
+                        TypX::MutRef(_) => {
+                            roots.insert(container_name.clone());
+                        }
                     }
                 }
             }
@@ -266,6 +284,9 @@ impl GlobalCtx {
         after_simplify: bool,
         check_api_safety: bool,
         axiom_usage_info: bool,
+        new_mut_ref: bool,
+        no_bv_simplify: bool,
+        report_long_running: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -290,8 +311,16 @@ impl GlobalCtx {
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
 
+        let mut trait_map: HashMap<Path, Trait> = HashMap::new();
+        for tr in krate.traits.iter() {
+            assert!(!trait_map.contains_key(&tr.x.name));
+            trait_map.insert(tr.x.name.clone(), tr.clone());
+        }
+
         use crate::ast::TraitImpl;
         let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
+        let mut trait_impl_to_extensions: HashMap<Path, Vec<Path>> = HashMap::new();
+        let mut trait_impl_from_extension: HashMap<Path, Path> = HashMap::new();
         let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
         let mut replace_with: HashMap<Node, Node> = HashMap::new();
         for t in &krate.traits {
@@ -310,6 +339,9 @@ impl GlobalCtx {
             trait_impl_map.insert(trait_impl.x.impl_path.clone(), trait_impl.clone());
         }
         for trait_impl in &krate.trait_impls {
+            if trait_impl.x.external_trait_blanket {
+                continue;
+            }
             // If TSpec extends T with spec functions,
             // merge 'impl TSpec for typ' into 'impl T for typ'.
             if let Some(t) = extension_to_trait.get(&trait_impl.x.trait_path) {
@@ -317,7 +349,7 @@ impl GlobalCtx {
                 for imp in trait_impl.x.trait_typ_arg_impls.x.iter() {
                     if let ImplPath::TraitImplPath(imp) = imp {
                         if let Some(candidate) = trait_impl_map.get(imp) {
-                            if &candidate.x.trait_path == t {
+                            if &candidate.x.trait_path == t && !candidate.x.external_trait_blanket {
                                 candidates.push(candidate.clone());
                             }
                         }
@@ -331,6 +363,13 @@ impl GlobalCtx {
                     Node::TraitImpl(ImplPath::TraitImplPath(origin_impl.x.impl_path.clone()));
                 assert!(!replace_with.contains_key(&extension_node));
                 replace_with.insert(extension_node, origin_node);
+                assert!(!trait_impl_from_extension.contains_key(&trait_impl.x.impl_path));
+                trait_impl_from_extension
+                    .insert(trait_impl.x.impl_path.clone(), origin_impl.x.impl_path.clone());
+                trait_impl_to_extensions
+                    .entry(origin_impl.x.impl_path.clone())
+                    .or_default()
+                    .push(trait_impl.x.impl_path.clone());
             }
         }
         let mut func_call_graph: GraphBuilder<Node> =
@@ -368,6 +407,9 @@ impl GlobalCtx {
             }
         }
         for t in &krate.trait_impls {
+            if t.x.external_trait_blanket {
+                continue;
+            }
             // Heuristic: put trait impls first, because they are likely to precede
             // many functions that rely on them.
             func_call_graph
@@ -409,7 +451,9 @@ impl GlobalCtx {
 
             crate::recursion::expand_call_graph(
                 &func_map,
+                &trait_map,
                 &trait_impl_map,
+                &trait_impl_from_extension,
                 &reveal_group_set,
                 &mut func_call_graph,
                 &mut span_infos,
@@ -488,6 +532,7 @@ impl GlobalCtx {
                         if let Some(trait_impl) = method_impl_map.get(f1) {
                             let impl_path = ImplPath::TraitImplPath(trait_impl.clone());
                             let trait_impl = Node::TraitImpl(impl_path);
+                            let trait_impl = func_call_graph.replace(trait_impl);
                             // Do we already have f4 --> trait_impl?
                             for ti in get_edges_from(&func_call_graph.graph, &node_f4) {
                                 if *ti == trait_impl {
@@ -630,6 +675,8 @@ impl GlobalCtx {
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
             datatype_graph_span_infos: span_infos,
+            extension_to_trait,
+            trait_impl_to_extensions,
             qid_map,
             rlimit,
             interpreter_log,
@@ -640,6 +687,9 @@ impl GlobalCtx {
             solver,
             check_api_safety,
             axiom_usage_info,
+            new_mut_ref,
+            no_bv_simplify,
+            report_long_running,
         })
     }
 
@@ -658,6 +708,8 @@ impl GlobalCtx {
             datatype_graph: self.datatype_graph.clone(),
             datatype_graph_span_infos: self.datatype_graph_span_infos.clone(),
             func_call_sccs: self.func_call_sccs.clone(),
+            extension_to_trait: self.extension_to_trait.clone(),
+            trait_impl_to_extensions: self.trait_impl_to_extensions.clone(),
             qid_map,
             rlimit: self.rlimit,
             interpreter_log,
@@ -668,6 +720,9 @@ impl GlobalCtx {
             solver: self.solver.clone(),
             check_api_safety: self.check_api_safety,
             axiom_usage_info: self.axiom_usage_info,
+            new_mut_ref: self.new_mut_ref,
+            no_bv_simplify: self.no_bv_simplify,
+            report_long_running: self.report_long_running,
         }
     }
 
@@ -696,8 +751,10 @@ impl Ctx {
         module: Module,
         mono_types: Vec<MonoTyp>,
         spec_fn_types: Vec<usize>,
+        reached_dyn_traits: HashSet<Path>,
         used_builtins: crate::prune::UsedBuiltins,
         fndef_types: Vec<Fun>,
+        resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
         debug: bool,
     ) -> Result<Self, VirErr> {
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
@@ -734,6 +791,10 @@ impl Ctx {
         for fndef_type in fndef_types.iter() {
             fndef_type_set.insert(fndef_type.clone());
         }
+        let mut opaque_type_map: HashMap<Path, OpaqueType> = HashMap::new();
+        for opaque_type in krate.opaque_types.iter() {
+            opaque_type_map.insert(opaque_type.x.name.clone(), opaque_type.clone());
+        }
 
         Ok(Ctx {
             module,
@@ -741,8 +802,10 @@ impl Ctx {
             datatypes_with_invariant,
             mono_types,
             spec_fn_types,
+            reached_dyn_traits,
             used_builtins,
             fndef_types,
+            resolved_typs,
             fndef_type_set,
             functions,
             func_map,
@@ -759,6 +822,7 @@ impl Ctx {
             string_hashes,
             debug,
             arch_word_bits: krate.arch.word_bits,
+            opaque_type_map,
         })
     }
 

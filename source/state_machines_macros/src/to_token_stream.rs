@@ -19,11 +19,11 @@ use proc_macro2::TokenStream;
 use quote::{ToTokens, quote, quote_spanned};
 use std::collections::HashMap;
 use std::mem::swap;
-use syn_verus::parse;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::spanned::Spanned;
-use syn_verus::token;
-use syn_verus::{
+use verus_syn::parse;
+use verus_syn::punctuated::Punctuated;
+use verus_syn::spanned::Spanned;
+use verus_syn::token;
+use verus_syn::{
     AngleBracketedGenericArguments, Attribute, Block, Expr, ExprBlock, FnArg, FnArgKind, FnMode,
     GenericArgument, GenericParam, Generics, Ident, ImplItemFn, Meta, MetaList, ModeProof,
     ModeSpec, Open, Pat, Path, PathArguments, PathSegment, Publish, Signature, Stmt, Type,
@@ -67,6 +67,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
     }
 
     let final_code = quote! {
+        #[cfg_attr(verus_keep_ghost, verifier::deprecated_postcondition_mut_ref_style(true))]
         #[allow(unused_parens)]
         pub mod #sm_name {
             use super::*;
@@ -330,24 +331,24 @@ pub fn output_primary_stuff(
             let rel_fn;
             if trans.kind == TransitionKind::Init {
                 let args = post_params(&trans.params);
-                rel_fn = quote! {
+                rel_fn = quote_vstd! { vstd =>
                     #[cfg(verus_keep_ghost_body)]
                     #[verus::internal(verus_macro)]
                     #[verifier::spec]
                     #[verus::internal(open)] /* vattr */
                     pub fn #name (#args) -> ::core::primitive::bool {
-                        ::builtin_macros::verus_proof_expr!({ #f })
+                        #vstd::prelude::verus_proof_expr!({ #f })
                     }
                 };
             } else {
                 let args = pre_post_params(&trans.params);
-                rel_fn = quote! {
+                rel_fn = quote_vstd! { vstd =>
                     #[cfg(verus_keep_ghost_body)]
                     #[verus::internal(verus_macro)]
                     #[verifier::spec]
                     #[verus::internal(open)] /* vattr */
                     pub fn #name (#args) -> ::core::primitive::bool {
-                        ::builtin_macros::verus_proof_expr!({ #f })
+                        #vstd::prelude::verus_proof_expr!({ #f })
                     }
                 };
             }
@@ -364,13 +365,13 @@ pub fn output_primary_stuff(
 
             let f = to_relation(&simplified_body, false /* weak */);
 
-            let rel_fn = quote! {
+            let rel_fn = quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
                 #[verus::internal(open)] /* vattr */
                 pub fn #name (#params) -> ::core::primitive::bool {
-                    ::builtin_macros::verus_proof_expr!({ #f })
+                    #vstd::prelude::verus_proof_expr!({ #f })
                 }
             };
             impl_stream.extend(rel_fn);
@@ -384,13 +385,13 @@ pub fn output_primary_stuff(
 
             let f = crate::to_relation::to_is_enabled_condition_weak(&simplified_body);
 
-            let rel_fn = quote! {
+            let rel_fn = quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
                 #[verus::internal(open)] /* vattr */
                 pub fn #name (#params) -> ::core::primitive::bool {
-                    ::builtin_macros::verus_proof_expr!({ #f })
+                    #vstd::prelude::verus_proof_expr!({ #f })
                 }
             };
             impl_stream.extend(rel_fn);
@@ -401,13 +402,13 @@ pub fn output_primary_stuff(
 
             let f = crate::to_relation::to_is_enabled_condition_weak(&simplified_body);
 
-            let rel_fn = quote! {
+            let rel_fn = quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
                 #[verus::internal(open)] /* vattr */
                 pub fn #name (#params) -> ::core::primitive::bool {
-                    ::builtin_macros::verus_proof_expr!({ #f })
+                    #vstd::prelude::verus_proof_expr!({ #f })
                 }
             };
             impl_stream.extend(rel_fn);
@@ -433,7 +434,7 @@ pub fn output_primary_stuff(
                 #[verifier::proof]
                 pub fn #name(#params) {
                     #vstd::prelude::assume_(pre.invariant());
-                    ::builtin_macros::verus_proof_expr!({
+                    #vstd::prelude::verus_proof_expr!({
                         #b
                     })
                 }
@@ -447,8 +448,8 @@ pub fn output_primary_stuff(
     output_step_datatype(root_stream, &mut show_stream, impl_stream, sm, false);
     output_step_datatype(root_stream, &mut show_stream, impl_stream, sm, true);
     if let Some(init_label) = &sm.init_label {
-        root_stream.extend(quote! {
-            ::builtin_macros::verus!{
+        root_stream.extend(quote_vstd! { vstd =>
+            #vstd::prelude::verus!{
                 #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
                 #init_label
             }
@@ -456,8 +457,8 @@ pub fn output_primary_stuff(
         root_stream.extend(quote! {});
     }
     if let Some(transition_label) = &sm.transition_label {
-        root_stream.extend(quote! {
-            ::builtin_macros::verus!{
+        root_stream.extend(quote_vstd! { vstd =>
+            #vstd::prelude::verus!{
                 #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
                 #transition_label
             }
@@ -610,10 +611,10 @@ fn output_step_datatype(
     let step_ty = get_step_ty(sm, is_init);
     let attrs = &sm.attrs;
 
-    root_stream.extend(quote! {
+    root_stream.extend(quote_vstd! { vstd =>
         #[allow(non_camel_case_types)]
-        #[::builtin_macros::is_variant_no_deprecation_warning]
-        #[::builtin_macros::verus_enum_synthesize]
+        #[#vstd::prelude::is_variant_no_deprecation_warning]
+        #[#vstd::prelude::verus_enum_synthesize]
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         #(#attrs)*
         pub enum #type_ident#generics {
@@ -1098,7 +1099,9 @@ fn output_other_fns(
         // TODO allow spec(checked) or something
         f.sig.mode = FnMode::Spec(ModeSpec { spec_token: token::Spec { span: inv.func.span() } });
         f.sig.publish = Publish::Open(Open { token: token::Open { span: inv.func.span() } });
-        impl_stream.extend(quote! { #[cfg(verus_keep_ghost_body)] ::builtin_macros::verus!{ #f } });
+        impl_stream.extend(
+            quote_vstd! { vstd => #[cfg(verus_keep_ghost_body)] #vstd::prelude::verus_impl!{ #f } },
+        );
     }
 
     for inv in invariants {
@@ -1126,9 +1129,9 @@ fn output_other_fns(
         let span = f.sig.span(); // TODO better span choice
         set_mode_proof(&mut f.sig, span);
         fix_attrs(&mut f.attrs);
-        impl_stream.extend(quote! {
+        impl_stream.extend(quote_vstd! { vstd =>
           #[cfg(verus_keep_ghost_body)]
-          ::builtin_macros::verus!{ #f }
+          #vstd::prelude::verus_impl!{ #f }
         })
     }
 
@@ -1137,8 +1140,8 @@ fn output_other_fns(
         iim.to_tokens(&mut normal_fn_stream);
     }
 
-    impl_stream.extend(quote! {
-        ::builtin_macros::verus!{
+    impl_stream.extend(quote_vstd! { vstd =>
+        #vstd::prelude::verus!{
             #normal_fn_stream
         }
     });
@@ -1163,7 +1166,6 @@ fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
 ///
 /// For 'readonly' transitions, there is no need to prove inductiveness.
 /// We should have already ruled out the existence of such lemmas.
-
 fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemFn) {
     let trans = get_transition(&bundle.sm.transitions, &l.purpose.transition.to_string())
         .expect("transition");

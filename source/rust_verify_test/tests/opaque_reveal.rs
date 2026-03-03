@@ -153,12 +153,12 @@ test_verify_one_file! {
         fn some_fn_generic<T>(a: A<T>) {
             #[verifier::proof_block]
             {
-                ::builtin::reveal_hide_({
+                ::verus_builtin::reveal_hide_({
                         #[verus::internal(reveal_fn)]
                         fn __VERUS_REVEAL_INTERNAL__() {
                             let a = ();
 
-                            ::builtin::reveal_hide_internal_path_(<A<_> as Tr<_>>::afunction)
+                            ::verus_builtin::reveal_hide_internal_path_(<A<_> as Tr<_>>::afunction)
                         }
                         __VERUS_REVEAL_INTERNAL__
                     }, 1)

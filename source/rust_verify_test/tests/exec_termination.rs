@@ -95,11 +95,11 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] mutually_recursive_exec_functions_in_different_modules_need_decreases_clause verus_code! {
         mod M1 {
-            use builtin::*;
+            use verus_builtin::*;
             pub(crate) fn f1(i: u64) -> u64 { crate::M2::f2(i - 1) } // FAIL
         }
         mod M2 {
-            use builtin::*;
+            use verus_builtin::*;
             pub(crate) fn f2(i: u64) -> u64 { crate::M1::f1(i - 1) }
         }
     } => Err(err) => {

@@ -3,7 +3,7 @@
 use super::prelude::*;
 
 #[cfg(verus_keep_ghost)]
-use state_machines_macros::*;
+use verus_state_machines_macros::*;
 
 #[cfg(verus_keep_ghost)]
 tokenized_state_machine_vstd!(Dupe<T> {

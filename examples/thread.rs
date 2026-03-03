@@ -1,8 +1,8 @@
 // rust_verify/tests/example.rs
 #[allow(unused_imports)]
-use builtin::*;
+use verus_builtin::*;
 #[allow(unused_imports)]
-use builtin_macros::*;
+use verus_builtin_macros::*;
 use vstd::thread::*;
 
 verus! {

@@ -5,10 +5,11 @@ This accounts Verus lines in a project by whether they are
 * executable code, or
 * proof text.
 
-## Known issues
+## Usage
 
-To run this, first run `verus` on a project with `--emit=dep-info`. This will output a `.d` file in the
-current working directory. Then run this tool with
+To use this tool, first run `cargo verus verify -- --emit=dep-info` on your project. This will output a `.d` file in that project's `target/debug/` directory. 
+
+Then run this tool with
 ```
 cargo run --release -- path_to.d -p
 ```

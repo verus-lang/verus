@@ -1,7 +1,7 @@
 // rust_verify/tests/example.rs
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use vstd::*;
 
 verus! {

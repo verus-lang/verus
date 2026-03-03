@@ -8,12 +8,9 @@ use crate::messages::error;
 ///  1. The closure does not mutate any variable from outside the closure.
 ///     Such closures are currently unsupported.
 ///
-/// TODO make this check as well:
-///
-///  2. If a variable is referenced from spec mode but not actually captured in
+///  2. [TODO] If a variable is referenced from spec mode but not actually captured in
 ///     tracked/exec mode, then that variable cannot be mutable.
 ///     (This is actually easy to support, but we expect it might be confusing to the user.)
-
 pub fn check_closure_well_formed(expr: &Expr, is_proof_fn: bool) -> Result<(), VirErr> {
     expr_visitor_check(expr, &mut |scope_map, expr| {
         match &expr.x {

@@ -65,11 +65,11 @@ In the following table, `e: E` and `m: Multiset<E>`.
       <td><code>remove field -= (m);</code></td>
       <td><code style="white-space: pre">require m.<a href="https://verus-lang.github.io/verus/verusdoc/vstd/multiset/struct.Multiset.html#method.subset_of">subset_of</a>(field);</code><br>
           <code>update field = field.<a href="https://verus-lang.github.io/verus/verusdoc/vstd/multiset/struct.Multiset.html#method.difference_with">difference_with</a>(m);</code></td>
-      <td>Input <code><a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.MultisetToken.html">MultisetToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</code></a></code></td>
+      <td>Input <code><a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.MultisetToken.html">MultisetToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</a></code></td>
     </tr> <tr>
       <td><code>have field &gt;= (m);</code></td>
       <td><code style="white-space: pre">require m.<a href="https://verus-lang.github.io/verus/verusdoc/vstd/multiset/struct.Multiset.html#method.subset_of">subset_of</a>(field);</code></td>
-      <td>Input <code>&amp;<a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.MultisetToken.html">MultisetToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</code></a></code></td>
+      <td>Input <code>&amp;<a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.MultisetToken.html">MultisetToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</a></code></td>
     </tr> <tr>
       <td><code>add field += (m);</code></td>
       <td><code style="white-space: pre">update field = field.<a href="https://verus-lang.github.io/verus/verusdoc/vstd/multiset/struct.Multiset.html#method.add">add</a>(m);</code>

@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 
 use core::sync::atomic::{
-    AtomicBool, AtomicI16, AtomicI32, AtomicI8, AtomicIsize, AtomicPtr, AtomicU16, AtomicU32,
-    AtomicU8, AtomicUsize, Ordering,
+    AtomicBool, AtomicI8, AtomicI16, AtomicI32, AtomicIsize, AtomicPtr, AtomicU8, AtomicU16,
+    AtomicU32, AtomicUsize, Ordering,
 };
 
 #[cfg(target_has_atomic = "64")]
@@ -191,7 +191,7 @@ pub type AtomicCellId = int;
 
 macro_rules! atomic_common_methods {
     ($at_ident: ty, $p_ident: ty, $p_data_ident: ty, $rust_ty: ty, $value_ty: ty, [ $($addr:tt)* ]) => {
-        verus!{
+        verus_impl!{
 
         pub uninterp spec fn id(&self) -> int;
 
@@ -318,7 +318,7 @@ macro_rules! atomic_common_methods {
 
 macro_rules! atomic_integer_methods {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
-        verus!{
+        verus_impl!{
 
         // Note that wrapping-on-overflow is the defined behavior for fetch_add and fetch_sub
         // for Rust's atomics (in contrast to ordinary arithmetic)

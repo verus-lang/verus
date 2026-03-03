@@ -51,6 +51,7 @@ pub struct TestErr {
     pub warnings: Vec<Diagnostic>,
     pub notes: Vec<Diagnostic>,
     pub expand_errors_notes: Vec<Diagnostic>, // produced by the `--expand-errors` flag
+    pub json_output: Option<serde_json::Value>, // captured when `--output-json` is used
 }
 
 #[allow(dead_code)]
@@ -63,7 +64,7 @@ pub fn verify_files(
     verify_files_vstd(name, files, entry_file, false, options)
 }
 
-use std::cell::RefCell;
+use std::{cell::RefCell, path};
 thread_local! {
     pub static THREAD_LOCAL_TEST_NAME: RefCell<Option<String>> = RefCell::new(None);
 }
@@ -143,6 +144,12 @@ pub fn verify_files_vstd_all_diags(
     let run =
         run_verus(options, &test_input_dir, &test_input_dir.join(&entry_file), import_vstd, true);
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+    let json_output = if options.contains(&"--output-json") {
+        let stdout_str = std::str::from_utf8(&run.stdout[..]).unwrap_or("").trim();
+        serde_json::from_str(stdout_str).ok()
+    } else {
+        None
+    };
 
     let mut errors = Vec::new();
     let mut expand_errors_notes = Vec::new();
@@ -174,9 +181,9 @@ pub fn verify_files_vstd_all_diags(
     }
 
     if is_failure {
-        Err(TestErr { errors, warnings, notes, expand_errors_notes })
+        Err(TestErr { errors, warnings, notes, expand_errors_notes, json_output })
     } else {
-        Ok(TestErr { errors, warnings, notes, expand_errors_notes })
+        Ok(TestErr { errors, warnings, notes, expand_errors_notes, json_output })
     }
 }
 
@@ -263,14 +270,16 @@ pub fn run_verus(
         .join(profile);
 
     let verus_target_path_str = verus_target_path.to_str().unwrap();
-    let lib_builtin_path = verus_target_path.join("libbuiltin.rlib");
+
+    let lib_builtin_path = verus_target_path.join("libverus_builtin.rlib");
     assert!(lib_builtin_path.exists());
     let lib_builtin_path = lib_builtin_path.to_str().unwrap();
-    let lib_builtin_macros_path = verus_target_path.join(format!("{}builtin_macros.{}", pre, dl));
+    let lib_builtin_macros_path =
+        verus_target_path.join(format!("{}verus_builtin_macros.{}", pre, dl));
     assert!(lib_builtin_macros_path.exists());
     let lib_builtin_macros_path = lib_builtin_macros_path.to_str().unwrap();
     let lib_state_machines_macros_path =
-        verus_target_path.join(format!("{}state_machines_macros.{}", pre, dl));
+        verus_target_path.join(format!("{}verus_state_machines_macros.{}", pre, dl));
     assert!(lib_state_machines_macros_path.exists());
     let lib_state_machines_macros_path = lib_state_machines_macros_path.to_str().unwrap();
 
@@ -299,8 +308,16 @@ pub fn run_verus(
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
+        } else if *option == "--no-erasure-check" {
+            verus_args.push("--no-erasure-check".to_string());
+        } else if *option == "--no-verify" {
+            verus_args.push("--no-verify".to_string());
+        } else if *option == "--no-report-long-running" {
+            verus_args.push("--no-report-long-running".to_string());
         } else if *option == "--no-cheating" {
             verus_args.push("--no-cheating".to_string());
+        } else if *option == "--output-json" {
+            verus_args.push("--output-json".to_string());
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {
@@ -314,6 +331,12 @@ pub fn run_verus(
             is_core = true;
         } else if *option == "--disable-internal-test-mode" {
             use_internal_test_mode = false;
+        } else if *option == "new-mut-ref" {
+            verus_args.push("-V".to_string());
+            verus_args.push("new-mut-ref".to_string());
+        } else if *option == "no-bv-simplify" {
+            verus_args.push("-V".to_string());
+            verus_args.push("no-bv-simplify".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
@@ -336,15 +359,15 @@ pub fn run_verus(
     );
     if !is_core {
         verus_args.extend(
-            vec!["--extern".to_string(), format!("builtin={lib_builtin_path}")].into_iter(),
+            vec!["--extern".to_string(), format!("verus_builtin={lib_builtin_path}")].into_iter(),
         );
     }
     verus_args.extend(
         vec![
             "--extern".to_string(),
-            format!("builtin_macros={lib_builtin_macros_path}"),
+            format!("verus_builtin_macros={lib_builtin_macros_path}"),
             "--extern".to_string(),
-            format!("state_machines_macros={lib_state_machines_macros_path}"),
+            format!("verus_state_machines_macros={lib_state_machines_macros_path}"),
             "-L".to_string(),
             format!("dependency={verus_target_path_str}"),
             // suppress Rust's generation of long-type files
@@ -376,6 +399,10 @@ pub fn run_verus(
         ]);
     }
 
+    if !import_vstd {
+        verus_args.append(&mut vec!["--cfg".to_string(), "verus_no_vstd".to_string()]);
+    }
+
     let mut child = std::process::Command::new(bin);
     child.env(
         "VERUS_Z3_PATH",
@@ -403,6 +430,91 @@ pub fn run_verus(
     run
 }
 
+pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    if std::env::var("VERUS_IN_VARGO").is_err() {
+        panic!("not running in vargo, read the README for instructions");
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let exe = "";
+
+    #[cfg(target_os = "windows")]
+    let exe = ".exe";
+
+    // Compute the path to the cargo-verus executable,
+    // following the pattern from run_verus
+    let current_exe = std::env::current_exe().unwrap();
+    let deps_path = current_exe.parent().unwrap();
+    let target_path = deps_path.parent().unwrap();
+    let profile = target_path.file_name().unwrap().to_str().unwrap();
+    let verus_target_path = target_path
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf()
+        .join("target-verus")
+        .join(profile);
+    let bin = verus_target_path.join(format!("cargo-verus{exe}"));
+
+    let mut child = std::process::Command::new(bin);
+    child.current_dir(dir);
+
+    let z3 = std::env::var("VERUS_Z3_PATH")
+        .map(|p| {
+            let p = std::path::PathBuf::from(p);
+            (if p.is_relative() { std::path::PathBuf::from("..").join(p) } else { p })
+                .into_os_string()
+        })
+        .unwrap_or({
+            if cfg!(target_os = "windows") {
+                std::ffi::OsString::from("..\\z3.exe")
+            } else {
+                std::ffi::OsString::from("../z3")
+            }
+        });
+    let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
+    child.env("VERUS_Z3_PATH", z3);
+
+    let child = child
+        .args(&args[..])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("could not execute cargo-verus process");
+    let run = child.wait_with_output().expect("cargo-verus wait failed");
+    if !run.status.success() {
+        let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+        eprintln!("Failed with output:\n{}", rust_output);
+    }
+    run
+}
+
+// Assumes normal `cargo` is in the caller's path
+pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    // if std::env::var("VERUS_IN_VARGO").is_err() {
+    //     panic!("not running in vargo, read the README for instructions");
+    // }
+    let mut child = std::process::Command::new("cargo");
+    child.current_dir(dir);
+
+    // Remove Verus-specific RUSTFLAGS that are set by vargo, as they cause
+    // verus_builtin and vstd to require unstable features not available on stable Rust
+    child.env_remove("RUSTFLAGS");
+
+    let child = child
+        .args(&args[..])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("could not execute cargo process");
+    let run = child.wait_with_output().expect("cargo wait failed");
+    if !run.status.success() {
+        let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+        eprintln!("Failed with output:\n{}", rust_output);
+    }
+    run
+}
+
 #[allow(dead_code)]
 pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     // If we're using the pre-macro-expanded vstd lib, then it might have
@@ -416,12 +528,13 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(proc_macro_hygiene)]
     #![feature(never_type)]
     #![feature(core_intrinsics)]
+    #![feature(ptr_metadata)]
 };
 
 #[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
-    use builtin::*;
-    use builtin_macros::*;
+    use verus_builtin::*;
+    use verus_builtin_macros::*;
 };
 
 #[allow(dead_code)]
@@ -433,7 +546,7 @@ pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<Tes
         if *x == "exec_allows_no_decreases_clause" {
             exec_allows_no_decreases_clause = true;
             false
-        } else if *x == "no-auto-import-builtin" {
+        } else if *x == "no-auto-import-verus_builtin" {
             no_prelude = true;
             false
         } else {
@@ -501,6 +614,76 @@ macro_rules! test_verify_one_file {
     };
     ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat) => {
         test_verify_one_file_with_options!($(#[$attrs])* $name [] => $body => $result);
+    };
+}
+
+// We run the bit-vector tests twice; once with interpreter-based simplification on
+// (to mirror what the end-user sees) and once with it off (to check that our SMT encoding
+// of bit-vector operations is correct).
+#[macro_export]
+macro_rules! test_verify_one_bv_file_with_options {
+    ($(#[$attrs:meta])* $name:ident $options:expr => $body:expr => $result:pat => $assertions:expr ) => {
+        $(#[$attrs])*
+        fn $name() {
+            let result = verify_one_file(::std::stringify!($name), $body, &$options);
+            #[allow(irrefutable_let_patterns)]
+            if let $result = result {
+                $assertions
+            } else {
+                assert!(false, "Err(_) does not match $result");
+            }
+            // Run a second time with simplification off
+            let mut opts = Vec::new();
+            opts.extend_from_slice(&$options);
+            opts.push("no-bv-simplify");
+            let result = verify_one_file(::std::stringify!($name), $body, opts.as_slice());
+            #[allow(irrefutable_let_patterns)]
+            if let $result = result {
+                $assertions
+            } else {
+                assert!(false, "Err(_) does not match $result, with bit-vector simplification disabled");
+            }
+        }
+    };
+    ($(#[$attrs:meta])* $name:ident $options:expr => $body:expr => $result:pat) => {
+        $(#[$attrs])*
+        fn $name() {
+            let result = verify_one_file(::std::stringify!($name), $body, &$options);
+            let result_unit = result.as_ref().map(|_| ());
+            #[allow(irrefutable_let_patterns)]
+            if let $result = result_unit {
+                if let Ok(err) = result {
+                    assert_eq!(err.warnings.len(), 0);
+                }
+            } else {
+                assert!(false, "Err(_) does not match $result");
+            }
+
+            // Run a second time with simplification off
+            let mut opts = Vec::new();
+            opts.extend_from_slice(&$options);
+            opts.push("no-bv-simplify");
+            let result = verify_one_file(::std::stringify!($name), $body, opts.as_slice());
+            let result_unit = result.as_ref().map(|_| ());
+            #[allow(irrefutable_let_patterns)]
+            if let $result = result_unit {
+                if let Ok(err) = result {
+                    assert_eq!(err.warnings.len(), 0);
+                }
+            } else {
+                assert!(false, "Err(_) does not match $result, with bit-vector simplification disabled");
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! test_verify_one_bv_file {
+    ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat => $assertions:expr ) => {
+        test_verify_one_bv_file_with_options!($(#[$attrs])* $name [] => $body => $result => $assertions);
+    };
+    ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat) => {
+        test_verify_one_bv_file_with_options!($(#[$attrs])* $name [] => $body => $result);
     };
 }
 
@@ -597,11 +780,52 @@ pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
 }
 
 #[allow(dead_code)]
+pub fn assert_help_error_msg(err: TestErr, expected_msg: &str) {
+    assert!(err.errors.iter().any(|x| x.rendered.contains(expected_msg)));
+}
+
+#[allow(dead_code)]
+pub fn assert_help_error_msgs(err: TestErr, expected_msgs: &[&str]) {
+    assert!(
+        expected_msgs
+            .iter()
+            .all(|expected_msg| err.errors.iter().any(|x| x.rendered.contains(expected_msg)))
+    );
+}
+
+#[allow(dead_code)]
 pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
     assert_eq!(err.errors.len(), 1);
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
-    assert!(err.errors[0].code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)); // thus a Rust error
+    // usually we can use the existence of an error code to tell if something is a
+    // Rust error message, though some error messages don't come with error codes
+    assert!(
+        err.errors[0].code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)
+            || err.errors[0].message.contains("lifetime may not live long enough")
+    ); // thus a Rust error
     assert!(err.errors[0].message.contains(expected_msg));
+}
+
+#[allow(dead_code)]
+pub fn assert_rust_error_msg_skip_spec_msgs(err: TestErr, expected_msg: &str) {
+    let mut err = err;
+    err.errors = err.errors.into_iter().filter(|e| !e.message.contains("(Verus spec")).collect();
+    assert_rust_error_msg(err, expected_msg)
+}
+
+#[allow(dead_code)]
+pub fn assert_rust_error_msgs(err: TestErr, expected_msgs: &[&str]) {
+    assert_eq!(err.errors.len(), expected_msgs.len());
+    let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
+    // usually we can use the existence of an error code to tell if something is a
+    // Rust error message, though some error messages don't come with error codes
+    assert!(
+        err.errors[0].code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)
+            || err.errors[0].message.contains("lifetime may not live long enough")
+    ); // thus a Rust error
+    for (error, expected_msg) in err.errors.iter().zip(expected_msgs.iter()) {
+        assert!(error.message.contains(expected_msg));
+    }
 }
 
 #[allow(dead_code)]
@@ -612,6 +836,20 @@ pub fn assert_rust_error_msg_all(err: TestErr, expected_msg: &str) {
         assert!(e.code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)); // thus a Rust error
         assert!(e.message.contains(expected_msg));
     }
+}
+
+#[allow(dead_code)]
+pub fn assert_rust_error_msg_any(err: TestErr, expected_msg: &str) {
+    assert!(err.errors.len() >= 1);
+    let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
+    let mut found = false;
+    for e in &err.errors {
+        assert!(e.code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)); // thus a Rust error
+        if e.message.contains(expected_msg) {
+            found = true;
+        }
+    }
+    assert!(found);
 }
 
 #[allow(dead_code)]
@@ -656,6 +894,19 @@ pub fn typ_inv_relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan
         .filter(|e| e.label != Some("type invariant declared here".to_string()))
         .next()
         .expect("span")
+}
+
+#[allow(dead_code)]
+pub fn assert_has_recommends_failure(err: TestErr) {
+    assert!(err.errors.len() > 0);
+    let mut found_rec_failure = false;
+    for note in err.notes.iter() {
+        if note.message.contains("recommendation not met") {
+            found_rec_failure = true;
+            break;
+        }
+    }
+    assert!(found_rec_failure);
 }
 
 #[allow(dead_code)]

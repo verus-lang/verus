@@ -56,6 +56,10 @@ fn run_example_for_file(file_path: &str) {
                 mode = Mode::ExpectFailures;
                 options.push("--expand-errors");
             }
+            "no-report-long-running" => {
+                mode = Mode::ExpectSuccess;
+                options.push("--no-report-long-running");
+            }
             "ignore" => {
                 if first_line_elements.len() > 3 {
                     // We require that any comment is separated by a `---` which acts as a good
@@ -79,7 +83,7 @@ fn run_example_for_file(file_path: &str) {
                 return;
             }
             _ => panic!(
-                "invalid command {:?} for example file test: use one of 'expect-success', 'expect-errors', 'expect-failures', or 'ignore'",
+                "invalid command {:?} for example file test: use one of 'expect-success', 'expect-errors', 'expect-failures', 'expand-errors', 'no-report-long-running', or 'ignore'",
                 command
             ),
         }

@@ -1,8 +1,8 @@
 // rust_verify/tests/example.rs ignore --- intending to deprecate PPtr, should update this to raw_ptr
 #![allow(unused_imports)]
 
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use vstd::layout::*;
 use vstd::modes::*;
 use vstd::prelude::*;

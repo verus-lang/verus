@@ -1,0 +1,13 @@
+[package]
+name = "big_rlimit"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { path = "../../../../../vstd" }
+
+[package.metadata.verus]
+verify = true
+test_args = "--rlimit 15"
+
+[workspace]

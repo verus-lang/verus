@@ -3,6 +3,7 @@ use crate::ast::{
     GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, TraitId, Typ, TypX, Typs, UnaryOpr,
     VarBinder, VirErr,
 };
+use crate::ast_to_sst::PreLocalDecl;
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
 use crate::ast_util::undecorate_typ;
@@ -46,6 +47,8 @@ struct Ctxt<'a> {
     num_decreases: Option<usize>,
     scc_rep: Node,
     ctx: &'a Ctx,
+    /// Types of the caller's decreases clauses (used to validate compatibility with callees)
+    caller_decreases_typs: Vec<Typ>,
 }
 
 // Get edges, skipping past SpanInfo
@@ -132,16 +135,25 @@ pub(crate) fn check_decrease(
         let decreases_at_entry =
             SpannedTyped::new(&exp.span, &height_typ(ctx, exp), decreases_at_entryx);
         // 0 <= decreases_exp < decreases_at_entry
-        let args = vec![exp_for_decrease(ctx, exp)?, decreases_at_entry, dec_exp];
-        let call = ExpX::Call(
-            if height_is_int(&exp.typ) {
-                CallFun::InternalFun(InternalFun::CheckDecreaseInt)
+
+        let (args, call_fun) = if height_is_int(&exp.typ) {
+            let args = vec![exp_for_decrease(ctx, exp)?, decreases_at_entry, dec_exp];
+            (args, CallFun::InternalFun(InternalFun::CheckDecreaseInt))
+        } else {
+            let call_fun = CallFun::InternalFun(InternalFun::CheckDecreaseHeight);
+            // Coerce to Poly for loops (when we're called after poly.rs)
+            // For recursive functions (loop_id.is_none()), poly.rs will handle this
+            if loop_id.is_some() {
+                let new = crate::poly::coerce_exp_to_poly(ctx, &exp_for_decrease(ctx, exp)?);
+                let old = crate::poly::coerce_exp_to_poly(ctx, &decreases_at_entry);
+                let args = vec![new, old, dec_exp];
+                (args, call_fun)
             } else {
-                CallFun::InternalFun(InternalFun::CheckDecreaseHeight)
-            },
-            Arc::new(vec![]),
-            Arc::new(args),
-        );
+                let args = vec![exp_for_decrease(ctx, exp)?, decreases_at_entry, dec_exp];
+                (args, call_fun)
+            }
+        };
+        let call = ExpX::Call(call_fun, Arc::new(vec![]), Arc::new(args));
         dec_exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), call);
     }
     Ok(dec_exp)
@@ -199,13 +211,33 @@ fn check_decrease_call(
         );
         decreases_exps.push(SpannedTyped::new(&span, &dec_exp.typ, e_decx));
     }
-    check_decrease(
-        ctxt.ctx,
-        span,
-        None,
-        &decreases_exps,
-        ctxt.num_decreases.expect("num_decreases"),
-    )
+
+    // Validate that the caller's and callee's decreases types are compatible.
+    // All functions in a mutually recursive group must have decreases clauses
+    // whose types match at each position (both int or both non-int).
+    let num_decreases = ctxt.num_decreases.expect("num_decreases");
+    let num_to_check = std::cmp::min(num_decreases, decreases_exps.len());
+    for i in 0..num_to_check {
+        let caller_is_int = height_is_int(&ctxt.caller_decreases_typs[i]);
+        let callee_is_int = height_is_int(&decreases_exps[i].typ);
+        if caller_is_int != callee_is_int {
+            let caller_kind = if caller_is_int { "int" } else { "datatype" };
+            let callee_kind = if callee_is_int { "int" } else { "datatype" };
+            return Err(error(
+                span,
+                format!(
+                    "in mutually recursive functions, decreases clauses at the same position \
+                     must have compatible types: the caller's decreases clause #{} has {} type, \
+                     but the callee's has {} type",
+                    i + 1,
+                    caller_kind,
+                    callee_kind
+                ),
+            ));
+        }
+    }
+
+    check_decrease(ctxt.ctx, span, None, &decreases_exps, num_decreases)
 }
 
 pub(crate) fn fun_is_recursive(ctx: &Ctx, function: &Function) -> bool {
@@ -246,6 +278,26 @@ pub(crate) fn mk_decreases_at_entry(
     Ok((decls, stm_assigns))
 }
 
+pub(crate) fn mk_decreases_at_entry_pre(
+    ctx: &Ctx,
+    loop_id: Option<u64>,
+    exps: &Vec<Exp>,
+) -> Result<Vec<PreLocalDecl>, VirErr> {
+    let mut decls: Vec<PreLocalDecl> = Vec::new();
+    for (i, exp) in exps.iter().enumerate() {
+        let typ = height_typ(ctx, exp);
+        let decl = PreLocalDecl {
+            ident: unique_local(&decrease_at_entry(loop_id, i)),
+            typ: typ.clone(),
+            kind: crate::ast_to_sst::PreLocalDeclKind::Immutable(crate::ast_to_sst::Immutable(
+                crate::sst::LocalDeclKind::Decreases,
+            )),
+        };
+        decls.push(decl);
+    }
+    Ok(decls)
+}
+
 pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
     function: &crate::sst::FunctionSst,
@@ -264,6 +316,7 @@ pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(
         num_decreases: None,
         scc_rep: scc_rep.clone(),
         ctx,
+        caller_decreases_typs: vec![], // Not used when num_decreases is None
     };
 
     // New body: substitute rec%f(args, fuel) for f(args)
@@ -329,11 +382,14 @@ fn check_termination<'a>(
         expr_to_exp_skip_checks(ctx, diagnostics, &params_to_pars(&function.x.params, true), e)
     })?;
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
+    let caller_decreases_typs: Vec<Typ> =
+        decreases_exps.iter().map(|exp| height_typ(ctx, exp)).collect();
     let ctxt = Ctxt {
         recursive_function_name: function.x.name.clone(),
         num_decreases: Some(num_decreases),
         scc_rep,
         ctx,
+        caller_decreases_typs,
     };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
         StmX::Call { fun, resolved_method, args, dest, .. }
@@ -394,30 +450,32 @@ pub(crate) fn check_termination_stm(
     proof_body: Option<Stm>,
     body: &Stm,
     exec_with_no_termination_check: bool,
-) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
+) -> Result<(Vec<LocalDecl>, crate::sst::Stms, Stm), VirErr> {
     if !fun_is_recursive(ctx, &function) {
-        return Ok((vec![], body.clone()));
+        return Ok((vec![], Arc::new(vec![]), body.clone()));
     }
 
     if exec_with_no_termination_check && function.x.decrease.is_empty() {
-        return Ok((vec![], body.clone()));
+        return Ok((vec![], Arc::new(vec![]), body.clone()));
     }
 
     let (ctxt, decreases_exps, stm) = check_termination(ctx, diagnostics, function, body)?;
 
-    let (decls, mut stm_assigns) =
-        mk_decreases_at_entry(&ctxt.ctx, &stm.span, None, &decreases_exps)?;
+    let (decls, stm_assigns) = mk_decreases_at_entry(&ctxt.ctx, &stm.span, None, &decreases_exps)?;
+    let mut block_stms = stm_assigns.clone();
     if let Some(proof_body) = proof_body {
-        stm_assigns.push(proof_body);
+        block_stms.push(proof_body);
     }
-    stm_assigns.push(stm.clone());
-    let stm_block = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stm_assigns)));
-    Ok((decls, stm_block))
+    block_stms.push(stm.clone());
+    let stm_block = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(block_stms)));
+    Ok((decls, Arc::new(stm_assigns), stm_block))
 }
 
 pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
+    trait_map: &HashMap<Path, crate::ast::Trait>,
     trait_impl_map: &HashMap<(Fun, Path), Fun>,
+    trait_impl_from_extension: &HashMap<Path, Path>,
     reveal_group_set: &HashSet<Fun>,
     call_graph: &mut GraphBuilder<Node>,
     span_infos: &mut Vec<Span>,
@@ -426,10 +484,20 @@ pub(crate) fn expand_call_graph(
     // See recursive_types::check_traits for more documentation
     let f_node = Node::Fun(function.x.name.clone());
 
+    // Add f -> T nodes for any dyn T in f
+    use crate::ast_visitor::{AstVisitor, WalkTypVisitorEnv};
+    let ft = &|call_graph: &mut GraphBuilder<Node>, t: &Typ| {
+        crate::recursive_types::add_trait_type_edges(call_graph, &f_node, t);
+        Ok(())
+    };
+    let mut visitor = WalkTypVisitorEnv { env: call_graph, ft };
+    visitor.visit_function(function).unwrap();
+
     // Add T --> f if T declares method f
     if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
         // T --> f
         call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
+        // T --> ...typs...
     }
 
     // Add D: T --> f and f --> T where f is one of D's methods that implements T
@@ -481,7 +549,7 @@ pub(crate) fn expand_call_graph(
         }
         let tr = match &**bound {
             GenericBoundX::Trait(TraitId::Path(tr), _) => tr,
-            GenericBoundX::Trait(TraitId::Sized, _) => {
+            GenericBoundX::Trait(TraitId::Sizedness(_), _) => {
                 continue;
             }
             GenericBoundX::TypEquality(tr, _, _, _) => tr,
@@ -520,7 +588,7 @@ pub(crate) fn expand_call_graph(
     // (See, for example, test_default17 in rust_verify_test/tests/traits.rs.)
     let add_calls = &mut |expr: &crate::ast::Expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec), _) => {
+            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec, _), _, _) => {
                 assert!(*autospec == AutospecUsage::Final);
                 let (callee, ts, impl_paths) = if let CallTargetKind::DynamicResolved {
                     resolved: x_resolved,
@@ -536,7 +604,9 @@ pub(crate) fn expand_call_graph(
 
                 let (callee, impl_paths) = crate::traits::redirect_calls_in_default_methods(
                     func_map,
+                    trait_map,
                     trait_impl_map,
+                    trait_impl_from_extension,
                     function,
                     &expr.span,
                     callee,
@@ -563,7 +633,7 @@ pub(crate) fn expand_call_graph(
             ExprX::ConstVar(callee, _) => {
                 call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
             }
-            ExprX::Call(CallTarget::BuiltinSpecFun(_bsf, _typs, impl_paths), _) => {
+            ExprX::Call(CallTarget::BuiltinSpecFun(_bsf, _typs, impl_paths), _, _) => {
                 for impl_path in impl_paths.iter() {
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }

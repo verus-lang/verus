@@ -8,6 +8,7 @@ use crate::messages::{ToAny, error_with_label, warning};
 use crate::sst::{BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{NoScoper, Rewrite, Visitor};
 use crate::triggers::build_triggers;
+use crate::util::vec_map_result;
 use crate::visitor::Returner;
 use air::messages::Diagnostics;
 use std::collections::HashMap;
@@ -24,33 +25,32 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
         ExpX::Call(CallFun::Fun(fun, resolved_method), typs, args) => {
             let (fun, typs) =
                 if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };
-            if let Some(func) = fun_ssts.get(fun) {
-                if func.x.attrs.inline
-                    && func.x.axioms.spec_axioms.is_some()
-                    && func.x.kind.inline_okay()
-                {
-                    let typ_params = &func.x.typ_params;
-                    let pars = &func.x.pars;
-                    let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
-                    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
-                    let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
-                    assert!(typ_params.len() == typs.len());
-                    for (name, typ) in typ_params.iter().zip(typs.iter()) {
-                        assert!(!typ_substs.contains_key(name));
-                        typ_substs.insert(name.clone(), typ.clone());
-                    }
-                    assert!(pars.len() == args.len());
-                    for (par, arg) in pars.iter().zip(args.iter()) {
-                        let unique = unique_local(&par.x.name);
-                        assert!(!substs.contains_key(&unique));
-                        substs.insert(unique, arg.clone());
-                    }
-                    let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
-                    // keep the original outer span for better trigger messages
-                    // keep the original type so that poly.rs can perform the proper box/unbox on e
-                    let e = SpannedTyped::new(&exp.span, &exp.typ, e.x.clone());
-                    return Ok(e);
+            if let Some(func) = fun_ssts.get(fun)
+                && let Some(spec_axioms) = func.x.axioms.spec_axioms.as_ref()
+                && func.x.attrs.inline
+                && func.x.kind.inline_okay()
+            {
+                let typ_params = &func.x.typ_params;
+                let pars = &func.x.pars;
+                let body = &spec_axioms.body_exp;
+                let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+                let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
+                assert!(typ_params.len() == typs.len());
+                for (name, typ) in typ_params.iter().zip(typs.iter()) {
+                    assert!(!typ_substs.contains_key(name));
+                    typ_substs.insert(name.clone(), typ.clone());
                 }
+                assert!(pars.len() == args.len());
+                for (par, arg) in pars.iter().zip(args.iter()) {
+                    let unique = unique_local(&par.x.name);
+                    assert!(!substs.contains_key(&unique));
+                    substs.insert(unique, arg.clone());
+                }
+                let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
+                // keep the original outer span for better trigger messages
+                // keep the original type so that poly.rs can perform the proper box/unbox on e
+                let e = SpannedTyped::new(&exp.span, &exp.typ, e.x.clone());
+                return Ok(e);
             }
             Ok(exp.clone())
         }
@@ -124,7 +124,7 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
             let interp_exp = crate::interpreter::eval_expr(
                 &ctx.global,
                 exp,
-                diagnostics,
+                Some(diagnostics),
                 fun_ssts.clone(),
                 ctx.global.rlimit,
                 ctx.global.arch,
@@ -140,6 +140,36 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
                 ComputeMode::Z3 => Ok(stm.new_x(StmX::Assert(id.clone(), Some(err), interp_exp))),
                 ComputeMode::ComputeOnly => Ok(stm.new_x(StmX::Block(Arc::new(vec![])))),
             }
+        }
+        StmX::AssertBitVector { requires, ensures } => {
+            if ctx.global.no_bv_simplify {
+                return Ok(stm.clone());
+            }
+            let reqs = vec_map_result(requires, |e| {
+                crate::interpreter::eval_expr(
+                    &ctx.global,
+                    e,
+                    None::<&air::messages::Reporter>, // Don't print (internal) diagnostics
+                    fun_ssts.clone(),
+                    ctx.global.rlimit,
+                    ctx.global.arch,
+                    crate::ast::ComputeMode::Z3,
+                    &mut ctx.global.interpreter_log.lock().unwrap(),
+                )
+            })?;
+            let ens = vec_map_result(ensures, |e| {
+                crate::interpreter::eval_expr(
+                    &ctx.global,
+                    e,
+                    None::<&air::messages::Reporter>, // Don't print (internal) diagnostics
+                    fun_ssts.clone(),
+                    ctx.global.rlimit,
+                    ctx.global.arch,
+                    crate::ast::ComputeMode::Z3,
+                    &mut ctx.global.interpreter_log.lock().unwrap(),
+                )
+            })?;
+            Ok(stm.new_x(StmX::AssertBitVector { requires: reqs.into(), ensures: ens.into() }))
         }
         _ => Ok(stm.clone()),
     }
@@ -171,6 +201,7 @@ impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
         let body = self.visit_stm(&def.body)?;
         let local_decls =
             Rewrite::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
+        let local_decls_decreases_init = self.visit_stms(&def.local_decls_decreases_init)?;
         let unwind = self.visit_unwind(&def.unwind)?;
         let is_native = self.is_native.take().expect("is_native");
 
@@ -180,6 +211,7 @@ impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
             unwind,
             body,
             local_decls: Arc::new(local_decls),
+            local_decls_decreases_init: Arc::new(local_decls_decreases_init),
             statics: def.statics.clone(),
         };
 
@@ -266,5 +298,45 @@ pub(crate) fn elaborate_function_rewrite_recursive<'a, 'b, D: Diagnostics>(
         }
     }
 
+    Ok(())
+}
+
+// Expand expressions using the interpreter
+fn expand<'a>(ctx: &'a Ctx, fun_ssts: &SstMap, exps: Vec<Exp>) -> Result<Vec<Exp>, VirErr> {
+    vec_map_result(&exps, |e| {
+        crate::interpreter::eval_expr(
+            &ctx.global,
+            e,
+            None::<&air::messages::Reporter>,
+            fun_ssts.clone(),
+            ctx.global.rlimit,
+            ctx.global.arch,
+            crate::ast::ComputeMode::Z3,
+            &mut ctx.global.interpreter_log.lock().unwrap(),
+        )
+    })
+}
+
+// Use the interpreter to inline spec functions (and otherwise apply its usual simplifications)
+// to bit-vector assertions/proofs
+pub(crate) fn elaborate_function_bv<'a>(
+    ctx: &'a Ctx,
+    fun_ssts: SstMap,
+    function: &mut FunctionSst,
+) -> Result<(), VirErr> {
+    if function.x.attrs.bit_vector {
+        if let Some(exec_proof_check_arc) = &mut Arc::make_mut(function).x.exec_proof_check {
+            let exec_proof_check_mut = Arc::make_mut(exec_proof_check_arc);
+            // Expand reqs and ens_exps using the interpreter
+            let reqs = expand(ctx, &fun_ssts, exec_proof_check_mut.reqs.to_vec())?;
+            let ens_exps =
+                expand(ctx, &fun_ssts, exec_proof_check_mut.post_condition.ens_exps.to_vec())?;
+
+            // Update the exec_proof_check fields directly
+            exec_proof_check_mut.reqs = Arc::new(reqs);
+            let post = Arc::make_mut(&mut exec_proof_check_mut.post_condition);
+            post.ens_exps = Arc::new(ens_exps);
+        }
+    }
     Ok(())
 }

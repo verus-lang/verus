@@ -33,20 +33,24 @@ pub enum VerusExtern {
 
 fn verus_builtin_std() -> Box<[(VerusExtern, &'static str, String)]> {
     vec![
-        (VerusExtern::Macros, "builtin_macros", format!("{LIB_PRE}builtin_macros.{LIB_DL}")),
         (
             VerusExtern::Macros,
-            "state_machines_macros",
-            format!("{LIB_PRE}state_machines_macros.{LIB_DL}"),
+            "verus_builtin_macros",
+            format!("{LIB_PRE}verus_builtin_macros.{LIB_DL}"),
         ),
-        (VerusExtern::Builtin, "builtin", format!("libbuiltin.rlib")),
+        (
+            VerusExtern::Macros,
+            "verus_state_machines_macros",
+            format!("{LIB_PRE}verus_state_machines_macros.{LIB_DL}"),
+        ),
+        (VerusExtern::Builtin, "verus_builtin", format!("libverus_builtin.rlib")),
         (VerusExtern::Vstd, "vstd", format!("libvstd.rlib")),
     ]
     .into_boxed_slice()
 }
 
 impl VerusExterns {
-    pub fn to_args(&self) -> impl Iterator<Item = String> {
+    pub fn to_args(&self) -> impl Iterator<Item = String> + use<> {
         let mut args = Vec::new();
         args.push(format!("-L"));
         args.push(format!("dependency={}", self.verus_root.to_str().unwrap()));

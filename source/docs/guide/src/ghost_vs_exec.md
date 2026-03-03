@@ -74,6 +74,14 @@ impl<A> Seq<A> {
 }
 ```
 
+## Producing exec code from spec code (and vice versa)
+
+Thanks to various contributions from the Verus community, Verus can, in some
+cases, [automatically produce an exec function](exec_spec.html) that provably
+implements a spec function.  Conversely, in some cases, it can [automatically
+produce a spec function](exec_to_spec.html) from an exec function.
+
+
 ---
 
 [^note_tracked]: Variables in `proof` code can opt out of these special abilities using

@@ -1,23 +1,20 @@
 use crate::attributes::VerifierAttrs;
 use crate::context::Context;
 use crate::external::CrateItems;
-use crate::rust_to_vir_base::{
-    check_generics_bounds_with_polarity, def_id_to_vir_path, process_predicate_bounds,
-};
+use crate::rust_to_vir_base::{check_generics_bounds_with_polarity, process_predicate_bounds};
 use crate::rust_to_vir_func::{CheckItemFnEither, check_item_fn};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
-use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemKind, TraitItemRef};
+use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemId, TraitItemKind};
 use rustc_middle::ty::{ClauseKind, TraitPredicate, TraitRef, TyCtxt};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use std::sync::Arc;
 use vir::ast::{
-    Fun, Function, FunctionKind, GenericBound, GenericBoundX, Ident, KrateX, TraitId, TraitX, TypX,
-    VirErr, Visibility,
+    Fun, Function, FunctionKind, GenericBound, Ident, KrateX, TraitX, VirErr, Visibility,
 };
-use vir::def::{VERUS_SPEC, trait_self_type_param};
+use vir::def::VERUS_SPEC;
 
 pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
     ctxt: &Context<'tcx>,
@@ -27,7 +24,6 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
 ) -> Result<(), VirErr> {
     use crate::external::{GeneralItemId, VerifOrExternal};
     use rustc_hir::ItemKind;
-    let tcx = ctxt.tcx;
 
     for krate in imported.iter() {
         for t in &krate.traits {
@@ -50,7 +46,7 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
                             let attrs = ctxt.tcx.hir_attrs(item.hir_id());
                             let vattrs = ctxt.get_verifier_attrs(attrs)?;
                             if let Some((spec, imp)) = vattrs.external_trait_extension {
-                                let path = def_id_to_vir_path(tcx, &ctxt.verus_items, trait_def_id);
+                                let path = ctxt.def_id_to_vir_path(trait_def_id);
                                 let spec = path.replace_last(Arc::new(spec.clone()));
                                 let imp = path.replace_last(Arc::new(imp.clone()));
                                 let m = &mut external_info.external_trait_extension_impl_map;
@@ -71,12 +67,12 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
 
 pub(crate) fn external_trait_specification_of<'tcx>(
     tcx: TyCtxt<'tcx>,
-    trait_items: &'tcx [TraitItemRef],
+    trait_items: &'tcx [TraitItemId],
     trait_vattrs: &VerifierAttrs,
 ) -> Result<Option<TraitRef<'tcx>>, VirErr> {
     let mut ex_trait_ref_for: Option<TraitRef> = None;
-    for trait_item_ref in trait_items {
-        let trait_item = tcx.hir_trait_item(trait_item_ref.id);
+    for trait_item_id in trait_items {
+        let trait_item = tcx.hir_trait_item(*trait_item_id);
         let TraitItem { ident, kind, span, .. } = trait_item;
         match kind {
             TraitItemKind::Type(_generic_bounds, None) => {
@@ -126,14 +122,14 @@ pub(crate) fn translate_trait<'tcx>(
     visibility: Visibility,
     module_path: &vir::ast::Path,
     trait_generics: &'tcx Generics,
-    trait_items: &'tcx [TraitItemRef],
+    trait_items: &'tcx [TraitItemId],
     trait_vattrs: &VerifierAttrs,
     external_info: &mut ExternalInfo,
     crate_items: &CrateItems,
     safety: Safety,
 ) -> Result<(), VirErr> {
     let tcx = ctxt.tcx;
-    let orig_trait_path = def_id_to_vir_path(tcx, &ctxt.verus_items, trait_def_id);
+    let orig_trait_path = ctxt.def_id_to_vir_path(trait_def_id);
     let mut trait_path = orig_trait_path.clone();
     let (generics_params, mut typ_bounds) = {
         let (generics_params, mut typ_bounds) = check_generics_bounds_with_polarity(
@@ -146,33 +142,7 @@ pub(crate) fn translate_trait<'tcx>(
             None,
             Some(&mut *ctxt.diagnostics.borrow_mut()),
         )?;
-        // Remove the Self: Trait bound introduced by rustc
-        Arc::make_mut(&mut typ_bounds).retain(|gb| {
-            match &**gb {
-                GenericBoundX::Trait(TraitId::Path(bnd), tp) => {
-                    if bnd == &trait_path {
-                        let gp: Vec<_> = Some(trait_self_type_param())
-                            .into_iter()
-                            .chain(generics_params.iter().map(|(p, _)| p.clone()))
-                            .map(|p| Some(p))
-                            .collect();
-                        let tp: Vec<_> = tp
-                            .iter()
-                            .map(|p| match &**p {
-                                TypX::TypParam(p) => Some(p.clone()),
-                                _ => None,
-                            })
-                            .collect();
-                        assert_eq!(*tp, *gp);
-                        return false;
-                    }
-                }
-                GenericBoundX::Trait(TraitId::Sized, _tp) => {}
-                GenericBoundX::TypEquality(..) => {}
-                GenericBoundX::ConstTyp(..) => {}
-            }
-            true
-        });
+        vir::traits::remove_self_is_itself_bound(&mut typ_bounds, &trait_path, &generics_params);
         (generics_params, typ_bounds)
     };
     let mut assoc_typs: Vec<Ident> = Vec::new();
@@ -191,6 +161,7 @@ pub(crate) fn translate_trait<'tcx>(
     };
     if let Some(ex_trait_ref_for) = ex_trait_ref_for {
         crate::rust_to_vir_base::check_item_external_generics(
+            ctxt.tcx,
             None,
             trait_generics,
             false,
@@ -223,23 +194,15 @@ pub(crate) fn translate_trait<'tcx>(
                     .help(format!(
                         "external_trait_specification requires trait bounds to match exactly \
                     but the proxy's trait bounds are:\n{}\nthe external trait bounds are:\n{}",
-                        preds2
-                            .iter()
-                            .map(|x| format!("  - {}", x.to_string()))
-                            .collect::<Vec<_>>()
-                            .join("\n"),
-                        preds1
-                            .iter()
-                            .map(|x| format!("  - {}", x.to_string()))
-                            .collect::<Vec<_>>()
-                            .join("\n")
+                        preds2.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n"),
+                        preds1.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n")
                     ));
             return Err(err);
         }
     }
     let ex_trait_id_for = ex_trait_ref_for.map(|r| r.def_id);
     if let Some(ex_trait_id_for) = ex_trait_id_for {
-        trait_path = def_id_to_vir_path(tcx, &ctxt.verus_items, ex_trait_id_for);
+        trait_path = ctxt.def_id_to_vir_path(ex_trait_id_for);
     }
     if let Some(x) = &trait_vattrs.external_trait_specification {
         if ex_trait_id_for.is_none() {
@@ -250,10 +213,17 @@ pub(crate) fn translate_trait<'tcx>(
         }
     }
 
-    for trait_item_ref in trait_items {
-        let trait_item = tcx.hir_trait_item(trait_item_ref.id);
-        let TraitItem { ident, owner_id, generics: item_generics, kind, span, defaultness: _ } =
-            trait_item;
+    for trait_item_id in trait_items {
+        let trait_item = tcx.hir_trait_item(*trait_item_id);
+        let TraitItem {
+            ident,
+            owner_id,
+            generics: item_generics,
+            kind,
+            span,
+            defaultness: _,
+            has_delayed_lints: _,
+        } = trait_item;
         let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
             tcx,
             &ctxt.verus_items,
@@ -265,14 +235,14 @@ pub(crate) fn translate_trait<'tcx>(
             Some(&mut *ctxt.diagnostics.borrow_mut()),
         )?;
 
-        if crate_items.is_trait_item_external(trait_item_ref.id) {
+        if crate_items.is_trait_item_external(*trait_item_id) {
             return err_span(
                 *span,
                 "a trait item cannot be marked 'external' - perhaps you meant to mark the entire trait external?",
             );
         }
 
-        let item_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
+        let item_path = ctxt.def_id_to_vir_path(owner_id.to_def_id());
         let is_verus_spec =
             item_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
         let attrs = tcx.hir_attrs(trait_item.hir_id());
@@ -331,6 +301,7 @@ pub(crate) fn translate_trait<'tcx>(
             None
         };
 
+        let trait_extension_in_spec = if is_verus_spec { trait_extension.clone() } else { None };
         match kind {
             TraitItemKind::Fn(sig, fun) => {
                 // putting param_names here ensures that Vec in TraitFn::Required case below lives long enough
@@ -351,8 +322,6 @@ pub(crate) fn translate_trait<'tcx>(
                     }
                 };
                 // requires and ensures on exec functions can refer to spec extension trait:
-                let trait_extension_in_spec =
-                    if is_verus_spec { trait_extension.clone() } else { None };
                 let fun = check_item_fn(
                     ctxt,
                     &mut methods,
@@ -362,7 +331,7 @@ pub(crate) fn translate_trait<'tcx>(
                     visibility.clone(),
                     module_path,
                     attrs,
-                    sig,
+                    crate::rust_to_vir_func::FnOrConstSig::sig(sig),
                     Some((trait_generics, trait_def_id)),
                     item_generics,
                     body_id,
@@ -370,10 +339,44 @@ pub(crate) fn translate_trait<'tcx>(
                     ex_item_id_for,
                     external_info,
                     None,
+                    &mut vir.opaque_types,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);
                 }
+            }
+            TraitItemKind::Const(_ty, None) => {
+                let has_default = false;
+                let mid_ty = ctxt.tcx.type_of(owner_id.to_def_id()).skip_binder();
+                let typ = ctxt.mid_ty_to_vir(owner_id.to_def_id(), *span, &mid_ty, false, None)?;
+                let fun = crate::rust_to_vir_func::check_item_fn(
+                    ctxt,
+                    &mut methods,
+                    None,
+                    owner_id.to_def_id(),
+                    FunctionKind::TraitMethodDecl { trait_path: trait_path.clone(), has_default },
+                    visibility.clone(),
+                    module_path,
+                    attrs,
+                    crate::rust_to_vir_func::FnOrConstSig::const_var(*span, typ),
+                    Some((trait_generics, trait_def_id)),
+                    item_generics,
+                    crate::rust_to_vir_func::CheckItemFnEither::ParamNames(&[]),
+                    ex_trait_id_for.map(|d| (d, trait_extension_in_spec)),
+                    ex_item_id_for,
+                    external_info,
+                    None,
+                    &mut vir.opaque_types,
+                )?;
+                if let Some(fun) = fun {
+                    method_names.push(fun);
+                }
+            }
+            TraitItemKind::Const(_ty, Some(_body_id)) => {
+                return err_span(
+                    trait_span,
+                    "Verus does not yet support associated constants with default values",
+                );
             }
             TraitItemKind::Type(_, Some(_)) => {
                 return err_span(
@@ -409,8 +412,8 @@ pub(crate) fn translate_trait<'tcx>(
 
                     let mut preds1 = preds1.to_vec();
                     let mut preds2 = preds2.to_vec();
-                    preds1.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
-                    preds2.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+                    preds1.sort_by_key(|x| x.to_string());
+                    preds2.sort_by_key(|x| x.to_string());
 
                     if preds1.len() != preds2.len() {
                         let mut t = format!(
@@ -452,9 +455,6 @@ pub(crate) fn translate_trait<'tcx>(
                     }
                 }
             }
-            TraitItemKind::Const(_, _) => {
-                return err_span(trait_span, "Verus does not yet support associated constants");
-            }
         }
     }
     let mut methods = vir::headers::make_trait_decls(methods)?;
@@ -490,6 +490,7 @@ pub(crate) fn translate_trait<'tcx>(
             Safety::Safe => false,
             Safety::Unsafe => true,
         },
+        dyn_compatible: None,
         external_trait_extension,
     };
     vir.traits.push(ctxt.spanned_new(trait_span, traitx));

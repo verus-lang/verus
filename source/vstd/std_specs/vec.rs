@@ -1,6 +1,7 @@
 use super::super::prelude::*;
-use builtin::*;
+use verus_builtin::*;
 
+use alloc::collections::TryReserveError;
 use alloc::vec::{IntoIter, Vec};
 use core::alloc::Allocator;
 use core::clone::Clone;
@@ -31,6 +32,10 @@ impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
     }
 }
 
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExTryReserveError(alloc::collections::TryReserveError);
+
 // TODO this should really be an 'assume_specification' function
 // but it's difficult to handle vec.index right now because
 // it uses more trait polymorphism than we can handle right now.
@@ -40,7 +45,7 @@ impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
 //
 // It's not ideal, but I think it's better than the alternative, which would
 // be to have users call some function with a nonstandard name to perform indexing.
-/// This is a specification for the indexing operator `vec[i]`
+/// This is a specification for the indexing operator `vec[i]` when it expands to the `Index` trait
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::vec::vec_index")]
 pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
@@ -53,12 +58,30 @@ pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
     &vec[i]
 }
 
+/// This is a specification for the indexing operator `vec[i]` when it expands to the `IndexMut` trait
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::vec::vec_index_mut")]
+pub fn vec_index_mut<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element: &mut T)
+    requires
+        i < vec.view().len(),
+    ensures
+        *element == old(vec)@.index(i as int),
+        final(vec)@ == old(vec)@.update(i as int, *final(element)),
+
+        *final(element) == final(vec).view().index(i as int),
+    no_unwind
+{
+    &mut vec[i]
+}
+
 ////// Len (with autospec)
 pub uninterp spec fn spec_vec_len<T, A: Allocator>(v: &Vec<T, A>) -> usize;
 
 // This axiom is slightly better than defining spec_vec_len to just be `v@.len() as usize`
 // (the axiom also shows that v@.len() is in-bounds for usize)
-pub broadcast proof fn axiom_spec_len<A>(v: &Vec<A>)
+pub broadcast proof fn axiom_spec_len<T, A: Allocator>(v: &Vec<T, A>)
     ensures
         #[trigger] spec_vec_len(v) == v@.len(),
 {
@@ -78,7 +101,22 @@ pub assume_specification<T>[ Vec::<T>::new ]() -> (v: Vec<T>)
         v@ == Seq::<T>::empty(),
 ;
 
+pub assume_specification<T>[ <Vec<T> as core::default::Default>::default ]() -> (v: Vec<T>)
+    ensures
+        v@ == Seq::<T>::empty(),
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::new_in ](alloc: A) -> (v: Vec<T, A>)
+    ensures
+        v@ == Seq::<T>::empty(),
+;
+
 pub assume_specification<T>[ Vec::<T>::with_capacity ](capacity: usize) -> (v: Vec<T>)
+    ensures
+        v@ == Seq::<T>::empty(),
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::with_capacity_in ](capacity: usize, alloc: A) -> (v: Vec<T, A>)
     ensures
         v@ == Seq::<T>::empty(),
 ;
@@ -87,6 +125,14 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::reserve ](
     vec: &mut Vec<T, A>,
     additional: usize,
 )
+    ensures
+        vec@ == old(vec)@,
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve ](
+    vec: &mut Vec<T, A>,
+    additional: usize,
+) -> (result: Result<(), TryReserveError>)
     ensures
         vec@ == old(vec)@,
 ;
@@ -163,6 +209,12 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::insert ](
         vec@ == old(vec)@.insert(i as int, element),
 ;
 
+pub assume_specification<T, A: Allocator> [ <Vec<T, A>>::is_empty ](
+    v: &Vec<T, A>,
+) -> (res: bool)
+    ensures res <==> v@.len() == 0,
+;
+
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::remove ](
     vec: &mut Vec<T, A>,
     i: usize,
@@ -182,6 +234,14 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::clear ](vec: &mut Vec<T,
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, A>) -> (slice: &[T])
     ensures
         slice@ == vec@,
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut Vec<T, A>) -> (slice: &mut [T])
+    ensures
+        slice@ == old(vec)@,
+        final(slice)@ == final(vec)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::deref ](
@@ -271,6 +331,23 @@ impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
     }
 }
 
+pub assume_specification<T: PartialEq<U>, U, A1: Allocator, A2: Allocator>[ <Vec<T, A1> as PartialEq<Vec<U, A2>>>::eq ](
+    x: &Vec<T, A1>,
+    y: &Vec<U, A2>,
+) -> bool
+;
+
+impl<T: super::cmp::PartialEqSpec<U>, U, A1: Allocator, A2: Allocator> super::cmp::PartialEqSpecImpl<Vec<U, A2>> for Vec<T, A1> {
+    open spec fn obeys_eq_spec() -> bool {
+        T::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &Vec<U, A2>) -> bool {
+        &&& self.len() == other.len()
+        &&& forall|i: int| #![auto] 0 <= i < self.len() ==> self[i].eq_spec(&other[i])
+    }
+}
+
 // The `into_iter` method of a `Vec` returns an iterator of type `IntoIter`,
 // so we specify that type here.
 #[verifier::external_type_specification]
@@ -320,6 +397,12 @@ impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIteratorNew for IntoI
         IntoIterGhostIterator { pos: self@.0, elements: self@.1, _marker: PhantomData }
     }
 }
+
+// This is used by `vec![x; n]`
+pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -> (v: Vec<T>)
+    ensures
+        v.len() == n,
+        forall |i| 0 <= i < n ==> cloned(elem, #[trigger] v@[i]);
 
 impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIterator for IntoIterGhostIterator<
     T,
@@ -400,11 +483,62 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
         iter@ == (0int, vec@),
 ;
 
+pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
+    requires
+        super::super::laws_eq::obeys_eq_spec::<T>(),
+    ensures
+        #[trigger] super::super::laws_eq::obeys_eq_spec::<Vec<T>>(),
+{
+    broadcast use {axiom_spec_len, super::super::seq::group_seq_axioms};
+    reveal(super::super::laws_eq::obeys_eq_spec_properties);
+}
+
+pub broadcast proof fn lemma_vec_obeys_view_eq<T: PartialEq + View>()
+    requires
+        super::super::laws_eq::obeys_concrete_eq::<T>(),
+    ensures
+        #[trigger] super::super::laws_eq::obeys_view_eq::<Vec<T>>(),
+{
+    use super::cmp::PartialEqSpec;
+    broadcast use {axiom_spec_len, super::super::seq::group_seq_axioms};
+    reveal(super::super::laws_eq::obeys_eq_spec_properties);
+    reveal(super::super::laws_eq::obeys_concrete_eq);
+    reveal(super::super::laws_eq::obeys_view_eq);
+    assert(forall|x: Vec<T>, y: Vec<T>| x.eq_spec(&y) ==> x@ == y@);
+}
+
+pub broadcast proof fn lemma_vec_obeys_deep_eq<T: PartialEq + DeepView>()
+    requires
+        super::super::laws_eq::obeys_deep_eq::<T>(),
+    ensures
+        #[trigger] super::super::laws_eq::obeys_deep_eq::<Vec<T>>(),
+{
+    use super::cmp::PartialEqSpec;
+    broadcast use {axiom_spec_len, super::super::seq::group_seq_axioms};
+    reveal(super::super::laws_eq::obeys_eq_spec_properties);
+    reveal(super::super::laws_eq::obeys_deep_eq);
+    assert(forall|x: Vec<T>, y: Vec<T>| x.eq_spec(&y) ==> x.deep_view() == y.deep_view());
+    assert forall|x: Vec<T>, y: Vec<T>| x.deep_view() == y.deep_view() implies x.eq_spec(&y) by {
+        assert(x.deep_view().len() == y.deep_view().len());
+        assert forall|i: int| #![auto] 0 <= i < x.len() implies x[i].eq_spec(&y[i]) by {
+            assert(x.deep_view()[i] == y.deep_view()[i]);
+        }
+    }
+}
+
+pub broadcast axiom fn axiom_vec_has_resolved<T>(vec: Vec<T>, i: int)
+    ensures
+        0 <= i < vec.len() ==> #[trigger] has_resolved::<Vec<T>>(vec) ==> has_resolved(
+            #[trigger] vec@[i],
+        ),
+;
+
 pub broadcast group group_vec_axioms {
     axiom_spec_len,
     axiom_vec_index_decreases,
     vec_clone_deep_view_proof,
     axiom_spec_into_iter,
+    axiom_vec_has_resolved,
 }
 
 } // verus!

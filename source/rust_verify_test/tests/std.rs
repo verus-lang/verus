@@ -178,6 +178,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] unsigned_wrapping_mul verus_code! {
+        use vstd::*;
+
+        fn test() {
+            let i = 255u16.wrapping_mul(253);
+            assert(i == 64515);
+
+            let i = 256u16.wrapping_mul(256);
+            assert(i == 0);
+
+            let i = 257u16.wrapping_mul(259);
+            assert(i == 1027);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] signed_wrapping_mul verus_code! {
         use vstd::*;
 
@@ -592,4 +609,102 @@ test_verify_one_file! {
             let l = v.len();
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] vec_from_elem verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Debug)]
+        pub struct X {
+            pub u: u64
+        }
+
+        impl Clone for X {
+            fn clone(&self) -> (s: Self)
+                ensures s.u == (if self.u < 1000 { self.u + 1 } else { 1000 })
+            {
+                X { u: if self.u < 1000 { self.u + 1 } else { 1000 } }
+            }
+        }
+
+        fn test1() {
+            let x = X { u: 0 };
+            let v = vec![x; 4];
+            assert(v.len() == 4);
+            assert(v@[0].u == 0 || v@[0].u == 1);
+            assert(v@[1].u == 0 || v@[1].u == 1);
+            assert(v@[2].u == 0 || v@[2].u == 1);
+            assert(v@[3].u == 0 || v@[3].u == 1);
+        }
+
+        fn test2() {
+            let x = X { u: 0 };
+            let v = vec![x; 4];
+            assert(v.len() == 4);
+            assert(v@[0].u == 0); // FAILS
+        }
+
+        fn test3() {
+            let x = X { u: 0 };
+            let v = vec![x; 4];
+            assert(v.len() == 4);
+            assert(v@[0].u == 1); // FAILS
+        }
+
+        fn test4() {
+            let v = vec![12; 4];
+            assert(v.len() == 4);
+            assert(v@[0] == 12);
+            assert(v@[1] == 12);
+            assert(v@[2] == 12);
+            assert(v@[3] == 12);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] manually_drop verus_code! {
+        use vstd::prelude::*;
+        use std::mem::ManuallyDrop;
+
+        fn test() {
+            let x = ManuallyDrop::new(20u64);
+            assert(x@ == 20);
+
+            let z: &u64 = &x;
+            assert(z == 20);
+
+            let x1 = x.clone();
+            assert(x1@ == 20);
+
+            let y = ManuallyDrop::into_inner(x);
+            assert(y == 20);
+        }
+
+        #[derive(Debug)]
+        pub struct X {
+            pub u: u64
+        }
+
+        impl Clone for X {
+            fn clone(&self) -> (s: Self)
+                ensures s.u == (if self.u < 1000 { self.u + 1 } else { 1000 })
+            {
+                X { u: if self.u < 1000 { self.u + 1 } else { 1000 } }
+            }
+        }
+
+        fn test_clone() {
+            let x = ManuallyDrop::new(X { u: 20u64 });
+            let y = x.clone();
+            assert(y@.u == 20 || y@.u == 21);
+        }
+
+        fn test_clone2() {
+            let x = ManuallyDrop::new(X { u: 20u64 });
+            let y = x.clone();
+            assert(y@.u == 20); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

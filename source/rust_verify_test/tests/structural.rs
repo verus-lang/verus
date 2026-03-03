@@ -47,7 +47,7 @@ test_verify_one_file! {
         struct Other { }
 
         impl std::cmp::PartialEq for Other {
-            fn eq(&self, _: &Self) -> bool { todo!() }
+            fn eq(&self, other: &Self) -> bool { false }
         }
 
         fn test_not_structural(passengers: u64) {
@@ -67,7 +67,7 @@ test_verify_one_file! {
         struct Thing {
             o: Other,
         }
-    } => Err(err) => assert_rust_error_msg(err, "the trait bound `Other: builtin::Structural` is not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound `Other: verus_builtin::Structural` is not satisfied")
 }
 
 test_verify_one_file! {

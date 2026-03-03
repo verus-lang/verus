@@ -1,11 +1,11 @@
 #![allow(unused_imports)]
 
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use vstd::seq::*;
 use vstd::{pervasive::*, *};
 
-use state_machines_macros::state_machine;
+use verus_state_machines_macros::state_machine;
 
 verus! {
 

@@ -32,6 +32,8 @@ fn main() {
     let mut verbose = false;
     let mut trace = false;
     let mut log_all = false;
+    let mut no_lifetime = false;
+    let mut expand_errors = false;
     let mut no_solver_version_check = false;
     for arg in args {
         if arg == "--release" {
@@ -48,6 +50,10 @@ fn main() {
             trace = true;
         } else if arg == "--log-all" {
             log_all = true;
+        } else if arg == "--no-lifetime" {
+            no_lifetime = true;
+        } else if arg == "--expand-errors" {
+            expand_errors = true;
         } else if arg == "--no-solver-version-check" {
             no_solver_version_check = true;
         } else {
@@ -68,14 +74,15 @@ fn main() {
     #[cfg(target_os = "windows")]
     let (pre, dl) = ("", "dll");
 
-    let lib_builtin_path = verus_target_path.join("libbuiltin.rlib");
+    let lib_builtin_path = verus_target_path.join("libverus_builtin.rlib");
     assert!(lib_builtin_path.exists());
     let lib_builtin_path = lib_builtin_path.to_str().unwrap();
-    let lib_builtin_macros_path = verus_target_path.join(format!("{}builtin_macros.{}", pre, dl));
+    let lib_builtin_macros_path =
+        verus_target_path.join(format!("{}verus_builtin_macros.{}", pre, dl));
     assert!(lib_builtin_macros_path.exists());
     let lib_builtin_macros_path = lib_builtin_macros_path.to_str().unwrap();
     let lib_state_machines_macros_path =
-        verus_target_path.join(format!("{}state_machines_macros.{}", pre, dl));
+        verus_target_path.join(format!("{}verus_state_machines_macros.{}", pre, dl));
     assert!(lib_state_machines_macros_path.exists());
     let lib_state_machines_macros_path = lib_state_machines_macros_path.to_str().unwrap();
 
@@ -86,11 +93,11 @@ fn main() {
     let mut child_args: Vec<String> = vec![
         "--internal-test-mode".to_string(),
         "--extern".to_string(),
-        format!("builtin={lib_builtin_path}"),
+        format!("verus_builtin={lib_builtin_path}"),
         "--extern".to_string(),
-        format!("builtin_macros={lib_builtin_macros_path}"),
+        format!("verus_builtin_macros={lib_builtin_macros_path}"),
         "--extern".to_string(),
-        format!("state_machines_macros={lib_state_machines_macros_path}"),
+        format!("verus_state_machines_macros={lib_state_machines_macros_path}"),
         "--crate-type=lib".to_string(),
         "--export".to_string(),
         verus_target_path.join(VSTD_VIR).to_str().unwrap().to_string(),
@@ -110,6 +117,12 @@ fn main() {
     }
     if log_all {
         child_args.push("--log-all".to_string());
+    }
+    if no_lifetime {
+        child_args.push("--no-lifetime".to_string());
+    }
+    if expand_errors {
+        child_args.push("--expand-errors".to_string());
     }
     if no_solver_version_check {
         child_args.push("-V".to_string());
@@ -132,6 +145,7 @@ fn main() {
     let cmd = verus_target_path.join("rust_verify");
     let mut child = std::process::Command::new(cmd);
     child.env("RUST_MIN_STACK", (10 * 1024 * 1024).to_string());
+    child.env("VSTD_KIND", "IsVstd");
     child.args(&child_args[..]);
 
     if verbose {

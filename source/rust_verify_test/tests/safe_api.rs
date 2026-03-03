@@ -198,8 +198,7 @@ test_verify_one_file_with_options! {
             let f = |y: u32| requires y > 0 { };
             f
         }
-    //} => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: opaque type")
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not support opaque types together with the check-api-safety flag:")
 }
 
 test_verify_one_file_with_options! {
@@ -212,8 +211,7 @@ test_verify_one_file_with_options! {
         pub fn test() -> impl Fn(u32) {
             test2
         }
-    //} => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: opaque type")
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not support opaque types together with the check-api-safety flag:")
 }
 
 test_verify_one_file_with_options! {
@@ -253,7 +251,7 @@ test_verify_one_file_with_options! {
         fn test() -> Box<dyn core::any::Any> {
             Box::new(foo)
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dyn")
+    } => Err(err) => assert_vir_error_msg(err, "trait core::any::Any not declared to Verus")
 }
 
 /////// Fancy trait support

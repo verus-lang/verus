@@ -13,6 +13,7 @@ fn main() {
 
     println!("cargo:rustc-cfg=check_cfg");
     println!("cargo:rustc-check-cfg=cfg(check_cfg)");
+    println!("cargo:rustc-check-cfg=cfg(fuzzing)");
     println!("cargo:rustc-check-cfg=cfg(syn_disable_nightly_tests)");
     println!("cargo:rustc-check-cfg=cfg(syn_only)");
 

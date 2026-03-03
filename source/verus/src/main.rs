@@ -183,6 +183,9 @@ fn run() -> Result<std::process::ExitStatus, String> {
 
     let mut cmd = Command::new("rustup");
 
+    let vstd_kind = get_vstd_kind(&args);
+    cmd.env("VSTD_KIND", vstd_kind);
+
     #[allow(unused_variables)]
     let z3_path = if let Some(z3_path) = std::env::var("VERUS_Z3_PATH").ok() {
         Some(std::path::PathBuf::from(z3_path))
@@ -379,7 +382,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
                         break;
                     }
                     if let Some(print_to) = &mut print_to {
-                        print_to.write(&buffer[..bytes]).expect("failed to write to stdio");
+                        print_to.write_all(&buffer[..bytes]).expect("failed to write to stdio");
                     }
                     full_output
                         .write_all(&buffer[..bytes])
@@ -387,7 +390,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
                 }
                 let bytes = child_stdio.read_to_end(&mut buffer).expect("read from stdio failed");
                 if let Some(print_to) = &mut print_to {
-                    print_to.write(&buffer[..bytes]).expect("failed to write to stdio");
+                    print_to.write_all(&buffer[..bytes]).expect("failed to write to stdio");
                 }
                 full_output
                     .write_all(&buffer[..bytes])
@@ -479,5 +482,37 @@ fn run() -> Result<std::process::ExitStatus, String> {
         }
 
         Ok(exit_status)
+    }
+}
+
+fn get_vstd_kind(args: &Vec<String>) -> &'static str {
+    let arg_names = [
+        ("--no-vstd", "NoVstd"),
+        ("--is-vstd", "IsVstd"),
+        ("--is-core", "IsCore"),
+        ("--is-stdlib-outside-of-core", "ImportedViaCore"),
+    ];
+    let default = "Imported";
+
+    let mut found = None;
+    for (arg_name, kind_string) in arg_names.iter() {
+        if args.contains(&arg_name.to_string()) {
+            if let Some((conflicting_arg_name, _)) = found {
+                eprintln!("contradictory arguments: {conflicting_arg_name} and {arg_name}");
+                std::process::exit(255);
+            } else {
+                found = Some((arg_name, kind_string));
+            }
+        }
+    }
+    match found {
+        Some((_, kind)) => kind,
+        _ => {
+            if std::env::var("CARGO_PKG_NAME").map_or(false, |s| s == "vstd") {
+                "IsVstd"
+            } else {
+                default
+            }
+        }
     }
 }

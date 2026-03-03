@@ -117,6 +117,7 @@
   - [Working with crates]()
   - [Invoking Verus code from Rust]()
   - [Documentation with Rustdoc](./verusdoc.md)
+  - [Ghost Erasure](./erasure.md)
 
 # Reference
 
@@ -125,6 +126,10 @@
 - [Modes]()
   - [Function modes]()
   - [Variable modes](./reference-var-modes.md)
+- [Contributed Extensions](contributed.md)
+  - [Automatic spec to exec functions](exec_spec.md)
+  - [Spec and proof attributes for exec functions](exec_attr.md)
+    - [Automatic exec to spec functions](exec_to_spec.md)
 - [Spec expressions](./spec-expressions.md)
   - [Rust subset](./spec-rust-subset.md)
   - [Operator Precedence](./spec-operator-precedence.md)
@@ -163,6 +168,7 @@
     - [recommends](./reference-recommends.md)
   - [Traits and signature inheritance](./reference-signature-inheritance.md)
   - [Specifications on FnOnce](./reference-signature-fnonce.md)
+- [External trait specifications](./external_trait_specifications.md)
 - [Loop specifications]()
   - [invariant]()
   - [invariant_except_break / ensures]()

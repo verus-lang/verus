@@ -15,7 +15,7 @@ fn ty_to_stable_string_partial<'tcx>(
         TyKind::Int(t) => format!("{}", t.name_str()),
         TyKind::Uint(t) => format!("{}", t.name_str()),
         TyKind::Float(t) => format!("{}", t.name_str()),
-        TyKind::RawPtr(ref ty, ref tm) => format!(
+        TyKind::RawPtr(ty, tm) => format!(
             "*{} {}",
             match tm {
                 rustc_ast::Mutability::Mut => "mut",
@@ -32,14 +32,14 @@ fn ty_to_stable_string_partial<'tcx>(
             ty_to_stable_string_partial(tcx, ty)?,
         ),
         TyKind::Never => format!("!"),
-        TyKind::Tuple(ref tys) => format!(
+        TyKind::Tuple(tys) => format!(
             "({})",
             tys.iter()
                 .map(|ty| ty_to_stable_string_partial(tcx, &ty))
                 .collect::<Option<Vec<_>>>()?
                 .join(",")
         ),
-        TyKind::Param(ref param_ty) => format!("{}", param_ty.name.as_str()),
+        TyKind::Param(param_ty) => format!("{}", param_ty.name.as_str()),
         TyKind::Adt(def, _substs) => {
             return Some(def_id_to_stable_rust_path(tcx, def.did())?);
         }
@@ -134,6 +134,8 @@ pub(crate) enum ExprItem {
     GetUnionField,
     IsVariant,
     ArrayIndex,
+    F32ToBits,
+    F64ToBits,
     StrSliceLen,
     StrSliceGetChar,
     StrSliceIsAscii,
@@ -167,6 +169,14 @@ pub(crate) enum CompilableOprItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum BuiltinDerefItem {
+    TrackedDeref,
+    TrackedDerefMut,
+    GhostDeref,
+    GhostDerefMut,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum ArithItem {
     BuiltinAdd,
     BuiltinSub,
@@ -194,7 +204,7 @@ pub(crate) enum SpecArithItem {
     Add,
     Sub,
     Mul,
-    EuclideanDiv,
+    EuclideanOrRealDiv,
     EuclideanMod,
 }
 
@@ -244,6 +254,7 @@ pub(crate) enum SpecLiteralItem {
     Integer,
     Int,
     Nat,
+    Decimal,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -259,6 +270,8 @@ pub(crate) enum UnaryOpItem {
     SpecLiteral(SpecLiteralItem),
     SpecNeg,
     SpecCastInteger,
+    SpecCastReal,
+    RealFloor,
     SpecGhostTracked(SpecGhostTrackedItem),
 }
 
@@ -300,11 +313,21 @@ pub(crate) enum VstdItem {
     ArrayIndexGet,
     ArrayAsSlice,
     ArrayFillForCopyTypes,
+    SpecArrayUpdate,
     SliceIndexGet,
+    SpecSliceUpdate,
+    SpecSliceLen,
+    SpecSliceIndex,
     CastPtrToThinPtr,
     CastArrayPtrToSlicePtr,
+    CastSlicePtrToSlicePtr,
+    CastSlicePtrToStrPtr,
+    CastStrPtrToSlicePtr,
     CastPtrToUsize,
+    RefMutArrayUnsizingCoercion,
     VecIndex,
+    VecIndexMut,
+    SharedReference,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -316,6 +339,7 @@ pub(crate) enum MarkerItem {
 pub(crate) enum BuiltinTypeItem {
     Int,
     Nat,
+    Real,
     FnSpec,
     Ghost,
     Tracked,
@@ -324,6 +348,7 @@ pub(crate) enum BuiltinTypeItem {
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum BuiltinTraitItem {
     Integer,
+    Chainable,
     Sealed,
 }
 
@@ -331,6 +356,7 @@ pub(crate) enum BuiltinTraitItem {
 pub(crate) enum BuiltinFunctionItem {
     CallRequires,
     CallEnsures,
+    ConstrainType,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -371,132 +397,165 @@ pub(crate) enum VerusItem {
     BuiltinType(BuiltinTypeItem),
     BuiltinTrait(BuiltinTraitItem),
     BuiltinFunction(BuiltinFunctionItem),
+    BuiltinDeref(BuiltinDerefItem),
     Global(GlobalItem),
     External(ExternalItem),
+    HasResolved,
+    HasResolvedUnsized,
+    MutRefCurrent,
+    MutRefFuture,
+    Final,
+    AfterBorrow,
+    ErasedGhostValue,
+    MutableReferenceTie,
+    DummyCapture(DummyCaptureItem),
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
+pub(crate) enum DummyCaptureItem {
+    Struct,
+    New,
+    Consume,
 }
 
 #[rustfmt::skip]
 fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
     vec![
-        ("verus::builtin::admit",                   VerusItem::Spec(SpecItem::Admit)),
-        ("verus::builtin::assume_",                 VerusItem::Spec(SpecItem::Assume)),
-        ("verus::builtin::no_method_body",          VerusItem::Spec(SpecItem::NoMethodBody)),
-        ("verus::builtin::requires",                VerusItem::Spec(SpecItem::Requires)),
-        ("verus::builtin::recommends",              VerusItem::Spec(SpecItem::Recommends)),
-        ("verus::builtin::ensures",                 VerusItem::Spec(SpecItem::Ensures)),
-        ("verus::builtin::returns",                 VerusItem::Spec(SpecItem::Returns)),
-        ("verus::builtin::invariant_except_break",  VerusItem::Spec(SpecItem::InvariantExceptBreak)),
-        ("verus::builtin::invariant",               VerusItem::Spec(SpecItem::Invariant)),
-        ("verus::builtin::decreases",               VerusItem::Spec(SpecItem::Decreases)),
-        ("verus::builtin::decreases_when",          VerusItem::Spec(SpecItem::DecreasesWhen)),
-        ("verus::builtin::decreases_by",            VerusItem::Spec(SpecItem::DecreasesBy)),
-        ("verus::builtin::recommends_by",           VerusItem::Spec(SpecItem::RecommendsBy)),
-        ("verus::builtin::opens_invariants_none",   VerusItem::Spec(SpecItem::OpensInvariantsNone)),
-        ("verus::builtin::opens_invariants_any",    VerusItem::Spec(SpecItem::OpensInvariantsAny)),
-        ("verus::builtin::opens_invariants",        VerusItem::Spec(SpecItem::OpensInvariants)),
-        ("verus::builtin::opens_invariants_except", VerusItem::Spec(SpecItem::OpensInvariantsExcept)),
-        ("verus::builtin::opens_invariants_set",    VerusItem::Spec(SpecItem::OpensInvariantsSet)),
+        ("verus::verus_builtin::admit",                   VerusItem::Spec(SpecItem::Admit)),
+        ("verus::verus_builtin::assume_",                 VerusItem::Spec(SpecItem::Assume)),
+        ("verus::verus_builtin::no_method_body",          VerusItem::Spec(SpecItem::NoMethodBody)),
+        ("verus::verus_builtin::requires",                VerusItem::Spec(SpecItem::Requires)),
+        ("verus::verus_builtin::recommends",              VerusItem::Spec(SpecItem::Recommends)),
+        ("verus::verus_builtin::ensures",                 VerusItem::Spec(SpecItem::Ensures)),
+        ("verus::verus_builtin::returns",                 VerusItem::Spec(SpecItem::Returns)),
+        ("verus::verus_builtin::invariant_except_break",  VerusItem::Spec(SpecItem::InvariantExceptBreak)),
+        ("verus::verus_builtin::invariant",               VerusItem::Spec(SpecItem::Invariant)),
+        ("verus::verus_builtin::decreases",               VerusItem::Spec(SpecItem::Decreases)),
+        ("verus::verus_builtin::decreases_when",          VerusItem::Spec(SpecItem::DecreasesWhen)),
+        ("verus::verus_builtin::decreases_by",            VerusItem::Spec(SpecItem::DecreasesBy)),
+        ("verus::verus_builtin::recommends_by",           VerusItem::Spec(SpecItem::RecommendsBy)),
+        ("verus::verus_builtin::opens_invariants_none",   VerusItem::Spec(SpecItem::OpensInvariantsNone)),
+        ("verus::verus_builtin::opens_invariants_any",    VerusItem::Spec(SpecItem::OpensInvariantsAny)),
+        ("verus::verus_builtin::opens_invariants",        VerusItem::Spec(SpecItem::OpensInvariants)),
+        ("verus::verus_builtin::opens_invariants_except", VerusItem::Spec(SpecItem::OpensInvariantsExcept)),
+        ("verus::verus_builtin::opens_invariants_set",    VerusItem::Spec(SpecItem::OpensInvariantsSet)),
 
-        ("verus::builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),
-        ("verus::builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),
+        ("verus::verus_builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),
+        ("verus::verus_builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),
 
-        ("verus::builtin::forall",                  VerusItem::Quant(QuantItem::Forall)),
-        ("verus::builtin::exists",                  VerusItem::Quant(QuantItem::Exists)),
+        ("verus::verus_builtin::forall",                  VerusItem::Quant(QuantItem::Forall)),
+        ("verus::verus_builtin::exists",                  VerusItem::Quant(QuantItem::Exists)),
 
-        ("verus::builtin::extra_dependency",        VerusItem::Directive(DirectiveItem::ExtraDependency)),
-        ("verus::builtin::reveal_hide",             VerusItem::Directive(DirectiveItem::RevealHide)),
-        ("verus::builtin::reveal_hide_internal_path", VerusItem::Directive(DirectiveItem::RevealHideInternalPath)),
-        ("verus::builtin::reveal_strlit",           VerusItem::Directive(DirectiveItem::RevealStrlit)),
-        ("verus::builtin::inline_air_stmt",         VerusItem::Directive(DirectiveItem::InlineAirStmt)),
+        ("verus::verus_builtin::extra_dependency",        VerusItem::Directive(DirectiveItem::ExtraDependency)),
+        ("verus::verus_builtin::reveal_hide",             VerusItem::Directive(DirectiveItem::RevealHide)),
+        ("verus::verus_builtin::reveal_hide_internal_path", VerusItem::Directive(DirectiveItem::RevealHideInternalPath)),
+        ("verus::verus_builtin::reveal_strlit",           VerusItem::Directive(DirectiveItem::RevealStrlit)),
+        ("verus::verus_builtin::inline_air_stmt",         VerusItem::Directive(DirectiveItem::InlineAirStmt)),
 
-        ("verus::builtin::choose",                  VerusItem::Expr(ExprItem::Choose)),
-        ("verus::builtin::choose_tuple",            VerusItem::Expr(ExprItem::ChooseTuple)),
-        ("verus::builtin::old",                     VerusItem::Expr(ExprItem::Old)),
-        ("verus::builtin::get_variant_field",       VerusItem::Expr(ExprItem::GetVariantField)),
-        ("verus::builtin::get_union_field",         VerusItem::Expr(ExprItem::GetUnionField)),
-        ("verus::builtin::is_variant",              VerusItem::Expr(ExprItem::IsVariant)),
-        ("verus::builtin::array_index",             VerusItem::Expr(ExprItem::ArrayIndex)),
-        ("verus::builtin::strslice_len",            VerusItem::Expr(ExprItem::StrSliceLen)),
-        ("verus::builtin::strslice_get_char",       VerusItem::Expr(ExprItem::StrSliceGetChar)),
-        ("verus::builtin::strslice_is_ascii",       VerusItem::Expr(ExprItem::StrSliceIsAscii)),
-        ("verus::builtin::arch_word_bits",          VerusItem::Expr(ExprItem::ArchWordBits)),
-        ("verus::builtin::closure_to_fn_spec",      VerusItem::Expr(ExprItem::ClosureToFnSpec)),
-        ("verus::builtin::closure_to_fn_proof",     VerusItem::Expr(ExprItem::ClosureToFnProof)),
-        ("verus::builtin::signed_min",              VerusItem::Expr(ExprItem::SignedMin)),
-        ("verus::builtin::signed_max",              VerusItem::Expr(ExprItem::SignedMax)),
-        ("verus::builtin::unsigned_max",            VerusItem::Expr(ExprItem::UnsignedMax)),
-        ("verus::builtin::is_smaller_than",         VerusItem::Expr(ExprItem::IsSmallerThan)),
-        ("verus::builtin::is_smaller_than_lexicographic", VerusItem::Expr(ExprItem::IsSmallerThanLexicographic)),
-        ("verus::builtin::is_smaller_than_recursive_function_field", VerusItem::Expr(ExprItem::IsSmallerThanRecursiveFunctionField)),
-        ("verus::builtin::default_ensures",         VerusItem::Expr(ExprItem::DefaultEnsures)),
-        ("verus::builtin::infer_spec_for_loop_iter", VerusItem::Expr(ExprItem::InferSpecForLoopIter)),
+        ("verus::verus_builtin::choose",                  VerusItem::Expr(ExprItem::Choose)),
+        ("verus::verus_builtin::choose_tuple",            VerusItem::Expr(ExprItem::ChooseTuple)),
+        ("verus::verus_builtin::old",                     VerusItem::Expr(ExprItem::Old)),
+        ("verus::verus_builtin::get_variant_field",       VerusItem::Expr(ExprItem::GetVariantField)),
+        ("verus::verus_builtin::get_union_field",         VerusItem::Expr(ExprItem::GetUnionField)),
+        ("verus::verus_builtin::is_variant",              VerusItem::Expr(ExprItem::IsVariant)),
+        ("verus::verus_builtin::array_index",             VerusItem::Expr(ExprItem::ArrayIndex)),
+        ("verus::verus_builtin::f32_to_bits",             VerusItem::Expr(ExprItem::F32ToBits)),
+        ("verus::verus_builtin::f64_to_bits",             VerusItem::Expr(ExprItem::F64ToBits)),
+        ("verus::verus_builtin::strslice_len",            VerusItem::Expr(ExprItem::StrSliceLen)),
+        ("verus::verus_builtin::strslice_get_char",       VerusItem::Expr(ExprItem::StrSliceGetChar)),
+        ("verus::verus_builtin::strslice_is_ascii",       VerusItem::Expr(ExprItem::StrSliceIsAscii)),
+        ("verus::verus_builtin::arch_word_bits",          VerusItem::Expr(ExprItem::ArchWordBits)),
+        ("verus::verus_builtin::closure_to_fn_spec",      VerusItem::Expr(ExprItem::ClosureToFnSpec)),
+        ("verus::verus_builtin::closure_to_fn_proof",     VerusItem::Expr(ExprItem::ClosureToFnProof)),
+        ("verus::verus_builtin::signed_min",              VerusItem::Expr(ExprItem::SignedMin)),
+        ("verus::verus_builtin::signed_max",              VerusItem::Expr(ExprItem::SignedMax)),
+        ("verus::verus_builtin::unsigned_max",            VerusItem::Expr(ExprItem::UnsignedMax)),
+        ("verus::verus_builtin::is_smaller_than",         VerusItem::Expr(ExprItem::IsSmallerThan)),
+        ("verus::verus_builtin::is_smaller_than_lexicographic", VerusItem::Expr(ExprItem::IsSmallerThanLexicographic)),
+        ("verus::verus_builtin::is_smaller_than_recursive_function_field", VerusItem::Expr(ExprItem::IsSmallerThanRecursiveFunctionField)),
+        ("verus::verus_builtin::default_ensures",         VerusItem::Expr(ExprItem::DefaultEnsures)),
+        ("verus::verus_builtin::infer_spec_for_loop_iter", VerusItem::Expr(ExprItem::InferSpecForLoopIter)),
 
-        ("verus::builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),
-        // TODO ("verus::builtin::smartptr_new",    VerusItem::CompilableOpr(CompilableOprItem::SmartPtrNew)),
-        ("verus::builtin::ghost_exec",              VerusItem::CompilableOpr(CompilableOprItem::GhostExec)),
-        ("verus::builtin::Ghost::new",              VerusItem::CompilableOpr(CompilableOprItem::GhostNew)),
-        ("verus::builtin::Tracked::new",            VerusItem::CompilableOpr(CompilableOprItem::TrackedNew)),
-        ("verus::builtin::tracked_exec",            VerusItem::CompilableOpr(CompilableOprItem::TrackedExec)),
-        ("verus::builtin::tracked_exec_borrow",     VerusItem::CompilableOpr(CompilableOprItem::TrackedExecBorrow)),
-        ("verus::builtin::Tracked::get",            VerusItem::CompilableOpr(CompilableOprItem::TrackedGet)),
-        ("verus::builtin::Tracked::borrow",         VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrow)),
-        ("verus::builtin::Tracked::borrow_mut",     VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)),
+        ("verus::verus_builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),
+        // TODO ("verus::verus_builtin::smartptr_new",    VerusItem::CompilableOpr(CompilableOprItem::SmartPtrNew)),
+        ("verus::verus_builtin::ghost_exec",              VerusItem::CompilableOpr(CompilableOprItem::GhostExec)),
+        ("verus::verus_builtin::Ghost::new",              VerusItem::CompilableOpr(CompilableOprItem::GhostNew)),
+        ("verus::verus_builtin::Tracked::new",            VerusItem::CompilableOpr(CompilableOprItem::TrackedNew)),
+        ("verus::verus_builtin::tracked_exec",            VerusItem::CompilableOpr(CompilableOprItem::TrackedExec)),
+        ("verus::verus_builtin::tracked_exec_borrow",     VerusItem::CompilableOpr(CompilableOprItem::TrackedExecBorrow)),
+        ("verus::verus_builtin::Tracked::get",            VerusItem::CompilableOpr(CompilableOprItem::TrackedGet)),
+        ("verus::verus_builtin::Tracked::borrow",         VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrow)),
+        ("verus::verus_builtin::Tracked::borrow_mut",     VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)),
 
-        ("verus::builtin::add",                     VerusItem::BinaryOp(BinaryOpItem::Arith(ArithItem::BuiltinAdd))),
-        ("verus::builtin::sub",                     VerusItem::BinaryOp(BinaryOpItem::Arith(ArithItem::BuiltinSub))),
-        ("verus::builtin::mul",                     VerusItem::BinaryOp(BinaryOpItem::Arith(ArithItem::BuiltinMul))),
+        ("verus::verus_builtin::Tracked::deref",          VerusItem::BuiltinDeref(BuiltinDerefItem::TrackedDeref)),
+        ("verus::verus_builtin::Tracked::deref_mut",      VerusItem::BuiltinDeref(BuiltinDerefItem::TrackedDerefMut)),
+        ("verus::verus_builtin::Ghost::deref",            VerusItem::BuiltinDeref(BuiltinDerefItem::GhostDeref)),
+        ("verus::verus_builtin::Ghost::deref_mut",        VerusItem::BuiltinDeref(BuiltinDerefItem::GhostDerefMut)),
 
-        ("verus::builtin::equal",                   VerusItem::BinaryOp(BinaryOpItem::Equality(EqualityItem::Equal))),
-        ("verus::builtin::spec_eq",                 VerusItem::BinaryOp(BinaryOpItem::Equality(EqualityItem::SpecEq))),
-        ("verus::builtin::ext_equal",               VerusItem::BinaryOp(BinaryOpItem::Equality(EqualityItem::ExtEqual))),
-        ("verus::builtin::ext_equal_deep",          VerusItem::BinaryOp(BinaryOpItem::Equality(EqualityItem::ExtEqualDeep))),
+        ("verus::verus_builtin::add",                     VerusItem::BinaryOp(BinaryOpItem::Arith(ArithItem::BuiltinAdd))),
+        ("verus::verus_builtin::sub",                     VerusItem::BinaryOp(BinaryOpItem::Arith(ArithItem::BuiltinSub))),
+        ("verus::verus_builtin::mul",                     VerusItem::BinaryOp(BinaryOpItem::Arith(ArithItem::BuiltinMul))),
 
-        ("verus::builtin::SpecOrd::spec_le",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Le))),
-        ("verus::builtin::SpecOrd::spec_ge",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Ge))),
-        ("verus::builtin::SpecOrd::spec_lt",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Lt))),
-        ("verus::builtin::SpecOrd::spec_gt",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Gt))),
+        ("verus::verus_builtin::equal",                   VerusItem::BinaryOp(BinaryOpItem::Equality(EqualityItem::Equal))),
+        ("verus::verus_builtin::spec_eq",                 VerusItem::BinaryOp(BinaryOpItem::Equality(EqualityItem::SpecEq))),
+        ("verus::verus_builtin::ext_equal",               VerusItem::BinaryOp(BinaryOpItem::Equality(EqualityItem::ExtEqual))),
+        ("verus::verus_builtin::ext_equal_deep",          VerusItem::BinaryOp(BinaryOpItem::Equality(EqualityItem::ExtEqualDeep))),
 
-        ("verus::builtin::SpecAdd::spec_add",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Add))),
-        ("verus::builtin::SpecSub::spec_sub",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Sub))),
-        ("verus::builtin::SpecMul::spec_mul",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Mul))),
-        ("verus::builtin::SpecEuclideanDiv::spec_euclidean_div", VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::EuclideanDiv))),
-        ("verus::builtin::SpecEuclideanMod::spec_euclidean_mod", VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::EuclideanMod))),
+        ("verus::verus_builtin::SpecOrd::spec_le",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Le))),
+        ("verus::verus_builtin::SpecOrd::spec_ge",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Ge))),
+        ("verus::verus_builtin::SpecOrd::spec_lt",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Lt))),
+        ("verus::verus_builtin::SpecOrd::spec_gt",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Gt))),
 
-        ("verus::builtin::SpecBitAnd::spec_bitand", VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::BitAnd))),
-        ("verus::builtin::SpecBitOr::spec_bitor",   VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::BitOr))),
-        ("verus::builtin::SpecBitXor::spec_bitxor", VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::BitXor))),
-        ("verus::builtin::SpecShl::spec_shl",       VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::Shl))),
-        ("verus::builtin::SpecShr::spec_shr",       VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::Shr))),
+        ("verus::verus_builtin::SpecAdd::spec_add",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Add))),
+        ("verus::verus_builtin::SpecSub::spec_sub",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Sub))),
+        ("verus::verus_builtin::SpecMul::spec_mul",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Mul))),
+        ("verus::verus_builtin::SpecEuclideanOrRealDiv::spec_euclidean_or_real_div", VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::EuclideanOrRealDiv))),
+        ("verus::verus_builtin::SpecEuclideanMod::spec_euclidean_mod", VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::EuclideanMod))),
 
-        ("verus::builtin::spec_chained_value",      VerusItem::Chained(ChainedItem::Value)),
-        ("verus::builtin::spec_chained_le",         VerusItem::Chained(ChainedItem::Le)),
-        ("verus::builtin::spec_chained_lt",         VerusItem::Chained(ChainedItem::Lt)),
-        ("verus::builtin::spec_chained_ge",         VerusItem::Chained(ChainedItem::Ge)),
-        ("verus::builtin::spec_chained_gt",         VerusItem::Chained(ChainedItem::Gt)),
-        ("verus::builtin::spec_chained_cmp",        VerusItem::Chained(ChainedItem::Cmp)),
-        ("verus::builtin::spec_chained_eq",         VerusItem::Chained(ChainedItem::Eq)),
+        ("verus::verus_builtin::SpecBitAnd::spec_bitand", VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::BitAnd))),
+        ("verus::verus_builtin::SpecBitOr::spec_bitor",   VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::BitOr))),
+        ("verus::verus_builtin::SpecBitXor::spec_bitxor", VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::BitXor))),
+        ("verus::verus_builtin::SpecShl::spec_shl",       VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::Shl))),
+        ("verus::verus_builtin::SpecShr::spec_shr",       VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::Shr))),
 
-        ("verus::builtin::assert_",                 VerusItem::Assert(AssertItem::Assert)),
-        ("verus::builtin::assert_by",               VerusItem::Assert(AssertItem::AssertBy)),
-        ("verus::builtin::assert_by_compute",       VerusItem::Assert(AssertItem::AssertByCompute)),
-        ("verus::builtin::assert_by_compute_only",  VerusItem::Assert(AssertItem::AssertByComputeOnly)),
-        ("verus::builtin::assert_nonlinear_by",     VerusItem::Assert(AssertItem::AssertNonlinearBy)),
-        ("verus::builtin::assert_bitvector_by",     VerusItem::Assert(AssertItem::AssertBitvectorBy)),
-        ("verus::builtin::assert_forall_by",        VerusItem::Assert(AssertItem::AssertForallBy)),
-        ("verus::builtin::assert_bit_vector",       VerusItem::Assert(AssertItem::AssertBitVector)),
-        ("verus::builtin::use_type_invariant",      VerusItem::UseTypeInvariant),
+        ("verus::verus_builtin::spec_chained_value",      VerusItem::Chained(ChainedItem::Value)),
+        ("verus::verus_builtin::spec_chained_le",         VerusItem::Chained(ChainedItem::Le)),
+        ("verus::verus_builtin::spec_chained_lt",         VerusItem::Chained(ChainedItem::Lt)),
+        ("verus::verus_builtin::spec_chained_ge",         VerusItem::Chained(ChainedItem::Ge)),
+        ("verus::verus_builtin::spec_chained_gt",         VerusItem::Chained(ChainedItem::Gt)),
+        ("verus::verus_builtin::spec_chained_cmp",        VerusItem::Chained(ChainedItem::Cmp)),
+        ("verus::verus_builtin::spec_chained_eq",         VerusItem::Chained(ChainedItem::Eq)),
 
-        ("verus::builtin::with_triggers",           VerusItem::WithTriggers),
+        ("verus::verus_builtin::assert_",                 VerusItem::Assert(AssertItem::Assert)),
+        ("verus::verus_builtin::assert_by",               VerusItem::Assert(AssertItem::AssertBy)),
+        ("verus::verus_builtin::assert_by_compute",       VerusItem::Assert(AssertItem::AssertByCompute)),
+        ("verus::verus_builtin::assert_by_compute_only",  VerusItem::Assert(AssertItem::AssertByComputeOnly)),
+        ("verus::verus_builtin::assert_nonlinear_by",     VerusItem::Assert(AssertItem::AssertNonlinearBy)),
+        ("verus::verus_builtin::assert_bitvector_by",     VerusItem::Assert(AssertItem::AssertBitvectorBy)),
+        ("verus::verus_builtin::assert_forall_by",        VerusItem::Assert(AssertItem::AssertForallBy)),
+        ("verus::verus_builtin::assert_bit_vector",       VerusItem::Assert(AssertItem::AssertBitVector)),
+        ("verus::verus_builtin::use_type_invariant",      VerusItem::UseTypeInvariant),
 
-        ("verus::builtin::spec_literal_integer",    VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Integer))),
-        ("verus::builtin::spec_literal_int",        VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Int))),
-        ("verus::builtin::spec_literal_nat",        VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Nat))),
-        ("verus::builtin::SpecNeg::spec_neg",       VerusItem::UnaryOp(UnaryOpItem::SpecNeg)),
-        ("verus::builtin::spec_cast_integer",       VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger)),
-        ("verus::builtin::Ghost::view",             VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostView))),
-        ("verus::builtin::Ghost::borrow",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrow))),
-        ("verus::builtin::Ghost::borrow_mut",       VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))),
-        ("verus::builtin::Tracked::view",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::TrackedView))),
+        ("verus::verus_builtin::with_triggers",           VerusItem::WithTriggers),
+
+        ("verus::verus_builtin::spec_literal_integer",    VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Integer))),
+        ("verus::verus_builtin::spec_literal_int",        VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Int))),
+        ("verus::verus_builtin::spec_literal_nat",        VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Nat))),
+        ("verus::verus_builtin::spec_literal_decimal",    VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Decimal))),
+        ("verus::verus_builtin::SpecNeg::spec_neg",       VerusItem::UnaryOp(UnaryOpItem::SpecNeg)),
+        ("verus::verus_builtin::spec_cast_integer",       VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger)),
+        ("verus::verus_builtin::spec_cast_real"   ,       VerusItem::UnaryOp(UnaryOpItem::SpecCastReal)),
+        ("verus::verus_builtin::real::floor",             VerusItem::UnaryOp(UnaryOpItem::RealFloor)),
+        ("verus::verus_builtin::Ghost::view",             VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostView))),
+        ("verus::verus_builtin::Ghost::borrow",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrow))),
+        ("verus::verus_builtin::Ghost::borrow_mut",       VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))),
+        ("verus::verus_builtin::Tracked::view",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::TrackedView))),
+
+        ("verus::verus_builtin::erased_ghost_value",      VerusItem::ErasedGhostValue),
+        ("verus::verus_builtin::mutable_reference_tie",   VerusItem::MutableReferenceTie),
+        ("verus::verus_builtin::DummyCapture",            VerusItem::DummyCapture(DummyCaptureItem::Struct)),
+        ("verus::verus_builtin::dummy_capture_new",       VerusItem::DummyCapture(DummyCaptureItem::New)),
+        ("verus::verus_builtin::dummy_capture_consume",   VerusItem::DummyCapture(DummyCaptureItem::Consume)),
 
         ("verus::vstd::invariant::open_atomic_invariant_begin", VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenAtomicInvariantBegin)),
         ("verus::vstd::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),
@@ -531,40 +590,59 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
+        ("verus::vstd::std_specs::vec::vec_index_mut", VerusItem::Vstd(VstdItem::VecIndexMut, Some(Arc::new("std_specs::vec::vec_index_mut".to_owned())))),
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),
         ("verus::vstd::array::array_as_slice", VerusItem::Vstd(VstdItem::ArrayAsSlice, Some(Arc::new("array::array_as_slice".to_owned())))),
         ("verus::vstd::array::array_fill_for_copy_types", VerusItem::Vstd(VstdItem::ArrayFillForCopyTypes, Some(Arc::new("array::array_fill_for_copy_types".to_owned())))),
+        ("verus::vstd::array::ref_mut_array_unsizing_coercion", VerusItem::Vstd(VstdItem::RefMutArrayUnsizingCoercion, Some(Arc::new("array::ref_mut_array_unsizing_coercion".to_owned())))),
+        ("verus::vstd::array::spec_array_update", VerusItem::Vstd(VstdItem::SpecArrayUpdate, Some(Arc::new("array::spec_array_update".to_owned())))),
         ("verus::vstd::slice::slice_index_get", VerusItem::Vstd(VstdItem::SliceIndexGet, Some(Arc::new("slice::slice_index_get".to_owned())))),
+        ("verus::vstd::slice::spec_slice_update", VerusItem::Vstd(VstdItem::SpecSliceUpdate, Some(Arc::new("slice::spec_slice_update".to_owned())))),
+        ("verus::vstd::slice::spec_slice_len", VerusItem::Vstd(VstdItem::SpecSliceLen, Some(Arc::new("slice::spec_slice_len".to_owned())))),
+        ("verus::vstd::slice::spec_slice_index", VerusItem::Vstd(VstdItem::SpecSliceIndex, Some(Arc::new("slice::spec_slice_index".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_thin_ptr", VerusItem::Vstd(VstdItem::CastPtrToThinPtr, Some(Arc::new("raw_ptr::cast_ptr_to_thin_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_array_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastArrayPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_array_ptr_to_slice_ptr".to_owned())))),
+        ("verus::vstd::raw_ptr::cast_slice_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastSlicePtrToSlicePtr, Some(Arc::new("raw_ptr::cast_slice_ptr_to_slice_ptr".to_owned())))),
+        ("verus::vstd::raw_ptr::cast_slice_ptr_to_str_ptr", VerusItem::Vstd(VstdItem::CastSlicePtrToStrPtr, Some(Arc::new("raw_ptr::cast_slice_ptr_to_str_ptr".to_owned())))),
+        ("verus::vstd::raw_ptr::cast_str_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastStrPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_str_ptr_to_slice_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
+        ("verus::vstd::raw_ptr::SharedReference", VerusItem::Vstd(VstdItem::SharedReference, Some(Arc::new("raw_ptr::SharedReference".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
-        ("verus::builtin::Structural",              VerusItem::Marker(MarkerItem::Structural)),
+        ("verus::verus_builtin::Structural",              VerusItem::Marker(MarkerItem::Structural)),
 
-        ("verus::builtin::int",                     VerusItem::BuiltinType(BuiltinTypeItem::Int)),
-        ("verus::builtin::nat",                     VerusItem::BuiltinType(BuiltinTypeItem::Nat)),
-        ("verus::builtin::FnSpec",                  VerusItem::BuiltinType(BuiltinTypeItem::FnSpec)),
-        ("verus::builtin::Ghost",                   VerusItem::BuiltinType(BuiltinTypeItem::Ghost)),
-        ("verus::builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),
+        ("verus::verus_builtin::int",                     VerusItem::BuiltinType(BuiltinTypeItem::Int)),
+        ("verus::verus_builtin::nat",                     VerusItem::BuiltinType(BuiltinTypeItem::Nat)),
+        ("verus::verus_builtin::real",                    VerusItem::BuiltinType(BuiltinTypeItem::Real)),
+        ("verus::verus_builtin::FnSpec",                  VerusItem::BuiltinType(BuiltinTypeItem::FnSpec)),
+        ("verus::verus_builtin::Ghost",                   VerusItem::BuiltinType(BuiltinTypeItem::Ghost)),
+        ("verus::verus_builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),
 
-        ("verus::builtin::Integer",                 VerusItem::BuiltinTrait(BuiltinTraitItem::Integer)),
-        ("verus::builtin::private::Sealed",         VerusItem::BuiltinTrait(BuiltinTraitItem::Sealed)),
+        ("verus::verus_builtin::Integer",                 VerusItem::BuiltinTrait(BuiltinTraitItem::Integer)),
+        ("verus::verus_builtin::Chainable",               VerusItem::BuiltinTrait(BuiltinTraitItem::Chainable)),
+        ("verus::verus_builtin::private::Sealed",         VerusItem::BuiltinTrait(BuiltinTraitItem::Sealed)),
 
-        ("verus::builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
-        ("verus::builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
+        ("verus::verus_builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
+        ("verus::verus_builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
+        ("verus::verus_builtin::constrain_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)),
         
-        ("verus::builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
+        ("verus::verus_builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
 
-        ("verus::builtin::FnProof",          VerusItem::External(ExternalItem::FnProof)),
-        ("verus::builtin::FOpts",   VerusItem::External(ExternalItem::FOpts)),
-        ("verus::builtin::ProofFnReqEnsDef::req", VerusItem::External(ExternalItem::FnProofReq)),
-        ("verus::builtin::ProofFnReqEnsDef::ens", VerusItem::External(ExternalItem::FnProofEns)),
-        ("verus::builtin::ProofFnOnce",      VerusItem::External(ExternalItem::ProofFnOnce)),
-        ("verus::builtin::ProofFnMut",       VerusItem::External(ExternalItem::ProofFnMut)),
-        ("verus::builtin::ProofFn",          VerusItem::External(ExternalItem::ProofFn)),
-        ("verus::builtin::Trk",              VerusItem::External(ExternalItem::Trk)),
-        ("verus::builtin::RqEn",             VerusItem::External(ExternalItem::RqEn)),
+        ("verus::verus_builtin::FnProof",          VerusItem::External(ExternalItem::FnProof)),
+        ("verus::verus_builtin::FOpts",   VerusItem::External(ExternalItem::FOpts)),
+        ("verus::verus_builtin::ProofFnReqEnsDef::req", VerusItem::External(ExternalItem::FnProofReq)),
+        ("verus::verus_builtin::ProofFnReqEnsDef::ens", VerusItem::External(ExternalItem::FnProofEns)),
+        ("verus::verus_builtin::ProofFnOnce",      VerusItem::External(ExternalItem::ProofFnOnce)),
+        ("verus::verus_builtin::ProofFnMut",       VerusItem::External(ExternalItem::ProofFnMut)),
+        ("verus::verus_builtin::ProofFn",          VerusItem::External(ExternalItem::ProofFn)),
+        ("verus::verus_builtin::Trk",              VerusItem::External(ExternalItem::Trk)),
+        ("verus::verus_builtin::RqEn",             VerusItem::External(ExternalItem::RqEn)),
+        ("verus::verus_builtin::has_resolved",     VerusItem::HasResolved),
+        ("verus::verus_builtin::has_resolved_unsized",     VerusItem::HasResolvedUnsized),
+        ("verus::verus_builtin::mut_ref_current",  VerusItem::MutRefCurrent),
+        ("verus::verus_builtin::mut_ref_future",   VerusItem::MutRefFuture),
+        ("verus::verus_builtin::final_",           VerusItem::Final),
+        ("verus::verus_builtin::after_borrow",     VerusItem::AfterBorrow),
     ]
 }
 
@@ -583,7 +661,7 @@ pub(crate) fn from_diagnostic_items(
     let mut name_to_id: HashMap<VerusItem, DefId> = HashMap::new();
     for (name, id) in diagnostic_name_to_id {
         let name = name.as_str();
-        if name.starts_with("verus::builtin") || name.starts_with("verus::vstd") {
+        if name.starts_with("verus::verus_builtin") || name.starts_with("verus::vstd") {
             if let Some(item) = verus_item_map.get(name) {
                 id_to_name.insert(id.clone(), item.clone());
                 name_to_id.insert(item.clone(), id.clone());
@@ -634,6 +712,7 @@ pub(crate) enum RustItem {
     Copy,
     Send,
     Sync,
+    Any,
     Clone,
     StructuralPartialEq,
     Eq,
@@ -651,8 +730,6 @@ pub(crate) enum RustItem {
     CloneClone,
     CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
-    AllocGlobal,
-    Allocator,
     TryTraitBranch,
     ResidualTraitFromResidual,
     IntoIterFn,
@@ -660,6 +737,8 @@ pub(crate) enum RustItem {
     PhantomData,
     Destruct,
     SliceSealed,
+    Vec,
+    Thin,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -764,12 +843,6 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
         return Some(RustItem::CloneFrom);
     }
 
-    if rust_path == Some("alloc::alloc::Global") {
-        return Some(RustItem::AllocGlobal);
-    }
-    if rust_path == Some("core::alloc::Allocator") {
-        return Some(RustItem::Allocator);
-    }
     if rust_path == Some("core::slice::index::private_slice_index::Sealed") {
         return Some(RustItem::SliceSealed);
     }
@@ -784,6 +857,15 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("core::cmp::Ord") {
         return Some(RustItem::Ord);
+    }
+    if rust_path == Some("alloc::vec::Vec") {
+        return Some(RustItem::Vec);
+    }
+    if rust_path == Some("core::ptr::metadata::Thin") {
+        return Some(RustItem::Thin);
+    }
+    if rust_path == Some("core::any::Any") {
+        return Some(RustItem::Any);
     }
 
     if let Some(rust_path) = rust_path {

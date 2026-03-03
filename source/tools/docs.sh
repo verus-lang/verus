@@ -2,6 +2,11 @@
 
 set -e
 
+RUSTDOC=""
+if [ "x$1" = "x--strict" ]; then
+    RUSTDOC="-D warnings"
+fi
+
 case $(uname -m) in
   x86_64)
     ARCH=x86_64
@@ -26,10 +31,10 @@ vargo build -p verusdoc
 vargo build --vstd-no-verify
 
 echo "Running rustdoc..."
-RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VERUS_Z3_PATH="$(pwd)/z3" rustdoc \
-  --extern builtin=target-verus/debug/libbuiltin.rlib \
-  --extern builtin_macros=target-verus/debug/libbuiltin_macros.$DYN_LIB_EXT \
-  --extern state_machines_macros=target-verus/debug/libstate_machines_macros.$DYN_LIB_EXT \
+RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VSTD_KIND=IsVstd VERUS_Z3_PATH="$(pwd)/z3"  rustdoc \
+  --extern verus_builtin=target-verus/debug/libverus_builtin.rlib \
+  --extern verus_builtin_macros=target-verus/debug/libverus_builtin_macros.$DYN_LIB_EXT \
+  --extern verus_state_machines_macros=target-verus/debug/libverus_state_machines_macros.$DYN_LIB_EXT \
   --edition=2018 \
   --cfg verus_keep_ghost \
   --cfg verus_keep_ghost_body \
@@ -40,12 +45,14 @@ RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VERUS_Z3_PATH="$(pwd)/z3" rustdoc \
   -Zcrate-attr=feature\\\(register_tool\\\) \
   -Zcrate-attr=feature\\\(rustc_attrs\\\) \
   -Zcrate-attr=feature\\\(unboxed_closures\\\) \
+  -Zcrate-attr=feature\\\(custom_inner_attributes\\\) \
   -Zcrate-attr=register_tool\\\(verus\\\) \
   -Zcrate-attr=register_tool\\\(verifier\\\) \
   -Zcrate-attr=register_tool\\\(verusfmt\\\) \
   -Zcrate-attr=allow\\\(internal_features\\\) \
   -Zcrate-attr=allow\\\(unused_braces\\\) \
   -Zproc-macro-backtrace \
+  $RUSTDOC \
   vstd/vstd.rs""
 
 echo "Running post-processor..."

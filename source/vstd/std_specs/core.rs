@@ -1,11 +1,12 @@
 use super::super::prelude::*;
+use core::marker::PointeeSized;
 
 use verus as verus_;
 
 verus_! {
 
 #[verifier::external_trait_specification]
-pub trait ExDeref {
+pub trait ExDeref: PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::Deref;
 
     type Target: ?Sized;
@@ -35,156 +36,34 @@ pub trait ExSpecOrd<Rhs> {
     type ExternalTraitSpecificationFor: SpecOrd<Rhs>;
 }
 
+#[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
 pub trait ExAllocator {
     type ExternalTraitSpecificationFor: core::alloc::Allocator;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExFreeze {
+pub trait ExFreeze: PointeeSized {
     type ExternalTraitSpecificationFor: core::marker::Freeze;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExDebug {
+pub trait ExDebug: PointeeSized {
     type ExternalTraitSpecificationFor: core::fmt::Debug;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExDisplay {
+pub trait ExDisplay: PointeeSized {
     type ExternalTraitSpecificationFor: core::fmt::Display;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExFrom<T>: Sized {
-    type ExternalTraitSpecificationFor: core::convert::From<T>;
-
-    fn from(v: T) -> (ret: Self);
-}
-
-#[verifier::external_trait_specification]
-pub trait ExInto<T>: Sized {
-    type ExternalTraitSpecificationFor: core::convert::Into<T>;
-
-    fn into(self) -> (ret: T);
-}
-
-pub assume_specification<T, U: From<T>>[ T::into ](a: T) -> (ret: U)
-    ensures
-        call_ensures(U::from, (a,), ret),
-;
-
-#[verifier::external_trait_specification]
-#[verifier::external_trait_extension(PartialEqSpec via PartialEqSpecImpl)]
-pub trait ExPartialEq<Rhs: ?Sized = Self> {
-    type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
-
-    spec fn obeys_spec_eq() -> bool;
-
-    spec fn spec_eq(&self, other: &Rhs) -> bool;
-
-    fn eq(&self, other: &Rhs) -> (r: bool)
-        ensures
-            Self::obeys_spec_eq() ==> r == self.spec_eq(other);
-
-    fn ne(&self, other: &Rhs) -> (r: bool)
-        ensures
-            Self::obeys_spec_eq() ==> r == !self.spec_eq(other),
-        default_ensures
-            call_ensures(Self::eq, (self, other), !r);
-}
-
-#[verifier::external_trait_specification]
-pub trait ExEq: PartialEq {
-    type ExternalTraitSpecificationFor: core::cmp::Eq;
-}
-
-#[verifier::external_trait_specification]
-#[verifier::external_trait_extension(PartialOrdSpec via PartialOrdSpecImpl)]
-pub trait ExPartialOrd<Rhs: ?Sized = Self>: PartialEq<Rhs> {
-    type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
-
-    spec fn obeys_spec_partial_cmp() -> bool;
-
-    spec fn spec_partial_cmp(&self, other: &Rhs) -> Option<core::cmp::Ordering>;
-
-    fn partial_cmp(&self, other: &Rhs) -> (r: Option<core::cmp::Ordering>)
-        ensures
-            Self::obeys_spec_partial_cmp() ==> r == self.spec_partial_cmp(other);
-
-    fn lt(&self, other: &Rhs) -> (r: bool)
-        ensures
-            Self::obeys_spec_partial_cmp() ==>
-                (r <==> self.spec_partial_cmp(other) == Some(core::cmp::Ordering::Less)),
-        default_ensures
-            exists|o: Option<core::cmp::Ordering>|
-                {
-                    &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
-                    &&& r <==> o == Some(core::cmp::Ordering::Less)
-                }
-    ;
-
-    fn le(&self, other: &Rhs) -> (r: bool)
-        ensures
-            Self::obeys_spec_partial_cmp() ==>
-                (r <==> self.spec_partial_cmp(other) matches Some(
-                    core::cmp::Ordering::Less
-                    | core::cmp::Ordering::Equal,
-                )),
-        default_ensures
-            exists|o: Option<core::cmp::Ordering>|
-                {
-                    &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
-                    &&& r <==> o matches Some(
-                        core::cmp::Ordering::Less
-                        | core::cmp::Ordering::Equal,
-                    )
-                }
-    ;
-
-    fn gt(&self, other: &Rhs) -> (r: bool)
-        ensures
-            Self::obeys_spec_partial_cmp() ==>
-                (r <==> self.spec_partial_cmp(other) == Some(core::cmp::Ordering::Greater)),
-        default_ensures
-            exists|o: Option<core::cmp::Ordering>|
-                {
-                    &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
-                    &&& r <==> o == Some(core::cmp::Ordering::Greater)
-                }
-    ;
-
-    fn ge(&self, other: &Rhs) -> (r: bool)
-        ensures
-            Self::obeys_spec_partial_cmp() ==>
-                (r <==> self.spec_partial_cmp(other) matches Some(
-                    core::cmp::Ordering::Greater
-                    | core::cmp::Ordering::Equal,
-                )),
-        default_ensures
-            exists|o: Option<core::cmp::Ordering>|
-                {
-                    &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
-                    &&& r <==> o matches Some(
-                        core::cmp::Ordering::Greater
-                        | core::cmp::Ordering::Equal,
-                    )
-                }
-    ;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExOrd: Eq + PartialOrd {
-    type ExternalTraitSpecificationFor: Ord;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExHash {
+pub trait ExHash: PointeeSized {
     type ExternalTraitSpecificationFor: core::hash::Hash;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExPtrPointee {
+pub trait ExPtrPointee: PointeeSized {
     type ExternalTraitSpecificationFor: core::ptr::Pointee;
 
     type Metadata:
@@ -220,6 +99,11 @@ pub trait ExStructural {
     type ExternalTraitSpecificationFor: Structural;
 }
 
+#[verifier::external_trait_specification]
+pub trait ExMetaSized {
+    type ExternalTraitSpecificationFor: core::marker::MetaSized;
+}
+
 pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
     ensures
         *a == *old(b),
@@ -246,7 +130,7 @@ pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
 }
 
 #[verifier::when_used_as_spec(iter_into_iter_spec)]
-pub assume_specification<I: Iterator>[ I::into_iter ](i: I) -> (r: I)
+pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) -> (r: I)
     ensures
         r == i,
 ;
@@ -261,7 +145,7 @@ pub struct ExDuration(core::time::Duration);
 
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(V)]
-pub struct ExPhantomData<V: ?Sized>(core::marker::PhantomData<V>);
+pub struct ExPhantomData<V: PointeeSized>(core::marker::PhantomData<V>);
 
 pub assume_specification[ core::intrinsics::likely ](b: bool) -> (c: bool)
     ensures
@@ -281,11 +165,6 @@ pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (r
             ret.is_none()
         },
 ;
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[verifier::reject_recursive_types_in_ground_variants(V)]
-pub struct ExManuallyDrop<V: ?Sized>(core::mem::ManuallyDrop<V>);
 
 // A private seal trait to prevent a trait from being implemented outside of vstd.
 pub(crate) trait TrustedSpecSealed {}
@@ -323,25 +202,8 @@ pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
 }
 
 } // verus!
-macro_rules! impl_from_spec {
-    ($from: ty => [$($to: ty)*]) => {
-        verus!{
-        $(
-        pub assume_specification[ <$to as core::convert::From<$from>>::from ](a: $from) -> (ret: $to)
-            ensures
-                ret == a as $to,
-        ;
-        )*
-        }
-    };
-}
-
-impl_from_spec! {u8 => [u16 u32 u64 usize u128]}
-impl_from_spec! {u16 => [u32 u64 usize u128]}
-impl_from_spec! {u32 => [u64 u128]}
-impl_from_spec! {u64 => [u128]}
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
-pub struct ExAssertParamIsClone<T: Clone + ?Sized>(core::clone::AssertParamIsClone<T>);
+pub struct ExAssertParamIsClone<T: Clone + PointeeSized>(core::clone::AssertParamIsClone<T>);

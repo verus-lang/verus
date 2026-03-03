@@ -244,8 +244,8 @@ test_verify_one_file! {
         mod Y {
             #![allow(dead_code)] // this was needed for the original crash
 
-            use builtin::*;
-            use builtin_macros::*;
+            use verus_builtin::*;
+            use verus_builtin_macros::*;
 
             verus!{
                 mod X {
@@ -340,6 +340,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file! {
     #[test] air_function_names_issue_376 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum Nat {
             Zero,
             Succ(Box<Nat>),
@@ -395,7 +396,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] nat_no_use_builtin_issue575 ["no-auto-import-builtin"] => code! {
+    #[test] nat_no_use_builtin_issue575 ["no-auto-import-verus_builtin"] => code! {
         use vstd::prelude::*;
 
         pub struct MyType {
@@ -458,7 +459,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] def_id_names_for_builtins_regression_588 ["no-auto-import-builtin"] => code! {
+    #[test] def_id_names_for_builtins_regression_588 ["no-auto-import-verus_builtin"] => code! {
         use vstd::{prelude::*, seq::*};
 
         verus! {
@@ -512,8 +513,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_broadcast_forall_import_issue471 ["no-auto-import-builtin"] => code! {
-        use builtin_macros::*;
+    #[test] test_broadcast_forall_import_issue471 ["no-auto-import-verus_builtin"] => code! {
+        use verus_builtin_macros::*;
         #[allow(unused_imports)]
         use vstd::{seq::*, seq_lib::*};
 
@@ -883,7 +884,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] use_import_is_not_supported_in_traits_or_impls verus_code! {
-        use state_machines_macros::state_machine;
+        use verus_state_machines_macros::state_machine;
         use vstd::*;
 
         state_machine!{ MachineWithProof {
@@ -1020,7 +1021,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] trait_proof_using_own_lemma verus_code! {
         mod m1 {
-            use builtin_macros::*;
+            use verus_builtin_macros::*;
             verus! {
                 #[verifier::external_body]
                 pub struct S { p: core::marker::PhantomData<()> }
@@ -1047,7 +1048,7 @@ test_verify_one_file! {
         }
 
         mod m2 {
-            use builtin_macros::*;
+            use verus_builtin_macros::*;
             verus! {
                 use crate::m1::*;
 
@@ -1445,17 +1446,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_no_unsupported_trait_imports ["no-auto-import-builtin"] => code! {
+    #[test] test_no_unsupported_trait_imports ["no-auto-import-verus_builtin"] => code! {
         // https://github.com/verus-lang/verus/issues/1582
         // https://github.com/verus-lang/verus/issues/1597
         // https://github.com/verus-lang/verus/issues/1708
         #![feature(extern_types)]
 
+        use verus_builtin::*;
+        use verus_builtin_macros::*;
+
         // The bug is a mishandling of unsupported types, so to test it,
         // declare a foreign type that is unlikely to be supported in future Verus versions:
         extern "C" { type T; }
 
-        impl Clone for Box<T> { fn clone(&self) -> Self { todo!() } }
+        trait ToBool { fn to_bool(&self) -> bool; }
+        impl ToBool for *const T where { fn to_bool(&self) -> bool { todo!() } }
     } => Ok(())
 }
 
@@ -1521,4 +1526,48 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "disallowed: pattern constructor for an opaque datatype")
+}
+
+test_verify_one_file! {
+    #[test] test_modules_nested_in_items_external_code code! {
+        async fn test() {
+            let x = || {
+                mod m {
+                    fn foo() {
+                    }
+                }
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] overlapping_labels_between_block_and_loop verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test() {
+            'a: loop
+            {
+                'a: {
+                    break 'a;
+                }
+                assert(false); // FAILS
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: block with label")
+}
+
+test_verify_one_file! {
+    #[test] tuple_copy_bound_issue2211 verus_code! {
+        fn requires_copy<T: Copy>(i: T) {
+        }
+
+        fn copy_fails() {
+            let a = 5u8;
+            let b = 5u8;
+            let ref_a = &a;
+            let ref_b = &b;
+            requires_copy((a, b));
+            requires_copy((ref_a, ref_b));
+        }
+    } => Ok(())
 }

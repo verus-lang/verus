@@ -955,3 +955,33 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_hash_map_decreases ["exec_allows_no_decreases_clause"] => verus_code! {
+        use std::collections::HashMap;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::*;
+        pub enum Foo {
+            Base(i64),
+            Rec(HashMap<i64, Foo>),
+        }
+
+        pub open spec fn all_positive(x: Foo) -> bool
+            decreases x
+        {
+            match x {
+                Foo::Base(i) => i > 0,
+                Foo::Rec(m) => {
+                    let bs = m@.map_values(|y| {
+                        if m@.dom().finite() && m@.contains_value(y) {
+                            all_positive(y)
+                        } else {
+                            arbitrary()
+                        }
+                    });
+                    bs.values().all(|b| b)
+                }
+            }
+        }
+    } => Ok(())
+}

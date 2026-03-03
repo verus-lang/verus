@@ -119,7 +119,8 @@ const TEST_REQUIRES1: &str = verus_code_str! {
     proof fn test_requires1(a: int, b: int, c: int)
         requires
             a <= b,
-            b <= c,
+            #[verifier::proof_note("Test label #1")]
+            (b <= c),
     {
         assert(a <= c);
     }
@@ -133,14 +134,17 @@ test_verify_one_file! {
             test_requires1(a + a, b + b, c + c);
             test_requires1(a + a, b + b, a + c); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_help_error_msg(err, "note: Test label #1")
 }
 
 test_verify_one_file! {
     #[test] test_requires3 TEST_REQUIRES1.to_string() + verus_code_str! {
         fn test_requires3(a: int, b: int, c: int) {
             assume(a <= b);
-            assume(b <= c);
+            assume(
+                #[verifier::proof_note("Test label #2")]
+                (b <= c)
+            );
             proof {
                 test_requires1(a + a, b + b, c + c);
                 test_requires1(a + c, b + b, c + c); // FAILS
@@ -154,7 +158,8 @@ const TEST_RET: &str = verus_code_str! {
         requires
             a <= b,
         ensures
-            ret <= a + b,
+            #[verifier::proof_note("Test label #3")]
+            (ret <= a + b),
             ret <= a + a, // FAILS
             ret <= b + b,
     {
@@ -164,6 +169,60 @@ const TEST_RET: &str = verus_code_str! {
 
 test_verify_one_file! {
     #[test] test_ret TEST_RET.to_string() => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_on_requires verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            requires
+                #[verifier::proof_note("Property 732")]
+                (x == y),
+        {
+            x + y
+        }
+
+        fn caller() {
+            let _ = example(1, 2); // precondition fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Property 732")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_on_ensures verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            ensures
+                #[verifier::proof_note("Property 732")]
+                (z == x + y),
+        {
+            x
+        }
+
+        fn caller() {
+            let _ = example(1, 2); // postcondition fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Property 732")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_on_assert verus_code! {
+        fn caller() {
+            assert(
+                #[verifier::proof_note("Statement known to be false")]
+                (1 > 2)
+            ); // assertion fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_note_on_assume_with_no_cheating ["--no-cheating"] => verus_code! {
+        fn caller() {
+            assume(
+                #[verifier::proof_note("Statement known to be false")]
+                (1 > 2)
+            ); // assumption fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
 }
 
 test_verify_one_file! {
@@ -369,7 +428,7 @@ test_verify_one_file! {
         proof fn test1(x: u64) {
             x = 5;
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
+    } => Err(e) => assert_vir_error_msg(e, "variable `x` is not marked mutable")
 }
 
 test_verify_one_file! {
@@ -377,7 +436,7 @@ test_verify_one_file! {
         spec fn test1(x: u64) {
             x = 5;
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
+    } => Err(e) => assert_vir_error_msg(e, "variable `x` is not marked mutable")
 }
 
 test_verify_one_file! {
@@ -642,75 +701,12 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file_with_options! {
-    #[test] test_is_core ["--is-core", "no-auto-import-builtin"] => code! {
-        #![allow(unused_parens)]
-        #![allow(unused_imports)]
-        #![allow(dead_code)]
-        #![allow(unused_attributes)]
-        #![allow(unused_variables)]
-
-        #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
-        #![cfg_attr(verus_keep_ghost, feature(allocator_api))]
-        #![cfg_attr(verus_keep_ghost, feature(step_trait))]
-        #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
-        #![cfg_attr(verus_keep_ghost, feature(strict_provenance_atomic_ptr))]
-        #![cfg_attr(
-            verus_keep_ghost,
-            feature(fn_traits),
-        )]
-        #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
-
-        #[verifier::external]
-        #[path="../../../../builtin/src/lib.rs"]
-        mod builtin;
-
-        #[path="../../../../vstd/vstd.rs"]
-        mod vstd;
-
-        mod test {
-            use crate::vstd::set::*;
-            use crate::vstd::seq::*;
-            use crate::vstd::multiset::*;
-            use crate::vstd::prelude::*;
-
-            verus!{
-
-            proof fn test_seqs(a: Seq<int>, b: Seq<int>)
-                requires a == b,
-            {
-                crate::vstd::seq_lib::assert_seqs_equal!(a, b);
-                crate::vstd::seq_lib::assert_seqs_equal!(a == b);
-            }
-
-            proof fn test_sets(a: Set<int>, b: Set<int>)
-                requires a == b,
-            {
-                crate::vstd::set_lib::assert_sets_equal!(a, b);
-                crate::vstd::set_lib::assert_sets_equal!(a == b);
-            }
-
-            proof fn test_multisets(a: Multiset<int>, b: Multiset<int>)
-                requires a == b,
-            {
-                crate::vstd::multiset::assert_multisets_equal!(a, b);
-                crate::vstd::multiset::assert_multisets_equal!(a == b);
-            }
-
-            fn test_slice_index(x: &[u8]) -> u8
-                requires x@.len() > 0
-            {
-                x[0]
-            }
-
-            fn test_ptr_stuff(a: *mut u8, b: *mut [u8; 2]) {
-                let t = a as *mut u16;
-                let s = b as *mut [u8];
-            }
-
-            }
+test_verify_one_file! {
+    #[test] destructuring_assignment_unsupported verus_code! {
+        fn test() {
+            let mut a = 0;
+            let mut b = 0;
+            (a, b) = (1, 2);
         }
-
-        fn main() { }
-    } => Ok(())
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: destructuring assignment")
 }

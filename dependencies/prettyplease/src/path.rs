@@ -2,7 +2,7 @@ use crate::algorithm::Printer;
 use crate::iter::IterDelimited;
 use crate::INDENT;
 use std::ptr;
-use syn_verus::{
+use verus_syn::{
     AngleBracketedGenericArguments, AssocConst, AssocType, Constraint, GenericArgument,
     ParenthesizedGenericArguments, Path, PathArguments, PathSegment, QSelf,
 };
@@ -159,9 +159,7 @@ impl Printer {
     }
 
     pub fn qpath(&mut self, qself: &Option<QSelf>, path: &Path, kind: PathKind) {
-        let qself = if let Some(qself) = qself {
-            qself
-        } else {
+        let Some(qself) = qself else {
             self.path(path, kind);
             return;
         };

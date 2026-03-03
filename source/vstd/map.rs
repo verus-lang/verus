@@ -161,7 +161,7 @@ impl<K, V> Map<K, V> {
         requires
             keys.subset_of(old(self).dom()),
         ensures
-            self == old(self).remove_keys(keys),
+            *self == old(self).remove_keys(keys),
             out_map == old(self).restrict(keys),
     ;
 
@@ -327,7 +327,7 @@ macro_rules! map_internal {
 #[macro_export]
 macro_rules! map {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::map::map_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::map::map_internal!($($tail)*))
     };
 }
 
@@ -389,17 +389,17 @@ pub use map;
 #[macro_export]
 macro_rules! assert_maps_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::map::assert_maps_equal_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::map::assert_maps_equal_internal!($($tail)*))
     };
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! assert_maps_equal_internal {
-    (::builtin::spec_eq($m1:expr, $m2:expr)) => {
+    (::verus_builtin::spec_eq($m1:expr, $m2:expr)) => {
         assert_maps_equal_internal!($m1, $m2)
     };
-    (::builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
+    (::verus_builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
         assert_maps_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
     };
     ($m1:expr, $m2:expr $(,)?) => {
@@ -408,19 +408,19 @@ macro_rules! assert_maps_equal_internal {
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
         #[verifier::spec] let m1 = $crate::vstd::map::check_argument_is_map($m1);
         #[verifier::spec] let m2 = $crate::vstd::map::check_argument_is_map($m2);
-        ::builtin::assert_by(::builtin::equal(m1, m2), {
-            ::builtin::assert_forall_by(|$k $( : $t )?| {
+        $crate::vstd::prelude::assert_by($crate::vstd::prelude::equal(m1, m2), {
+            $crate::vstd::prelude::assert_forall_by(|$k $( : $t )?| {
                 // TODO better error message here: show the individual conjunct that fails,
                 // and maybe give an error message in english as well
-                ::builtin::ensures([
-                    ::builtin::imply(#[verifier::trigger] m1.dom().contains($k), m2.dom().contains($k))
-                    && ::builtin::imply(m2.dom().contains($k), m1.dom().contains($k))
-                    && ::builtin::imply(m1.dom().contains($k) && m2.dom().contains($k),
-                        ::builtin::equal(m1.index($k), m2.index($k)))
+                $crate::vstd::prelude::ensures([
+                    $crate::vstd::prelude::imply(#[verifier::trigger] m1.dom().contains($k), m2.dom().contains($k))
+                    && $crate::vstd::prelude::imply(m2.dom().contains($k), m1.dom().contains($k))
+                    && $crate::vstd::prelude::imply(m1.dom().contains($k) && m2.dom().contains($k),
+                        $crate::vstd::prelude::equal(m1.index($k), m2.index($k)))
                 ]);
                 { $bblock }
             });
-            ::builtin::assert_(::builtin::ext_equal(m1, m2));
+            $crate::vstd::prelude::assert_($crate::vstd::prelude::ext_equal(m1, m2));
         });
     }
 }
@@ -430,11 +430,7 @@ pub use assert_maps_equal_internal;
 pub use assert_maps_equal;
 
 impl<K, V> Map<K, V> {
-    pub proof fn tracked_map_keys_in_place(
-        #[verifier::proof]
-        &mut self,
-        key_map: Map<K, K>,
-    )
+    pub proof fn tracked_map_keys_in_place(tracked &mut self, key_map: Map<K, K>)
         requires
             forall|j|
                 #![auto]
@@ -449,11 +445,9 @@ impl<K, V> Map<K, V> {
                 key_map.dom().contains(j) ==> self.dom().contains(j) && #[trigger] self.index(j)
                     == old(self).index(key_map.index(j)),
     {
-        #[verifier::proof]
-        let mut tmp = Self::tracked_empty();
+        let tracked mut tmp = Self::tracked_empty();
         super::modes::tracked_swap(&mut tmp, self);
-        #[verifier::proof]
-        let mut tmp = Self::tracked_map_keys(tmp, key_map);
+        let tracked mut tmp = Self::tracked_map_keys(tmp, key_map);
         super::modes::tracked_swap(&mut tmp, self);
     }
 }

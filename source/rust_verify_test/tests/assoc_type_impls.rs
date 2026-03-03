@@ -894,6 +894,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] external_assoc_type_equal verus_code! {
+        #[verifier::external]
+        trait T {
+            type X;
+            fn f<B>(&self);
+        }
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            type X;
+            fn f<B>(&self) where Self: T<X = <Self as ExT>::X>;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] assoc_trait_bound_overflow verus_code! {
         // https://github.com/verus-lang/verus/issues/1708 , part 2 (trait overflow)
         trait View {

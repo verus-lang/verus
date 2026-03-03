@@ -97,7 +97,7 @@ fn visit(
 fn node(traits: &mut TokenStream, impls: &mut TokenStream, s: &Node, defs: &Definitions) {
     let under_name = gen::under_name(&s.ident);
     let ident = Ident::new(&s.ident, Span::call_site());
-    let ty = if let "Ident" | "Span" = s.ident.as_str() {
+    let ty = if gen::TERMINAL_TYPES.contains(&s.ident.as_str()) {
         quote!(proc_macro2::#ident)
     } else {
         quote!(crate::#ident)
@@ -183,20 +183,30 @@ fn node(traits: &mut TokenStream, impls: &mut TokenStream, s: &Node, defs: &Defi
         Some(quote!('ast))
     };
 
+    let traits_body = if s.ident == "Span" || s.ident == "TokenStream" {
+        None
+    } else {
+        Some(quote! {
+            #visit_fn(self, i);
+        })
+    };
+
     traits.extend(quote! {
         fn #visit_fn(&mut self, i: &#ast_lifetime #ty) {
-            #visit_fn(self, i);
+            #traits_body
         }
     });
 
-    impls.extend(quote! {
-        pub fn #visit_fn<'ast, V>(v: &mut V, node: &#ast_lifetime #ty)
-        where
-            V: Visit<'ast> + ?Sized,
-        {
-            #visit_impl
-        }
-    });
+    if s.ident != "TokenStream" {
+        impls.extend(quote! {
+            pub fn #visit_fn<'ast, V>(v: &mut V, node: &#ast_lifetime #ty)
+            where
+                V: Visit<'ast> + ?Sized,
+            {
+                #visit_impl
+            }
+        });
+    }
 }
 
 pub fn generate(defs: &Definitions) -> Result<()> {

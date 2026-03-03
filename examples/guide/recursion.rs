@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
-use builtin::*;
+use verus_builtin::*;
 #[allow(unused_imports)]
-use builtin_macros::*;
+use verus_builtin_macros::*;
 use vstd::prelude::*;
 
 verus! {
@@ -401,7 +401,7 @@ fn test_odd() {
 
 #[verusfmt::skip]
 mod M {
-use builtin::*;
+use verus_builtin::*;
 
 spec fn abs(i: int) -> int {
     if i < 0 {

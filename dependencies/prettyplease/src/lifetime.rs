@@ -1,5 +1,5 @@
 use crate::algorithm::Printer;
-use syn_verus::Lifetime;
+use verus_syn::Lifetime;
 
 impl Printer {
     pub fn lifetime(&mut self, lifetime: &Lifetime) {

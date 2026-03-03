@@ -134,6 +134,57 @@ impl<T: DeepView> DeepView for alloc::vec::Vec<T> {
     }
 }
 
+#[cfg(all(feature = "std"))]
+impl<Key, Value, S> View for std::collections::HashMap<Key, Value, S> {
+    type V = Map<Key, Value>;
+
+    uninterp spec fn view(&self) -> Map<Key, Value>;
+}
+
+#[cfg(all(feature = "std"))]
+impl<Key: DeepView, Value: DeepView, S> DeepView for std::collections::HashMap<Key, Value, S> {
+    type V = Map<Key::V, Value::V>;
+
+    open spec fn deep_view(&self) -> Map<Key::V, Value::V> {
+        crate::std_specs::hash::hash_map_deep_view_impl(*self)
+    }
+}
+
+#[cfg(all(feature = "std"))]
+impl<Key, S> View for std::collections::HashSet<Key, S> {
+    type V = Set<Key>;
+
+    uninterp spec fn view(&self) -> Set<Key>;
+}
+
+#[cfg(all(feature = "std"))]
+impl<Key: DeepView, S> DeepView for std::collections::HashSet<Key, S> {
+    type V = Set<Key::V>;
+
+    open spec fn deep_view(&self) -> Set<Key::V> {
+        self@.map(|x: Key| x.deep_view())
+    }
+}
+
+impl<T> View for Option<T> {
+    type V = Option<T>;
+
+    open spec fn view(&self) -> Option<T> {
+        *self
+    }
+}
+
+impl<T: DeepView> DeepView for Option<T> {
+    type V = Option<T::V>;
+
+    open spec fn deep_view(&self) -> Option<T::V> {
+        match self {
+            Some(t) => Some(t.deep_view()),
+            None => None,
+        }
+    }
+}
+
 macro_rules! declare_identity_view {
     ($t:ty) => {
         #[cfg_attr(verus_keep_ghost, verifier::verify)]

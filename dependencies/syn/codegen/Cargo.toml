@@ -12,7 +12,7 @@ json = ["syn-codegen/serde"]
 
 [dependencies]
 anyhow = "1"
-color-backtrace = "0.6"
+color-backtrace = "0.7"
 indexmap = { version = "2", features = ["serde"] }
 indoc = "2"
 inflections = "1.1"
@@ -24,8 +24,6 @@ serde = "1.0.88"
 serde_json = "1.0.38"
 syn = { version = "2", features = ["derive", "full", "parsing", "printing"], default-features = false }
 syn-codegen = { path = "../json", default-features = false }
-toml = { version = "0.8", default-features = false, features = ["parse"] }
+toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
 
 [workspace]
-[patch.crates-io]
-syn_verus = { path = ".." }

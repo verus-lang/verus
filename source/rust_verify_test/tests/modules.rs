@@ -20,7 +20,7 @@ test_verify_one_file! {
     #[test] test_mod_adt_0 M1.to_string() + verus_code_str! {
         mod M2 {
             use crate::M1::Car;
-            use builtin::*;
+            use verus_builtin::*;
 
             fn mod_adt_0() {
                 assert(!Car { four_doors: false }.four_doors);
@@ -33,7 +33,7 @@ test_verify_one_file! {
     #[test] test_mod_adt_1 M1.to_string() + verus_code_str! {
         mod M2 {
             use crate::M1::{is_four_doors, Car};
-            use builtin::*;
+            use verus_builtin::*;
 
             fn test() {
                 let c = Car { four_doors: true };
@@ -61,7 +61,7 @@ test_verify_one_file! {
     #[test] test_mod_fn_publish_opaque_no_reveal M1_OPAQUE.to_string() + verus_code_str! {
         mod M2 {
             use crate::M1::{is_four_doors, Car};
-            use builtin::*;
+            use verus_builtin::*;
 
             fn test() {
                 let c = Car { four_doors: true };
@@ -75,7 +75,7 @@ test_verify_one_file! {
     #[test] test_mod_fn_publish_opaque_reveal M1_OPAQUE.to_string() + verus_code_str! {
         mod M2 {
             use crate::M1::{is_four_doors, Car};
-            use builtin::*;
+            use verus_builtin::*;
 
             fn test() {
                 let c = Car { four_doors: true };
@@ -212,7 +212,7 @@ test_verify_one_file! {
     #[test] open_qualified_refers_to_private verus_code! {
         mod m {
             pub mod n {
-                use builtin::*;
+                use verus_builtin::*;
 
                 spec fn stuff() -> bool { true }
 
@@ -228,7 +228,7 @@ test_verify_one_file! {
     #[test] open_crate verus_code! {
         mod m {
             pub mod n {
-                use builtin::*;
+                use verus_builtin::*;
 
                 pub open(crate) spec fn foo() -> bool {
                     true
@@ -254,7 +254,7 @@ test_verify_one_file! {
     #[test] open_super verus_code! {
         mod m {
             pub mod n {
-                use builtin::*;
+                use verus_builtin::*;
 
                 pub open(super) spec fn foo() -> bool {
                     true
@@ -280,7 +280,7 @@ test_verify_one_file! {
     #[test] open_path verus_code! {
         mod m {
             pub mod n {
-                use builtin::*;
+                use verus_builtin::*;
 
                 pub open(in crate::m) spec fn foo() -> bool {
                     true
@@ -306,7 +306,7 @@ test_verify_one_file! {
     #[test] open_more_public_than_function verus_code! {
         mod m {
             pub mod n {
-                use builtin::*;
+                use verus_builtin::*;
 
                 pub(in crate::m) open(crate) spec fn foo() -> bool {
                     true

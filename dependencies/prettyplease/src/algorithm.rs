@@ -174,6 +174,7 @@ impl Printer {
         }
     }
 
+    #[track_caller]
     pub fn offset(&mut self, offset: isize) {
         match &mut self.buf.last_mut().token {
             Token::Break(token) => token.offset += offset,

@@ -246,7 +246,7 @@ impl<A> Seq<A> {
     }
 
     // deprecated since the triggers inside of 2 of the conjuncts are blocked
-    #[deprecated = "Use `broadcast use group_filter_ensures` instead" ]
+    #[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_filter_ensures` instead" )]
     pub proof fn filter_lemma(self, pred: spec_fn(A) -> bool)
         ensures
     // we don't keep anything bad
@@ -745,6 +745,18 @@ impl<A> Seq<A> {
         }
     }
 
+    /// [`Self::fold_left`] on the reversed sequence is equivalent to
+    /// [`Self::fold_right`] on the original sequence with corresponding folding operator
+    pub proof fn lemma_reverse_fold_left<B>(self, v: B, f: spec_fn(B, A) -> B)
+        ensures
+            self.reverse().fold_left(v, f) == self.fold_right(|a: A, b: B| f(b, a), v),
+    {
+        assert(self.reverse().reverse() =~= self);
+        let g = |a: A, b: B| f(b, a);
+        assert(f =~= |b: B, a: A| g(a, b));
+        self.reverse().lemma_reverse_fold_right(v, |a: A, b: B| f(b, a))
+    }
+
     /// Folds the sequence to the right, applying `f` to perform the fold.
     ///
     /// Equivalent to `DoubleEndedIterator::rfold` in Rust.
@@ -836,6 +848,35 @@ impl<A> Seq<A> {
         }
     }
 
+    /// [`Self::fold_right`] on the reversed sequence is equivalent to
+    /// [`Self::fold_left`] on the original sequence with corresponding folding operator
+    pub proof fn lemma_reverse_fold_right<B>(self, v: B, f: spec_fn(A, B) -> B)
+        ensures
+            self.reverse().fold_right(f, v) == self.fold_left(v, |b: B, a: A| f(a, b)),
+        decreases self.len(),
+    {
+        let g = |b: B, a: A| f(a, b);
+        if self.len() > 0 {
+            let last = self.last();
+            let s0 = self.drop_last();
+            assert(self.reverse() =~= seq![last] + s0.reverse());
+            let res1 = self.reverse().fold_right(f, v);
+            let res2 = self.fold_left(v, g);
+            assert(res1 == self.reverse().fold_right_alt(f, v)) by {
+                self.reverse().lemma_fold_right_alt(f, v)
+            }
+            assert(res2 == g(s0.fold_left(v, g), last));
+            assert(self.reverse().first() == last);
+            assert(self.reverse().subrange(1, self.reverse().len() as int) =~= s0.reverse());
+            assert(res1 == f(last, s0.reverse().fold_right_alt(f, v)));
+            assert(res1 == f(last, s0.reverse().fold_right(f, v))) by {
+                s0.reverse().lemma_fold_right_alt(f, v)
+            }
+            assert(res2 == g(s0.fold_left(v, g), last));
+            s0.lemma_reverse_fold_right(v, f);
+        }
+    }
+
     // Proven lemmas
     /// Given a sequence with no duplicates, each element occurs only
     /// once in its conversion to a multiset
@@ -892,6 +933,28 @@ impl<A> Seq<A> {
                 lemma_multiset_commutative(s0, s1);
                 assert(self.to_multiset().count(self[a]) >= 2);
             }
+        }
+    }
+
+    /// Conversion of a sequence to multiset is equivalent to conversion of its reversion to multiset
+    pub proof fn lemma_reverse_to_multiset(self)
+        ensures
+            self.reverse().to_multiset() =~= self.to_multiset(),
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+        broadcast use super::multiset::group_multiset_axioms;
+
+        if self.len() > 0 {
+            let s2 = self.drop_first();
+            let e = self.first();
+            assert(self =~= seq![e] + s2);
+            assert(self.to_multiset() =~= seq![e].to_multiset().add(s2.to_multiset())) by {
+                lemma_multiset_commutative(seq![e], s2)
+            }
+            assert(self.reverse() =~= s2.reverse().push(e));
+            assert(self.reverse().to_multiset() =~= s2.reverse().to_multiset().insert(e));
+            s2.lemma_reverse_to_multiset();
         }
     }
 
@@ -1303,9 +1366,11 @@ impl<A> Seq<A> {
             ),
         decreases self.len(),
     {
-        #[allow(deprecated)]
-        lemma_seq_properties::<A>();  // new broadcast group not working here
-        broadcast use Seq::lemma_remove_duplicates_properties;
+        broadcast use {
+            group_seq_properties,
+            lemma_seq_skip_of_skip,
+            Seq::lemma_remove_duplicates_properties,
+        };
 
         if i == 0 {
         } else if i == self.len() {
@@ -1349,8 +1414,8 @@ impl<A> Seq<A> {
 
     /// When appending an element `x` to a sequence:
     /// - If `x` is in `self + seen`, removing duplicates equals removing duplicates from self
-    /// - If x is not in (self + seen), removing duplicates equals removing duplicates from self,
-    ///   concatenated with [x]
+    /// - If `x` is not in (self + seen), removing duplicates equals removing duplicates from self,
+    ///   concatenated with `[x]`
     ///
     /// ## Example
     /// ```rust
@@ -1902,7 +1967,7 @@ impl<A> Seq<A> {
     }
 
     /// If two sequences have the same length and `i` is a valid index,
-    /// then the pair (a[i], b[i]) is contained in their zip.
+    /// then the pair `(a[i], b[i])` is contained in their zip.
     ///
     /// ## Example
     /// ```rust
@@ -3209,6 +3274,11 @@ pub open spec fn commutative_foldr<A, B>(f: spec_fn(A, B) -> B) -> bool {
     forall|x: A, y: A, v: B| #[trigger] f(x, f(y, v)) == f(y, f(x, v))
 }
 
+// Definition of a commutative fold_left operator.
+pub open spec fn commutative_foldl<A, B>(f: spec_fn(B, A) -> B) -> bool {
+    forall|x: A, y: A, v: B| #[trigger] f(f(v, x), y) == f(f(v, y), x)
+}
+
 // For a commutative fold_right operator, any folding order
 // (i.e., any permutation) produces the same result.
 pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_fn(A, B) -> B, v: B)
@@ -3246,6 +3316,32 @@ pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_
     } else {
         assert(l2.to_multiset().len() == 0);
     }
+}
+
+// For a commutative fold_left operator, any folding order
+// (i.e., any permutation) produces the same result.
+pub proof fn lemma_fold_left_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_fn(B, A) -> B, v: B)
+    requires
+        commutative_foldl(f),
+        l1.to_multiset() == l2.to_multiset(),
+    ensures
+        l1.fold_left(v, f) == l2.fold_left(v, f),
+{
+    let g = |a: A, b: B| f(b, a);
+    assert(f =~= |b: B, a: A| g(a, b));
+    assert(l1.fold_left(v, f) == l1.reverse().fold_right(g, v)) by {
+        l1.lemma_reverse_fold_right(v, g)
+    };
+    assert(l2.fold_left(v, f) == l2.reverse().fold_right(g, v)) by {
+        l2.lemma_reverse_fold_right(v, g)
+    };
+    assert(l1.reverse().to_multiset() =~= l2.reverse().to_multiset()) by {
+        l1.lemma_reverse_to_multiset();
+        l2.lemma_reverse_to_multiset();
+    }
+    assert(forall|x: A| #[trigger] l1.reverse().contains(x) ==> l1.contains(x));
+    assert(forall|x: A| #[trigger] l2.reverse().contains(x) ==> l2.contains(x));
+    lemma_fold_right_permutation(l1.reverse(), l2.reverse(), g, v);
 }
 
 /************************** Lemmas about Take/Skip ***************************/
@@ -3441,71 +3537,6 @@ pub broadcast proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
 {
 }
 
-/// Properties of sequences from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-// TODO: seems like this warning doesn't come up?
-#[deprecated = "Use `broadcast use group_seq_properties` instead"]
-pub proof fn lemma_seq_properties<A>()
-    ensures
-        forall|s: Seq<A>, x: A|
-            s.contains(x) <==> exists|i: int| 0 <= i < s.len() && #[trigger] s[i] == x,  //from lemma_seq_contains(s, x),
-        forall|x: A| !(#[trigger] Seq::<A>::empty().contains(x)),  //from lemma_seq_empty_contains_nothing(x),
-        forall|s: Seq<A>| #[trigger] s.len() == 0 ==> s =~= Seq::<A>::empty(),  //from lemma_seq_empty_equality(s),
-        forall|x: Seq<A>, y: Seq<A>, elt: A| #[trigger]
-            (x + y).contains(elt) <==> x.contains(elt) || y.contains(elt),  //from lemma_seq_concat_contains_all_elements(x, y, elt),
-        forall|s: Seq<A>, v: A, x: A| #[trigger] s.push(v).contains(x) <==> v == x || s.contains(x),  //from lemma_seq_contains_after_push(s, v, x)
-        forall|s: Seq<A>, start: int, stop: int, x: A|
-            (0 <= start <= stop <= s.len() && #[trigger] s.subrange(start, stop).contains(x)) <==> (
-            exists|i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x),  //from lemma_seq_subrange_elements(s, start, stop, x),
-        forall|s: Seq<A>, n: int| 0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n,  //from lemma_seq_take_len(s, n)
-        forall|s: Seq<A>, n: int, x: A|
-            (#[trigger] s.take(n).contains(x) && 0 <= n <= s.len()) <==> (exists|i: int|
-                0 <= i < n <= s.len() && #[trigger] s[i] == x),  //from lemma_seq_take_contains(s, n, x),
-        forall|s: Seq<A>, n: int, j: int| 0 <= j < n <= s.len() ==> #[trigger] s.take(n)[j] == s[j],  //from lemma_seq_take_index(s, n, j),
-        forall|s: Seq<A>, n: int| 0 <= n <= s.len() ==> #[trigger] s.skip(n).len() == s.len() - n,  //from lemma_seq_skip_len(s, n),
-        forall|s: Seq<A>, n: int, x: A|
-            (#[trigger] s.skip(n).contains(x) && 0 <= n <= s.len()) <==> (exists|i: int|
-                0 <= n <= i < s.len() && #[trigger] s[i] == x),  //from lemma_seq_skip_contains(s, n, x),
-        forall|s: Seq<A>, n: int, j: int|
-            0 <= n && 0 <= j < (s.len() - n) ==> #[trigger] s.skip(n)[j] == s[j + n],  //from lemma_seq_skip_index(s, n, j),
-        forall|a: Seq<A>, b: Seq<A>, n: int|
-            #![trigger (a+b).take(n)]
-            #![trigger (a+b).skip(n)]
-            n == a.len() ==> ((a + b).take(n) =~= a && (a + b).skip(n) =~= b),  //from lemma_seq_append_take_skip(a, b, n),
-        forall|s: Seq<A>, i: int, v: A, n: int|
-            0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).take(n) == s.take(n).update(i, v),  //from lemma_seq_take_update_commut1(s, i, v, n),
-        forall|s: Seq<A>, i: int, v: A, n: int|
-            0 <= n <= i < s.len() ==> #[trigger] s.update(i, v).take(n) == s.take(n),  //from lemma_seq_take_update_commut2(s, i, v, n),
-        forall|s: Seq<A>, i: int, v: A, n: int|
-            0 <= n <= i < s.len() ==> #[trigger] s.update(i, v).skip(n) == s.skip(n).update(
-                i - n,
-                v,
-            ),  //from lemma_seq_skip_update_commut1(s, i, v, n),
-        forall|s: Seq<A>, i: int, v: A, n: int|
-            0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).skip(n) == s.skip(n),  //from lemma_seq_skip_update_commut2(s, i, v, n),
-        forall|s: Seq<A>, v: A, n: int|
-            0 <= n <= s.len() ==> #[trigger] s.push(v).skip(n) == s.skip(n).push(v),  //from lemma_seq_skip_build_commut(s, v, n),
-        forall|s: Seq<A>, n: int| n == 0 ==> #[trigger] s.skip(n) == s,  //from lemma_seq_skip_nothing(s, n),
-        forall|s: Seq<A>, n: int| n == 0 ==> #[trigger] s.take(n) == Seq::<A>::empty(),  //from lemma_seq_take_nothing(s, n),
-        forall|s: Seq<A>, m: int, n: int|
-            (0 <= m && 0 <= n && m + n <= s.len()) ==> #[trigger] s.skip(m).skip(n) == s.skip(
-                m + n,
-            ),  //from lemma_seq_skip_of_skip(s, m, n),
-        forall|s: Seq<A>, a: A| #[trigger] (s.push(a).to_multiset()) =~= s.to_multiset().insert(a),  //from o_multiset_properties
-        forall|s: Seq<A>| s.len() == #[trigger] s.to_multiset().len(),  //from to_multiset_ensures
-        forall|s: Seq<A>, a: A|
-            s.contains(a) <==> #[trigger] s.to_multiset().count(a)
-                > 0,  //from to_multiset_ensures
-{
-    broadcast use {group_seq_properties, lemma_seq_skip_of_skip};
-    // TODO: for some reason this still needs to be explicitly stated
-
-    assert forall|s: Seq<A>, v: A, x: A| v == x || s.contains(x) implies #[trigger] s.push(
-        v,
-    ).contains(x) by {
-        lemma_seq_contains_after_push(s, v, x);
-    }
-}
-
 #[doc(hidden)]
 #[verifier::inline]
 pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> {
@@ -3559,23 +3590,32 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> {
 #[macro_export]
 macro_rules! assert_seqs_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::seq_lib::assert_seqs_equal_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::seq_lib::assert_seqs_equal_internal!($($tail)*))
     };
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! assert_seqs_equal_internal {
-    (::builtin::spec_eq($s1:expr, $s2:expr)) => {
+    (::vstd::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
     };
-    (::builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+    (::vstd::prelude::spec_eq($s1:expr, $s2:expr)) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
+    };
+    (::vstd::prelude::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
     };
-    (crate::builtin::spec_eq($s1:expr, $s2:expr)) => {
+    (crate::prelude::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
     };
-    (crate::builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+    (crate::prelude::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
+    };
+    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr)) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
+    };
+    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
     };
     ($s1:expr, $s2:expr $(,)?) => {
@@ -3587,7 +3627,7 @@ macro_rules! assert_seqs_equal_internal {
         $crate::vstd::prelude::assert_by($crate::vstd::prelude::equal(s1, s2), {
             $crate::vstd::prelude::assert_(s1.len() == s2.len());
             $crate::vstd::prelude::assert_forall_by(|$idx : $crate::vstd::prelude::int| {
-                $crate::vstd::prelude::requires(::builtin_macros::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
+                $crate::vstd::prelude::requires($crate::vstd::prelude::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
                 $crate::vstd::prelude::ensures($crate::vstd::prelude::equal(s1.index($idx), s2.index($idx)));
                 { $bblock }
             });

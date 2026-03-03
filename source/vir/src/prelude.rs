@@ -43,12 +43,21 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let EucDiv = str_to_node(EUC_DIV);
     #[allow(non_snake_case)]
     let EucMod = str_to_node(EUC_MOD);
+    #[allow(non_snake_case)]
+    let RAdd = str_to_node(RADD);
+    #[allow(non_snake_case)]
+    let RSub = str_to_node(RSUB);
+    #[allow(non_snake_case)]
+    let RMul = str_to_node(RMUL);
+    #[allow(non_snake_case)]
+    let RDiv = str_to_node(RDIV);
     let check_decrease_int = str_to_node(CHECK_DECREASE_INT);
     let check_decrease_height = str_to_node(CHECK_DECREASE_HEIGHT);
     let height = str_to_node(HEIGHT);
     let height_le = nodes!(_ partial-order 0);
     let height_lt = str_to_node(HEIGHT_LT);
     let height_rec_fun = str_to_node(HEIGHT_REC_FUN);
+    let resolved = str_to_node(HAS_RESOLVED);
     let closure_req = str_to_node(CLOSURE_REQ);
     let closure_ens = str_to_node(CLOSURE_ENS);
     let default_ens = str_to_node(DEFAULT_ENS);
@@ -73,9 +82,11 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     };
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
+    let box_real = str_to_node(BOX_REAL);
     let box_fndef = str_to_node(BOX_FNDEF);
     let unbox_int = str_to_node(UNBOX_INT);
     let unbox_bool = str_to_node(UNBOX_BOOL);
+    let unbox_real = str_to_node(UNBOX_REAL);
     let unbox_fndef = str_to_node(UNBOX_FNDEF);
 
     #[allow(non_snake_case)]
@@ -90,6 +101,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 
     let typ = str_to_node(TYPE);
     let type_id_bool = str_to_node(TYPE_ID_BOOL);
+    let type_id_real = str_to_node(TYPE_ID_REAL);
     let type_id_int = str_to_node(TYPE_ID_INT);
     let type_id_nat = str_to_node(TYPE_ID_NAT);
     let type_id_char = str_to_node(TYPE_ID_CHAR);
@@ -97,12 +109,14 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_isize = str_to_node(TYPE_ID_ISIZE);
     let type_id_uint = str_to_node(TYPE_ID_UINT);
     let type_id_sint = str_to_node(TYPE_ID_SINT);
+    let type_id_float = str_to_node(TYPE_ID_FLOAT);
     let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
     let type_id_const_bool = str_to_node(TYPE_ID_CONST_BOOL);
     let sized = str_to_node(SIZED_BOUND);
     let decoration = str_to_node(DECORATION);
     let decorate_nil_sized = str_to_node(DECORATE_NIL_SIZED);
     let decorate_nil_slice = str_to_node(DECORATE_NIL_SLICE);
+    let decorate_nil_dyn = str_to_node(DECORATE_NIL_DYN);
     let decorate_ref = str_to_node(DECORATE_REF);
     let decorate_mut_ref = str_to_node(DECORATE_MUT_REF);
     let decorate_box = str_to_node(DECORATE_BOX);
@@ -135,6 +149,11 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
     let type_id_ptr = str_to_node(TYPE_ID_PTR);
     let type_id_global = str_to_node(TYPE_ID_GLOBAL);
+    let type_id_mut_ref = str_to_node(TYPE_ID_MUT_REF);
+
+    let mut_ref_current = str_to_node(MUT_REF_CURRENT);
+    let mut_ref_future = str_to_node(MUT_REF_FUTURE);
+    let mut_ref_update_current = str_to_node(MUT_REF_UPDATE_CURRENT);
 
     let mut prelude = nodes_vec!(
         // Fuel
@@ -162,25 +181,30 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-sort [Height] 0)
         (declare-fun [box_int] (Int) [Poly])
         (declare-fun [box_bool] (Bool) [Poly])
+        (declare-fun [box_real] (Real) [Poly])
         (declare-fun [box_fndef] ([FnDef]) [Poly])
         (declare-fun [unbox_int] ([Poly]) Int)
         (declare-fun [unbox_bool] ([Poly]) Bool)
+        (declare-fun [unbox_real] ([Poly]) Real)
         (declare-fun [unbox_fndef] ([Poly]) [FnDef])
         (declare-sort [typ] 0)
         (declare-const [type_id_bool] [typ])
         (declare-const [type_id_int] [typ])
         (declare-const [type_id_nat] [typ])
+        (declare-const [type_id_real] [typ])
         (declare-const [type_id_char] [typ])
         (declare-const [type_id_usize] [typ])
         (declare-const [type_id_isize] [typ])
         (declare-const [type_id_unit] [typ])
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
+        (declare-fun [type_id_float] (Int) [typ])
         (declare-fun [type_id_const_int] (Int) [typ])
         (declare-fun [type_id_const_bool] (Bool) [typ])
         (declare-sort [decoration] 0)
         (declare-const [decorate_nil_sized] [decoration])
         (declare-const [decorate_nil_slice] [decoration])
+        (declare-const [decorate_nil_dyn] [decoration])
         (declare-fun [decorate_dst_inherit] ([decoration]) [decoration])
         (declare-fun [decorate_ref] ([decoration]) [decoration])
         (declare-fun [decorate_mut_ref] ([decoration]) [decoration])
@@ -192,6 +216,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [decorate_never] ([decoration]) [decoration])
         (declare-fun [decorate_const_ptr] ([decoration]) [decoration])
         (declare-fun [type_id_array] ([decoration] [typ] [decoration] [typ]) [typ])
+        (declare-fun [type_id_mut_ref] ([decoration] [typ]) [typ])
         (declare-fun [type_id_slice] ([decoration] [typ]) [typ])
         (declare-const [type_id_strslice] [typ])
         (declare-const [type_id_global] [typ])
@@ -202,6 +227,58 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [mk_fun] (Fun) Fun)
         (declare-fun [const_int] ([typ]) Int)
         (declare-fun [const_bool] ([typ]) Bool)
+        (declare-fun [mut_ref_current] ([Poly]) [Poly])
+        (declare-fun [mut_ref_future] ([Poly]) [Poly])
+        (declare-fun [mut_ref_update_current] ([Poly] [Poly]) [Poly])
+
+        (axiom (forall ((m [Poly]) (arg [Poly])) (!
+            (=
+                ([mut_ref_current] ([mut_ref_update_current] m arg))
+                arg
+            )
+            :pattern (([mut_ref_update_current] m arg))
+            :qid prelude_mut_ref_update_current_current
+            :skolemid skolem_prelude_mut_ref_update_current_current
+        )))
+        (axiom (forall ((m [Poly]) (arg [Poly])) (!
+            (=
+                ([mut_ref_future] ([mut_ref_update_current] m arg))
+                ([mut_ref_future] m)
+            )
+            :pattern (([mut_ref_update_current] m arg))
+            :qid prelude_mut_ref_update_current_future
+            :skolemid skolem_prelude_mut_ref_update_current_future
+        )))
+        (axiom (forall ((m [Poly]) (d [decoration]) (t [typ])) (!
+            (=>
+                (has_type m (MUTREF d t))
+                (has_type ([mut_ref_current] m) t)
+            )
+            :pattern ((has_type m (MUTREF d t)) ([mut_ref_current] m))
+            :qid prelude_mut_ref_current_has_type
+            :skolemid skolem_prelude_mut_ref_current_has_type
+        )))
+        (axiom (forall ((m [Poly]) (d [decoration]) (t [typ])) (!
+            (=>
+                (has_type m (MUTREF d t))
+                (has_type ([mut_ref_future] m) t)
+            )
+            :pattern ((has_type m (MUTREF d t)) ([mut_ref_future] m))
+            :qid prelude_mut_ref_current_has_type
+            :skolemid skolem_prelude_mut_ref_current_has_type
+        )))
+        (axiom (forall ((m [Poly]) (d [decoration]) (t [typ]) (arg [Poly])) (!
+            (=>
+                (and
+                    (has_type m (MUTREF d t))
+                    (has_type arg t)
+                )
+                (has_type ([mut_ref_update_current] m arg) (MUTREF d t))
+            )
+            :pattern ((has_type m (MUTREF d t)) ([mut_ref_update_current] m arg))
+            :qid prelude_mut_ref_update_has_type
+            :skolemid skolem_prelude_mut_ref_update_has_type
+        )))
 
         // The sized-ness of a type is determined by its decoration.
         // Ref, Box, etc. are all sized.
@@ -295,6 +372,12 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_has_type_bool
             :skolemid skolem_prelude_has_type_bool
         )))
+        (axiom (forall ((r Real)) (!
+            ([has_type] ([box_real] r) [type_id_real])
+            :pattern (([has_type] ([box_real] r) [type_id_real]))
+            :qid prelude_has_type_real
+            :skolemid skolem_prelude_has_type_real
+        )))
         (axiom (forall ((x [Poly]) (t [typ])) (!
             (and
                 ([has_type] ([as_type] x t) t)
@@ -324,6 +407,12 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern (([box_int] x))
             :qid prelude_unbox_box_int
             :skolemid skolem_prelude_unbox_box_int
+        )))
+        (axiom (forall ((x Real)) (!
+            (= x ([unbox_real] ([box_real] x)))
+            :pattern (([box_real] x))
+            :qid prelude_unbox_box_real
+            :skolemid skolem_prelude_unbox_box_real
         )))
         (axiom (forall ((x [Poly])) (!
             (=>
@@ -388,6 +477,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_box_unbox_sint
             :skolemid skolem_prelude_box_unbox_sint
         )))
+        (axiom (forall ((bits Int) (x [Poly])) (!
+            (=>
+                ([has_type] x ([type_id_float] bits))
+                (= x ([box_int] ([unbox_int] x)))
+            )
+            :pattern (([has_type] x ([type_id_float] bits)))
+            :qid prelude_box_unbox_sint
+            :skolemid skolem_prelude_box_unbox_sint
+        )))
         (axiom (forall ((x [Poly])) (!
             (=>
                 ([has_type] x [type_id_char])
@@ -396,6 +494,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern (([has_type] x [type_id_char]))
             :qid prelude_box_unbox_char
             :skolemid skolem_prelude_box_unbox_char
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_real])
+                (= x ([box_real] ([unbox_real] x)))
+            )
+            :pattern (([has_type] x [type_id_real]))
+            :qid prelude_box_unbox_real
+            :skolemid skolem_prelude_box_unbox_real
         )))
 
         // Extensional equality
@@ -575,6 +682,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_has_type_sint
             :skolemid skolem_prelude_has_type_sint
         )))
+        (axiom (forall ((bits Int) (x Int)) (!
+            (=>
+                ([u_inv] bits x)
+                ([has_type] ([box_int] x) ([type_id_float] bits))
+            )
+            :pattern (([has_type] ([box_int] x) ([type_id_float] bits)))
+            :qid prelude_has_type_sint
+            :skolemid skolem_prelude_has_type_sint
+        )))
         (axiom (forall ((x Int)) (!
             (=>
                 ([char_inv] x)
@@ -629,6 +745,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_unbox_sint
             :skolemid skolem_prelude_unbox_sint
         )))
+        (axiom (forall ((bits Int) (x [Poly])) (!
+            (=>
+                ([has_type] x ([type_id_float] bits))
+                ([u_inv] bits ([unbox_int] x))
+            )
+            :pattern (([has_type] x ([type_id_float] bits)))
+            :qid prelude_unbox_sint
+            :skolemid skolem_prelude_unbox_sint
+        )))
 
         // With smt.arith.nl=false, Z3 sometimes fails to prove obvious formulas
         // that happen to contain *, div, or mod (e.g. failing to prove P ==> P).
@@ -638,6 +763,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [Mul] (Int Int) Int)
         (declare-fun [EucDiv] (Int Int) Int)
         (declare-fun [EucMod] (Int Int) Int)
+        (declare-fun [RAdd] (Real Real) Real)
+        (declare-fun [RSub] (Real Real) Real)
+        (declare-fun [RMul] (Real Real) Real)
+        (declare-fun [RDiv] (Real Real) Real)
         (axiom (forall ((x Int) (y Int)) (!
             (= ([Add] x y) (+ x y))
             :pattern (([Add] x y))
@@ -667,6 +796,30 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern (([EucMod] x y))
             :qid prelude_eucmod
             :skolemid skolem_prelude_eucmod
+        )))
+        (axiom (forall ((x Real) (y Real)) (!
+            (= ([RAdd] x y) (+ x y))
+            :pattern (([RAdd] x y))
+            :qid prelude_radd
+            :skolemid skolem_prelude_radd
+        )))
+        (axiom (forall ((x Real) (y Real)) (!
+            (= ([RSub] x y) (- x y))
+            :pattern (([RSub] x y))
+            :qid prelude_rsub
+            :skolemid skolem_prelude_rsub
+        )))
+        (axiom (forall ((x Real) (y Real)) (!
+            (= ([RMul] x y) (* x y))
+            :pattern (([RMul] x y))
+            :qid prelude_rmul
+            :skolemid skolem_prelude_rmul
+        )))
+        (axiom (forall ((x Real) (y Real)) (!
+            (= ([RDiv] x y) (/ x y))
+            :pattern (([RDiv] x y))
+            :qid prelude_rdiv
+            :skolemid skolem_prelude_rdiv
         )))
 
         // These axioms are important to make sure that the nonlinear operations
@@ -834,6 +987,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_singularmod
             :skolemid skolem_prelude_singularmod
         )))
+
+        (declare-fun [resolved] ([decoration] [typ] [Poly]) Bool)
 
         // closure-related
 

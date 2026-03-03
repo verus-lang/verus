@@ -2,6 +2,7 @@
 
  - `accept_recursive_types`
  - [`all_triggers`](#all_triggers)
+ - [`allow_complex_invariants`](#verifierallow_complex_invariants)
  - [`allow_in_spec`](#verifierallow_in_spec)
  - [`atomic`](#verifieratomic)
  - [`auto`](#auto)
@@ -20,7 +21,7 @@
  - [`trigger`](#trigger)
  - [`truncate`](#verifiertruncate)
  - [`type_invariant`](#verifiertype_invariant)
- - `when_used_as_spec`
+ - [`when_used_as_spec`](#verifierwhen_used_as_spec)
  - [`exec_allows_no_decreases_clause`](#verifierexec_allows_no_decreases_clause)
  - [`assume_termination`](#verifierassume_termination)
 
@@ -32,6 +33,23 @@ See [the trigger specification procedure](./trigger-annotations.md#selecting-tri
 for more information.
 
 Unlike most Verus attributes, this does not require the `verifier::` prefix.
+
+## `#[verifier::allow_complex_invariants]`
+
+By default, `invariant_except_break` and `ensures` are not supported with
+[`#[verifier::loop_isolation(false)]`](#verifierloop_isolation) because they
+aren't needed. When loop isolation is disabled, the weakest precondition
+calculation automatically tracks all paths through breaks into the code after
+the loop, making these complex invariant types unnecessary.
+
+However, in some cases (such as experimenting with toggling the loop isolation setting,
+or for our de-sugaring of for-loops), it can be useful to use these invariant types even with loop isolation disabled.
+The `allow_complex_invariants` attribute enables this by transforming the invariants:
+ * `invariant_except_break` clauses are converted to regular `invariant` clauses
+ * `ensures` clauses are ignored (since they are redundant with the weakest precondition calculation)
+
+**This attribute only applies when `loop_isolation` is false.** Using it with `loop_isolation(true)`
+(or the default) will produce an error.
 
 ## `#![verifier::allow_in_spec]`
 
@@ -159,6 +177,17 @@ already elided if the enclosing function body has no legitimate verification err
 ## `#[verifier::type_invariant]`
 
 Declares that a spec function is a type invariant for some datatype. See [type invariants](./reference-type-invariants.md).
+
+## `#[verifier::when_used_as_spec]`
+
+It can be convenient to use the name of an exec function in a specification
+context.  For example, if a function takes `v: Vec<u64>` as an argument, it's
+convenient to use `v.len()` in the pre-/post-conditions, even though `v.len()`
+is an exec function.  To add such a shortcut to your code, add a
+`#[verifier::when_used_as_spec(your_spec_fn_name)]` attribute to your
+executable function.  For this to work, the supplied spec function (e.g., named
+`your_spec_fn_name` in the example above) must take the same number and type of
+arguments and return the same return type as the exec function.
 
 ## `#[verifier::exec_allows_no_decreases_clause]`
 

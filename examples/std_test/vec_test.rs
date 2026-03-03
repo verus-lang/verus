@@ -17,4 +17,12 @@ fn vec_extend_slice_test() {
     runtime_assert(b.len() == 2);
 }
 
+fn vec_is_empty_test() {
+    let empty: Vec<u64> = vec![];
+    let non_empty: Vec<u64> = vec![1];
+
+    runtime_assert(empty.is_empty());
+    runtime_assert(!non_empty.is_empty());
+}
+
 } // verus!

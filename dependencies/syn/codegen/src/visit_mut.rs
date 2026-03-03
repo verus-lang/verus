@@ -104,7 +104,7 @@ fn visit(
 fn node(traits: &mut TokenStream, impls: &mut TokenStream, s: &Node, defs: &Definitions) {
     let under_name = gen::under_name(&s.ident);
     let ident = Ident::new(&s.ident, Span::call_site());
-    let ty = if let "Ident" | "Span" = s.ident.as_str() {
+    let ty = if gen::TERMINAL_TYPES.contains(&s.ident.as_str()) {
         quote!(proc_macro2::#ident)
     } else {
         quote!(crate::#ident)
@@ -186,20 +186,30 @@ fn node(traits: &mut TokenStream, impls: &mut TokenStream, s: &Node, defs: &Defi
         }
     }
 
+    let traits_body = if s.ident == "Span" || s.ident == "TokenStream" {
+        None
+    } else {
+        Some(quote! {
+            #visit_mut_fn(self, i);
+        })
+    };
+
     traits.extend(quote! {
         fn #visit_mut_fn(&mut self, i: &mut #ty) {
-            #visit_mut_fn(self, i);
+            #traits_body
         }
     });
 
-    impls.extend(quote! {
-        pub fn #visit_mut_fn<V>(v: &mut V, node: &mut #ty)
-        where
-            V: VisitMut + ?Sized,
-        {
-            #visit_mut_impl
-        }
-    });
+    if s.ident != "TokenStream" {
+        impls.extend(quote! {
+            pub fn #visit_mut_fn<V>(v: &mut V, node: &mut #ty)
+            where
+                V: VisitMut + ?Sized,
+            {
+                #visit_mut_impl
+            }
+        });
+    }
 
     if s.ident == "Attribute" {
         let features = cfg::features(&s.features, DocCfg::Ordinary);

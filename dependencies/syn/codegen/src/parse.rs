@@ -86,7 +86,7 @@ fn introspect_item(item: &AstItem, lookup: &Lookup) -> types::Node {
                     types::Data::Private
                 }
             },
-            exhaustive: true,
+            exhaustive: !is_non_exhaustive(&item.ast.attrs),
         },
         Data::Union(..) => panic!("union not supported"),
     }
@@ -185,7 +185,7 @@ fn introspect_type(item: &syn::Type, lookup: &Lookup) -> types::Type {
             if mac.path.segments.last().unwrap().ident == "Token" =>
         {
             let content = mac.tokens.to_string();
-            let ty = lookup.tokens.get(&content).unwrap().to_string();
+            let ty = lookup.tokens.get(&content).unwrap().clone();
 
             types::Type::Token(ty)
         }
@@ -306,25 +306,20 @@ mod parsing {
         }
     }
 
-    // Parses a simple AstStruct without the `pub struct` prefix.
-    fn ast_struct_inner(input: ParseStream) -> Result<AstItem> {
+    pub fn ast_struct(input: ParseStream) -> Result<AstItem> {
+        let attrs = input.call(Attribute::parse_outer)?;
+        input.parse::<Token![pub]>()?;
+        input.parse::<Token![struct]>()?;
         let ident: Ident = input.parse()?;
         let features = full(input);
         let rest: TokenStream = input.parse()?;
         Ok(AstItem {
             ast: syn::parse2(quote! {
+                #(#attrs)*
                 pub struct #ident #rest
             })?,
             features,
         })
-    }
-
-    pub fn ast_struct(input: ParseStream) -> Result<AstItem> {
-        input.call(Attribute::parse_outer)?;
-        input.parse::<Token![pub]>()?;
-        input.parse::<Token![struct]>()?;
-        let res = input.call(ast_struct_inner)?;
-        Ok(res)
     }
 
     pub fn ast_enum(input: ParseStream) -> Result<AstItem> {
@@ -422,7 +417,7 @@ mod parsing {
             expansion.parse::<Token![$]>()?;
             let path: Path = expansion.parse()?;
             let ty = path.segments.last().unwrap().ident.to_string();
-            tokens.insert(token, ty.to_string());
+            tokens.insert(token, ty.clone());
         }
         Ok(tokens)
     }
@@ -595,13 +590,13 @@ fn do_load_file(
                 let features = get_features(&item.attrs, features);
 
                 // Try to parse the AstItem declaration out of the item.
-                let tts = item.mac.tokens.clone();
+                let tokens = item.mac.tokens.clone();
                 let mut found = if item.mac.path.is_ident("ast_struct") {
-                    parsing::ast_struct.parse2(tts)
+                    parsing::ast_struct.parse2(tokens)
                 } else if item.mac.path.is_ident("ast_enum") {
-                    parsing::ast_enum.parse2(tts)
+                    parsing::ast_enum.parse2(tokens)
                 } else if item.mac.path.is_ident("ast_enum_of_structs") {
-                    parsing::ast_enum_of_structs.parse2(tts)
+                    parsing::ast_enum_of_structs.parse2(tokens)
                 } else {
                     continue;
                 }?;

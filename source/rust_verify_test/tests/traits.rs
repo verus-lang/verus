@@ -163,7 +163,10 @@ test_verify_one_file_with_options! {
                 no_method_body() // can't appear in implementation
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "no_method_body can only appear in trait method declarations",
+        "no_method_body can only appear in trait method declarations",
+    ])
 }
 
 test_verify_one_file! {
@@ -242,7 +245,7 @@ test_verify_one_file! {
         fn test<A: T>(a: &A) {
             a.VERUS_SPEC__f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "`crate::T::VERUS_SPEC__f` is not supported")
+    } => Err(err) => assert_vir_error_msg(err, "T::VERUS_SPEC__f`")
 }
 
 test_verify_one_file! {
@@ -499,9 +502,8 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        assert_eq!(err.errors.len(), 2);
+        assert_eq!(err.errors.len(), 1);
         assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
-        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
     }
 }
 
@@ -564,9 +566,8 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        assert_eq!(err.errors.len(), 2);
+        assert_eq!(err.errors.len(), 1);
         assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
-        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
     }
 }
 
@@ -2414,7 +2415,7 @@ test_verify_one_file! {
                 consume(*other);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `*other` which is behind a shared reference")
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `*other` which is behind a shared reference")
 }
 
 test_verify_one_file! {
@@ -2626,12 +2627,11 @@ test_verify_one_file! {
         impl T for S { spec fn f() -> int { 200 } }
         impl<A: Sized> T for A { spec fn f() -> int { 100 } }
         proof fn test() {
-            assert(<S as T>::f() == 100);
-            assert(<S as T>::f() == 200); // FAILS
+            assert(<S as T>::f() == 200);
+            assert(<S as T>::f() == 100); // FAILS
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
-    // TODO: } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -2680,6 +2680,45 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
     // TODO: } => Err(err) => assert_one_fails(err)
+}
+
+// This test should fail due to conflicting trait implementations, but currently
+// fails due to extern types not being supported by verus. Once extern type are
+// supported, the expected error should be updated here.
+test_verify_one_file_with_options! {
+    #[test] test_conflicting_sizedness_constraints ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(extern_types))]
+        #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
+
+        use vstd::prelude::*;
+
+        verus! {
+        extern "C" {
+            type E;
+        }
+
+        trait T: core::marker::PointeeSized {
+            spec fn f() -> int;
+        }
+
+        impl<A: core::marker::MetaSized> T for A {
+            spec fn f() -> int { 3 }
+        }
+
+        impl T for E {
+            spec fn f() -> int { 4 }
+        }
+
+        proof fn f() {
+            assert(<E as T>::f() == 3);
+            assert(<E as T>::f() == 4);
+            assert(false);
+        }
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "The verifier does not yet support the following Rust feature: foreign types",
+        "The verifier does not yet support the following Rust feature: foreign types",
+    ])
 }
 
 test_verify_one_file! {
@@ -2912,8 +2951,8 @@ test_verify_one_file! {
 
         trait ATrait {
             exec fn afun(Tracked(aparam): Tracked<&mut AType>)
-                requires old(aparam) == (AType { v: 41 }),
-                ensures aparam == (AType { v: 41 });
+                requires *old(aparam) == (AType { v: 41 }),
+                ensures *aparam == (AType { v: 41 });
         }
 
         struct AnotherType {}
@@ -3501,7 +3540,7 @@ test_verify_one_file! {
         mod m1 {
             pub struct S;
             impl crate::T for S {
-                closed spec fn f() -> builtin::int { 15 }
+                closed spec fn f() -> verus_builtin::int { 15 }
                 proof fn g() {}
             }
         }
@@ -3521,7 +3560,7 @@ test_verify_one_file! {
                 (s, s)
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `s`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `s`")
 }
 
 test_verify_one_file! {
@@ -3571,6 +3610,40 @@ test_verify_one_file! {
 
         impl T for bool {
             proof fn g() { h(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] test_default11c verus_code! {
+        trait T {
+            proof fn f<A>() ensures false { Self::g() }
+            proof fn g() ensures false;
+        }
+
+        proof fn h() ensures false {
+            <bool as T>::f::<u8>();
+        }
+
+        impl T for bool {
+            proof fn g() { h(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] test_default11d verus_code! {
+        trait T {
+            proof fn f() ensures false { Self::g::<u8>() }
+            proof fn g<A>() ensures false;
+        }
+
+        proof fn h() ensures false {
+            <bool as T>::f();
+        }
+
+        impl T for bool {
+            proof fn g<A>() { h(); }
         }
     } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
@@ -3719,14 +3792,14 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_default19 verus_code! {
         mod m1 {
-            #[allow(unused_imports)]use builtin_macros::*;#[allow(unused_imports)]use builtin::*;
+            #[allow(unused_imports)]use verus_builtin_macros::*;#[allow(unused_imports)]use verus_builtin::*;
             pub trait T {
                 open spec fn f() -> int { 3 }
             }
             impl T for bool {}
         }
         mod m2 {
-            #[allow(unused_imports)]use builtin_macros::*;#[allow(unused_imports)]use builtin::*;
+            #[allow(unused_imports)]use verus_builtin_macros::*;#[allow(unused_imports)]use verus_builtin::*;
             use crate::m1::*;
             proof fn test() {
                 assert(<bool as T>::f() == 3);
@@ -4111,6 +4184,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_recursion_through_sync_impl_is_checked verus_code! {
+        use vstd::std_specs::alloc::*;
         trait Tr {
             proof fn tr_g() {
             }
@@ -4159,6 +4233,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_recursion_through_send_impl_is_checked verus_code! {
+        use vstd::std_specs::alloc::*;
         trait Tr {
             proof fn tr_g() {
             }
@@ -4349,4 +4424,117 @@ test_verify_one_file! {
             assert(foo::<isize>() == foo::<i64>()); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_typs_wf_check_issue1732 verus_code! {
+        #[verifier::external]
+        pub struct I;
+
+        pub trait T { type A; }
+
+        impl T for I {
+            type A = ();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_assoc_typs_wf_check verus_code! {
+        #[verifier::external]
+        pub struct I;
+
+        pub trait T { type A; }
+
+        pub struct X;
+
+        impl T for X {
+            type A = I;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const1 verus_code! {
+        trait U {}
+
+        trait T<A, B> {
+            const C: usize;
+            const S: &str;
+            const E: usize;
+        }
+
+        impl U for u16 {}
+
+        const Q: u8 = 10;
+
+        impl<Z: U> T<u8, Z> for bool {
+            const C: usize = 13 - Q as usize;
+            const S: &str = "ha";
+
+            #[verifier::external_body]
+            const E: usize = 4;
+        }
+
+        fn test1() {
+            assert(<bool as T<u8, u16>>::C == 3);
+            let c = <bool as T<u8, u16>>::C;
+            assert(c == 3);
+        }
+
+        fn test2<A: T<u8, u16>>() {
+            assert(A::C == 3); // FAILS
+        }
+
+        fn test3<A: T<u8, u16>>() {
+            let e1 = <bool as T<u8, u16>>::E;
+            let e2 = <bool as T<u8, u16>>::E;
+            assert(e1 == e2);
+            assert(e1 == 4); // FAILS
+        }
+
+        fn test4<A: T<u8, u16>>() {
+            assert(<bool as T<u8, u16>>::E == 4); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const2 verus_code! {
+        const fn f() -> u8 { 3 }
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8;
+        }
+        impl T for bool {
+            // when we support general assoc consts, should be a mode violation:
+            const C: u8 = f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support const items in traits, except for")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const3 verus_code! {
+        spec const Q: u8 = 3;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8;
+        }
+        impl T for bool {
+            const C: u8 = Q;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected mode")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const4 verus_code! {
+        exec const Q: u8 = 3;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8;
+        }
+        impl T for bool {
+            const C: u8 = Q;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
 }
