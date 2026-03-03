@@ -1095,8 +1095,8 @@ impl<'a> Builder<'a> {
                 let _ = self.build(e, bb)?;
                 Err(())
             }
-            ExprX::AssignToPlace { place, rhs, op, resolve } => {
-                assert!(resolve.is_none());
+            ExprX::AssignToPlace { place, rhs, op, resolve, typ: _ } => {
+                assert!(!resolve);
                 // Right-hand side first!
                 let bb = self.build(rhs, bb)?;
                 let (p, bb) = self.build_place_and_intern(place, bb, TypInv::Yes)?;
@@ -3397,7 +3397,7 @@ fn filter_and_make_assumes(
 fn make_assume(cfg: &CFG, span: &Span, fp: &FlattenedPlace) -> Expr {
     let ast_place = cfg.locals.to_ast_place(span, fp);
     let e = crate::ast_util::place_to_spec_expr(&ast_place);
-    // TODO(new_mut_ref): are we sure that ast_place.typ is correct including decoration?
+    // The typ is correct up to Box and Tracked decorations, which is fine
     let has_resolvedx = ExprX::UnaryOpr(UnaryOpr::HasResolved(ast_place.typ.clone()), e);
     let has_resolved = SpannedTyped::new(&ast_place.span, &bool_typ(), has_resolvedx);
     let conditional_has_resolved =
@@ -3409,16 +3409,14 @@ fn make_assume(cfg: &CFG, span: &Span, fp: &FlattenedPlace) -> Expr {
 /// (Equivalently, adds an `assume(has_resolved(...))` for the value being overwritten
 fn apply_resolution_to_assignment(e: &Expr) -> Expr {
     match &e.x {
-        ExprX::AssignToPlace { place, rhs, op, resolve } => {
-            // TODO(new_mut_ref): are we sure that ast_place.typ is correct including decoration?
-            let typ = place.typ.clone();
-
-            assert!(resolve.is_none());
+        ExprX::AssignToPlace { place, rhs, op, resolve, typ } => {
+            assert!(!resolve);
             e.new_x(ExprX::AssignToPlace {
                 place: place.clone(),
                 rhs: rhs.clone(),
                 op: *op,
-                resolve: Some(typ),
+                resolve: true,
+                typ: typ.clone(),
             })
         }
         _ => {
@@ -3584,7 +3582,8 @@ fn apply_temp_simplification(cfg: &CFG, place: &Place, exprs: Vec<Expr>) -> Plac
             place: tmp_local_place.clone(),
             rhs: expr.clone(),
             op: None,
-            resolve: None,
+            typ: place.typ.clone(),
+            resolve: false,
         },
     );
 
