@@ -97,8 +97,8 @@ fn make_spec_type_impl(
         }
     };
 
-    let output = quote! {
-        ::builtin_macros::verus! {
+    let output = quote_vstd! { vstd =>
+        #vstd::prelude::verus! {
             #input
             #spec_data
             #deep_view_impl
@@ -530,8 +530,8 @@ fn self_view_impl(item: TokenStream) -> Result<TokenStream, Error> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    let output = quote! {
-        ::builtin_macros::verus! {
+    let output = quote_vstd! { vstd =>
+        #vstd::prelude::verus! {
             #input
 
             #[cfg(verus_keep_ghost)]
