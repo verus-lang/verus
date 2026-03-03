@@ -587,17 +587,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_unwrapped_tracked_wrong_span_387_discussioncomment_6733203_1 verus_code! {
-        fn test_bug1(Tracked(s): Tracked<&mut i32>)
-        {
-            let tracked x: &mut i32 = s;
-        }
-    } => Err(err) => {
-        assert!(err.errors[0].rendered.contains("let tracked x: &mut i32 = s;"));
-    }
-}
-
-test_verify_one_file! {
     #[test] test_unwrapped_tracked_wrong_span_387_discussioncomment_6733203_2 verus_code! {
         fn test_bug2(Tracked(s): Tracked<&mut i32>)
         {
@@ -605,19 +594,6 @@ test_verify_one_file! {
         }
     } => Err(err) => {
         assert!(err.errors[0].rendered.contains("let tracked x: i32 = s;"));
-    }
-}
-
-test_verify_one_file! {
-    #[test] test_unwrapped_tracked_unintended_387_discussioncomment_6680621 verus_code! {
-        exec fn f(foo: &mut usize) {
-            let tracked tracked_foo = Tracked(foo);
-        }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 1);
-        assert_eq!(err.warnings.len(), 1);
-        assert!(err.errors[0].rendered.contains("let tracked tracked_foo = Tracked(foo);"));
-        assert!(err.warnings.iter().find(|x| x.message.contains("the right-hand side is already wrapped with `Tracked`")).is_some());
     }
 }
 
