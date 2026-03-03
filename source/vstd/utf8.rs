@@ -5,6 +5,8 @@ verus! {
 
 broadcast use super::seq::group_seq_axioms;
 
+/* Decoding UTF-8 to chars */
+
 /// True when the given byte conforms to the bit pattern for the first byte of a 1-byte UTF-8 encoding.
 /// The byte must have the form 0xxxxxxx.
 pub open spec fn is_leading_byte_width_1(byte: u8) -> bool {
@@ -264,6 +266,8 @@ pub open spec fn decode_utf8(bytes: Seq<u8>) -> Seq<char>
     }
 }
 
+/* Encoding chars as UTF-8 */
+
 /// True when the given scalar value has a 1-byte UTF-8 encoding.
 pub open spec fn has_width_1_encoding(scalar: u32) -> bool {
     0 <= scalar <= 0x7F
@@ -381,23 +385,7 @@ pub open spec fn encode_utf8(chars: Seq<char>) -> Seq<u8>
     }
 }
 
-/// True when the index into the UTF-8 byte sequence falls on a character boundary.
-pub open spec fn is_char_boundary(bytes: Seq<u8>, index: int) -> bool
-    recommends
-        valid_utf8(bytes),
-    decreases bytes.len(),
-    when valid_utf8(bytes)
-{
-    if index == 0 {
-        true
-    } else if index < 0 || bytes.len() < index {
-        false
-    } else {
-        is_char_boundary(pop_first_scalar(bytes), index - length_of_first_scalar(bytes))
-    }
-}
-
-/* encode_utf8 and decode_utf8 correspondence */
+/* Correspondence between encode_utf8 and decode_utf8 definitions */
 
 proof fn encode_decode_width_1(c: u32)
     by (bit_vector)
@@ -550,7 +538,7 @@ pub broadcast proof fn char_u32_cast(c: char, u: u32)
 {
 }
 
-/// Properties of the first codepoint of the result of `encode_utf8`.
+/// Properties of the first scalar from the result of `encode_utf8`.
 pub proof fn encode_utf8_first_scalar(chars: Seq<char>)
     requires
         chars.len() > 0,
@@ -588,9 +576,9 @@ pub broadcast proof fn encode_utf8_valid_utf8(chars: Seq<char>)
 }
 
 /// Ensures that performing `encode_utf8` followed by `decode_utf8` results in the original `char` sequence.
-pub proof fn encode_utf8_decode_utf8(chars: Seq<char>)
+pub broadcast proof fn encode_utf8_decode_utf8(chars: Seq<char>)
     ensures
-        decode_utf8(encode_utf8(chars)) == chars,
+        #[trigger] decode_utf8(encode_utf8(chars)) == chars,
     decreases chars.len(),
 {
     broadcast use encode_utf8_valid_utf8;
@@ -607,6 +595,7 @@ pub proof fn encode_utf8_decode_utf8(chars: Seq<char>)
     }
 }
 
+/// Properties of the first scalar from the result of `decode_utf8`.
 pub proof fn decode_utf8_first_scalar(bytes: Seq<u8>)
     requires
         valid_utf8(bytes),
@@ -627,11 +616,12 @@ pub proof fn decode_utf8_first_scalar(bytes: Seq<u8>)
     }
 }
 
-pub proof fn decode_utf8_encode_utf8(bytes: Seq<u8>)
+/// Ensures that performing `decode_utf8` followed by `encode_utf8` results in the original byte sequence.
+pub broadcast proof fn decode_utf8_encode_utf8(bytes: Seq<u8>)
     requires
         valid_utf8(bytes),
     ensures
-        encode_utf8(decode_utf8(bytes)) == bytes,
+        #[trigger] encode_utf8(decode_utf8(bytes)) == bytes,
     decreases bytes.len(),
 {
     broadcast use encode_utf8_valid_utf8;
@@ -652,8 +642,269 @@ pub proof fn decode_utf8_encode_utf8(bytes: Seq<u8>)
     }
 }
 
-/* ascii */
+/* Partial UTF-8 sequences */
 
+pub open spec fn partial_valid_utf8(bytes: Seq<u8>, i: int) -> bool {
+    0 <= i <= bytes.len() && valid_utf8(bytes.subrange(0, i))
+}
+
+pub proof fn partial_valid_partial_invalid_utf8(bytes: Seq<u8>, i: int)
+    requires
+        0 <= i <= bytes.len(),
+        valid_utf8(bytes.subrange(0, i)),
+        !valid_utf8(bytes.subrange(i, bytes.len() as int)),
+    ensures
+        !valid_utf8(bytes),
+{
+    partial_valid_utf8_invalid_subrange_helper(bytes, i, 0);
+    assert(bytes.subrange(0, bytes.len() as int) =~= bytes);
+}
+
+proof fn partial_valid_utf8_invalid_subrange_helper(bytes: Seq<u8>, i: int, j: int)
+    requires
+        0 <= j <= i <= bytes.len(),
+        valid_utf8(bytes.subrange(0, i)),
+        !valid_utf8(bytes.subrange(i, bytes.len() as int)),
+        valid_utf8(bytes.subrange(0, j)),
+        valid_utf8(bytes.subrange(j, i)),
+    ensures
+        !valid_utf8(bytes.subrange(j, bytes.len() as int)),
+    decreases (bytes.len() - j),
+{
+    if j == i {
+    } else {
+        let bytes_j = bytes.subrange(j, bytes.len() as int);
+        if valid_first_scalar(bytes_j) {
+            partial_valid_utf8_extend(bytes, j);
+            let k = length_of_first_scalar(bytes_j);
+
+            assert(pop_first_scalar(bytes.subrange(j, i)) == bytes.subrange(j + k, i));
+
+            partial_valid_utf8_invalid_subrange_helper(bytes, i, j + k);
+
+            assert(bytes_j.subrange(k, bytes_j.len() as int) == bytes.subrange(
+                j + k,
+                bytes.len() as int,
+            ));
+        } else {
+        }
+    }
+}
+
+pub proof fn partial_valid_utf8_split(b1: Seq<u8>, b2: Seq<u8>)
+    requires
+        valid_utf8(b1),
+        valid_utf8(b2),
+    ensures
+        valid_utf8(b1 + b2),
+    decreases b1.len(),
+{
+    if b1.len() == 0 {
+        assert(b1 + b2 == b2) by { Seq::add_empty_left(b1, b2) };
+        assert(valid_utf8(b1 + b2));
+    } else {
+        let rest = pop_first_scalar(b1);
+        // so valid_utf8(b1) implies valid_utf8(rest)?
+        assert(pop_first_scalar(b1).len() < b1.len()) by {
+            lemma_pop_first_scalar_decreases(b1)
+        };
+        partial_valid_utf8_split(rest, b2);
+        // now know valid_utf8(rest+b2)
+        assert(pop_first_scalar(b1 + b2) =~= rest + b2);
+        assert(valid_utf8(b1 + b2));
+    }
+}
+
+pub proof fn partial_valid_utf8_extend(bytes: Seq<u8>, i: int)
+    requires
+        partial_valid_utf8(bytes, i),
+        valid_first_scalar(bytes.subrange(i, bytes.len() as int)),
+    ensures
+        partial_valid_utf8(
+            bytes,
+            i + length_of_first_scalar(bytes.subrange(i, bytes.len() as int)),
+        ),
+{
+    reveal_with_fuel(valid_utf8, 2);
+    let scalar = bytes.subrange(
+        i,
+        i + length_of_first_scalar(bytes.subrange(i, bytes.len() as int)),
+    );
+    partial_valid_utf8_split(bytes.subrange(0, i), scalar);
+    assert(bytes.subrange(0, i) + scalar =~= bytes.subrange(
+        0,
+        i + length_of_first_scalar(bytes.subrange(i, bytes.len() as int)),
+    ));
+}
+
+/* Reasoning about character boundaries */
+
+/// True when the index into the UTF-8 byte sequence falls on a character boundary.
+pub open spec fn is_char_boundary(bytes: Seq<u8>, index: int) -> bool
+    recommends
+        valid_utf8(bytes),
+    decreases bytes.len(),
+    when valid_utf8(bytes)
+{
+    if index == 0 {
+        true
+    } else if index < 0 || bytes.len() < index {
+        false
+    } else {
+        is_char_boundary(pop_first_scalar(bytes), index - length_of_first_scalar(bytes))
+    }
+}
+
+proof fn is_char_boundary_len_first_scalar(bytes: Seq<u8>, index: int)
+    requires
+        valid_utf8(bytes),
+        is_char_boundary(bytes, index),
+    ensures
+        index > 0 ==> index >= length_of_first_scalar(bytes),
+{
+    reveal_with_fuel(is_char_boundary, 2);
+}
+
+pub proof fn is_char_boundary_start_end_of_seq(bytes: Seq<u8>)
+    requires
+        valid_utf8(bytes)
+    ensures
+        is_char_boundary(bytes, 0),
+        is_char_boundary(bytes, bytes.len() as int)
+    decreases
+        bytes.len()
+{
+    if bytes.len() == 0 {
+    } else {
+        is_char_boundary_start_end_of_seq(pop_first_scalar(bytes));
+    }
+}
+
+pub proof fn is_char_boundary_iff_not_is_continuation_byte(bytes: Seq<u8>, index: int) 
+    requires
+        valid_utf8(bytes),
+        0 <= index < bytes.len()
+    ensures
+        is_char_boundary(bytes, index) <==> !is_continuation_byte(bytes[index])
+    decreases
+        bytes.len()
+{
+    if 0 <= index < length_of_first_scalar(bytes) {
+        reveal_with_fuel(is_char_boundary, 2);
+    } else {
+        is_char_boundary_iff_not_is_continuation_byte(pop_first_scalar(bytes), index - length_of_first_scalar(bytes));
+    } 
+}
+
+pub proof fn is_char_boundary_iff_is_leading_byte(bytes: Seq<u8>, index: int) 
+    requires
+        valid_utf8(bytes),
+        0 <= index < bytes.len()
+    ensures
+        is_char_boundary(bytes, index) <==> (is_leading_byte_width_1(bytes[index]) || is_leading_byte_width_2(bytes[index]) || is_leading_byte_width_3(bytes[index]) || is_leading_byte_width_4(bytes[index]))
+    decreases
+        bytes.len()
+{
+    if 0 <= index < length_of_first_scalar(bytes) {
+        reveal_with_fuel(is_char_boundary, 2);
+    } else {
+        is_char_boundary_iff_is_leading_byte(pop_first_scalar(bytes), index - length_of_first_scalar(bytes));
+    } 
+}
+
+proof fn take_first_scalar_valid_utf8(bytes: Seq<u8>)
+    requires
+        valid_utf8(bytes),
+    ensures
+        bytes.len() > 0 ==> valid_utf8(take_first_scalar(bytes)),
+{
+    reveal_with_fuel(valid_utf8, 2);
+}
+
+pub proof fn valid_utf8_split_char_boundary(bytes: Seq<u8>, index: int)
+    requires
+        valid_utf8(bytes),
+        is_char_boundary(bytes, index),
+    ensures
+        valid_utf8(bytes.subrange(0, index)),
+        valid_utf8(bytes.subrange(index, bytes.len() as int)),
+    decreases bytes.len(),
+{
+    if index == 0 {
+        assert(bytes =~= bytes.subrange(index, bytes.len() as int));
+    } else {
+        broadcast use axiom_seq_subrange_len;
+
+        let s1 = bytes.subrange(0, index);
+        let s2 = bytes.subrange(index, bytes.len() as int);
+        let head = take_first_scalar(bytes);
+        let tail = pop_first_scalar(bytes);
+        let new_offset = index - length_of_first_scalar(bytes);
+        // recursive call: show valid on split for tail
+        valid_utf8_split_char_boundary(tail, new_offset);
+        let n1 = tail.subrange(0, new_offset);
+        let n2 = tail.subrange(new_offset, tail.len() as int);
+        // now we need to concatenate the head back on
+        assert(s1 =~= head + n1) by {
+            assert(s1.len() == head.len() + n1.len()) by {
+                // to use subrange len axiom, we need to show that new_offset is in bounds for tail
+                is_char_boundary_len_first_scalar(bytes, index);
+            }
+        }
+        assert(valid_utf8(head + n1)) by {
+            take_first_scalar_valid_utf8(bytes);
+            partial_valid_utf8_split(head, n1);
+        }
+        assert(s2 =~= n2);
+    }
+}
+
+pub proof fn decode_utf8_split_char_boundary(bytes: Seq<u8>, index: int)
+    requires
+        valid_utf8(bytes),
+        is_char_boundary(bytes, index)
+    ensures
+        decode_utf8(bytes) =~= decode_utf8(bytes.subrange(0, index)) + decode_utf8(bytes.subrange(index, bytes.len() as int)),
+    decreases index,
+{
+    if index == 0 {
+        assert(bytes.subrange(index, bytes.len() as int) =~= bytes);
+    } else {
+        let first = bytes.subrange(0, index);
+        let second = bytes.subrange(index, bytes.len() as int);
+        is_char_boundary_len_first_scalar(bytes, index);
+        valid_utf8_split_char_boundary(bytes, index);
+        let bytes_tail = pop_first_scalar(bytes);
+        let first_tail = pop_first_scalar(first);
+        let bytes_head = first_scalar(bytes) as char;
+        let first_head = first_scalar(first) as char;
+        let new_index = (index - length_of_first_scalar(bytes)) as int;
+        decode_utf8_split_char_boundary(bytes_tail, new_index);
+        assert(second =~= bytes_tail.subrange(new_index, bytes_tail.len() as int));
+        assert(first_tail =~= bytes_tail.subrange(0, new_index));
+    }
+}
+
+/* Bit-level reasoning */
+
+pub broadcast proof fn utf8_char_width_ranges(b: u8)
+    by (bit_vector)
+    ensures
+        #![trigger b & 0x80]
+        #![trigger b & 0xf0]
+        #![trigger b & 0xf8]
+        #![trigger b & 0xe0]
+        #![trigger b & 0x7f]
+        0x00 <= b <= 0x7f <==> b & 0x80 == 0,
+        0xc0 <= b <= 0xdf <==> b & 0xe0 == 0xc0,
+        0xe0 <= b <= 0xef <==> b & 0xf0 == 0xe0,
+        0xf0 <= b <= 0xf7 <==> b & 0xf8 == 0xf0,
+        0x00 <= b < 0x80 <==> b & 0x7f == b,
+{}
+
+/* ASCII */
+
+/// True when the given character sequence only contains ASCII characters.
 pub open spec fn is_ascii_chars(chars: Seq<char>) -> bool {
     forall|i| 0 <= i < chars.len() ==> '\0' <= #[trigger] chars[i] <= '\x7f'
 }
