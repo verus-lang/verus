@@ -823,25 +823,19 @@ test_verify_one_file_with_options! {
 
             m.insert(3, 4);
             m.insert(6, -8);
-            let m_keys = m.keys();
-            assert(m_keys@.0 == 0);
-            assert(m_keys@.1.to_set() =~= set![3u32, 6u32]);
-            let ghost g_keys = m_keys@.1;
+            let ghost m_keys = m.keys();
+            assert(m_keys.remaining().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32]);
 
             let mut items = Vec::<u32>::new();
-            assert(items@ =~= g_keys.take(0));
-
-            for k in iter: m_keys
+            for k in iter: m.keys()
                 invariant
-                    iter.keys == g_keys,
-                    g_keys.to_set() =~= set![3u32, 6u32],
-                    items@ == iter@,
+                    iter.seq().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32],
+                    items@ == iter.seq().take(iter.index@).map_values(|v: &u32| *v),
             {
-                assert(iter.keys.take(iter.pos).push(*k) =~= iter.keys.take(iter.pos + 1));
                 items.push(*k);
             }
             assert(items@.to_set() =~= set![3u32, 6u32]) by {
-                assert(g_keys.take(g_keys.len() as int) =~= g_keys);
+                assert(m_keys.remaining().take(m_keys.remaining().len() as int) == m_keys.remaining());
             }
             assert(items@.no_duplicates());
         }
@@ -854,7 +848,7 @@ test_verify_one_file_with_options! {
         use std::collections::hash_map::Values;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
-        fn test()
+        fn test_values()
         {
             let mut m = HashMap::<u32, i8>::new();
             assert(m@ == Map::<u32, i8>::empty());
@@ -867,27 +861,20 @@ test_verify_one_file_with_options! {
                 assert(m@.contains_key(6u32));
                 assert(m@.values() =~= set![4i8, -8i8]);
             };
-            let m_values = m.values();
-            assert(m_values@.0 == 0);
-            assert(m_values@.1.to_set() == set![4i8, -8i8]);
-            let ghost g_values = m_values@.1;
-
+            let ghost m_values = m.values();
+            assert(m_values.remaining().map_values(|v: &i8| *v).to_set() == set![4i8, -8i8]);
             let mut items = Vec::<i8>::new();
-            assert(items@ =~= g_values.take(0));
-
-            for v in iter: m_values
+            for v in iter: m.values()
                 invariant
-                    iter.values == g_values,
-                    g_values.to_set() == set![4i8, -8i8],
-                    items@ == iter@,
+                    iter.seq().map_values(|v: &i8| *v).to_set() =~= set![4i8, -8i8],
+                    items@ == iter.seq().take(iter.index@).map_values(|v: &i8| *v),
             {
-                assert(iter.values.take(iter.pos).push(*v) =~= iter.values.take(iter.pos + 1));
                 items.push(*v);
             }
             assert(items@.to_set() =~= set![4i8, -8i8]) by {
-                assert(g_values.take(g_values.len() as int) =~= g_values);
+                assert(m_values.remaining().take(m_values.remaining().len() as int) == m_values.remaining());
             }
-        }
+        }        
     } => Ok(())
 }
 

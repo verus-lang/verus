@@ -726,6 +726,8 @@ pub broadcast proof fn axiom_spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMa
                     0 <= i < v.len() ==> 
                         m@.contains_key(*v[i].0) && 
                         m@[*v[i].0] == *v[i].1
+            &&& forall |k: Key| #[trigger] m@.contains_key(k) ==> v.contains((&k, &m@[k]))
+            &&& v.map_values(|t: (&Key, &Value)| (*t.0, *t.1)).to_set() == m@.kv_pairs()
         }),
 {
     admit();
@@ -738,8 +740,9 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::iter ](
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& iter == spec_hash_map_iter(m)
-            &&& iter.remaining().to_set().map(|t: (&Key, &Value)| (*t.0, *t.1)) == m@.kv_pairs()
             &&& iter.remaining().no_duplicates()
+            &&& IteratorSpec::decrease(&iter) is Some
+            &&& IteratorSpec::initial_value_inv(&iter, &iter)
         },
 ;
 
@@ -1165,7 +1168,7 @@ pub uninterp spec fn spec_keys_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value
 
 pub broadcast proof fn axiom_spec_keys_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
     ensures
-        (#[trigger] spec_keys_iter(m).remaining()).to_set().map(|v: &Key| *v) == m@.dom(),
+        (#[trigger] spec_keys_iter(m).remaining()).map_values(|v: &Key| *v).to_set() == m@.dom(),
         spec_keys_iter(m).remaining().no_duplicates(),
         spec_keys_iter(m).remaining().len() == m@.dom().len()
 {
@@ -1194,12 +1197,13 @@ pub uninterp spec fn spec_values_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Val
 
 pub broadcast proof fn axiom_spec_values_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
     ensures
-        (#[trigger] spec_values_iter(m).remaining()).to_set().map(|v: &Value| *v) == m@.values(),
+        (#[trigger] spec_values_iter(m).remaining()).map_values(|v: &Value| *v).to_set() == m@.values(),
         spec_values_iter(m).remaining().len() == m@.dom().len()
 {
     admit();
 }
 
+#[verifier::when_used_as_spec(spec_values_iter)]
 pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::values ](
     m: &'a HashMap<Key, Value, S>,
 ) -> (values: Values<'a, Key, Value>)
