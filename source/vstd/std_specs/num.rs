@@ -77,22 +77,27 @@ macro_rules! num_specs {
             pub assume_specification[<$uN as PartialOrd<$uN>>::ge](x: &$uN, y: &$uN) -> bool;
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::wrapping_add](x: $uN, y: $uN) -> $uN
                 returns $mod_u::wrapping_add(x, y);
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::wrapping_add_signed](x: $uN, y: $iN) -> $uN
                 returns $mod_u::wrapping_add_signed(x, y);
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::wrapping_sub](x: $uN, y: $uN) -> $uN
                 returns $mod_u::wrapping_sub(x, y);
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::wrapping_mul](x: $uN, y: $uN) -> $uN
                 returns $mod_u::wrapping_mul(x, y);
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_add](x: $uN, y: $uN) -> Option<$uN>
                 returns (
                     if x + y > <$uN>::MAX {
@@ -103,6 +108,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_add_signed](x: $uN, y: $iN) -> Option<$uN>
                 returns (
                     if x + y > <$uN>::MAX || x + y < 0 {
@@ -113,6 +119,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_sub](x: $uN, y: $uN) -> Option<$uN>
                 returns (
                     if x - y < 0 {
@@ -123,6 +130,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_mul](x: $uN, y: $uN) -> Option<$uN>
                 returns (
                     if x * y > <$uN>::MAX {
@@ -141,17 +149,20 @@ macro_rules! num_specs {
             }
 
             #[verifier::when_used_as_spec(checked_div)]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_div](lhs: $uN, rhs: $uN) -> (result: Option<$uN>)
                 ensures
                     result == checked_div(lhs, rhs);
 
             #[verifier::when_used_as_spec(checked_div)]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_div_euclid](lhs: $uN, rhs: $uN) -> (result: Option<$uN>)
                 ensures
                     // checked_div is the same as checked_div_euclid for unsigned ints
                     result == checked_div(lhs, rhs);
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_rem](lhs: $uN, rhs: $uN) -> Option<$uN>
                 returns (
                     if rhs == 0 {
@@ -163,6 +174,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_rem_euclid](lhs: $uN, rhs: $uN) -> Option<$uN>
                 returns (
                     if rhs == 0 {
@@ -174,6 +186,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::saturating_add](x: $uN, y: $uN) -> $uN
                 returns (
                     if x + y > <$uN>::MAX {
@@ -184,6 +197,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::saturating_sub](x: $uN, y: $uN) -> $uN
                 returns (
                     if x - y < <$uN>::MIN {
@@ -194,6 +208,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::is_multiple_of](x: $uN, y: $uN) -> bool
                 returns (
                     if y == 0 { x == 0 } else { x % y == 0 }
@@ -267,22 +282,27 @@ macro_rules! num_specs {
             pub assume_specification[<$iN as PartialOrd<$iN>>::ge](x: &$iN, y: &$iN) -> bool;
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::wrapping_add](x: $iN, y: $iN) -> $iN
                 returns $mod_i::wrapping_add(x, y);
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::wrapping_add_unsigned](x: $iN, y: $uN) -> $iN
                 returns $mod_i::wrapping_add_unsigned(x, y);
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::wrapping_sub](x: $iN, y: $iN) -> (res: $iN)
                 returns $mod_i::wrapping_sub(x, y);
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::wrapping_mul](x: $iN, y: $iN) -> $iN
                 returns $mod_i::wrapping_mul(x, y);
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_add](x: $iN, y: $iN) -> Option<$iN>
                 returns (
                     if x + y > <$iN>::MAX || x + y < <$iN>::MIN {
@@ -293,6 +313,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_add_unsigned](x: $iN, y: $uN) -> Option<$iN>
                 returns (
                     if x + y > <$iN>::MAX {
@@ -303,6 +324,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_sub](x: $iN, y: $iN) -> Option<$iN>
                 returns (
                     if x - y > <$iN>::MAX || x - y < <$iN>::MIN {
@@ -313,6 +335,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_sub_unsigned](x: $iN, y: $uN) -> Option<$iN>
                 returns (
                     if x - y < <$iN>::MIN {
@@ -323,6 +346,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_mul](x: $iN, y: $iN) -> Option<$iN>
                 returns (
                     if x * y > <$iN>::MAX || x * y < <$iN>::MIN {
@@ -333,6 +357,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_div](lhs: $iN, rhs: $iN) -> Option<$iN>
                 returns (
                     if rhs == 0 {
@@ -361,6 +386,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_div_euclid](lhs: $iN, rhs: $iN) -> Option<$iN>
                 returns (
                     if rhs == 0 {
@@ -375,6 +401,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_rem](lhs: $iN, rhs: $iN) -> Option<$iN>
                 returns (
                     if rhs == 0 {
@@ -403,6 +430,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_rem_euclid](lhs: $iN, rhs: $iN) -> Option<$iN>
                 returns (
                     if rhs == 0 {
