@@ -404,7 +404,9 @@ impl Expect {
 #[derive(Clone, Debug)]
 pub struct ErasureModes {
     // Modes of variables in Var, Assign, Decl
-    pub var_modes: Vec<(Span, Mode)>,
+    // first mode = canonical mode of the variable
+    // second mode = mode of this usage (might be greater)
+    pub var_modes: Vec<(Span, (Mode, Mode))>,
     // Modes of calls and struct Ctors
     pub ctor_modes: Vec<(Span, Mode)>,
 }
@@ -847,7 +849,7 @@ fn add_pattern_rec(
         && !matches!(&pattern.x, PatternX::ImmutRef(_))
         && !matches!(&pattern.x, PatternX::MutRef(_))
     {
-        record.erasure_modes.var_modes.push((pattern.span.clone(), mode));
+        record.erasure_modes.var_modes.push((pattern.span.clone(), (mode, mode)));
     }
 
     match &pattern.x {
@@ -997,7 +999,7 @@ fn get_var_loc_mode(
             let (x_mode, x_proph) = typing.get(x, &expr.span)?;
             let x_proph = x_proph.to_proph(x, &expr.span);
 
-            record.erasure_modes.var_modes.push((expr.span.clone(), x_mode));
+            record.erasure_modes.var_modes.push((expr.span.clone(), (x_mode, x_mode)));
 
             if ctxt.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
@@ -1221,7 +1223,11 @@ fn check_place(
     // we stor the mode of the local (the second case is in `check_place_rec`).
     if !access.is_mut() {
         if let Some(var_place) = crate::ast_util::place_get_local(place) {
-            record.erasure_modes.var_modes.push((var_place.span.clone(), final_mode));
+            let var_mode = match &var_place.x {
+                PlaceX::Local(var) => typing.get(var, &place.span)?.0,
+                _ => unreachable!(),
+            };
+            record.erasure_modes.var_modes.push((var_place.span.clone(), (var_mode, final_mode)));
         }
     }
 
@@ -1332,7 +1338,8 @@ fn check_place_rec_inner(
                 *note = Some(ProofModeMutRefNote(place.clone(), p.clone()));
             }
 
-            Ok((Mode::Exec, proph))
+            let deref_mode = if mode == Mode::Spec { Mode::Spec } else { Mode::Exec };
+            Ok((deref_mode, proph))
         }
         PlaceX::Local(var) => {
             let (mode, proph) = typing.get(var, &place.span)?;
@@ -1340,7 +1347,7 @@ fn check_place_rec_inner(
 
             // Other case is handled in `check_place`; see the explanation there.
             if access.is_mut() {
-                record.erasure_modes.var_modes.push((place.span.clone(), mode));
+                record.erasure_modes.var_modes.push((place.span.clone(), (mode, mode)));
             }
 
             Ok((mode, proph))
@@ -1451,7 +1458,9 @@ fn check_place_rec_inner(
 fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place) -> bool {
     // Always say no if this doesn't involve a mutable reference.
     // This isn't really necessary as a restriction, but it's only for mutable references
-    // that we need this extra allowance in the first place.
+    // that we need this extra allowance in the first place, i.e., if it's not a mutable
+    // reference, then we can just check directly if it's a tracked location and there's
+    // no need for all this guesswork.
     if !crate::ast_util::place_has_deref_mut(place) {
         return false;
     }
@@ -1460,6 +1469,9 @@ fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place) -> bool {
     // for this check to make sense
     match &*place.typ {
         TypX::Decorate(TypDecoration::Ghost | TypDecoration::Tracked, _, _) => {
+            return true;
+        }
+        TypX::Int(crate::ast::IntRange::Int | crate::ast::IntRange::Nat) => {
             return true;
         }
         _ => {}
@@ -1609,7 +1621,7 @@ fn check_expr_handle_mut_arg(
 
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
-            record.erasure_modes.var_modes.push((expr.span.clone(), mode));
+            record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
             return Ok((mode, Some(x_mode), proph));
         }
         ExprX::ConstVar(x, _)
@@ -1646,7 +1658,7 @@ fn check_expr_handle_mut_arg(
             let mode = function.x.ret.x.mode;
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
-            record.erasure_modes.var_modes.push((expr.span.clone(), mode));
+            record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
             Ok((mode, Proph::No))
         }
         ExprX::Call(
@@ -2100,6 +2112,9 @@ fn check_expr_handle_mut_arg(
         ExprX::Unary(_, e1) => {
             check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
         }
+        ExprX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
+            check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
+        }
         ExprX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
         ExprX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
         ExprX::UnaryOpr(UnaryOpr::HasType(_), _) => panic!("internal error: HasType in modes.rs"),
@@ -2311,7 +2326,7 @@ fn check_expr_handle_mut_arg(
                 }
 
                 let mut ens_typing = ghost_typing.push_var_scope();
-                ens_typing.insert(&ret.name, ret_mode, Some(ProphVar::No));
+                ens_typing.insert(&ret.name, Mode::Spec, Some(ProphVar::No));
                 for ens in ensures.iter() {
                     check_expr_has_mode(
                         ctxt,
@@ -2348,7 +2363,7 @@ fn check_expr_handle_mut_arg(
                 ));
             }
 
-            record.erasure_modes.var_modes.push((expr.span.clone(), Mode::Exec));
+            record.erasure_modes.var_modes.push((expr.span.clone(), (Mode::Exec, Mode::Exec)));
 
             Ok((outer_mode, Proph::No))
         }
@@ -2424,7 +2439,7 @@ fn check_expr_handle_mut_arg(
                         let (mode, pv) = typing.get(xr, &rhs.span)?;
                         typing.infer_as(xl, mode, pv.clone());
                         record.var_modes.insert(xl.clone(), mode);
-                        record.erasure_modes.var_modes.push((span, mode));
+                        record.erasure_modes.var_modes.push((span, (mode, mode)));
                     }
                 }
             }
@@ -2504,7 +2519,7 @@ fn check_expr_handle_mut_arg(
                         let (mode, pv) = typing.get(xr, &rhs.span)?;
                         typing.infer_as(xl, mode, pv.clone());
                         record.var_modes.insert(xl.clone(), mode);
-                        record.erasure_modes.var_modes.push((span, mode));
+                        record.erasure_modes.var_modes.push((span, (mode, mode)));
                     }
                 }
             }
@@ -3435,7 +3450,7 @@ fn check_function(
 
     let mut ens_typing = fun_typing.push_var_scope();
     if function.x.ens_has_return {
-        ens_typing.insert(&function.x.ret.x.name, function.x.ret.x.mode, Some(ProphVar::No));
+        ens_typing.insert(&function.x.ret.x.name, Mode::Spec, Some(ProphVar::No));
     }
     for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let mut ens_typing = ens_typing.push_block_ghostness(Ghost::Ghost);

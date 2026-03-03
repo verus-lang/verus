@@ -1,5 +1,4 @@
 use crate::ast::*;
-use crate::def::Spanned;
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -1240,50 +1239,6 @@ macro_rules! fun {
     };
 }
 
-/// If the function has a unit return type, then we will elide the return value
-/// in the AIR encoding later (e.g., in the %ens functions). However, it is still
-/// possible that the user refers to the unit return value by name, e.g.,
-/// ```
-/// fn example() -> (ret: ())
-///     ensures ret == (),
-/// ```
-/// Therefore, we substitute out the name here so it be safely elided.
-pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, bool) {
-    match &*undecorate_typ(&ret.x.typ) {
-        TypX::Datatype(Dt::Tuple(0), ..) => {
-            if ret.x.name == air_unique_var(crate::def::RETURN_VALUE) {
-                (ensure.clone(), false)
-            } else {
-                let mut es = vec![];
-                for e in ensure.iter() {
-                    let e1 = crate::ast_visitor::map_expr_place_visitor(
-                        e,
-                        &|expr| match &expr.x {
-                            ExprX::Var(ident) if ident == &ret.x.name => {
-                                assert!(is_unit(&undecorate_typ(&expr.typ)));
-                                Ok(mk_tuple(&expr.span, &Arc::new(vec![])))
-                            }
-                            _ => Ok(expr.clone()),
-                        },
-                        &|place| match &place.x {
-                            PlaceX::Local(ident) if ident == &ret.x.name => {
-                                assert!(is_unit(&undecorate_typ(&place.typ)));
-                                let e = mk_tuple(&place.span, &Arc::new(vec![]));
-                                Ok(PlaceX::spec_temporary(e))
-                            }
-                            _ => Ok(place.clone()),
-                        },
-                    )
-                    .unwrap();
-                    es.push(e1);
-                }
-                (Arc::new(es), false)
-            }
-        }
-        _ => (ensure.clone(), true),
-    }
-}
-
 impl Dt {
     pub fn expect_path(&self) -> Path {
         match self {
@@ -1428,46 +1383,6 @@ pub fn place_has_deref_mut(p: &Place) -> bool {
         PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_has_deref_mut(p),
         PlaceX::UserDefinedTypInvariantObligation(p, _) => place_has_deref_mut(p),
     }
-}
-
-/// Returns an expression that reads from the place
-pub fn place_to_expr(place: &Place) -> Expr {
-    let x = match &place.x {
-        PlaceX::Local(var_ident) => ExprX::Var(var_ident.clone()),
-        PlaceX::DerefMut(p) => {
-            let e = place_to_expr(p);
-            ExprX::Unary(UnaryOp::MutRefCurrent, e)
-        }
-        PlaceX::Field(opr, p) => {
-            let e = place_to_expr(p);
-            ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
-        }
-        PlaceX::Temporary(e) => {
-            return e.clone();
-        }
-        PlaceX::ModeUnwrap(p, _) => {
-            return place_to_expr(p);
-        }
-        PlaceX::WithExpr(e, p) => {
-            let e2 = place_to_expr(p);
-            ExprX::Block(
-                Arc::new(vec![Spanned::new(e.span.clone(), StmtX::Expr(e.clone()))]),
-                Some(e2),
-            )
-        }
-        PlaceX::Index(p, idx, kind, bounds_check) => {
-            let e = place_to_expr(p);
-            ExprX::Binary(BinaryOp::Index(*kind, *bounds_check), e, idx.clone())
-        }
-        PlaceX::UserDefinedTypInvariantObligation(..) => {
-            // place_to_expr should only be called for reading; this node should only
-            // appear in mutable contexts
-            panic!(
-                "Verus internal error: place_to_expr cannot handle UserDefinedTypInvariantObligation"
-            );
-        }
-    };
-    SpannedTyped::new(&place.span, &place.typ, x)
 }
 
 impl PatternX {

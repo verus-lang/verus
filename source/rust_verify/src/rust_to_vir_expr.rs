@@ -300,13 +300,14 @@ fn closure_ret_typ<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<Typ
 }
 
 fn mk_clip<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     range: &IntRange,
     expr: &vir::ast::Expr,
     recommends_assume_truncate: bool,
 ) -> vir::ast::Expr {
     match range {
         IntRange::Int => expr.clone(),
-        range => SpannedTyped::new(
+        range => bctx.ctxt.spanned_typed_new_vir(
             &expr.span,
             &Arc::new(TypX::Int(*range)),
             ExprX::Unary(
@@ -318,11 +319,12 @@ fn mk_clip<'tcx>(
 }
 
 pub(crate) fn mk_ty_clip<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     typ: &Typ,
     expr: &vir::ast::Expr,
     recommends_assume_truncate: bool,
 ) -> vir::ast::Expr {
-    mk_clip(&get_range(typ), expr, recommends_assume_truncate)
+    mk_clip(bctx, &get_range(typ), expr, recommends_assume_truncate)
 }
 
 pub(crate) fn check_lit_int(
@@ -1430,12 +1432,15 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
 
             let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
             let op = match (tyr1.kind(), tyr2.kind()) {
-                (_, TyKind::Dynamic(_, _)) => Some(UnaryOp::ToDyn),
+                (_, TyKind::Dynamic(_, _)) => {
+                    let vir_ty = bctx.mid_ty_to_vir(expr.span, &tyr1, false)?;
+                    Some(UnaryOpr::ToDyn(vir_ty))
+                }
                 _ => None,
             };
             if let Some(op) = op {
                 let arg = arg.consume(bctx, get_inner_ty());
-                let x = ExprX::Unary(op, arg);
+                let x = ExprX::UnaryOpr(op, arg);
                 let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2, false)?;
                 return Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ, x)));
             }
@@ -2001,7 +2006,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     };
 
                     let (target, vir_args, resolved_call) = if is_spec_fn {
-                        (CallTarget::FnSpec(vir_fun), vir_args, ResolvedCall::Spec)
+                        (CallTarget::FnSpec(vir_fun), vir_args, ResolvedCall::SpecPure)
                     } else {
                         if bctx.ctxt.no_vstd {
                             return err_span(
@@ -2188,6 +2193,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let to_vir_ty = expr_typ()?;
             match (&*undecorate_typ(source_vir_ty), &*undecorate_typ(&to_vir_ty)) {
                 (TypX::Int(_), TypX::Int(_)) => Ok(ExprOrPlace::Expr(mk_ty_clip(
+                    bctx,
                     &to_vir_ty,
                     &source_vir_expr,
                     expr_vattrs.truncate,
@@ -2204,7 +2210,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         move |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
                     let cast_to =
                         expr_cast_enum_int_to_vir(bctx, source, source_vir.to_place(), mk_expr)?;
-                    Ok(ExprOrPlace::Expr(mk_ty_clip(&to_vir_ty, &cast_to, expr_vattrs.truncate)))
+                    Ok(ExprOrPlace::Expr(mk_ty_clip(
+                        bctx,
+                        &to_vir_ty,
+                        &cast_to,
+                        expr_vattrs.truncate,
+                    )))
                 }
                 _ => {
                     let to_ty = bctx.types.expr_ty(expr);
@@ -2387,7 +2398,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     match mk_range(&bctx.ctxt.verus_items, &tc.node_type(expr.hir_id)) {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
                             // Euclidean division
-                            Ok(ExprOrPlace::Expr(mk_ty_clip(&expr_typ()?, &e, true)))
+                            Ok(ExprOrPlace::Expr(mk_ty_clip(bctx, &expr_typ()?, &e, true)))
                         }
                         IntRange::I(_) | IntRange::ISize => {
                             // Handled by operator_overload_to_vir
@@ -2411,6 +2422,19 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let x = PlaceX::Local(pat_to_var(pat)?);
                         let typ = &expr_typ()?;
                         let place = bctx.spanned_typed_new(expr.span, typ, x);
+
+                        //let ids = (id.owner.def_id.local_def_index.as_usize(), id.local_id);
+                        //println!("{:?}", (&name.0, ids));
+
+                        // Does this var need the shadow check?
+                        // (See verus_time_travel_prevention.rs)
+                        let shadow_check =
+                            bctx.new_mut_ref && !(bctx.in_old || bctx.in_explicit_prophecy_node);
+                        if shadow_check {
+                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                            erasure_info.shadow_check.push(expr.hir_id);
+                        }
+
                         if bctx.in_postcondition && !bctx.in_old && bctx.is_param_migrated(&name) {
                             {
                                 let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
@@ -2690,6 +2714,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let allow_no_decreases =
                 get_allow_exec_allows_no_decreases_clause_walk_parents(bctx.ctxt.tcx, bctx.fun_id);
             let decrease = if expr_vattrs.auto_decreases && allow_no_decreases {
+                for dec in header.decrease.iter() {
+                    crate::erase::mark_tree_for_erasure(&bctx.ctxt, dec);
+                }
                 Arc::new(vec![])
             } else {
                 header.decrease.clone()
@@ -3495,7 +3522,7 @@ fn unwrap_parameter_to_vir<'tcx>(
         let mode = match verus_item {
             Some(VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(
                 SpecGhostTrackedItem::GhostView,
-            ))) => Some((Mode::Spec, ResolvedCall::Spec)),
+            ))) => Some((Mode::Spec, ResolvedCall::SpecAllowProofArgs)),
             Some(VerusItem::CompilableOpr(CompilableOprItem::TrackedGet)) => Some((
                 Mode::Proof,
                 ResolvedCall::CompilableOperator(CompilableOperator::TrackedGet),
@@ -3544,6 +3571,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
     match &stmt.kind {
         StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
             if is_ignorable_dummy_capture_operation(bctx, expr) {
+                record_ignore_dummy_capture_operation(bctx, expr);
                 return Ok(vec![]);
             }
 
@@ -3603,6 +3631,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
         StmtKind::Let(LetStmt { pat, ty: _, init, els, .. }) => {
             if let Some(init) = init {
                 if is_ignorable_dummy_capture_operation(bctx, init) {
+                    record_ignore_dummy_capture_operation(bctx, init);
                     return Ok(vec![]);
                 }
             }
@@ -3653,6 +3682,13 @@ pub(crate) fn is_ignorable_dummy_capture_operation<'tcx>(
         },
         _ => false,
     }
+}
+
+pub(crate) fn record_ignore_dummy_capture_operation<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) {
+    crate::fn_call_to_vir::record_call(bctx, expr, ResolvedCall::MiscEraseAbsolutely);
 }
 
 pub(crate) fn closure_to_vir<'tcx>(
@@ -3885,7 +3921,7 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
 
                 let expr =
                     bctx.spanned_typed_new(dst_expr.span, &Arc::new(TypX::Int(IntRange::USize)), x);
-                return Ok(Some(mk_ty_clip(&expr_typ, &expr, expr_vattrs.truncate)));
+                return Ok(Some(mk_ty_clip(bctx, &expr_typ, &expr, expr_vattrs.truncate)));
             } else {
                 let expr = bctx.spanned_typed_new(dst_expr.span, &expr_typ, x);
                 return Ok(Some(expr));

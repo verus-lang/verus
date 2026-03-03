@@ -15,7 +15,7 @@ use crate::ast::{
     VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_expr, typ_args_for_datatype_typ,
+    conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_spec_expr, typ_args_for_datatype_typ,
     unit_typ, wrap_in_trigger,
 };
 use crate::ast_visitor::VisitorScopeMap;
@@ -39,6 +39,8 @@ struct State {
     next_var: u64,
     // Rename parameters to simplify their names
     rename_vars: HashMap<VarIdent, VarIdent>,
+    // Rename parameters to simplify their names
+    rename_vars_reverse: HashMap<VarIdent, VarIdent>,
     // Name of a datatype to represent each tuple arity
     tuple_typs: HashSet<usize>,
     // Name of a datatype to represent each tuple arity
@@ -52,6 +54,7 @@ impl State {
         State {
             next_var: 0,
             rename_vars: HashMap::new(),
+            rename_vars_reverse: HashMap::new(),
             tuple_typs: HashSet::new(),
             closure_typs: HashMap::new(),
             fndef_typs: HashSet::new(),
@@ -323,7 +326,7 @@ fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
             match field_opr.check {
                 VariantCheck::None => {}
                 VariantCheck::Union => {
-                    let p1_expr = place_to_expr(&p1);
+                    let p1_expr = place_to_spec_expr(&p1);
                     let assert_stmt =
                         crate::place_preconditions::field_check(&place.span, &p1_expr, field_opr);
                     stmts.push(assert_stmt);
@@ -363,7 +366,7 @@ fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
             match bounds_check {
                 BoundsCheck::Allow => {}
                 BoundsCheck::Error => {
-                    let p1_expr = place_to_expr(&p1);
+                    let p1_expr = place_to_spec_expr(&p1);
                     let assert_stmt = crate::place_preconditions::index_bound(
                         &place.span,
                         &p1_expr,
@@ -437,6 +440,34 @@ fn simplify_one_expr(
                 _ => Ok(expr.new_x(ExprX::VarLoc(rename_var(state, scope_map, x)))),
             }
         }
+        ExprX::AssignToPlace { place, .. } => {
+            if !crate::ast_util::place_has_deref_mut(place)
+                && let Some(local) = crate::ast_util::place_get_local(place)
+            {
+                let PlaceX::Local(x) = &local.x else { unreachable!() };
+                let x = match state.rename_vars_reverse.get(x) {
+                    None => x,
+                    Some(y) => y,
+                };
+                match scope_map.get(x) {
+                    None => {
+                        return Err(error(
+                            &expr.span,
+                            "Verus Internal Error: cannot find this variable",
+                        ));
+                    }
+                    Some(entry) if entry.user_mut == Some(false) && entry.init => {
+                        let name = user_local_name(x);
+                        return Err(error(
+                            &expr.span,
+                            format!("variable `{name:}` is not marked mutable"),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            Ok(expr.clone())
+        }
         ExprX::ConstVar(x, autospec) => {
             let call = ExprX::Call(
                 CallTarget::Fun(
@@ -493,10 +524,12 @@ fn simplify_one_expr(
         }
         ExprX::Ctor(name, variant, partial_binders, Some(update)) => {
             let CtorUpdateTail { place, taken_fields: _ } = update;
-            let (temp_decl, update) = small_or_temp(state, &place_to_expr(place));
+            let (stmts, update) = place_to_pure_place(state, place);
+            // not really spec but that doesn't matter at this point
+            let update = place_to_spec_expr(&update);
             let mut decls: Vec<Stmt> = Vec::new();
             let mut binders: Vec<Binder<Expr>> = Vec::new();
-            if temp_decl.len() == 0 {
+            if stmts.len() == 0 {
                 for binder in partial_binders.iter() {
                     binders.push(binder.clone());
                 }
@@ -508,7 +541,7 @@ fn simplify_one_expr(
                     decls.extend(temp_decl_inner.into_iter());
                     binders.push(binder.map_a(|_| e));
                 }
-                decls.extend(temp_decl.into_iter());
+                decls.extend(stmts.into_iter());
             }
 
             let path = match name {
@@ -595,7 +628,7 @@ fn simplify_one_expr(
                 let unused = crate::ast_util::mk_bool(&expr.span, false);
                 (stmts, unused)
             } else {
-                let expr0 = place_to_expr(&place);
+                let expr0 = place_to_spec_expr(&place);
                 small_or_temp(state, &expr0)
             };
 
@@ -791,7 +824,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                 Ok(stmts)
             } else {
                 let mut decls: Vec<Stmt> = Vec::new();
-                let (temp_decl, init) = small_or_temp(state, &place_to_expr(init));
+                let (temp_decl, init) = small_or_temp(state, &place_to_spec_expr(init));
                 decls.extend(temp_decl.into_iter());
                 let mut decls2: Vec<Stmt> = Vec::new();
                 let pattern_check = pattern_to_exprs(ctx, state, &init, &pattern, &mut decls2)?;
@@ -1230,6 +1263,10 @@ fn simplify_function(
     } else {
         functionx.ret.x.name.clone()
     };
+
+    for (a, b) in state.rename_vars.iter() {
+        state.rename_vars_reverse.insert(b.clone(), a.clone());
+    }
 
     // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
     if functionx.typ_params.len() == 0

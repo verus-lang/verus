@@ -278,6 +278,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let t = self.visit_typ(t)?;
                 R::ret(|| UnaryOpr::HasResolved(R::get(t)))
             }
+            UnaryOpr::ToDyn(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| UnaryOpr::ToDyn(R::get(t)))
+            }
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
             | UnaryOpr::IntegerTypeBound(..)
@@ -1535,7 +1539,7 @@ where
     }
 }
 
-pub(crate) fn ast_visitor_check<ERR, E, FE, FS, FP, FT, FPL>(
+pub fn ast_visitor_check<ERR, E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
     env: &mut E,
     fe: &mut FE,
