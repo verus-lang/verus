@@ -11,25 +11,26 @@ use core::sync::atomic::{AtomicI64, AtomicU64};
 use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
+use super::wrapping::*;
 
 macro_rules! make_unsigned_integer_atomic {
-    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty) => {
+    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $modname:ident) => {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
             atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
-            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty);
+            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $modname);
         }
     };
 }
 
 macro_rules! make_signed_integer_atomic {
-    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty) => {
+    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $modname:ident) => {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
             atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
-            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty);
+            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $modname);
         }
     };
 }
@@ -272,7 +273,7 @@ macro_rules! atomic_common_methods {
 }
 
 macro_rules! atomic_integer_methods {
-    ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty) => {
+    ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $modname:ident) => {
         verus_impl!{
 
         // Note that wrapping-on-overflow is the defined behavior for fetch_add and fetch_sub
@@ -286,7 +287,7 @@ macro_rules! atomic_integer_methods {
             ensures
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
-                perm.view().value as int == $value_ty::wrapping_add(old(perm).view().value, n),
+                perm.view().value as int == $modname::wrapping_add(old(perm).view().value, n),
             opens_invariants none
             no_unwind
         {
@@ -301,7 +302,7 @@ macro_rules! atomic_integer_methods {
             ensures
                 equal(old(perm).view().value, ret),
                 perm.view().patomic == old(perm).view().patomic,
-                perm.view().value as int == $value_ty::wrapping_sub(old(perm).view().value, n),
+                perm.view().value as int == $modname::wrapping_sub(old(perm).view().value, n),
             opens_invariants none
             no_unwind
         {
@@ -513,27 +514,77 @@ macro_rules! atomic_bool_methods {
 
 make_bool_atomic!(PAtomicBool, PermissionBool, PermissionDataBool, AtomicBool, bool);
 
-make_unsigned_integer_atomic!(PAtomicU8, PermissionU8, PermissionDataU8, AtomicU8, u8);
-make_unsigned_integer_atomic!(PAtomicU16, PermissionU16, PermissionDataU16, AtomicU16, u16);
-make_unsigned_integer_atomic!(PAtomicU32, PermissionU32, PermissionDataU32, AtomicU32, u32);
+make_unsigned_integer_atomic!(PAtomicU8, PermissionU8, PermissionDataU8, AtomicU8, u8, u8_specs);
+make_unsigned_integer_atomic!(
+    PAtomicU16,
+    PermissionU16,
+    PermissionDataU16,
+    AtomicU16,
+    u16,
+    u16_specs
+);
+make_unsigned_integer_atomic!(
+    PAtomicU32,
+    PermissionU32,
+    PermissionDataU32,
+    AtomicU32,
+    u32,
+    u32_specs
+);
 
 #[cfg(target_has_atomic = "64")]
-make_unsigned_integer_atomic!(PAtomicU64, PermissionU64, PermissionDataU64, AtomicU64, u64);
+make_unsigned_integer_atomic!(
+    PAtomicU64,
+    PermissionU64,
+    PermissionDataU64,
+    AtomicU64,
+    u64,
+    u64_specs
+);
 make_unsigned_integer_atomic!(
     PAtomicUsize,
     PermissionUsize,
     PermissionDataUsize,
     AtomicUsize,
-    usize
+    usize,
+    usize_specs
 );
 
-make_signed_integer_atomic!(PAtomicI8, PermissionI8, PermissionDataI8, AtomicI8, i8);
-make_signed_integer_atomic!(PAtomicI16, PermissionI16, PermissionDataI16, AtomicI16, i16);
-make_signed_integer_atomic!(PAtomicI32, PermissionI32, PermissionDataI32, AtomicI32, i32);
+make_signed_integer_atomic!(PAtomicI8, PermissionI8, PermissionDataI8, AtomicI8, i8, i8_specs);
+make_signed_integer_atomic!(
+    PAtomicI16,
+    PermissionI16,
+    PermissionDataI16,
+    AtomicI16,
+    i16,
+    i16_specs
+);
+make_signed_integer_atomic!(
+    PAtomicI32,
+    PermissionI32,
+    PermissionDataI32,
+    AtomicI32,
+    i32,
+    i32_specs
+);
 
 #[cfg(target_has_atomic = "64")]
-make_signed_integer_atomic!(PAtomicI64, PermissionI64, PermissionDataI64, AtomicI64, i64);
-make_signed_integer_atomic!(PAtomicIsize, PermissionIsize, PermissionDataIsize, AtomicIsize, isize);
+make_signed_integer_atomic!(
+    PAtomicI64,
+    PermissionI64,
+    PermissionDataI64,
+    AtomicI64,
+    i64,
+    i64_specs
+);
+make_signed_integer_atomic!(
+    PAtomicIsize,
+    PermissionIsize,
+    PermissionDataIsize,
+    AtomicIsize,
+    isize,
+    isize_specs
+);
 
 atomic_types_generic!(PAtomicPtr, PermissionPtr, PermissionDataPtr, AtomicPtr<T>, *mut T);
 
