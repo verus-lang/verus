@@ -122,6 +122,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_map_by verus_code! {
+        use vstd::set::*;
+
+        proof fn test<A, B>(sa: Set<A>, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A)
+            requires
+                forall|a: A| sa.contains(a) ==> rev(fwd(a)) == a,
+        {
+            assert(sa.map(fwd) =~= sa.map_by(fwd, rev));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_set_build verus_code! {
         use vstd::set::*;
 

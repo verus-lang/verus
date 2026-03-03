@@ -30,30 +30,60 @@ impl<A> Set<A> {
         Set::new(|a: B| exists|x: A| self.contains(x) && a == f(x))
     }
 
-    /// Set::map_by is like Set::map, but map only takes a forward function fwd: spec_fn(A) -> B,
-    /// while map_by also takes a reverse function rev: spec_fn(B) -> A.
-    /// This reverse function can make proofs easier
-    /// by avoiding the "exists" that appears in lemmas about Set::map.
-    /// Example: for a set s: Set<int>, to map each i in s to (i, 10 * i),
-    /// we can write either s.map(|i: int| (i, 10 * i))
-    /// or s.map_by(|i: int| (i, 10 * i), |p: (int, int)| p.0);
-    /// the version with map_by is usually easier to use in proofs.
-    /// Also see the `set_build!` macro for a convenient interface to map_by.
-    pub open spec fn map_by<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A) -> Set<B> {
+    /// `Set::map_by` is like `Set::map`, but `map` only takes a forward function `fwd: spec_fn(A) -> B`,
+    /// while `map_by` also takes a reverse function `rev: spec_fn(B) -> A`
+    /// such that `rev(fwd(a)) == a`.
+    /// When `fwd` has such a reverse function, `Set::map_by` can make proofs easier
+    /// by avoiding the "exists" that appears in lemmas about `Set::map`.
+    /// Example: for a set `s: Set<int>`, to map each `i` in `s` to `(i, 10 * i)`,
+    /// we can write either `s.map(|i: int| (i, 10 * i))`
+    /// or `s.map_by(|i: int| (i, 10 * i), |p: (int, int)| p.0)`;
+    /// the version with `map_by` is usually easier to use in proofs.
+    /// If the recommendation `forall|a: A| self.contains(a) ==> rev(fwd(a)) == a` is satisfied,
+    /// it is trivially guaranteed that `self.map_by(fwd, rev) == self.map(fwd)`.
+    /// Also see the `set_build!` macro for a convenient interface to `map_by`.
+    pub open spec fn map_by<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A) -> Set<B>
+        recommends
+            forall|a: A| self.contains(a) ==> rev(fwd(a)) == a,
+    {
         Set::new(|b: B| self.contains(rev(b)) && b == fwd(rev(b)))
     }
 
-    /// Similar to Set::map_by, but the forward function returns Set<B> rather than B,
-    /// and map_flatten_by flattens the final result from Set<Set<B>> to just Set<B>.
-    /// This can be easier to work with in proofs than calling map and flatten separately,
-    /// since map and flatten introduce "exists", while map_flatten_by does not.
-    /// Also see the `set_build!` macro for a convenient interface to map_flatten_by.
+    /// Similar to `Set::map_by`, but the forward function returns `Set<B>` rather than `B`,
+    /// and `map_flatten_by` flattens the final result from `Set<Set<B>>` to just `Set<B>`.
+    /// This can be easier to work with in proofs than calling `map` and `flatten` separately,
+    /// since `map` and `flatten` introduce "exists", while `map_flatten_by` does not.
+    /// Also see the `set_build!` macro for a convenient interface to `map_flatten_by`.
     pub open spec fn map_flatten_by<B>(
         self,
         fwd: spec_fn(A) -> Set<B>,
         rev: spec_fn(B) -> A,
-    ) -> Set<B> {
+    ) -> Set<B>
+        recommends
+            forall|a: A, b: B| #[trigger]
+                self.contains(a) && fwd(a).contains(b) ==> #[trigger] rev(b) == a,
+    {
         Set::new(|b: B| self.contains(rev(b)) && fwd(rev(b)).contains(b))
+    }
+
+    pub proof fn map_flatten_by_is_map_flatten<B>(
+        self,
+        fwd: spec_fn(A) -> Set<B>,
+        rev: spec_fn(B) -> A,
+    )
+        requires
+            forall|a: A, b: B| #[trigger]
+                self.contains(a) && fwd(a).contains(b) ==> #[trigger] rev(b) == a,
+        ensures
+            self.map_flatten_by(fwd, rev) == self.map(fwd).flatten(),
+    {
+        assert forall|b: B| self.map_flatten_by(fwd, rev).contains(b) implies #[trigger] self.map(
+            fwd,
+        ).flatten().contains(b) by {
+            let bs = choose|bs: Set<B>|
+                (exists|a: A| self.contains(a) && bs == fwd(a)) && bs.contains(b);
+            assert(self.map(fwd).contains(bs) <==> (exists|a: A| self.contains(a) && bs == fwd(a)));
+        }
     }
 
     /// Converts a set into a sequence with an arbitrary ordering.
