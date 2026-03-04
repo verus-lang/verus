@@ -2,6 +2,8 @@
 use super::prelude::*;
 use super::seq::*;
 use super::slice::SliceAdditionalSpecFns;
+#[cfg(verus_keep_ghost)]
+use crate::std_specs::iter::IteratorSpec;
 use super::view::*;
 
 verus! {
@@ -91,6 +93,30 @@ pub broadcast axiom fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
         (#[trigger] spec_array_as_slice(ar))@ == ar@,
 ;
 
+// To allow reasoning about the returned iterator when the executable
+// function `iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: a.iter() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_array_iter)` to the specification for
+// the executable `into_iter` method and define that spec function here.
+pub uninterp spec fn spec_array_iter<T, const N: usize>(s: &[T; N]) -> (iter: core::slice::Iter<'_, T>);
+
+pub broadcast proof fn axiom_spec_array_iter<T, const N: usize>(s: &[T; N])
+    ensures
+        #[trigger] spec_array_iter(s).remaining() == s@.map_values(|v| &v),
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_array_iter)]
+pub assume_specification<'a, T, const N: usize> [<&'a [T; N] as core::iter::IntoIterator>::into_iter] (s: &'a [T; N]) -> 
+    (iter: core::slice::Iter<'a, T>)
+    ensures
+        iter == spec_array_iter(s),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_inv(&iter, &iter),
+;
+
 // Referenced by Verus' internal encoding for array -> slice coercion
 #[doc(hidden)]
 #[verifier::external_body]
@@ -172,6 +198,7 @@ pub broadcast group group_array_axioms {
     axiom_spec_array_as_slice,
     axiom_spec_array_fill_for_copy_type,
     axiom_array_ext_equal,
+    axiom_spec_array_iter,
     axiom_spec_array_update,
     axiom_array_has_resolved,
 }
