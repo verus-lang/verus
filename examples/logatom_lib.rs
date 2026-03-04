@@ -371,8 +371,7 @@ impl logatom::MutLinearizer<IncrementOp> for ClientInvCarrier<'_> {
         e: &<IncrementOp as logatom::MutOperation>::ExecResult,
     ) -> (tracked out: Self::Completion) {
         open_atomic_invariant!(self.credit => self.my_inv => perm => {
-            let tracked curr = ghost_var_copy(r, &mut perm.inner);
-            let tracked next = tracked_wrapping_add(curr, 1);
+            let next = r@.wrapping_add(1);
             r.update(&mut perm.inner, next);
         });
     }
@@ -401,26 +400,5 @@ pub fn client_inv() {
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
-
-proof fn ghost_var_copy<T: Copy>(tracked left: &mut GhostVarAuth<T>, tracked right: &mut GhostVar<T>) -> (tracked value: T)
-    requires
-        old(left).id() == old(right).id(),
-    ensures
-        *left == *old(left),
-        *right == *old(right),
-        left@ == right@,
-        value == left@,
-{
-    assume(false);
-    proof_from_false()
-}
-
-proof fn tracked_wrapping_add(tracked left: u64, tracked right: u64) -> (tracked out: u64)
-    ensures
-        out == left.wrapping_add(right),
-{
-    assume(false);
-    proof_from_false()
-}
 
 } // verus!
