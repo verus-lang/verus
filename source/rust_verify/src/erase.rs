@@ -42,7 +42,7 @@ pub enum CompilableOperator {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResolvedCall {
     /// The call is to a spec or proof function, and should be erased
-    Spec,
+    SpecPure,
     /// The call is to a spec or proof function, but may have proof-mode arguments
     SpecAllowProofArgs,
     /// The call is to an operator like == or + that should be compiled.
@@ -124,7 +124,7 @@ fn resolved_call_to_call_erase(
     ctor_mode: Option<Mode>,
 ) -> Result<CallErasure, VirErr> {
     Ok(match resolved_call {
-        ResolvedCall::Spec => CallErasure::EraseTree(TreeErase::IncludeBasicChecks),
+        ResolvedCall::SpecPure => CallErasure::EraseTree(TreeErase::IncludeBasicChecks),
         ResolvedCall::SpecAllowProofArgs => CallErasure::Call(NodeErase::Erase),
         ResolvedCall::Call(ufun, rfun, in_ghost) => {
             // Note: in principle, the unresolved function ufun should always be present,
@@ -152,7 +152,7 @@ fn resolved_call_to_call_erase(
         ResolvedCall::CompilableOperator(co) => match co {
             CompilableOperator::IntIntrinsic => CallErasure::Call(NodeErase::Erase),
 
-            CompilableOperator::GhostExec => CallErasure::EraseTree(TreeErase::IncludeBasicChecks),
+            CompilableOperator::GhostExec => CallErasure::Call(NodeErase::Keep),
 
             CompilableOperator::Implies
             | CompilableOperator::RcNew

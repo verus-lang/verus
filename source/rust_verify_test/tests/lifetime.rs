@@ -1733,3 +1733,31 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x.a` because it is borrowed")
 }
+
+test_verify_one_file! {
+    #[test] lifetime_checking_in_ghost verus_code! {
+        proof fn consume<A>(tracked a: A) { }
+        fn ghost_ctor_test<T>(Tracked(t): Tracked<T>) {
+            let t: Ghost<int> = Ghost({
+                consume(t);
+                consume(t);
+                0
+            });
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_checking_in_array_index verus_code! {
+        proof fn consume<A>(tracked a: A) { }
+        fn array_index_test<T>(Tracked(t): Tracked<T>, a: [u64; 2]) {
+            proof {
+                let t = array_index(a, {
+                    consume(t);
+                    consume(t);
+                    0
+                });
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
