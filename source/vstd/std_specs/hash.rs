@@ -1189,7 +1189,7 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::keys ](
 ;
 
 // To allow reasoning about the ghost Values iterator when the executable
-// function `keys()` is invoked in a `for` loop header (e.g., in
+// function `value()` is invoked in a `for` loop header (e.g., in
 // `for x in it: m.keys() { ... }`), we need to specify the behavior of
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_iter)` to the specification for
@@ -1230,101 +1230,131 @@ pub broadcast proof fn axiom_hashmap_decreases<Key, Value, S>(m: HashMap<Key, Va
 #[verifier::accept_recursive_types(Key)]
 pub struct ExSetIter<'a, Key: 'a>(hash_set::Iter<'a, Key>);
 
-pub trait SetIterAdditionalSpecFns<'a, Key: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<Key>);
-}
+// pub trait SetIterAdditionalSpecFns<'a, Key: 'a> {
+//     spec fn view(self: &Self) -> (int, Seq<Key>);
+// }
 
-impl<'a, Key: 'a> SetIterAdditionalSpecFns<'a, Key> for hash_set::Iter<'a, Key> {
-    uninterp spec fn view(self: &hash_set::Iter<'a, Key>) -> (int, Seq<Key>);
-}
+// impl<'a, Key: 'a> SetIterAdditionalSpecFns<'a, Key> for hash_set::Iter<'a, Key> {
+//     uninterp spec fn view(self: &hash_set::Iter<'a, Key>) -> (int, Seq<Key>);
+// }
 
-pub assume_specification<'a, Key>[ hash_set::Iter::<'a, Key>::next ](
-    elements: &mut hash_set::Iter<'a, Key>,
-) -> (r: Option<&'a Key>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(elements)@;
-            match r {
-                None => {
-                    &&& elements@ == old(elements)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(element) => {
-                    let (new_index, new_seq) = elements@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
-                },
-            }
-        }),
-;
+// pub assume_specification<'a, Key>[ hash_set::Iter::<'a, Key>::next ](
+//     elements: &mut hash_set::Iter<'a, Key>,
+// ) -> (r: Option<&'a Key>)
+//     ensures
+//         ({
+//             let (old_index, old_seq) = old(elements)@;
+//             match r {
+//                 None => {
+//                     &&& elements@ == old(elements)@
+//                     &&& old_index >= old_seq.len()
+//                 },
+//                 Some(element) => {
+//                     let (new_index, new_seq) = elements@;
+//                     &&& 0 <= old_index < old_seq.len()
+//                     &&& new_seq == old_seq
+//                     &&& new_index == old_index + 1
+//                     &&& element == old_seq[old_index]
+//                 },
+//             }
+//         }),
+// ;
 
-pub struct SetIterGhostIterator<'a, Key> {
-    pub pos: int,
-    pub elements: Seq<Key>,
-    pub phantom: Option<&'a Key>,
-}
+// To allow reasoning about the "contents" of the HashSet iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original keys.
+pub uninterp spec fn into_iter_hash_keys<'a, Key>(i: hash_set::Iter::<'a, Key>) -> Seq<Key>;
 
-impl<'a, Key> super::super::pervasive::ForLoopGhostIteratorNew for hash_set::Iter<'a, Key> {
-    type GhostIter = SetIterGhostIterator<'a, Key>;
-
-    open spec fn ghost_iter(&self) -> SetIterGhostIterator<'a, Key> {
-        SetIterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
-    }
-}
-
-impl<'a, Key: 'a> super::super::pervasive::ForLoopGhostIterator for SetIterGhostIterator<'a, Key> {
-    type ExecIter = hash_set::Iter<'a, Key>;
-
-    type Item = Key;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &hash_set::Iter<'a, Key>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.elements == exec_iter@.1
+impl<'a, K> crate::std_specs::iter::IteratorSpecImpl for hash_set::Iter::<'a, K> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.elements == self.elements
-            &&& 0 <= self.pos <= self.elements.len()
-        }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+    uninterp spec fn completes(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter_hash_keys(*self) == IteratorSpec::remaining(self).map_values(|v: Self::Item| *v)
     }
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.elements.len()
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.elements.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<Key> {
-        if 0 <= self.pos < self.elements.len() {
-            Some(self.elements[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_hash_keys(*self).len() {
+            Some(&into_iter_hash_keys(*self)[index])
         } else {
             None
         }
     }
-
-    open spec fn ghost_advance(&self, _exec_iter: &hash_set::Iter<'a, Key>) -> SetIterGhostIterator<
-        'a,
-        Key,
-    > {
-        Self { pos: self.pos + 1, ..*self }
-    }
 }
 
-impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
-    type V = Seq<Key>;
 
-    open spec fn view(&self) -> Seq<Key> {
-        self.elements.take(self.pos)
-    }
-}
+// pub struct SetIterGhostIterator<'a, Key> {
+//     pub pos: int,
+//     pub elements: Seq<Key>,
+//     pub phantom: Option<&'a Key>,
+// }
+
+// impl<'a, Key> super::super::pervasive::ForLoopGhostIteratorNew for hash_set::Iter<'a, Key> {
+//     type GhostIter = SetIterGhostIterator<'a, Key>;
+
+//     open spec fn ghost_iter(&self) -> SetIterGhostIterator<'a, Key> {
+//         SetIterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
+//     }
+// }
+
+// impl<'a, Key: 'a> super::super::pervasive::ForLoopGhostIterator for SetIterGhostIterator<'a, Key> {
+//     type ExecIter = hash_set::Iter<'a, Key>;
+
+//     type Item = Key;
+
+//     type Decrease = int;
+
+//     open spec fn exec_invariant(&self, exec_iter: &hash_set::Iter<'a, Key>) -> bool {
+//         &&& self.pos == exec_iter@.0
+//         &&& self.elements == exec_iter@.1
+//     }
+
+//     open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
+//         init matches Some(init) ==> {
+//             &&& init.pos == 0
+//             &&& init.elements == self.elements
+//             &&& 0 <= self.pos <= self.elements.len()
+//         }
+//     }
+
+//     open spec fn ghost_ensures(&self) -> bool {
+//         self.pos == self.elements.len()
+//     }
+
+//     open spec fn ghost_decrease(&self) -> Option<int> {
+//         Some(self.elements.len() - self.pos)
+//     }
+
+//     open spec fn ghost_peek_next(&self) -> Option<Key> {
+//         if 0 <= self.pos < self.elements.len() {
+//             Some(self.elements[self.pos])
+//         } else {
+//             None
+//         }
+//     }
+
+//     open spec fn ghost_advance(&self, _exec_iter: &hash_set::Iter<'a, Key>) -> SetIterGhostIterator<
+//         'a,
+//         Key,
+//     > {
+//         Self { pos: self.pos + 1, ..*self }
+//     }
+// }
+
+// impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
+//     type V = Seq<Key>;
+
+//     open spec fn view(&self) -> Seq<Key> {
+//         self.elements.take(self.pos)
+//     }
+// }
 
 /// Specifications for the behavior of [`std::collections::HashSet`](https://doc.rust-lang.org/std/collections/struct.HashSet.html).
 ///
@@ -1559,16 +1589,37 @@ pub assume_specification<Key, S>[ HashSet::<Key, S>::clear ](m: &mut HashSet<Key
         m@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<Key, S>) -> (r:
-    hash_set::Iter<'a, Key>)
+
+
+// To allow reasoning about the ghost keys in the HashSet iterator when the executable
+// function `iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: m.keys() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
+// the executable `iter` method and define that spec function here.
+pub uninterp spec fn spec_hash_keys_iter<'a, Key, S>(m: &'a HashSet<Key, S>) ->  (r: hash_set::Iter<'a, Key>);
+
+pub broadcast proof fn axiom_spec_hash_keys_iter<'a, Key, S>(m: &'a HashSet<Key, S>)
+    ensures
+        (#[trigger] spec_hash_keys_iter(m).remaining()).map_values(|v: &Key| *v).to_set() == m@,
+        spec_hash_keys_iter(m).remaining().no_duplicates(),
+        spec_hash_keys_iter(m).remaining().len() == m@.len()
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_hash_keys_iter)]
+pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](
+    m: &'a HashSet<Key, S>,
+) -> (hash_keys: hash_set::Iter<'a, Key>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            let (index, s) = r@;
-            &&& index == 0
-            &&& s.to_set() == m@
-            &&& s.no_duplicates()
+            &&& hash_keys == spec_hash_keys_iter(m)
+            &&& IteratorSpec::decrease(&hash_keys) is Some
+            &&& IteratorSpec::initial_value_inv(&hash_keys, &hash_keys)
         },
 ;
+
 
 pub broadcast proof fn axiom_hashset_decreases<Key, S>(m: HashSet<Key, S>)
     ensures
@@ -1611,6 +1662,7 @@ pub broadcast group group_hash_axioms {
     axiom_set_box_key_to_value,
     axiom_spec_hash_set_len,
     axiom_spec_hash_map_iter,
+    axiom_spec_hash_keys_iter,
     axiom_spec_keys_iter,
     axiom_spec_values_iter,
     axiom_hashmap_decreases,

@@ -919,32 +919,27 @@ test_verify_one_file_with_options! {
         use vstd::std_specs::iter::IteratorSpec;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
-        fn test()
+        fn test_set()
         {
             let mut m = HashSet::<u32>::new();
             assert(m@ == Set::<u32>::empty());
 
             m.insert(3);
             m.insert(6);
-            let m_iter = m.iter();
-            assert(m_iter@.0 == 0);
-            assert(m_iter@.1.to_set() =~= set![3u32, 6u32]);
-            let ghost g_elements = m_iter@.1;
+            let ghost m_iter = m.iter();
+            assert(m_iter.remaining().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32]);
 
             let mut items = Vec::<u32>::new();
-            assert(items@ =~= g_elements.take(0));
 
-            for k in iter: m_iter
+            for k in iter: m.iter()
                 invariant
-                    iter.elements == g_elements,
-                    g_elements.to_set() =~= set![3u32, 6u32],
-                    items@ == iter@,
+                    iter.seq().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32],
+                    items@ == iter.seq().take(iter.index@).map_values(|v: &u32| *v),
             {
-                assert(iter.elements.take(iter.pos).push(*k) =~= iter.elements.take(iter.pos + 1));
                 items.push(*k);
             }
             assert(items@.to_set() =~= set![3u32, 6u32]) by {
-                assert(g_elements.take(g_elements.len() as int) =~= g_elements);
+                assert(m_iter.remaining().take(m_iter.remaining().len() as int) == m_iter.remaining());
             }
             assert(items@.no_duplicates());
         }
