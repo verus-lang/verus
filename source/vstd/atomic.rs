@@ -1069,42 +1069,42 @@ macro_rules! try_open_atomic_update_internal {
         })
     };
 
-    // ($au:expr, $x:pat => $body:block) => {
-    //     #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
-    //         #[cfg(verus_keep_ghost_body)]
-    //         let guard = $crate::atomic::try_open_atomic_update_begin($au);
-    //         #[cfg(verus_keep_ghost_body)]
-    //         let $x = $crate::atomic::bind_lifetime_internal(&guard);
-    //         let res = $body;
-
-    //         match res {
-    //             #[cfg(verus_keep_ghost_body)]
-    //             res => $crate::atomic::try_open_atomic_update_end(guard, res),
-
-    //             #[cfg(not(verus_keep_ghost_body))]
-    //             _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
-    //         }
-    //     }
-    // };
-
     ($au:expr, $x:pat => $body:block) => {
-        match () {
+        #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            _ => $crate::atomic::try_open_au($au, {
-                let _verus_internal_identifier_for_closures = ::verus_builtin::dummy_capture_new();
-                |$x| {
-                    ::verus_builtin::dummy_capture_consume(_verus_internal_identifier_for_closures);
-                    $body
-                }
-            }),
+            let guard = $crate::atomic::try_open_atomic_update_begin($au);
+            #[cfg(verus_keep_ghost_body)]
+            let $x = $crate::atomic::bind_lifetime_internal(&guard);
+            let res = $body;
 
-            #[cfg(not(verus_keep_ghost_body))]
-            _ => {
-                let _ = $body;
-                ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!())
-            },
+            match res {
+                #[cfg(verus_keep_ghost_body)]
+                res => $crate::atomic::try_open_atomic_update_end(guard, res),
+
+                #[cfg(not(verus_keep_ghost_body))]
+                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+            }
         }
     };
+
+    // ($au:expr, $x:pat => $body:block) => {
+    //     match () {
+    //         #[cfg(verus_keep_ghost_body)]
+    //         _ => $crate::atomic::try_open_au($au, {
+    //             let _verus_internal_identifier_for_closures = ::verus_builtin::dummy_capture_new();
+    //             |$x| {
+    //                 ::verus_builtin::dummy_capture_consume(_verus_internal_identifier_for_closures);
+    //                 $body
+    //             }
+    //         }),
+
+    //         #[cfg(not(verus_keep_ghost_body))]
+    //         _ => {
+    //             let _ = $body;
+    //             ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!())
+    //         },
+    //     }
+    // };
 }
 
 #[doc(hidden)]
