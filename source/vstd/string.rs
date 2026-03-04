@@ -9,6 +9,7 @@ use alloc::string::{self, String, ToString};
 #[cfg(feature = "alloc")]
 use super::prelude::*;
 use super::seq::Seq;
+#[cfg(verus_keep_ghost)]
 use crate::std_specs::iter::IteratorSpec;
 use super::view::*;
 
@@ -374,6 +375,37 @@ pub uninterp spec fn into_iter_elts<'a>(i: Chars<'a>) -> Seq<char>;
 //         self@
 //     }
 
+// To allow reasoning about the ghost iterator when the executable
+// function `iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: v.iter() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
+// the executable `iter` method and define that spec function here.
+pub uninterp spec fn spec_iter<'a>(s: &'a str) -> (r: Chars<'a>);
+
+pub broadcast proof fn axiom_spec_iter<'a>(s: &'a str)
+    ensures
+        #[trigger] spec_iter(s).remaining() == s@,
+{
+    admit();
+}
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ str::chars ](s: &str) -> (iter: Chars<'_>)
+    ensures
+        iter == spec_iter(s),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_inv(&iter, &iter),
+;
+
+pub use super::view::View;
+
+} // verus!
+
+// We use a separate block here, so that we can cfg out the use of 
+// crate::std_specs::iter::IteratorSpecImpl below.
+#[cfg(verus_keep_ghost)]
+verus! {
 
 impl <'a> crate::std_specs::iter::IteratorSpecImpl for Chars<'a> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
@@ -399,31 +431,5 @@ impl <'a> crate::std_specs::iter::IteratorSpecImpl for Chars<'a> {
         }
     }
 }
-
-
-// To allow reasoning about the ghost iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: v.iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
-// the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_iter<'a>(s: &'a str) -> (r: Chars<'a>);
-
-pub broadcast proof fn axiom_spec_iter<'a>(s: &'a str)
-    ensures
-        #[trigger] spec_iter(s).remaining() == s@,
-{
-    admit();
-}
-
-#[cfg(feature = "alloc")]
-pub assume_specification[ str::chars ](s: &str) -> (iter: Chars<'_>)
-    ensures
-        iter == spec_iter(s),
-        IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_inv(&iter, &iter),
-;
-
-pub use super::view::View;
 
 } // verus!
