@@ -98,6 +98,15 @@ pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>
         IteratorSpec::initial_value_inv(&iter, &iter),
 ;
 
+#[verifier::when_used_as_spec(spec_slice_iter)]
+pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_iter] (s: &'a [T]) -> 
+    (iter: Iter<'a, T>)
+    ensures
+        iter == spec_slice_iter(s),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_inv(&iter, &iter),
+;
+
 pub assume_specification<T> [ <[T]>::first ](slice: &[T]) -> (res: Option<&T>)
     ensures
         slice.len() == 0 ==> res.is_none(),
