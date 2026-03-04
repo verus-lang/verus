@@ -128,6 +128,33 @@ fn path_is_ident(path: &Path, s: &str) -> bool {
     segments.len() == 1 && segments.first().unwrap().ident == s
 }
 
+fn path_matches_idents(path: &Path, expected: &[&str]) -> bool {
+    let segments = &path.segments;
+    segments.len() == expected.len()
+        && segments.iter().zip(expected.iter()).all(|(segment, expected)| segment.ident == *expected)
+}
+
+fn split_off_proof_note_attrs(attrs: &mut Vec<Attribute>) -> Vec<Attribute> {
+    let mut proof_note_attrs = Vec::new();
+    let mut i = 0;
+    while i < attrs.len() {
+        if path_matches_idents(attrs[i].path(), &["verifier", "proof_note"]) {
+            proof_note_attrs.push(attrs.remove(i));
+        } else {
+            i += 1;
+        }
+    }
+    proof_note_attrs
+}
+
+fn wrap_expr_with_attrs(span: Span, attrs: Vec<Attribute>, expr: Expr) -> Expr {
+    if attrs.is_empty() {
+        expr
+    } else {
+        Expr::Verbatim(quote_spanned! { span => #(#attrs)* (#expr) })
+    }
+}
+
 pub(crate) fn into_spans(span: Span) -> proc_macro2::extra::DelimSpan {
     let mut group = proc_macro2::Group::new(proc_macro2::Delimiter::None, TokenStream::new());
     group.set_span(span);
@@ -2756,8 +2783,9 @@ impl Visitor {
         let Expr::Assume(assume) = take_expr(expr) else { unreachable!() };
 
         let span = assume.assume_token.span;
-        let arg = assume.expr;
-        let attrs = assume.attrs;
+        let mut attrs = assume.attrs;
+        let proof_note_attrs = split_off_proof_note_attrs(&mut attrs);
+        let arg = wrap_expr_with_attrs(span, proof_note_attrs, *assume.expr);
         *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::assume_(#arg));
 
         self.auto_proof_block(expr, span);
@@ -2778,7 +2806,7 @@ impl Visitor {
         let Expr::Assert(assert) = take_expr(expr) else { unreachable!() };
 
         let span = assert.assert_token.span;
-        let arg = assert.expr;
+        let arg = *assert.expr;
         let attrs = assert.attrs;
 
         if let Some(prover) = &assert.prover {
@@ -2851,6 +2879,9 @@ impl Visitor {
             }
         } else {
             // Normal 'assert'
+            let mut attrs = attrs;
+            let proof_note_attrs = split_off_proof_note_attrs(&mut attrs);
+            let arg = wrap_expr_with_attrs(span, proof_note_attrs, arg);
             *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::assert_(#arg));
         }
 
