@@ -167,14 +167,42 @@ pub exec fn increment_seq(var: &MyPAtomicU64, Tracked(my_perm): Tracked<&mut MyP
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
 
+pub struct IncrementUpdate {
+    pub auth: GhostVarAuth<u64>,
+}
+
+impl IncrementUpdate {
+    pub open spec fn id(self) -> int {
+        self.auth.id()
+    }
+
+    pub open spec fn value(self) -> u64 {
+        self.auth@
+    }
+
+    pub proof fn update(tracked &mut self, tracked my_perm: &mut MyPermissionU64)
+        requires
+            old(self).id() == old(my_perm).id(),
+        ensures
+            self.id() == old(self).id(),
+            my_perm.id() == old(my_perm).id(),
+            old(self).value() == old(my_perm).value(),
+            self.value() == my_perm.value(),
+            my_perm.value() == old(my_perm).value().wrapping_add(1),
+    {
+        let next = self.auth@.wrapping_add(1);
+        self.auth.update(&mut my_perm.inner, next);
+    }
+}
+
 pub struct IncrementOp {
     pub id: int,
 }
 
 impl logatom::MutOperation for IncrementOp {
-    type Resource = GhostVarAuth<u64>;
+    type Resource = IncrementUpdate;
     type ExecResult = ();
-    type NewState = u64;
+    type NewState = ();
 
     open spec fn requires(
         self,
@@ -183,7 +211,6 @@ impl logatom::MutOperation for IncrementOp {
         e: Self::ExecResult
     ) -> bool {
         &&& pre.id() == self.id
-        &&& pre@ == new_state
     }
 
     open spec fn ensures(
@@ -193,7 +220,7 @@ impl logatom::MutOperation for IncrementOp {
         new_state: Self::NewState
     ) -> bool {
         &&& post.id() == self.id
-        &&& post@ == new_state.wrapping_add(1)
+        &&& post.value() == pre.value().wrapping_add(1)
     }
 
     open spec fn peek_requires(self, r: Self::Resource) -> bool {
@@ -206,7 +233,7 @@ impl logatom::MutOperation for IncrementOp {
 }
 
 pub fn increment<Carrier>(var: &MyPAtomicU64, Tracked(carrier): Tracked<Carrier>)
-        -> (out: (u64, Tracked<Carrier::Completion>))
+        -> (out: Tracked<Carrier::Completion>)
     where
         Carrier: logatom::MutLinearizer<IncrementOp>,
     requires
@@ -214,7 +241,7 @@ pub fn increment<Carrier>(var: &MyPAtomicU64, Tracked(carrier): Tracked<Carrier>
         carrier.pre(IncrementOp { id: var.id() }),
         !carrier.namespaces().contains(INV_PRED),
     ensures
-        carrier.post(IncrementOp { id: var.id() }, (), out.1@),
+        carrier.post(IncrementOp { id: var.id() }, (), out@),
 {
     let tracked inv = var.inv.borrow();
     let mut curr;
@@ -244,8 +271,10 @@ pub fn increment<Carrier>(var: &MyPAtomicU64, Tracked(carrier): Tracked<Carrier>
                     assert(next == prev.wrapping_add(1));
 
                     let op = IncrementOp { id: var.id() };
+                    let tracked mut update = IncrementUpdate { auth };
                     let tracked carrier = maybe_carrier.tracked_take();
-                    compl = Some(carrier.apply(op, &mut auth, prev, &()));
+                    compl = Some(carrier.apply(op, &mut update, (), &()));
+                    let tracked IncrementUpdate { auth } = update;
 
                     v = V { perm, auth };
                     assert(inv.inv(v));
@@ -257,10 +286,7 @@ pub fn increment<Carrier>(var: &MyPAtomicU64, Tracked(carrier): Tracked<Carrier>
         });
 
         match res {
-            Ok(_) => {
-                let compl = Tracked(compl.tracked_unwrap());
-                return (curr, compl);
-            }
+            Ok(_) => return Tracked(compl.tracked_unwrap()),
             Err(new) => {
                 curr = new;
                 continue;
@@ -302,7 +328,7 @@ impl logatom::MutLinearizer<IncrementOp> for ClientSyncCarrier {
         e: &<IncrementOp as logatom::MutOperation>::ExecResult,
     ) -> (tracked out: Self::Completion) {
         let tracked mut my_perm = self.my_perm;
-        r.update(&mut my_perm.inner, 7);
+        r.update(&mut my_perm);
         my_perm
     }
 
@@ -318,7 +344,7 @@ pub fn client_sync() {
     assert(my_perm.points_to(6));
 
     let tracked carrier = ClientSyncCarrier { my_perm };
-    let (_v, Tracked(my_perm)) = increment::<ClientSyncCarrier>(
+    let Tracked(my_perm) = increment::<ClientSyncCarrier>(
         &my_patomic,
         Tracked(carrier)
     );
@@ -370,9 +396,8 @@ impl logatom::MutLinearizer<IncrementOp> for ClientInvCarrier<'_> {
         new_state: <IncrementOp as logatom::MutOperation>::NewState,
         e: &<IncrementOp as logatom::MutOperation>::ExecResult,
     ) -> (tracked out: Self::Completion) {
-        open_atomic_invariant!(self.credit => self.my_inv => perm => {
-            let next = r@.wrapping_add(1);
-            r.update(&mut perm.inner, next);
+        open_atomic_invariant!(self.credit => self.my_inv => my_perm => {
+            r.update(&mut my_perm);
         });
     }
 
@@ -389,7 +414,7 @@ pub fn client_inv() {
     let Tracked(mut credit) = vstd::invariant::create_open_invariant_credit();
 
     let tracked carrier = ClientInvCarrier { my_inv: &inv, credit };
-    let (_v, Tracked(my_perm)) = increment::<ClientInvCarrier>(
+    let Tracked(my_perm) = increment::<ClientInvCarrier>(
         &my_patomic,
         Tracked(carrier)
     );
