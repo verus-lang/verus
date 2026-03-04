@@ -140,11 +140,11 @@ pub trait AbstractByteRepresentation where Self: Sized {
     ;
 
     /// Every value should have at least one encoding. The `Self` argument is tracked to allow type invariants to be invoked.
-    proof fn encoding_exists(tracked v: &Self) -> (b: Seq<AbstractByte>)
+    proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>)
         requires
             Self::can_be_encoded(),
         ensures
-            Self::encode(*v, b),
+            Self::encode(v, b),
     ;
 
     /// Any encoding should be able to be decoded back to the same value.
@@ -263,10 +263,10 @@ impl AbstractByteRepresentation for bool {
     proof fn encoding_size(v: bool, b: Seq<AbstractByte>) {
     }
 
-    proof fn encoding_exists(tracked v: &bool) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: bool) -> (b: Seq<AbstractByte>) {
         seq![
             AbstractByte::Init(
-                if *v {
+                if v {
                     1
                 } else {
                     0
@@ -397,7 +397,7 @@ macro_rules! unsigned_int_encoding {
                     unsigned_int_max_values();
                 }
 
-                proof fn encoding_exists(tracked v: &$int) -> (b: Seq<AbstractByte>) {
+                proof fn encoding_exists(tracked v: $int) -> (b: Seq<AbstractByte>) {
                     endian_to_bytes(EndianNat::<u8>::from_nat(v as nat, size_of::<$int>()), None)
                 }
 
@@ -496,7 +496,7 @@ macro_rules! signed_int_encoding {
                     unsigned_int_max_values();
                 }
 
-                proof fn encoding_exists(tracked v: &$int) -> (b: Seq<AbstractByte>) {
+                proof fn encoding_exists(tracked v: $int) -> (b: Seq<AbstractByte>) {
                     endian_to_bytes(EndianNat::<u8>::from_nat(signed_to_unsigned(v as int, size_of::<$int>()), size_of::<$int>()), None)
                 }
 
@@ -577,11 +577,11 @@ pub trait AbstractByteEncoding<T> {
     ;
 
     /// Every value should have at least one encoding.
-    proof fn encoding_exists(tracked v: &T) -> (b: Seq<AbstractByte>)
+    proof fn encoding_exists(tracked v: T) -> (b: Seq<AbstractByte>)
         requires
             Self::can_be_encoded(),
         ensures
-            Self::encode(*v, b),
+            Self::encode(v, b),
     ;
 
     /// Any encoding should be able to be decoded back to the same value.
@@ -618,7 +618,7 @@ macro_rules! encoding_from_type_representation {
                     $type_repr::encoding_size(v, b);
                 }
 
-                proof fn encoding_exists(tracked v: &Self) -> (b: Seq<AbstractByte>) {
+                proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
                     $type_repr::encoding_exists(v)
                 }
 
@@ -655,7 +655,7 @@ macro_rules! encoding_from_type_representation {
                     $type_repr::encoding_size(v, b);
                 }
 
-                proof fn encoding_exists(tracked v: &Self) -> (b: Seq<AbstractByte>) {
+                proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
                     $type_repr::encoding_exists(v)
                 }
 
@@ -704,7 +704,7 @@ impl<T: ZeroSizedRepresentation> AbstractByteEncoding<T> for ZeroSizedRepresenta
         T::layout_of_zero_sized_repr();
     }
 
-    proof fn encoding_exists(tracked v: &T) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: T) -> (b: Seq<AbstractByte>) {
         Seq::<AbstractByte>::empty()
     }
 
@@ -871,7 +871,7 @@ impl<T: ?Sized> AbstractByteEncoding<*mut T> for RawPtrRepresentation<T> {
     proof fn encoding_size(v: *mut T, b: Seq<AbstractByte>) {
     }
 
-    proof fn encoding_exists(tracked v: &*mut T) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: *mut T) -> (b: Seq<AbstractByte>) {
         broadcast use endian_to_bytes_to_endian;
 
         unsigned_int_max_values();
@@ -923,8 +923,8 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                     RawPtrRepresentation::encoding_size(v as *mut T, b);
                 }
 
-                proof fn encoding_exists(tracked v: &Self) -> (b: Seq<AbstractByte>) {
-                    let tracked m = &(*v as *mut T);
+                proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
+                    let tracked m = v as *mut T;
                     RawPtrRepresentation::encoding_exists(m)
                 }
 
@@ -1012,9 +1012,9 @@ raw_ptr_encoding_from_type_representation! {
 pub trait PrimitiveRepresentation<Primitive: AbstractByteRepresentation> where Self: Sized {
     spec fn to_primitive(v: Self) -> Primitive;
 
-    proof fn to_primitive_tracked(tracked v: &Self) -> (tracked p: &Primitive)
+    proof fn to_primitive_tracked(tracked v: Self) -> (tracked p: Primitive)
         ensures
-            *p == Self::to_primitive(*v),
+            p == Self::to_primitive(v),
     ;
 
     proof fn layout_of_primitive_repr()
@@ -1053,7 +1053,7 @@ impl<
         Primitive::encoding_size(T::to_primitive(v), b);
     }
 
-    proof fn encoding_exists(tracked v: &T) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: T) -> (b: Seq<AbstractByte>) {
         Primitive::encoding_exists(T::to_primitive_tracked(v))
     }
 
@@ -1071,9 +1071,9 @@ impl<
 pub trait TransparentRepresentation<Inner: AbstractByteRepresentation> where Self: Sized {
     spec fn to_inner(v: Self) -> Inner;
 
-    proof fn to_inner_tracked(tracked v: &Self) -> (tracked i: &Inner)
+    proof fn to_inner_tracked(tracked v: Self) -> (tracked i: Inner)
         ensures
-            *i == Self::to_inner(*v),
+            i == Self::to_inner(v),
     ;
 
     proof fn layout_of_transparent_repr()
@@ -1111,7 +1111,7 @@ impl<Inner: AbstractByteRepresentation, T: TransparentRepresentation<Inner>> Abs
         Inner::encoding_size(T::to_inner(v), b);
     }
 
-    proof fn encoding_exists(tracked v: &T) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: T) -> (b: Seq<AbstractByte>) {
         Inner::encoding_exists(T::to_inner_tracked(v))
     }
 
@@ -1170,7 +1170,7 @@ impl<Repr: AbstractByteEncoding<T>, T: ScalarRangeRepresentation<Repr>> Abstract
         Repr::encoding_size(v, b);
     }
 
-    proof fn encoding_exists(tracked v: &T) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: T) -> (b: Seq<AbstractByte>) {
         T::valid_scalar_range_repr(&v);
         Repr::encoding_exists(v)
     }
