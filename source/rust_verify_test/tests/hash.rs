@@ -816,6 +816,7 @@ test_verify_one_file_with_options! {
         use std::collections::hash_map::Keys;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
+        use vstd::std_specs::iter::IteratorSpec;
         fn test()
         {
             let mut m = HashMap::<u32, i8>::new();
@@ -848,6 +849,7 @@ test_verify_one_file_with_options! {
         use std::collections::hash_map::Values;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
+        use vstd::std_specs::iter::IteratorSpec;
         fn test_values()
         {
             let mut m = HashMap::<u32, i8>::new();
@@ -884,7 +886,8 @@ test_verify_one_file_with_options! {
         use std::collections::hash_map::Iter;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
-        fn test()
+        use vstd::std_specs::iter::IteratorSpec;
+        fn test_iter()
         {
             let mut m = HashMap::<u32, i8>::new();
             assert(m@ == Map::<u32, i8>::empty());
@@ -892,12 +895,16 @@ test_verify_one_file_with_options! {
             m.insert(3, 4);
             m.insert(6, -8);
 
+            assert(m@.kv_pairs() == set![(3u32, 4i8), (6u32, -8i8)]);
+
             let mut idx = 0;
-            let m_iter = m.iter();
-            for (k, v) in iter: m_iter
+            for (k, v) in iter: m.iter()
                 invariant
-                    iter.kv_pairs.to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
+                    m@.kv_pairs() == set![(3u32, 4i8), (6u32, -8i8)],
+                    iter.seq().map_values(|v: (&u32, &i8)| (*v.0, *v.1)).to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
             {
+                // OBSERVE: triggers the extensionality in the first invariant
+                assert(m@.kv_pairs().contains((*k, *v)));
                 assert(*k == 3 ==> *v == 4);
                 assert(*k == 6 ==> *v == -8);
             }
@@ -909,6 +916,7 @@ test_verify_one_file_with_options! {
     #[test] test_hash_set_iter ["exec_allows_no_decreases_clause"] => verus_code! {
         use std::collections::HashSet;
         use std::collections::hash_set::Iter;
+        use vstd::std_specs::iter::IteratorSpec;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
         fn test()

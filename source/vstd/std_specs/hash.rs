@@ -718,13 +718,14 @@ pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, V
 pub broadcast proof fn axiom_spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
     ensures
         ({
+            // REVIEW: I'm not sure whether this is the right set of facts/triggers
             let v = #[trigger] spec_hash_map_iter(m).remaining();
             &&& v.len() == m@.dom().len()
-            &&& forall|i: int| 
+            &&& forall|i: int|
                     #![trigger m@.contains_key(*v[i].0)]
                     #![trigger m@[*v[i].0]]
-                    0 <= i < v.len() ==> 
-                        m@.contains_key(*v[i].0) && 
+                    0 <= i < v.len() ==>
+                        m@.contains_key(*v[i].0) &&
                         m@[*v[i].0] == *v[i].1
             &&& forall |k: Key| #[trigger] m@.contains_key(k) ==> v.contains((&k, &m@[k]))
             &&& v.map_values(|t: (&Key, &Value)| (*t.0, *t.1)).to_set() == m@.kv_pairs()

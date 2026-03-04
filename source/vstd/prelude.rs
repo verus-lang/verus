@@ -71,6 +71,8 @@ pub use super::string::StringExecFns;
 #[cfg(feature = "alloc")]
 pub use super::string::StringExecFnsIsAscii;
 
+// REVIEW: Should we re-export IteratorSpec in the prelude?
+
 #[cfg(verus_keep_ghost)]
 pub use super::tokens::CountToken;
 #[cfg(verus_keep_ghost)]
