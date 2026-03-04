@@ -18,6 +18,7 @@ pub ghost struct View(pub Map<CellId, nat>);
 
 impl View {
     /// True when `other` is contained in this View
+    #[verifier::opaque]
     pub open spec fn contains(self, other: Self) -> bool {
         &&& other.0.dom().subset_of(self.0.dom())
         &&& forall |k| 
@@ -31,27 +32,6 @@ impl View {
         &&& self != other
     }
 
-    // sanity check
-    proof fn contains_po(v1: View, v2: View, v3: View)
-        ensures
-            v1.contains(v1), //refl
-            v1.contains(v2) && v1 != v2 ==> !v2.contains(v1), // anti-sym
-            v1.contains(v2) && v2.contains(v3) ==> v1.contains(v3) // trans
-    {
-        if (v1.contains(v2) && v1 != v2) {
-            if (!(v1.0.dom() =~= v2.0.dom())) {
-                assert forall|k| #[trigger] v2.0.dom().contains(k) implies v1.0.dom().contains(k) by {}
-                assert(!v2.contains(v1));
-            } else {
-                assert(v1.0.dom() =~= v2.0.dom());
-                assert(!(v1 =~= v2));
-                assert(!(forall|k| #[trigger] v1.0.dom().contains(k) && v2.0.dom().contains(k) ==> v1.0[k] == v2.0[k]));
-                let k = choose|k: CellId| #[trigger] v1.0.dom().contains(k) && v2.0.dom().contains(k) && v1.0[k] != v2.0[k];
-                assert(v2.0[k] <= v1.0[k]);
-            }
-        }
-    }
-
     pub broadcast proof fn contains_and_contains_strict(v1: View, v2: View, v3: View)
         ensures
             #[trigger] v1.contains_strict(v2) && #[trigger] v2.contains(v3) ==> v1.contains_strict(v3)
@@ -59,6 +39,7 @@ impl View {
         admit(); // todo
     }
 
+    #[verifier::opaque]
     pub open spec fn join(self, other: Self) -> Self {
         View(
             Map::new(
@@ -94,13 +75,22 @@ pub ghost struct History<T>(pub Map<nat, (T, Option<View>)>);
 
 impl<T> History<T> {
     /// True when `other` is contained in this History
+    #[verifier::opaque]
     pub open spec fn contains(self, other: Self) -> bool {
         other.0.submap_of(self.0)
     }
 
+    #[verifier::opaque]
+    pub open spec fn agrees(self, other: Self) -> bool {
+        self.0.agrees(other.0)
+    }
+
+    // history join assumes that all histories agree
+    // this should be true for any assertions that we have about the history of a given location
+    #[verifier::opaque]
     pub open spec fn join(self, other: Self) -> History<T>
         recommends
-            self.contains(other) || other.contains(self),
+            self.agrees(other) || other.agrees(self),
     {
         History(self.0.union_prefer_right(other.0))
     }
@@ -149,6 +139,249 @@ impl<T> History<T> {
     {
         self.0[timestamp].0
     }
+}
+
+pub broadcast proof fn view_contains_refl(v: View)
+    ensures
+        #[trigger] v.contains(v)
+{
+    reveal(View::contains);
+}
+
+pub broadcast proof fn view_contains_anti_sym(v1: View, v2: View)
+    requires
+        #[trigger] v1.contains(v2),
+        v1 != v2
+    ensures
+        !(#[trigger] v2.contains(v1))
+{
+    reveal(View::contains);
+    if (v1.contains(v2) && v1 != v2) {
+        if (!(v1.0.dom() =~= v2.0.dom())) {
+            assert forall|k| #[trigger] v2.0.dom().contains(k) implies v1.0.dom().contains(k) by {}
+            assert(!v2.contains(v1));
+        } else {
+            assert(v1.0.dom() =~= v2.0.dom());
+            assert(!(v1 =~= v2));
+        }
+    }
+}
+
+pub broadcast proof fn view_contains_trans(v1: View, v2: View, v3: View)
+    requires
+        #[trigger] v1.contains(v2),
+        #[trigger] v2.contains(v3)
+    ensures
+        #[trigger] v1.contains(v3)
+{
+    reveal(View::contains);
+}
+
+pub broadcast proof fn view_join_assoc(v1: View, v2: View, v3: View)
+    ensures
+        #[trigger] v1.join(v2.join(v3)) =~= #[trigger] v1.join(v2).join(v3)
+{
+    reveal(View::contains);
+    reveal(View::join);
+    assert(v1.join(v2.join(v3)).0 =~= v1.join(v2).join(v3).0);
+}
+
+pub broadcast proof fn view_join_comm(v1: View, v2: View)
+    ensures
+        #[trigger] v1.join(v2) =~= v2.join(v1)
+{
+    reveal(View::contains);
+    reveal(View::join);
+    assert(v1.join(v2).0 =~= v2.join(v1).0);
+}
+
+pub broadcast proof fn view_join_idemp(v: View)
+    ensures
+        #[trigger] v.join(v) =~= v
+{
+    reveal(View::join);
+    assert(v.join(v).0 =~= v.0);
+}
+
+pub broadcast proof fn view_join_contains(v1: View, v2: View)
+    ensures
+        #[trigger] v1.join(v2).contains(v1)
+{
+    reveal(View::contains);
+    reveal(View::join);
+}
+
+pub broadcast proof fn history_contains_refl<T>(h: History<T>)
+    ensures
+        #[trigger] h.contains(h)
+{
+    reveal(History::contains);
+}
+
+pub broadcast proof fn history_contains_anti_sym<T>(h1: History<T>, h2: History<T>)
+    requires
+        #[trigger] h1.contains(h2),
+        h1 != h2
+    ensures
+        !(#[trigger] h2.contains(h1))
+{
+    reveal(History::contains);
+    if (!(h1.0.dom() =~= h2.0.dom())) {
+        assert forall|k| #[trigger] h2.0.dom().contains(k) implies h1.0.dom().contains(k) by {}
+        assert(!h2.contains(h1));
+    } else {
+        assert(h1.0.dom() =~= h2.0.dom());
+        assert(!(h1.0 =~= h2.0));
+    }
+}
+
+pub broadcast proof fn history_contains_trans<T>(h1: History<T>, h2: History<T>, h3: History<T>)
+    requires
+        #[trigger] h1.contains(h2),
+        #[trigger] h2.contains(h3),
+    ensures
+        #[trigger] h1.contains(h3)
+{
+    reveal(History::contains);
+    assert forall |k: nat| #[trigger] h3.0.dom().contains(k) implies #[trigger] h1.0.dom().contains(k) && h3.0[k] == h1.0[k] by {
+        assert(h2.0.dom().contains(k));
+        assert(h1.0.dom().contains(k));
+    }
+}
+
+pub broadcast proof fn history_join_assoc<T>(h1: History<T>, h2: History<T>, h3: History<T>)
+    requires
+        h1.agrees(h2),
+        h2.agrees(h3),
+        h1.agrees(h3)
+    ensures
+        #[trigger] h1.join(h2.join(h3)) =~= #[trigger] h1.join(h2).join(h3)
+{
+    reveal(History::agrees);
+    reveal(History::join);
+    assert(h1.join(h2.join(h3)).0 =~= h1.join(h2).join(h3).0);
+}
+
+pub broadcast proof fn history_join_comm<T>(h1: History<T>, h2: History<T>)
+    requires
+        h1.agrees(h2)
+    ensures
+        #[trigger] h1.join(h2) =~= h2.join(h1)
+{
+    reveal(History::agrees);
+    reveal(History::join);
+    assert(h1.join(h2).0 =~= h2.join(h1).0);
+}
+
+pub broadcast proof fn history_join_idemp<T>(h: History<T>)
+    ensures
+        #[trigger] h.join(h) =~= h
+{
+    reveal(History::join);
+    assert(h.join(h).0 =~= h.0);
+}
+
+pub broadcast proof fn history_join_contains<T>(h1: History<T>, h2: History<T>)
+    requires
+        h1.agrees(h2)
+    ensures
+        #[trigger] h1.join(h2).contains(h1)
+{
+    reveal(History::agrees);
+    reveal(History::contains);
+    reveal(History::join);
+}
+
+pub broadcast proof fn history_agrees_refl<T>(h: History<T>)
+    ensures
+        #[trigger] h.agrees(h)
+{
+    reveal(History::agrees);
+}
+
+pub broadcast proof fn history_agrees_sym<T>(h1: History<T>, h2: History<T>)
+    requires
+        #[trigger] h1.agrees(h2)
+    ensures
+        #[trigger] h2.agrees(h1)
+{
+    reveal(History::agrees);
+}
+
+pub broadcast proof fn history_agrees_singleton_distinct<T>(t1: nat, v1: T, o1: Option<View>, t2: nat, v2: T, o2: Option<View>)
+    requires
+        t1 != t2
+    ensures
+        #[trigger] History::singleton(t1, v1, o1).agrees(History::singleton(t2, v2, o2))
+{
+    reveal(History::agrees);
+}
+
+pub broadcast proof fn history_contains_singleton_distinct<T>(h: History<T>, t1: nat, v1: T, o1: Option<View>, t2: nat, v2: T, o2: Option<View>)
+    requires
+        #[trigger] h.contains(History::singleton(t1, v1, o1)),
+        #[trigger] h.contains(History::singleton(t2, v2, o2)),
+        v1 != v2
+    ensures
+        t1 != t2
+{
+    reveal(History::contains);
+    assert(History::singleton(t1, v1, o1).0.dom().contains(t1));
+    assert(History::singleton(t2, v2, o2).0.dom().contains(t2));
+    assert(h.0.dom().contains(t1) && h.0.dom().contains(t2));
+    assert(h.0[t1] == (v1, o1));
+    assert(h.0[t2] == (v2, o2));
+}
+
+pub broadcast proof fn history_contains_join_singleton_eq<T>(h: History<T>, t1: nat, v1: T, o1: Option<View>, t2: nat, v2: T, o2: Option<View>, t3: nat, v3: T, o3: Option<View>)
+    requires
+        #[trigger] h.contains(History::singleton(t1, v1, o1)),
+        #[trigger] h.contains(History::singleton(t2, v2, o2)),
+        h == #[trigger] History::singleton(t1, v1, o1).join(History::singleton(t3, v3, o3)),
+        History::singleton(t1, v1, o1) != History::singleton(t2, v2, o2)
+    ensures
+        t2 == t3,
+        v2 == v3,
+        o2 == o3
+{
+    reveal(History::contains);
+    reveal(History::join);
+    admit(); // todo
+}
+
+pub broadcast proof fn history_contains_distinct<T>(h1: History<T>, h2: History<T>, h3: History<T>)
+    requires
+        #[trigger] h1.contains(h2),
+        #[trigger] h1.contains(h3),
+        h2 != h3
+    ensures
+        h1 != h2
+{
+    reveal(History::contains);
+    admit(); // todo
+}
+
+pub broadcast group group_view_history {
+    view_contains_refl,
+    view_contains_anti_sym,
+    view_contains_trans,
+    view_join_assoc,
+    view_join_comm,
+    view_join_idemp,
+    view_join_contains,
+    history_contains_refl,
+    history_contains_anti_sym,
+    history_contains_trans,
+    history_join_assoc,
+    history_join_comm,
+    history_join_idemp,
+    history_join_contains,
+    history_agrees_refl,
+    history_agrees_sym,
+    history_agrees_singleton_distinct,
+    history_contains_singleton_distinct,
+    history_contains_join_singleton_eq,
+    history_contains_distinct
 }
 
 pub ghost struct HistorySingleton<T> {
@@ -486,7 +719,7 @@ impl<T> ViewAt<T> {
     ;
 
     // VA-INTRO-INCL
-    pub axiom fn new_incl(tracked t: T, tracked sn: &ViewSeen) -> (tracked out: (Self, ViewSeen))
+    pub axiom fn new_incl(tracked t: T, tracked sn: ViewSeen) -> (tracked out: (Self, ViewSeen))
         ensures
             out.0.value() == t,
             out.0.view() == out.1.view(),
@@ -580,7 +813,7 @@ impl<T> ViewJoin<T> {
 
     // this is kind of like VJ-UNFOLD |-
     // this isn't an exact encoding, but perhaps this would work fine in practice
-    pub proof fn new_incl(tracked t: T, tracked sn: &ViewSeen) -> (tracked out: Self)
+    pub proof fn new_incl(tracked t: T, tracked sn: ViewSeen) -> (tracked out: Self)
         ensures
             out.value() == t,
             out.view().contains(sn.view()),
@@ -1090,6 +1323,21 @@ unsafe impl<T> AtomicType for *mut T {}
 // (Rust's atomic types use an UnsafeCell internally)
 pub struct Ptr<T: AtomicType>(pub T);
 
+impl<T: AtomicType + Clone> Clone for Ptr<T> {
+    #[verifier::external_body]
+    fn clone(&self) -> (res: Self)
+        ensures
+            res.value() == self.value(),
+            res.loc() == self.loc()
+    {
+        Ptr(self.0.clone())
+    }
+}
+
+impl<T: AtomicType + Copy> Copy for Ptr<T> {
+
+}
+
 impl<T: AtomicType> Ptr<T> {
     pub uninterp spec fn loc(&self) -> CellId;
 
@@ -1193,7 +1441,7 @@ impl<T: AtomicType> Ptr<T> {
         tracked v_sn: &mut ViewSeen,
         tracked h_sn: &mut HistorySeen<T>,
         tracked pt: &mut ViewAt<AtomicPointsTo<T>>,
-    ) -> (tracked out: (T, nat))
+    ) -> (tracked out: (T, nat, View))
         requires
             self.loc() == old(pt).value().loc(),
             self.loc() == old(h_sn).loc(),
@@ -1201,7 +1449,8 @@ impl<T: AtomicType> Ptr<T> {
             ({
                 let v = out.0;  // read value
                 let timestamp = out.1;  // timestamp of the write that was read
-                let message_view = h_sn.hist().view(timestamp);  // message view for the write that was read
+                let message_view = out.2;  // message view for the write that was read
+                let singleton_write_hist = History::singleton(timestamp, v, Some(message_view));
                 &&& v_sn.view().contains(old(v_sn).view())
                 &&& pt.value().hist().contains(h_sn.hist())
                 // the new HistorySeen will include the write we just read
@@ -1211,8 +1460,7 @@ impl<T: AtomicType> Ptr<T> {
                 &&& h_sn.hist().contains(
                     old(h_sn).hist(),
                 )
-                &&& h_sn.hist().value(timestamp)
-                    == v
+                &&& h_sn.hist().contains(singleton_write_hist)
                 // the write is no earlier than the last write that this thread has seen
                 &&& old(h_sn).hist().max_timestamp()
                     <= timestamp
@@ -1231,7 +1479,7 @@ impl<T: AtomicType> Ptr<T> {
         tracked v_sn: &mut ViewSeen,
         tracked h_sn: &mut HistorySeen<T>,
         tracked pt: &mut ViewAt<AtomicPointsTo<T>>,
-    ) -> (tracked out: (T, Acquire<ViewSeen>, nat))
+    ) -> (tracked out: (T, Acquire<ViewSeen>, nat, View))
         requires
             self.loc() == old(pt).value().loc(),
             self.loc() == old(h_sn).loc(),
@@ -1240,7 +1488,8 @@ impl<T: AtomicType> Ptr<T> {
                 let v = out.0;  // read value
                 let acq_v_sn = out.1;  // new ViewSeen, under the acquire modality
                 let timestamp = out.2;  // timestamp of the write that was read
-                let message_view = h_sn.hist().view(timestamp);  // message view for the write that was read
+                let message_view = out.3;  // message view for the write that was read
+                let singleton_write_hist = History::singleton(timestamp, v, Some(message_view));
                 &&& v_sn.view().contains(v_sn.view())
                 &&& pt.value().hist().contains(h_sn.hist())
                 // the new HistorySeen will include the write we just read
@@ -1250,8 +1499,7 @@ impl<T: AtomicType> Ptr<T> {
                 &&& h_sn.hist().contains(
                     old(h_sn).hist(),
                 )
-                &&& h_sn.hist().value(timestamp)
-                    == v
+                &&& h_sn.hist().contains(singleton_write_hist)
                 // the write is no earlier than the last write that this thread has seen
                 &&& old(h_sn).hist().max_timestamp()
                     <= timestamp
@@ -1399,12 +1647,15 @@ impl<T: AtomicType> Ptr<T> {
 
             }),
     {
-        // tried to implement this using existing rules, since it should be possible.
-        // pt is under a ViewAt -- we would want to do ViewAt::apply_fn to do the following:
-        //pt.single_writer_as_concurrent(sw);
-        // but how to get a proof_fn under ViewAt?
-        // to get sw under ViewAt for the same view as pt, we can apply new_incl and weakening as in write_release_single_writer_with_rsrc
-        // actually, there is another problem: here sw is &mut, but single_writer_as_concurrent expects full ownership
+        /*let tracked f = proof_fn[Once] |tracked p: (&mut AtomicPointsTo<T>, SingleWriter<T>)| -> (tracked out: ()) 
+            requires
+                p.0.mode() == AtomicMode::SingleWriter,
+                p.0.loc() == p.1.loc()
+        {
+            p.0.single_writer_as_concurrent(p.1);
+        };
+        let tracked va_f = ViewAt::new_incl(f, v_sn);*/
+        // problem: here sw is &mut, but single_writer_as_concurrent expects full ownership
         assume(false);
         let tracked mut h_sn = sw.get_history_sync().get_history_seen();
         let tracked (_, ts) = self.write_release_concurrent(
@@ -1459,7 +1710,7 @@ impl<T: AtomicType> Ptr<T> {
     {
         broadcast use View::contains_and_contains_strict;
 
-        let tracked (va_rsrc, mut v_sn0) = ViewAt::new_incl(rsrc, v_sn);
+        let tracked (va_rsrc, mut v_sn0) = ViewAt::new_incl(rsrc, *v_sn);
         let ghost v_sn0_old = v_sn0;
         let tracked timestamp = self.write_release_single_writer(t, &mut v_sn0, sw, pt);
         let tracked va_rsrc = va_rsrc.weaken(v_sn0.view());
