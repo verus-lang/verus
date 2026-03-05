@@ -400,16 +400,8 @@ pub assume_specification[ str::chars ](s: &str) -> (iter: Chars<'_>)
         IteratorSpec::initial_value_inv(&iter, &iter),
 ;
 
-pub use super::view::View;
-
-} // verus!
-
-// We use a separate block here, so that we can cfg out the use of 
-// crate::std_specs::iter::IteratorSpecImpl below.
 #[cfg(verus_keep_ghost)]
 #[cfg(feature = "alloc")]
-verus! {
-
 impl <'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
@@ -434,5 +426,7 @@ impl <'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
         }
     }
 }
+
+pub use super::view::View;
 
 } // verus!
