@@ -2136,7 +2136,12 @@ impl<'a> LocalCollection<'a> {
                 // 'place projection' common in this file.)
                 // Anyway, the `cur_typ` should be equivalent and should also be
                 // head-normalized, so use that instead.
-                let typ = undecorate_box_trk_decorations(&cur_typ);
+                //
+                // We can skip over Box and Tracked modifiers.
+                // We also skip over shared reference modifiers to avoid panicking,
+                // though those shouldn't show up in well-formed code.
+                // (If there are any, they will show up in lifetime-checking.)
+                let typ = undecorate_box_trk_shr_decorations(&cur_typ);
 
                 match &**typ {
                     TypX::MutRef(inner_typ) => {
@@ -2336,10 +2341,11 @@ impl<'a> LocalCollection<'a> {
     }
 }
 
-fn undecorate_box_trk_decorations(t: &Typ) -> &Typ {
+fn undecorate_box_trk_shr_decorations(t: &Typ) -> &Typ {
     match &**t {
-        TypX::Decorate(TypDecoration::Box, _, t) => undecorate_box_trk_decorations(t),
-        TypX::Decorate(TypDecoration::Tracked, _, t) => undecorate_box_trk_decorations(t),
+        TypX::Decorate(TypDecoration::Box, _, t)
+        | TypX::Decorate(TypDecoration::Tracked, _, t)
+        | TypX::Decorate(TypDecoration::Ref, _, t) => undecorate_box_trk_shr_decorations(t),
         _ => t,
     }
 }
