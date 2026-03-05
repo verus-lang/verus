@@ -3,7 +3,7 @@ use super::super::seq::{axiom_seq_subrange_index, axiom_seq_subrange_len, axiom_
 
 use verus as verus_;
 
-use core::iter::Iterator;
+use core::iter::{Iterator,Rev};
 
 verus_! {
 
@@ -116,6 +116,67 @@ pub trait ExDoubleEndedIterator : Iterator {
     // If we can make a useful guess as to what the i-th value from the back will be, return it.
     // Otherwise, return None.
     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
+}
+
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)] // REVIEW: Is this too strict?
+pub struct ExRev<I>(Rev<I>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn rev_iter<I>(r: Rev<I>) -> I;
+
+// Workaround the lack of Verus support for default trait methods
+#[verifier::external_body]
+fn to_rev<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> (r: Rev<I>)
+    requires
+        i.obeys_prophetic_iter_laws()
+    ensures
+        IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
+        IteratorSpec::completes(&r) == IteratorSpec::completes(&i),
+        IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
+{
+    i.rev()
+}
+
+impl <I> IteratorSpecImpl for Rev<I>
+    where I: DoubleEndedIterator + DoubleEndedIteratorSpec {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        rev_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    closed spec fn remaining(&self) -> Seq<Self::Item> {
+        rev_iter(*self).remaining().reverse()
+    }
+
+    #[verifier::prophetic]
+    closed spec fn completes(&self) -> bool {
+        rev_iter(*self).completes()
+    }
+
+    #[verifier::prophetic]
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        //&&& into_iter_elts(*self) == IteratorSpec::remaining(self)
+        // TODO: More here?
+    }
+
+    closed spec fn decrease(&self) -> Option<nat> {
+        rev_iter(*self).decrease()
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        rev_iter(*self).peek_back(index)
+    }
+}
+
+impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
+    where I: DoubleEndedIterator + IteratorSpec {
+
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        rev_iter(*self).peek(index)
+    }
 }
 
 pub struct VerusForLoopWrapper<'a, I: Iterator> {
