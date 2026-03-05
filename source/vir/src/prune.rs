@@ -514,10 +514,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::Unary(UnaryOp::Length(ArrayKind::Slice), _) => {
                         reach_function(ctxt, state, &fn_slice_len(&ctxt.vstd_crate_name));
                     }
-                    ExprX::Unary(
-                        UnaryOp::NondeterministicCast { src, dst },
-                        _,
-                    ) => {
+                    ExprX::Unary(UnaryOp::NondeterministicCast { src, dst }, _) => {
                         let src_name = crate::ast_util::cast_type_to_type_string(src);
                         let dst_name = crate::ast_util::cast_type_to_type_string(dst);
                         let fun = crate::def::fn_cast_ensures(

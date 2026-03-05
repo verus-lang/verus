@@ -1766,8 +1766,7 @@ pub(crate) fn expr_to_stm_opt(
 
             // Declare fresh nondeterministic temp variable of the target type
             let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic));
-            let (var_ident, result_exp) =
-                state.declare_temp_var_stm(&expr.span, &expr.typ, kind);
+            let (var_ident, result_exp) = state.declare_temp_var_stm(&expr.span, &expr.typ, kind);
 
             // Assume the result has the target type
             let has_typ_stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
@@ -1776,18 +1775,14 @@ pub(crate) fn expr_to_stm_opt(
             // Construct the call to the _ensures function
             let src_name = crate::ast_util::cast_type_to_type_string(src);
             let dst_name = crate::ast_util::cast_type_to_type_string(dst);
-            let ensures_fun = crate::def::fn_cast_ensures(
-                &ctx.global.vstd_crate_name,
-                &src_name,
-                &dst_name,
-            );
+            let ensures_fun =
+                crate::def::fn_cast_ensures(&ctx.global.vstd_crate_name, &src_name, &dst_name);
             let call = ExpX::Call(
                 CallFun::Fun(ensures_fun, None),
                 Arc::new(vec![]),
                 Arc::new(vec![exp, result_exp.clone()]),
             );
-            let call_exp =
-                SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call);
+            let call_exp = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call);
 
             // Assume the ensures predicate
             let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(call_exp));
