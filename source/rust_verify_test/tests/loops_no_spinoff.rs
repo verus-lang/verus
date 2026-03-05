@@ -1249,10 +1249,10 @@ test_verify_one_file_with_options! {
             type Item = T;
             fn next(&mut self) -> (item: Option<T>)
                 ensures
-                    self.vec == old(self).vec,
-                    old(self).cur < self.vec.len() ==> self.cur == old(self).cur + 1,
-                    old(self).cur < self.vec.len() ==> item == Some(self.vec[old(self).cur as int]),
-                    old(self).cur >= self.vec.len() ==> item.is_none() && self.cur == old(self).cur,
+                    final(self).vec == old(self).vec,
+                    old(self).cur < final(self).vec.len() ==> final(self).cur == old(self).cur + 1,
+                    old(self).cur < final(self).vec.len() ==> item == Some(final(self).vec[old(self).cur as int]),
+                    old(self).cur >= final(self).vec.len() ==> item.is_none() && final(self).cur == old(self).cur,
             {
                 if self.cur < self.vec.len() {
                     let item = self.vec[self.cur];
