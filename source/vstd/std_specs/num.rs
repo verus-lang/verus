@@ -111,8 +111,8 @@ macro_rules! num_specs {
             pub assume_specification[<$uN>::wrapping_mul](x: $uN, y: $uN) -> $uN
                 returns ((x as nat * y as nat) % $range as nat) as $uN;
 
-            #[cfg(not(verus_verify_core))]
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_add](x: $uN, y: $uN) -> Option<$uN>
                 returns (
                     if x + y > <$uN>::MAX {
@@ -132,8 +132,8 @@ macro_rules! num_specs {
                     }
                 );
 
-            #[cfg(not(verus_verify_core))]
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_sub](x: $uN, y: $uN) -> Option<$uN>
                 returns (
                     if x - y < 0 {
@@ -143,8 +143,8 @@ macro_rules! num_specs {
                     }
                 );
 
-            #[cfg(not(verus_verify_core))]
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_mul](x: $uN, y: $uN) -> Option<$uN>
                 returns (
                     if x * y > <$uN>::MAX {
