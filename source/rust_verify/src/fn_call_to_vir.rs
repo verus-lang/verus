@@ -1049,8 +1049,10 @@ fn verus_item_to_vir<'tcx, 'a>(
             ExprItem::InferSpecForLoopIter => {
                 assert!(args.len() == 3);
                 let arg = if bctx.loop_isolation {
+                    crate::erase::mark_adjusted_node_for_erasure(&bctx.ctxt, &args[0]);
                     expr_to_vir_consume(bctx, &args[1], ExprModifier::REGULAR)?
                 } else {
+                    crate::erase::mark_adjusted_node_for_erasure(&bctx.ctxt, &args[1]);
                     expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?
                 };
                 let print_hint = matches!(

@@ -88,6 +88,7 @@ pub struct ErasureHints {
     pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
     pub(crate) shadow_check: Vec<HirId>,
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
+    pub(crate) extra_erase_hir_ids_including_adjustments: Vec<HirId>,
 }
 
 /// How to erase the given var usage
@@ -322,10 +323,16 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         bodies.insert(*hir_id, *c);
     }
 
+    let mut adjusted_node_erasure = HashSet::new();
+    for hir_id in erasure_hints.extra_erase_hir_ids_including_adjustments.iter() {
+        adjusted_node_erasure.insert(*hir_id);
+    }
+
     let verus_erasure_ctxt = VerusErasureCtxt {
         vars,
         calls,
         bodies,
+        adjusted_node_erasure,
 
         erased_ghost_value_fn_def_id: *verus_items
             .name_to_id
@@ -375,6 +382,13 @@ pub(crate) fn mark_tree_for_erasure<'tcx>(
         },
     )
     .unwrap();
+}
+
+pub(crate) fn mark_adjusted_node_for_erasure<'tcx>(
+    context: &crate::context::Context<'tcx>,
+    expr: &rustc_hir::Expr<'tcx>,
+) {
+    context.erasure_info.borrow_mut().extra_erase_hir_ids_including_adjustments.push(expr.hir_id);
 }
 
 pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
