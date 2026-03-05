@@ -431,6 +431,18 @@ pub fn strslice_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
+pub fn fn_cast_ensures(vstd_crate_name: &Ident, src_name: &str, dst_name: &str) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("float".to_string()),
+                Arc::new(format!("{}_as_{}_ensures", src_name, dst_name)),
+            ]),
+        }),
+    })
+}
+
 pub fn fn_slice_len(vstd_crate_name: &Ident) -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {

@@ -1754,6 +1754,47 @@ pub(crate) fn expr_to_stm_opt(
             let infer_exp = mk_exp(ExpX::Unary(*op, spec_exp));
             Ok((vec![], Maybe::Some(Value::Exp(infer_exp))))
         }
+        ExprX::Unary(UnaryOp::NondeterministicCast { src, dst }, exprr) => {
+            // Desugar into:
+            //   1. Evaluate the source expression
+            //   2. Declare a fresh nondeterministic variable of target type
+            //   3. Assume has_type for the target
+            //   4. Assume {src}_as_{dst}_ensures(source_val, result_val)
+            //   5. Return result_val
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, exprr)?;
+            let exp = to_exp_or_return_never!(exp, stms);
+
+            // Declare fresh nondeterministic temp variable of the target type
+            let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic));
+            let (var_ident, result_exp) =
+                state.declare_temp_var_stm(&expr.span, &expr.typ, kind);
+
+            // Assume the result has the target type
+            let has_typ_stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
+            stms.push(has_typ_stm);
+
+            // Construct the call to the _ensures function
+            let src_name = crate::ast_util::cast_type_to_type_string(src);
+            let dst_name = crate::ast_util::cast_type_to_type_string(dst);
+            let ensures_fun = crate::def::fn_cast_ensures(
+                &ctx.global.vstd_crate_name,
+                &src_name,
+                &dst_name,
+            );
+            let call = ExpX::Call(
+                CallFun::Fun(ensures_fun, None),
+                Arc::new(vec![]),
+                Arc::new(vec![exp, result_exp.clone()]),
+            );
+            let call_exp =
+                SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call);
+
+            // Assume the ensures predicate
+            let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(call_exp));
+            stms.push(assume_stm);
+
+            Ok((stms, Maybe::Some(Value::Exp(result_exp))))
+        }
         ExprX::Unary(op, exprr) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, exprr)?;
             let exp = to_exp_or_return_never!(exp, stms);

@@ -923,6 +923,13 @@ pub fn int_range_to_type_string(range: &IntRange) -> String {
     }
 }
 
+pub fn cast_type_to_type_string(ct: &CastType) -> String {
+    match ct {
+        CastType::Int(range) => int_range_to_type_string(range),
+        CastType::Float(bits) => format!("f{}", bits),
+    }
+}
+
 pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
     fn typs_to_comma_separated_str(typs: &[Arc<TypX>]) -> String {
         typs.iter().map(|t| typ_to_diagnostic_str(t)).collect::<Vec<_>>().join(", ")

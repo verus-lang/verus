@@ -132,6 +132,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::MutRefFuture(_)
             | UnaryOp::MutRefFinal(_)
             | UnaryOp::Length(_)
+            | UnaryOp::NondeterministicCast { .. }
             | UnaryOp::InferSpecForLoopIter { .. } => {}
         },
         ExpX::UnaryOpr(op, arg) => match op {
@@ -280,7 +281,8 @@ fn check_trigger_expr(
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated
-                | UnaryOp::CastToInteger => Ok(()),
+                | UnaryOp::CastToInteger
+                | UnaryOp::NondeterministicCast { .. } => Ok(()),
                 UnaryOp::InferSpecForLoopIter { .. } => {
                     Err(error(&exp.span, "triggers cannot contain loop spec inference"))
                 }

@@ -595,6 +595,9 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOp::MutRefFinal(_) => {
                     panic!("internal error: MustBeFinalized in SST")
                 }
+                UnaryOp::NondeterministicCast { .. } => {
+                    panic!("internal error: NondeterministicCast should have been desugared")
+                }
             }
         }
         ExpX::UnaryOpr(op, e1) => {

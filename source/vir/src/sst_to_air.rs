@@ -1096,6 +1096,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::MutRefFinal(_) => {
                 panic!("internal error: MutRefFinal should have been removed before here")
             }
+            UnaryOp::NondeterministicCast { .. } => {
+                panic!("internal error: NondeterministicCast should have been desugared in ast_to_sst")
+            }
             UnaryOp::Length(kind) => {
                 let typ = undecorate_typ(&e.typ);
                 let typ = match &*typ {

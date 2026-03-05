@@ -2217,6 +2217,32 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         expr_vattrs.truncate,
                     )))
                 }
+                (TypX::Int(src_range), TypX::Float(dst_bits)) => {
+                    let src = vir::ast::CastType::Int(*src_range);
+                    let dst = vir::ast::CastType::Float(*dst_bits);
+                    let op = vir::ast::UnaryOp::NondeterministicCast { src, dst };
+                    mk_expr(ExprX::Unary(op, source_vir_expr))
+                }
+                (TypX::Float(src_bits), TypX::Int(_dst_range)) => {
+                    let src = vir::ast::CastType::Float(*src_bits);
+                    let dst_range = match &*undecorate_typ(&to_vir_ty) {
+                        TypX::Int(r) => *r,
+                        _ => unreachable!(),
+                    };
+                    let dst = vir::ast::CastType::Int(dst_range);
+                    let op = vir::ast::UnaryOp::NondeterministicCast { src, dst };
+                    mk_expr(ExprX::Unary(op, source_vir_expr))
+                }
+                (TypX::Float(src_bits), TypX::Float(dst_bits)) if src_bits != dst_bits => {
+                    let src = vir::ast::CastType::Float(*src_bits);
+                    let dst = vir::ast::CastType::Float(*dst_bits);
+                    let op = vir::ast::UnaryOp::NondeterministicCast { src, dst };
+                    mk_expr(ExprX::Unary(op, source_vir_expr))
+                }
+                (TypX::Float(_), TypX::Float(_)) => {
+                    // Same float type, identity cast
+                    Ok(ExprOrPlace::Expr(source_vir_expr))
+                }
                 _ => {
                     let to_ty = bctx.types.expr_ty(expr);
                     return err_span(
