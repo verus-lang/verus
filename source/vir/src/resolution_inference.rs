@@ -1800,8 +1800,7 @@ impl<'a> Builder<'a> {
     }
 
     fn push_scope(&mut self) {
-        // TODO(new_mut_ref): disallow shadowing
-        self.fns.last_mut().unwrap().scope_map.push_scope(true);
+        self.fns.last_mut().unwrap().scope_map.push_scope(false);
     }
 
     fn pop_scope(&mut self) {
