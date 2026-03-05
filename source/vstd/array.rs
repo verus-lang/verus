@@ -124,6 +124,7 @@ pub assume_specification<'a, T, const N: usize> [<&'a [T; N] as core::iter::Into
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_as_slice")]
 pub fn array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
     ensures
+        out == spec_array_as_slice(ar),
         ar@ == out@,
 {
     ar
