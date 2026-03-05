@@ -1047,7 +1047,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                 return err_span(expr.span, "default_ensures not allowed here");
             }
             ExprItem::InferSpecForLoopIter => {
-                record_spec_fn_pure_args_only(bctx, expr);
                 assert!(args.len() == 3);
                 let arg = if bctx.loop_isolation {
                     expr_to_vir_consume(bctx, &args[1], ExprModifier::REGULAR)?
@@ -1058,7 +1057,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                     &args[2],
                     Expr { kind: ExprKind::Lit(Spanned { node: LitKind::Bool(true), .. }), .. }
                 );
-                mk_expr(ExprX::Unary(UnaryOp::InferSpecForLoopIter { print_hint }, arg))
+                let e = mk_expr(ExprX::Unary(UnaryOp::InferSpecForLoopIter { print_hint }, arg))?;
+                record_call(bctx, expr, ResolvedCall::InferSpecForLoopIter(e.span.id));
+                Ok(e)
             }
             ExprItem::IsVariant => {
                 record_spec_fn(bctx, expr);

@@ -409,6 +409,8 @@ pub struct ErasureModes {
     pub var_modes: Vec<(Span, (Mode, Mode))>,
     // Modes of calls and struct Ctors
     pub ctor_modes: Vec<(Span, Mode)>,
+    // Results for the InferSpecForLoopIter nodes
+    pub infer_spec_for_loop_iter_erase: Vec<(Span, bool)>,
 }
 
 impl Ghost {
@@ -2085,6 +2087,10 @@ fn check_expr_handle_mut_arg(
             );
             let (mode, proph) = mode_opt.unwrap_or((Mode::Exec, Proph::No));
             if let Some(infer_spec) = record.infer_spec_for_loop_iter_modes.as_mut() {
+                record
+                    .erasure_modes
+                    .infer_spec_for_loop_iter_erase
+                    .push((expr.span.clone(), mode != Mode::Spec));
                 infer_spec.push((expr.span.clone(), mode));
             } else {
                 return Err(error(
@@ -3704,7 +3710,11 @@ pub fn check_crate(
             }
         }
     }
-    let erasure_modes = ErasureModes { var_modes: vec![], ctor_modes: vec![] };
+    let erasure_modes = ErasureModes {
+        var_modes: vec![],
+        ctor_modes: vec![],
+        infer_spec_for_loop_iter_erase: vec![],
+    };
     let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
     let special_paths = SpecialPaths::new(vstd_crate_name);
     let mut ctxt = Ctxt {

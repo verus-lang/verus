@@ -62,6 +62,8 @@ pub enum ResolvedCall {
     /// Erase the node and all subtrees completely. Suitable for ad hoc directives
     /// like `constraint_type`.
     MiscEraseAbsolutely,
+    /// InferSpecForLoopIter. May need to be erased depending on mode-checking results
+    InferSpecForLoopIter(AstId),
 }
 
 #[derive(Clone)]
@@ -122,6 +124,7 @@ fn resolved_call_to_call_erase(
     _datatypes: &HashMap<Path, Datatype>,
     resolved_call: &ResolvedCall,
     ctor_mode: Option<Mode>,
+    infer_spec_for_loop_iter_erase: &HashMap<AstId, bool>,
 ) -> Result<CallErasure, VirErr> {
     Ok(match resolved_call {
         ResolvedCall::SpecPure => CallErasure::EraseTree(TreeErase::IncludeBasicChecks),
@@ -171,6 +174,13 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
         },
         ResolvedCall::MiscEraseAbsolutely => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
+        ResolvedCall::InferSpecForLoopIter(ast_id) => {
+            if infer_spec_for_loop_iter_erase[ast_id] {
+                CallErasure::EraseTree(TreeErase::EraseAbsolutely)
+            } else {
+                CallErasure::Call(NodeErase::Erase)
+            }
+        }
     })
 }
 
@@ -284,13 +294,26 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         }
     }
 
+    let mut infer_spec_for_loop_iter_erase = HashMap::<AstId, bool>::new();
+    for (span, erase) in erasure_hints.erasure_modes.infer_spec_for_loop_iter_erase.iter() {
+        let found = infer_spec_for_loop_iter_erase.insert(span.id, *erase);
+        assert!(found.is_none());
+    }
+
     let mut calls = HashMap::<HirId, CallErasure>::new();
     for (hir_id, span_data, resolved_call) in &erasure_hints.resolved_calls {
         let span = span_data.span();
         let ctor_mode = ctor_modes.get(hir_id).cloned();
         calls.insert(
             *hir_id,
-            resolved_call_to_call_erase(span, &functions, &datatypes, resolved_call, ctor_mode)?,
+            resolved_call_to_call_erase(
+                span,
+                &functions,
+                &datatypes,
+                resolved_call,
+                ctor_mode,
+                &infer_spec_for_loop_iter_erase,
+            )?,
         );
     }
 
