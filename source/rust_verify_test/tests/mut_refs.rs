@@ -4329,3 +4329,40 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 5)
 }
+
+test_verify_one_file_with_options! {
+    #[test] resolution_move_from_array_error ["new-mut-ref"] => verus_code! {
+        struct X { }
+
+        fn id<A>(a: A) -> A { a }
+
+        fn test_basic_move<T>(t: [X; 2]) {
+            let r = id(t[0]);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::X; 2]`, which is non-copy")
+}
+
+test_verify_one_file_with_options! {
+    #[test] resolution_move_from_array_error2 ["new-mut-ref"] => verus_code! {
+        struct X { }
+
+        fn test_basic_move<T>(t: [X; 2]) {
+            let r = t[0];
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of type `[X; 2]`, a non-copy array")
+}
+
+test_verify_one_file_with_options! {
+    #[test] resolution_move_from_array_error3 ["new-mut-ref"] => verus_code! {
+        struct X { }
+
+        struct Pair<A, B> {
+            a: A,
+            b: B,
+        }
+
+        fn test_ctor_move<T>(t: [Pair<X, X>; 2]) {
+            let r = Pair { a: X{}, .. t[0] };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::Pair<crate::X, crate::X>; 2]`, which is non-copy")
+}

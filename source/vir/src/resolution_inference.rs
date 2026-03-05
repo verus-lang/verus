@@ -240,7 +240,7 @@ use crate::ast::{
     ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
     VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
-use crate::ast_util::{bool_typ, mk_bool, undecorate_typ, unit_typ};
+use crate::ast_util::{bool_typ, mk_bool, typ_to_diagnostic_str, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
 use crate::messages::error;
@@ -796,13 +796,8 @@ impl<'a> Builder<'a> {
                 for (field_name, unfinal_read_kind) in taken_fields.iter() {
                     if self.is_move(unfinal_read_kind) {
                         if !matches!(p, ComputedPlaceTyped::Exact(..)) {
-                            // TODO(new_mut_ref): we need careful handling here; this case
-                            // should be impossible if the source program is well-formed,
-                            // but the problem is we haven't run lifetime  checking yet.
-                            // So we might get `try to move from foo[i]` error here or something.
-                            panic!(
-                                "Verus Internal State: inconsistent state, move out of ghost place or index"
-                            )
+                            self.emit_bad_move_err(&p, &place.span);
+                            break;
                         }
                         if let Some(mut p) = p.clone().get_place_for_move() {
                             p.projections.push(ProjectionTyped::struct_field(
@@ -1150,17 +1145,11 @@ impl<'a> Builder<'a> {
                 }
                 Ok(bb)
             }
-            ExprX::ReadPlace(p, unfinal_read_kind) => {
-                let (p, bb) = self.build_place_typed(p, bb, TypInv::No)?;
+            ExprX::ReadPlace(place, unfinal_read_kind) => {
+                let (p, bb) = self.build_place_typed(place, bb, TypInv::No)?;
                 if self.is_move(unfinal_read_kind) {
                     if !matches!(p, ComputedPlaceTyped::Exact(..)) {
-                        // TODO(new_mut_ref): we need careful handling here; this case
-                        // should be impossible if the source program is well-formed,
-                        // but the problem is we haven't run lifetime  checking yet.
-                        // So we might get `try to move from foo[i]` error here or something.
-                        panic!(
-                            "Verus Internal State: inconsistent state, move out of ghost place or index"
-                        )
+                        self.emit_bad_move_err(&p, &place.span);
                     }
                     if let Some(p) = p.get_place_for_move() {
                         let p = self.locals.add_place(&p);
@@ -1872,6 +1861,35 @@ impl<'a> Builder<'a> {
             }
         }
     }
+
+    //// Errors
+
+    /// Call this when you try to move from a place and the place isn't Exact.
+    ///
+    /// The Partial case can only happen if the user tries to move out of an array
+    /// or slice. This is illegal, but lifetime checking hasn't run
+    /// yet, so we have to handle it here.
+    ///
+    /// If we get the Ghost case, that's an internal error; that should have been ruled
+    /// out by mode-checking.
+    fn emit_bad_move_err(&mut self, p: &ComputedPlaceTyped, span: &Span) {
+        match p {
+            ComputedPlaceTyped::Partial(fpt) => {
+                let t = typ_to_diagnostic_str(&undecorate_typ(&fpt.projected_typ()));
+                self.errors.push(error(
+                    span,
+                    format!("cannot move out of type `{:}`, which is non-copy", t),
+                ));
+            }
+            ComputedPlaceTyped::Ghost(_) => {
+                self.errors.push(error(
+                    span,
+                    "Verus Internal Error: inconsistent state, move out of ghost place",
+                ));
+            }
+            ComputedPlaceTyped::Exact(_) => unreachable!(),
+        }
+    }
 }
 
 fn get_typ_inv_fun_dt(datatypes: &HashMap<Path, Datatype>, dt: &Dt) -> Option<Fun> {
@@ -2498,6 +2516,16 @@ impl ProjectionTyped {
         match self {
             ProjectionTyped::StructField(_, typ) => typ.clone(),
             ProjectionTyped::DerefMut(typ) => typ.clone(),
+        }
+    }
+}
+
+impl FlattenedPlaceTyped {
+    fn projected_typ(&self) -> Typ {
+        if self.projections.len() > 0 {
+            self.projections.last().unwrap().typ()
+        } else {
+            self.typ.clone()
         }
     }
 }

@@ -942,16 +942,17 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)
         ),
-        TypX::Primitive(prim, typs) => {
-            let typs_str = typs_to_comma_separated_str(typs);
-            match prim {
-                crate::ast::Primitive::Array => format!("[{typs_str}; N]"),
-                crate::ast::Primitive::Slice => format!("[{typs_str}]"),
-                crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
-                crate::ast::Primitive::Ptr => format!("*mut {typs_str}"),
-                crate::ast::Primitive::Global => format!("Global"),
-            }
-        }
+        TypX::Primitive(prim, typs) => match prim {
+            crate::ast::Primitive::Array => format!(
+                "[{:}; {:}]",
+                &typ_to_diagnostic_str(&typs[0]),
+                &typ_to_diagnostic_str(&typs[1])
+            ),
+            crate::ast::Primitive::Slice => format!("[{:}]", &typ_to_diagnostic_str(&typs[0])),
+            crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
+            crate::ast::Primitive::Ptr => format!("*mut {:}", &typ_to_diagnostic_str(&typs[0])),
+            crate::ast::Primitive::Global => format!("Global"),
+        },
         TypX::Datatype(Dt::Tuple(_arity), typs, _) => {
             // 1-tuples should be formatted like `(T,)`
             let tup_string = typs_to_comma_separated_str(typs);
@@ -1024,8 +1025,8 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             )
         }
         TypX::TypeId => format!("typeid"),
-        TypX::ConstInt(_) => format!("constint"),
-        TypX::ConstBool(_) => format!("constbool"),
+        TypX::ConstInt(i) => format!("{i}"),
+        TypX::ConstBool(b) => format!("{b}"),
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::FnDef(f, typs, _res) => format!(
             "FnDef({}){}",
