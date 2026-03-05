@@ -1771,3 +1771,24 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] rev_iter verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::to_rev;
+        fn test() {
+            let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
+            let mut w: Vec<u8> = vec![];
+
+            for x in iter: to_rev(v.iter()) 
+                invariant
+                    w.len() == iter.index@,
+                    forall |i| 0 <= i < w.len() ==> w[i] == iter.seq()[i],
+            {
+                w.push(*x);
+            }
+
+            assert(w@ == v@.reverse());
+        }
+    } => Ok(())
+}

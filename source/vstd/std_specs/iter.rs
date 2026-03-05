@@ -127,11 +127,15 @@ pub struct ExRev<I>(Rev<I>);
 pub uninterp spec fn rev_iter<I>(r: Rev<I>) -> I;
 
 // Workaround the lack of Verus support for default trait methods
+pub uninterp spec fn into_rev_spec<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> Rev<I>;
+
 #[verifier::external_body]
-fn to_rev<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> (r: Rev<I>)
+#[verifier::when_used_as_spec(into_rev_spec)]
+pub fn to_rev<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> (r: Rev<I>)
     requires
         i.obeys_prophetic_iter_laws()
     ensures
+        r == into_rev_spec(i),
         IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
         IteratorSpec::completes(&r) == IteratorSpec::completes(&i),
         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
