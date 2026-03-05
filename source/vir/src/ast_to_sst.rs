@@ -1777,6 +1777,15 @@ pub(crate) fn expr_to_stm_opt(
             let dst_name = crate::ast_util::cast_type_to_type_string(dst);
             let ensures_fun =
                 crate::def::fn_cast_ensures(&ctx.global.vstd_crate_name, &src_name, &dst_name);
+            if !ctx.func_map.contains_key(&ensures_fun) {
+                return Err(crate::messages::error(
+                    &expr.span,
+                    format!(
+                        "Verus does not support `as` cast from `{}` to `{}` (no specification function `{}_as_{}_ensures` found in vstd::float)",
+                        src_name, dst_name, src_name, dst_name,
+                    ),
+                ));
+            }
             let call = ExpX::Call(
                 CallFun::Fun(ensures_fun, None),
                 Arc::new(vec![]),

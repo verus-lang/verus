@@ -141,3 +141,48 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] cast_int_to_f16_unsupported ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(f16))]
+
+        use verus_builtin::*;
+        use verus_builtin_macros::*;
+
+        verus! {
+            fn test_i32_as_f16(n: i32) {
+                let y: f16 = n as f16;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast to `f16`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] cast_f16_to_int_unsupported ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(f16))]
+
+        use verus_builtin::*;
+        use verus_builtin_macros::*;
+
+        verus! {
+            fn test_f16_as_i32(f: f16) {
+                let n: i32 = f as i32;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f16`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] cast_f16_to_f64_unsupported ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(f16))]
+
+        use verus_builtin::*;
+        use verus_builtin_macros::*;
+
+        verus! {
+            fn test_f16_as_f64(f: f16) {
+                let d: f64 = f as f64;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f16` to `f64`")
+}

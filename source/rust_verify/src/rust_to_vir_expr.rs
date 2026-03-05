@@ -2218,22 +2218,70 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     )))
                 }
                 (TypX::Int(src_range), TypX::Float(dst_bits)) => {
+                    match src_range {
+                        IntRange::Int | IntRange::Nat | IntRange::Char => {
+                            return err_span(
+                                expr.span,
+                                format!(
+                                    "Verus does not support `as` cast from `{}` to `f{}`",
+                                    vir::ast_util::int_range_to_type_string(src_range),
+                                    dst_bits,
+                                ),
+                            );
+                        }
+                        _ => {}
+                    }
+                    if *dst_bits != 32 && *dst_bits != 64 {
+                        return err_span(
+                            expr.span,
+                            format!("Verus does not support `as` cast to `f{}`", dst_bits,),
+                        );
+                    }
                     let src = vir::ast::CastType::Int(*src_range);
                     let dst = vir::ast::CastType::Float(*dst_bits);
                     let op = vir::ast::UnaryOp::NondeterministicCast { src, dst };
                     mk_expr(ExprX::Unary(op, source_vir_expr))
                 }
                 (TypX::Float(src_bits), TypX::Int(_dst_range)) => {
-                    let src = vir::ast::CastType::Float(*src_bits);
                     let dst_range = match &*undecorate_typ(&to_vir_ty) {
                         TypX::Int(r) => *r,
                         _ => unreachable!(),
                     };
+                    match dst_range {
+                        IntRange::Int | IntRange::Nat | IntRange::Char => {
+                            return err_span(
+                                expr.span,
+                                format!(
+                                    "Verus does not support `as` cast from `f{}` to `{}`",
+                                    src_bits,
+                                    vir::ast_util::int_range_to_type_string(&dst_range),
+                                ),
+                            );
+                        }
+                        _ => {}
+                    }
+                    if *src_bits != 32 && *src_bits != 64 {
+                        return err_span(
+                            expr.span,
+                            format!("Verus does not support `as` cast from `f{}`", src_bits,),
+                        );
+                    }
+                    let src = vir::ast::CastType::Float(*src_bits);
                     let dst = vir::ast::CastType::Int(dst_range);
                     let op = vir::ast::UnaryOp::NondeterministicCast { src, dst };
                     mk_expr(ExprX::Unary(op, source_vir_expr))
                 }
                 (TypX::Float(src_bits), TypX::Float(dst_bits)) if src_bits != dst_bits => {
+                    if (*src_bits != 32 && *src_bits != 64) || (*dst_bits != 32 && *dst_bits != 64)
+                    {
+                        return err_span(
+                            expr.span,
+                            format!(
+                                "Verus does not support `as` cast from `f{}` to `f{}`",
+                                src_bits, dst_bits,
+                            ),
+                        );
+                    }
                     let src = vir::ast::CastType::Float(*src_bits);
                     let dst = vir::ast::CastType::Float(*dst_bits);
                     let op = vir::ast::UnaryOp::NondeterministicCast { src, dst };

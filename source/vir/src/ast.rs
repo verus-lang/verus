@@ -158,7 +158,7 @@ pub enum IntRange {
 pub enum CastType {
     /// An integer type, identified by its IntRange
     Int(IntRange),
-    /// A floating-point type, identified by its bit width (32 or 64)
+    /// A floating-point type, identified by its bit width (e.g., 32 or 64)
     Float(u32),
 }
 
