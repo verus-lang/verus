@@ -922,7 +922,7 @@ impl<'a> Builder<'a> {
                 external_spec: _,
             } => {
                 // Build the closure interior as a disconnected part of the CFG
-                let fn_scope = self.build_closure(params, proof_fn_modes, body);
+                let fn_scope = self.build_closure(&expr.span, params, proof_fn_modes, body);
 
                 // Emit instructions in the parent function that correspond to the
                 // construction of the closure.
@@ -1727,6 +1727,7 @@ impl<'a> Builder<'a> {
 
     fn build_closure(
         &mut self,
+        span: &Span,
         params: &VarBinders<Typ>,
         proof_fn_modes: &Option<(Arc<Vec<Mode>>, Mode)>,
         body: &Expr,
@@ -1768,8 +1769,13 @@ impl<'a> Builder<'a> {
         let mut fn_scope = self.pop_fn();
 
         if fn_scope.upvars_mutated.len() > 0 {
-            // TODO(new_mut_ref): make this a real error
-            panic!("Verus unsupported: closure mutable references");
+            let name = &self.locals.locals[fn_scope.upvars_mutated[0].local].name;
+            let name = match name {
+                LocalName::Named(var_ident) => crate::def::user_local_name(&var_ident),
+                LocalName::Temporary(..) => "[Verus Internal Error: mutably captured temporary]",
+            };
+            self.errors.push(error(span,
+                format!("Verus does not currently support closures capturing a mutable reference (mutably captured variable `{name}`)")));
         }
 
         fn_scope.upvars_moved = sort_and_remove_redundant(fn_scope.upvars_moved);
