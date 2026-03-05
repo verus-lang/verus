@@ -1569,6 +1569,13 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
         let verus_closure_captures_shadow =
             captures_subtract(&verus_closure_captures_shadow, &verus_closure_captures);
         for capt in verus_closure_captures_shadow.iter() {
+            let var_hir_id = match capt.place.base {
+                crate::expr_use_visitor::PlaceBase::Upvar(upvar_id) => upvar_id.var_path.hir_id,
+                _ => panic!("Verus internal error: Expected an Upvar"),
+            };
+            if cx.is_upvar(var_hir_id) {
+                continue;
+            }
             let place_expr = cx.convert_captured_hir_place(expr, capt.place.clone());
             let place_expr = cx.thir.exprs.push(place_expr);
             let shadow_place = crate::verus_time_travel_prevention::shadow_place(
