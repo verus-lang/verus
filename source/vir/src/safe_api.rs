@@ -1,8 +1,8 @@
 use crate::ast::{
-    Expr, ExprX, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, Path, PlaceX, Quant,
-    SpannedTyped, StmtX, Trait, TypX, UnaryOpr, UnwindSpec, VarBinderX, VirErr,
+    Expr, ExprX, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, Path, Quant, SpannedTyped,
+    StmtX, Trait, TypX, UnwindSpec, VarBinderX, VirErr,
 };
-use crate::ast_util::{bool_typ, fun_as_friendly_rust_name};
+use crate::ast_util::fun_as_friendly_rust_name;
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -182,53 +182,6 @@ pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
                         ),
                         rhs: SpannedTyped::new(span, &param.x.typ, ExprX::Nondeterministic),
                         op: None,
-                    },
-                )),
-            ));
-        } else if let TypX::MutRef(inner_typ) = &*param.x.typ {
-            // TODO(new_mut_ref) (completeness) this doesn't handle nested mut ref args
-            stmts.push(Spanned::new(
-                span.clone(),
-                StmtX::Expr(SpannedTyped::new(
-                    span,
-                    &crate::ast_util::unit_typ(),
-                    ExprX::AssignToPlace {
-                        place: SpannedTyped::new(
-                            span,
-                            inner_typ,
-                            PlaceX::DerefMut(SpannedTyped::new(
-                                span,
-                                &param.x.typ,
-                                PlaceX::Local(param.x.name.clone()),
-                            )),
-                        ),
-                        typ: inner_typ.clone(),
-                        op: None,
-                        resolve: false,
-                        rhs: SpannedTyped::new(span, &inner_typ, ExprX::Nondeterministic),
-                    },
-                )),
-            ));
-            stmts.push(Spanned::new(
-                span.clone(),
-                StmtX::Expr(SpannedTyped::new(
-                    span,
-                    &crate::ast_util::unit_typ(),
-                    ExprX::AssertAssume {
-                        is_assume: true,
-                        msg: None,
-                        expr: SpannedTyped::new(
-                            span,
-                            &bool_typ(),
-                            ExprX::UnaryOpr(
-                                UnaryOpr::HasResolved(param.x.typ.clone()),
-                                SpannedTyped::new(
-                                    span,
-                                    &param.x.typ,
-                                    ExprX::Var(param.x.name.clone()),
-                                ),
-                            ),
-                        ),
                     },
                 )),
             ));
