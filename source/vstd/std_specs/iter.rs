@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use crate::seq::{axiom_seq_subrange_index, axiom_seq_subrange_len};
+use super::super::seq::{axiom_seq_subrange_index, axiom_seq_subrange_len, axiom_seq_empty, group_seq_axioms};
 
 use verus as verus_;
 
@@ -170,7 +170,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             s.history@ == Seq::<I::Item>::empty(),
             s.wf(),
     {
-        broadcast use crate::seq::axiom_seq_empty;
+        broadcast use axiom_seq_empty;
         VerusForLoopWrapper {
             index: Ghost(0),
             snapshot: Ghost(iter),
@@ -221,7 +221,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             self.history = Ghost(old_history.push(ret->0));
         }
         proof {
-            broadcast use crate::seq::group_seq_axioms;
+            broadcast use group_seq_axioms;
             if ret.is_some() {
                 self.index@ = self.index@ + 1;
             }

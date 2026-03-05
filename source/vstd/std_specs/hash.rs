@@ -23,7 +23,7 @@
 /// reasoning context by broadcasting the group
 /// `vstd::std_specs::hash::group_hash_axioms`.
 use super::super::prelude::*;
-use crate::std_specs::iter::IteratorSpec;
+use super::iter::IteratorSpec;
 
 use core::borrow::Borrow;
 use core::hash::{BuildHasher, Hash, Hasher};
@@ -312,7 +312,7 @@ pub assume_specification<'a, Key, Value>[ Keys::<'a, Key, Value>::next ](
 // a prophecy, we need a function that gives us the underlying sequence of the original keys.
 pub uninterp spec fn into_iter_keys<'a, Key, Value>(i: Keys<'a, Key, Value>) -> Seq<Key>;
 
-impl<'a, K, V> crate::std_specs::iter::IteratorSpecImpl for Keys<'a, K, V> {
+impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
@@ -426,7 +426,7 @@ pub struct ExValues<'a, Key: 'a, Value: 'a>(Values<'a, Key, Value>);
 // a prophecy, we need a function that gives us the underlying sequence of the original values.
 pub uninterp spec fn into_iter_values<'a, Key, Value>(i: Values<'a, Key, Value>) -> Seq<Value>;
 
-impl<'a, K, V> crate::std_specs::iter::IteratorSpecImpl for Values<'a, K, V> {
+impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
@@ -568,7 +568,7 @@ pub struct ExMapIter<'a, Key: 'a, Value: 'a>(hash_map::Iter<'a, Key, Value>);
 // a prophecy, we need a function that gives us the underlying sequence of the original map.
 pub uninterp spec fn into_iter<'a, Key, Value>(i: hash_map::Iter<'a, Key, Value>) -> Seq<(Key, Value)>;
 
-impl<'a, K, V> crate::std_specs::iter::IteratorSpecImpl for hash_map::Iter<'a, K, V> {
+impl<'a, K, V> super::iter::IteratorSpecImpl for hash_map::Iter<'a, K, V> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
@@ -1264,7 +1264,7 @@ pub struct ExSetIter<'a, Key: 'a>(hash_set::Iter<'a, Key>);
 // a prophecy, we need a function that gives us the underlying sequence of the original keys.
 pub uninterp spec fn into_iter_hash_keys<'a, Key>(i: hash_set::Iter::<'a, Key>) -> Seq<Key>;
 
-impl<'a, K> crate::std_specs::iter::IteratorSpecImpl for hash_set::Iter::<'a, K> {
+impl<'a, K> super::iter::IteratorSpecImpl for hash_set::Iter::<'a, K> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }

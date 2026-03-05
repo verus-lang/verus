@@ -1,7 +1,7 @@
 use super::super::prelude::*;
 use super::super::view::View;
 use super::cmp::{PartialOrdIs, PartialOrdSpec};
-use crate::std_specs::iter::IteratorSpec;
+use super::iter::IteratorSpec;
 use core::ops::{Range, RangeInclusive};
 
 verus! {
@@ -112,7 +112,7 @@ pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx
         ret@.exhausted == false,
 ;
 
-impl<A: core::iter::Step + StepSpec> crate::std_specs::iter::IteratorSpecImpl for Range<A> {
+impl<A: core::iter::Step + StepSpec> super::iter::IteratorSpecImpl for Range<A> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }

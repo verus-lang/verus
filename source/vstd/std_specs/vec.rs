@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use crate::std_specs::iter::IteratorSpec;
+use super::iter::IteratorSpec;
 use verus_builtin::*;
 
 use alloc::collections::TryReserveError;
@@ -361,7 +361,7 @@ pub struct ExIntoIter<T, A: Allocator>(IntoIter<T, A>);
 // a prophecy, we need a function that gives us the underlying sequence of the original vec.
 pub uninterp spec fn into_iter_elts<T, A: Allocator>(i: IntoIter<T, A>) -> Seq<T>;
 
-impl <T, A: Allocator> crate::std_specs::iter::IteratorSpecImpl for IntoIter<T, A> {
+impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
@@ -387,7 +387,7 @@ impl <T, A: Allocator> crate::std_specs::iter::IteratorSpecImpl for IntoIter<T, 
 }
 
 /*
-impl <T, A: Allocator> crate::std_specs::iter::DoubleEndedIteratorSpecImpl for IntoIter<T, A> {
+impl <T, A: Allocator> super::iter::DoubleEndedIteratorSpecImpl for IntoIter<T, A> {
 
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         let len = into_iter_elts(*self).len();

@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use crate::std_specs::iter::IteratorSpec;
+use super::iter::IteratorSpec;
 use super::core::IndexSetTrustedSpec;
 use super::core::TrustedSpecSealed;
 
@@ -49,7 +49,7 @@ pub struct ExIter<'a, T: 'a>(Iter<'a, T>);
 // a prophecy, we need a function that gives us the underlying sequence of the original slice.
 pub uninterp spec fn into_iter_elts<'a, T: 'a>(i: Iter<'a, T>) -> Seq<T>;
 
-impl <'a, T: 'a> crate::std_specs::iter::IteratorSpecImpl for Iter<'a, T> {
+impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }

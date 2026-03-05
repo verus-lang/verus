@@ -1,7 +1,7 @@
 /// This code adds specifications for the standard-library type
 /// `std::collections::VecDeque`.
 use super::super::prelude::*;
-use crate::std_specs::iter::IteratorSpec;
+use super::iter::IteratorSpec;
 
 use alloc::collections::vec_deque::Iter;
 use alloc::collections::vec_deque::VecDeque;
@@ -266,7 +266,7 @@ pub struct ExIter<'a, T: 'a>(Iter<'a, T>);
 // a prophecy, we need a function that gives us the underlying sequence of the original vec.
 pub uninterp spec fn into_iter_elts<'a, T: 'a>(i: Iter<'a, T>) -> Seq<&'a T>;
 
-impl <'a, T: 'a> crate::std_specs::iter::IteratorSpecImpl for Iter<'a, T> {
+impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }

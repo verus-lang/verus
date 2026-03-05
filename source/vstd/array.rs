@@ -3,7 +3,7 @@ use super::prelude::*;
 use super::seq::*;
 use super::slice::SliceAdditionalSpecFns;
 #[cfg(verus_keep_ghost)]
-use crate::std_specs::iter::IteratorSpec;
+use super::std_specs::iter::IteratorSpec;
 use super::view::*;
 
 verus! {

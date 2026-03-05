@@ -6,11 +6,10 @@ use alloc::str::Chars;
 #[cfg(feature = "alloc")]
 use alloc::string::{self, String, ToString};
 
-#[cfg(feature = "alloc")]
 use super::prelude::*;
 use super::seq::Seq;
 #[cfg(verus_keep_ghost)]
-use crate::std_specs::iter::IteratorSpec;
+use super::std_specs::iter::IteratorSpec;
 use super::view::*;
 
 verus! {
@@ -358,6 +357,7 @@ pub struct ExChars<'a>(Chars<'a>);
 
 // To allow reasoning about the "contents" of the string iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original string.
+#[cfg(feature = "alloc")]
 pub uninterp spec fn into_iter_elts<'a>(i: Chars<'a>) -> Seq<char>;
 
 // #[cfg(feature = "alloc")]
@@ -381,8 +381,10 @@ pub uninterp spec fn into_iter_elts<'a>(i: Chars<'a>) -> Seq<char>;
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_iter)` to the specification for
 // the executable `iter` method and define that spec function here.
+#[cfg(feature = "alloc")]
 pub uninterp spec fn spec_iter<'a>(s: &'a str) -> (r: Chars<'a>);
 
+#[cfg(feature = "alloc")]
 pub broadcast proof fn axiom_spec_iter<'a>(s: &'a str)
     ensures
         #[trigger] spec_iter(s).remaining() == s@,
@@ -405,9 +407,10 @@ pub use super::view::View;
 // We use a separate block here, so that we can cfg out the use of 
 // crate::std_specs::iter::IteratorSpecImpl below.
 #[cfg(verus_keep_ghost)]
+#[cfg(feature = "alloc")]
 verus! {
 
-impl <'a> crate::std_specs::iter::IteratorSpecImpl for Chars<'a> {
+impl <'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
