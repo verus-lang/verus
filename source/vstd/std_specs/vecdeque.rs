@@ -291,6 +291,15 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     }
 }
 
+impl <'a, T: 'a> super::iter::DoubleEndedIteratorSpecImpl for Iter<'a, T> {
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_elts(*self).len() {
+            Some(&into_iter_elts(*self)[into_iter_elts(*self).len() - index - 1])
+        } else {
+            None
+        }
+    }
+}
 
 // To allow reasoning about the ghost iterator when the executable
 // function `iter()` is invoked in a `for` loop header (e.g., in
