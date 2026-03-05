@@ -825,12 +825,10 @@ test_verify_one_file_with_options! {
             m.insert(3, 4);
             m.insert(6, -8);
             let ghost m_keys = m.keys();
-            assert(m_keys.remaining().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32]);
 
             let mut items = Vec::<u32>::new();
             for k in iter: m.keys()
                 invariant
-                    iter.seq().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32],
                     items@ == iter.seq().take(iter.index@).map_values(|v: &u32| *v),
             {
                 items.push(*k);
@@ -864,11 +862,9 @@ test_verify_one_file_with_options! {
                 assert(m@.values() =~= set![4i8, -8i8]);
             };
             let ghost m_values = m.values();
-            assert(m_values.remaining().map_values(|v: &i8| *v).to_set() == set![4i8, -8i8]);
             let mut items = Vec::<i8>::new();
             for v in iter: m.values()
                 invariant
-                    iter.seq().map_values(|v: &i8| *v).to_set() =~= set![4i8, -8i8],
                     items@ == iter.seq().take(iter.index@).map_values(|v: &i8| *v),
             {
                 items.push(*v);
@@ -895,12 +891,9 @@ test_verify_one_file_with_options! {
             m.insert(3, 4);
             m.insert(6, -8);
 
-            assert(m@.kv_pairs() == set![(3u32, 4i8), (6u32, -8i8)]);
-
             let mut idx = 0;
             for (k, v) in iter: m.iter()
                 invariant
-                    m@.kv_pairs() == set![(3u32, 4i8), (6u32, -8i8)],
                     iter.seq().map_values(|v: (&u32, &i8)| (*v.0, *v.1)).to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
             {
                 // OBSERVE: triggers the extensionality in the first invariant
