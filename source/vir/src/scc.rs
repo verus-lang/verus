@@ -195,7 +195,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         false
     }
 
-    pub fn get_edges_from<'a>(&'a self, t: &T) -> impl Iterator<Item = &'a T> + 'a {
+    pub fn get_edges_from<'a>(&'a self, t: &T) -> impl Iterator<Item = &'a T> + 'a + use<'a, T> {
         assert!(self.h.contains_key(&t));
         let v: NodeIndex = self.h[t];
         self.nodes[v].edges.iter().map(move |i| &self.nodes[*i].t)

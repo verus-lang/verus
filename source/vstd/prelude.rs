@@ -5,6 +5,8 @@ pub use verus_builtin::*;
 pub use crate::verus_builtin::*;
 
 // Omit contrib macros from the following list; they are exported in contrib/mod.rs
+pub use verus_builtin_macros::Structural;
+pub use verus_builtin_macros::StructuralEq;
 pub use verus_builtin_macros::atomic_with_ghost_helper;
 pub use verus_builtin_macros::calc_proc_macro;
 pub use verus_builtin_macros::fndecl;
@@ -31,15 +33,13 @@ pub use verus_builtin_macros::verus_proof_macro_exprs;
 pub use verus_builtin_macros::verus_spec;
 pub use verus_builtin_macros::verus_trait_impl;
 pub use verus_builtin_macros::verus_verify;
-pub use verus_builtin_macros::Structural;
-pub use verus_builtin_macros::StructuralEq;
 
-pub use super::map::map;
 pub use super::map::Map;
-pub use super::seq::seq;
+pub use super::map::map;
 pub use super::seq::Seq;
-pub use super::set::set;
+pub use super::seq::seq;
 pub use super::set::Set;
+pub use super::set::set;
 pub use super::view::*;
 
 #[cfg(verus_keep_ghost)]
@@ -58,6 +58,9 @@ pub use super::std_specs::result::ResultAdditionalSpecFns;
 #[cfg(verus_keep_ghost)]
 #[cfg(feature = "alloc")]
 pub use super::std_specs::vec::VecAdditionalSpecFns;
+
+#[cfg(verus_keep_ghost)]
+pub use super::std_specs::maybe_uninit::MaybeUninitAdditionalSpecFns;
 
 #[cfg(feature = "alloc")]
 pub use super::pervasive::VecAdditionalExecFns;

@@ -4,15 +4,14 @@
 
 use rustc_data_structures::steal::Steal;
 use rustc_errors::ErrorGuaranteed;
-use rustc_hir as hir;
-use rustc_hir::HirId;
+use rustc_hir::attrs::AttributeKind;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::lang_items::LangItem;
+use rustc_hir::{self as hir, HirId, find_attr};
 use rustc_middle::bug;
-use rustc_middle::middle::region;
 use rustc_middle::thir::*;
-use rustc_middle::ty::{self, RvalueScopes, TyCtxt};
+use rustc_middle::ty::{self, TyCtxt};
 use tracing::instrument;
 
 use crate::thir::pattern::pat_from_hir;
@@ -31,9 +30,8 @@ pub(crate) fn thir_body(
     crate::verus::check_this_query_isnt_running_early(owner_def);
 
     let expr = if crate::verus::erase_body(&mut cx, owner_def) {
-        crate::verus::erase_tree(&mut cx, body.value)
+        crate::verus::erase_tree(&mut cx, body.value, crate::verus::TreeErase::IncludeBasicChecks)
     } else {
-        cx.verus_ctxt.prep_expr(body.value, false);
         cx.mirror_expr(body.value)
     };
 
@@ -42,6 +40,7 @@ pub(crate) fn thir_body(
     //dbg!(cx.thir.stmts.iter().enumerate().collect::<Vec<_>>());
     //dbg!(expr);
 
+    // Lower the params before the body's expression so errors from params are shown first.
     let owner_id = tcx.local_def_id_to_hir_id(owner_def);
     if let Some(fn_decl) = tcx.hir_fn_decl_by_hir_id(owner_id) {
         let closure_env_param = cx.closure_env_param(owner_def, owner_id);
@@ -61,6 +60,9 @@ pub(crate) fn thir_body(
         }
     }
 
+    // Note: this call requires cx.thir.params to be initialized
+    let expr = crate::verus_time_travel_prevention::body_post(&mut cx, body.value, expr);
+
     Ok((tcx.alloc_steal_thir(cx.thir), expr))
 }
 
@@ -72,9 +74,7 @@ pub(crate) struct ThirBuildCx<'tcx> {
 
     pub(crate) typing_env: ty::TypingEnv<'tcx>,
 
-    pub(crate) region_scope_tree: &'tcx region::ScopeTree,
     pub(crate) typeck_results: &'tcx ty::TypeckResults<'tcx>,
-    pub(crate) rvalue_scopes: &'tcx RvalueScopes,
 
     /// False to indicate that adjustments should not be applied. Only used for `custom_mir`
     apply_adjustments: bool,
@@ -121,14 +121,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
             // FIXME(#132279): We're in a body, we should use a typing
             // mode which reveals the opaque types defined by that body.
             typing_env: ty::TypingEnv::non_body_analysis(tcx, def),
-            region_scope_tree: tcx.region_scope_tree(def),
             typeck_results,
-            rvalue_scopes: &typeck_results.rvalue_scopes,
             body_owner: def.to_def_id(),
-            apply_adjustments: tcx
-                .hir_attrs(hir_id)
-                .iter()
-                .all(|attr| !attr.has_name(rustc_span::sym::custom_mir)),
+            apply_adjustments:
+                !find_attr!(tcx.hir_attrs(hir_id), AttributeKind::CustomMir(..) => ()).is_some(),
             verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
         }
     }
@@ -207,7 +203,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             // C-variadic fns also have a `VaList` input that's not listed in `fn_sig`
             // (as it's created inside the body itself, not passed in from outside).
             let ty = if fn_decl.c_variadic && index == fn_decl.inputs.len() {
-                let va_list_did = self.tcx.require_lang_item(LangItem::VaList, Some(param.span));
+                let va_list_did = self.tcx.require_lang_item(LangItem::VaList, param.span);
 
                 self.tcx
                     .type_of(va_list_did)

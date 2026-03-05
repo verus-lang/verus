@@ -4,6 +4,8 @@ use super::map::{Map, assert_maps_equal, assert_maps_equal_internal};
 use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
+#[allow(unused_imports)]
+use super::relations::*;
 use super::set::*;
 #[cfg(verus_keep_ghost)]
 use super::set_lib::*;
@@ -453,6 +455,45 @@ impl<K, V> Map<K, V> {
             assert(self.insert(k, v).contains_key(old_k));
         }
     }
+
+    pub proof fn lemma_injective_values_len(self)
+        requires
+            self.dom().finite(),
+            self.is_injective(),
+        ensures
+            self.values().finite(),
+            self.values().len() == self.dom().len(),
+    {
+        let f = |k: K|
+            if self.contains_key(k) {
+                self[k]
+            } else {
+                Set::<V>::full().difference(self.values()).choose()
+            };
+        assert(forall|a1: K, a2: K|
+            self.dom().contains(a1) && self.dom().contains(a2) && #[trigger] f(a1) == #[trigger] f(
+                a2,
+            ) ==> a1 == a2);
+        assert(self.dom().map(f) == self.values());
+        lemma_map_size(self.dom(), self.values(), f);
+    }
+
+    pub proof fn lemma_values_len(self)
+        requires
+            self.dom().finite(),
+        ensures
+            self.values().finite(),
+            self.values().len() <= self.dom().len(),
+    {
+        let f = |k: K|
+            if self.contains_key(k) {
+                self[k]
+            } else {
+                Set::<V>::full().difference(self.values()).choose()
+            };
+        assert(self.dom().map(f) == self.values());
+        lemma_map_size_bound(self.dom(), self.values(), f);
+    }
 }
 
 impl<K, V> Map<Seq<K>, V> {
@@ -555,9 +596,7 @@ impl<K, V> Map<Seq<K>, V> {
     {
         broadcast use group_map_properties;
         broadcast use super::seq::group_seq_axioms;
-
-        #[allow(deprecated)]
-        super::seq_lib::lemma_seq_properties::<K>();  // new broadcast group not working here
+        broadcast use super::seq_lib::group_seq_properties, super::seq_lib::lemma_seq_skip_of_skip;
         broadcast use Map::lemma_prefixed_entries_contains, Map::lemma_prefixed_entries_get;
 
         let lhs = self.insert(prefix + k, v).prefixed_entries(prefix);
@@ -732,21 +771,6 @@ pub broadcast proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: sp
     assert(values =~= Set::<V>::new(
         |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
     ));
-}
-
-/// Properties of maps from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-#[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_map_properties` instead")]
-pub proof fn lemma_map_properties<K, V>()
-    ensures
-        forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
-            Map::<K, V>::new(fk, fv).dom() == Set::<K>::new(|k: K| fk(k)),  //from lemma_map_new_domain
-        forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
-            Map::<K, V>::new(fk, fv).values() == Set::<V>::new(
-                |v: V| exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v,
-            ),  //from lemma_map_new_values
-{
-    broadcast use group_map_properties;
-
 }
 
 pub broadcast group group_map_properties {

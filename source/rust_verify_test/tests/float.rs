@@ -28,6 +28,9 @@ test_verify_one_file! {
             assert(p0 == p2);
             assert(p0 != p3);
 
+            let p4: f32 = p0.clone();
+            assert(p4 == p0);
+
             let n0: f32 = -3.14;
 
             let q = p0 + p3;
@@ -38,7 +41,7 @@ test_verify_one_file! {
             assert(b == !p0.is_ge(&p3));
 
             assert(f32_to_bits(0.0) == 0);
-            assert(f32_to_bits(-0.0) == 0x80000000);
+            assert(f32_to_bits(-0.0f32) == 0x80000000);
             assert(p0.is_finite_spec());
 
             assert(f32_to_bits(n0) == 0x80000000 + f32_to_bits(p0));

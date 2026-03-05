@@ -1414,8 +1414,8 @@ impl<A> Seq<A> {
 
     /// When appending an element `x` to a sequence:
     /// - If `x` is in `self + seen`, removing duplicates equals removing duplicates from self
-    /// - If x is not in (self + seen), removing duplicates equals removing duplicates from self,
-    ///   concatenated with [x]
+    /// - If `x` is not in (self + seen), removing duplicates equals removing duplicates from self,
+    ///   concatenated with `[x]`
     ///
     /// ## Example
     /// ```rust
@@ -1967,7 +1967,7 @@ impl<A> Seq<A> {
     }
 
     /// If two sequences have the same length and `i` is a valid index,
-    /// then the pair (a[i], b[i]) is contained in their zip.
+    /// then the pair `(a[i], b[i])` is contained in their zip.
     ///
     /// ## Example
     /// ```rust
@@ -3535,64 +3535,6 @@ pub broadcast proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
     ensures
         (0 <= m && 0 <= n && m + n <= s.len()) ==> #[trigger] s.skip(m).skip(n) =~= s.skip(m + n),
 {
-}
-
-/// Properties of sequences from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-#[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_seq_properties` instead")]
-pub proof fn lemma_seq_properties<A>()
-    ensures
-        forall|s: Seq<A>, x: A|
-            s.contains(x) <==> exists|i: int| 0 <= i < s.len() && #[trigger] s[i] == x,  //from lemma_seq_contains(s, x),
-        forall|x: A| !(#[trigger] Seq::<A>::empty().contains(x)),  //from lemma_seq_empty_contains_nothing(x),
-        forall|s: Seq<A>| #[trigger] s.len() == 0 ==> s =~= Seq::<A>::empty(),  //from lemma_seq_empty_equality(s),
-        forall|x: Seq<A>, y: Seq<A>, elt: A| #[trigger]
-            (x + y).contains(elt) <==> x.contains(elt) || y.contains(elt),  //from lemma_seq_concat_contains_all_elements(x, y, elt),
-        forall|s: Seq<A>, v: A, x: A| #[trigger] s.push(v).contains(x) <==> v == x || s.contains(x),  //from lemma_seq_contains_after_push(s, v, x)
-        forall|s: Seq<A>, start: int, stop: int, x: A|
-            (0 <= start <= stop <= s.len() && #[trigger] s.subrange(start, stop).contains(x)) <==> (
-            exists|i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x),  //from lemma_seq_subrange_elements(s, start, stop, x),
-        forall|s: Seq<A>, n: int| 0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n,  //from lemma_seq_take_len(s, n)
-        forall|s: Seq<A>, n: int, x: A|
-            (#[trigger] s.take(n).contains(x) && 0 <= n <= s.len()) <==> (exists|i: int|
-                0 <= i < n <= s.len() && #[trigger] s[i] == x),  //from lemma_seq_take_contains(s, n, x),
-        forall|s: Seq<A>, n: int, j: int| 0 <= j < n <= s.len() ==> #[trigger] s.take(n)[j] == s[j],  //from lemma_seq_take_index(s, n, j),
-        forall|s: Seq<A>, n: int| 0 <= n <= s.len() ==> #[trigger] s.skip(n).len() == s.len() - n,  //from lemma_seq_skip_len(s, n),
-        forall|s: Seq<A>, n: int, x: A|
-            (#[trigger] s.skip(n).contains(x) && 0 <= n <= s.len()) <==> (exists|i: int|
-                0 <= n <= i < s.len() && #[trigger] s[i] == x),  //from lemma_seq_skip_contains(s, n, x),
-        forall|s: Seq<A>, n: int, j: int|
-            0 <= n && 0 <= j < (s.len() - n) ==> #[trigger] s.skip(n)[j] == s[j + n],  //from lemma_seq_skip_index(s, n, j),
-        forall|a: Seq<A>, b: Seq<A>, n: int|
-            #![trigger (a+b).take(n)]
-            #![trigger (a+b).skip(n)]
-            n == a.len() ==> ((a + b).take(n) =~= a && (a + b).skip(n) =~= b),  //from lemma_seq_append_take_skip(a, b, n),
-        forall|s: Seq<A>, i: int, v: A, n: int|
-            0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).take(n) == s.take(n).update(i, v),  //from lemma_seq_take_update_commut1(s, i, v, n),
-        forall|s: Seq<A>, i: int, v: A, n: int|
-            0 <= n <= i < s.len() ==> #[trigger] s.update(i, v).take(n) == s.take(n),  //from lemma_seq_take_update_commut2(s, i, v, n),
-        forall|s: Seq<A>, i: int, v: A, n: int|
-            0 <= n <= i < s.len() ==> #[trigger] s.update(i, v).skip(n) == s.skip(n).update(
-                i - n,
-                v,
-            ),  //from lemma_seq_skip_update_commut1(s, i, v, n),
-        forall|s: Seq<A>, i: int, v: A, n: int|
-            0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).skip(n) == s.skip(n),  //from lemma_seq_skip_update_commut2(s, i, v, n),
-        forall|s: Seq<A>, v: A, n: int|
-            0 <= n <= s.len() ==> #[trigger] s.push(v).skip(n) == s.skip(n).push(v),  //from lemma_seq_skip_build_commut(s, v, n),
-        forall|s: Seq<A>, n: int| n == 0 ==> #[trigger] s.skip(n) == s,  //from lemma_seq_skip_nothing(s, n),
-        forall|s: Seq<A>, n: int| n == 0 ==> #[trigger] s.take(n) == Seq::<A>::empty(),  //from lemma_seq_take_nothing(s, n),
-        forall|s: Seq<A>, m: int, n: int|
-            (0 <= m && 0 <= n && m + n <= s.len()) ==> #[trigger] s.skip(m).skip(n) == s.skip(
-                m + n,
-            ),  //from lemma_seq_skip_of_skip(s, m, n),
-        forall|s: Seq<A>, a: A| #[trigger] (s.push(a).to_multiset()) =~= s.to_multiset().insert(a),  //from o_multiset_properties
-        forall|s: Seq<A>| s.len() == #[trigger] s.to_multiset().len(),  //from to_multiset_ensures
-        forall|s: Seq<A>, a: A|
-            s.contains(a) <==> #[trigger] s.to_multiset().count(a)
-                > 0,  //from to_multiset_ensures
-{
-    broadcast use {group_seq_properties, lemma_seq_skip_of_skip};
-
 }
 
 #[doc(hidden)]

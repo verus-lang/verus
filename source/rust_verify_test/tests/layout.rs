@@ -214,7 +214,7 @@ test_verify_one_file_with_options! {
     #[test] test_set_to_32_on_64_bit_compile ["vstd", "--compile"] => verus_code! {
         global size_of usize == 4;
     } => Err(err) => {
-        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert_rust_error_msg(err.clone(), "evaluation panicked");
         assert!(err.errors[0].rendered.contains("does not have the expected size"));
     }
 }
@@ -250,7 +250,7 @@ test_verify_one_file! {
         fn test(y: nat) {
             let x = unsigned_max(y);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file! {
@@ -258,7 +258,7 @@ test_verify_one_file! {
         fn test(y: nat) {
             let x = signed_max(y);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file! {
@@ -266,7 +266,7 @@ test_verify_one_file! {
         fn test(y: nat) {
             let x = signed_min(y);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file! {
@@ -274,7 +274,7 @@ test_verify_one_file! {
         fn test() {
             let x = arch_word_bits();
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -391,7 +391,7 @@ test_verify_one_file_with_options! {
 
         global layout S is size == 16, align == 16;
     } => Err(err) => {
-        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert_rust_error_msg(err.clone(), "evaluation panicked");
         assert!(err.errors[0].rendered.contains("does not have the expected alignment"));
     }
 }
@@ -403,7 +403,7 @@ test_verify_one_file_with_options! {
 
         global layout S is size == 8, align == 8;
     } => Err(err) => {
-        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert_rust_error_msg(err.clone(), "evaluation panicked");
         assert!(err.errors[0].rendered.contains("does not have the expected size"));
     }
 }
@@ -471,4 +471,30 @@ test_verify_one_file_with_options! {
             assert(align_of::<*mut T>() == align_of::<usize>()); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[cfg(target_pointer_width = "32")] #[test] test_cfg_global_layout_usize_32 ["vstd"] => verus_code! {
+        #[cfg(target_pointer_width = "32")]
+        global layout usize is size == 4;
+        #[cfg(target_pointer_width = "64")]
+        global layout usize is size == 8;
+
+        proof fn test() {
+            assert(usize::BITS == 32);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[cfg(target_pointer_width = "64")] #[test] test_cfg_global_layout_usize_64 ["vstd"] => verus_code! {
+        #[cfg(target_pointer_width = "32")]
+        global layout usize is size == 4;
+        #[cfg(target_pointer_width = "64")]
+        global layout usize is size == 8;
+
+        proof fn test() {
+            assert(usize::BITS == 64);
+        }
+    } => Ok(())
 }

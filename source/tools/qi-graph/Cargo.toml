@@ -12,3 +12,6 @@ getopts = "*"
 petgraph = "0.5.1"
 serde_json = { version = "1", features = ["preserve_order"] }
 internals_interface = { path = "../internals_interface" }
+
+[lints]
+workspace = true

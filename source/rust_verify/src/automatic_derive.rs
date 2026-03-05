@@ -51,6 +51,11 @@ pub fn is_automatically_derived(attrs: &[rustc_hir::Attribute]) -> bool {
                 }
                 _ => {}
             },
+            rustc_hir::Attribute::Parsed(
+                rustc_hir::attrs::AttributeKind::AutomaticallyDerived(_),
+            ) => {
+                return true;
+            }
             _ => {}
         }
     }
@@ -84,8 +89,9 @@ fn clone_add_post_condition<'tcx>(
     functionx: &mut FunctionX,
 ) -> Result<(), VirErr> {
     let warn = |msg: &str| {
-        let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
-        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(span, msg.to_string())));
+        ctxt.diagnostics
+            .borrow_mut()
+            .push(VirErrAs::Warning(crate::util::err_span_bare(span, msg.to_string())));
     };
     let warn_unexpected = || {
         warn(

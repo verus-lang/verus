@@ -466,3 +466,24 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] rec_spinoff_prover verus_code! {
+        spec fn count(n: nat) -> nat
+            decreases n,
+        {
+            proof {
+                assert(true);
+            }
+            if n == 0 {
+                0
+            } else {
+                count((n - 1) as nat)
+            }
+        }
+        #[verifier::spinoff_prover]
+        proof fn test() {
+            assert(count(0) == 0);
+        }
+    } => Ok(())
+}

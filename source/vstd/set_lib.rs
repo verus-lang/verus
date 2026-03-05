@@ -30,6 +30,62 @@ impl<A> Set<A> {
         Set::new(|a: B| exists|x: A| self.contains(x) && a == f(x))
     }
 
+    /// `Set::map_by` is like `Set::map`, but `map` only takes a forward function `fwd: spec_fn(A) -> B`,
+    /// while `map_by` also takes a reverse function `rev: spec_fn(B) -> A`
+    /// such that `rev(fwd(a)) == a`.
+    /// When `fwd` has such a reverse function, `Set::map_by` can make proofs easier
+    /// by avoiding the "exists" that appears in lemmas about `Set::map`.
+    /// Example: for a set `s: Set<int>`, to map each `i` in `s` to `(i, 10 * i)`,
+    /// we can write either `s.map(|i: int| (i, 10 * i))`
+    /// or `s.map_by(|i: int| (i, 10 * i), |p: (int, int)| p.0)`;
+    /// the version with `map_by` is usually easier to use in proofs.
+    /// If the recommendation `forall|a: A| self.contains(a) ==> rev(fwd(a)) == a` is satisfied,
+    /// it is trivially guaranteed that `self.map_by(fwd, rev) == self.map(fwd)`.
+    /// Also see the `set_build!` macro for a convenient interface to `map_by`.
+    pub open spec fn map_by<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A) -> Set<B>
+        recommends
+            forall|a: A| self.contains(a) ==> rev(fwd(a)) == a,
+    {
+        Set::new(|b: B| self.contains(rev(b)) && b == fwd(rev(b)))
+    }
+
+    /// Similar to `Set::map_by`, but the forward function returns `Set<B>` rather than `B`,
+    /// and `map_flatten_by` flattens the final result from `Set<Set<B>>` to just `Set<B>`.
+    /// This can be easier to work with in proofs than calling `map` and `flatten` separately,
+    /// since `map` and `flatten` introduce "exists", while `map_flatten_by` does not.
+    /// Also see the `set_build!` macro for a convenient interface to `map_flatten_by`.
+    pub open spec fn map_flatten_by<B>(
+        self,
+        fwd: spec_fn(A) -> Set<B>,
+        rev: spec_fn(B) -> A,
+    ) -> Set<B>
+        recommends
+            forall|a: A, b: B| #[trigger]
+                self.contains(a) && fwd(a).contains(b) ==> #[trigger] rev(b) == a,
+    {
+        Set::new(|b: B| self.contains(rev(b)) && fwd(rev(b)).contains(b))
+    }
+
+    pub proof fn map_flatten_by_is_map_flatten<B>(
+        self,
+        fwd: spec_fn(A) -> Set<B>,
+        rev: spec_fn(B) -> A,
+    )
+        requires
+            forall|a: A, b: B| #[trigger]
+                self.contains(a) && fwd(a).contains(b) ==> #[trigger] rev(b) == a,
+        ensures
+            self.map_flatten_by(fwd, rev) == self.map(fwd).flatten(),
+    {
+        assert forall|b: B| self.map_flatten_by(fwd, rev).contains(b) implies #[trigger] self.map(
+            fwd,
+        ).flatten().contains(b) by {
+            let bs = choose|bs: Set<B>|
+                (exists|a: A| self.contains(a) && bs == fwd(a)) && bs.contains(b);
+            assert(self.map(fwd).contains(bs) <==> (exists|a: A| self.contains(a) && bs == fwd(a)));
+        }
+    }
+
     /// Converts a set into a sequence with an arbitrary ordering.
     pub open spec fn to_seq(self) -> Seq<A>
         recommends
@@ -623,6 +679,41 @@ impl<A> Set<A> {
         }
     }
 
+    pub broadcast proof fn lemma_map_by_finite<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A)
+        requires
+            self.finite(),
+        ensures
+            #[trigger] self.map_by(fwd, rev).finite(),
+    {
+        broadcast use lemma_set_subset_finite;
+
+        assert(self.map_by(fwd, rev).subset_of(self.map(fwd)));
+        self.lemma_map_finite(fwd);
+    }
+
+    pub broadcast proof fn lemma_map_flatten_by_finite<B>(
+        self,
+        fwd: spec_fn(A) -> Set<B>,
+        rev: spec_fn(B) -> A,
+    )
+        requires
+            self.finite(),
+            forall|a: A| self.contains(a) ==> fwd(a).finite(),
+        ensures
+            #[trigger] self.map_flatten_by(fwd, rev).finite(),
+    {
+        broadcast use lemma_set_subset_finite;
+
+        let s1 = self.map_flatten_by(fwd, rev);
+        let s2 = self.map(fwd).flatten();
+        assert forall|b: B| s1.contains(b) implies s2.contains(b) by {
+            assert(self.map(fwd).contains(fwd(rev(b))));
+        }
+        assert(s1.subset_of(s2));
+        self.lemma_map_finite(fwd);
+        self.map(fwd).lemma_flatten_finite();
+    }
+
     pub broadcast proof fn lemma_set_all_subset(self, s2: Set<A>, p: spec_fn(A) -> bool)
         requires
             #[trigger] self.subset_of(s2),
@@ -704,7 +795,146 @@ impl<A> Set<Set<A>> {
             }
         }
     }
+
+    pub proof fn lemma_flatten_finite(self)
+        requires
+            self.finite(),
+            forall|s: Set<A>| self.contains(s) ==> #[trigger] s.finite(),
+        ensures
+            self.flatten().finite(),
+        decreases self.len(),
+    {
+        broadcast use group_set_axioms;
+
+        if self.len() == 0 {
+            assert(self.flatten() =~= Set::<A>::empty());
+        } else {
+            let s = self.choose();
+            let self2 = self.remove(s);
+            self2.lemma_flatten_finite();
+            self2.flatten_insert_union_commute(s);
+        }
+    }
 }
+
+pub trait FiniteRange: Sized {
+    spec fn range_set(lo: Self, hi: Self) -> Set<Self>;
+
+    spec fn range_len(lo: Self, hi: Self) -> nat;
+
+    proof fn range_properties(lo: Self, hi: Self)
+        ensures
+            Self::range_set(lo, hi).finite(),
+            Self::range_set(lo, hi).len() == Self::range_len(lo, hi),
+    ;
+}
+
+pub broadcast proof fn range_set_properties<A: FiniteRange>(lo: A, hi: A)
+    ensures
+        (#[trigger] A::range_set(lo, hi)).finite(),
+        A::range_set(lo, hi).len() == A::range_len(lo, hi),
+{
+    A::range_properties(lo, hi);
+}
+
+pub trait FiniteFull: Sized {
+    proof fn full_properties()
+        ensures
+            Set::<Self>::full().finite(),
+    ;
+}
+
+pub broadcast proof fn full_set_properties<A: FiniteFull>()
+    ensures
+        #![trigger Set::<A>::full()]
+        (Set::<A>::full()).finite(),
+{
+    A::full_properties();
+}
+
+impl<A: FiniteRange> Set<A> {
+    #[verifier::inline]
+    pub open spec fn range(lo: A, hi: A) -> Set<A> {
+        A::range_set(lo, hi)
+    }
+
+    #[verifier::inline]
+    pub open spec fn range_inclusive(lo: A, hi: A) -> Set<A> {
+        A::range_set(lo, hi).insert(hi)
+    }
+}
+
+impl<A: FiniteFull> Set<A> {
+    #[verifier::inline]
+    pub open spec fn from_finite_type(f: spec_fn(A) -> bool) -> Set<A> {
+        Set::<A>::full().filter(f)
+    }
+}
+
+// Macro to implement the trait for every numeric type. We need a macro here
+// because 'as nat' can't be written as a type generic.
+macro_rules! range_impls {
+    ([$($t:ty)*]) => {
+        $(
+            verus! {
+                impl FiniteRange for $t {
+                    open spec fn range_set(lo: Self, hi: Self) -> Set<Self> {
+                        Set::new(|i: Self| lo <= i < hi)
+                    }
+                    open spec fn range_len(lo: Self, hi: Self) -> nat {
+                        if lo <= hi { (hi - lo) as nat } else { 0 }
+                    }
+                    proof fn range_properties(lo: Self, hi: Self)
+                        decreases hi - lo
+                    {
+                        broadcast use axiom_set_empty_finite;
+                        broadcast use axiom_set_empty_len;
+                        broadcast use axiom_set_insert_finite;
+
+                        if hi <= lo {
+                            assert(Self::range_set(lo, hi).is_empty());
+                        } else {
+                            let hi1 = (hi - 1) as $t;
+                            Self::range_properties(lo, hi1);
+                            assert(Self::range_set(lo, hi) == Self::range_set(lo, hi1).insert(hi1));
+                            axiom_set_insert_finite(Self::range_set(lo, hi1), hi1);
+                        }
+                    }
+                }
+            } // verus!
+        )*
+    }
+}
+
+macro_rules! full_impls {
+    ([$($t:ty)*]) => {
+        $(
+            verus! {
+                impl FiniteFull for $t {
+                    proof fn full_properties() {
+                        broadcast use axiom_set_insert_finite;
+
+                        assert(Set::<$t>::full() == Set::range_inclusive($t::MIN, $t::MAX));
+                        <$t as FiniteRange>::range_properties($t::MIN, $t::MAX);
+                    }
+                }
+            } // verus!
+        )*
+    }
+}
+
+// Make Set::range available for all of the Verus numeric types
+range_impls!([
+    int nat
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+// Make Set::full available for all of the Verus numeric types
+full_impls!([
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
 
 /// Two sets are equal iff mapping `f` results in equal sets, if `f` is injective.
 pub proof fn lemma_sets_eq_iff_injective_map_eq<T, S>(s1: Set<T>, s2: Set<T>, f: spec_fn(T) -> S)
@@ -950,13 +1180,11 @@ pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
 
 /// If an injective function is applied to each element of a set to construct
 /// another set, the two sets have the same size.
-// the dafny original lemma reasons with partial function f
 pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
     requires
-        injective(f),
-        forall|a: A| x.contains(a) ==> y.contains(#[trigger] f(a)),
-        forall|b: B| (#[trigger] y.contains(b)) ==> exists|a: A| x.contains(a) && f(a) == b,
         x.finite(),
+        injective_on(f, x),
+        x.map(f) == y,
     ensures
         y.finite(),
         x.len() == y.len(),
@@ -970,8 +1198,45 @@ pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
         }
     } else {
         let a = x.choose();
+        assert(x.remove(a).map(f) == y.remove(f(a)));
         lemma_map_size(x.remove(a), y.remove(f(a)), f);
         assert(y == y.remove(f(a)).insert(f(a)));
+    }
+}
+
+/// If any function is applied to each element of a set to construct
+/// another set, the constructed set's length is at most the original's
+pub proof fn lemma_map_size_bound<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
+    requires
+        x.finite(),
+        x.map(f) == y,
+    ensures
+        y.finite(),
+        y.len() <= x.len(),
+    decreases x.len(),
+{
+    broadcast use group_set_properties;
+
+    if x.is_empty() {
+        if !y.is_empty() {
+            let e = y.choose();
+        }
+    } else {
+        let xx = x.choose();
+        let img = f(xx);
+        let pre = x.filter(|a: A| f(a) == f(xx));
+        x.lemma_len_filter(|a: A| f(a) == f(xx));
+        let wit = choose|a: A| x.contains(a) && f(a) == f(xx);
+        assert forall|b: B| (#[trigger] y.remove(f(xx)).contains(b)) implies exists|a: A|
+            x.difference(pre).contains(a) && f(a) == b by {
+            let pre_wit = choose|a: A| x.contains(a) && f(a) == b;
+            assert(x.difference(pre).contains(pre_wit));
+        }
+
+        assert(x == x.difference(pre).union(pre));
+        assert(y == y.remove(f(xx)).insert(f(xx)));
+        assert(x.difference(pre).map(f) == y.remove(f(xx)));
+        lemma_map_size_bound(x.difference(pre), y.remove(f(xx)), f);
     }
 }
 
@@ -1086,6 +1351,30 @@ pub broadcast proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
     }
 }
 
+/// Two sets are disjoint iff their intersection is empty
+pub proof fn lemma_disjoint_iff_empty_intersection<T>(a: Set<T>, b: Set<T>)
+    ensures
+        a.disjoint(b) <==> a.intersect(b).is_empty(),
+{
+    broadcast use group_set_properties;
+
+    if a.disjoint(b) {
+        assert(b.disjoint(a));
+        assert(forall|x: T| a.contains(x) ==> !(a.contains(x) && b.contains(x)));
+        assert(forall|x: T| b.contains(x) ==> !(a.contains(x) && b.contains(x)));
+        assert(forall|x: T| !a.intersect(b).contains(x));
+    }
+    if a.intersect(b).is_empty() {
+        assert(forall|x: T| !a.intersect(b).contains(x));
+        if !a.disjoint(b) {
+            assert(exists|x: T| a.contains(x) && b.contains(x));
+            let x = choose|x: T| a.contains(x) && b.contains(x);
+            assert(a.intersect(b).contains(x));
+            assert(!a.intersect(b).is_empty());
+        }
+    }
+}
+
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The length of the union between two sets added to the length of the intersection between the
 /// two sets is equal to the sum of the lengths of the two sets.
@@ -1150,40 +1439,6 @@ pub broadcast proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
             assert(b.difference(a.remove(x)) =~= b.difference(a));
             assert(a.remove(x).intersect(b) =~= a.intersect(b));
         }
-    }
-}
-
-/// Properties of sets from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-#[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_set_properties` instead")]
-pub proof fn lemma_set_properties<A>()
-    ensures
-        forall|a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(b) == a.union(b),  //from lemma_set_union_again1
-        forall|a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(a) == a.union(b),  //from lemma_set_union_again2
-        forall|a: Set<A>, b: Set<A>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b),  //from lemma_set_intersect_again1
-        forall|a: Set<A>, b: Set<A>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b),  //from lemma_set_intersect_again2
-        forall|s1: Set<A>, s2: Set<A>, a: A| s2.contains(a) ==> !s1.difference(s2).contains(a),  //from lemma_set_difference2
-        forall|a: Set<A>, b: Set<A>|
-            #![trigger (a + b).difference(a)]
-            a.disjoint(b) ==> ((a + b).difference(a) =~= b && (a + b).difference(b) =~= a),  //from lemma_set_disjoint
-        forall|s: Set<A>| #[trigger] s.len() != 0 && s.finite() ==> exists|a: A| s.contains(a),  // half of lemma_set_empty_equivalency_len
-        forall|a: Set<A>, b: Set<A>|
-            (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] (a + b).len() == a.len()
-                + b.len(),  //from lemma_set_disjoint_lens
-        forall|a: Set<A>, b: Set<A>|
-            (a.finite() && b.finite()) ==> #[trigger] (a + b).len() + #[trigger] a.intersect(
-                b,
-            ).len() == a.len() + b.len(),  //from lemma_set_intersect_union_lens
-        forall|a: Set<A>, b: Set<A>|
-            (a.finite() && b.finite()) ==> ((#[trigger] a.difference(b).len() + b.difference(
-                a,
-            ).len() + a.intersect(b).len() == (a + b).len()) && (a.difference(b).len() == a.len()
-                - a.intersect(b).len())),  //from lemma_set_difference_len
-{
-    broadcast use group_set_properties;
-
-    assert forall|s: Set<A>| #[trigger] s.len() != 0 && s.finite() implies exists|a: A|
-        s.contains(a) by {
-        assert(s.contains(s.choose()));
     }
 }
 
@@ -1288,6 +1543,10 @@ pub broadcast group group_set_lib_default {
     axiom_is_empty,
     axiom_is_empty_len0,
     lemma_set_subset_finite,
+    Set::lemma_map_by_finite,
+    Set::lemma_map_flatten_by_finite,
+    range_set_properties,
+    full_set_properties,
 }
 
 pub use assert_sets_equal_internal;

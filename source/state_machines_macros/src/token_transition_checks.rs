@@ -16,7 +16,6 @@ use verus_syn::parse::Error;
 /// (presumably via Option types) a feature that we don't implement.
 ///
 /// Also checks to make sure there are no sub-updates.
-
 pub fn check_unsupported_updates(ts: &TransitionStmt) -> parse::Result<()> {
     match ts {
         TransitionStmt::Block(_span, v) => {
@@ -25,20 +24,20 @@ pub fn check_unsupported_updates(ts: &TransitionStmt) -> parse::Result<()> {
             }
             Ok(())
         }
-        TransitionStmt::Split(_span, SplitKind::Let(..), es)
-        | TransitionStmt::Split(_span, SplitKind::Special(..), es) => {
-            for e in es {
-                check_unsupported_updates(e)?;
+        TransitionStmt::Split(_span, split_kind, es) => match &**split_kind {
+            SplitKind::Let(..) | SplitKind::Special(..) => {
+                for e in es {
+                    check_unsupported_updates(e)?;
+                }
+                Ok(())
             }
-            Ok(())
-        }
-        TransitionStmt::Split(_span, SplitKind::If(..), es)
-        | TransitionStmt::Split(_span, SplitKind::Match(..), es) => {
-            for e in es {
-                check_unsupported_updates_helper(e)?;
+            SplitKind::If(..) | SplitKind::Match(..) => {
+                for e in es {
+                    check_unsupported_updates_helper(e)?;
+                }
+                Ok(())
             }
-            Ok(())
-        }
+        },
         TransitionStmt::Require(..) => Ok(()),
         TransitionStmt::Assert(..) => Ok(()),
         TransitionStmt::Update(..) => Ok(()),
@@ -59,19 +58,23 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> parse::Result<()> {
             }
             Ok(())
         }
-        TransitionStmt::Split(span, SplitKind::Special(..), _) => {
-            let name = ts.statement_name();
-            return Err(Error::new(
-                *span,
-                format!("currently, '{name:}' statements are not supported inside conditionals"),
-            ));
-        }
-        TransitionStmt::Split(_, _, es) => {
-            for e in es {
-                check_unsupported_updates_helper(e)?;
+        TransitionStmt::Split(span, split_kind, es) => match &**split_kind {
+            SplitKind::Special(..) => {
+                let name = ts.statement_name();
+                return Err(Error::new(
+                    *span,
+                    format!(
+                        "currently, '{name:}' statements are not supported inside conditionals"
+                    ),
+                ));
             }
-            Ok(())
-        }
+            _ => {
+                for e in es {
+                    check_unsupported_updates_helper(e)?;
+                }
+                Ok(())
+            }
+        },
         TransitionStmt::Require(_, _) => Ok(()),
         TransitionStmt::Assert(..) => Ok(()),
         TransitionStmt::Update(_, _, _) => Ok(()),
@@ -106,7 +109,6 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> parse::Result<()> {
 /// 'guard' can only be in a readonly transiton and 'withdraw/deposit' in a normal transition.
 /// So those can't interact at all. For another, there could conceivably be reason
 /// to put 'withdraw' and 'deposit' in either order.
-
 pub fn check_ordering_remove_have_add(sm: &SM, ts: &TransitionStmt) -> parse::Result<()> {
     for field in &sm.fields {
         check_ordering_remove_have_add_rec(ts, &field.name.to_string(), false, false)?;
@@ -136,9 +138,10 @@ pub fn check_ordering_remove_have_add_rec(
             let mut seen_have = seen_have;
             let mut seen_add = seen_add;
 
-            match split_kind {
+            match &**split_kind {
                 SplitKind::Special(id, op, _, _) => {
                     let msg = "updates for a field should always go in order 'remove -> have -> add'; otherwise, the transition relation may be weaker than necessary";
+                    #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
                     if id.to_string() == *field_name {
                         if op.is_remove() {
                             if seen_have || seen_add {
