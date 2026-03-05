@@ -11,7 +11,7 @@ use rustc_abi::{FieldIdx, Integer};
 use rustc_errors::codes::*;
 use rustc_hir::def::{CtorOf, DefKind, Res};
 use rustc_hir::pat_util::EnumerateAndAdjustIterator;
-use rustc_hir::{self as hir, LangItem, RangeEnd};
+use rustc_hir::{self as hir, ByRef, LangItem, Mutability, Pinnedness, RangeEnd};
 use rustc_index::Idx;
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::mir::interpret::LitToConstInput;
@@ -97,7 +97,7 @@ impl<'a, 'tcx> PatCtxt<'a, 'tcx> {
         // adjustments in *reverse order* (last-in-first-out, so that the last `Deref` inserted
         // gets the least-dereferenced type).
         let unadjusted_pat = match pat.kind {
-            hir::PatKind::Ref(inner, _)
+            hir::PatKind::Ref(inner, _, _)
                 if self.typeck_results.skipped_ref_pats().contains(pat.hir_id) =>
             {
                 self.lower_pattern(inner)
@@ -113,6 +113,16 @@ impl<'a, 'tcx> PatCtxt<'a, 'tcx> {
                 PatAdjust::OverloadedDeref => {
                     let borrow = self.typeck_results.deref_pat_borrow_mode(adjust.source, pat);
                     PatKind::DerefPattern { subpattern: thir_pat, borrow }
+                }
+                PatAdjust::PinDeref => {
+                    let mutable = self.typeck_results.pat_has_ref_mut_binding(pat);
+                    PatKind::DerefPattern {
+                        subpattern: thir_pat,
+                        borrow: ByRef::Yes(
+                            Pinnedness::Pinned,
+                            if mutable { Mutability::Mut } else { Mutability::Not },
+                        ),
+                    }
                 }
             };
             Box::new(Pat { span, ty: adjust.source, kind })
@@ -161,8 +171,7 @@ impl<'a, 'tcx> PatCtxt<'a, 'tcx> {
                 format!("found bad range pattern endpoint `{expr:?}` outside of error recovery");
             return Err(self.tcx.dcx().span_delayed_bug(expr.span, msg));
         };
-
-        Ok(Some(PatRangeBoundary::Finite(value)))
+        Ok(Some(PatRangeBoundary::Finite(value.valtree)))
     }
 
     /// Overflowing literals are linted against in a late pass. This is mostly fine, except when we
@@ -235,7 +244,7 @@ impl<'a, 'tcx> PatCtxt<'a, 'tcx> {
         let lo = lower_endpoint(lo_expr)?.unwrap_or(PatRangeBoundary::NegInfinity);
         let hi = lower_endpoint(hi_expr)?.unwrap_or(PatRangeBoundary::PosInfinity);
 
-        let cmp = lo.compare_with(hi, ty, self.tcx, self.typing_env);
+        let cmp = lo.compare_with(hi, ty, self.tcx);
         let mut kind = PatKind::Range(Arc::new(PatRange { lo, hi, end, ty }));
         match (end, cmp) {
             // `x..y` where `x < y`.
@@ -244,7 +253,8 @@ impl<'a, 'tcx> PatCtxt<'a, 'tcx> {
             (RangeEnd::Included, Some(Ordering::Less)) => {}
             // `x..=y` where `x == y` and `x` and `y` are finite.
             (RangeEnd::Included, Some(Ordering::Equal)) if lo.is_finite() && hi.is_finite() => {
-                kind = PatKind::Constant { value: lo.as_finite().unwrap() };
+                let value = ty::Value { ty, valtree: lo.as_finite().unwrap() };
+                kind = PatKind::Constant { value };
             }
             // `..=x` where `x == ty::MIN`.
             (RangeEnd::Included, Some(Ordering::Equal)) if !lo.is_finite() => {}
@@ -262,6 +272,9 @@ impl<'a, 'tcx> PatCtxt<'a, 'tcx> {
                             span,
                             teach: self.tcx.sess.teach(E0030),
                         })
+                    }
+                    RangeEnd::Excluded if lo_expr.is_none() => {
+                        self.tcx.dcx().emit_err(UpperRangeBoundCannotBeMin { span })
                     }
                     RangeEnd::Excluded => {
                         self.tcx.dcx().emit_err(LowerRangeBoundMustBeLessThanUpper { span })
@@ -309,7 +322,7 @@ impl<'a, 'tcx> PatCtxt<'a, 'tcx> {
                 let borrow = self.typeck_results.deref_pat_borrow_mode(ty, subpattern);
                 PatKind::DerefPattern { subpattern: self.lower_pattern(subpattern), borrow }
             }
-            hir::PatKind::Ref(subpattern, _) => {
+            hir::PatKind::Ref(subpattern, _, _) => {
                 // Track the default binding mode for the Rust 2024 migration suggestion.
                 let opt_old_mode_span =
                     self.rust_2024_migration.as_mut().and_then(|s| s.visit_explicit_deref());
@@ -319,9 +332,10 @@ impl<'a, 'tcx> PatCtxt<'a, 'tcx> {
                 }
                 PatKind::Deref { subpattern }
             }
-            hir::PatKind::Box(subpattern) => {
-                PatKind::Deref { subpattern: self.lower_pattern(subpattern) }
-            }
+            hir::PatKind::Box(subpattern) => PatKind::DerefPattern {
+                subpattern: self.lower_pattern(subpattern),
+                borrow: hir::ByRef::No,
+            },
 
             hir::PatKind::Slice(prefix, slice, suffix) => {
                 self.slice_or_array_pattern(pat.span, ty, prefix, slice, suffix)
@@ -353,11 +367,18 @@ impl<'a, 'tcx> PatCtxt<'a, 'tcx> {
                 // A ref x pattern is the same node used for x, and as such it has
                 // x's type, which is &T, where we want T (the type being matched).
                 let var_ty = ty;
-                if let hir::ByRef::Yes(_) = mode.0 {
-                    if let ty::Ref(_, rty, _) = ty.kind() {
-                        ty = *rty;
-                    } else {
-                        bug!("`ref {}` has wrong type {}", ident, ty);
+                if let hir::ByRef::Yes(pinnedness, _) = mode.0 {
+                    match pinnedness {
+                        hir::Pinnedness::Pinned
+                            if let Some(pty) = ty.pinned_ty()
+                                && let &ty::Ref(_, rty, _) = pty.kind() =>
+                        {
+                            ty = rty;
+                        }
+                        hir::Pinnedness::Not if let &ty::Ref(_, rty, _) = ty.kind() => {
+                            ty = rty;
+                        }
+                        _ => bug!("`ref {}` has wrong type {}", ident, ty),
                     }
                 };
 
@@ -368,6 +389,7 @@ impl<'a, 'tcx> PatCtxt<'a, 'tcx> {
                     ty: var_ty,
                     subpattern: self.lower_opt_pattern(sub),
                     is_primary: id == pat.hir_id,
+                    is_shorthand: false,
                 }
             }
 
@@ -385,9 +407,13 @@ impl<'a, 'tcx> PatCtxt<'a, 'tcx> {
                 let res = self.typeck_results.qpath_res(qpath, pat.hir_id);
                 let subpatterns = fields
                     .iter()
-                    .map(|field| FieldPat {
-                        field: self.typeck_results.field_index(field.hir_id),
-                        pattern: *self.lower_pattern(field.pat),
+                    .map(|field| {
+                        let mut pattern = *self.lower_pattern(field.pat);
+                        if let PatKind::Binding { ref mut is_shorthand, .. } = pattern.kind {
+                            *is_shorthand = field.is_shorthand;
+                        }
+                        let field = self.typeck_results.field_index(field.hir_id);
+                        FieldPat { field, pattern }
                     })
                     .collect();
 
@@ -680,7 +706,7 @@ impl<'a, 'tcx> PatCtxt<'a, 'tcx> {
                     Some(pat_ty) => pat_ty,
                     None => self.typeck_results.node_type(expr.hir_id),
                 };
-                let lit_input = LitToConstInput { lit: &lit.node, ty: ct_ty, neg: *negated };
+                let lit_input = LitToConstInput { lit: lit.node, ty: ct_ty, neg: *negated };
                 let constant = self.tcx.at(expr.span).lit_to_const(lit_input);
                 self.const_to_pat(constant, ct_ty, expr.hir_id, lit.span).kind
             }

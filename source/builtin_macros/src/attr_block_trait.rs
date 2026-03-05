@@ -128,3 +128,16 @@ impl syn::parse::Parse for AnyFnOrLoop {
         Err(input.error("Expected a function item or loop expression"))
     }
 }
+
+impl quote::ToTokens for AnyFnOrLoop {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            AnyFnOrLoop::Fn(f) => f.to_tokens(tokens),
+            AnyFnOrLoop::TraitMethod(m) => m.to_tokens(tokens),
+            AnyFnOrLoop::Loop(l) => l.to_tokens(tokens),
+            AnyFnOrLoop::ForLoop(fl) => fl.to_tokens(tokens),
+            AnyFnOrLoop::While(wl) => wl.to_tokens(tokens),
+            AnyFnOrLoop::Closure(c) => c.to_tokens(tokens),
+        }
+    }
+}

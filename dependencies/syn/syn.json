@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2025-11-09-0048",
+  "version": "0.0.0-2026-02-15-0106",
   "types": [
     {
       "ident": "Abi",
@@ -1394,6 +1394,11 @@
           {
             "syn": "ExprGetField"
           }
+        ],
+        "Final": [
+          {
+            "syn": "ExprFinal"
+          }
         ]
       }
     },
@@ -1801,6 +1806,30 @@
         },
         "member": {
           "syn": "Member"
+        }
+      }
+    },
+    {
+      "ident": "ExprFinal",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "final_token": {
+          "token": "Final"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "arg": {
+          "box": {
+            "syn": "Expr"
+          }
         }
       }
     },

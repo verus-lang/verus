@@ -26,7 +26,7 @@ pub const VIR_FILE_SUFFIX: &str = ".vir";
 pub const VIR_SIMPLE_FILE_SUFFIX: &str = "-simple.vir";
 pub const VIR_POLY_FILE_SUFFIX: &str = "-poly.vir";
 pub const VIR_SST_FILE_SUFFIX: &str = "-sst.vir";
-pub const LIFETIME_FILE_SUFFIX: &str = "-lifetime.rs";
+pub const TRAIT_CONFLICT_FILE_SUFFIX: &str = "-trait-conflicts.rs";
 pub const INTERPRETER_FILE_SUFFIX: &str = ".interp";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
 pub const AIR_FINAL_FILE_SUFFIX: &str = "-final.air";
@@ -47,7 +47,7 @@ pub struct LogArgs {
     pub log_vir_poly: bool,
     pub log_vir_sst: bool,
     pub vir_log_option: VirLogOption,
-    pub log_lifetime: bool,
+    pub log_trait_conflicts: bool,
     pub log_interpreter: bool,
     pub log_air_initial: bool,
     pub log_air_final: bool,
@@ -83,6 +83,7 @@ pub struct ArgsX {
     pub no_external_by_default: bool,
     pub no_verify: bool,
     pub no_lifetime: bool,
+    pub no_erasure_check: bool,
     pub no_auto_recommends_check: bool,
     pub no_cheating: bool,
     pub time: bool,
@@ -103,7 +104,6 @@ pub struct ArgsX {
     pub profile_all: bool,
     pub capture_profiles: bool,
     pub spinoff_all: bool,
-    pub use_internal_profiler: bool,
     pub vstd: Vstd,
     pub compile: bool,
     pub solver_version_check: bool,
@@ -131,6 +131,7 @@ impl ArgsX {
             no_external_by_default: Default::default(),
             no_verify: Default::default(),
             no_lifetime: Default::default(),
+            no_erasure_check: Default::default(),
             no_auto_recommends_check: Default::default(),
             no_cheating: Default::default(),
             time: Default::default(),
@@ -151,7 +152,6 @@ impl ArgsX {
             profile_all: Default::default(),
             capture_profiles: Default::default(),
             spinoff_all: Default::default(),
-            use_internal_profiler: Default::default(),
             vstd: Vstd::Imported,
             compile: Default::default(),
             solver_version_check: Default::default(),
@@ -196,9 +196,13 @@ pub fn enable_default_features_and_verus_attr(
 ) {
     if syntax_macro {
         // REVIEW: syntax macro adds superfluous parentheses and braces
-        for allow in
-            &["unused_parens", "unused_braces", "unconditional_panic", "arithmetic_overflow"]
-        {
+        for allow in &[
+            "unused_parens",
+            "unused_braces",
+            "unconditional_panic",
+            "arithmetic_overflow",
+            "irrefutable_let_patterns",
+        ] {
             rustc_args.push("-A".to_string());
             rustc_args.push(allow.to_string());
         }
@@ -303,6 +307,7 @@ pub fn parse_args_with_imports(
     const OPT_NO_EXTERNAL_BY_DEFAULT: &str = "no-external-by-default";
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
+    const OPT_NO_ERASURE_CHECK: &str = "no-erasure-check";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
     const OPT_NO_CHEATING: &str = "no-cheating";
     const OPT_TIME: &str = "time";
@@ -326,7 +331,7 @@ pub fn parse_args_with_imports(
     const LOG_VIR_POLY: &str = "vir-poly";
     const LOG_VIR_SST: &str = "vir-sst";
     const LOG_VIR_OPTION: &str = "vir-option";
-    const LOG_LIFETIME: &str = "lifetime";
+    const LOG_TRAIT_CONFLICTS: &str = "trait-conflits";
     const LOG_INTERPRETER: &str = "interpreter";
     const LOG_AIR: &str = "air";
     const LOG_AIR_FINAL: &str = "air-final";
@@ -344,7 +349,7 @@ pub fn parse_args_with_imports(
             LOG_VIR_OPTION,
             "Set VIR logging option (e.g. `--log vir-option=no_span+no_type`. Available options: `compact` `no_span` `no_type` `no_encoding` `no_fn_details`) (default: verbose)",
         ),
-        (LOG_LIFETIME, "Log lifetime checking for --erasure macro"),
+        (LOG_TRAIT_CONFLICTS, "Log trait-conflict-checking for --erasure macro"),
         (LOG_INTERPRETER, "Log assert_by_compute's interpreter progress"),
         (LOG_AIR, "Log AIR queries in initial form"),
         (LOG_AIR_FINAL, "Log AIR queries in final form"),
@@ -395,7 +400,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
-    const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
     const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
@@ -414,10 +418,6 @@ pub fn parse_args_with_imports(
         (
             EXTENDED_CAPTURE_PROFILES,
             "Always collect prover performance data, but don't generate output reports",
-        ),
-        (
-            EXTENDED_USE_INTERNAL_PROFILER,
-            "Use an internal profiler that shows internal quantifier instantiations",
         ),
         (EXTENDED_CVC5, "Use the cvc5 SMT solver, rather than the default (Z3)"),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
@@ -471,6 +471,7 @@ pub fn parse_args_with_imports(
     opts.optflag("", OPT_NO_EXTERNAL_BY_DEFAULT, "(deprecated) Verify all items, even those declared outside the verus! macro, and even if they aren't marked #[verifier::verify]");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
+    opts.optflag("", OPT_NO_ERASURE_CHECK, "Do not run the final erasure check");
     opts.optflag(
         "",
         OPT_NO_AUTO_RECOMMENDS_CHECK,
@@ -683,6 +684,7 @@ pub fn parse_args_with_imports(
         no_external_by_default: matches.opt_present(OPT_NO_EXTERNAL_BY_DEFAULT),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
+        no_erasure_check: matches.opt_present(OPT_NO_ERASURE_CHECK),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
         no_cheating: matches.opt_present(OPT_NO_CHEATING),
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
@@ -718,10 +720,10 @@ pub fn parse_args_with_imports(
         log_dir: matches.opt_str(OPT_LOG_DIR),
         log_all: matches.opt_present(OPT_LOG_ALL),
         log_args: LogArgs {
-            log_vir: log.get(LOG_VIR).is_some(),
-            log_vir_simple: log.get(LOG_VIR_SIMPLE).is_some(),
-            log_vir_poly: log.get(LOG_VIR_POLY).is_some(),
-            log_vir_sst: log.get(LOG_VIR_SST).is_some(),
+            log_vir: log.contains_key(LOG_VIR),
+            log_vir_simple: log.contains_key(LOG_VIR_SIMPLE),
+            log_vir_poly: log.contains_key(LOG_VIR_POLY),
+            log_vir_sst: log.contains_key(LOG_VIR_SST),
             vir_log_option: {
                 if let Some(oo) = log.get(LOG_VIR_OPTION) {
                     let Some(oo) = oo else {
@@ -742,14 +744,14 @@ pub fn parse_args_with_imports(
                     Default::default()
                 }
             },
-            log_lifetime: log.get(LOG_LIFETIME).is_some(),
-            log_interpreter: log.get(LOG_INTERPRETER).is_some(),
-            log_air_initial: log.get(LOG_AIR).is_some(),
-            log_air_final: log.get(LOG_AIR_FINAL).is_some(),
-            log_smt: log.get(LOG_SMT).is_some(),
-            log_smt_transcript: log.get(LOG_SMT_TRANSCRIPT).is_some(),
-            log_triggers: log.get(LOG_TRIGGERS).is_some(),
-            log_call_graph: log.get(LOG_CALL_GRAPH).is_some(),
+            log_trait_conflicts: log.contains_key(LOG_TRAIT_CONFLICTS),
+            log_interpreter: log.contains_key(LOG_INTERPRETER),
+            log_air_initial: log.contains_key(LOG_AIR),
+            log_air_final: log.contains_key(LOG_AIR_FINAL),
+            log_smt: log.contains_key(LOG_SMT),
+            log_smt_transcript: log.contains_key(LOG_SMT_TRANSCRIPT),
+            log_triggers: log.contains_key(LOG_TRIGGERS),
+            log_call_graph: log.contains_key(LOG_CALL_GRAPH),
         },
         show_triggers: if matches.opt_present(OPT_TRIGGERS) {
             if matches.opt_present(OPT_TRIGGERS_MODE) {
@@ -768,9 +770,9 @@ pub fn parse_args_with_imports(
         } else {
             ShowTriggers::default()
         },
-        ignore_unexpected_smt: extended.get(EXTENDED_IGNORE_UNEXPECTED_SMT).is_some(),
-        allow_inline_air: extended.get(EXTENDED_ALLOW_INLINE_AIR).is_some(),
-        debugger: extended.get(EXTENDED_DEBUG).is_some(),
+        ignore_unexpected_smt: extended.contains_key(EXTENDED_IGNORE_UNEXPECTED_SMT),
+        allow_inline_air: extended.contains_key(EXTENDED_ALLOW_INLINE_AIR),
+        debugger: extended.contains_key(EXTENDED_DEBUG),
         profile: {
             if matches.opt_present(OPT_PROFILE) {
                 if matches.opt_present(OPT_PROFILE_ALL) {
@@ -802,18 +804,17 @@ pub fn parse_args_with_imports(
             matches.opt_present(OPT_PROFILE_ALL)
         },
         capture_profiles: {
-            if extended.get(EXTENDED_CAPTURE_PROFILES).is_some() {
+            if extended.contains_key(EXTENDED_CAPTURE_PROFILES) {
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --capture-profiles are mutually exclusive".to_string())
                 }
             };
-            extended.get(EXTENDED_CAPTURE_PROFILES).is_some()
+            extended.contains_key(EXTENDED_CAPTURE_PROFILES)
         },
-        spinoff_all: extended.get(EXTENDED_SPINOFF_ALL).is_some(),
-        use_internal_profiler: extended.get(EXTENDED_USE_INTERNAL_PROFILER).is_some(),
+        spinoff_all: extended.contains_key(EXTENDED_SPINOFF_ALL),
         compile: matches.opt_present(OPT_COMPILE),
         vstd,
-        solver_version_check: !extended.get(EXTENDED_NO_SOLVER_VERSION_CHECK).is_some(),
+        solver_version_check: !extended.contains_key(EXTENDED_NO_SOLVER_VERSION_CHECK),
         version: matches.opt_present(OPT_VERSION),
         num_threads: matches
             .opt_get::<usize>(OPT_NUM_THREADS)
@@ -821,13 +822,17 @@ pub fn parse_args_with_imports(
             .unwrap_or(default_num_threads),
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
-        use_crate_name: extended.get(EXTENDED_USE_CRATE_NAME).is_some(),
-        solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
-        axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
-        check_api_safety: extended.get(EXTENDED_CHECK_API_SAFETY).is_some(),
-        new_mut_ref: extended.get(EXTENDED_NEW_MUT_REF).is_some(),
-        no_bv_simplify: extended.get(EXTENDED_NO_BV_SIMPLIFY).is_some(),
+        use_crate_name: extended.contains_key(EXTENDED_USE_CRATE_NAME),
+        solver: if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
+        axiom_usage_info: extended.contains_key(EXTENDED_AXIOM_USAGE_INFO),
+        check_api_safety: extended.contains_key(EXTENDED_CHECK_API_SAFETY),
+        new_mut_ref: extended.contains_key(EXTENDED_NEW_MUT_REF),
+        no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
     };
+
+    if args.compile && args.no_erasure_check {
+        error("--compile and --no-erasure-check are mutually exclusive".to_string())
+    }
 
     if args.new_mut_ref {
         NEW_MUT_REF.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -836,7 +841,8 @@ pub fn parse_args_with_imports(
     (Arc::new(args), unmatched)
 }
 
-static NEW_MUT_REF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub(crate) static NEW_MUT_REF: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 pub(crate) fn new_mut_ref() -> bool {
     NEW_MUT_REF.load(std::sync::atomic::Ordering::SeqCst)

@@ -61,13 +61,13 @@ fn example_use() {
 ```
 */
 
-pub struct GhostSeqAuth<V> {
+pub tracked struct GhostSeqAuth<V> {
     ghost off: nat,
     ghost len: nat,
     auth: GhostMapAuth<int, V>,
 }
 
-pub struct GhostSubseq<V> {
+pub tracked struct GhostSubseq<V> {
     ghost off: nat,
     ghost len: nat,
     frac: GhostSubmap<int, V>,

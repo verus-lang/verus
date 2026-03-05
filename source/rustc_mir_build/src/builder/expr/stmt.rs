@@ -1,4 +1,4 @@
-use rustc_middle::middle::region;
+use rustc_middle::middle::region::{self, TempLifetime};
 use rustc_middle::mir::*;
 use rustc_middle::span_bug;
 use rustc_middle::thir::*;
@@ -18,7 +18,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         expr_id: ExprId,
         statement_scope: Option<region::Scope>,
     ) -> BlockAnd<()> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
         let expr = &this.thir[expr_id];
         let expr_span = expr.span;
         let source_info = this.source_info(expr.span);
@@ -97,6 +97,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             }
             ExprKind::Break { label, value } => {
                 this.break_scope(block, value, BreakableTarget::Break(label), source_info)
+            }
+            ExprKind::ConstContinue { label, value } => {
+                this.break_const_continuable_scope(block, value, label, source_info)
             }
             ExprKind::Return { value } => {
                 this.break_scope(block, value, BreakableTarget::Return, source_info)

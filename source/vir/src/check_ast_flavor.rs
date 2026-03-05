@@ -97,7 +97,7 @@ pub fn check_krate_simplified(krate: &Krate) {
                     }
                 }
                 GenericBoundX::ConstTyp(t, s) => {
-                    for t in vec![t, s] {
+                    for t in [t, s] {
                         typ_visitor_check(t, &mut |t| {
                             check_typ_simplified(t, &function.x.typ_params)
                         })

@@ -1,5 +1,5 @@
 use crate::ast::{
-    Datatype, Dt, FieldOpr, Krate, Path, Primitive, SpannedTyped, Typ, TypDecoration, TypX,
+    Datatype, Dt, FieldOpr, Krate, Mode, Path, Primitive, SpannedTyped, Typ, TypDecoration, TypX,
     UnaryOpr, VarBinder, VarBinderX, VarIdentDisambiguate,
 };
 use crate::ast_util::QUANT_FORALL;
@@ -92,10 +92,12 @@ impl ResolvedTypeCollection {
             }
             TypX::Bool
             | TypX::Int(_)
+            | TypX::Real
             | TypX::Float(_)
             | TypX::SpecFn(..)
             | TypX::AnonymousClosure(..)
             | TypX::FnDef(..)
+            | TypX::Dyn(..)
             | TypX::Boxed(_)
             | TypX::TypParam(_)
             | TypX::Projection { .. }
@@ -230,6 +232,10 @@ fn resolve_datatype_axiom(ctx: &Ctx, dt: &Dt) -> Vec<Command> {
 
     for variant in datatype.x.variants.iter() {
         for field in variant.fields.iter() {
+            if matches!(&field.a.1, Mode::Spec) {
+                continue;
+            }
+
             // forall |typ_args..., x: Dt<typ_args...>|
             //        has_resolved(x, Dt<typ_args>)
             //          && is_variant(x, variant)
@@ -335,7 +341,7 @@ pub fn resolve_axioms(ctx: &Ctx) -> Vec<Command> {
                 nodes.push(resolve_decoration_axiom(dec));
             }
             ResolvableType::Slice | ResolvableType::Array => {
-                // TODO(new_mut_ref)
+                // exported through vstd broadcast axioms
             }
         }
     }

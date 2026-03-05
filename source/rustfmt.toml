@@ -5,3 +5,4 @@
 # version=Two # provided by vargo
 use_small_heuristics = "Max"
 merge_derives = false
+style_edition = "2024"

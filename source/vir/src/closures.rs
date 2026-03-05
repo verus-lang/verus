@@ -1,5 +1,6 @@
 use crate::ast::VirErr;
-use crate::ast::{Expr, ExprX};
+use crate::ast::{Expr, ExprX, PlaceX};
+use crate::ast_util::place_get_local;
 use crate::ast_visitor::expr_visitor_check;
 use crate::messages::error;
 
@@ -8,12 +9,9 @@ use crate::messages::error;
 ///  1. The closure does not mutate any variable from outside the closure.
 ///     Such closures are currently unsupported.
 ///
-/// TODO make this check as well:
-///
-///  2. If a variable is referenced from spec mode but not actually captured in
+///  2. [TODO] If a variable is referenced from spec mode but not actually captured in
 ///     tracked/exec mode, then that variable cannot be mutable.
 ///     (This is actually easy to support, but we expect it might be confusing to the user.)
-
 pub fn check_closure_well_formed(expr: &Expr, is_proof_fn: bool) -> Result<(), VirErr> {
     expr_visitor_check(expr, &mut |scope_map, expr| {
         match &expr.x {
@@ -29,6 +27,18 @@ pub fn check_closure_well_formed(expr: &Expr, is_proof_fn: bool) -> Result<(), V
                 } else {
                     Ok(())
                 }
+            }
+            ExprX::AssignToPlace { place, .. } | ExprX::BorrowMut(place) => {
+                if let Some(local) = place_get_local(place) {
+                    let PlaceX::Local(ident) = &local.x else { unreachable!() };
+                    if !scope_map.contains_key(ident) {
+                        return Err(error(
+                            &expr.span,
+                            "Verus does not currently support closures capturing a mutable reference for variables of any mode",
+                        ));
+                    }
+                }
+                Ok(())
             }
             ExprX::Return(_) if is_proof_fn => {
                 // TODO: supporting return inside proof_fn requires more support in lifetime.rs

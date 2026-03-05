@@ -72,7 +72,10 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "no_method_body can only appear in trait method declarations",
+        "no_method_body can only appear in trait method declarations",
+    ])
 }
 
 test_verify_one_file! {
@@ -379,9 +382,8 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        assert_eq!(err.errors.len(), 2);
+        assert_eq!(err.errors.len(), 1);
         assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
-        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
     }
 }
 
@@ -454,9 +456,8 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        assert_eq!(err.errors.len(), 2);
+        assert_eq!(err.errors.len(), 1);
         assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
-        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
     }
 }
 

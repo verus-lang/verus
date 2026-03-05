@@ -167,7 +167,7 @@ impl SmtProcess {
         // Send request to writer thread
         if let Some(writer) = &mut self.transcript_log {
             writeln!(writer, ";;;>>> QUERY").unwrap();
-            writer.write(&commands).unwrap();
+            writer.write_all(&commands).unwrap();
             writeln!(writer, ";;;<<<").unwrap();
             writer.flush().unwrap();
         }

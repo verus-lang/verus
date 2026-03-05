@@ -2,6 +2,23 @@
 //! "Go to file" feature to silently ignore all files in the module, probably
 //! because it assumes that "build" is a build-output directory.
 //! See <https://github.com/rust-lang/rust/pull/134365>.
+//!
+//! ## The `let this = self;` idiom (LET_THIS_SELF)
+//!
+//! Throughout MIR building there are several places where a `Builder` method
+//! needs to borrow `self`, and then re-expose it to a closure as `|this|`.
+//!
+//! In complex builder methods, potentially with multiple levels of nesting, it
+//! would thus become necessary to mentally keep track of whether the builder
+//! is `self` (at the top level) or `this` (nested in a closure), or to replace
+//! one with the other when moving code in or out of a closure.
+//!
+//! (The borrow checker will prevent incorrect usage, but having to go back and
+//! satisfy the borrow checker still creates contributor friction.)
+//!
+//! To reduce that friction, some builder methods therefore start with
+//! `let this = self;` or similar, allowing subsequent code to uniformly refer
+//! to the builder as `this` (and never `self`), even when not nested.
 
 use itertools::Itertools;
 use rustc_abi::{ExternAbi, FieldIdx};
@@ -11,9 +28,10 @@ use rustc_ast::attr;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::sorted_map::SortedIndexMultiMap;
 use rustc_errors::ErrorGuaranteed;
+use rustc_hir::attrs::AttributeKind;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_hir::{self as hir, BindingMode, ByRef, HirId, ItemLocalId, Node};
+use rustc_hir::{self as hir, BindingMode, ByRef, HirId, ItemLocalId, Node, find_attr};
 use rustc_index::bit_set::GrowableBitSet;
 use rustc_index::{Idx, IndexSlice, IndexVec};
 use rustc_infer::infer::{InferCtxt, TyCtxtInferExt};
@@ -23,10 +41,12 @@ use rustc_middle::mir::*;
 use rustc_middle::thir::{self, ExprId, LintLevel, LocalVarId, Param, ParamId, PatKind, Thir};
 use rustc_middle::ty::{self, ScalarInt, Ty, TyCtxt, TypeVisitableExt, TypingMode};
 use rustc_middle::{bug, span_bug};
+use rustc_session::lint;
 use rustc_span::{Span, Symbol, sym};
 
 use crate::builder::expr::as_place::PlaceBuilder;
 use crate::builder::scope::DropKind;
+use crate::errors;
 
 pub(crate) fn closure_saved_names_of_captured_variables<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -65,12 +85,6 @@ pub fn build_mir<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Body<'tcx> {
                     construct_const(tcx, def, thir, expr, ty)
                 }
             };
-
-            // this must run before MIR dump, because
-            // "not all control paths return a value" is reported here.
-            //
-            // maybe move the check to a MIR pass?
-            tcx.ensure_ok().check_liveness(def);
 
             // Don't steal here, instead steal in unsafeck. This is so that
             // pattern inline constants can be evaluated as part of building the
@@ -240,6 +254,24 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     }
 
     fn var_local_id(&self, id: LocalVarId, for_guard: ForGuard) -> Local {
+        if !self.var_indices.contains_key(&id) {
+            // Note (verus): if this fails, it's probably because our transformation in
+            // verus_time_travel_prevention.rs is malformed; e.g., it emits the VarRef for some
+            // shadow var without also creating its binding.
+            // Possible causes:
+            // 1. bug in verus_time_travel_prevention.rs, failing to emit the binding
+            // 2. rust_verify/src/erase.rs computes inconsistent vars map:
+            //    2a. a variable binding is Erase, but a use of that var is not Erase
+            //    2b. a variable binding is Erase, but a use of that var is missing from the map
+            let ids = (id.0.owner.def_id.local_def_index.as_usize(), id.0.local_id);
+            dbg!(ids);
+            dbg!(self.def_id);
+            let mut real_id = id;
+            real_id.0.owner.def_id = self.def_id;
+            dbg!(real_id.0.owner.def_id.local_def_index.as_usize());
+            dbg!(self.fn_span);
+            panic!("Verus Internal Error: var_local_id failed: {ids:?}");
+        }
         self.var_indices[&id].local_id(for_guard)
     }
 }
@@ -395,12 +427,10 @@ enum NeedsTemporary {
     Maybe,
 }
 
-///////////////////////////////////////////////////////////////////////////
 /// The `BlockAnd` "monad" packages up the new basic block along with a
 /// produced value (sometimes just unit, of course). The `unpack!`
 /// macro (and methods below) makes working with `BlockAnd` much more
 /// convenient.
-
 #[must_use = "if you don't use one of these results, you're leaving a dangling edge"]
 struct BlockAnd<T>(BasicBlock, T);
 
@@ -438,9 +468,7 @@ macro_rules! unpack {
     }};
 }
 
-///////////////////////////////////////////////////////////////////////////
-/// the main entry point for building MIR for a function
-
+/// The main entry point for building MIR for a function.
 fn construct_fn<'tcx>(
     tcx: TyCtxt<'tcx>,
     fn_def: LocalDefId,
@@ -450,10 +478,6 @@ fn construct_fn<'tcx>(
 ) -> Body<'tcx> {
     let span = tcx.def_span(fn_def);
     let fn_id = tcx.local_def_id_to_hir_id(fn_def);
-
-    // The representation of thir for `-Zunpretty=thir-tree` relies on
-    // the entry expression being the last element of `thir.exprs`.
-    assert_eq!(expr.as_usize(), thir.exprs.len() - 1);
 
     // Figure out what primary body this item has.
     let body = tcx.hir_body_owned_by(fn_def);
@@ -484,8 +508,7 @@ fn construct_fn<'tcx>(
         ty => span_bug!(span_with_body, "unexpected type of body: {ty:?}"),
     };
 
-    if let Some(custom_mir_attr) =
-        tcx.hir_attrs(fn_id).iter().find(|attr| attr.has_name(sym::custom_mir))
+    if let Some((dialect, phase)) = find_attr!(tcx.hir_attrs(fn_id), AttributeKind::CustomMir(dialect, phase, _) => (dialect, phase))
     {
         return custom::build_custom_mir(
             tcx,
@@ -497,7 +520,8 @@ fn construct_fn<'tcx>(
             return_ty,
             return_ty_span,
             span_with_body,
-            custom_mir_attr,
+            dialect.as_ref().map(|(d, _)| *d),
+            phase.as_ref().map(|(p, _)| *p),
         );
     }
 
@@ -539,6 +563,7 @@ fn construct_fn<'tcx>(
         return_block.unit()
     });
 
+    builder.lint_and_remove_uninhabited();
     let mut body = builder.finish();
 
     body.spread_arg = if abi == ExternAbi::RustCall {
@@ -563,7 +588,7 @@ fn construct_const<'a, 'tcx>(
     // Figure out what primary body this item has.
     let (span, const_ty_span) = match tcx.hir_node(hir_id) {
         Node::Item(hir::Item {
-            kind: hir::ItemKind::Static(_, ty, _, _) | hir::ItemKind::Const(_, ty, _, _),
+            kind: hir::ItemKind::Static(_, _, ty, _) | hir::ItemKind::Const(_, _, ty, _),
             span,
             ..
         })
@@ -596,6 +621,7 @@ fn construct_const<'a, 'tcx>(
 
     builder.build_drop_trees();
 
+    builder.lint_and_remove_uninhabited();
     builder.finish()
 }
 
@@ -794,6 +820,143 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         builder
     }
 
+    #[allow(dead_code)]
+    fn dump_for_debugging(&self) {
+        let mut body = Body::new(
+            MirSource::item(self.def_id.to_def_id()),
+            self.cfg.basic_blocks.clone(),
+            self.source_scopes.clone(),
+            self.local_decls.clone(),
+            self.canonical_user_type_annotations.clone(),
+            self.arg_count.clone(),
+            self.var_debug_info.clone(),
+            self.fn_span.clone(),
+            self.coroutine.clone(),
+            None,
+        );
+        body.coverage_info_hi = self.coverage_info.as_ref().map(|b| b.as_done());
+
+        let writer = pretty::MirWriter::new(self.tcx);
+        writer.write_mir_fn(&body, &mut std::io::stdout()).unwrap();
+    }
+
+    fn lint_and_remove_uninhabited(&mut self) {
+        let mut lints = vec![];
+
+        for bbdata in self.cfg.basic_blocks.iter_mut() {
+            let term = bbdata.terminator_mut();
+            let TerminatorKind::Call { ref mut target, destination, .. } = term.kind else {
+                continue;
+            };
+            let Some(target_bb) = *target else { continue };
+
+            let ty = destination.ty(&self.local_decls, self.tcx).ty;
+            let ty_is_inhabited = ty.is_inhabited_from(
+                self.tcx,
+                self.parent_module,
+                self.infcx.typing_env(self.param_env),
+            );
+
+            // check if the function's return type is inhabited
+            // this was added here because of this regression
+            // https://github.com/rust-lang/rust/issues/149571
+            let output_is_inhabited =
+                if matches!(self.tcx.def_kind(self.def_id), DefKind::Fn | DefKind::AssocFn) {
+                    self.tcx
+                        .fn_sig(self.def_id)
+                        .instantiate_identity()
+                        .skip_binder()
+                        .output()
+                        .is_inhabited_from(
+                            self.tcx,
+                            self.parent_module,
+                            self.infcx.typing_env(self.param_env),
+                        )
+                } else {
+                    true
+                };
+
+            if !ty_is_inhabited {
+                // Unreachable code warnings are already emitted during type checking.
+                // However, during type checking, full type information is being
+                // calculated but not yet available, so the check for diverging
+                // expressions due to uninhabited result types is pretty crude and
+                // only checks whether ty.is_never(). Here, we have full type
+                // information available and can issue warnings for less obviously
+                // uninhabited types (e.g. empty enums). The check above is used so
+                // that we do not emit the same warning twice if the uninhabited type
+                // is indeed `!`.
+                if !ty.is_never() && output_is_inhabited {
+                    lints.push((target_bb, ty, term.source_info.span));
+                }
+
+                // The presence or absence of a return edge affects control-flow sensitive
+                // MIR checks and ultimately whether code is accepted or not. We can only
+                // omit the return edge if a return type is visibly uninhabited to a module
+                // that makes the call.
+                *target = None;
+            }
+        }
+
+        /// Starting at a target unreachable block, find some user code to lint as unreachable
+        fn find_unreachable_code_from(
+            bb: BasicBlock,
+            bbs: &IndexVec<BasicBlock, BasicBlockData<'_>>,
+        ) -> Option<(SourceInfo, &'static str)> {
+            let bb = &bbs[bb];
+            for stmt in &bb.statements {
+                match &stmt.kind {
+                    // Ignore the implicit `()` return place assignment for unit functions/blocks
+                    StatementKind::Assign(box (_, Rvalue::Use(Operand::Constant(const_))))
+                        if const_.ty().is_unit() =>
+                    {
+                        continue;
+                    }
+                    StatementKind::StorageLive(_) | StatementKind::StorageDead(_) => {
+                        continue;
+                    }
+                    StatementKind::FakeRead(..) => return Some((stmt.source_info, "definition")),
+                    _ => return Some((stmt.source_info, "expression")),
+                }
+            }
+
+            let term = bb.terminator();
+            match term.kind {
+                // No user code in this bb, and our goto target may be reachable via other paths
+                TerminatorKind::Goto { .. } | TerminatorKind::Return => None,
+                _ => Some((term.source_info, "expression")),
+            }
+        }
+
+        for (target_bb, orig_ty, orig_span) in lints {
+            if orig_span.in_external_macro(self.tcx.sess.source_map()) {
+                continue;
+            }
+
+            let Some((target_loc, descr)) =
+                find_unreachable_code_from(target_bb, &self.cfg.basic_blocks)
+            else {
+                continue;
+            };
+            let lint_root = self.source_scopes[target_loc.scope]
+                .local_data
+                .as_ref()
+                .unwrap_crate_local()
+                .lint_root;
+            self.tcx.emit_node_span_lint(
+                lint::builtin::UNREACHABLE_CODE,
+                lint_root,
+                target_loc.span,
+                errors::UnreachableDueToUninhabited {
+                    expr: target_loc.span,
+                    orig: orig_span,
+                    descr,
+                    ty: orig_ty,
+                },
+            );
+        }
+    }
+
     fn finish(self) -> Body<'tcx> {
         let mut body = Body::new(
             MirSource::item(self.def_id.to_def_id()),
@@ -809,18 +972,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         );
         body.coverage_info_hi = self.coverage_info.map(|b| b.into_done());
 
+        let writer = pretty::MirWriter::new(self.tcx);
         for (index, block) in body.basic_blocks.iter().enumerate() {
             if block.terminator.is_none() {
-                use rustc_middle::mir::pretty;
-                let options = pretty::PrettyPrintMirOptions::from_cli(self.tcx);
-                pretty::write_mir_fn(
-                    self.tcx,
-                    &body,
-                    &mut |_, _| Ok(()),
-                    &mut std::io::stdout(),
-                    options,
-                )
-                .unwrap();
+                writer.write_mir_fn(&body, &mut std::io::stdout()).unwrap();
                 span_bug!(self.fn_span, "no terminator on block {:?}", index);
             }
         }
@@ -974,6 +1129,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                                 opt_ty_info: param.ty_span,
                                 opt_match_place: Some((None, span)),
                                 pat_span: span,
+                                introductions: vec![VarBindingIntroduction {
+                                    span,
+                                    is_shorthand: false,
+                                }],
                             }))
                         };
                     self.var_indices.insert(var, LocalsForNode::One(local));
@@ -1050,11 +1209,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     }
 }
 
-fn parse_float_into_constval<'tcx>(
-    num: Symbol,
-    float_ty: ty::FloatTy,
-    neg: bool,
-) -> Option<ConstValue<'tcx>> {
+fn parse_float_into_constval(num: Symbol, float_ty: ty::FloatTy, neg: bool) -> Option<ConstValue> {
     parse_float_into_scalar(num, float_ty, neg).map(|s| ConstValue::Scalar(s.into()))
 }
 

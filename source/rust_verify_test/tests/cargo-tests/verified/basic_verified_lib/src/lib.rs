@@ -19,4 +19,20 @@ impl<T: View> Trait for Option<T> {}
 fn test(f:spec_fn(nat) -> nat) {
 }
 
+
+mod IsNotRegressionIssue1573 {
+    enum Test {
+        A,
+        B,
+    }
+
+    spec fn is_not_a(t: Test) -> bool {
+        t !is A
+    }
+
+    spec fn is_a(t: Test) -> bool {
+        t is A
+    }
+}
+
 } // verus!
