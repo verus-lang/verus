@@ -52,7 +52,7 @@ fn vec_deque_test()
     for x in it: v1.iter()
         invariant
             i == it.index@,
-            it.seq() == seq![10u32, 11u32].map_values(|v| &v),
+            v1@ == seq![10u32, 11u32],
     {
         assert(x > 9);
         assert(x < 12);

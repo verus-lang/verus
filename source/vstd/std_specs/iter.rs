@@ -85,14 +85,13 @@ pub trait ExIterator {
     // Provided methods
 
     
-    //#[verifier::when_used_as_spec(into_rev_spec)]
-    //#[verifier::external_body]
+    // #[verifier::when_used_as_spec(into_rev_spec)]
     // FAILS with: error: found a cyclic self-reference in a definition, which may result in nontermination
     // fn rev(self) -> (r: Rev<Self>)
     //     where Self: Sized + DoubleEndedIterator, // + DoubleEndedIteratorSpec,
-    //     requires
-    //         self.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
-    //         self.initial_value_inv(&self),
+    //     // requires
+    //     //     self.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
+    //     //     self.initial_value_inv(&self),
     //     default_ensures
     //         r == into_rev_spec(self),
     //         // r.remaining(&r) == self.remaining().reverse(),
@@ -176,7 +175,7 @@ pub trait ExDoubleEndedIterator : Iterator {
  ********************************************************************************/
 #[verifier::external_body]
 #[verifier::external_type_specification]
-#[verifier::reject_recursive_types(I)] // REVIEW: Is this too strict?
+#[verifier::reject_recursive_types(I)]
 pub struct ExRev<I>(Rev<I>);
 
 // Ghost accessor for the inner iterator
@@ -201,7 +200,7 @@ pub uninterp spec fn into_rev_spec<I: DoubleEndedIterator + DoubleEndedIteratorS
 
 
 
-// Workaround issues with Verus support for default trait methods
+// // Workaround issues with Verus support for default trait methods
 #[verifier::external_body]
 #[verifier::when_used_as_spec(into_rev_spec)]
 pub fn to_rev<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> (r: Rev<I>)
@@ -271,8 +270,8 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
 
 // #[verifier::external_body]
 // #[verifier::external_type_specification]
-// #[verifier::reject_recursive_types(I)] // REVIEW: Is this too strict?
-// #[verifier::reject_recursive_types(F)] // REVIEW: Is this too strict?
+// #[verifier::reject_recursive_types(I)]
+// #[verifier::reject_recursive_types(F)]
 // pub struct ExMap<I, F>(core::iter::Map<I, F>)
     // // where 
     // //     I: Iterator + Sized,
