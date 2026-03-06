@@ -41,10 +41,8 @@ verus! {
 
 #[cfg(verus_keep_ghost)]
 use super::super::std_specs::cmp::{PartialEqSpec, PartialOrdSpec, PartialOrdIs};
-
 #[cfg(verus_keep_ghost)]
 use super::super::std_specs::ops::{NegSpec, AddSpec, SubSpec, MulSpec, DivSpec};
-
 use super::super::float::FloatBitsProperties;
 
 // ieee_is_nan picks one particular NaN value, while is_nan_spec covers all possible NaN values
