@@ -81,7 +81,40 @@ pub trait ExIterator {
     // If we can make a useful guess as to what the i-th value will be, return it.
     // Otherwise, return None.
     spec fn peek(&self, index: int) -> Option<Self::Item>;
+
+    // Provided methods
+
+
+    #[verifier::when_used_as_spec(into_rev_spec)]
+    #[verifier::external_body]
+    fn rev(self) -> (r: Rev<Self>)
+        where Self: Sized + DoubleEndedIterator, // + DoubleEndedIteratorSpec,
+        requires
+            self.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
+        default_ensures
+            r == into_rev_spec(self),
+            IteratorSpec::remaining(&r) == IteratorSpec::remaining(&self).reverse(),
+            IteratorSpec::completes(&r) == IteratorSpec::completes(&self),
+            IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&self) is Some,
+            IteratorSpec::initial_value_inv(&r, &r),
+    {
+        //Rev::new(self)
+        self.rev()
+    }
 }
+
+
+//  #[verifier::when_used_as_spec(into_rev_spec)]
+//  pub assume_specification<I> [Iterator::rev](i: I) -> (r: Rev<I>)
+//     where I: Sized + DoubleEndedIterator + DoubleEndedIteratorSpec,
+//     requires
+//         i.obeys_prophetic_iter_laws(),
+//     default_ensures
+//         r == into_rev_spec(i),
+//         IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
+//         IteratorSpec::completes(&r) == IteratorSpec::completes(&i),
+//         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
+//     ;
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(DoubleEndedIteratorSpec via DoubleEndedIteratorSpecImpl)]
@@ -126,22 +159,38 @@ pub struct ExRev<I>(Rev<I>);
 // Ghost accessor for the inner iterator
 pub uninterp spec fn rev_iter<I>(r: Rev<I>) -> I;
 
-// Workaround the lack of Verus support for default trait methods
+// Spec version of Rev::new
 pub uninterp spec fn into_rev_spec<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> Rev<I>;
 
-#[verifier::external_body]
-#[verifier::when_used_as_spec(into_rev_spec)]
-pub fn to_rev<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> (r: Rev<I>)
-    requires
-        i.obeys_prophetic_iter_laws()
-    ensures
-        r == into_rev_spec(i),
-        IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
-        IteratorSpec::completes(&r) == IteratorSpec::completes(&i),
-        IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
-{
-    i.rev()
-}
+//  #[verifier::when_used_as_spec(into_rev_spec)]
+//  assume_specification<I> [Rev::new](i: I) -> (r: Rev<I>)
+//     where I: Sized + DoubleEndedIterator + DoubleEndedIteratorSpec,
+//     requires
+//         i.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
+//     ensures
+//         r == into_rev_spec(i),
+//         IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
+//         IteratorSpec::completes(&r) == IteratorSpec::completes(&i),
+//         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
+//         IteratorSpec::initial_value_inv(&r, &r),
+//     ;
+
+
+
+// Workaround the lack of Verus support for default trait methods
+// #[verifier::external_body]
+// #[verifier::when_used_as_spec(into_rev_spec)]
+// pub fn to_rev<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> (r: Rev<I>)
+//     requires
+//         i.obeys_prophetic_iter_laws()
+//     ensures
+//         r == into_rev_spec(i),
+//         IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
+//         IteratorSpec::completes(&r) == IteratorSpec::completes(&i),
+//         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
+// {
+//     i.rev()
+// }
 
 impl <I> IteratorSpecImpl for Rev<I>
     where I: DoubleEndedIterator + DoubleEndedIteratorSpec {
@@ -162,6 +211,7 @@ impl <I> IteratorSpecImpl for Rev<I>
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& rev_iter(*self).initial_value_inv(&rev_iter(*init))
         //&&& into_iter_elts(*self) == IteratorSpec::remaining(self)
         // TODO: More here?
     }
