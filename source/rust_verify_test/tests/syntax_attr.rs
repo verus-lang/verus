@@ -1189,6 +1189,42 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_verus_verify_external_type_specification code!{
+        #[verus_verify(external)]
+        struct MyExtStruct<T> { t: T }
+
+        #[verus_verify(external_type_specification)]
+        struct ExMyExtStruct<U>(MyExtStruct<U>);
+
+        verus! {
+        fn test_ext_type_spec() {
+            let s = MyExtStruct::<u64> { t: 5 };
+            assert(s.t == 5);
+        }
+        } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_reject_recursive_types code!{
+        #[verus_verify(reject_recursive_types(T))]
+        enum X<T> {
+            ZZ(T),
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_external_type_spec_with_reject_recursive code!{
+        #[verus_verify(external)]
+        struct MyExtBody<T> { t: T }
+
+        #[verus_verify(external_type_specification, external_body, reject_recursive_types(U))]
+        struct ExMyExtBody<U>(MyExtBody<U>);
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_erase_unverified_code code!{
         use vstd::prelude::*;
         #[verus_spec(
