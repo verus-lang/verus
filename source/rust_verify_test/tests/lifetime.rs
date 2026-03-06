@@ -1761,3 +1761,45 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
 }
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness verus_code! {
+        proof fn test(nvr: !) { }
+        proof fn consume<T>(tracked t: T) { }
+        uninterp spec fn arbitrary<T>() -> T;
+
+        proof fn test2<T>(tracked t: T) {
+            test(arbitrary());
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness2 verus_code! {
+        proof fn test(nvr: !) { }
+        proof fn consume<T>(tracked t: T) { }
+
+        proof fn test2<T>(nvr: !, tracked t: T) {
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness3 verus_code! {
+        proof fn test(nvr: !) { }
+        proof fn consume<T>(tracked t: T) { }
+        uninterp spec fn spec_never() -> !;
+
+        proof fn test2<T>(tracked t: T) {
+            test(spec_never());
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "never-to-any coercion is not allowed in spec mode")
+}

@@ -845,10 +845,17 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
         for bbdata in self.cfg.basic_blocks.iter_mut() {
             let term = bbdata.terminator_mut();
-            let TerminatorKind::Call { ref mut target, destination, .. } = term.kind else {
+            let TerminatorKind::Call { ref func, ref mut target, destination, .. } = term.kind
+            else {
                 continue;
             };
             let Some(target_bb) = *target else { continue };
+
+            if crate::verus::func_ty_skip_edge_deletion_for_uninhabited_ty(
+                func.ty(&self.local_decls, self.tcx),
+            ) {
+                continue;
+            }
 
             let ty = destination.ty(&self.local_decls, self.tcx).ty;
             let ty_is_inhabited = ty.is_inhabited_from(
