@@ -336,8 +336,8 @@ impl<T> PointsTo<T> {
 
     /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
     ///
-    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    // See https://doc.rust-lang.org/std/ptr/#safety
+    /// ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
+    /// See https://doc.rust-lang.org/std/ptr/#safety
     pub proof fn is_nonnull(tracked &self)
         requires
             size_of::<T>() != 0,
@@ -367,8 +367,6 @@ impl<T> PointsTo<T> {
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub proof fn ptr_bounds(tracked &self)
-        requires
-            size_of::<T>() != 0,
         ensures
             self.ptr()@.addr as int >= self.ptr()@.provenance.start_addr(),
             self.ptr()@.addr as int + size_of::<T>() as int <= self.ptr()@.provenance.start_addr()
@@ -449,6 +447,9 @@ impl<T> PointsToUnaligned<T> {
     }
 
     /// Guarantee that the `PointsToUnaligned` for any non-zero-sized type points to a non-null address.
+    ///
+    /// ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
+    /// See https://doc.rust-lang.org/std/ptr/#safety
     pub axiom fn is_nonnull(tracked &self)
         requires
             size_of::<T>() != 0,
@@ -465,8 +466,6 @@ impl<T> PointsToUnaligned<T> {
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub axiom fn ptr_bounds(tracked &self)
-        requires
-            size_of::<T>() != 0,
         ensures
             self.ptr()@.addr as int >= self.ptr()@.provenance.start_addr(),
             self.ptr()@.addr as int + size_of::<T>() as int <= self.ptr()@.provenance.start_addr()
@@ -901,8 +900,7 @@ impl<T> PointsToUnaligned<[T]> {
 
     /// Returns `true` if all of the permission's associated memory is initialized.
     pub open spec fn is_init(&self) -> bool {
-        forall|i|
-            0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
+        self.is_init_subrange(0, self.mem_contents_seq().len() as int)
     }
 
     /// Returns `true` if all of the permission's associated memory in the given subrange is initialized.
@@ -925,6 +923,18 @@ impl<T> PointsToUnaligned<[T]> {
             0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_uninit()
     }
 
+    /// Returns a sequence where for each index in the given range,
+    /// if the permission's associated memory at that index is initialized,
+    /// the corresponding index in the sequence holds that value.
+    /// Otherwise, the value at that index is meaningless.
+    pub open spec fn value_subrange(&self, start_index: int, len: nat) -> Seq<T>
+        recommends
+            0 <= start_index <= start_index + len <= self.mem_contents_seq().len(),
+            self.is_init_subrange(start_index, len as int),
+    {
+        Seq::new(len, |i| self.mem_contents_seq().index(start_index + i).value())
+    }
+
     /// Returns a sequence where for each index,
     /// if the permission's associated memory at that index is initialized,
     /// the corresponding index in the sequence holds that value.
@@ -933,7 +943,7 @@ impl<T> PointsToUnaligned<[T]> {
         recommends
             self.is_init(),
     {
-        Seq::new(self.mem_contents_seq().len(), |i| self.mem_contents_seq().index(i).value())
+        self.value_subrange(0, self.mem_contents_seq().len())
     }
 
     /// Guarantee that the `PointsToUnaligned` for any non-zero-sized slice points to a non-null address.
