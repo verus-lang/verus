@@ -386,9 +386,7 @@ impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {
     }
 }
 
-/*
 impl <T, A: Allocator> super::iter::DoubleEndedIteratorSpecImpl for IntoIter<T, A> {
-
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         let len = into_iter_elts(*self).len();
         if 0 <= index < len {
@@ -398,7 +396,6 @@ impl <T, A: Allocator> super::iter::DoubleEndedIteratorSpecImpl for IntoIter<T, 
         }
     }
 }
-*/
 
 // This is used by `vec![x; n]`
 pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -> (v: Vec<T>)

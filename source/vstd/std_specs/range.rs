@@ -135,14 +135,6 @@ impl<A: core::iter::Step + StepSpec> super::iter::IteratorSpecImpl for Range<A> 
         )
         &&& self.start.spec_steps_between_int(self.end) >= 0 || IteratorSpec::remaining(self).len()
             == 0
-        // &&& (forall|index|
-        //     0 <= index <= self.start.spec_steps_between_int(self.end) ==> {
-        //         let cur = #[trigger] self.start.spec_forward_checked_int(index).unwrap();
-        //         &&& self.start.spec_is_lt(cur) || self.start == cur
-        //         &&& self.start.spec_is_lt(self.end) || self.start == self.end ==> cur.spec_is_lt(
-        //             self.end,
-        //         ) || cur == self.end
-        //     })
         // Connections to init
         &&& self.start == init.start
         &&& self.end == init.end
@@ -261,7 +253,6 @@ pub broadcast group group_range_axioms {
     axiom_spec_range_next_i64,
     axiom_spec_range_next_i128,
     axiom_spec_range_next_isize,
-    //    axiom_spec_into_iter,
 }
 
 } // verus!
