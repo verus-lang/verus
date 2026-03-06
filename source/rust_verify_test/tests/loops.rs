@@ -1792,3 +1792,34 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] map_iter verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::to_map;
+
+        #[verifier::loop_isolation(false)]
+        fn test() {
+            let v = vec![0u8, 2u8, 4u8];
+
+            let f = |i: &u8| -> (out: u8)
+                requires i < 255,
+                ensures out == i + 1,
+            {
+                *i + 1
+            };
+
+            let mut w = vec![];
+
+            for x in it: to_map(v.iter(), f)
+                invariant
+                    w.len() == it.index@,
+                    forall |i| 0 <= i < w.len() ==> #[trigger] w[i] == v[i] + 1,
+            {
+                w.push(x);
+            }
+
+            assert(w@ == seq![1u8, 3u8, 5u8]);
+        }        
+    } => Ok(())
+}
