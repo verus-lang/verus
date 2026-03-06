@@ -1727,6 +1727,26 @@ pub(crate) fn make_fake_call_kind<'tcx>(
     }
 }
 
+pub(crate) fn make_fake_call_kind_with_original_fn<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    erasure_ctxt: &VerusErasureCtxt,
+    hir_id: HirId,
+    span: Span,
+    fn_ty: Ty<'tcx>,
+    original_fn: ExprId,
+    args: Vec<ExprId>,
+) -> ExprKind<'tcx> {
+    let f = erased_ghost_value_with_args(cx, erasure_ctxt, hir_id, span, fn_ty, vec![original_fn]);
+
+    ExprKind::Call {
+        ty: fn_ty,
+        fun: f,
+        args: args.into_boxed_slice(),
+        from_hir_call: false,
+        fn_span: span,
+    }
+}
+
 pub(crate) fn make_let<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     stmt: &rustc_hir::Stmt,
