@@ -688,16 +688,17 @@ impl<T> PAtomicPtr<T> {
 verus! {
 
 #[verifier::reject_recursive_types(X)]
+#[verifier::reject_recursive_types(Y)]
+#[verifier::reject_recursive_types(Pred)]
+#[verifier::external_body]
 pub struct AtomicUpdate<X, Y, Pred> {
     pred: Pred,
-    _dummy: core::marker::PhantomData<spec_fn(X) -> Y>,
+    _dummy: core::marker::PhantomData<fn(fn(X) -> Y)>,
 }
 
 impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::pred"]
-    pub closed spec fn pred(self) -> Pred {
-        self.pred
-    }
+    pub uninterp spec fn pred(self) -> Pred;
 
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::resolves"]
     pub uninterp spec fn resolves(self) -> bool;

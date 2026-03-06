@@ -182,7 +182,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore]
     #[test] atomic_function_lifetime_escape
     TOKEN_LIB.to_owned() + verus_code_str! {
         pub fn atomic_function()
@@ -205,11 +204,10 @@ test_verify_one_file! {
 
             proof { escape.visit() };
         }
-    } => Err(err) => assert_rust_error_msg_any(err, "borrowed data escapes outside of closure")
+    } => Err(_err)
 }
 
 test_verify_one_file! {
-    #[ignore]
     #[test] atomic_function_lifetime_escape_ref
     TOKEN_LIB.to_owned() + verus_code_str! {
         pub fn atomic_function()
@@ -229,7 +227,7 @@ test_verify_one_file! {
 
             proof { escape.visit() };
         }
-    } => Ok(()) //Err(err) => assert_rust_error_msg_any(err, "borrowed data escapes outside of closure")
+    } => Err(_err)
 }
 
 static ATOMIC_FUNCTION: LazyLock<String> = LazyLock::new(|| {
