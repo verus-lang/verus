@@ -246,9 +246,9 @@ impl<'tcx> ThirBuildCx<'tcx> {
             }
         };
 
-        let kind = crate::verus_expr::apply_adjustment_post(self, hir_expr, adjustment, kind);
+        let (kind, ty) = crate::verus_expr::apply_adjustment_post(self, hir_expr, adjustment, kind);
 
-        Expr { temp_scope_id, ty: adjustment.target, span, kind }
+        Expr { temp_scope_id, ty: ty, span, kind }
     }
 
     /// Lowers a cast expression.
@@ -347,9 +347,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
         let kind_opt = crate::verus_expr::mirror_expr_pre(self, expr);
         let kind_opt_is_some = kind_opt.is_some();
+        let mut fake_ty_opt = None;
 
         let kind = match expr.kind {
-            _ if kind_opt_is_some => kind_opt.unwrap(),
+            _ if kind_opt_is_some => kind_opt.as_ref().unwrap().0.clone(),
 
             // Here comes the interesting stuff:
             hir::ExprKind::MethodCall(segment, receiver, args, fn_span) => {
@@ -742,7 +743,9 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         fake_reads,
                     }))
                 } else if self.verus_ctxt.skip_closure(def_id) {
-                    crate::verus::erase_tree_kind(self, expr, crate::verus::TreeErase::IncludeBasicChecks)
+                    let (kind, ty) = crate::verus::erase_tree_kind(self, expr, crate::verus::TreeErase::IncludeBasicChecks);
+                    fake_ty_opt = Some(ty);
+                    kind
                 } else {
                 // leave unindented for easier merging
 
@@ -1150,8 +1153,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
             hir::ExprKind::Err(_) => unreachable!("cannot lower a `hir::ExprKind::Err` to THIR"),
         };
 
-        let kind = if kind_opt_is_some {
-            kind
+        let (kind, expr_ty) = if kind_opt_is_some {
+            (kind, kind_opt.unwrap().1)
+        } else if let Some(fake_ty) = fake_ty_opt {
+            (kind, fake_ty)
         } else {
             crate::verus_expr::mirror_expr_post(self, expr, kind)
         };

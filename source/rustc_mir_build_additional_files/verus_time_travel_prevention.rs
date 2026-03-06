@@ -261,7 +261,7 @@ pub(crate) fn expr_post<'tcx>(
         ExprKind::LoopMatch { .. } => {
             panic!("Verus Internal Error: LoopMatch not supported");
         }
-        ExprKind::Call { .. } => call_post(cx, hir_expr, ty, kind),
+        ExprKind::Call { .. } => call_post(cx, hir_expr, kind),
         _ => kind,
     }
 }
@@ -1199,11 +1199,12 @@ fn tie_mut_refs<'tcx>(
     }
 }
 
-/// Post-process a function call, dealing with two-phase borrows
+/// Post-process a function call, dealing with two-phase borrows.
+/// Also deal with args that that were erased and thus need the call's type to be changed.
+/// (Due to the second purpose, this is invoked whether or not time_travel_prevention is enabled.)
 pub(crate) fn call_post<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &hir::Expr<'tcx>,
-    _return_ty: Ty<'tcx>,
     kind: ExprKind<'tcx>,
 ) -> ExprKind<'tcx> {
     let erasure_ctxt = cx.verus_ctxt.ctxt.clone().unwrap();
@@ -1220,8 +1221,11 @@ pub(crate) fn call_post<'tcx>(
 
     let mut arg_transforms = vec![];
     for arg in args.iter() {
-        if let Some(shadow) = get_two_phase_arg(cx, hir_expr, *arg) {
+        if cx.verus_ctxt.do_time_travel_prevention &&
+            let Some(shadow) = get_two_phase_arg(cx, hir_expr, *arg) {
             arg_transforms.push(ArgTransform::TwoPhaseShadow(shadow));
+        } else if crate::verus::is_erased(cx, &erasure_ctxt, &cx.thir.exprs[*arg].kind) {
+            arg_transforms.push(ArgTransform::Erased);
         } else {
             arg_transforms.push(ArgTransform::Normal);
         }
@@ -1243,6 +1247,10 @@ pub(crate) fn call_post<'tcx>(
             ArgTransform::Normal => {
                 new_args.push(*arg);
                 new_input_tys.push(ty);
+            }
+            ArgTransform::Erased => {
+                new_args.push(*arg);
+                new_input_tys.push(cx.thir.exprs[*arg].ty);
             }
             ArgTransform::TwoPhaseShadow(shadow_id) => {
                 new_args.push(*arg);
@@ -1281,6 +1289,7 @@ pub(crate) fn call_post<'tcx>(
 #[derive(Debug, PartialEq, Eq)]
 enum ArgTransform {
     Normal,
+    Erased,
     TwoPhaseShadow(ExprId),
 }
 

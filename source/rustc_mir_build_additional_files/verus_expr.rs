@@ -4,9 +4,11 @@ use crate::verus::{
     erase_node, erase_node_unadjusted, erase_tree_kind, erased_ghost_value, handle_call,
     is_node_with_single_arg_erased,
     is_binary_node_with_any_arg_erased,
+    preferred_erasure_ty,
 };
 use rustc_hir::{Expr, ExprKind, UnOp};
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow};
+use rustc_middle::ty::Ty;
 
 pub(crate) fn mirror_expr_adjusted_pre<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
@@ -21,7 +23,7 @@ pub(crate) fn mirror_expr_adjusted_pre<'tcx>(
             &erasure_ctxt,
             expr.hir_id,
             expr.span,
-            cx.typeck_results.expr_ty_adjusted(expr),
+            preferred_erasure_ty(cx.tcx, cx.typeck_results.expr_ty_adjusted(expr)),
         ))
     } else {
         None
@@ -34,13 +36,13 @@ pub(crate) fn apply_adjustment_post<'tcx>(
     expr: &'tcx Expr<'tcx>,
     adjustment: &Adjustment<'tcx>,
     kind: rustc_middle::thir::ExprKind<'tcx>,
-) -> rustc_middle::thir::ExprKind<'tcx> {
+) -> (rustc_middle::thir::ExprKind<'tcx>, Ty<'tcx>) {
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
-        return kind;
+        return (kind, adjustment.target);
     };
 
-    let kind = match adjustment.kind {
-        Adjust::Deref(None | Some(_)) | Adjust::Borrow(AutoBorrow::Ref(_)) => {
+    let (kind, ty) = match adjustment.kind {
+        Adjust::Deref(None | Some(_)) | Adjust::Borrow(AutoBorrow::Ref(_)) | Adjust::NeverToAny => {
             // Adjust::Deref(None) -> implicit *
             // Adjust::Borrow(AutoBorrow::Ref(_)) -> implicit &
             // Adjust::Deref(Some(_)) -> This case means inserting a Deref::deref function.
@@ -48,21 +50,22 @@ pub(crate) fn apply_adjustment_post<'tcx>(
             //   like Arc or Rc where we ignore the deref in spec code.
             //   In all those cases we also want to erase.
             if is_node_with_single_arg_erased(cx, &erasure_ctxt, &kind) {
-                erase_node(cx, expr, adjustment.target, kind)
+                return erase_node(cx, expr, adjustment.target, kind);
             } else {
-                kind
+                (kind, adjustment.target)
             }
         }
-        _ => kind,
+        _ => (kind, adjustment.target)
     };
-    crate::verus_time_travel_prevention::expr_post(cx, expr, adjustment.target, kind)
+    let kind = crate::verus_time_travel_prevention::expr_post(cx, expr, adjustment.target, kind);
+    (kind, ty)
 }
 
 // To avoid edits and conflicts in thir/cx/expr.rs, preprocess some of the work for expr.rs here
 pub(crate) fn mirror_expr_pre<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx Expr<'tcx>,
-) -> Option<rustc_middle::thir::ExprKind<'tcx>> {
+) -> Option<(rustc_middle::thir::ExprKind<'tcx>, Ty<'tcx>)> {
     match expr.kind {
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
             let call_erasure = handle_call(&cx.verus_ctxt, expr);
@@ -80,33 +83,46 @@ pub(crate) fn mirror_expr_post<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx Expr<'tcx>,
     kind: rustc_middle::thir::ExprKind<'tcx>,
-) -> rustc_middle::thir::ExprKind<'tcx> {
+) -> (rustc_middle::thir::ExprKind<'tcx>, Ty<'tcx>) {
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
-        return kind;
+        return (kind, cx.typeck_results.expr_ty_adjusted(expr));
     };
 
     let kind = match expr.kind {
-        ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
+        ExprKind::MethodCall(..) | ExprKind::Call(..) => {
             let call_erasure = handle_call(&cx.verus_ctxt, expr);
-            if call_erasure.should_erase() { erase_node_unadjusted(cx, expr, kind) } else { kind }
+            if call_erasure.should_erase() {
+                return erase_node_unadjusted(cx, expr, kind);
+            } else {
+                let kind = fixup_call_types(cx, expr, kind);
+                return (kind, cx.typeck_results.expr_ty_adjusted(expr));
+            }
+        }
+        ExprKind::Struct(..) => {
+            let call_erasure = handle_call(&cx.verus_ctxt, expr);
+            if call_erasure.should_erase() {
+                return erase_node_unadjusted(cx, expr, kind);
+            } else {
+                kind
+            }
         }
         ExprKind::Field(..) | ExprKind::AddrOf(..) => {
             if is_node_with_single_arg_erased(cx, &erasure_ctxt, &kind) {
-                erase_node_unadjusted(cx, expr, kind)
+                return erase_node_unadjusted(cx, expr, kind);
             } else {
                 kind
             }
         }
         ExprKind::Unary(UnOp::Deref | UnOp::Neg, _) if !cx.typeck_results.is_method_call(expr) => {
             if is_node_with_single_arg_erased(cx, &erasure_ctxt, &kind) {
-                erase_node_unadjusted(cx, expr, kind)
+                return erase_node_unadjusted(cx, expr, kind);
             } else {
                 kind
             }
         }
         ExprKind::Binary(_, _lhs, _rhs) => {
             if is_binary_node_with_any_arg_erased(cx, &erasure_ctxt, &kind) {
-                erase_node_unadjusted(cx, expr, kind)
+                return erase_node_unadjusted(cx, expr, kind);
             } else {
                 kind
             }
@@ -115,5 +131,14 @@ pub(crate) fn mirror_expr_post<'tcx>(
     };
 
     let ty = cx.typeck_results.expr_ty(expr);
-    crate::verus_time_travel_prevention::expr_post(cx, expr, ty, kind)
+    let kind = crate::verus_time_travel_prevention::expr_post(cx, expr, ty, kind);
+    (kind, ty)
+}
+
+fn fixup_call_types<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    expr: &'tcx Expr<'tcx>,
+    kind: rustc_middle::thir::ExprKind<'tcx>,
+) -> rustc_middle::thir::ExprKind<'tcx> {
+    crate::verus_time_travel_prevention::call_post(cx, expr, kind)
 }
