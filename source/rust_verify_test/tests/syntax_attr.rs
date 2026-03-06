@@ -1215,6 +1215,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_verus_verify_external_type_spec_with_reject_recursive code!{
+        #[verus_verify(external)]
+        struct MyExtBody<T> { t: T }
+
+        #[verus_verify(external_type_specification, external_body, reject_recursive_types(U))]
+        struct ExMyExtBody<U>(MyExtBody<U>);
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_erase_unverified_code code!{
         use vstd::prelude::*;
         #[verus_spec(
