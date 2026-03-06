@@ -20,7 +20,7 @@ pub trait FloatBitsProperties {
     // Positive or negative infinity (not zero, not subnormal, not normal, not NaN)
     spec fn is_infinite_spec(&self) -> bool;
 
-    // A NaN value (not zero, not subnormal, not normal, not NaN)
+    // A NaN value (not zero, not subnormal, not normal, not infinity)
     spec fn is_nan_spec(&self) -> bool;
 }
 

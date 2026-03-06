@@ -49,3 +49,92 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] f32_ieee verus_code! {
+        fn test1(x: f32, y: f32) {
+            assert(2.0f32 <= x <= 5.0f32 ==> x + x <= 10.0f32) by(bit_vector);
+            assert(2.0f32 <= x <= 5.0f32 && 2.0f32 <= y <= 5.0f32 ==> x + y == y + x) by(bit_vector);
+            assert(0.5f32.ieee_cast() === 0.5real) by(bit_vector);
+            assert(0.5f32 === 0.5real.ieee_cast()) by(bit_vector);
+            assert(4f32.ieee_cast() === 4u8) by(bit_vector);
+            assert(4f32 === 4u8.ieee_cast()) by(bit_vector);
+            assert(4f32 === 4f64.ieee_cast()) by(bit_vector);
+            assert(4f32.ieee_cast() === 4f64) by(bit_vector);
+        }
+        fn test2(x: f32, y: f32) {
+            assert(2.0f32 <= x <= 7.0f32 ==> x + x <= 10.0f32) by(bit_vector); // FAILS
+        }
+        fn test3(x: f32, y: f32) {
+            assert(2.0f32 <= x <= 5.0f32 && 2.0f32 <= y <= 5.0f32 ==> x + y == x + x) by(bit_vector); // FAILS
+        }
+        fn test4(x: f32, y: f32) {
+            assert(0.5f32.ieee_cast() === 0.6real) by(bit_vector); // FAILS
+        }
+        fn test5(x: f32, y: f32) {
+            assert(0.5f32 === 0.6real.ieee_cast()) by(bit_vector); // FAILS
+        }
+        fn test6(x: f32, y: f32) {
+            assert(4f32.ieee_cast() === 5u8) by(bit_vector); // FAILS
+        }
+        fn test7(x: f32, y: f32) {
+            assert(4f32 === 5u8.ieee_cast()) by(bit_vector); // FAILS
+        }
+        fn test8(x: f32, y: f32) {
+            assert(4f32 === 5f64.ieee_cast()) by(bit_vector); // FAILS
+        }
+        fn test9(x: f32, y: f32) {
+            assert(4f32.ieee_cast() === 5f64) by(bit_vector); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 8)
+}
+
+test_verify_one_file! {
+    #[test] f32_assume_ieee verus_code! {
+        use vstd::std_specs::cmp::{PartialEqSpec, PartialOrdSpec, PartialOrdIs};
+
+        fn test1(x: f32, y: f32) -> (z: f32)
+            requires
+                1.0f32.is_le(&x),
+                x.is_le(&2.0),
+                4.0f32.is_le(&y),
+                y.is_le(&8.0),
+            ensures
+                5.0f32.is_le(&z),
+                z.is_le(&10.0),
+        {
+            broadcast use vstd::contrib::assume_ieee_float::assume_ieee_float;
+
+            let z = x + y;
+            assert(5.0f32.ieee_le(x.ieee_add(y)) && x.ieee_add(y).ieee_le(10.0)) by(bit_vector)
+                requires
+                    1.0f32.ieee_le(x),
+                    x.ieee_le(2.0),
+                    4.0f32.ieee_le(y),
+                    y.ieee_le(8.0);
+            z
+        }
+
+        fn test2(x: f32, y: f32) -> (z: f32)
+            requires
+                1.0f32.is_le(&x),
+                x.is_le(&2.0),
+                4.0f32.is_le(&y),
+                y.is_le(&8.0),
+            ensures
+                5.0f32.is_le(&z),
+                z.is_lt(&10.0),
+        {
+            broadcast use vstd::contrib::assume_ieee_float::assume_ieee_float;
+
+            let z = x + y;
+            assert(5.0f32.ieee_le(x.ieee_add(y)) && x.ieee_add(y).ieee_lt(10.0)) by(bit_vector) // FAILS
+                requires
+                    1.0f32.ieee_le(x),
+                    x.ieee_le(2.0),
+                    4.0f32.ieee_le(y),
+                    y.ieee_le(8.0);
+            z
+        }
+    } => Err(err) => assert_one_fails(err)
+}

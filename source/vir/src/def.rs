@@ -251,6 +251,32 @@ pub const STRSLICE_NEW_STRLIT: &str = "str%new_strlit";
 // only used to prove that new_strlit is injective
 pub const STRSLICE_FROM_STRLIT: &str = "str%from_strlit";
 
+pub const IEEE_FLOAT_CAST: &str = "ieee_float_cast";
+pub const IEEE_FLOAT_CAST_FROM_REAL: &str = "ieee_float_cast_from_real";
+pub const IEEE_FLOAT_CAST_TO_REAL: &str = "ieee_float_cast_to_real";
+pub const IEEE_FLOAT_NEG: &str = "ieee_float_neg";
+pub const IEEE_FLOAT_FLOOR: &str = "ieee_float_floor";
+pub const IEEE_FLOAT_CEIL: &str = "ieee_float_ceil";
+pub const IEEE_FLOAT_ROUND: &str = "ieee_float_round";
+pub const IEEE_FLOAT_ROUND_TIES_EVEN: &str = "ieee_float_round_ties_even";
+pub const IEEE_FLOAT_TRUNC: &str = "ieee_float_trunc";
+pub const IEEE_FLOAT_IS_NORMAL: &str = "ieee_float_is_normal";
+pub const IEEE_FLOAT_IS_SUBNORMAL: &str = "ieee_float_is_subnormal";
+pub const IEEE_FLOAT_IS_ZERO: &str = "ieee_float_is_zero";
+pub const IEEE_FLOAT_IS_INFINITE: &str = "ieee_float_is_infinite";
+pub const IEEE_FLOAT_IS_NAN: &str = "ieee_float_is_nan";
+pub const IEEE_FLOAT_IS_NEGATIVE: &str = "ieee_float_is_negative";
+pub const IEEE_FLOAT_IS_POSITIVE: &str = "ieee_float_is_positive";
+pub const IEEE_FLOAT_ADD: &str = "ieee_float_add";
+pub const IEEE_FLOAT_SUB: &str = "ieee_float_sub";
+pub const IEEE_FLOAT_MUL: &str = "ieee_float_mul";
+pub const IEEE_FLOAT_DIV: &str = "ieee_float_div";
+pub const IEEE_FLOAT_EQ: &str = "ieee_float_eq";
+pub const IEEE_FLOAT_LE: &str = "ieee_float_le";
+pub const IEEE_FLOAT_GE: &str = "ieee_float_ge";
+pub const IEEE_FLOAT_LT: &str = "ieee_float_lt";
+pub const IEEE_FLOAT_GT: &str = "ieee_float_gt";
+
 pub const VERUSLIB: &str = "vstd";
 pub const VERUSLIB_PREFIX: &str = "vstd::";
 pub const PERVASIVE_PREFIX: &str = "pervasive::";

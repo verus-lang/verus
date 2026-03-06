@@ -287,12 +287,15 @@ pub fn undecorate_typ(typ: &Typ) -> Typ {
     if let TypX::Decorate(_, _, t) = &**typ { undecorate_typ(t) } else { typ.clone() }
 }
 
-pub fn allowed_bitvector_type(typ: &Typ) -> bool {
-    match &*undecorate_typ(typ) {
-        TypX::Bool => true,
-        TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize) => true,
+pub fn allowed_bitvector_type(typ: &Typ) -> Option<Typ> {
+    let u = undecorate_typ(typ);
+    match &*u {
+        TypX::Bool => Some(u),
+        TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize) => Some(u),
+        TypX::Float { .. } => Some(u),
+        TypX::Real => Some(u),
         TypX::Boxed(typ) => allowed_bitvector_type(typ),
-        _ => false,
+        _ => None,
     }
 }
 
@@ -1459,6 +1462,7 @@ impl BinaryOp {
             | BinaryOp::Arith(_)
             | BinaryOp::RealArith(_)
             | BinaryOp::Bitwise(..)
+            | BinaryOp::IeeeFloat(_)
             | BinaryOp::StrGetChar
             | BinaryOp::Index(..) => false,
         }
