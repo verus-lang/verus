@@ -84,6 +84,10 @@ pub struct VerusErasureCtxt {
     /// If there's a '..struct_tail' in the ctor, it's the last argument.
     pub calls: HashMap<HirId, CallErasure>,
 
+    /// Node that should be erased (absolutely), including its adjustments.
+    /// Useful, e.g., to erase a single argument of some call.
+    pub adjusted_node_erasure: HashSet<HirId>,
+
     pub bodies: HashMap<LocalDefId, BodyErasure>,
 
     /// Some DefIds from builtin that we'll need to handle directly
@@ -770,6 +774,9 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tc
     type NestedFilter = rustc_hir::intravisit::nested_filter::None;
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if self.erasure_ctxt.adjusted_node_erasure.contains(&expr.hir_id) {
+            return;
+        }
         match &expr.kind {
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
@@ -820,6 +827,9 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForLocalUses<'a
     }
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if self.erasure_ctxt.adjusted_node_erasure.contains(&expr.hir_id) {
+            return;
+        }
         match &expr.kind {
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
@@ -1559,6 +1569,13 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
         let verus_closure_captures_shadow =
             captures_subtract(&verus_closure_captures_shadow, &verus_closure_captures);
         for capt in verus_closure_captures_shadow.iter() {
+            let var_hir_id = match capt.place.base {
+                crate::expr_use_visitor::PlaceBase::Upvar(upvar_id) => upvar_id.var_path.hir_id,
+                _ => panic!("Verus internal error: Expected an Upvar"),
+            };
+            if cx.is_upvar(var_hir_id) {
+                continue;
+            }
             let place_expr = cx.convert_captured_hir_place(expr, capt.place.clone());
             let place_expr = cx.thir.exprs.push(place_expr);
             let shadow_place = crate::verus_time_travel_prevention::shadow_place(
@@ -1700,6 +1717,26 @@ pub(crate) fn make_fake_call_kind<'tcx>(
     args: Vec<ExprId>,
 ) -> ExprKind<'tcx> {
     let f = erased_ghost_value(cx, erasure_ctxt, hir_id, span, fn_ty);
+
+    ExprKind::Call {
+        ty: fn_ty,
+        fun: f,
+        args: args.into_boxed_slice(),
+        from_hir_call: false,
+        fn_span: span,
+    }
+}
+
+pub(crate) fn make_fake_call_kind_with_original_fn<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    erasure_ctxt: &VerusErasureCtxt,
+    hir_id: HirId,
+    span: Span,
+    fn_ty: Ty<'tcx>,
+    original_fn: ExprId,
+    args: Vec<ExprId>,
+) -> ExprKind<'tcx> {
+    let f = erased_ghost_value_with_args(cx, erasure_ctxt, hir_id, span, fn_ty, vec![original_fn]);
 
     ExprKind::Call {
         ty: fn_ty,

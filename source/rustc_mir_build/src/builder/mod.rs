@@ -264,6 +264,12 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             //    2a. a variable binding is Erase, but a use of that var is not Erase
             //    2b. a variable binding is Erase, but a use of that var is missing from the map
             let ids = (id.0.owner.def_id.local_def_index.as_usize(), id.0.local_id);
+            dbg!(ids);
+            dbg!(self.def_id);
+            let mut real_id = id;
+            real_id.0.owner.def_id = self.def_id;
+            dbg!(real_id.0.owner.def_id.local_def_index.as_usize());
+            dbg!(self.fn_span);
             panic!("Verus Internal Error: var_local_id failed: {ids:?}");
         }
         self.var_indices[&id].local_id(for_guard)

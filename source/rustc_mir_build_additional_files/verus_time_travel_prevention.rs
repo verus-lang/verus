@@ -93,17 +93,8 @@ artificial `mutable_reference_tie` call, not through the entire `f` call.
 We do this instead:
 
 ```
-fake_call(
-    f(&mut[two_phase] x, y),
-    &mut x_shadow,
-    ...
-)
+fake_f(&mut[two_phase] x, &mut[two_phase] x_shadow, y)
 ```
-
-where the `fake_call` wires up any lifetime variables appropriately to the output of `f`.
-Note that the mutable borrow of `x_shadow` doesn't actually occur until `f` returns, but
-this is fine because the two-phase borrow doesn't properly start until the end of the args
-to `f`.
 
 ### Patterns
 
@@ -172,7 +163,7 @@ use crate::thir::cx::ThirBuildCx;
 use crate::verus::{LocalUse, expr_id_from_kind};
 use crate::verus::{
     VarErasure, VerusErasureCtxt, erased_ghost_value, erased_ghost_value_kind_with_args,
-    make_fake_call_kind,
+    make_fake_call_kind_with_original_fn,
 };
 use rustc_hir as hir;
 use rustc_hir::{BindingMode, ByRef, HirId, Mutability, Pinnedness};
@@ -1212,13 +1203,13 @@ fn tie_mut_refs<'tcx>(
 pub(crate) fn call_post<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &hir::Expr<'tcx>,
-    return_ty: Ty<'tcx>,
+    _return_ty: Ty<'tcx>,
     kind: ExprKind<'tcx>,
 ) -> ExprKind<'tcx> {
     let erasure_ctxt = cx.verus_ctxt.ctxt.clone().unwrap();
     let tcx = cx.tcx;
 
-    let ExprKind::Call { ref args, ty: fun_ty, .. } = kind else { panic!("expr_let_post") };
+    let ExprKind::Call { ref args, ty: fun_ty, fun, .. } = kind else { panic!("expr_let_post") };
 
     match fun_ty.kind() {
         TyKind::FnDef(def_id, _) if *def_id == erasure_ctxt.erased_ghost_value_fn_def_id => {
@@ -1227,41 +1218,43 @@ pub(crate) fn call_post<'tcx>(
         _ => {}
     }
 
-    let mut two_phase_args = vec![];
-    for (i, arg) in args.iter().enumerate() {
-        if let Some(two_phase_arg) = get_two_phase_arg(cx, hir_expr, *arg, i) {
-            two_phase_args.push(two_phase_arg);
+    let mut arg_transforms = vec![];
+    for arg in args.iter() {
+        if let Some(shadow) = get_two_phase_arg(cx, hir_expr, *arg) {
+            arg_transforms.push(ArgTransform::TwoPhaseShadow(shadow));
+        } else {
+            arg_transforms.push(ArgTransform::Normal);
         }
     }
 
-    if two_phase_args.len() == 0 {
+    if arg_transforms.iter().all(|arg| *arg == ArgTransform::Normal) {
         return kind;
-    }
-
-    let original_call = expr_id_from_kind(cx, kind, hir_expr.hir_id, hir_expr.span, return_ty);
-
-    // If the input type is (I_1, I_2, ..., I_n) -> Out
-    // and the subsequence of args that needs two-phase handling are T_1, ..., T_k
-    // then the fake function call is going to have type:
-    // for<...> fn(Out, T_1, ..., T_k) -> Out
-
-    let mut args = vec![original_call];
-    for two_phase_arg in two_phase_args.iter() {
-        args.push(two_phase_arg.shadow_arg);
     }
 
     let fn_sig = crate::verus::fn_sig_with_region_vars(tcx, fun_ty);
     let bound_var_kinds = fn_sig.bound_vars();
-
-    // note: we could also skip if the output ty doesn't reference the bound vars
     let output_ty = fn_sig.skip_binder().output();
-    let mut input_tys = vec![output_ty];
-    for two_phase_arg in two_phase_args.iter() {
-        input_tys.push(fn_sig.skip_binder().inputs()[two_phase_arg.idx]);
+
+    let mut new_args: Vec<ExprId> = vec![];
+    let mut new_input_tys: Vec<Ty> = vec![];
+    for (i, (arg, arg_transform)) in args.iter().zip(arg_transforms.iter()).enumerate() {
+        let ty = fn_sig.skip_binder().inputs()[i];
+        match arg_transform {
+            ArgTransform::Normal => {
+                new_args.push(*arg);
+                new_input_tys.push(ty);
+            }
+            ArgTransform::TwoPhaseShadow(shadow_id) => {
+                new_args.push(*arg);
+                new_args.push(*shadow_id);
+                new_input_tys.push(ty);
+                new_input_tys.push(ty);
+            }
+        }
     }
 
     let inputs_and_output =
-        tcx.mk_type_list_from_iter(input_tys.iter().cloned().chain(std::iter::once(output_ty)));
+        tcx.mk_type_list_from_iter(new_input_tys.iter().cloned().chain(std::iter::once(output_ty)));
     let fnty = tcx.mk_ty_from_kind(TyKind::FnPtr(
         rustc_middle::ty::Binder::bind_with_vars(
             rustc_middle::ty::FnSigTys { inputs_and_output },
@@ -1274,21 +1267,28 @@ pub(crate) fn call_post<'tcx>(
         },
     ));
 
-    make_fake_call_kind(cx, &erasure_ctxt, hir_expr.hir_id, hir_expr.span, fnty, args)
+    make_fake_call_kind_with_original_fn(
+        cx,
+        &erasure_ctxt,
+        hir_expr.hir_id,
+        hir_expr.span,
+        fnty,
+        fun,
+        new_args,
+    )
 }
 
-#[derive(Debug)]
-struct TwoPhaseArg {
-    shadow_arg: ExprId,
-    idx: usize,
+#[derive(Debug, PartialEq, Eq)]
+enum ArgTransform {
+    Normal,
+    TwoPhaseShadow(ExprId),
 }
 
 fn get_two_phase_arg<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &hir::Expr<'tcx>,
     arg: ExprId,
-    idx: usize,
-) -> Option<TwoPhaseArg> {
+) -> Option<ExprId> {
     let kind = &cx.thir.exprs[arg].kind;
     match kind {
         ExprKind::Borrow {
@@ -1299,12 +1299,12 @@ fn get_two_phase_arg<'tcx>(
                 let ty = cx.thir.exprs[arg].ty;
                 let shadow_arg =
                     expr_id_from_kind(cx, shadow_arg_kind, hir_expr.hir_id, hir_expr.span, ty);
-                Some(TwoPhaseArg { shadow_arg, idx })
+                Some(shadow_arg)
             }
             None => None,
         },
         ExprKind::Scope { region_scope: _, lint_level: _, value } => {
-            get_two_phase_arg(cx, hir_expr, *value, idx)
+            get_two_phase_arg(cx, hir_expr, *value)
         }
         _ => None,
     }
