@@ -25,9 +25,11 @@ pub struct ErasureInfo {
     pub(crate) ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
     pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
     pub(crate) shadow_check: Vec<HirId>,
-    /// Extra nodes to erase, use this is a VIR tree gets dropped without getting to
+    /// Extra nodes to erase, use this when a VIR tree gets dropped without getting to
     /// mode-checking.
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
+    /// Extra nodes to erase, use this when an HIR tree gets dropped without becoming a VIR tree.
+    pub(crate) extra_erase_hir_ids_including_adjustments: Vec<HirId>,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;

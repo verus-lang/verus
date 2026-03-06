@@ -10,8 +10,8 @@ use crate::rust_to_vir_base::{
 };
 use crate::rust_to_vir_expr::{
     ExprModifier, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir,
-    expr_to_vir_consume, extract_array, extract_tuple, get_fn_path, is_expr_typ_mut_ref,
-    mk_ty_clip, pat_to_var,
+    expr_to_vir_consume, expr_to_vir_place, extract_array, extract_tuple, get_fn_path,
+    is_expr_typ_mut_ref, mk_ty_clip, pat_to_var,
 };
 use crate::util::{err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
@@ -355,7 +355,6 @@ pub(crate) fn const_var_to_vir<'tcx>(
 
 pub(crate) fn deref_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    expr: &Expr<'tcx>,
     trait_fun_id: DefId,
     arg: vir::ast::Expr,
     expr_typ: Typ,
@@ -373,7 +372,6 @@ pub(crate) fn deref_to_vir<'tcx>(
     let node_substs = tcx.mk_args(&[GenericArg::from(arg_ty)]);
 
     let trait_fun = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(trait_fun_id) });
-    let mut record_trait_fun = trait_fun.clone();
 
     let res = resolve_trait_item(span, tcx, typing_env, trait_fun_id, node_substs)?;
     let target_kind = match res {
@@ -381,8 +379,6 @@ pub(crate) fn deref_to_vir<'tcx>(
             let typs = mk_typ_args(bctx, args, did, span)?;
             let impl_paths = get_impl_paths(bctx, did, args, None, false, span)?;
             let resolved = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
-
-            record_trait_fun = resolved.clone();
 
             vir::ast::CallTargetKind::DynamicResolved {
                 resolved,
@@ -396,8 +392,6 @@ pub(crate) fn deref_to_vir<'tcx>(
     };
 
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
-
-    record_call(bctx, expr, ResolvedCall::Call(trait_fun.clone(), record_trait_fun, bctx.in_ghost));
 
     let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
     let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None, false, span)?;
@@ -1053,18 +1047,21 @@ fn verus_item_to_vir<'tcx, 'a>(
                 return err_span(expr.span, "default_ensures not allowed here");
             }
             ExprItem::InferSpecForLoopIter => {
-                record_spec_fn_pure_args_only(bctx, expr);
                 assert!(args.len() == 3);
                 let arg = if bctx.loop_isolation {
+                    crate::erase::mark_adjusted_node_for_erasure(&bctx.ctxt, &args[0]);
                     expr_to_vir_consume(bctx, &args[1], ExprModifier::REGULAR)?
                 } else {
+                    crate::erase::mark_adjusted_node_for_erasure(&bctx.ctxt, &args[1]);
                     expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?
                 };
                 let print_hint = matches!(
                     &args[2],
                     Expr { kind: ExprKind::Lit(Spanned { node: LitKind::Bool(true), .. }), .. }
                 );
-                mk_expr(ExprX::Unary(UnaryOp::InferSpecForLoopIter { print_hint }, arg))
+                let e = mk_expr(ExprX::Unary(UnaryOp::InferSpecForLoopIter { print_hint }, arg))?;
+                record_call(bctx, expr, ResolvedCall::InferSpecForLoopIter(e.span.id));
+                Ok(e)
             }
             ExprItem::IsVariant => {
                 record_spec_fn(bctx, expr);
@@ -1398,7 +1395,8 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
             let source_vir0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-            let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
+            let source_vir0_ty = bctx.types.expr_ty_adjusted(&args[0]);
+            let source_vir = source_vir0.consume(bctx, source_vir0_ty);
             let source_ty = undecorate_typ(&source_vir.typ);
 
             if let Some(expr) =
@@ -1453,7 +1451,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let cast_to = crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
                         bctx,
                         args[0],
-                        source_vir0.to_place(),
+                        source_vir0.to_place(bctx, expr.span, source_vir0_ty)?,
                         mk_expr,
                     )?;
                     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
@@ -1675,7 +1673,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             assert!(args.len() == 1);
 
-            let vir_arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?.to_place();
+            let vir_arg = expr_to_vir_place(bctx, &args[0], ExprModifier::REGULAR)?;
 
             // x.borrow_mut() takes &mut Tracked<T> and returns &mut T
             // so this is equivalent to `&mut (*x).unwrap`
@@ -2142,7 +2140,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 return err_span(expr.span, "`after_borrow` must be in a 'proof' block");
             }
             let bctx = BodyCtxt { in_explicit_prophecy_node: true, ..bctx.clone() };
-            let p = expr_to_vir(&bctx, &args[0], ExprModifier::REGULAR)?.to_place();
+            let p = expr_to_vir_place(&bctx, &args[0], ExprModifier::REGULAR)?;
             if !is_place_ok_for_spec_after_borrow(&p) {
                 return err_span(
                     expr.span,
@@ -2669,9 +2667,11 @@ fn mk_vir_args<'tcx>(
                     _ => false,
                 };
             if is_mut_ref_param {
-                let expr =
-                    expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of_mut: true })?;
-                let expr = crate::rust_to_vir_expr::place_to_loc(&expr.to_place())?;
+                let TyKind::Ref(_, inner_ty, _) = raw_param.kind() else { unreachable!() };
+                let place =
+                    expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of_mut: true })?
+                        .to_place(bctx, arg.span, *inner_ty)?;
+                let expr = crate::rust_to_vir_expr::place_to_loc(&place)?;
                 Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
             } else {
                 expr_to_vir_consume(
