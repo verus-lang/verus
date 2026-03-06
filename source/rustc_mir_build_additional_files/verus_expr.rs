@@ -3,6 +3,7 @@ use crate::verus::CallErasure;
 use crate::verus::{
     erase_node, erase_node_unadjusted, erase_tree_kind, erased_ghost_value, handle_call,
     is_node_with_single_arg_erased,
+    is_binary_node_with_any_arg_erased,
 };
 use rustc_hir::{Expr, ExprKind, UnOp};
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow};
@@ -96,8 +97,15 @@ pub(crate) fn mirror_expr_post<'tcx>(
                 kind
             }
         }
-        ExprKind::Unary(UnOp::Deref, _) if !cx.typeck_results.is_method_call(expr) => {
+        ExprKind::Unary(UnOp::Deref | UnOp::Neg, _) if !cx.typeck_results.is_method_call(expr) => {
             if is_node_with_single_arg_erased(cx, &erasure_ctxt, &kind) {
+                erase_node_unadjusted(cx, expr, kind)
+            } else {
+                kind
+            }
+        }
+        ExprKind::Binary(_, _lhs, _rhs) => {
+            if is_binary_node_with_any_arg_erased(cx, &erasure_ctxt, &kind) {
                 erase_node_unadjusted(cx, expr, kind)
             } else {
                 kind

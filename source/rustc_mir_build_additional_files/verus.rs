@@ -270,8 +270,7 @@ pub(crate) fn handle_var<'tcx>(
             ))
         }
         Some(VarErasure::Erase | VarErasure::Shadow) => {
-            let ty = cx.typeck_results.expr_ty(expr);
-            Some(erased_ghost_value_kind(cx, &erasure_ctxt, expr.hir_id, expr.span, ty))
+            Some(erased_ghost_value_kind(cx, &erasure_ctxt, expr.hir_id, expr.span, cx.tcx.types.bool))
         }
     }
 }
@@ -341,8 +340,7 @@ pub(crate) fn erase_tree_kind<'tcx>(
         TreeErase::EraseAbsolutely => vec![],
     };
 
-    let ty = cx.typeck_results.expr_ty(expr);
-    erased_ghost_value_kind_with_args(cx, &erasure_ctxt, expr.hir_id, expr.span, ty, exprs)
+    erased_ghost_value_kind_with_args(cx, &erasure_ctxt, expr.hir_id, expr.span, cx.tcx.types.bool, exprs)
 }
 
 /// erase_node
@@ -361,7 +359,7 @@ pub(crate) fn erase_node_unadjusted<'tcx>(
 pub(crate) fn erase_node<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,
-    ty: Ty<'tcx>,
+    _ty: Ty<'tcx>,
     kind: ExprKind<'tcx>,
 ) -> ExprKind<'tcx> {
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
@@ -400,99 +398,25 @@ pub(crate) fn erase_node<'tcx>(
         ExprKind::Field { lhs, variant_index: _, name: _ } => {
             vec![lhs]
         }
+        ExprKind::Unary { op: _, arg } => {
+            vec![arg]
+        }
+        ExprKind::Binary { op: _, lhs, rhs } => {
+            vec![lhs, rhs]
+        }
         _ => {
             panic!("erase_node got unexpected kind");
         }
     };
-
-    let expr_ids = expr_ids
-        .iter()
-        .map(|e| {
-            erased_ghost_value_remove_type_if_possible(
-                cx,
-                &erasure_ctxt,
-                *e,
-                hir_expr.hir_id,
-                hir_expr.span,
-            )
-            .unwrap_or(*e)
-        })
-        .collect::<Vec<_>>();
 
     erased_ghost_value_kind_with_args(
         cx,
         &erasure_ctxt,
         hir_expr.hir_id,
         hir_expr.span,
-        ty,
+        cx.tcx.types.bool,
         expr_ids,
     )
-}
-
-/// We have to be careful to not emit any `erased_ghost_value::<T>(...)` expressions where `T`
-/// is unsized. An example of where this matters is in something like `&*"abc"`.
-/// Note here that:
-///     "abc" is &str
-///     *"abc" is str
-///     &*"abc" is &str
-/// The middle one is problematic. Luckily, whenever this happens, it will always be as
-/// the intermediary in some expression like this. i.e., if *"abc" is getting erased,
-/// then &*"abc" is getting erased too (or something like it).
-/// Thus, we can resolve this issue by always erasing the type on any intermediary.
-/// So, for example, if we are creating `erased_ghost_value::<T>()` where one of the arguments is
-/// `erased_ghost_value::<S>()`, we replace the latter with `erased_ghost_value::<()>()`.
-/// The type param only matters for the return value anyway, which doesn't matter in this
-/// context.
-fn erased_ghost_value_remove_type_if_possible<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    erasure_ctxt: &VerusErasureCtxt,
-    e: ExprId,
-    hir_id: HirId,
-    span: Span,
-) -> Option<ExprId> {
-    match &cx.thir.exprs[e].kind {
-        ExprKind::Call { fun, args, .. } => match cx.thir.exprs[*fun].ty.kind() {
-            TyKind::FnDef(fn_def_id, _)
-                if *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id =>
-            {
-                let tup_arg = args[0];
-                let args = match &cx.thir.exprs[tup_arg].kind {
-                    ExprKind::Tuple { fields } => fields.clone().into_vec(),
-                    _ => {
-                        panic!(
-                            "erased_ghost_value should only be constructed with a tuple argument"
-                        );
-                    }
-                };
-                Some(erased_ghost_value_with_args(
-                    cx,
-                    erasure_ctxt,
-                    hir_id,
-                    span,
-                    Ty::new_tup(cx.tcx, &[]),
-                    args,
-                ))
-            }
-            _ => None,
-        },
-        ExprKind::Scope { region_scope, lint_level, value } => {
-            let region_scope = *region_scope;
-            let lint_level = *lint_level;
-            let value = *value;
-            let value =
-                erased_ghost_value_remove_type_if_possible(cx, erasure_ctxt, value, hir_id, span);
-            match value {
-                Some(v) => {
-                    let mut expr = cx.thir.exprs[e].clone();
-                    expr.kind = ExprKind::Scope { region_scope, lint_level, value: v };
-                    expr.ty = cx.thir.exprs[v].ty;
-                    Some(cx.thir.exprs.push(expr))
-                }
-                None => None,
-            }
-        }
-        _ => None,
-    }
 }
 
 /// Is the given THIR node the result of erasure?
@@ -527,6 +451,7 @@ pub(crate) fn is_node_with_single_arg_erased<'tcx>(
         }
         ExprKind::Borrow { borrow_kind: _, arg }
         | ExprKind::Deref { arg }
+        | ExprKind::Unary { op: _, arg }
         | ExprKind::Field { lhs: arg, .. } => {
             is_erased(cx, erasure_ctxt, &cx.thir.exprs[*arg].kind)
         }
@@ -536,9 +461,32 @@ pub(crate) fn is_node_with_single_arg_erased<'tcx>(
     }
 }
 
+/// Given a Binary expression like `x + y`, determine if it should be erased
+/// by looking at if `x` or `y` is erased.
+pub(crate) fn is_binary_node_with_any_arg_erased<'tcx>(
+    cx: &ThirBuildCx<'tcx>,
+    erasure_ctxt: &VerusErasureCtxt,
+    expr_kind: &rustc_middle::thir::ExprKind<'tcx>,
+) -> bool {
+    match expr_kind {
+        ExprKind::Binary { op: _, lhs, rhs } => {
+            is_erased(cx, erasure_ctxt, &cx.thir.exprs[*lhs].kind)
+                || is_erased(cx, erasure_ctxt, &cx.thir.exprs[*rhs].kind)
+        }
+        _ => {
+            panic!("is_binary_node_with_any_arg_erased got unexpected kind");
+        }
+    }
+}
+
 /// Produce an expression `builtin::erased_ghost_value::<T>(())`
 /// The hir_id is used for the scope so it needs to correspond to something that will
 /// get a scope in the final THIR.
+///
+/// Usually call this with type `bool` unless the type is important for some reason.
+/// Make sure not to call this with an uninhabited type.
+/// We use bool because it makes it means conditionals / things that take bools don't need
+/// special handlings.
 pub(crate) fn erased_ghost_value<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
