@@ -115,9 +115,11 @@ pub(crate) fn rewrite_verus_attribute(
     let mut contains_non_external = false;
     let mut contains_external = false;
     let mut spec_fun = None;
-    const VERIFY_ATTRS: [&str; 3] = ["rlimit", "spinoff_prover", "external_derive"];
+    const VERIFY_ATTRS: [&str; 4] =
+        ["rlimit", "spinoff_prover", "external_derive", "reject_recursive_types"];
     const DUAL_ATTR: &str = "dual_spec";
-    const IGNORE_VERIFY_ATTRS: [&str; 2] = ["external", "external_body"];
+    const IGNORE_VERIFY_ATTRS: [&str; 3] =
+        ["external", "external_body", "external_type_specification"];
 
     for arg in &args {
         let path = arg.path().get_ident().expect("Invalid verus verifier attribute");
