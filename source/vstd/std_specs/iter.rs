@@ -84,26 +84,45 @@ pub trait ExIterator {
 
     // Provided methods
 
+    
+    //#[verifier::when_used_as_spec(into_rev_spec)]
+    //#[verifier::external_body]
+    // FAILS with: error: found a cyclic self-reference in a definition, which may result in nontermination
+    // fn rev(self) -> (r: Rev<Self>)
+    //     where Self: Sized + DoubleEndedIterator, // + DoubleEndedIteratorSpec,
+    //     requires
+    //         self.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
+    //         self.initial_value_inv(&self),
+    //     default_ensures
+    //         r == into_rev_spec(self),
+    //         // r.remaining(&r) == self.remaining().reverse(),
+    //         // r.completes(&r) == self.completes(),
+    //         // r.decrease(&r) is Some == self.decrease() is Some,
+    //         // r.initial_value_inv(&r),
+    // ;
 
-    #[verifier::when_used_as_spec(into_rev_spec)]
-    #[verifier::external_body]
-    fn rev(self) -> (r: Rev<Self>)
-        where Self: Sized + DoubleEndedIterator, // + DoubleEndedIteratorSpec,
-        requires
-            self.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
-        default_ensures
-            r == into_rev_spec(self),
-            IteratorSpec::remaining(&r) == IteratorSpec::remaining(&self).reverse(),
-            IteratorSpec::completes(&r) == IteratorSpec::completes(&self),
-            IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&self) is Some,
-            IteratorSpec::initial_value_inv(&r, &r),
-    {
-        //Rev::new(self)
-        self.rev()
-    }
+    // FAILS with: error[E0034]: multiple applicable items in scope
+    //
+    // #[verifier::when_used_as_spec(into_rev_spec)]
+    // #[verifier::external_body]
+    // fn rev(self) -> (r: Rev<Self>)
+    //     where Self: Sized + DoubleEndedIterator, // + DoubleEndedIteratorSpec,
+    //     requires
+    //         self.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
+    //         IteratorSpec::initial_value_inv(&self, &self),
+    //     default_ensures
+    //         r == into_rev_spec(self),
+    //         IteratorSpec::remaining(&r) == IteratorSpec::remaining(&self).reverse(),
+    //         IteratorSpec::completes(&r) == IteratorSpec::completes(&self),
+    //         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&self) is Some,
+    //         IteratorSpec::initial_value_inv(&r, &r),
+    // {
+    //     //Rev::new(self)
+    //     self.rev()
+    // }
 }
 
-
+// FAILS with: error: assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead
 //  #[verifier::when_used_as_spec(into_rev_spec)]
 //  pub assume_specification<I> [Iterator::rev](i: I) -> (r: Rev<I>)
 //     where I: Sized + DoubleEndedIterator + DoubleEndedIteratorSpec,
@@ -114,6 +133,7 @@ pub trait ExIterator {
 //         IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
 //         IteratorSpec::completes(&r) == IteratorSpec::completes(&i),
 //         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
+//         IteratorSpec::initial_value_inv(&r, &r),
 //     ;
 
 #[verifier::external_trait_specification]
@@ -167,6 +187,7 @@ pub uninterp spec fn into_rev_spec<I: DoubleEndedIterator + DoubleEndedIteratorS
 //     where I: Sized + DoubleEndedIterator + DoubleEndedIteratorSpec,
 //     requires
 //         i.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
+//         IteratorSpec::initial_value_inv(&self, &self),
 //     ensures
 //         r == into_rev_spec(i),
 //         IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
@@ -178,19 +199,21 @@ pub uninterp spec fn into_rev_spec<I: DoubleEndedIterator + DoubleEndedIteratorS
 
 
 // Workaround the lack of Verus support for default trait methods
-// #[verifier::external_body]
-// #[verifier::when_used_as_spec(into_rev_spec)]
-// pub fn to_rev<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> (r: Rev<I>)
-//     requires
-//         i.obeys_prophetic_iter_laws()
-//     ensures
-//         r == into_rev_spec(i),
-//         IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
-//         IteratorSpec::completes(&r) == IteratorSpec::completes(&i),
-//         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
-// {
-//     i.rev()
-// }
+#[verifier::external_body]
+#[verifier::when_used_as_spec(into_rev_spec)]
+pub fn to_rev<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> (r: Rev<I>)
+    requires
+        i.obeys_prophetic_iter_laws(),
+        i.initial_value_inv(&i),
+    ensures
+        r == into_rev_spec(i),
+        IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
+        IteratorSpec::completes(&r) == IteratorSpec::completes(&i),
+        IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
+        IteratorSpec::initial_value_inv(&r, &r),
+{
+    i.rev()
+}
 
 impl <I> IteratorSpecImpl for Rev<I>
     where I: DoubleEndedIterator + DoubleEndedIteratorSpec {
