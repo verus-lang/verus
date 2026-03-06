@@ -935,7 +935,7 @@ pub mod parsing {
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             let token = input.parse()?;
             let mut exprs = Specification::parse_in(ctx, input)?;
-            // Remove attributes that semantically belong to the entire group.
+            // Hoist attributes that semantically belong to the entire group.
             let top_level_attrs = exprs.remove_top_level_attrs();
             Ok(Ensures {
                 attrs: top_level_attrs,
