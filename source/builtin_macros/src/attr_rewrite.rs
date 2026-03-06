@@ -121,7 +121,11 @@ pub(crate) fn rewrite_verus_attribute(
         ["external", "external_body", "external_type_specification"];
     // Modifier attrs are compatible with both external and non-external attrs.
     // They neither set contains_external nor contains_non_external.
-    const MODIFIER_ATTRS: [&str; 1] = ["reject_recursive_types"];
+    const MODIFIER_ATTRS: [&str; 3] = [
+        "reject_recursive_types",
+        "reject_recursive_types_in_ground_variants",
+        "accept_recursive_types",
+    ];
 
     for arg in &args {
         let path = arg.path().get_ident().expect("Invalid verus verifier attribute");
