@@ -179,7 +179,9 @@ fn expand_extension_trait<'tcx>(
     let blanket_bound: TypeParamBound = {
         tr.supertraits.iter().find(|tpb| is_sizedness_bound(tpb)).cloned().unwrap_or_else(|| {
             let span = tr.generics.span();
-            parse_quote_spanned!(span => core::marker::MetaSized)
+            // eventually TODO? MetaSized currently breaks stable rust when compiling to executable code
+            // parse_quote_spanned!(span => core::marker::MetaSized)
+            parse_quote_spanned!(span => ?Sized)
         })
     };
     blanket_impl.generics.params.push(parse_quote_spanned!(span => #self_x: #t + #blanket_bound));
