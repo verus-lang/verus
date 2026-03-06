@@ -171,6 +171,9 @@ pub trait ExDoubleEndedIterator : Iterator {
     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
 }
 
+/********************************************************************************
+ * Definitions for `rev()`
+ ********************************************************************************/
 #[verifier::external_body]
 #[verifier::external_type_specification]
 #[verifier::reject_recursive_types(I)] // REVIEW: Is this too strict?
@@ -198,7 +201,7 @@ pub uninterp spec fn into_rev_spec<I: DoubleEndedIterator + DoubleEndedIteratorS
 
 
 
-// Workaround the lack of Verus support for default trait methods
+// Workaround issues with Verus support for default trait methods
 #[verifier::external_body]
 #[verifier::when_used_as_spec(into_rev_spec)]
 pub fn to_rev<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> (r: Rev<I>)
@@ -255,6 +258,146 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
         rev_iter(*self).peek(index)
     }
 }
+
+/********************************************************************************
+ * Definitions for `map()`
+ ********************************************************************************/
+
+// FAILS: error: the type parameter `A58_B` is not constrained by the impl trait, self type, or predicates
+//    --> /Users/parno/.rustup/toolchains/1.93.0-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/map.rs:143:6
+//     |
+// 143 | impl<B, I: DoubleEndedIterator, F> DoubleEndedIterator for Map<I, F>
+//     |      ^^^^^
+
+// #[verifier::external_body]
+// #[verifier::external_type_specification]
+// #[verifier::reject_recursive_types(I)] // REVIEW: Is this too strict?
+// #[verifier::reject_recursive_types(F)] // REVIEW: Is this too strict?
+// pub struct ExMap<I, F>(core::iter::Map<I, F>)
+    // // where 
+    // //     I: Iterator + Sized,
+    // //     F: FnMut(I::Item) -> B;
+// ;
+
+// B must be a type parameter of MyMap so that Verus can resolve Self::Item
+// without producing TyKind::Infer (which causes a panic in mid_ty_to_vir_ghost).
+pub struct MyMap<B, I, F>{ x: u64, y: I, z: F, w: core::marker::PhantomData<B> }
+
+#[verifier::external]
+impl<B, I, F> Iterator for MyMap<B, I, F>
+    where
+        I: Iterator,
+        F: FnMut(I::Item) -> B,
+{
+    type Item = B;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
+    }
+}
+
+#[verifier::external]
+impl<B, I, F> DoubleEndedIterator for MyMap<B, I, F>
+    where
+        I: Iterator,
+        F: FnMut(I::Item) -> B,
+{
+    #[verifier::external_body]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        todo!()
+    }
+}
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn map_iter<B, I, F>(r: MyMap<B, I, F>) -> I;
+
+// Ghost accessor for the inner function
+pub uninterp spec fn map_fun<B, I, F>(r: MyMap<B, I, F>) -> F;
+
+impl <B, I, F> IteratorSpecImpl for MyMap<B, I, F>
+    where 
+        I: Iterator + IteratorSpec, 
+        F: FnMut(I::Item) -> B,
+{
+
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        map_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>; 
+
+    #[verifier::prophetic]
+    uninterp spec fn completes(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& map_iter(*self).initial_value_inv(&map_iter(*init))
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        None
+        // REVIEW: It would be nice to use a definition like the one below,
+        //         but we don't have an output value to supply for ???
+        //         We also can't reference `remaining` since its prophetic
+        //         and `peek` is not
+        // match map_iter(*self).peek(index) {
+        //     Some(v) => Some(map_fun(*self).call_ensures((v,), ???),
+        //     None => None,
+        // }
+    }
+}
+
+impl <B, I, F> DoubleEndedIteratorSpecImpl for MyMap<B, I, F>
+    where I: DoubleEndedIterator + IteratorSpec,
+          F: FnMut(I::Item) -> B,
+{
+
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        None // REVIEW: See note above for `peek`
+    }
+}
+
+
+// Spec version of I::map
+pub uninterp spec fn into_map_spec<B, I, F>(i: I, f: F) -> MyMap<B, I, F>
+    where
+        I: Iterator + IteratorSpec, 
+        F: FnMut(I::Item) -> B,
+;
+
+// Workaround issues with Verus support for default trait methods
+#[verifier::external_body]
+#[verifier::when_used_as_spec(into_map_spec)]
+pub fn to_map<B, I, F>(i: I, f: F) -> (r: MyMap<B, I, F>)
+    where
+        I: Iterator + IteratorSpec, 
+        F: FnMut(I::Item) -> B,
+    requires
+        i.obeys_prophetic_iter_laws(),
+        forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&i).len() ==> call_requires(f, (IteratorSpec::remaining(&i)[k], )),
+        i.initial_value_inv(&i),
+    ensures
+        r == into_map_spec::<B, I, F>(i, f),
+        IteratorSpec::remaining(&r).len() <= IteratorSpec::remaining(&i).len(),
+        forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (IteratorSpec::remaining(&i)[k],), IteratorSpec::remaining(&r)[k]),
+        IteratorSpec::completes(&r) ==> IteratorSpec::completes(&i) && 
+            IteratorSpec::remaining(&r).len() == IteratorSpec::remaining(&i).len(),
+        IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
+        IteratorSpec::initial_value_inv(&r, &r),
+        map_iter(r) == i,
+        map_fun(r) == f,
+{
+    todo!()
+}
+
+/********************************************************************************
+ * Defines a convenient wrapper type that bundles state and invariants needed
+ * for ergonomic for-loop support.
+ ********************************************************************************/
 
 pub struct VerusForLoopWrapper<'a, I: Iterator> {
     pub index: Ghost<int>,
