@@ -627,8 +627,9 @@ impl Visitor {
                     if let Some((p, ty)) = ret_pat {
                         if let Some(final_ret_pat) = final_ret_pat {
                             for expr in exprs.exprs.iter_mut() {
+                                let expr_span = expr.span();
                                 *expr = Expr::Verbatim(
-                                    quote_spanned! {token.span => {let #final_ret_pat = #p; #expr}},
+                                    quote_spanned! {expr_span => {let #final_ret_pat = #p; #expr}},
                                 )
                             }
                         }
