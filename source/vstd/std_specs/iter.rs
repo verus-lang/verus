@@ -84,56 +84,41 @@ pub trait ExIterator {
 
     // Provided methods
 
-    
-    // #[verifier::when_used_as_spec(into_rev_spec)]
-    // FAILS with: error: found a cyclic self-reference in a definition, which may result in nontermination
-    // fn rev(self) -> (r: Rev<Self>)
-    //     where Self: Sized + DoubleEndedIterator, // + DoubleEndedIteratorSpec,
-    //     // requires
-    //     //     self.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
-    //     //     self.initial_value_inv(&self),
-    //     default_ensures
-    //         r == into_rev_spec(self),
-    //         // r.remaining(&r) == self.remaining().reverse(),
-    //         // r.completes(&r) == self.completes(),
-    //         // r.decrease(&r) is Some == self.decrease() is Some,
-    //         // r.initial_value_inv(&r),
-    // ;
-
-    // FAILS with: error[E0034]: multiple applicable items in scope
-    //
-    // #[verifier::when_used_as_spec(into_rev_spec)]
-    // #[verifier::external_body]
-    // fn rev(self) -> (r: Rev<Self>)
-    //     where Self: Sized + DoubleEndedIterator, // + DoubleEndedIteratorSpec,
+    // #[verifier::when_used_as_spec(into_map_spec)]
+    // pub fn to_map<B, I, F>(i: I, f: F) -> (r: MyMap<B, I, F>)
+    //     where
+    //         I: Iterator + IteratorSpec, 
+    //         F: FnMut(I::Item) -> B,
     //     requires
-    //         self.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
-    //         IteratorSpec::initial_value_inv(&self, &self),
-    //     default_ensures
-    //         r == into_rev_spec(self),
-    //         IteratorSpec::remaining(&r) == IteratorSpec::remaining(&self).reverse(),
-    //         IteratorSpec::completes(&r) == IteratorSpec::completes(&self),
-    //         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&self) is Some,
+    //         i.obeys_prophetic_iter_laws(),
+    //         forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&i).len() ==> call_requires(f, (IteratorSpec::remaining(&i)[k], )),
+    //         i.initial_value_inv(&i),
+    //     ensures
+    //         r == into_map_spec::<B, I, F>(i, f),
+    //         IteratorSpec::remaining(&r).len() <= IteratorSpec::remaining(&i).len(),
+    //         forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (IteratorSpec::remaining(&i)[k],), IteratorSpec::remaining(&r)[k]),
+    //         IteratorSpec::completes(&r) ==> IteratorSpec::completes(&i) && 
+    //             IteratorSpec::remaining(&r).len() == IteratorSpec::remaining(&i).len(),
+    //         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
     //         IteratorSpec::initial_value_inv(&r, &r),
+    //         map_iter(r) == i,
+    //         map_fun(r) == f,
     // {
-    //     //Rev::new(self)
-    //     self.rev()
+    //     todo!()
     // }
-}
+    
+    //#[verifier::when_used_as_spec(into_rev_spec)]
+    fn rev(self) -> (r: Rev<Self>)
+        where Self: Sized,
+        requires
+            self.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
+            self.initial_value_inv(&self),
+        default_ensures
+            r == into_rev_spec(self),
+            rev_post(self, r),
+    ;
 
-// FAILS with: error: assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead
-//  #[verifier::when_used_as_spec(into_rev_spec)]
-//  pub assume_specification<I> [Iterator::rev](i: I) -> (r: Rev<I>)
-//     where I: Sized + DoubleEndedIterator + DoubleEndedIteratorSpec,
-//     requires
-//         i.obeys_prophetic_iter_laws(),
-//     default_ensures
-//         r == into_rev_spec(i),
-//         IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
-//         IteratorSpec::completes(&r) == IteratorSpec::completes(&i),
-//         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
-//         IteratorSpec::initial_value_inv(&r, &r),
-//     ;
+}
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(DoubleEndedIteratorSpec via DoubleEndedIteratorSpecImpl)]
@@ -182,40 +167,29 @@ pub struct ExRev<I>(Rev<I>);
 pub uninterp spec fn rev_iter<I>(r: Rev<I>) -> I;
 
 // Spec version of Rev::new
-pub uninterp spec fn into_rev_spec<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> Rev<I>;
+pub uninterp spec fn into_rev_spec<I>(i: I) -> Rev<I>;
 
-//  #[verifier::when_used_as_spec(into_rev_spec)]
-//  assume_specification<I> [Rev::new](i: I) -> (r: Rev<I>)
-//     where I: Sized + DoubleEndedIterator + DoubleEndedIteratorSpec,
-//     requires
-//         i.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
-//         IteratorSpec::initial_value_inv(&self, &self),
-//     ensures
-//         r == into_rev_spec(i),
-//         IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
-//         IteratorSpec::completes(&r) == IteratorSpec::completes(&i),
-//         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
-//         IteratorSpec::initial_value_inv(&r, &r),
-//     ;
+// Ideally, we would write this postcondition directly on the definition of
+// Iterator::rev above.  However, to do so, we would need to impose a trait
+// bound of `Self: DoubleEndedIteratorSpec`.  However, this introduces a cyclic
+// dependency, since DoubleEndedIteratorSpec depends on Iterator.  Hence,
+// we introduce a layer of indirection via this uninterp spec function.
+pub uninterp spec fn rev_post<I>(i: I, r: Rev<I>) -> bool;
 
-
-
-// // Workaround issues with Verus support for default trait methods
-#[verifier::external_body]
-#[verifier::when_used_as_spec(into_rev_spec)]
-pub fn to_rev<I: DoubleEndedIterator + DoubleEndedIteratorSpec>(i: I) -> (r: Rev<I>)
+pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I)
     requires
         i.obeys_prophetic_iter_laws(),
         i.initial_value_inv(&i),
     ensures
-        r == into_rev_spec(i),
-        IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
-        IteratorSpec::completes(&r) == IteratorSpec::completes(&i),
-        IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
-        IteratorSpec::initial_value_inv(&r, &r),
-{
-    i.rev()
-}
+        // TODO: Remove parens after we merge in main
+        ({
+            let r = #[trigger] into_rev_spec(i);
+            &&& IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse()
+            &&& IteratorSpec::completes(&r) == i.completes()
+            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
+            &&& IteratorSpec::initial_value_inv(&r, &r)
+        }),
+;
 
 impl <I> IteratorSpecImpl for Rev<I>
     where I: DoubleEndedIterator + DoubleEndedIteratorSpec {
@@ -368,30 +342,30 @@ pub uninterp spec fn into_map_spec<B, I, F>(i: I, f: F) -> MyMap<B, I, F>
         F: FnMut(I::Item) -> B,
 ;
 
-// Workaround issues with Verus support for default trait methods
-#[verifier::external_body]
-#[verifier::when_used_as_spec(into_map_spec)]
-pub fn to_map<B, I, F>(i: I, f: F) -> (r: MyMap<B, I, F>)
-    where
-        I: Iterator + IteratorSpec, 
-        F: FnMut(I::Item) -> B,
-    requires
-        i.obeys_prophetic_iter_laws(),
-        forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&i).len() ==> call_requires(f, (IteratorSpec::remaining(&i)[k], )),
-        i.initial_value_inv(&i),
-    ensures
-        r == into_map_spec::<B, I, F>(i, f),
-        IteratorSpec::remaining(&r).len() <= IteratorSpec::remaining(&i).len(),
-        forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (IteratorSpec::remaining(&i)[k],), IteratorSpec::remaining(&r)[k]),
-        IteratorSpec::completes(&r) ==> IteratorSpec::completes(&i) && 
-            IteratorSpec::remaining(&r).len() == IteratorSpec::remaining(&i).len(),
-        IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
-        IteratorSpec::initial_value_inv(&r, &r),
-        map_iter(r) == i,
-        map_fun(r) == f,
-{
-    todo!()
-}
+// // Workaround issues with Verus support for default trait methods
+// #[verifier::external_body]
+// #[verifier::when_used_as_spec(into_map_spec)]
+// pub fn to_map<B, I, F>(i: I, f: F) -> (r: MyMap<B, I, F>)
+//     where
+//         I: Iterator + IteratorSpec, 
+//         F: FnMut(I::Item) -> B,
+//     requires
+//         i.obeys_prophetic_iter_laws(),
+//         forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&i).len() ==> call_requires(f, (IteratorSpec::remaining(&i)[k], )),
+//         i.initial_value_inv(&i),
+//     ensures
+//         r == into_map_spec::<B, I, F>(i, f),
+//         IteratorSpec::remaining(&r).len() <= IteratorSpec::remaining(&i).len(),
+//         forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (IteratorSpec::remaining(&i)[k],), IteratorSpec::remaining(&r)[k]),
+//         IteratorSpec::completes(&r) ==> IteratorSpec::completes(&i) && 
+//             IteratorSpec::remaining(&r).len() == IteratorSpec::remaining(&i).len(),
+//         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
+//         IteratorSpec::initial_value_inv(&r, &r),
+//         map_iter(r) == i,
+//         map_fun(r) == f,
+// {
+//     todo!()
+// }
 
 /********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
@@ -510,5 +484,9 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     }
 }
 
+// REVIEW: Can we automatically pull these in?
+pub broadcast group group_iter_axioms {
+    rev_postcondition,
+}
 
 } // verus!
