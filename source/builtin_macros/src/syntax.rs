@@ -627,10 +627,6 @@ impl Visitor {
                     if let Some((p, ty)) = ret_pat {
                         if let Some(final_ret_pat) = final_ret_pat {
                             for expr in exprs.exprs.iter_mut() {
-                                // Use the expression's own span so that
-                                // postcondition-failure errors point at the
-                                // specific failing clause, not at the `ensures`
-                                // keyword.
                                 let expr_span = expr.span();
                                 *expr = Expr::Verbatim(
                                     quote_spanned! {expr_span => {let #final_ret_pat = #p; #expr}},
