@@ -1225,6 +1225,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // Check that a postcondition failure in #[verus_spec] points at the specific
+    // failing ensures clause, not at the `ensures` keyword.
+    #[test] test_verus_spec_ensures_span_on_failure code!{
+        #[verus_spec(ret =>
+            ensures
+                ret > 0,
+                ret < 0,
+        )]
+        fn returns_one() -> i8 {
+            1
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        // The span labelled "failed this postcondition" must cover the
+        // actual clause text ("ret < 0"), not just the keyword "ensures".
+        let has_clause_span = err.errors[0].spans.iter().any(|s| {
+            s.label.as_deref() == Some("failed this postcondition")
+                && s.text.iter().any(|t| t.text.contains("ret < 0"))
+        });
+        assert!(has_clause_span, "expected span on `ret < 0`, got: {:#?}", err.errors[0].spans);
+    }
+}
+
+test_verify_one_file! {
     #[test] test_erase_unverified_code code!{
         use vstd::prelude::*;
         #[verus_spec(
