@@ -1241,7 +1241,7 @@ test_verify_one_file! {
         // The span labelled "failed this postcondition" must cover the
         // actual clause text ("ret < 0"), not just the keyword "ensures".
         let has_clause_span = err.errors[0].spans.iter().any(|s| {
-            s.label.as_deref() == Some("failed this postcondition")
+            s.label.as_deref() == Some(vir::def::THIS_POST_FAILED)
                 && s.text.iter().any(|t| t.text.contains("ret < 0"))
         });
         assert!(has_clause_span, "expected span on `ret < 0`, got: {:#?}", err.errors[0].spans);

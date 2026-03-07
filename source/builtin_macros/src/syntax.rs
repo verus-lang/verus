@@ -627,8 +627,13 @@ impl Visitor {
                     if let Some((p, ty)) = ret_pat {
                         if let Some(final_ret_pat) = final_ret_pat {
                             for expr in exprs.exprs.iter_mut() {
+                                // Use the expression's own span so that
+                                // postcondition-failure errors point at the
+                                // specific failing clause, not at the `ensures`
+                                // keyword.
+                                let expr_span = expr.span();
                                 *expr = Expr::Verbatim(
-                                    quote_spanned! {token.span => {let #final_ret_pat = #p; #expr}},
+                                    quote_spanned! {expr_span => {let #final_ret_pat = #p; #expr}},
                                 )
                             }
                         }
@@ -4990,17 +4995,6 @@ pub(crate) fn sig_specs_attr(
         if let Some(err_stmt) = check_return_ident(p, &sig.inputs) {
             spec_stmts.push(err_stmt);
         }
-    }
-
-    // If final_ret_pat is a simple ident (i.e. it wasn't turned into a complex
-    // pattern by take_sig_with_spec), the wrapping
-    //   {let ident = ident; expr}
-    // is a semantic no-op that replaces each ensures expression's span with the
-    // `ensures` keyword span, causing postcondition-failure errors to point at
-    // `ensures` instead of the specific failing clause.  Skip wrapping in this
-    // case, matching the behaviour of the verus!{} macro path.
-    if matches!(&final_ret_pat, Some(pat) if matches!(pat, Pat::Ident(_))) {
-        final_ret_pat = None;
     }
 
     let sig_span = sig.span().clone();
