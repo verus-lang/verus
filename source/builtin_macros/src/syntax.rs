@@ -131,7 +131,10 @@ fn path_is_ident(path: &Path, s: &str) -> bool {
 fn path_matches_idents(path: &Path, expected: &[&str]) -> bool {
     let segments = &path.segments;
     segments.len() == expected.len()
-        && segments.iter().zip(expected.iter()).all(|(segment, expected)| segment.ident == *expected)
+        && segments
+            .iter()
+            .zip(expected.iter())
+            .all(|(segment, expected)| segment.ident == *expected)
 }
 
 fn split_off_proof_note_attrs(attrs: &mut Vec<Attribute>) -> Vec<Attribute> {
