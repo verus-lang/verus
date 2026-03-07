@@ -128,6 +128,15 @@ fn path_is_ident(path: &Path, s: &str) -> bool {
     segments.len() == 1 && segments.first().unwrap().ident == s
 }
 
+fn path_matches_idents(path: &Path, expected: &[&str]) -> bool {
+    let segments = &path.segments;
+    segments.len() == expected.len()
+        && segments
+            .iter()
+            .zip(expected.iter())
+            .all(|(segment, expected)| segment.ident == *expected)
+}
+
 pub(crate) fn into_spans(span: Span) -> proc_macro2::extra::DelimSpan {
     let mut group = proc_macro2::Group::new(proc_macro2::Delimiter::None, TokenStream::new());
     group.set_span(span);
@@ -3652,16 +3661,10 @@ impl Visitor {
     }
 
     fn normalize_expr_proof_note_attrs(&mut self, expr: &mut Expr) {
-        fn is_proof_note_attr(attr: &Attribute) -> bool {
-            attr.path().segments.len() == 2
-                && attr.path().segments[0].ident == "verifier"
-                && attr.path().segments[1].ident == "proof_note"
-        }
-
         let mut proof_note_attrs = Vec::new();
         let mut other_attrs = Vec::new();
         for mut attr in expr.replace_attrs(Vec::new()) {
-            if is_proof_note_attr(&attr) {
+            if path_matches_idents(&attr.path(), &["verifier", "proof_note"]) {
                 attr.style = verus_syn::AttrStyle::Outer;
                 proof_note_attrs.push(attr);
             } else {
