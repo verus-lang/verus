@@ -1660,3 +1660,16 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
 }
+
+test_verify_one_file! {
+    #[test] ghost_tracked_explicit_type_args verus_code! {
+        fn test_ghost_explicit_type_arg() {
+            let g1 = Ghost::<int>(1);
+            assert(g1@ == 1);
+        }
+
+        proof fn test_tracked_explicit_type_arg() {
+            let tracked t1 = Tracked::<int>(1);
+        }
+    } => Ok(())
+}
