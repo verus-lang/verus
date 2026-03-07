@@ -1231,21 +1231,12 @@ test_verify_one_file! {
         #[verus_spec(ret =>
             ensures
                 ret > 0,
-                ret < 0,
+                ret < 0, // FAILS
         )]
         fn returns_one() -> i8 {
             1
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 1);
-        // The span labelled "failed this postcondition" must cover the
-        // actual clause text ("ret < 0"), not just the keyword "ensures".
-        let has_clause_span = err.errors[0].spans.iter().any(|s| {
-            s.label.as_deref() == Some(vir::def::THIS_POST_FAILED)
-                && s.text.iter().any(|t| t.text.contains("ret < 0"))
-        });
-        assert!(has_clause_span, "expected span on `ret < 0`, got: {:#?}", err.errors[0].spans);
-    }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
