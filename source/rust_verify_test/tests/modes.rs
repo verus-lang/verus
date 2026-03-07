@@ -1673,3 +1673,19 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] ghost_explicit_type_arg_in_spec verus_code! {
+        spec fn test_ghost_in_spec() -> int {
+            Ghost::<int>(1)@
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ghost_explicit_type_arg_mismatch verus_code! {
+        fn test_ghost_type_mismatch() {
+            let g1 = Ghost::<bool>(1int);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+}
