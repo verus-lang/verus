@@ -121,7 +121,6 @@ test_verify_one_file! {
     #[test] test_slice_iter verus_code! {
         use vstd::std_specs::slice::*;
         use vstd::seq;
-        use vstd::std_specs::iter::IteratorSpec;
 
         fn test() {
             let sl: &[u32] = &[0u32, 2u32, 4u32];

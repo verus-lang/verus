@@ -387,10 +387,10 @@ test_verify_one_file_with_options! {
     #[test] test_btree_map_iter ["exec_allows_no_decreases_clause"] => verus_code! {
         use std::collections::BTreeMap;
         use std::collections::btree_map::Iter;
-        use vstd::prelude::*;
         use vstd::std_specs::btree::*;
-        use vstd::std_specs::iter::IteratorSpec;
-
+        use vstd::set::set;
+        use vstd::map::Map;
+        use vstd::string::View;
         fn test()
         {
             let mut m = BTreeMap::<u32, i8>::new();
@@ -417,9 +417,9 @@ test_verify_one_file_with_options! {
     #[test] test_btree_set_iter ["exec_allows_no_decreases_clause"] => verus_code! {
         use std::collections::BTreeSet;
         use std::collections::btree_set::Iter;
+        use vstd::std_specs::btree::*;
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
-        use vstd::std_specs::btree::*;
         fn test()
         {
             let mut m = BTreeSet::<u32>::new();
@@ -450,8 +450,8 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_btree_map_decreases ["exec_allows_no_decreases_clause"] => verus_code! {
         use std::collections::BTreeMap;
-        use vstd::prelude::*;
         use vstd::std_specs::btree::*;
+        use vstd::prelude::*;
         pub enum Foo {
             Base(i64),
             Rec(BTreeMap<i64, Foo>),
