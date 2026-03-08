@@ -816,7 +816,7 @@ test_verify_one_file_with_options! {
         use std::collections::hash_map::Keys;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
-        use vstd::std_specs::iter::IteratorSpec;
+        use vstd::std_specs::iter::IteratorSpec;    // REVIEW: Should this be imported automatically?
         fn test()
         {
             let mut m = HashMap::<u32, i8>::new();
