@@ -11,6 +11,7 @@
 use super::super::laws_cmp::obeys_cmp_spec;
 use super::super::prelude::*;
 use super::cmp::OrdSpec;
+use super::iter::IteratorSpec;
 
 use alloc::alloc::Allocator;
 use core::borrow::Borrow;
@@ -62,102 +63,38 @@ pub broadcast axiom fn axiom_increasing_seq_meaning<K: Ord>(s: Seq<K>)
 #[verifier::accept_recursive_types(Value)]
 pub struct ExKeys<'a, Key, Value>(Keys<'a, Key, Value>);
 
-impl<'a, Key, Value> View for Keys<'a, Key, Value> {
-    type V = (int, Seq<Key>);
+// impl<'a, Key, Value> View for Keys<'a, Key, Value> {
+//     type V = (int, Seq<Key>);
 
-    uninterp spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
-}
+//     uninterp spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
+// }
 
-pub assume_specification<'a, Key, Value>[ Keys::<'a, Key, Value>::next ](
-    keys: &mut Keys<'a, Key, Value>,
-) -> (r: Option<&'a Key>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(keys)@;
-            match r {
-                None => {
-                    &&& keys@ == old(keys)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(k) => {
-                    let (new_index, new_seq) = keys@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& k == old_seq[old_index]
-                },
-            }
-        }),
-;
+// To allow reasoning about the "contents" of the Keys iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original keys.
+pub uninterp spec fn into_iter_keys<'a, Key, Value>(i: Keys<'a, Key, Value>) -> Seq<Key>;
 
-pub struct KeysGhostIterator<'a, Key, Value> {
-    pub pos: int,
-    pub keys: Seq<Key>,
-    pub phantom: Option<&'a Value>,
-}
-
-impl<'a, Key, Value> super::super::pervasive::ForLoopGhostIteratorNew for Keys<'a, Key, Value> {
-    type GhostIter = KeysGhostIterator<'a, Key, Value>;
-
-    open spec fn ghost_iter(&self) -> KeysGhostIterator<'a, Key, Value> {
-        KeysGhostIterator { pos: self@.0, keys: self@.1, phantom: None }
-    }
-}
-
-impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIterator for KeysGhostIterator<
-    'a,
-    Key,
-    Value,
-> {
-    type ExecIter = Keys<'a, Key, Value>;
-
-    type Item = Key;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &Keys<'a, Key, Value>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.keys == exec_iter@.1
+impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.keys == self.keys
-            &&& 0 <= self.pos <= self.keys.len()
-        }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+    uninterp spec fn completes(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter_keys(*self) == IteratorSpec::remaining(self).map_values(|v: Self::Item| *v)
     }
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.keys.len()
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.keys.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<Key> {
-        if 0 <= self.pos < self.keys.len() {
-            Some(self.keys[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_keys(*self).len() {
+            Some(&into_iter_keys(*self)[index])
         } else {
             None
         }
-    }
-
-    open spec fn ghost_advance(&self, _exec_iter: &Keys<'a, Key, Value>) -> KeysGhostIterator<
-        'a,
-        Key,
-        Value,
-    > {
-        Self { pos: self.pos + 1, ..*self }
-    }
-}
-
-impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
-    type V = Seq<Key>;
-
-    open spec fn view(&self) -> Seq<Key> {
-        self.keys.take(self.pos)
     }
 }
 
@@ -169,102 +106,46 @@ impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
 #[verifier::accept_recursive_types(Value)]
 pub struct ExValues<'a, Key, Value>(Values<'a, Key, Value>);
 
-impl<'a, Key, Value> View for Values<'a, Key, Value> {
-    type V = (int, Seq<Value>);
+// impl<'a, Key, Value> View for Values<'a, Key, Value> {
+//     type V = (int, Seq<Value>);
 
-    uninterp spec fn view(self: &Values<'a, Key, Value>) -> (int, Seq<Value>);
-}
+//     uninterp spec fn view(self: &Values<'a, Key, Value>) -> (int, Seq<Value>);
+// }
 
-pub assume_specification<'a, Key, Value>[ Values::<'a, Key, Value>::next ](
-    values: &mut Values<'a, Key, Value>,
-) -> (r: Option<&'a Value>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(values)@;
-            match r {
-                None => {
-                    &&& values@ == old(values)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(v) => {
-                    let (new_index, new_seq) = values@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& v == old_seq[old_index]
-                },
-            }
-        }),
-;
+// impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
+//     type V = Seq<Value>;
 
-pub struct ValuesGhostIterator<'a, Key, Value> {
-    pub pos: int,
-    pub values: Seq<Value>,
-    pub phantom: Option<&'a Key>,
-}
+//     open spec fn view(&self) -> Seq<Value> {
+//         self.values.take(self.pos)
+//     }
+// }
 
-impl<'a, Key, Value> super::super::pervasive::ForLoopGhostIteratorNew for Values<'a, Key, Value> {
-    type GhostIter = ValuesGhostIterator<'a, Key, Value>;
+// To allow reasoning about the "contents" of the Values iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original values.
+pub uninterp spec fn into_iter_values<'a, Key, Value>(i: Values<'a, Key, Value>) -> Seq<Value>;
 
-    open spec fn ghost_iter(&self) -> ValuesGhostIterator<'a, Key, Value> {
-        ValuesGhostIterator { pos: self@.0, values: self@.1, phantom: None }
-    }
-}
-
-impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIterator for ValuesGhostIterator<
-    'a,
-    Key,
-    Value,
-> {
-    type ExecIter = Values<'a, Key, Value>;
-
-    type Item = Value;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &Values<'a, Key, Value>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.values == exec_iter@.1
+impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.values == self.values
-            &&& 0 <= self.pos <= self.values.len()
-        }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+    uninterp spec fn completes(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter_values(*self) == IteratorSpec::remaining(self).map_values(|v: Self::Item| *v)
     }
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.values.len()
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.values.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<Value> {
-        if 0 <= self.pos < self.values.len() {
-            Some(self.values[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_values(*self).len() {
+            Some(&into_iter_values(*self)[index])
         } else {
             None
         }
-    }
-
-    open spec fn ghost_advance(&self, _exec_iter: &Values<'a, Key, Value>) -> ValuesGhostIterator<
-        'a,
-        Key,
-        Value,
-    > {
-        Self { pos: self.pos + 1, ..*self }
-    }
-}
-
-impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
-    type V = Seq<Value>;
-
-    open spec fn view(&self) -> Seq<Value> {
-        self.values.take(self.pos)
     }
 }
 
@@ -276,112 +157,44 @@ impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
 #[verifier::accept_recursive_types(V)]
 pub struct ExMapIter<'a, K, V>(btree_map::Iter<'a, K, V>);
 
-pub trait MapIterAdditionalSpecFns<'a, Key, Value> {
-    spec fn view(self: &Self) -> (int, Seq<(Key, Value)>);
-}
+// pub trait MapIterAdditionalSpecFns<'a, Key, Value> {
+//     spec fn view(self: &Self) -> (int, Seq<(Key, Value)>);
+// }
 
-impl<'a, K: 'a, V: 'a> View for btree_map::Iter<'a, K, V> {
-    type V = (int, Seq<(K, V)>);
+// impl<'a, K: 'a, V: 'a> View for btree_map::Iter<'a, K, V> {
+//     type V = (int, Seq<(K, V)>);
 
-    uninterp spec fn view(self: &btree_map::Iter<'a, K, V>) -> (int, Seq<(K, V)>);
-}
+//     uninterp spec fn view(self: &btree_map::Iter<'a, K, V>) -> (int, Seq<(K, V)>);
+// }
 
-pub assume_specification<'a, K: 'a, V: 'a>[ btree_map::Iter::<'a, K, V>::next ](
-    iter: &mut btree_map::Iter<'a, K, V>,
-) -> (r: Option<(&'a K, &'a V)>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(iter)@;
-            match r {
-                None => {
-                    &&& iter@ == old(iter)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some((k, v)) => {
-                    let (new_index, new_seq) = iter@;
-                    let (old_k, old_v) = old_seq[old_index];
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& k == old_k
-                    &&& v == old_v
-                    &&& old_seq.to_set().contains((*k, *v))
-                },
-            }
-        }),
-;
 
-pub struct MapIterGhostIterator<'a, Key: 'a, Value: 'a> {
-    pub pos: int,
-    pub kv_pairs: Seq<(Key, Value)>,
-    pub _marker: PhantomData<&'a Key>,
-}
+// To allow reasoning about the "contents" of the Iter iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original map.
+pub uninterp spec fn into_iter<'a, Key, Value>(i: btree_map::Iter<'a, Key, Value>) -> Seq<(Key, Value)>;
 
-impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIteratorNew for btree_map::Iter<
-    'a,
-    Key,
-    Value,
-> {
-    type GhostIter = MapIterGhostIterator<'a, Key, Value>;
-
-    open spec fn ghost_iter(&self) -> MapIterGhostIterator<'a, Key, Value> {
-        MapIterGhostIterator { pos: self@.0, kv_pairs: self@.1, _marker: PhantomData }
-    }
-}
-
-impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIterator for MapIterGhostIterator<
-    'a,
-    Key,
-    Value,
-> {
-    type ExecIter = btree_map::Iter<'a, Key, Value>;
-
-    type Item = (Key, Value);
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &btree_map::Iter<'a, Key, Value>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.kv_pairs == exec_iter@.1
+impl<'a, K, V> super::iter::IteratorSpecImpl for btree_map::Iter<'a, K, V> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.kv_pairs == self.kv_pairs
-            &&& 0 <= self.pos <= self.kv_pairs.len()
-        }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+    uninterp spec fn completes(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter(*self) == IteratorSpec::remaining(self).map_values(|i: Self::Item| (*i.0, *i.1))
     }
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.kv_pairs.len()
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.kv_pairs.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<(Key, Value)> {
-        if 0 <= self.pos < self.kv_pairs.len() {
-            Some(self.kv_pairs[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter(*self).len() {
+            let (k, v) = into_iter(*self)[index];
+            Some((&k, &v))
         } else {
             None
         }
-    }
-
-    open spec fn ghost_advance(
-        &self,
-        _exec_iter: &btree_map::Iter<'a, Key, Value>,
-    ) -> MapIterGhostIterator<'a, Key, Value> {
-        Self { pos: self.pos + 1, ..*self }
-    }
-}
-
-impl<'a, Key, Value> View for MapIterGhostIterator<'a, Key, Value> {
-    type V = Seq<(Key, Value)>;
-
-    open spec fn view(&self) -> Seq<(Key, Value)> {
-        self.kv_pairs.take(self.pos)
     }
 }
 
@@ -400,10 +213,17 @@ pub broadcast axiom fn axiom_spec_btree_map_iter<'a, Key, Value, A: Allocator + 
 )
     ensures
         ({
-            let (pos, v) = #[trigger] spec_btree_map_iter(m)@;
-            &&& pos == 0int
-            &&& forall|i: int| 0 <= i < v.len() ==> #[trigger] m@[v[i].0] == v[i].1
-            &&& increasing_seq(v.map(|idx: int, kv: (Key, Value)| kv.0))
+            // REVIEW: I'm not sure whether this is the right set of facts/triggers
+            let v = #[trigger] spec_btree_map_iter(m).remaining();
+            &&& v.len() == m@.dom().len()
+            &&& forall|i: int|
+                    #![trigger m@.contains_key(*v[i].0)]
+                    #![trigger m@[*v[i].0]]
+                    0 <= i < v.len() ==>
+                        m@.contains_key(*v[i].0) &&
+                        m@[*v[i].0] == *v[i].1
+            &&& forall |k: Key| #[trigger] m@.contains_key(k) ==> v.contains((&k, &m@[k]))
+            &&& v.map_values(|t: (&Key, &Value)| (*t.0, *t.1)).to_set() == m@.kv_pairs()
         }),
 ;
 
@@ -413,11 +233,11 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
 ) -> (iter: btree_map::Iter<'a, Key, Value>)
     ensures
         key_obeys_cmp_spec::<Key>() ==> {
-            let (index, s) = iter@;
-            &&& index == 0
-            &&& s.to_set() == m@.kv_pairs()
-            &&& s.no_duplicates()
-            &&& increasing_seq(s.map(|idx: int, kv: (Key, Value)| kv.0))
+            &&& iter == spec_btree_map_iter(m)
+            &&& iter.remaining().no_duplicates()
+            &&& IteratorSpec::decrease(&iter) is Some
+            &&& IteratorSpec::initial_value_inv(&iter, &iter)
+            &&& increasing_seq(iter.remaining().map_values(|kv: (&Key, &Value)| *kv.0))
         },
 ;
 
@@ -797,33 +617,67 @@ pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Valu
         m@ == Map::<Key, Value>::empty(),
 ;
 
+// To allow reasoning about the ghost Keys iterator when the executable
+// function `keys()` is invoked in a `for` loop header (e.g., in
+// `for x in it: m.keys() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
+// the executable `iter` method and define that spec function here.
+pub uninterp spec fn spec_keys_iter<'a, Key, Value, A: Allocator + Clone>(m: &'a BTreeMap<Key, Value, A>) -> (keys: Keys<'a, Key, Value>);
+
+pub broadcast proof fn axiom_spec_keys_iter<'a, Key, Value, A: Allocator + Clone>(m: &'a BTreeMap<Key, Value, A>)
+    ensures
+        (#[trigger] spec_keys_iter(m).remaining()).map_values(|v: &Key| *v).to_set() == m@.dom(),
+        spec_keys_iter(m).remaining().no_duplicates(),
+        spec_keys_iter(m).remaining().len() == m@.dom().len(),
+        increasing_seq(spec_keys_iter(m).remaining()),
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_keys_iter)]
 pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::keys ](
     m: &'a BTreeMap<Key, Value, A>,
 ) -> (keys: Keys<'a, Key, Value>)
     ensures
         key_obeys_cmp_spec::<Key>() ==> {
-            let (index, s) = keys@;
-            &&& index == 0
-            &&& s.to_set() == m@.dom()
-            &&& s.no_duplicates()
-            &&& increasing_seq(s)
+            &&& keys == spec_keys_iter(m)
+            &&& IteratorSpec::decrease(&keys) is Some
+            &&& IteratorSpec::initial_value_inv(&keys, &keys)
         },
 ;
 
+// To allow reasoning about the ghost Values iterator when the executable
+// function `value()` is invoked in a `for` loop header (e.g., in
+// `for x in it: m.keys() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
+// the executable `iter` method and define that spec function here.
+pub uninterp spec fn spec_values_iter<'a, Key, Value, A: Allocator + Clone>(m: &'a BTreeMap<Key, Value, A>) -> (values: Values<'a, Key, Value>);
+
+pub broadcast proof fn axiom_spec_values_iter<'a, Key, Value, A: Allocator + Clone>(m: &'a BTreeMap<Key, Value, A>)
+    ensures
+        (#[trigger] spec_values_iter(m).remaining()).map_values(|v: &Value| *v).to_set() == m@.values(),
+        spec_values_iter(m).remaining().len() == m@.dom().len()
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_values_iter)]
 pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::values ](
     m: &'a BTreeMap<Key, Value, A>,
 ) -> (values: Values<'a, Key, Value>)
     ensures
         key_obeys_cmp_spec::<Key>() ==> {
-            let (index, s) = values@;
-            &&& index == 0
-            &&& s.to_set() == m@.values()
+            &&& values == spec_values_iter(m)
+            &&& IteratorSpec::decrease(&values) is Some
+            &&& IteratorSpec::initial_value_inv(&values, &values)
             &&& exists|key_seq: Seq<Key>|
                 {
                     &&& increasing_seq(key_seq)
                     &&& key_seq.to_set() == m@.dom()
                     &&& key_seq.no_duplicates()
-                    &&& s == key_seq.map(|i: int, k| m@[k])
+                    &&& IteratorSpec::remaining(&values) == key_seq.map(|i: int, k| &m@[k])
                 }
         },
 ;
@@ -842,97 +696,38 @@ pub broadcast axiom fn axiom_btree_map_decreases<Key, Value, A: Allocator + Clon
 #[verifier::accept_recursive_types(K)]
 pub struct ExSetIter<'a, K: 'a>(btree_set::Iter<'a, K>);
 
-impl<'a, Key> View for btree_set::Iter<'a, Key> {
-    type V = (int, Seq<Key>);
+// impl<'a, Key> View for btree_set::Iter<'a, Key> {
+//     type V = (int, Seq<Key>);
 
-    uninterp spec fn view(self: &btree_set::Iter<'a, Key>) -> (int, Seq<Key>);
-}
+//     uninterp spec fn view(self: &btree_set::Iter<'a, Key>) -> (int, Seq<Key>);
+// }
 
-pub assume_specification<'a, Key>[ btree_set::Iter::<'a, Key>::next ](
-    elements: &mut btree_set::Iter<'a, Key>,
-) -> (r: Option<&'a Key>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(elements)@;
-            match r {
-                None => {
-                    &&& elements@ == old(elements)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(element) => {
-                    let (new_index, new_seq) = elements@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
-                },
-            }
-        }),
-;
+// To allow reasoning about the "contents" of the BtreeSet iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original keys.
+pub uninterp spec fn into_iter_btree_keys<'a, Key>(i: btree_set::Iter::<'a, Key>) -> Seq<Key>;
 
-pub struct SetIterGhostIterator<'a, Key> {
-    pub pos: int,
-    pub elements: Seq<Key>,
-    pub phantom: Option<&'a Key>,
-}
-
-impl<'a, Key> super::super::pervasive::ForLoopGhostIteratorNew for btree_set::Iter<'a, Key> {
-    type GhostIter = SetIterGhostIterator<'a, Key>;
-
-    open spec fn ghost_iter(&self) -> SetIterGhostIterator<'a, Key> {
-        SetIterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
-    }
-}
-
-impl<'a, Key> super::super::pervasive::ForLoopGhostIterator for SetIterGhostIterator<'a, Key> {
-    type ExecIter = btree_set::Iter<'a, Key>;
-
-    type Item = Key;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &btree_set::Iter<'a, Key>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.elements == exec_iter@.1
+impl<'a, T> super::iter::IteratorSpecImpl for btree_set::Iter::<'a, T> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.elements == self.elements
-            &&& 0 <= self.pos <= self.elements.len()
-        }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+    uninterp spec fn completes(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter_btree_keys(*self) == IteratorSpec::remaining(self).map_values(|v: Self::Item| *v)
     }
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.elements.len()
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.elements.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<Key> {
-        if 0 <= self.pos < self.elements.len() {
-            Some(self.elements[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_btree_keys(*self).len() {
+            Some(&into_iter_btree_keys(*self)[index])
         } else {
             None
         }
-    }
-
-    open spec fn ghost_advance(
-        &self,
-        _exec_iter: &btree_set::Iter<'a, Key>,
-    ) -> SetIterGhostIterator<'a, Key> {
-        Self { pos: self.pos + 1, ..*self }
-    }
-}
-
-impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
-    type V = Seq<Key>;
-
-    open spec fn view(&self) -> Seq<Key> {
-        self.elements.take(self.pos)
     }
 }
 
@@ -1144,16 +939,34 @@ pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::clear ]
         m@ == Set::<Key>::empty(),
 ;
 
+
+// To allow reasoning about the ghost keys in the BtreeSet iterator when the executable
+// function `iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: m.keys() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
+// the executable `iter` method and define that spec function here.
+pub uninterp spec fn spec_btree_keys_iter<'a, Key, A: Allocator + Clone>(m: &'a BTreeSet<Key, A>) ->  (r: btree_set::Iter<'a, Key>);
+
+pub broadcast proof fn axiom_spec_btree_keys_iter<'a, Key, A: Allocator + Clone>(m: &'a BTreeSet<Key, A>)
+    ensures
+        (#[trigger] spec_btree_keys_iter(m).remaining()).map_values(|v: &Key| *v).to_set() == m@,
+        spec_btree_keys_iter(m).remaining().no_duplicates(),
+        spec_btree_keys_iter(m).remaining().len() == m@.len(),
+        increasing_seq(spec_btree_keys_iter(m).remaining()),
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_btree_keys_iter)]
 pub assume_specification<'a, Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::iter ](
     m: &'a BTreeSet<Key, A>,
 ) -> (r: btree_set::Iter<'a, Key>)
     ensures
         key_obeys_cmp_spec::<Key>() ==> {
-            let (index, s) = r@;
-            &&& index == 0
-            &&& s.to_set() == m@
-            &&& s.no_duplicates()
-            &&& increasing_seq(s)
+            &&& r == spec_btree_keys_iter(m)
+            &&& IteratorSpec::decrease(&r) is Some
+            &&& IteratorSpec::initial_value_inv(&r, &r)
         },
 ;
 
@@ -1181,7 +994,10 @@ pub broadcast group group_btree_axioms {
     axiom_set_deref_key_to_value,
     axiom_set_box_key_to_value,
     axiom_spec_btree_set_len,
+    axiom_spec_btree_keys_iter,
     axiom_spec_btree_map_iter,
+    axiom_spec_keys_iter,
+    axiom_spec_values_iter,
     axiom_btree_map_decreases,
     axiom_btree_set_decreases,
 }

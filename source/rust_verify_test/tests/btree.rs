@@ -265,6 +265,8 @@ test_verify_one_file_with_options! {
         use std::collections::btree_map::Keys;
         use vstd::prelude::*;
         use vstd::std_specs::btree::*;
+        use vstd::std_specs::iter::IteratorSpec;
+        use vstd::laws_cmp::obeys_cmp_spec;
         fn test()
         {
             let mut m = BTreeMap::<u32, i8>::new();
@@ -272,36 +274,37 @@ test_verify_one_file_with_options! {
 
             m.insert(3, 4);
             m.insert(6, -8);
-            let m_keys = m.keys();
-            assert(m_keys@.0 == 0);
-            assert(m_keys@.1.to_set() =~= set![3u32, 6u32]);
-            let ghost g_keys = m_keys@.1;
+            let ghost m_keys = m.keys();
+            let ghost g_keys = m_keys.remaining();
             assert(increasing_seq(g_keys));
             assert(g_keys.no_duplicates());
-            assert(g_keys == seq![3u32, 6u32]) by {
-                assert forall|i, j| 0 <= i < j < g_keys.len() implies g_keys[i] < g_keys[j] by {
-                    assert(<u32 as vstd::std_specs::cmp::OrdSpec>::cmp_spec(&g_keys[i], &g_keys[j]) is Less);
+
+            // REVIEW: Needed because vstd lacks OrdSpec impl for &T
+            assume(obeys_cmp_spec::<&u32>());
+            assume(forall|a: &u32, b: &u32| (#[trigger] <&u32 as vstd::std_specs::cmp::OrdSpec>::cmp_spec(&a, &b)) == <u32 as vstd::std_specs::cmp::OrdSpec>::cmp_spec(a, b));
+
+            assert(g_keys == seq![&3u32, &6u32]) by {
+                assert(obeys_cmp_spec::<u32>());
+                assert forall|i, j| 0 <= i < j < g_keys.len() implies *g_keys[i] < *g_keys[j] by {
+                    assert(<&u32 as vstd::std_specs::cmp::OrdSpec>::cmp_spec(&g_keys[i], &g_keys[j]) is Less);
+                    assert(<u32 as vstd::std_specs::cmp::OrdSpec>::cmp_spec(g_keys[i], g_keys[j]) is Less);
                 }
                 assert(g_keys.len() == 2) by {
                     g_keys.unique_seq_to_set();
                     assert(set![3u32, 6u32].len() == 2);
                 }
-                assert(g_keys.to_set().contains(g_keys[0]));
-                assert(g_keys.to_set().contains(g_keys[1]));
+                let mapped = g_keys.map_values(|v: &u32| *v);
+                assert(mapped.to_set().contains(mapped[0]));
+                assert(mapped.to_set().contains(mapped[1]));
+                assert(g_keys =~= seq![&3u32, &6u32]);
             }
 
-
             let mut items = Vec::<u32>::new();
-            assert(items@ =~= g_keys.take(0));
-
-            for k in iter: m_keys
+            for k in iter: m.keys()
                 invariant
-                    iter.keys == g_keys,
-                    g_keys == seq![3u32, 6u32],
-                    increasing_seq(g_keys),
-                    items@ == iter@,
+                    g_keys == iter.seq(),
+                    items@ == iter.seq().take(iter.index@).map_values(|v: &u32| *v),
             {
-                assert(iter.keys.take(iter.pos).push(*k) =~= iter.keys.take(iter.pos + 1));
                 items.push(*k);
             }
             assert(items@ == seq![3u32, 6u32]) by {
@@ -319,6 +322,7 @@ test_verify_one_file_with_options! {
         use std::collections::btree_map::Values;
         use vstd::prelude::*;
         use vstd::std_specs::btree::*;
+        use vstd::std_specs::iter::IteratorSpec;
         fn test()
         {
             let mut m = BTreeMap::<u32, i8>::new();
@@ -333,24 +337,22 @@ test_verify_one_file_with_options! {
                 assert(m@.values() =~= set![4i8, -8i8]);
             };
             let m_values = m.values();
-            assert(m_values@.0 == 0);
-            assert(m_values@.1.to_set() == set![4i8, -8i8]);
-            let ghost g_values = m_values@.1;
-            assert(exists |key_seq| {
+            let ghost g_values = m_values.remaining();
+            assert(exists |key_seq: Seq<u32>| {
                     &&& increasing_seq(key_seq)
                     &&& key_seq.to_set() == m@.dom()
                     &&& key_seq.no_duplicates()
-                    &&& g_values == key_seq.map(|i: int, k| m@[k])
+                    &&& g_values == key_seq.map(|i: int, k: u32| &m@[k])
             });
-            let ghost g_keys = choose |key_seq| {
+            let ghost g_keys = choose |key_seq: Seq<u32>| {
                     &&& increasing_seq(key_seq)
                     &&& key_seq.to_set() == m@.dom()
                     &&& key_seq.no_duplicates()
-                    &&& g_values == key_seq.map(|i: int, k| m@[k])
+                    &&& g_values == key_seq.map(|i: int, k: u32| &m@[k])
             };
             assert(increasing_seq(g_keys));
             assert(g_keys.no_duplicates());
-            assert(g_values == seq![4i8, -8i8]) by {
+            assert(g_values == seq![&4i8, &-8i8]) by {
                 assert forall|i, j| 0 <= i < j < g_keys.len() implies g_keys[i] < g_keys[j] by {
                     assert(<u32 as vstd::std_specs::cmp::OrdSpec>::cmp_spec(&g_keys[i], &g_keys[j]) is Less);
                 }
@@ -361,20 +363,17 @@ test_verify_one_file_with_options! {
                 assert(g_keys.to_set().contains(g_keys[0]));
                 assert(g_keys.to_set().contains(g_keys[1]));
                 assert(g_keys == seq![3u32, 6u32]);
-                assert(g_values == g_keys.map(|i: int, k| m@[k]));
+                assert(g_values == g_keys.map(|i: int, k: u32| &m@[k]));
             }
 
 
             let mut items = Vec::<i8>::new();
-            assert(items@ =~= g_values.take(0));
 
             for v in iter: m_values
                 invariant
-                    iter.values == g_values,
-                    g_values == seq![4i8, -8i8],
-                    items@ == iter@,
+                    g_values == iter.seq(),
+                    items@ == iter.seq().take(iter.index@).map_values(|v: &i8| *v),
             {
-                assert(iter.values.take(iter.pos).push(*v) =~= iter.values.take(iter.pos + 1));
                 items.push(*v);
             }
             assert(items@ == seq![4i8, -8i8]) by {
@@ -390,6 +389,8 @@ test_verify_one_file_with_options! {
         use std::collections::btree_map::Iter;
         use vstd::prelude::*;
         use vstd::std_specs::btree::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
         fn test()
         {
             let mut m = BTreeMap::<u32, i8>::new();
@@ -399,11 +400,12 @@ test_verify_one_file_with_options! {
             m.insert(6, -8);
 
             let mut idx = 0;
-            let m_iter = m.iter();
-            for (k, v) in iter: m_iter
+            for (k, v) in iter: m.iter()
                 invariant
-                    iter.kv_pairs.to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
+                    iter.seq().map_values(|v: (&u32, &i8)| (*v.0, *v.1)).to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
             {
+                // OBSERVE: triggers the extensionality in the invariant
+                assert(m@.kv_pairs().contains((*k, *v)));        
                 assert(*k == 3 ==> *v == 4);
                 assert(*k == 6 ==> *v == -8);
             }
@@ -416,6 +418,7 @@ test_verify_one_file_with_options! {
         use std::collections::BTreeSet;
         use std::collections::btree_set::Iter;
         use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
         use vstd::std_specs::btree::*;
         fn test()
         {
@@ -424,28 +427,23 @@ test_verify_one_file_with_options! {
 
             m.insert(3);
             m.insert(6);
-            let m_iter = m.iter();
-            assert(m_iter@.0 == 0);
-            assert(m_iter@.1.to_set() =~= set![3u32, 6u32]);
-            let ghost g_elements = m_iter@.1;
-
+            let ghost m_iter = m.iter();
+            assert(m_iter.remaining().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32]);
+            
             let mut items = Vec::<u32>::new();
-            assert(items@ =~= g_elements.take(0));
 
-            for k in iter: m_iter
+            for k in iter: m.iter()
                 invariant
-                    iter.elements == g_elements,
-                    g_elements.to_set() =~= set![3u32, 6u32],
-                    items@ == iter@,
+                    iter.seq().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32],
+                    items@ == iter.seq().take(iter.index@).map_values(|v: &u32| *v),
             {
-                assert(iter.elements.take(iter.pos).push(*k) =~= iter.elements.take(iter.pos + 1));
                 items.push(*k);
             }
             assert(items@.to_set() =~= set![3u32, 6u32]) by {
-                assert(g_elements.take(g_elements.len() as int) =~= g_elements);
+                assert(m_iter.remaining().take(m_iter.remaining().len() as int) == m_iter.remaining());
             }
             assert(items@.no_duplicates());
-        }
+        }        
     } => Ok(())
 }
 

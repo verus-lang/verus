@@ -896,7 +896,7 @@ test_verify_one_file_with_options! {
                 invariant
                     iter.seq().map_values(|v: (&u32, &i8)| (*v.0, *v.1)).to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
             {
-                // OBSERVE: triggers the extensionality in the first invariant
+                // OBSERVE: triggers the extensionality in the invariant
                 assert(m@.kv_pairs().contains((*k, *v)));
                 assert(*k == 3 ==> *v == 4);
                 assert(*k == 6 ==> *v == -8);
