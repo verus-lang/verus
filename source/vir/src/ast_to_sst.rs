@@ -661,7 +661,7 @@ pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
 /// The purpose of the `Sequencer` object is to safely commute all the Exps to the end.
 struct Sequencer {
     stms: Vec<Vec<Stm>>,
-    exps: Vec<(Exp, Immutable)>,
+    exps: Vec<(Exp, Immutable, Option<Exp>)>,
 }
 
 impl Sequencer {
@@ -680,7 +680,26 @@ impl Sequencer {
         self.stms.push(stms);
         match rv.to_maybe_exp() {
             Maybe::Some(e) => {
-                self.exps.push((e, kind));
+                self.exps.push((e, kind, None));
+                None
+            }
+            Maybe::Never => {
+                let all_stms = std::mem::take(&mut self.stms).into_iter().flatten().collect();
+                Some(all_stms)
+            }
+        }
+    }
+
+    /// Append the given Stms and the borrow for the two-phase borrow.
+    /// This enables extra validation checks.
+    #[must_use]
+    fn push_2phase<T>(&mut self, stms: Vec<Stm>, rv: &Maybe<(BorrowMutSst, T)>, kind: Immutable) -> Option<Vec<Stm>> {
+        self.stms.push(stms);
+        match rv {
+            Maybe::Some((borrow_mut_sst, _)) => {
+                let e = borrow_mut_sst.mut_ref_exp.clone();
+                let loc = borrow_mut_sst.loc.clone();
+                self.exps.push((e, kind, Some(loc)));
                 None
             }
             Maybe::Never => {
@@ -692,8 +711,10 @@ impl Sequencer {
 
     /// Upon completion, turn all the inputted data into (Stms, Exps) that can be evaluated
     /// in that order.
-    fn into_stms_exps(self, state: &mut State) -> (Vec<Stm>, Vec<Exp>) {
+    fn into_stms_exps(self, state: &mut State) -> Result<(Vec<Stm>, Vec<Exp>), VirErr> {
         assert!(self.stms.len() == self.exps.len() || self.stms.len() == self.exps.len() + 1);
+
+        self.validate_2phase()?;
 
         let mut largest_idx_with_stm = None;
         for i in (0..self.stms.len()).rev() {
@@ -707,7 +728,7 @@ impl Sequencer {
         let mut final_exps = vec![];
 
         for i in 0..self.exps.len() {
-            let (arg, kind) = &self.exps[i];
+            let (arg, kind, _) = &self.exps[i];
 
             // Create a temporary for any exp that comes before a stm
             if largest_idx_with_stm.is_some()
@@ -727,14 +748,14 @@ impl Sequencer {
         }
 
         let final_stms = final_stms.into_iter().flatten().collect::<Vec<_>>();
-        (final_stms, final_exps)
+        Ok((final_stms, final_exps))
     }
 
     /// Helper for the special case of binary ops
-    fn into_stms_exps_expect_2(self, state: &mut State) -> (Vec<Stm>, Exp, Exp) {
-        let (stms, exps) = self.into_stms_exps(state);
+    fn into_stms_exps_expect_2(self, state: &mut State) -> Result<(Vec<Stm>, Exp, Exp), VirErr> {
+        let (stms, exps) = self.into_stms_exps(state)?;
         assert!(exps.len() == 2);
-        (stms, exps[0].clone(), exps[1].clone())
+        Ok((stms, exps[0].clone(), exps[1].clone()))
     }
 
     /// Use this when there are extra Stms at the end that don't go with any of the
@@ -742,10 +763,42 @@ impl Sequencer {
     /// i.e. if we have
     ///    stms[0], exps[0], stms[1], exps[1], ... stms[n], exps[n], stms[n+1]
     /// Then pass stms[n+1] as the argument to this function
-    fn into_stms_exps_with_extra(self, state: &mut State, stms: Vec<Stm>) -> (Vec<Stm>, Vec<Exp>) {
+    fn into_stms_exps_with_extra(self, state: &mut State, stms: Vec<Stm>) -> Result<(Vec<Stm>, Vec<Exp>), VirErr> {
         let mut s = self;
         s.stms.push(stms);
         s.into_stms_exps(state)
+    }
+
+    /// Check that there are no assignments that interfere with 2-phase borrows,
+    /// i.e., for each two-phase borrow, check there are no assignments from that point until
+    /// the end that interfere with the borrow.
+    ///
+    /// Such a case is *usually* caught by borrow-checking, but there are some cases
+    /// that rustc accepts which our encoding doesn't handle properly, e.g.,
+    ///
+    /// ```rust
+    /// let mut r: &mut T = ...;
+    /// f(&mut[two_phase] *r, { r = something; true });
+    /// ```
+    ///
+    /// This is allowed by `r = something` overwrites the pointer itself, so it doesn't
+    /// interfere with the borrowed-from location, but our encoding always treats `*r`
+    /// as the "same place". Fortunately, such a case ought to be exceedingly rare,
+    /// so we don't need to support it, just check for it.
+    fn validate_2phase(&self) -> Result<(), VirErr> {
+        for i in self.exps.len() {
+            if let Some(loc) = &self.exps[i].2 {
+                // Skip the last entry in stms, so only iterate up to self.exps.len()
+                for j in i+1 .. self.exps.len() {
+                    for stm in &self.stms[j].iter() {
+                        if let Some(span) = find_overlapping_assignment(loc, stm) {
+                            return Err(error_with_label(&loc.span, "Verus doesn't support assigning during (two-phase) mutable borrow like this", "this borrow").secondary_label(span, "followed by this assignment"));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -797,8 +850,8 @@ fn expr_get_call(
                 let mut sequr = Sequencer::new();
 
                 // Suppose have as arguments:
-                //   TwoPhaseMutBorrow(p1)
-                //   TwoPhaseMutBorrow(p2)
+                //   TwoPhaseBorrowMut(p1)
+                //   TwoPhaseBorrowMut(p2)
                 //
                 // Then the "second phase" of these arguments goes after the argument evaluation.
                 // So the result would look like:
@@ -826,14 +879,8 @@ fn expr_get_call(
                     match &arg.x {
                         ExprX::TwoPhaseBorrowMut(_) => {
                             let (phase1_stms, bor_sst) = borrow_mut_to_sst(ctx, state, arg)?;
-                            let mut_ref_exp = match &bor_sst {
-                                Maybe::Never => Maybe::Never,
-                                Maybe::Some((bor_sst, _obligations)) => {
-                                    Maybe::Some(Value::Exp(bor_sst.mut_ref_exp.clone()))
-                                }
-                            };
 
-                            let early_return = sequr.push(phase1_stms, mut_ref_exp, kind);
+                            let early_return = sequr.push_2phase(phase1_stms, &bor_sst, kind);
                             if let Some(stms) = early_return {
                                 return Ok(Some((stms, Maybe::Never)));
                             }
@@ -870,7 +917,7 @@ fn expr_get_call(
                     second_phase.append(&mut stms0);
                 }
 
-                let (stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase);
+                let (stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
 
                 use crate::ast::{CallTargetKind, FunctionKind};
                 let is_trait_default =
@@ -1443,7 +1490,7 @@ pub(crate) fn expr_to_stm_opt(
                 Immutable(LocalDeclKind::TempViaAssign)
             ));
 
-            let (mut stms, e_r, e_l) = sequr.into_stms_exps_expect_2(state);
+            let (mut stms, e_r, e_l) = sequr.into_stms_exps_expect_2(state)?;
             let (mut stms3, bin) =
                 binary_op_exp(ctx, state, &expr.span, &place.typ, *binary_op, &e_l, &e_r);
             stms.append(&mut stms3);
@@ -1474,7 +1521,7 @@ pub(crate) fn expr_to_stm_opt(
                 Immutable(LocalDeclKind::TempViaAssign)
             ));
 
-            let (mut stms, e_r, e_l) = sequr.into_stms_exps_expect_2(state);
+            let (mut stms, e_r, e_l) = sequr.into_stms_exps_expect_2(state)?;
 
             if *resolve {
                 let resx = ExpX::UnaryOpr(UnaryOpr::HasResolved(typ.clone()), e_l.clone());
@@ -1716,13 +1763,7 @@ pub(crate) fn expr_to_stm_opt(
                 match &arg.x {
                     ExprX::TwoPhaseBorrowMut(_) => {
                         let (phase1_stms, bor_sst) = borrow_mut_to_sst(ctx, state, arg)?;
-                        let mut_ref_exp = match &bor_sst {
-                            Maybe::Never => Maybe::Never,
-                            Maybe::Some((bor_sst, _obligations)) => {
-                                Maybe::Some(Value::Exp(bor_sst.mut_ref_exp.clone()))
-                            }
-                        };
-                        push_or_return_never!(sequr.push(phase1_stms, mut_ref_exp, kind));
+                        push_or_return_never!(sequr.push_2phase(phase1_stms, &bor_sst, kind));
                         let Maybe::Some((bor_sst, obligations)) = bor_sst else { unreachable!() };
                         second_phase.push(bor_sst.phase2_stm);
                         all_obligations.extend(obligations);
@@ -1733,7 +1774,7 @@ pub(crate) fn expr_to_stm_opt(
                     }
                 }
             }
-            let (mut stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase);
+            let (mut stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
 
             let mut args: Vec<Binder<Exp>> = Vec::new();
             for (binder, e1) in binders.iter().zip(exps.into_iter()) {
@@ -1846,7 +1887,7 @@ pub(crate) fn expr_to_stm_opt(
                         e2,
                         Immutable(LocalDeclKind::TempViaAssign)
                     ));
-                    let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state);
+                    let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state)?;
 
                     let (mut stms3, bin) =
                         binary_op_exp(ctx, state, &expr.span, &expr.typ, *op, &e1, &e2);
@@ -1863,7 +1904,7 @@ pub(crate) fn expr_to_stm_opt(
             let mut sequr = Sequencer::new();
             push_or_return_never!(sequr.push(stms1, e1, Immutable(LocalDeclKind::TempViaAssign)));
             push_or_return_never!(sequr.push(stms2, e2, Immutable(LocalDeclKind::TempViaAssign)));
-            let (stms, e1, e2) = sequr.into_stms_exps_expect_2(state);
+            let (stms, e1, e2) = sequr.into_stms_exps_expect_2(state)?;
 
             let bin = mk_exp(ExpX::BinaryOpr(op.clone(), e1, e2));
             Ok((stms, Maybe::Some(Value::Exp(bin))))
@@ -1956,7 +1997,7 @@ pub(crate) fn expr_to_stm_opt(
                     Immutable(LocalDeclKind::TempViaAssign)
                 ));
             }
-            let (stms, exps) = sequr.into_stms_exps(state);
+            let (stms, exps) = sequr.into_stms_exps(state)?;
             let array_lit = mk_exp(ExpX::ArrayLiteral(Arc::new(exps)));
             Ok((stms, Maybe::Some(Value::Exp(array_lit))))
         }
@@ -2824,7 +2865,7 @@ pub(crate) fn expr_to_stm_opt(
             match bor_sst {
                 Maybe::Never => Ok((stms, Maybe::Never)),
                 Maybe::Some((bor_sst, obligations)) => {
-                    let BorrowMutSst { phase2_stm, mut_ref_exp } = bor_sst;
+                    let BorrowMutSst { phase2_stm, mut_ref_exp, loc: _ } = bor_sst;
                     stms.push(phase2_stm);
                     typ_inv_obligations(
                         ctx,
@@ -2878,7 +2919,7 @@ fn expr_to_stm_opt_with_delayed_obligations(
             match bor_sst {
                 Maybe::Never => Ok((stms, Maybe::Never)),
                 Maybe::Some((bor_sst, obligations)) => {
-                    let BorrowMutSst { phase2_stm, mut_ref_exp } = bor_sst;
+                    let BorrowMutSst { phase2_stm, mut_ref_exp, loc: _ } = bor_sst;
                     stms.push(phase2_stm);
                     Ok((stms, Maybe::Some((Value::Exp(mut_ref_exp), obligations))))
                 }
@@ -3043,6 +3084,8 @@ struct BorrowMutSst {
     /// Exp representing the mutable borrow.
     /// This will always be a (non-mutable) temp variable.
     mut_ref_exp: Exp,
+    /// Location being modified
+    loc: Exp,
 }
 
 /// Given a mutable borrow expr (either BorrowMut or TwoPhaseBorrowMut), lowers it to the
@@ -3105,10 +3148,10 @@ fn borrow_mut_to_sst(
     };
     let future_exp = SpannedTyped::new(&expr.span, &t, future_expx);
 
-    let assignx = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: future_exp };
+    let assignx = StmX::Assign { lhs: Dest { dest: lhs_exp.clone(), is_init: false }, rhs: future_exp };
     let assign = Spanned::new(expr.span.clone(), assignx);
 
-    Ok((phase1_stms, Maybe::Some((BorrowMutSst { phase2_stm: assign, mut_ref_exp }, obligations))))
+    Ok((phase1_stms, Maybe::Some((BorrowMutSst { phase2_stm: assign, mut_ref_exp, loc: lhs_exp }, obligations))))
 }
 
 #[derive(Clone)]
