@@ -235,55 +235,66 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
  * Definitions for `map()`
  ********************************************************************************/
 
-#[verifier::external_body]
-#[verifier::external_type_specification]
-#[verifier::reject_recursive_types(I)]
-#[verifier::reject_recursive_types(F)]
-pub struct ExMap<I, F>(core::iter::Map<I, F>);
-
-// Ghost accessor for the inner iterator
-pub uninterp spec fn map_iter<I, F>(r: core::iter::Map<I, F>) -> I;
-
-// Ghost accessor for the inner function
-pub uninterp spec fn map_fun<I, F>(r: core::iter::Map<I, F>) -> F;
-
-impl <I, F> IteratorSpecImpl for core::iter::Map<I, F>
-    where 
-        I: Iterator + IteratorSpec, 
-        F: FnMut(I::Item),
-//        F: FnMut(I::Item) -> B,
-{
-
-    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        map_iter(*self).obeys_prophetic_iter_laws()
-    }
-
-    #[verifier::prophetic]
-    uninterp spec fn remaining(&self) -> Seq<Self::Item>; 
-
-    #[verifier::prophetic]
-    uninterp spec fn completes(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_inv(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& map_iter(*self).initial_value_inv(&map_iter(*init))
-    }
-
-    uninterp spec fn decrease(&self) -> Option<nat>;
-
-    open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        None
-        // REVIEW: It would be nice to use a definition like the one below,
-        //         but we don't have an output value to supply for ???
-        //         We also can't reference `remaining` since its prophetic
-        //         and `peek` is not
-        // match map_iter(*self).peek(index) {
-        //     Some(v) => Some(map_fun(*self).call_ensures((v,), ???),
-        //     None => None,
-        // }
-    }
-}
+// TODO: The external type specification and IteratorSpecImpl for core::iter::Map<I, F>
+// are commented out because Verus's trait conflict checker reports that the type parameter
+// B in std's Iterator and DoubleEndedIterator impls for Map is "not constrained by the
+// impl trait, self type, or predicates". This is because those impls have an extra type
+// parameter B (from F: FnMut(I::Item) -> B) that only appears in the where clause.
+//
+// #[verifier::external_body]
+// #[verifier::external_type_specification]
+// #[verifier::reject_recursive_types(I)]
+// #[verifier::reject_recursive_types(F)]
+// pub struct ExMap<I, F>(core::iter::Map<I, F>);
+//
+// // Ghost accessor for the inner iterator
+// pub uninterp spec fn map_iter<I, F>(r: core::iter::Map<I, F>) -> I;
+//
+// // Ghost accessor for the inner function
+// pub uninterp spec fn map_fun<I, F>(r: core::iter::Map<I, F>) -> F;
+//
+// The IteratorSpecImpl for core::iter::Map<I, F> is also commented out because
+// Verus's type normalization panics when resolving <Map<I, F> as Iterator>::Item.
+// The std Iterator impl for Map has an extra type parameter B (from F: FnMut(I::Item) -> B),
+// and the normalizer introduces inference variables that trigger an assertion failure
+// in rust_to_vir_base.rs.
+//
+// impl <B, I, F> IteratorSpecImpl for core::iter::Map<I, F>
+//     where
+//         I: Iterator + IteratorSpec,
+//         F: FnMut(I::Item) -> B,
+// {
+//
+//     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+//         map_iter(*self).obeys_prophetic_iter_laws()
+//     }
+//
+//     #[verifier::prophetic]
+//     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+//
+//     #[verifier::prophetic]
+//     uninterp spec fn completes(&self) -> bool;
+//
+//     #[verifier::prophetic]
+//     open spec fn initial_value_inv(&self, init: &Self) -> bool {
+//         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+//         &&& map_iter(*self).initial_value_inv(&map_iter(*init))
+//     }
+//
+//     uninterp spec fn decrease(&self) -> Option<nat>;
+//
+//     open spec fn peek(&self, index: int) -> Option<Self::Item> {
+//         None
+//         // REVIEW: It would be nice to use a definition like the one below,
+//         //         but we don't have an output value to supply for ???
+//         //         We also can't reference `remaining` since its prophetic
+//         //         and `peek` is not
+//         // match map_iter(*self).peek(index) {
+//         //     Some(v) => Some(map_fun(*self).call_ensures((v,), ???),
+//         //     None => None,
+//         // }
+//     }
+// }
 
 // impl <B, I, F> DoubleEndedIteratorSpecImpl for MyMap<B, I, F>
 //     where I: DoubleEndedIterator + IteratorSpec,
