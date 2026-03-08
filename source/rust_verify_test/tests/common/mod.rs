@@ -51,6 +51,7 @@ pub struct TestErr {
     pub warnings: Vec<Diagnostic>,
     pub notes: Vec<Diagnostic>,
     pub expand_errors_notes: Vec<Diagnostic>, // produced by the `--expand-errors` flag
+    pub json_output: Option<serde_json::Value>, // captured when `--output-json` is used
 }
 
 #[allow(dead_code)]
@@ -143,6 +144,12 @@ pub fn verify_files_vstd_all_diags(
     let run =
         run_verus(options, &test_input_dir, &test_input_dir.join(&entry_file), import_vstd, true);
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+    let json_output = if options.contains(&"--output-json") {
+        let stdout_str = std::str::from_utf8(&run.stdout[..]).unwrap_or("").trim();
+        serde_json::from_str(stdout_str).ok()
+    } else {
+        None
+    };
 
     let mut errors = Vec::new();
     let mut expand_errors_notes = Vec::new();
@@ -174,9 +181,9 @@ pub fn verify_files_vstd_all_diags(
     }
 
     if is_failure {
-        Err(TestErr { errors, warnings, notes, expand_errors_notes })
+        Err(TestErr { errors, warnings, notes, expand_errors_notes, json_output })
     } else {
-        Ok(TestErr { errors, warnings, notes, expand_errors_notes })
+        Ok(TestErr { errors, warnings, notes, expand_errors_notes, json_output })
     }
 }
 
@@ -301,10 +308,16 @@ pub fn run_verus(
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
+        } else if *option == "--no-erasure-check" {
+            verus_args.push("--no-erasure-check".to_string());
+        } else if *option == "--no-verify" {
+            verus_args.push("--no-verify".to_string());
         } else if *option == "--no-report-long-running" {
             verus_args.push("--no-report-long-running".to_string());
         } else if *option == "--no-cheating" {
             verus_args.push("--no-cheating".to_string());
+        } else if *option == "--output-json" {
+            verus_args.push("--output-json".to_string());
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {
@@ -791,6 +804,13 @@ pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
             || err.errors[0].message.contains("lifetime may not live long enough")
     ); // thus a Rust error
     assert!(err.errors[0].message.contains(expected_msg));
+}
+
+#[allow(dead_code)]
+pub fn assert_rust_error_msg_skip_spec_msgs(err: TestErr, expected_msg: &str) {
+    let mut err = err;
+    err.errors = err.errors.into_iter().filter(|e| !e.message.contains("(Verus spec")).collect();
+    assert_rust_error_msg(err, expected_msg)
 }
 
 #[allow(dead_code)]

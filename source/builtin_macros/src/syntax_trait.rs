@@ -125,6 +125,14 @@ fn expand_extension_trait<'tcx>(
                 f_tspec.default = None;
                 f_tspec_impl.default = None;
                 f_tspec_impl.sig.mode = FnMode::Default;
+                // Remove #[verifier::prophetic] from the TSpecImpl methods.
+                // The TSpecImpl trait is marked #[verifier::external], so any Verus-specific
+                // attributes cause a spurious warning about having no effect.
+                f_tspec_impl.attrs.retain(|attr| {
+                    !(attr.path().segments.len() == 2
+                        && attr.path().segments[0].ident == "verifier"
+                        && attr.path().segments[1].ident == "prophetic")
+                });
                 f_blanket.sig.mode = FnMode::Default;
                 tspec_items.push(TraitItem::Fn(f_tspec));
                 tspec_impl_items.push(TraitItem::Fn(f_tspec_impl));
@@ -171,7 +179,9 @@ fn expand_extension_trait<'tcx>(
     let blanket_bound: TypeParamBound = {
         tr.supertraits.iter().find(|tpb| is_sizedness_bound(tpb)).cloned().unwrap_or_else(|| {
             let span = tr.generics.span();
-            parse_quote_spanned!(span => core::marker::MetaSized)
+            // eventually TODO? MetaSized currently breaks stable rust when compiling to executable code
+            // parse_quote_spanned!(span => core::marker::MetaSized)
+            parse_quote_spanned!(span => ?Sized)
         })
     };
     blanket_impl.generics.params.push(parse_quote_spanned!(span => #self_x: #t + #blanket_bound));

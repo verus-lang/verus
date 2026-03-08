@@ -115,7 +115,7 @@ test_verify_one_file_with_options! {
 
         #[verifier::prophetic]
         spec fn test3<T>(x: &mut T) -> T {
-            *fin(x)
+            *final(x)
         }
     } => Ok(())
 }
@@ -131,7 +131,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_fin_proph ["new-mut-ref"] => verus_code! {
         spec fn test<T>(x: &mut T) -> T {
-            *fin(x)
+            *final(x)
         }
     } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
@@ -163,7 +163,7 @@ test_verify_one_file_with_options! {
             let mut x = 0;
             let x_ref = &mut x;
 
-            assert(*fin(x_ref) == after_borrow(x));
+            assert(*final(x_ref) == after_borrow(x));
 
             *x_ref = 20;
         }
@@ -1636,21 +1636,21 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_params_with_reborrow ["new-mut-ref"] => verus_code! {
         fn test4_1(x: &mut (u64, u64)) -> (ret: &mut u64)
-            ensures ({
+            ensures {
                 mut_ref_future(x).1 == mut_ref_current(x).1 &&
                 mut_ref_current(x).0 == mut_ref_current(ret) &&
                 mut_ref_future(x).0 == mut_ref_future(ret)
-            })
+            },
         {
             &mut x.0
         }
 
         fn test4(x: &mut (u64, u64)) -> (ret: &mut u64)
-            ensures ({
+            ensures {
                 mut_ref_future(x).1 == mut_ref_current(x).1 &&
                 mut_ref_current(x).0 == mut_ref_current(ret) &&
                 mut_ref_future(x).0 == mut_ref_future(ret)
-            })
+            },
         {
             let r = &mut x.0;
             return r;
@@ -1734,7 +1734,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            assert(x == 20);
+            assert(after_borrow(x) == 20);
 
             let x_ref_shr: &u64 = x_ref;
             assert(x_ref_shr == 20);
@@ -1748,7 +1748,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            assert(x == 20);
+            assert(after_borrow(x) == 20);
 
             foo(x_ref);
         }
@@ -1759,7 +1759,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            assert(x == 20);
+            assert(after_borrow(x) == 20);
 
             let x_ref_shr: &u64 = x_ref;
             assert(x_ref_shr == 20);
@@ -1774,7 +1774,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            assert(x == 20);
+            assert(after_borrow(x) == 20);
 
             foo(x_ref);
             assert(false); // FAILS
@@ -2421,7 +2421,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] two_phase_proof_code ["new-mut-ref"] => verus_code! {
         proof fn set_to(tracked a: &mut Ghost<int>, tracked b: Ghost<int>)
-            ensures *fin(a) == b
+            ensures *final(a) == b
         {
             *a = b;
         }
@@ -2781,7 +2781,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] fin_keyword ["new-mut-ref"] => verus_code! {
         fn foo(x: &mut u64) {
-            assert(mut_ref_future(x) == *fin(x));
+            assert(mut_ref_future(x) == *final(x));
         }
     } => Ok(())
 }
@@ -2789,9 +2789,9 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] fin_keyword2 ["new-mut-ref"] => verus_code! {
         fn foo(x: &mut bool) {
-            assert(mut_ref_current(fin(x)));
+            assert(mut_ref_current(final(x)));
         }
-    } => Err(err) => assert_vir_error_msg(err, "The result of `fin` must be dereferenced")
+    } => Err(err) => assert_vir_error_msg(err, "The result of `final` must be dereferenced")
 }
 
 test_verify_one_file_with_options! {
@@ -3140,7 +3140,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] backwards_compat ["new-mut-ref"] => verus_code! {
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(a: &mut u8)
             requires *old(a) < 255,
             ensures *a == *old(a) + 1,
@@ -3148,7 +3148,7 @@ test_verify_one_file_with_options! {
             *a = *a + 1;
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2(a: &mut u8)
             requires *old(a) < 255,
             ensures *a == *old(a) + 1,
@@ -3159,16 +3159,52 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] backwards_compat_unwrapped_param ["new-mut-ref"] => verus_code! {
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
+        fn test(Tracked(a): Tracked<&mut Ghost<u8>>)
+            requires old(a)@ < 255,
+            ensures a@ == old(a)@ + 1,
+        {
+            proof { *a = Ghost((a@ + 1) as u8); }
+        }
+
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
+        fn test2(Tracked(a): Tracked<&mut Ghost<u8>>)
+            requires old(a)@ < 255,
+            ensures a@ == old(a)@ + 1,
+        {
+            test(Tracked(a));
+        }
+
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
+        fn test2_fails(Tracked(a): Tracked<&mut Ghost<u8>>)
+            requires old(a)@ < 255,
+            ensures a@ == old(a)@ + 1,
+        {
+            test(Tracked(a));
+            assert(false); // FAILS
+        }
+
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
+        fn test2_fails2(Tracked(a): Tracked<&mut Ghost<u8>>)
+            ensures a@ == old(a)@ + 1,
+        {
+            test(Tracked(a)); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
     #[test] backwards_compat_fail ["new-mut-ref"] => verus_code! {
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(a: &mut u8)
             requires *old(a) < 255,
-            ensures *fin(a) == *old(a) + 1,
+            ensures *final(a) == *old(a) + 1,
         {
             *a = *a + 1;
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2(a: &mut u8)
             requires *old(a) < 255,
             ensures *a == *old(a) + 1,
@@ -3180,7 +3216,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] backwards_compat_fail2 ["new-mut-ref"] => verus_code! {
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(a: &mut u8)
             requires *old(a) < 255,
             ensures *a == *old(a) + 1,
@@ -3188,7 +3224,7 @@ test_verify_one_file_with_options! {
             *a = *a + 1;
         }
 
-        #[verifier::migrate_postconditions_with_mut_refs(true)]
+        #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test2(a: &mut u8)
             requires *old(a) < 255,
             ensures a == a
@@ -3198,11 +3234,10 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "For more flexible mutable reference support, disable the backwards-compatability")
 }
 
-// TODO(new_mut_ref): un-ignore after paradox-checking
 test_verify_one_file_with_options! {
-    #[ignore] #[test] false_two_phase ["new-mut-ref"] => verus_code! {
+    #[test] false_two_phase ["new-mut-ref"] => verus_code! {
         fn set_to(Tracked(a): Tracked<&mut Ghost<int>>, Tracked(b): Tracked<Ghost<int>>)
-            ensures *fin(a) == b
+            ensures *final(a) == b
         {
             proof { *a = b; }
         }
@@ -3210,26 +3245,19 @@ test_verify_one_file_with_options! {
         fn test() {
             let tracked mut x: Ghost<int> = Ghost(0);
             let tracked x_ref = &mut x;
-            set_to(Tracked(x_ref), Tracked(Ghost(x_ref@ + 1)));
-            assert(x == 1);
-        }
-
-        fn test_fail() {
-            let tracked mut x: Ghost<int> = Ghost(0);
-            let tracked x_ref = &mut x;
             // The x_ref here is two-phase with respect to `Tracked` rather than to
             // the `set_to` call.
             set_to(Tracked(x_ref), Tracked(Ghost(x_ref@ + 1)));
             assert(x == 1);
-            assert(false); // FAILS
+            assert(false);
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot use `*x_ref` because it was mutably borrowed")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `(Verus spec x_ref)` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file_with_options! {
     #[test] false_two_phase2 ["new-mut-ref"] => verus_code! {
         fn set_to(Tracked(a): Tracked<&mut Tracked<int>>, Tracked(b): Tracked<int>)
-            ensures *fin(a) == b
+            ensures *final(a) == b
         {
             proof { *a = Tracked(b); }
         }
@@ -3242,4 +3270,1099 @@ test_verify_one_file_with_options! {
             assert(false);
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot use `*x_ref` because it was mutably borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_reborrowed_mut_ref ["new-mut-ref"] => verus_code! {
+        fn overwrite() {
+            let mut a = 0;
+            let mut b = 0;
+
+            let mut x = &mut a;
+            *x = 20;
+
+            let y = x;
+            x = &mut b;
+
+            *x = 30;
+            *y = 40;
+
+            assert(a == 40);
+            assert(b == 30);
+        }
+
+        fn overwrite_fails() {
+            let mut a = 0;
+            let mut b = 0;
+
+            let mut x = &mut a;
+            *x = 20;
+
+            let y = x;
+            x = &mut b;
+
+            *x = 30;
+            *y = 40;
+
+            assert(a == 40);
+            assert(b == 30);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_reborrowed_mut_ref_match_guard ["new-mut-ref"] => verus_code! {
+        enum Foo {
+            Bar,
+            Qux
+        }
+
+        fn test_pat(cond: bool) {
+            let mut a = Foo::Bar;
+            let mut b = Foo::Qux;
+
+            let mut a_ref = &mut a;
+
+            match a_ref {
+                Foo::Bar if ({
+                    a_ref = &mut b;
+                    cond
+                }) => { }
+                Foo::Bar => { }
+                Foo::Qux => { }
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot assign `a_ref` in match guard")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_in_slice_index_after_index_read ["new-mut-ref"] => verus_code! {
+        fn slice_test(slice1: &mut [[u64; 2]], slice2: &mut [[u64; 2]]) {
+            let mut x = slice1;
+            let j = x[0][({ x = slice2; 0 })];
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot assign `x` in indexing expression")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_in_slice_index_after_index_assign ["new-mut-ref"] => verus_code! {
+        fn slice_test(slice1: &mut [[u64; 2]], slice2: &mut [[u64; 2]]) {
+            let mut x = slice1;
+            let j = x[0][({ x = slice2; 0 })];
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot assign `x` in indexing expression")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_in_slice_index_after_index_mut_ref ["new-mut-ref"] => verus_code! {
+        fn slice_test(slice1: &mut [[u64; 2]], slice2: &mut [[u64; 2]]) {
+            let mut x = slice1;
+            let j = &mut x[0][({ x = slice2; 0 })];
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot assign `x` in indexing expression")
+}
+
+test_verify_one_file_with_options! {
+    // TODO(new_mut_ref): fix or disallow
+    #[ignore] #[test] overwrite_two_phase_borrow ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = &mut a;
+            set_to(a_ref, ({ a_ref = &mut b; 20 }));
+
+            assert(a == 20);
+            assert(b == 1);
+        }
+    } => Ok(())
+}
+
+// vec works differently than slice/array since it's a method call instead of a place expression
+test_verify_one_file_with_options! {
+    #[test] overwrite_vec_while_indexing ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        fn vec_index_read() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let b: Vec<u64> = vec![2, 3];
+
+            let j = a[({ a = b; 0 })];
+            //assert!(j == 2);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `a` because it is borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_vec_while_indexing2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        // When x: &mut Vec<T>,
+        //    x[({ x = &mut b; 0 })]
+        // is equivalent to:
+        //    index_mut(&mut *x, ({ x = &mut b; 0 }))
+        // The first argument is _not_ a two-phase borrow.
+
+        fn mut_ref_vec_index_read() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let mut b: Vec<u64> = vec![2, 3];
+
+            let mut x = &mut a;
+            let j = x[({ x = &mut b; 0 })];
+            assert((*x)@ === seq![2, 3]);
+            assert(j == 0);
+        }
+
+        fn mut_ref_vec_index_assign() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let mut b: Vec<u64> = vec![2, 3];
+
+            let mut x = &mut a;
+            x[({ x = &mut b; 0 })] = 100;
+            assert((*x)@ === seq![2, 3]);
+            assert(a@ === seq![100, 1]);
+            assert(b@ === seq![2, 3]);
+        }
+
+        fn mut_ref_vec_index_mut_ref() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let mut b: Vec<u64> = vec![2, 3];
+
+            let mut x = &mut a;
+            let r = &mut x[({ x = &mut b; 0 })];
+            *r = 100;
+            assert((*x)@ === seq![2, 3]);
+            assert(a@ === seq![100, 1]);
+            assert(b@ === seq![2, 3]);
+        }
+
+        fn mut_ref_vec_index_read_fails() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let mut b: Vec<u64> = vec![2, 3];
+
+            let mut x = &mut a;
+            let j = x[({ x = &mut b; 0 })];
+            assert((*x)@ === seq![2, 3]);
+            assert(j == 0);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_vec_index_assign_fails() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let mut b: Vec<u64> = vec![2, 3];
+
+            let mut x = &mut a;
+            x[({ x = &mut b; 0 })] = 100;
+            assert((*x)@ === seq![2, 3]);
+            assert(a@ === seq![100, 1]);
+            assert(b@ === seq![2, 3]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_vec_index_mut_ref_fails() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let mut b: Vec<u64> = vec![2, 3];
+
+            let mut x = &mut a;
+            let r = &mut x[({ x = &mut b; 0 })];
+            *r = 100;
+            assert((*x)@ === seq![2, 3]);
+            assert(a@ === seq![100, 1]);
+            assert(b@ === seq![2, 3]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_vec_during_indexing3 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn mut_ref_vec_index_read() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let mut b: Vec<u64> = vec![2, 3];
+
+            let mut x = &mut a;
+            let j = x[({ x = &mut b; 0 })];
+            x[0] = 200;
+            assert((*x)@ === seq![200, 3]);
+            assert(j == 0);
+        }
+
+        fn mut_ref_vec_index_assign() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let mut b: Vec<u64> = vec![2, 3];
+
+            let mut x = &mut a;
+            x[({ x = &mut b; 0 })] = 100;
+            x[0] = 200;
+
+            assert((*x)@ === seq![200, 3]);
+            assert(a@ === seq![100, 1]);
+            assert(b@ === seq![200, 3]);
+        }
+
+        fn mut_ref_vec_index_mut_ref() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let mut b: Vec<u64> = vec![2, 3];
+
+            let mut x = &mut a;
+            let r = &mut x[({ x = &mut b; 0 })];
+            *r = 100;
+            x[0] = 200;
+            assert((*x)@ === seq![200, 3]);
+            assert(a@ === seq![100, 1]);
+            assert(b@ === seq![200, 3]);
+        }
+
+        fn mut_ref_vec_index_read_fails() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let mut b: Vec<u64> = vec![2, 3];
+
+            let mut x = &mut a;
+            let j = x[({ x = &mut b; 0 })];
+            x[0] = 200;
+            assert((*x)@ === seq![200, 3]);
+            assert(j == 0);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_vec_index_assign_fails() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let mut b: Vec<u64> = vec![2, 3];
+
+            let mut x = &mut a;
+            x[({ x = &mut b; 0 })] = 100;
+            x[0] = 200;
+
+            assert((*x)@ === seq![200, 3]);
+            assert(a@ === seq![100, 1]);
+            assert(b@ === seq![200, 3]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_vec_index_mut_ref_fails() {
+            let mut a: Vec<u64> = vec![0, 1];
+            let mut b: Vec<u64> = vec![2, 3];
+
+            let mut x = &mut a;
+            let r = &mut x[({ x = &mut b; 0 })];
+            *r = 100;
+            x[0] = 200;
+            assert((*x)@ === seq![200, 3]);
+            assert(a@ === seq![100, 1]);
+            assert(b@ === seq![200, 3]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_indexing ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        // I was kinda surprised most of these are accepted by rustc,
+        // and I executed all of these to double-check the behavior here.
+        // The semantics are that you compute the "place" in its entirety
+        // before reading or writing to the place.
+        // This means that in this test, the assignment in the index operation always
+        // happens first, i.e., `a[({ a = b; 0 })]` is equivalent to `a = b; a[0]`
+
+        fn array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let b: [u64; 2] = [2, 3];
+
+            let j = a[({ a = b; 0 })];
+            assert(j == 2);
+        }
+
+        fn array_index_assign() {
+            let mut a: [u64; 2] = [0, 1];
+            let b: [u64; 2] = [2, 3];
+
+            a[({ a = b; 0 })] = 100;
+            assert(a === [100, 3]);
+            assert(b === [2, 3]);
+        }
+
+        fn array_index_mut_ref() {
+            let mut a: [u64; 2] = [0, 1];
+            let b: [u64; 2] = [2, 3];
+
+            let r = &mut a[({ a = b; 0 })];
+            *r = 100;
+            assert(a === [100, 3]);
+            assert(b === [2, 3]);
+        }
+
+        fn mut_ref_array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let mut x = &mut a;
+            let j = x[({ x = &mut b; 0 })];
+            assert(j === 2);
+        }
+
+        fn mut_ref_array_index_assign() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let mut x = &mut a;
+            x[({ x = &mut b; 0 })] = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+        }
+
+        fn mut_ref_array_index_mut_ref() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let mut x = &mut a;
+            let r = &mut x[({ x = &mut b; 0 })];
+            *r = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+        }
+
+        fn double_mut_ref_array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x: &mut &mut [u64; 2] = &mut a_ref;
+            let j = x[({ x = &mut b_ref; 0 })];
+            assert(j === 2);
+        }
+
+        fn double_mut_ref_array_index_assign() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x: &mut &mut [u64; 2] = &mut a_ref;
+            x[({ x = &mut b_ref; 0 })] = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+        }
+
+        fn double_mut_ref_array_index_mut_ref() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x: &mut &mut [u64; 2] = &mut a_ref;
+            let r = &mut x[({ x = &mut b_ref; 0 })];
+            *r = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+        }
+
+        fn mut_ref_array2_index_read() {
+            let mut a: [[u64; 2]; 2] = [[0, 1], [10, 11]];
+            let mut b: [[u64; 2]; 2] = [[2, 3], [12, 13]];
+
+            let mut x = &mut a;
+            let j = x[1][({ x = &mut b; 0 })];
+            assert(j === 12);
+        }
+
+        fn mut_ref_array2_index_assign() {
+            let mut a: [[u64; 2]; 2] = [[0, 1], [10, 11]];
+            let mut b: [[u64; 2]; 2] = [[2, 3], [12, 13]];
+
+            let mut x = &mut a;
+            x[1][({ x = &mut b; 0 })] = 100;
+            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
+            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+        }
+
+        fn mut_ref_array2_index_mut_ref() {
+            let mut a: [[u64; 2]; 2] = [[0, 1], [10, 11]];
+            let mut b: [[u64; 2]; 2] = [[2, 3], [12, 13]];
+
+            let mut x = &mut a;
+            let r = &mut x[1][({ x = &mut b; 0 })];
+            *r = 100;
+            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
+            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+        }
+
+        fn mut_ref_slice_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let slice1: &mut [u64] = &mut a;
+            let slice2: &mut [u64] = &mut b;
+
+            let mut x = slice1;
+            let j = x[({ x = slice2; 0 })];
+            assert(j === 2);
+        }
+
+        fn mut_ref_slice_index_assign() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let slice1: &mut [u64] = &mut a;
+            let slice2: &mut [u64] = &mut b;
+
+            let mut x = slice1;
+            x[({ x = slice2; 0 })] = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+        }
+
+        fn mut_ref_slice_index_mut_ref() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let slice1: &mut [u64] = &mut a;
+            let slice2: &mut [u64] = &mut b;
+
+            let mut x = slice1;
+            x[({ x = slice2; 0 })] = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_indexing_fails ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let b: [u64; 2] = [2, 3];
+
+            let j = a[({ a = b; 0 })];
+            assert(j == 2);
+            assert(false); // FAILS
+        }
+
+        fn array_index_assign() {
+            let mut a: [u64; 2] = [0, 1];
+            let b: [u64; 2] = [2, 3];
+
+            a[({ a = b; 0 })] = 100;
+            assert(a === [100, 3]);
+            assert(b === [2, 3]);
+            assert(false); // FAILS
+        }
+
+        fn array_index_mut_ref() {
+            let mut a: [u64; 2] = [0, 1];
+            let b: [u64; 2] = [2, 3];
+
+            let r = &mut a[({ a = b; 0 })];
+            *r = 100;
+            assert(a === [100, 3]);
+            assert(b === [2, 3]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let mut x = &mut a;
+            let j = x[({ x = &mut b; 0 })];
+            assert(j === 2);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_assign() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let mut x = &mut a;
+            x[({ x = &mut b; 0 })] = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_mut_ref() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let mut x = &mut a;
+            let r = &mut x[({ x = &mut b; 0 })];
+            *r = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x: &mut &mut [u64; 2] = &mut a_ref;
+            let j = x[({ x = &mut b_ref; 0 })];
+            assert(j === 2);
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_assign() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x: &mut &mut [u64; 2] = &mut a_ref;
+            x[({ x = &mut b_ref; 0 })] = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_mut_ref() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x: &mut &mut [u64; 2] = &mut a_ref;
+            let r = &mut x[({ x = &mut b_ref; 0 })];
+            *r = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_read() {
+            let mut a: [[u64; 2]; 2] = [[0, 1], [10, 11]];
+            let mut b: [[u64; 2]; 2] = [[2, 3], [12, 13]];
+
+            let mut x = &mut a;
+            let j = x[1][({ x = &mut b; 0 })];
+            assert(j === 12);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_assign() {
+            let mut a: [[u64; 2]; 2] = [[0, 1], [10, 11]];
+            let mut b: [[u64; 2]; 2] = [[2, 3], [12, 13]];
+
+            let mut x = &mut a;
+            x[1][({ x = &mut b; 0 })] = 100;
+            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
+            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_mut_ref() {
+            let mut a: [[u64; 2]; 2] = [[0, 1], [10, 11]];
+            let mut b: [[u64; 2]; 2] = [[2, 3], [12, 13]];
+
+            let mut x = &mut a;
+            let r = &mut x[1][({ x = &mut b; 0 })];
+            *r = 100;
+            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
+            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let slice1: &mut [u64] = &mut a;
+            let slice2: &mut [u64] = &mut b;
+
+            let mut x = slice1;
+            let j = x[({ x = slice2; 0 })];
+            assert(j === 2);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_assign() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let slice1: &mut [u64] = &mut a;
+            let slice2: &mut [u64] = &mut b;
+
+            let mut x = slice1;
+            x[({ x = slice2; 0 })] = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_mut_ref() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let slice1: &mut [u64] = &mut a;
+            let slice2: &mut [u64] = &mut b;
+
+            let mut x = slice1;
+            x[({ x = slice2; 0 })] = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 15)
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_indexing2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        fn id<A>(a: A) -> (ret: A) ensures ret == a { a }
+
+        fn array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let b: [u64; 2] = [2, 3];
+
+            let j = id(a[({ a = b; 0 })]);
+            assert(j == 2);
+        }
+
+        fn mut_ref_array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let mut x = &mut a;
+            let j = id(x[({ x = &mut b; 0 })]);
+            assert(j == 2);
+        }
+
+        fn double_mut_ref_array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x = &mut a_ref;
+            let j = id(x[({ x = &mut b_ref; 0 })]);
+            assert(j == 2);
+        }
+
+        fn mut_ref_array2_index_read() {
+            let mut a: [[u64; 2]; 2] = [[0, 1], [10, 11]];
+            let mut b: [[u64; 2]; 2] = [[2, 3], [12, 13]];
+
+            let mut x = &mut a;
+            let j = id(x[1][({ x = &mut b; 0 })]);
+            assert(j == 12);
+        }
+
+        fn mut_ref_slice_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let slice1: &mut [u64] = &mut a;
+            let slice2: &mut [u64] = &mut b;
+
+            let mut x = slice1;
+            let j = id(x[({ x = slice2; 0 })]);
+            assert(j == 2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_indexing2_fails ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        fn id<A>(a: A) -> (ret: A) ensures ret == a { a }
+
+        fn array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let b: [u64; 2] = [2, 3];
+
+            let j = id(a[({ a = b; 0 })]);
+            assert(j == 2);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let mut x = &mut a;
+            let j = id(x[({ x = &mut b; 0 })]);
+            assert(j == 2);
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x = &mut a_ref;
+            let j = id(x[({ x = &mut b_ref; 0 })]);
+            assert(j == 2);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_read() {
+            let mut a: [[u64; 2]; 2] = [[0, 1], [10, 11]];
+            let mut b: [[u64; 2]; 2] = [[2, 3], [12, 13]];
+
+            let mut x = &mut a;
+            let j = id(x[1][({ x = &mut b; 0 })]);
+            assert(j == 12);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let slice1: &mut [u64] = &mut a;
+            let slice2: &mut [u64] = &mut b;
+
+            let mut x = slice1;
+            let j = id(x[({ x = slice2; 0 })]);
+            assert(j == 2);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_ctor_tail ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        struct Foo {
+            i: u64,
+            j: u64,
+            k: u64,
+        }
+
+        fn array_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let j = Foo { i: 12, .. a[({ a = b; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+        }
+
+        fn mut_ref_array_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let mut x = &mut a;
+            let j = Foo { i: 12, .. x[({ x = &mut b; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+        }
+
+        fn double_mut_ref_array_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x = &mut a_ref;
+            let j = Foo { i: 12, .. x[({ x = &mut b_ref; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+        }
+
+        fn mut_ref_array2_index_ctor_tail() {
+            let mut a: [[Foo; 2]; 2] = [
+                [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}],
+                [Foo{i: 200, j: 201, k: 202}, Foo{i: 203, j: 204, k: 205}],
+            ];
+            let mut b: [[Foo; 2]; 2] = [
+                [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}],
+                [Foo{i: 206, j: 207, k: 208}, Foo{i: 209, j: 2010, k: 2011}],
+            ];
+
+            let mut x = &mut a;
+            let j = Foo { i: 12, .. x[1][({ x = &mut b; 0 })] };
+            assert(j == Foo { i: 12, j: 207, k: 208 });
+        }
+
+        fn mut_ref_slice_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let slice1: &mut [Foo] = &mut a;
+            let slice2: &mut [Foo] = &mut b;
+
+            let mut x = slice1;
+            let j = Foo { i: 12, .. x[({ x = slice2; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_ctor_tail_fails ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        struct Foo {
+            i: u64,
+            j: u64,
+            k: u64,
+        }
+
+        fn array_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let j = Foo { i: 12, .. a[({ a = b; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let mut x = &mut a;
+            let j = Foo { i: 12, .. x[({ x = &mut b; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x = &mut a_ref;
+            let j = Foo { i: 12, .. x[({ x = &mut b_ref; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_ctor_tail() {
+            let mut a: [[Foo; 2]; 2] = [
+                [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}],
+                [Foo{i: 200, j: 201, k: 202}, Foo{i: 203, j: 204, k: 205}],
+            ];
+            let mut b: [[Foo; 2]; 2] = [
+                [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}],
+                [Foo{i: 206, j: 207, k: 208}, Foo{i: 209, j: 2010, k: 2011}],
+            ];
+
+            let mut x = &mut a;
+            let j = Foo { i: 12, .. x[1][({ x = &mut b; 0 })] };
+            assert(j == Foo { i: 12, j: 207, k: 208 });
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let slice1: &mut [Foo] = &mut a;
+            let slice2: &mut [Foo] = &mut b;
+
+            let mut x = slice1;
+            let j = Foo { i: 12, .. x[({ x = slice2; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_scrutinee ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        struct Foo {
+            i: u64,
+            j: u64,
+            k: u64,
+        }
+
+        fn array_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let j = match a[({ a = b; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+        }
+
+        fn mut_ref_array_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let mut x = &mut a;
+            let j = match x[({ x = &mut b; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+        }
+
+        fn double_mut_ref_array_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x = &mut a_ref;
+            let j = match x[({ x = &mut b_ref; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+        }
+
+        fn mut_ref_array2_index_read() {
+            let mut a: [[Foo; 2]; 2] = [
+                [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}],
+                [Foo{i: 200, j: 201, k: 202}, Foo{i: 203, j: 204, k: 205}],
+            ];
+            let mut b: [[Foo; 2]; 2] = [
+                [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}],
+                [Foo{i: 206, j: 207, k: 208}, Foo{i: 209, j: 2010, k: 2011}],
+            ];
+
+            let mut x = &mut a;
+            let j = match x[1][({ x = &mut b; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (206, 207, 208));
+        }
+
+        fn mut_ref_slice_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let slice1: &mut [Foo] = &mut a;
+            let slice2: &mut [Foo] = &mut b;
+
+            let mut x = slice1;
+            let j = match x[({ x = slice2; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_scrutinee_fails ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        struct Foo {
+            i: u64,
+            j: u64,
+            k: u64,
+        }
+
+        fn array_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let j = match a[({ a = b; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let mut x = &mut a;
+            let j = match x[({ x = &mut b; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x = &mut a_ref;
+            let j = match x[({ x = &mut b_ref; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_read() {
+            let mut a: [[Foo; 2]; 2] = [
+                [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}],
+                [Foo{i: 200, j: 201, k: 202}, Foo{i: 203, j: 204, k: 205}],
+            ];
+            let mut b: [[Foo; 2]; 2] = [
+                [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}],
+                [Foo{i: 206, j: 207, k: 208}, Foo{i: 209, j: 2010, k: 2011}],
+            ];
+
+            let mut x = &mut a;
+            let j = match x[1][({ x = &mut b; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (206, 207, 208));
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let slice1: &mut [Foo] = &mut a;
+            let slice2: &mut [Foo] = &mut b;
+
+            let mut x = slice1;
+            let j = match x[({ x = slice2; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] resolution_move_from_array_error ["new-mut-ref"] => verus_code! {
+        struct X { }
+
+        fn id<A>(a: A) -> A { a }
+
+        fn test_basic_move<T>(t: [X; 2]) {
+            let r = id(t[0]);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::X; 2]`, which is non-copy")
+}
+
+test_verify_one_file_with_options! {
+    #[test] resolution_move_from_array_error2 ["new-mut-ref"] => verus_code! {
+        struct X { }
+
+        fn test_basic_move<T>(t: [X; 2]) {
+            let r = t[0];
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of type `[X; 2]`, a non-copy array")
+}
+
+test_verify_one_file_with_options! {
+    #[test] resolution_move_from_array_error3 ["new-mut-ref"] => verus_code! {
+        struct X { }
+
+        struct Pair<A, B> {
+            a: A,
+            b: B,
+        }
+
+        fn test_ctor_move<T>(t: [Pair<X, X>; 2]) {
+            let r = Pair { a: X{}, .. t[0] };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::Pair<crate::X, crate::X>; 2]`, which is non-copy")
 }

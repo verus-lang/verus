@@ -68,10 +68,10 @@ pub fn vec_index_mut<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element
     requires
         i < vec.view().len(),
     ensures
-        *element == (*vec).view().index(i as int),
-        fin(vec)@ == vec@.update(i as int, *fin(element)),
+        *element == old(vec)@.index(i as int),
+        final(vec)@ == old(vec)@.update(i as int, *final(element)),
 
-        *fin(element) == fin(vec).view().index(i as int),
+        *final(element) == final(vec).view().index(i as int),
     no_unwind
 {
     &mut vec[i]
@@ -241,8 +241,8 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, 
 #[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut Vec<T, A>) -> (slice: &mut [T])
     ensures
-        slice@ == vec@,
-        fin(slice)@ == fin(vec)@,
+        slice@ == old(vec)@,
+        final(slice)@ == final(vec)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::deref ](

@@ -1,5 +1,4 @@
 use crate::ast::*;
-use crate::def::Spanned;
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -745,7 +744,7 @@ impl FunctionX {
 pub(crate) fn call_no_unwind(call_target: &CallTarget, funs: &HashMap<Fun, Function>) -> bool {
     match call_target {
         CallTarget::FnSpec(_) | CallTarget::BuiltinSpecFun(..) => true,
-        CallTarget::Fun(kind, fun, _, _, _) => match kind {
+        CallTarget::Fun(kind, fun, _, _, _, _) => match kind {
             CallTargetKind::ProofFn(..) => true,
             CallTargetKind::Static
             | CallTargetKind::Dynamic
@@ -903,6 +902,15 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
     )
 }
 
+pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<Arc<String>> {
+    match &expr.x {
+        // NOTE: `UnaryOpr::Box` and `Unbox` not relevant; only introduced later in `ast_to_sst`.
+        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => ast_expr_get_proof_note(e),
+        ExprX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
+        _ => None,
+    }
+}
+
 pub fn int_range_to_type_string(range: &IntRange) -> String {
     match range {
         IntRange::Int => "int".to_string(),
@@ -934,16 +942,17 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)
         ),
-        TypX::Primitive(prim, typs) => {
-            let typs_str = typs_to_comma_separated_str(typs);
-            match prim {
-                crate::ast::Primitive::Array => format!("[{typs_str}; N]"),
-                crate::ast::Primitive::Slice => format!("[{typs_str}]"),
-                crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
-                crate::ast::Primitive::Ptr => format!("*mut {typs_str}"),
-                crate::ast::Primitive::Global => format!("Global"),
-            }
-        }
+        TypX::Primitive(prim, typs) => match prim {
+            crate::ast::Primitive::Array => format!(
+                "[{:}; {:}]",
+                &typ_to_diagnostic_str(&typs[0]),
+                &typ_to_diagnostic_str(&typs[1])
+            ),
+            crate::ast::Primitive::Slice => format!("[{:}]", &typ_to_diagnostic_str(&typs[0])),
+            crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
+            crate::ast::Primitive::Ptr => format!("*mut {:}", &typ_to_diagnostic_str(&typs[0])),
+            crate::ast::Primitive::Global => format!("Global"),
+        },
         TypX::Datatype(Dt::Tuple(_arity), typs, _) => {
             // 1-tuples should be formatted like `(T,)`
             let tup_string = typs_to_comma_separated_str(typs);
@@ -1016,8 +1025,8 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             )
         }
         TypX::TypeId => format!("typeid"),
-        TypX::ConstInt(_) => format!("constint"),
-        TypX::ConstBool(_) => format!("constbool"),
+        TypX::ConstInt(i) => format!("{i}"),
+        TypX::ConstBool(b) => format!("{b}"),
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::FnDef(f, typs, _res) => format!(
             "FnDef({}){}",
@@ -1231,50 +1240,6 @@ macro_rules! fun {
     };
 }
 
-/// If the function has a unit return type, then we will elide the return value
-/// in the AIR encoding later (e.g., in the %ens functions). However, it is still
-/// possible that the user refers to the unit return value by name, e.g.,
-/// ```
-/// fn example() -> (ret: ())
-///     ensures ret == (),
-/// ```
-/// Therefore, we substitute out the name here so it be safely elided.
-pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, bool) {
-    match &*undecorate_typ(&ret.x.typ) {
-        TypX::Datatype(Dt::Tuple(0), ..) => {
-            if ret.x.name == air_unique_var(crate::def::RETURN_VALUE) {
-                (ensure.clone(), false)
-            } else {
-                let mut es = vec![];
-                for e in ensure.iter() {
-                    let e1 = crate::ast_visitor::map_expr_place_visitor(
-                        e,
-                        &|expr| match &expr.x {
-                            ExprX::Var(ident) if ident == &ret.x.name => {
-                                assert!(is_unit(&undecorate_typ(&expr.typ)));
-                                Ok(mk_tuple(&expr.span, &Arc::new(vec![])))
-                            }
-                            _ => Ok(expr.clone()),
-                        },
-                        &|place| match &place.x {
-                            PlaceX::Local(ident) if ident == &ret.x.name => {
-                                assert!(is_unit(&undecorate_typ(&place.typ)));
-                                let e = mk_tuple(&place.span, &Arc::new(vec![]));
-                                Ok(PlaceX::spec_temporary(e))
-                            }
-                            _ => Ok(place.clone()),
-                        },
-                    )
-                    .unwrap();
-                    es.push(e1);
-                }
-                (Arc::new(es), false)
-            }
-        }
-        _ => (ensure.clone(), true),
-    }
-}
-
 impl Dt {
     pub fn expect_path(&self) -> Path {
         match self {
@@ -1421,46 +1386,6 @@ pub fn place_has_deref_mut(p: &Place) -> bool {
     }
 }
 
-/// Returns an expression that reads from the place
-pub fn place_to_expr(place: &Place) -> Expr {
-    let x = match &place.x {
-        PlaceX::Local(var_ident) => ExprX::Var(var_ident.clone()),
-        PlaceX::DerefMut(p) => {
-            let e = place_to_expr(p);
-            ExprX::Unary(UnaryOp::MutRefCurrent, e)
-        }
-        PlaceX::Field(opr, p) => {
-            let e = place_to_expr(p);
-            ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
-        }
-        PlaceX::Temporary(e) => {
-            return e.clone();
-        }
-        PlaceX::ModeUnwrap(p, _) => {
-            return place_to_expr(p);
-        }
-        PlaceX::WithExpr(e, p) => {
-            let e2 = place_to_expr(p);
-            ExprX::Block(
-                Arc::new(vec![Spanned::new(e.span.clone(), StmtX::Expr(e.clone()))]),
-                Some(e2),
-            )
-        }
-        PlaceX::Index(p, idx, kind, bounds_check) => {
-            let e = place_to_expr(p);
-            ExprX::Binary(BinaryOp::Index(*kind, *bounds_check), e, idx.clone())
-        }
-        PlaceX::UserDefinedTypInvariantObligation(..) => {
-            // place_to_expr should only be called for reading; this node should only
-            // appear in mutable contexts
-            panic!(
-                "Verus internal error: place_to_expr cannot handle UserDefinedTypInvariantObligation"
-            );
-        }
-    };
-    SpannedTyped::new(&place.span, &place.typ, x)
-}
-
 impl PatternX {
     /// Returns a Pattern Var that is valid post-simplification.
     pub(crate) fn simple_var(name: VarIdent, span: &Span, typ: &Typ) -> Pattern {
@@ -1512,7 +1437,7 @@ impl MutRefFutureSourceName {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             MutRefFutureSourceName::MutRefFuture => "mut_ref_future",
-            MutRefFutureSourceName::Final => "fin",
+            MutRefFutureSourceName::Final => "final",
         }
     }
 }

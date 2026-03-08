@@ -124,6 +124,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         })
     }
 
+    #[allow(dead_code)]
     fn visit_opt_typ(&mut self, typ_opt: &Option<Typ>) -> Result<R::Opt<Typ>, Err> {
         R::map_opt(typ_opt, &mut |t| self.visit_typ(t))
     }
@@ -201,7 +202,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
 
     fn visit_call_target(&mut self, call_target: &CallTarget) -> Result<R::Ret<CallTarget>, Err> {
         match call_target {
-            CallTarget::Fun(kind, fun, typs, impl_paths, au) => {
+            CallTarget::Fun(kind, fun, typs, impl_paths, au, const_var) => {
                 let kind = self.visit_call_target_kind(kind)?;
                 let typs = self.visit_typs(typs)?;
                 R::ret(|| {
@@ -210,7 +211,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         fun.clone(),
                         R::get_vec_a(typs),
                         impl_paths.clone(),
-                        au.clone(),
+                        *au,
+                        *const_var,
                     )
                 })
             }
@@ -277,11 +279,16 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let t = self.visit_typ(t)?;
                 R::ret(|| UnaryOpr::HasResolved(R::get(t)))
             }
+            UnaryOpr::ToDyn(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| UnaryOpr::ToDyn(R::get(t)))
+            }
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
             | UnaryOpr::IntegerTypeBound(..)
             | UnaryOpr::CustomErr(..)
-            | UnaryOpr::AutoDecreases => R::ret(|| uopr.clone()),
+            | UnaryOpr::AutoDecreases
+            | UnaryOpr::ProofNote(..) => R::ret(|| uopr.clone()),
         }
     }
 
@@ -459,16 +466,17 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let rhs = self.visit_expr(rhs)?;
                 R::ret(|| expr_new(ExprX::Assign { lhs: R::get(lhs), rhs: R::get(rhs), op: *op }))
             }
-            ExprX::AssignToPlace { place, rhs, op, resolve } => {
+            ExprX::AssignToPlace { place, rhs, op, resolve, typ } => {
                 let place = self.visit_place(place)?;
                 let rhs = self.visit_expr(rhs)?;
-                let resolve = self.visit_opt_typ(resolve)?;
+                let typ = self.visit_typ(typ)?;
                 R::ret(|| {
                     expr_new(ExprX::AssignToPlace {
                         place: R::get(place),
                         rhs: R::get(rhs),
                         op: *op,
-                        resolve: R::get_opt(resolve),
+                        resolve: *resolve,
+                        typ: R::get(typ),
                     })
                 })
             }
@@ -655,12 +663,14 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::ReadPlace(R::get(p), *read_type)))
             }
-            ExprX::UseLeftWhereRightCanHaveNoAssignments(e1, e2) => {
+            ExprX::EvalAndResolve(e1, e2) => {
                 let e1 = self.visit_expr(e1)?;
                 let e2 = self.visit_expr(e2)?;
-                R::ret(|| {
-                    expr_new(ExprX::UseLeftWhereRightCanHaveNoAssignments(R::get(e1), R::get(e2)))
-                })
+                R::ret(|| expr_new(ExprX::EvalAndResolve(R::get(e1), R::get(e2))))
+            }
+            ExprX::Old(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Old(R::get(e))))
             }
         }
     }
@@ -1532,7 +1542,7 @@ where
     }
 }
 
-pub(crate) fn ast_visitor_check<ERR, E, FE, FS, FP, FT, FPL>(
+pub fn ast_visitor_check<ERR, E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
     env: &mut E,
     fe: &mut FE,

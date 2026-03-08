@@ -3,7 +3,6 @@ use crate::context::Context;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, mk_visibility, mk_visibility_from_vis,
 };
-use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::err_span;
 use air::ast_util::str_ident;
@@ -82,7 +81,7 @@ where
 
         let ident = field_ident_from_rust(&field_def_ident.as_str());
 
-        let typ = ctxt.mid_ty_to_vir(item_id.owner_id.to_def_id(), span, &field_ty, false)?;
+        let typ = ctxt.mid_ty_to_vir(item_id.owner_id.to_def_id(), span, &field_ty, false, None)?;
         let mode = match hir_field_def_opt {
             Some(hir_field_def) => get_mode(Mode::Exec, ctxt.tcx.hir_attrs(hir_field_def.hir_id)),
             None => Mode::Exec,
@@ -127,7 +126,6 @@ pub(crate) fn check_item_struct<'tcx>(
     variant_data: &'tcx VariantData<'tcx>,
     generics: &'tcx Generics<'tcx>,
     adt_def: rustc_middle::ty::AdtDef<'tcx>,
-    external_info: &mut ExternalInfo,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_struct());
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
@@ -144,7 +142,6 @@ pub(crate) fn check_item_struct<'tcx>(
             &vattrs,
             generics,
             adt_def,
-            external_info,
         );
     }
 
@@ -362,7 +359,7 @@ pub(crate) fn check_item_union<'tcx>(
             total_vis = total_vis.join(&vis);
 
             let field_ty = ctxt.tcx.type_of(field_def.did).skip_binder();
-            let typ = ctxt.mid_ty_to_vir(def_id, span, &field_ty, false)?;
+            let typ = ctxt.mid_ty_to_vir(def_id, span, &field_ty, false, None)?;
 
             let field = (typ, Mode::Exec, vis);
             let variant = Variant {
@@ -508,7 +505,7 @@ fn get_sized_constraint<'tcx>(
         sized_constraint = sc3;
     }
 
-    Ok(Some(ctxt.mid_ty_to_vir(adt_def.did(), span, &sized_constraint, false)?))
+    Ok(Some(ctxt.mid_ty_to_vir(adt_def.did(), span, &sized_constraint, false, None)?))
 }
 
 pub(crate) fn check_item_external<'tcx>(
@@ -522,7 +519,6 @@ pub(crate) fn check_item_external<'tcx>(
     vattrs: &VerifierAttrs,
     generics: &'tcx Generics<'tcx>,
     proxy_adt_def: rustc_middle::ty::AdtDef<'tcx>,
-    external_info: &mut ExternalInfo,
 ) -> Result<(), VirErr> {
     // Like with functions, we disallow external_type_specification and external together
     // (This check is done in rust_to_vir)
@@ -571,17 +567,6 @@ pub(crate) fn check_item_external<'tcx>(
             span,
             "external_type_specification: the external type needs to be a struct or enum",
         );
-    }
-
-    if crate::verus_items::get_rust_item(ctxt.tcx, external_adt_def.did())
-        == Some(crate::verus_items::RustItem::AllocGlobal)
-    {
-        // Don't need to add this to the krate, since we handle this as as a VIR Primitive.
-        // We only get this far so we can add ourselves to the type_ids list.
-        // note: seems that Global is added to lang_items in future version of Rust,
-        // which makes it easier to get the ID so we can simplify this.
-        external_info.add_type_id(external_adt_def.did());
-        return Ok(());
     }
 
     // Check that the type args match.

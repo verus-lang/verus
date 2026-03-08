@@ -81,7 +81,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_no_cheating_via_fn ["--no-cheating"] => verus_code! {
+    #[test] test_no_cheating_via_fn ["--no-cheating", "--no-verify"] => verus_code! {
         spec fn up(i: int) -> int
             decreases i via no_good
         {

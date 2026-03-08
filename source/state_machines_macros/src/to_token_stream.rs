@@ -67,6 +67,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
     }
 
     let final_code = quote! {
+        #[cfg_attr(verus_keep_ghost, verifier::deprecated_postcondition_mut_ref_style(true))]
         #[allow(unused_parens)]
         pub mod #sm_name {
             use super::*;

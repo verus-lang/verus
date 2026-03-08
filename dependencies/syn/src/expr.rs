@@ -24,8 +24,8 @@ use crate::token;
 use crate::ty::ReturnType;
 use crate::ty::Type;
 use crate::verus::{
-    Assert, AssertForall, Assume, BigAnd, BigOr, ClosureArg, Decreases, Ensures, ExprGetField,
-    ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions, Invariant,
+    Assert, AssertForall, Assume, BigAnd, BigOr, ClosureArg, Decreases, Ensures, ExprFinal,
+    ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions, Invariant,
     InvariantEnsures, InvariantExceptBreak, Requires, RevealHide, View,
 };
 use proc_macro2::{Span, TokenStream};
@@ -265,6 +265,7 @@ ast_enum_of_structs! {
         HasNot(ExprHasNot),
         Matches(ExprMatches),
         GetField(ExprGetField),
+        Final(ExprFinal),
 
         // For testing exhaustiveness in downstream code, use the following idiom:
         //
@@ -1014,6 +1015,7 @@ impl Expr {
             | Expr::Has(ExprHas { attrs, .. })
             | Expr::HasNot(ExprHasNot { attrs, .. })
             | Expr::GetField(ExprGetField { attrs, .. })
+            | Expr::Final(ExprFinal { attrs, .. })
             | Expr::Matches(ExprMatches { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
             Expr::BigAnd(_) => Vec::new(),
@@ -1267,7 +1269,8 @@ pub(crate) mod parsing {
     use crate::ty::ReturnType;
     use crate::verbatim;
     use crate::verus::{
-        ClosureArg, Ensures, ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, Requires, View,
+        ClosureArg, Context, Decreases, Ensures, ExprGetField, ExprHas, ExprHasNot, ExprIs,
+        ExprIsNot, Requires, View,
     };
     #[cfg(feature = "full")]
     use proc_macro2::{Span, TokenStream};
@@ -2040,6 +2043,8 @@ pub(crate) mod parsing {
             input.parse().map(Expr::Infer)
         } else if input.peek(Lifetime) {
             atom_labeled(input)
+        } else if input.peek(token::Final) {
+            input.parse().map(Expr::Final)
         } else {
             Err(input.error("expected an expression"))
         }
@@ -2539,7 +2544,7 @@ pub(crate) mod parsing {
             let invariant_except_break = input.parse()?;
             let invariant = input.parse()?;
             let ensures = input.parse()?;
-            let decreases = input.parse()?;
+            let decreases = Decreases::parse_optional_in(Context::Expr, input)?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2573,8 +2578,8 @@ pub(crate) mod parsing {
             let invariant_except_break = input.parse()?;
             let invariant = input.parse()?;
             let invariant_ensures = input.parse()?;
-            let ensures = input.parse()?;
-            let decreases = input.parse()?;
+            let ensures = Ensures::parse_optional_in(Context::Expr, input)?;
+            let decreases = Decreases::parse_optional_in(Context::Expr, input)?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2821,8 +2826,8 @@ pub(crate) mod parsing {
             input.peek(Token![->]) || input.peek(Token![requires]) || input.peek(Token![ensures]);
         let (output, requires, ensures, inner_attrs, body) = if needs_block {
             let output = input.parse()?;
-            let requires: Option<Requires> = input.parse()?;
-            let ensures: Option<Ensures> = input.parse()?;
+            let requires: Option<Requires> = Requires::parse_optional_in(Context::Expr, input)?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Expr, input)?;
             let body: Block = input.parse()?;
             let inner_attrs = input.call(Attribute::parse_inner)?;
             let block = Expr::Block(ExprBlock {
@@ -2925,8 +2930,8 @@ pub(crate) mod parsing {
             let invariant_except_break = input.parse()?;
             let invariant = input.parse()?;
             let invariant_ensures = input.parse()?;
-            let ensures = input.parse()?;
-            let decreases = input.parse()?;
+            let ensures = Ensures::parse_optional_in(Context::Expr, input)?;
+            let decreases = Decreases::parse_optional_in(Context::Expr, input)?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -3576,6 +3581,7 @@ pub(crate) mod printing {
             Expr::Is(e) => e.to_tokens(tokens),
             Expr::IsNot(e) => e.to_tokens(tokens),
             Expr::Matches(e) => e.to_tokens(tokens),
+            Expr::Final(e) => e.to_tokens(tokens),
 
             #[cfg(not(feature = "full"))]
             _ => unreachable!(),

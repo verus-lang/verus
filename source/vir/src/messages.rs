@@ -36,6 +36,7 @@ impl std::fmt::Debug for Span {
 pub struct MessageLabel {
     pub span: Span,
     pub note: String,
+    pub is_proof_note: bool,
 }
 
 /// If you just want to build a simple message, see the builders below.
@@ -171,6 +172,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
                 as_string: air_span.to_owned(),
             },
             note: note.to_owned(),
+            is_proof_note: false,
         })
     }
 
@@ -178,7 +180,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
         if labels.len() == 0 {
             self.empty()
         } else {
-            let MessageLabel { span, note } =
+            let MessageLabel { span, note, .. } =
                 labels[0].downcast_ref::<MessageLabel>().unwrap().clone();
             Arc::new(MessageX {
                 level: MessageLevel::Error,
@@ -235,7 +237,7 @@ pub fn message_with_label<S: Into<String>, T: Into<String>>(
         level,
         note: note.into(),
         spans: vec![span.clone()],
-        labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
+        labels: vec![MessageLabel { span: span.clone(), note: label.into(), is_proof_note: false }],
         help: None,
         fancy_note: None,
     })
@@ -251,7 +253,7 @@ pub fn message_with_secondary_label<S: Into<String>, T: Into<String>>(
         level,
         note: note.into(),
         spans: vec![],
-        labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
+        labels: vec![MessageLabel { span: span.clone(), note: label.into(), is_proof_note: false }],
         help: None,
         fancy_note: None,
     })
@@ -351,21 +353,40 @@ impl MessageX {
     pub fn primary_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
         let mut e = self.clone();
         e.spans.push(span.clone());
-        e.labels.push(MessageLabel { span: span.clone(), note: label.into() });
+        e.labels.push(MessageLabel {
+            span: span.clone(),
+            note: label.into(),
+            is_proof_note: false,
+        });
         Arc::new(e)
     }
 
     /// Add a secondary_span to be highlighted, with no label (rendered with ------)
     pub fn secondary_span(&self, span: &Span) -> Message {
         let mut e = self.clone();
-        e.labels.push(MessageLabel { span: span.clone(), note: "".to_string() });
+        e.labels.push(MessageLabel {
+            span: span.clone(),
+            note: "".to_string(),
+            is_proof_note: false,
+        });
         Arc::new(e)
     }
 
     /// Add a secondary_span to be highlighted, with a label (rendered with ------)
     pub fn secondary_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
         let mut e = self.clone();
-        e.labels.push(MessageLabel { span: span.clone(), note: label.into() });
+        e.labels.push(MessageLabel {
+            span: span.clone(),
+            note: label.into(),
+            is_proof_note: false,
+        });
+        Arc::new(e)
+    }
+
+    /// Add a `proof_note` label
+    pub fn proof_note_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
+        let mut e = self.clone();
+        e.labels.push(MessageLabel { span: span.clone(), note: label.into(), is_proof_note: true });
         Arc::new(e)
     }
 
@@ -404,6 +425,7 @@ impl MessageX {
 
 pub enum MessageAs {
     NonBlockingError(Message, Option<crate::ast::Path>),
+    NonFatalError(Message, Option<crate::ast::Path>),
     Warning(Message),
     Note(Message),
 }
@@ -414,6 +436,7 @@ impl MessageAs {
     pub fn merge(&self, other: &MessageAs) -> MessageAs {
         let added_msg = match other {
             MessageAs::NonBlockingError(message_x, _)
+            | MessageAs::NonFatalError(message_x, _)
             | MessageAs::Warning(message_x)
             | MessageAs::Note(message_x) => message_x,
         };
@@ -424,12 +447,21 @@ impl MessageAs {
             (MessageAs::NonBlockingError(orig_msg, p), _) => {
                 MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
             }
+            (MessageAs::NonFatalError(orig_msg, p), _) => {
+                MessageAs::NonFatalError(new_msg_builder(orig_msg), p.clone())
+            }
             (MessageAs::Warning(orig_msg), MessageAs::NonBlockingError(_, p)) => {
                 MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
+            }
+            (MessageAs::Warning(orig_msg), MessageAs::NonFatalError(_, p)) => {
+                MessageAs::NonFatalError(new_msg_builder(orig_msg), p.clone())
             }
             (MessageAs::Warning(orig_msg), _) => MessageAs::Warning(new_msg_builder(orig_msg)),
             (MessageAs::Note(orig_msg), MessageAs::NonBlockingError(_, p)) => {
                 MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
+            }
+            (MessageAs::Note(orig_msg), MessageAs::NonFatalError(_, p)) => {
+                MessageAs::NonFatalError(new_msg_builder(orig_msg), p.clone())
             }
             (MessageAs::Note(orig_msg), MessageAs::Warning(..)) => {
                 MessageAs::Warning(new_msg_builder(orig_msg))

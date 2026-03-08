@@ -7,9 +7,7 @@ use crate::ast::{
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{
-    QUANT_FORALL, bool_typ, place_to_expr, types_equal, undecorate_typ, unit_typ,
-};
+use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_typ};
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
@@ -19,9 +17,9 @@ use crate::sst::{
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_int_literal, sst_le,
-    sst_lt, sst_mut_ref_current, sst_unit_value, stm_with_vars_at_pre_state, subst_exp,
-    subst_pre_local_decl, subst_stm,
+    exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_exp_get_proof_note,
+    sst_int_literal, sst_le, sst_lt, sst_mut_ref_current, sst_unit_value,
+    stm_with_vars_at_pre_state, subst_exp, subst_pre_local_decl, subst_stm,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
@@ -773,7 +771,7 @@ fn expr_get_call(
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
-            CallTarget::Fun(kind, x, typs, _impl_paths, autospec_usage) => {
+            CallTarget::Fun(kind, x, typs, _impl_paths, autospec_usage, _) => {
                 if *autospec_usage != AutospecUsage::Final {
                     return Err(internal_error(&expr.span, "autospec not discharged"));
                 }
@@ -827,8 +825,6 @@ fn expr_get_call(
 
                     match &arg.x {
                         ExprX::TwoPhaseBorrowMut(_) => {
-                            // TODO(new_mut_ref): need to handle obligations for
-                            // normal BorrowMut too
                             let (phase1_stms, bor_sst) = borrow_mut_to_sst(ctx, state, arg)?;
                             let mut_ref_exp = match &bor_sst {
                                 Maybe::Never => Maybe::Never,
@@ -849,11 +845,21 @@ fn expr_get_call(
                             all_obligations.extend(obligations);
                         }
                         _ => {
-                            let (stms0, e0) = expr_to_stm_opt(ctx, state, &arg)?;
-                            let early_return = sequr.push(stms0, e0, kind);
+                            let (stms0, e0) =
+                                expr_to_stm_opt_with_delayed_obligations(ctx, state, &arg)?;
+
+                            let exp0 = match &e0 {
+                                Maybe::Never => Maybe::Never,
+                                Maybe::Some((exp0, _obligations)) => Maybe::Some(exp0.clone()),
+                            };
+
+                            let early_return = sequr.push(stms0, exp0, kind);
                             if let Some(stms) = early_return {
                                 return Ok(Some((stms, Maybe::Never)));
                             }
+
+                            let Maybe::Some((_exp0, obligations)) = e0 else { unreachable!() };
+                            all_obligations.extend(obligations);
                         }
                     };
                 }
@@ -916,11 +922,23 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Maybe<ReturnedCall>)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), _, _)
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, _, _), _, _)
             if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? =>
         {
             expr_get_call(ctx, state, disallow_poly_ret, expr)
         }
+        _ => Ok(None),
+    }
+}
+
+fn place_must_be_call_stm(
+    ctx: &Ctx,
+    state: &mut State,
+    disallow_poly_ret: Option<&Typ>,
+    place: &Place,
+) -> Result<Option<(Vec<Stm>, Maybe<ReturnedCall>)>, VirErr> {
+    match &place.x {
+        PlaceX::Temporary(t) => expr_must_be_call_stm(ctx, state, disallow_poly_ret, t),
         _ => Ok(None),
     }
 }
@@ -1401,8 +1419,8 @@ pub(crate) fn expr_to_stm_opt(
             let e0 = to_exp_or_return_never!(e0, stms);
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::Loc(e0))))))
         }
-        ExprX::AssignToPlace { place, rhs, op: Some(binary_op), resolve } => {
-            assert!(resolve.is_none());
+        ExprX::AssignToPlace { place, rhs, op: Some(binary_op), resolve, typ: _ } => {
+            assert!(!resolve);
 
             // No support for short-circuit ops here
             assert!(!matches!(binary_op, BinaryOp::And | BinaryOp::Or | BinaryOp::Implies));
@@ -1437,7 +1455,7 @@ pub(crate) fn expr_to_stm_opt(
 
             Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
-        ExprX::AssignToPlace { place, rhs, op: None, resolve } => {
+        ExprX::AssignToPlace { place, rhs, op: None, resolve, typ } => {
             let (stms_r, e_r) = expr_to_stm_opt(ctx, state, rhs)?;
             let e_r = to_exp_or_return_never!(e_r, stms_r);
 
@@ -1458,8 +1476,8 @@ pub(crate) fn expr_to_stm_opt(
 
             let (mut stms, e_r, e_l) = sequr.into_stms_exps_expect_2(state);
 
-            if let Some(t) = resolve {
-                let resx = ExpX::UnaryOpr(UnaryOpr::HasResolved(t.clone()), e_l.clone());
+            if *resolve {
+                let resx = ExpX::UnaryOpr(UnaryOpr::HasResolved(typ.clone()), e_l.clone());
                 let res = SpannedTyped::new(&expr.span, &bool_typ(), resx);
                 let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(res));
                 stms.push(assume_stm);
@@ -1538,7 +1556,7 @@ pub(crate) fn expr_to_stm_opt(
                     // special-case for recommends here, or replace this logic with a recursive call
                     // to handle the right-hand-side, if possible.
                     stms.extend(assign.into_iter());
-                    let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call };
+                    let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Assign };
                     typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
                     Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
                 }
@@ -1660,7 +1678,7 @@ pub(crate) fn expr_to_stm_opt(
                                 stms.push(init_var(&expr.span, &temp_ident, &call));
                             }
                         }
-                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call };
+                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(x) };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
                         // tmp
                         Ok((stms, Maybe::Some(Value::Exp(temp_var))))
@@ -1677,7 +1695,7 @@ pub(crate) fn expr_to_stm_opt(
                             args,
                             None,
                         )?);
-                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call };
+                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(x) };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
                         Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
                     }
@@ -2051,7 +2069,16 @@ pub(crate) fn expr_to_stm_opt(
                     let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Assert));
                     let (temp_id, temp_var) = state.declare_temp_var_stm(&exp.span, &exp.typ, kind);
                     stms.push(init_var(&exp.span, &temp_id, &exp));
-                    temp_var
+                    // Carry any proof note from `exp` to `temp_var`.
+                    if let Some(label) = sst_exp_get_proof_note(&exp) {
+                        SpannedTyped::new(
+                            &exp.span,
+                            &exp.typ,
+                            ExpX::UnaryOpr(UnaryOpr::ProofNote(label), temp_var),
+                        )
+                    } else {
+                        temp_var
+                    }
                 };
                 stms.push(Spanned::new(
                     e.span.clone(),
@@ -2561,8 +2588,8 @@ pub(crate) fn expr_to_stm_opt(
                     decrease: Arc::new(decrease1),
                     // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
-                    modified_vars: Arc::new(vec![]),
-                    pre_modified_params: Arc::new(vec![]),
+                    modified_vars: None,
+                    pre_modified_params: None,
                 },
             );
             if can_control_flow_reach_after_loop(expr) {
@@ -2840,11 +2867,11 @@ pub(crate) fn expr_to_stm_opt(
             panic!("TwoPhaseBorrowMut should have been handled by the parent node");
         }
         ExprX::ReadPlace(place, _) | ExprX::ImplicitReborrowOrSpecRead(place, _, _) => {
-            // Any ImplicitReborrowOrSpecRead which are left are assumed to be SpecRead
-            let expr = place_to_expr(place);
-            expr_to_stm_opt(ctx, state, &expr)
+            let (stms, e) = place_to_exp_for_read(ctx, state, place)?;
+            let e = unwrap_or_return_never!(e, stms);
+            Ok((stms, Maybe::Some(Value::Exp(e))))
         }
-        ExprX::UseLeftWhereRightCanHaveNoAssignments(e1, e2) => {
+        ExprX::EvalAndResolve(e1, e2) => {
             let (mut stms, exp1) = expr_to_stm_opt(ctx, state, e1)?;
             let exp1 = to_exp_or_return_never!(exp1, stms);
 
@@ -2853,6 +2880,52 @@ pub(crate) fn expr_to_stm_opt(
 
             stms.append(&mut stms2);
             Ok((stms, Maybe::Some(Value::Exp(exp1))))
+        }
+        ExprX::Old(e) => expr_to_stm_opt(ctx, state, e),
+    }
+}
+
+/// expr_to_stm, but with extra type-invariant obligations that need to be resolved
+/// This is needed to handle the case that looks like
+/// call((
+///     EvalAndResolve(
+///         &mut x,
+///         Assume(HasResolved(...))
+/// ))
+/// which can result from resolution-analysis
+fn expr_to_stm_opt_with_delayed_obligations(
+    ctx: &Ctx,
+    state: &mut State,
+    expr: &Expr,
+) -> Result<(Vec<Stm>, Maybe<(Value, Vec<Obligation>)>), VirErr> {
+    match &expr.x {
+        ExprX::BorrowMut(_place) => {
+            let (mut stms, bor_sst) = borrow_mut_to_sst(ctx, state, expr)?;
+            match bor_sst {
+                Maybe::Never => Ok((stms, Maybe::Never)),
+                Maybe::Some((bor_sst, obligations)) => {
+                    let BorrowMutSst { phase2_stm, mut_ref_exp } = bor_sst;
+                    stms.push(phase2_stm);
+                    Ok((stms, Maybe::Some((Value::Exp(mut_ref_exp), obligations))))
+                }
+            }
+        }
+        ExprX::EvalAndResolve(e1, e2) => {
+            let (mut stms, exp1) = expr_to_stm_opt_with_delayed_obligations(ctx, state, e1)?;
+            let (exp1, obligations) = unwrap_or_return_never!(exp1, stms);
+
+            let (mut stms2, exp2) = expr_to_stm_opt(ctx, state, e2)?;
+            let _exp2 = unwrap_or_return_never!(exp2, stms);
+
+            stms.append(&mut stms2);
+            Ok((stms, Maybe::Some((exp1, obligations))))
+        }
+        _ => {
+            let (stms, e) = expr_to_stm_opt(ctx, state, expr)?;
+            match e {
+                Maybe::Never => Ok((stms, Maybe::Never)),
+                Maybe::Some(e) => Ok((stms, Maybe::Some((e, vec![])))),
+            }
         }
     }
 }
@@ -3070,6 +3143,103 @@ struct Obligation {
     exp: Exp,
 }
 
+/// Compute the place expression and read from the place
+fn place_to_exp_for_read(
+    ctx: &Ctx,
+    state: &mut State,
+    place: &Place,
+) -> Result<(Vec<Stm>, Maybe<Exp>), VirErr> {
+    // Try to lower without creating unnecessary temporaries if we can.
+    // As always, we need to generate a pure Exp with no Stms if it's possible.
+    if place_is_simple(place) {
+        return place_to_exp_simple(ctx, state, place);
+    }
+    let (stms, res) = place_to_exp_pair(ctx, state, place)?;
+    let (_lhs, rhs, obligations) = unwrap_or_return_never!(res, stms);
+    if obligations.len() > 0 {
+        // Shouldn't have these for reads
+        return Err(error(
+            &place.span,
+            "Verus internal error: place_to_expr_for_read does not expect any UserDefinedTypInvariantObligation",
+        ));
+    }
+    Ok((stms, Maybe::Some(rhs)))
+}
+
+fn place_is_simple(place: &Place) -> bool {
+    match &place.x {
+        PlaceX::Local(_) => true,
+        PlaceX::Temporary(_) => true,
+        PlaceX::DerefMut(p) | PlaceX::ModeUnwrap(p, _) => place_is_simple(p),
+        PlaceX::Field(field_opr, p) => {
+            matches!(field_opr.check, VariantCheck::None) && place_is_simple(p)
+        }
+        PlaceX::WithExpr(..) => false,
+        PlaceX::Index(p, i, _k, bounds_check) => {
+            // An Index with no bounds check could show up from an Assert added
+            // by ast_simplify, so we need to allow this in order to generate a pure Exp
+            let index_is_simple = match &i.x {
+                ExprX::Const(_) => true,
+                ExprX::Var(_) => true,
+                ExprX::ReadPlace(place, _) => match &place.x {
+                    PlaceX::Local(_) => true,
+                    _ => false,
+                },
+                _ => false,
+            };
+            matches!(bounds_check, BoundsCheck::Allow) && index_is_simple && place_is_simple(p)
+        }
+        PlaceX::UserDefinedTypInvariantObligation(..) => false,
+    }
+}
+
+/// Precondition: place_is_simple
+fn place_to_exp_simple(
+    ctx: &Ctx,
+    state: &mut State,
+    place: &Place,
+) -> Result<(Vec<Stm>, Maybe<Exp>), VirErr> {
+    let mk_exp = |expx: ExpX| SpannedTyped::new(&place.span, &place.typ, expx);
+    match &place.x {
+        PlaceX::Local(x) => {
+            let unique_id = state.get_var_unique_id(&x);
+            let e_r = mk_exp(ExpX::Var(unique_id));
+            let e_r = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_r));
+            Ok((vec![], Maybe::Some(e_r)))
+        }
+        PlaceX::Temporary(e) => {
+            let (stms, v) = expr_to_stm_opt(ctx, state, e)?;
+            let exp = to_exp_or_return_never!(v, stms);
+            Ok((stms, Maybe::Some(exp)))
+        }
+        PlaceX::ModeUnwrap(p, _) => place_to_exp_simple(ctx, state, p),
+        PlaceX::DerefMut(p) => {
+            let (stms, e) = place_to_exp_simple(ctx, state, p)?;
+            let e = unwrap_or_return_never!(e, stms);
+            let e = mk_exp(ExpX::Unary(UnaryOp::MutRefCurrent, e));
+            Ok((stms, Maybe::Some(e)))
+        }
+        PlaceX::Field(field_opr, p) => {
+            assert!(matches!(field_opr.check, VariantCheck::None));
+            let (stms, e) = place_to_exp_simple(ctx, state, p)?;
+            let e = unwrap_or_return_never!(e, stms);
+            let e = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e));
+            Ok((stms, Maybe::Some(e)))
+        }
+        PlaceX::WithExpr(..) => unreachable!(),
+        PlaceX::Index(p, i, kind, bounds_check) => {
+            assert!(matches!(bounds_check, BoundsCheck::Allow));
+            let (stms, e) = place_to_exp_simple(ctx, state, p)?;
+            let e = unwrap_or_return_never!(e, stms);
+            let i = expr_to_pure_exp_skip_checks(ctx, state, i)?;
+            let op = BinaryOp::Index(*kind, BoundsCheck::Allow);
+            let e = mk_exp(ExpX::Binary(op, e, i));
+            Ok((stms, Maybe::Some(e)))
+        }
+        PlaceX::UserDefinedTypInvariantObligation(..) => unreachable!(),
+    }
+}
+
 /// Use this when you need to both read and write to a given place
 ///
 /// Returns:
@@ -3254,12 +3424,10 @@ fn stmt_to_stm(
             let ident = rename.clone();
             let decl = PreLocalDecl { ident, typ: typ.clone(), kind: PreLocalDeclKind::StmtLet };
 
-            let init = init.as_ref().map(|init| place_to_expr(init));
-
             // First check if the initializer needs to be translate to a Call instead
             // of an Exp. If so, translate it that way.
             if let Some(init) = &init {
-                match expr_must_be_call_stm(ctx, state, Some(&typ), init)? {
+                match place_must_be_call_stm(ctx, state, Some(&typ), init)? {
                     Some((stms, Maybe::Never)) => {
                         return Ok((stms, Maybe::Never, None));
                     }
@@ -3286,7 +3454,7 @@ fn stmt_to_stm(
                             ctx,
                             state,
                             &init.span,
-                            fun,
+                            fun.clone(),
                             resolved_method,
                             is_trait_default,
                             typs,
@@ -3301,7 +3469,7 @@ fn stmt_to_stm(
                         // to handle the right-hand-side, if possible.
                         let ret = Maybe::Some(Value::ImplicitUnit(stmt.span.clone()));
 
-                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call };
+                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(fun) };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
 
                         return Ok((stms, ret, Some((name.clone(), decl, None))));
@@ -3314,8 +3482,8 @@ fn stmt_to_stm(
             let (mut stms, exp) = match &init {
                 None => (vec![], None),
                 Some(init) => {
-                    let (stms, exp) = expr_to_stm_opt(ctx, state, init)?;
-                    let exp = match exp.to_maybe_exp() {
+                    let (stms, exp) = place_to_exp_for_read(ctx, state, init)?;
+                    let exp = match exp {
                         Maybe::Some(exp) => exp,
                         Maybe::Never => {
                             return Ok((stms, Maybe::Never, None));
@@ -3483,12 +3651,12 @@ fn call_namespace(ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicity
     SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone)]
 enum TypInv {
     UnwindError,
     BareMutRefError,
     Assign,
-    Call,
+    Call(Fun),
     Constructed,
     Assume,
 }
@@ -3502,7 +3670,14 @@ fn typ_inv_obligations(
 ) -> Result<(), VirErr> {
     for obligation in obligations.into_iter().rev() {
         let Obligation { fun, exp } = obligation;
-        assert_assume_satisfies_user_defined_type_invariant(ctx, state, &exp, stms, &fun, typ_inv)?;
+        assert_assume_satisfies_user_defined_type_invariant(
+            ctx,
+            state,
+            &exp,
+            stms,
+            &fun,
+            typ_inv.clone(),
+        )?;
     }
     Ok(())
 }
@@ -3549,11 +3724,11 @@ fn assert_assume_satisfies_user_defined_type_invariant(
                 &exp.span,
                 match &typ_inv {
                     TypInv::Constructed =>
-                        "constructed value may fail to meet its declared type invariant",
-                    TypInv::Call =>
-                        "value may fail to meet its declared type invariant upon end of function call",
+                        "constructed value may fail to meet its declared type invariant".to_string(),
+                    TypInv::Call(fun) =>
+                        format!("value may fail to meet its declared type invariant after mutation (type invariant is checked at end of call to `{:}`)", crate::ast_util::fun_as_friendly_rust_name(fun)),
                     TypInv::Assign =>
-                        "value may fail to meet its declared type invariant after assignment",
+                        "value may fail to meet its declared type invariant after assignment".to_string(),
                     TypInv::Assume | TypInv::UnwindError | TypInv::BareMutRefError => unreachable!(),
                 }
             )

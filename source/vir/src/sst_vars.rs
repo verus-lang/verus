@@ -3,10 +3,12 @@ use crate::def::Spanned;
 use crate::messages::Span;
 use crate::sst::{Dest, Exp, ExpX, LocalDecl, LocalDeclKind, Pars, Stm, StmX, Stms, UniqueIdent};
 use crate::sst_visitor::exp_visitor_check;
+use air::ast::{ExprX, StmtX};
 use air::scope_map::ScopeMap;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::sync::Arc;
+use vir_macros::ToDebugSNode;
 
 fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<VarIdent> {
     let mut output = IndexSet::new();
@@ -33,9 +35,25 @@ pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
     }
 }
 
+pub(crate) fn get_loc_var_typ(exp: &Exp) -> (UniqueIdent, Typ, bool) {
+    match &exp.x {
+        ExpX::Unary(UnaryOp::MutRefCurrent, inner) => match &inner.x {
+            ExpX::VarLoc(x) => (x.clone(), inner.typ.clone(), true),
+            _ => get_loc_var_typ(inner),
+        },
+        ExpX::Loc(x) => get_loc_var_typ(x),
+        ExpX::UnaryOpr(UnaryOpr::Field { .. }, x) => get_loc_var_typ(x),
+        ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), x) => get_loc_var_typ(x),
+        ExpX::Binary(BinaryOp::Index(..), x, _idx) => get_loc_var_typ(x),
+        ExpX::VarLoc(x) => (x.clone(), exp.typ.clone(), false),
+        _ => panic!("lhs {:?} unsupported", exp),
+    }
+}
+
 /// If this Stm node performs a (non-init) assignment, add it to the map.
 /// Shallow: does not recurse into sub-nodes.
 pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Span>) {
+    // TODO: checking args can be removed after new-mut-ref is permanent
     match &stm.x {
         StmX::Call { args, .. } => {
             for arg in args.iter() {
@@ -104,7 +122,7 @@ pub(crate) fn compute_assign_info(
         }
     }
 
-    let mut _modified = IndexSet::new();
+    let mut _modified = HavocSet::new();
     let stm = stm_assign(assign_map, &declared, &mut assigned, &mut _modified, stm);
 
     // Second pass:
@@ -117,7 +135,7 @@ pub(crate) fn compute_assign_info(
         }
     }
 
-    stm_mutations(&param_typs, &mut im::HashSet::new(), &stm)
+    stm_mutations(&param_typs, &mut HavocSet::new(), &stm)
 }
 
 /// Fill in `typ_inv_vars` and `modified_vars` fields on all `Loop` nodes.
@@ -125,7 +143,7 @@ fn stm_assign(
     assign_map: &mut AssignMap,
     declared: &IndexMap<UniqueIdent, Typ>,
     assigned: &mut IndexSet<UniqueIdent>,
-    modified: &mut IndexSet<UniqueIdent>,
+    modified: &mut HavocSet,
     stm: &Stm,
 ) -> Stm {
     let result = match &stm.x {
@@ -134,10 +152,12 @@ fn stm_assign(
                 let var: UniqueIdent = get_loc_var(&dest.dest);
                 assigned.insert(var.clone());
                 if !dest.is_init {
-                    modified.insert(var.clone());
+                    modified.insert(&dest.dest);
                 }
             }
             for arg in args.iter() {
+                // TODO: checking args can be removed after new-mut-ref is permanent
+
                 // Search for any ExpX::Loc in the arg, which might be modified.
                 // Given current limitations, I think the only way this can happen
                 // is if either
@@ -147,8 +167,7 @@ fn stm_assign(
 
                 exp_visitor_check::<(), _>(arg, &mut ScopeMap::new(), &mut |e, _| {
                     if let ExpX::Loc(loc) = &e.x {
-                        let var = get_loc_var(loc);
-                        modified.insert(var);
+                        modified.insert(loc);
                     }
                     Ok(())
                 })
@@ -179,7 +198,7 @@ fn stm_assign(
             let var = get_loc_var(dest);
             assigned.insert(var.clone());
             if !is_init {
-                modified.insert(var.clone());
+                modified.insert(dest);
             }
             stm.clone()
         }
@@ -233,28 +252,23 @@ fn stm_assign(
             modified_vars,
             pre_modified_params,
         } => {
-            let mut pre_modified = modified.clone();
-            *modified = IndexSet::new();
+            let mut inner_modified = HavocSet::new();
             let cond = if let Some((cond_stm, cond_exp)) = cond {
-                let cond_stm = stm_assign(assign_map, declared, assigned, modified, cond_stm);
+                let cond_stm =
+                    stm_assign(assign_map, declared, assigned, &mut inner_modified, cond_stm);
                 Some((cond_stm, cond_exp.clone()))
             } else {
                 None
             };
 
             let pre_assigned = assigned.clone();
-            let body = stm_assign(assign_map, declared, assigned, modified, body);
+            let body = stm_assign(assign_map, declared, assigned, &mut inner_modified, body);
             *assigned = pre_assigned;
 
-            assert!(modified_vars.len() == 0);
-            let mut modified_vars: Vec<UniqueIdent> = Vec::new();
-            for x in modified.iter() {
-                if declared.contains_key(x) {
-                    modified_vars.push(x.clone());
-                    pre_modified.insert(x.clone());
-                }
-            }
-            *modified = pre_modified;
+            assert!(modified_vars.is_none());
+
+            let inner_modified = inner_modified.filter_by_declared(declared);
+            modified.merge_with(&inner_modified);
 
             assert!(typ_inv_vars.len() == 0);
             let mut typ_inv_vars: Vec<(UniqueIdent, Typ)> = Vec::new();
@@ -271,7 +285,7 @@ fn stm_assign(
                 invs: invs.clone(),
                 decrease: decrease.clone(),
                 typ_inv_vars: Arc::new(typ_inv_vars),
-                modified_vars: Arc::new(modified_vars),
+                modified_vars: Some(Arc::new(inner_modified)),
                 pre_modified_params: pre_modified_params.clone(),
             };
             Spanned::new(stm.span.clone(), loop_x)
@@ -301,7 +315,7 @@ fn stms_assign(
     assign_map: &mut AssignMap,
     declared: &IndexMap<UniqueIdent, Typ>,
     assigned: &mut IndexSet<UniqueIdent>,
-    modified: &mut IndexSet<UniqueIdent>,
+    modified: &mut HavocSet,
     stms: &Stms,
 ) -> Stms {
     let stms: Vec<Stm> =
@@ -312,11 +326,7 @@ fn stms_assign(
 /// Fill in `pre_modified_params` on all Loop nodes.
 /// This requires `modified_vars` to be filled in already
 /// (i.e., `stm_assign` needs to be called first).
-fn stm_mutations(
-    param_typs: &[(VarIdent, Typ)],
-    mutations: &mut im::HashSet<VarIdent>,
-    stm: &Stm,
-) -> Stm {
+fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: &Stm) -> Stm {
     match &stm.x {
         StmX::Assert(..)
         | StmX::AssertBitVector { .. }
@@ -329,13 +339,13 @@ fn stm_mutations(
         | StmX::Air(_) => stm.clone(),
         StmX::Call { dest, .. } => {
             if let Some(Dest { is_init: false, dest }) = dest {
-                mutations.insert(get_loc_var(dest));
+                mutations.insert(dest);
             }
             stm.clone()
         }
         StmX::Assign { lhs, rhs: _ } => {
             if let Dest { is_init: false, dest } = lhs {
-                mutations.insert(get_loc_var(dest));
+                mutations.insert(dest);
             }
             stm.clone()
         }
@@ -349,9 +359,8 @@ fn stm_mutations(
             })
         }
         StmX::DeadEnd(body) => {
-            let m = mutations.clone();
-            let body = stm_mutations(param_typs, mutations, body);
-            *mutations = m;
+            let mut m = mutations.clone();
+            let body = stm_mutations(param_typs, &mut m, body);
             stm.new_x(StmX::DeadEnd(body))
         }
         StmX::If(cond, thn, None) => {
@@ -359,16 +368,10 @@ fn stm_mutations(
             stm.new_x(StmX::If(cond.clone(), thn, None))
         }
         StmX::If(cond, thn, Some(els)) => {
-            let pre_m = mutations.clone();
-
-            let thn = stm_mutations(param_typs, mutations, thn);
-            let mut thn_m = pre_m;
-            std::mem::swap(&mut thn_m, mutations);
-
+            let mut thn_m = mutations.clone();
+            let thn = stm_mutations(param_typs, &mut thn_m, thn);
             let els = stm_mutations(param_typs, mutations, els);
-
-            *mutations = thn_m.union(mutations.clone());
-
+            mutations.merge_with(&thn_m);
             stm.new_x(StmX::If(cond.clone(), thn, Some(els)))
         }
         StmX::Loop {
@@ -382,11 +385,11 @@ fn stm_mutations(
             decrease,
             typ_inv_vars,
             modified_vars,
-            pre_modified_params: _,
+            pre_modified_params,
         } => {
-            for v in modified_vars.iter() {
-                mutations.insert(v.clone());
-            }
+            assert!(pre_modified_params.is_none());
+
+            mutations.merge_with(&modified_vars.as_ref().unwrap());
 
             let cond = match cond {
                 None => None,
@@ -397,12 +400,7 @@ fn stm_mutations(
             };
             let body = stm_mutations(param_typs, mutations, body);
 
-            let mut pre_modified_params = vec![];
-            for (ident, typ) in param_typs {
-                if mutations.contains(ident) {
-                    pre_modified_params.push((ident.clone(), typ.clone()));
-                }
-            }
+            let pre_modified_params = mutations.filter_by_params(param_typs);
 
             let loopx = StmX::Loop {
                 loop_isolation: *loop_isolation,
@@ -415,7 +413,7 @@ fn stm_mutations(
                 decrease: decrease.clone(),
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
-                pre_modified_params: Arc::new(pre_modified_params),
+                pre_modified_params: Some(Arc::new(pre_modified_params)),
             };
             stm.new_x(loopx)
         }
@@ -433,6 +431,129 @@ fn stm_mutations(
                 v.push(stm_mutations(param_typs, mutations, stm));
             }
             stm.new_x(StmX::Block(Arc::new(v)))
+        }
+    }
+}
+
+/// Represents a set of locations that need to be havoc'ed
+#[derive(Clone, Debug, ToDebugSNode)]
+pub struct HavocSet {
+    pub vars: IndexMap<VarIdent, (Typ, HavocVar)>,
+}
+
+/// Represents, for a given local, the set of sublocations that need havocing
+/// At present, the granularity is only
+/// "all" or "just the 'current' field of a mutable reference",
+/// but in principle we could track individual fields of a tuple/struct.
+#[derive(Clone, Debug, ToDebugSNode, Copy)]
+pub enum HavocVar {
+    All,
+    Current,
+}
+
+impl HavocSet {
+    fn new() -> Self {
+        HavocSet { vars: IndexMap::new() }
+    }
+
+    fn insert(&mut self, loc: &Exp) {
+        let (ident, typ, mut_ref_cur) = get_loc_var_typ(loc);
+
+        let hvar = if mut_ref_cur { HavocVar::Current } else { HavocVar::All };
+
+        match self.vars.get(&ident) {
+            Some((typ, h2)) => {
+                self.vars.insert(ident, (typ.clone(), h2.join(&hvar)));
+            }
+            None => {
+                self.vars.insert(ident, (typ, hvar));
+            }
+        }
+    }
+
+    /// Merge other into self
+    fn merge_with(&mut self, other: &Self) {
+        for (ident, (typ, hvar)) in other.vars.iter() {
+            match self.vars.get(ident) {
+                Some((typ, h2)) => {
+                    self.vars.insert(ident.clone(), (typ.clone(), h2.join(hvar)));
+                }
+                None => {
+                    self.vars.insert(ident.clone(), (typ.clone(), hvar.clone()));
+                }
+            }
+        }
+    }
+
+    fn filter_by_declared(&self, declared: &IndexMap<UniqueIdent, Typ>) -> HavocSet {
+        let mut result = HavocSet { vars: IndexMap::new() };
+        for (ident, entry) in self.vars.iter() {
+            if declared.contains_key(ident) {
+                result.vars.insert(ident.clone(), entry.clone());
+            }
+        }
+        result
+    }
+
+    fn filter_by_params(&self, param_typs: &[(VarIdent, Typ)]) -> HavocSet {
+        let mut result = HavocSet { vars: IndexMap::new() };
+        for (ident, _typ) in param_typs.iter() {
+            if let Some(entry) = self.vars.get(ident) {
+                result.vars.insert(ident.clone(), entry.clone());
+            }
+        }
+        result
+    }
+
+    pub(crate) fn emit_havocs(
+        &self,
+        ctx: &crate::context::Ctx,
+        snapshot_name: &str,
+        stmts: &mut Vec<air::ast::Stmt>,
+    ) {
+        for (var, (typ, havoc_var)) in self.vars.iter() {
+            havoc_var.emit_havoc(ctx, var, typ, snapshot_name, stmts);
+        }
+    }
+}
+
+impl HavocVar {
+    fn join(&self, other: &Self) -> Self {
+        match (self, other) {
+            (HavocVar::Current, HavocVar::Current) => HavocVar::Current,
+            _ => HavocVar::All,
+        }
+    }
+
+    fn emit_havoc(
+        &self,
+        ctx: &crate::context::Ctx,
+        var: &VarIdent,
+        typ: &Typ,
+        snapshot_name: &str,
+        stmts: &mut Vec<air::ast::Stmt>,
+    ) {
+        let uid = crate::def::suffix_local_unique_id(&var);
+        stmts.push(Arc::new(StmtX::Havoc(uid.clone())));
+
+        let typ_inv = crate::sst_to_air::typ_invariant(ctx, typ, &air::ast_util::ident_var(&uid));
+        if let Some(expr) = typ_inv {
+            stmts.push(Arc::new(StmtX::Assume(expr)));
+        }
+
+        match self {
+            HavocVar::All => {}
+            HavocVar::Current => {
+                // If only the 'current' is havoc'ed, we need to preserve the future:
+                let old_var =
+                    Arc::new(ExprX::Old(crate::def::snapshot_ident(snapshot_name), uid.clone()));
+                let new_var = air::ast_util::string_var(&uid);
+                let future = Arc::new(crate::def::MUT_REF_FUTURE.to_string());
+                let old_future = Arc::new(ExprX::Apply(future.clone(), Arc::new(vec![old_var])));
+                let new_future = Arc::new(ExprX::Apply(future, Arc::new(vec![new_var])));
+                let eq = Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, old_future, new_future));
+                stmts.push(Arc::new(StmtX::Assume(eq)));
+            }
         }
     }
 }

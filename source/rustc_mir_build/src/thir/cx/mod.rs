@@ -30,7 +30,7 @@ pub(crate) fn thir_body(
     crate::verus::check_this_query_isnt_running_early(owner_def);
 
     let expr = if crate::verus::erase_body(&mut cx, owner_def) {
-        crate::verus::erase_tree(&mut cx, body.value)
+        crate::verus::erase_tree(&mut cx, body.value, crate::verus::TreeErase::IncludeBasicChecks)
     } else {
         cx.mirror_expr(body.value)
     };
@@ -59,6 +59,9 @@ pub(crate) fn thir_body(
             });
         }
     }
+
+    // Note: this call requires cx.thir.params to be initialized
+    let expr = crate::verus_time_travel_prevention::body_post(&mut cx, body.value, expr);
 
     Ok((tcx.alloc_steal_thir(cx.thir), expr))
 }
@@ -122,7 +125,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             body_owner: def.to_def_id(),
             apply_adjustments:
                 !find_attr!(tcx.hir_attrs(hir_id), AttributeKind::CustomMir(..) => ()).is_some(),
-            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx),
+            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
         }
     }
 

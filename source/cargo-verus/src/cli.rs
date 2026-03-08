@@ -102,6 +102,56 @@ pub struct CargoOptions {
     pub cargo_args: Vec<String>,
 }
 
+fn has_flag_arg_without_space(opts: &CargoOptions) -> bool {
+    for arg in opts.cargo_args.iter() {
+        if arg.starts_with("-Z") && arg.len() > 2 {
+            eprintln!(
+                "Split the command-line argument {0} into two by using a space after -Z (i.e., use -Z {1}) so that cargo verus can correctly parse and forward the flag.",
+                arg,
+                &arg[2..],
+            );
+            return true;
+        }
+    }
+
+    false
+}
+
+fn has_late_verus_arg(opts: &CargoOptions) -> bool {
+    for arg in opts.cargo_args.iter().skip(1) {
+        if arg.starts_with("-p")
+            || arg == "--package"
+            || arg.starts_with("--package=")
+            || arg == "--workspace"
+            || arg == "--all"
+            || arg == "--exclude"
+            || arg.starts_with("--exclude=")
+            || arg == "--manifest-path"
+            || arg.starts_with("--manifest-path=")
+            || arg == "--all-features"
+            || arg == "--no-default-features"
+            || arg == "--features"
+            || arg.starts_with("--features=")
+            || arg == "--frozen"
+            || arg == "--locked"
+            || arg == "--offline"
+            || arg == "--target-dir"
+            || arg.starts_with("--target-dir=")
+            || arg == "--config"
+            || arg.starts_with("--config=")
+            || arg.starts_with("-Z")
+        {
+            eprintln!(
+                "The Verus-relevant command-line argument {0} can't follow the Verus-irrelevant argument {1} because that will cause the Verus-relevant argument to be ignored. To fix this, place Verus-relevant cargo options (like --package, --features, --manifest-path) before any Verus-irrelevant ones.",
+                arg, opts.cargo_args[0]
+            );
+            return true;
+        }
+    }
+
+    false
+}
+
 impl CargoVerusCli {
     pub fn clap_trailing_args_hotfix(mut self) -> Self {
         // NOTE: For context see this issue: https://github.com/clap-rs/clap/issues/6200
@@ -122,5 +172,17 @@ impl CargoVerusCli {
             VerusSubcommand::New(_) => {}
         }
         self
+    }
+
+    pub fn has_inadvisable_verus_arg(&self) -> bool {
+        match &self.command {
+            VerusSubcommand::Verify(cmd)
+            | VerusSubcommand::Focus(cmd)
+            | VerusSubcommand::Build(cmd)
+            | VerusSubcommand::Check(cmd) => {
+                has_flag_arg_without_space(&cmd.cargo_opts) || has_late_verus_arg(&cmd.cargo_opts)
+            }
+            VerusSubcommand::New(_) => false,
+        }
     }
 }

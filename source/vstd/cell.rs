@@ -279,10 +279,10 @@ impl<V> PCell<V> {
             self.id() === perm@.pcell,
             perm.is_init(),
         ensures
-            *v === perm.value(),
-            fin(perm).id() == perm.id(),
-            fin(perm).is_init(),
-            fin(perm).value() === *fin(v),
+            *v === old(perm).value(),
+            final(perm).id() == old(perm).id(),
+            final(perm).is_init(),
+            final(perm).value() === *final(v),
         opens_invariants none
         no_unwind
     {

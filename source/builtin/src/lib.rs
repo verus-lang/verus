@@ -400,6 +400,56 @@ impl<A> core::fmt::Debug for Tracked<A> {
     }
 }
 
+/// Dereferencing a `Ghost<A>` returns a reference to a ghost-mode location.
+///
+/// Note: This special behavior requires support from Verus,
+/// and this trait impl cannot be used generically.
+#[cfg(verus_keep_ghost)]
+impl<A> core::ops::Deref for Ghost<A> {
+    type Target = A;
+    #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::deref"]
+    fn deref(&self) -> &Self::Target {
+        unimplemented!();
+    }
+}
+
+/// Dereferencing a `Ghost<A>` returns a reference to a ghost-mode location.
+///
+/// Note: This special behavior requires support from Verus,
+/// and this trait impl cannot be used generically.
+#[cfg(verus_keep_ghost)]
+impl<A> core::ops::DerefMut for Ghost<A> {
+    #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::deref_mut"]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unimplemented!();
+    }
+}
+
+/// Dereferencing a `Tracked<A>` returns a reference to a tracked-mode location.
+///
+/// Note: This special behavior requires support from Verus,
+/// and this trait impl cannot be used generically.
+#[cfg(verus_keep_ghost)]
+impl<A> core::ops::Deref for Tracked<A> {
+    type Target = A;
+    #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::deref"]
+    fn deref(&self) -> &Self::Target {
+        unimplemented!();
+    }
+}
+
+/// Dereferencing a `Tracked<A>` returns a reference to a tracked-mode location.
+///
+/// Note: This special behavior requires support from Verus,
+/// and this trait impl cannot be used generically.
+#[cfg(verus_keep_ghost)]
+impl<A> core::ops::DerefMut for Tracked<A> {
+    #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::deref_mut"]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unimplemented!();
+    }
+}
+
 impl<A> Ghost<A> {
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::view"]
@@ -1921,6 +1971,8 @@ pub fn array_index<T, const N: usize>(_a: [T; N], _i: int) -> T {
     unimplemented!()
 }
 
+/// Needed for the THIR-based erasure (rustc_mir_build_additional_files)
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::erased_ghost_value"]
 pub fn erased_ghost_value<S, T>(_: S) -> T {
@@ -1945,6 +1997,14 @@ pub fn dummy_capture_new<'a>() -> DummyCapture<'a> {
 pub fn dummy_capture_consume<'a>(_dc: DummyCapture<'a>) {
     unimplemented!()
 }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::mutable_reference_tie"]
+pub fn mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(_a: &'a mut T, _b: &'a mut U) -> &'a mut T {
+    unimplemented!()
+}
+
+/// Directives and spec functions related to &mut references
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::has_resolved"]
@@ -1977,9 +2037,9 @@ pub fn mut_ref_future<T>(_mut_ref: &mut T) -> T {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::fin"]
+#[rustc_diagnostic_item = "verus::verus_builtin::final_"]
 #[verifier::spec]
-pub fn fin<T: ?Sized>(_mut_ref: &mut T) -> &mut T {
+pub fn final_<T: ?Sized>(_mut_ref: &mut T) -> &mut T {
     unimplemented!()
 }
 

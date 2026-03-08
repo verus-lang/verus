@@ -254,6 +254,24 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     }
 
     fn var_local_id(&self, id: LocalVarId, for_guard: ForGuard) -> Local {
+        if !self.var_indices.contains_key(&id) {
+            // Note (verus): if this fails, it's probably because our transformation in
+            // verus_time_travel_prevention.rs is malformed; e.g., it emits the VarRef for some
+            // shadow var without also creating its binding.
+            // Possible causes:
+            // 1. bug in verus_time_travel_prevention.rs, failing to emit the binding
+            // 2. rust_verify/src/erase.rs computes inconsistent vars map:
+            //    2a. a variable binding is Erase, but a use of that var is not Erase
+            //    2b. a variable binding is Erase, but a use of that var is missing from the map
+            let ids = (id.0.owner.def_id.local_def_index.as_usize(), id.0.local_id);
+            dbg!(ids);
+            dbg!(self.def_id);
+            let mut real_id = id;
+            real_id.0.owner.def_id = self.def_id;
+            dbg!(real_id.0.owner.def_id.local_def_index.as_usize());
+            dbg!(self.fn_span);
+            panic!("Verus Internal Error: var_local_id failed: {ids:?}");
+        }
         self.var_indices[&id].local_id(for_guard)
     }
 }
