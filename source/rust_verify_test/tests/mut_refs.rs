@@ -3364,8 +3364,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): fix or disallow
-    #[ignore] #[test] overwrite_two_phase_borrow ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow ["new-mut-ref"] => verus_code! {
         fn set_to(a: &mut u64, b: u64)
             ensures *final(a) == b,
         {
@@ -3382,7 +3381,318 @@ test_verify_one_file_with_options! {
             assert(a == 20);
             assert(b == 1);
         }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow2 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: (&mut u64, u64), b: u64)
+            ensures *final(a.0) == b,
+        {
+            *a.0 = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = (&mut a, 20);
+            set_to(a_ref, ({ a_ref.0 = &mut b; 20 }));
+
+            assert(a == 20);
+            assert(b == 1);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "assign to part of moved value: `a_ref`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow3 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = (&mut a, 0);
+            set_to(a_ref.0, ({ a_ref = (&mut b, 2); 20 }));
+
+            assert(a == 20);
+            assert(b == 1);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow4 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = (&mut a, 0);
+            set_to(a_ref.0, ({ a_ref.0 = &mut b; 20 }));
+
+            assert(a == 20);
+            assert(b == 1);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow5 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = (&mut a, 0);
+            set_to(a_ref.0, ({ a_ref.1 = 17; 20 }));
+
+            assert(a == 20);
+            assert(b == 1);
+            assert(a_ref.1 == 17);
+        }
+
+        fn two_phase_test_fails() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = (&mut a, 0);
+            set_to(a_ref.0, ({ a_ref.1 = 17; 20 }));
+
+            assert(a == 20);
+            assert(b == 1);
+            assert(a_ref.1 == 17);
+            assert(false); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow6 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+            let mut e = 4;
+
+            let mut a_ref = [&mut a, &mut b];
+            set_to(a_ref[0], ({ a_ref[0] = &mut c; 20 }));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow7 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+            let mut e = 4;
+
+            let mut a_ref = [&mut a, &mut b];
+            // this would be ok but we're not going to compare indices
+            set_to(a_ref[0], ({ a_ref[1] = &mut c; 20 }));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow8 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+            let mut e = 4;
+            let mut f = 5;
+
+            let mut a_ref = [(&mut a, &mut b), (&mut c, &mut d)];
+            set_to(a_ref[0].0, ({ a_ref[0] = (&mut e, &mut f); 20 }));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow9 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+            let mut e = 4;
+            let mut f = 5;
+
+            let mut a_ref = [(&mut a, &mut b), (&mut c, &mut d)];
+            set_to(a_ref[0].0, ({ a_ref[0].0 = &mut e; 20 }));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow10 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+            let mut e = 4;
+            let mut f = 5;
+
+            let mut a_ref = [(&mut a, &mut b), (&mut c, &mut d)];
+            set_to(a_ref[0].0, ({ a_ref[0].1 = &mut e; 20 }));
+
+            assert(has_resolved(a_ref));
+            assert(has_resolved(a_ref[0]));
+            assert(has_resolved(a_ref[1]));
+            assert(has_resolved(a_ref[0].0));
+            assert(has_resolved(a_ref[0].1));
+            assert(has_resolved(a_ref[1].0));
+            assert(has_resolved(a_ref[1].1));
+
+            assert(*a_ref[0].1 == 4);
+            assert(a == 20);
+            assert(b == 1);
+            assert(c == 2);
+            assert(d == 3);
+            assert(e == 4);
+        }
+
+        fn two_phase_test_fails() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+            let mut e = 4;
+            let mut f = 5;
+
+            let mut a_ref = [(&mut a, &mut b), (&mut c, &mut d)];
+            set_to(a_ref[0].0, ({ a_ref[0].1 = &mut e; 20 }));
+
+            assert(has_resolved(a_ref));
+            assert(has_resolved(a_ref[0]));
+            assert(has_resolved(a_ref[1]));
+            assert(has_resolved(a_ref[0].0));
+            assert(has_resolved(a_ref[0].1));
+            assert(has_resolved(a_ref[1].0));
+            assert(has_resolved(a_ref[1].1));
+
+            assert(*a_ref[0].1 == 4);
+            assert(a == 20);
+            assert(b == 1);
+            assert(c == 2);
+            assert(d == 3);
+            assert(e == 4);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow11 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = &mut a;
+            // ok because the function call is actually unreachable
+            set_to(a_ref, ({ loop { a_ref = &mut b; } 20 }));
+            assert(false);
+        }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow12 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = &mut a;
+            set_to(a_ref, ({ loop { a_ref = &mut b; break; } 20 }));
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow13 ["new-mut-ref"] => verus_code! {
+        struct Ctor<'a>(&'a mut u64, u64);
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = &mut a;
+            let t = Ctor(a_ref, ({ a_ref = &mut b; 20 }));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
 }
 
 // vec works differently than slice/array since it's a method call instead of a place expression
