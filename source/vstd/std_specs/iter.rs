@@ -84,6 +84,7 @@ pub trait ExIterator {
 
     // Provided methods
 
+    // TODO: Pending a resolution of https://github.com/verus-lang/verus/issues/2236
     // //#[verifier::when_used_as_spec(into_map_spec)]
     // fn map<B, F>(self, f: F) -> (r: core::iter::Map<Self, F>)
     //     where
@@ -235,7 +236,8 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
  * Definitions for `map()`
  ********************************************************************************/
 
-// TODO: The external type specification and IteratorSpecImpl for core::iter::Map<I, F>
+// TODO: Pending a resolution of https://github.com/verus-lang/verus/issues/2236
+// The external type specification and IteratorSpecImpl for core::iter::Map<I, F>
 // are commented out because Verus's trait conflict checker reports that the type parameter
 // B in std's Iterator and DoubleEndedIterator impls for Map is "not constrained by the
 // impl trait, self type, or predicates". This is because those impls have an extra type
