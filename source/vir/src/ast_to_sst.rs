@@ -11,7 +11,7 @@ use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
-use crate::messages::{Span, ToAny, error, error_with_secondary_label, internal_error, warning};
+use crate::messages::{Span, ToAny, error, error_with_secondary_label, internal_error, warning, error_with_label};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
@@ -786,12 +786,12 @@ impl Sequencer {
     /// as the "same place". Fortunately, such a case ought to be exceedingly rare,
     /// so we don't need to support it, just check for it.
     fn validate_2phase(&self) -> Result<(), VirErr> {
-        for i in self.exps.len() {
+        for i in 0 .. self.exps.len() {
             if let Some(loc) = &self.exps[i].2 {
                 // Skip the last entry in stms, so only iterate up to self.exps.len()
                 for j in i+1 .. self.exps.len() {
-                    for stm in &self.stms[j].iter() {
-                        if let Some(span) = find_overlapping_assignment(loc, stm) {
+                    for stm in self.stms[j].iter() {
+                        if let Some(span) = crate::sst_vars::find_overlapping_assignment(stm, loc) {
                             return Err(error_with_label(&loc.span, "Verus doesn't support assigning during (two-phase) mutable borrow like this", "this borrow").secondary_label(span, "followed by this assignment"));
                         }
                     }

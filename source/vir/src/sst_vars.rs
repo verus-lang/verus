@@ -94,6 +94,80 @@ pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Spa
     }
 }
 
+/// Find any assignment that overlaps the given loc
+pub(crate) fn stm_get_mutations_shallow(stm: &Stm, loc: &Loc) -> Option<Span> {
+    todo!()
+}
+
+pub(crate) fn locs_may_overlap(loc1: &Exp, loc2: &Exp) -> bool {
+    let ExpX::Loc(mut loc1) = loc1 else { panic!("expected Loc") };
+    let ExpX::Loc(mut loc2) = loc2 else { panic!("expected Loc") };
+
+    fn get_depth(e: &Exp) -> (usize, &VarIdent) {
+        let mut e = e;
+        let mut d = 0;
+        loop {
+            match &e.x {
+                ExpX::Loc(x) | ExpX::VarLoc(x) => { return (d, x); }
+                ExpX::Unary(UnaryOp::MutRefCurrent, x) => { e = x; }
+                ExpX::UnaryOpr(UnaryOpr::Field { .. }, x) => { e = x; }
+                ExpX::Binary(BinaryOp::Index(..), x, _idx) => { e = x; }
+                _ => panic!("lhs {:?} unsupported", exp),
+            }
+            d += 1;
+        }
+    }
+
+    fn skip(e: &Exp, d: usize) -> (usize, &VarIdent) {
+        let mut e = e;
+        for i in 0 .. d {
+            match &e.x {
+                ExpX::Unary(UnaryOp::MutRefCurrent, x) => { e = x; }
+                ExpX::UnaryOpr(UnaryOpr::Field { .. }, x) => { e = x; }
+                ExpX::Binary(BinaryOp::Index(..), x, _idx) => { e = x; }
+                _ => unreachable!()
+            }
+        }
+        e
+    }
+
+    let (d1, x1) = get_depth(loc1);
+    let (d2, x2) = get_depth(loc2);
+    if x1 != x2 { return false; }
+
+    if d1 > d2 {
+        loc1 = skip(loc1, d1 - d2);
+    } else if d2 > d1 {
+        loc2 = skip(loc2, d2 - d1);
+    }
+
+    loop {
+        match (e1, e2) {
+            (ExpX::Unary(UnaryOp::MutRefCurrent, x1),
+             ExpX::Unary(UnaryOp::MutRefCurrent, x2)) => { e1 = x1; e2 = x2; }
+            (ExpX::UnaryOpr(UnaryOpr::Field { variant: v1, ident: i1 }, x1),
+             ExpX::UnaryOpr(UnaryOpr::Field { variant: v2, ident: i2 }, x2)) => {
+                if !(v1 == v2 && i1 == i2) {
+                    return false;
+                }
+                e1 = x1;
+                e2 = x2;
+            }
+            (
+              ExpX::Binary(BinaryOp::Index(..), x1, _idx1),
+              ExpX::Binary(BinaryOp::Index(..), x2, _idx2))
+            => {
+                e1 = x1;
+                e2 = x2;
+            }
+            (ExpX::Var(_) | ExpX::VarLoc(_), ExpX::Var(_) | ExpX::VarLoc(_)) => {
+                return true;
+            }
+            _ => panic!("locs_may_overlap failed")
+        }
+    }
+}
+
 /// Fill in the AssignMap and add var information to all loops in the Stm
 pub(crate) fn compute_assign_info(
     assign_map: &mut AssignMap,
