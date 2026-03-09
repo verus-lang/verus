@@ -203,22 +203,19 @@ impl StrSliceExecFns for str {
     fn substring_ascii<'a>(&'a self, from: usize, to: usize) -> (ret: &'a str)
         requires
             self.is_ascii(),
-            from <= to
-                <= self@.len(),  // MODIFIED - Range::index panics if from > to
-
+            from <= to <= self@.len(),
         ensures
             ret@ == self@.subrange(from as int, to as int),
             ret.is_ascii(),
     {
+        // Range::index panics if from > to or from > self@.len()
         &self[from..to]
     }
 
     #[verifier::external_body]
     fn substring_char<'a>(&'a self, from: usize, to: usize) -> (ret: &'a str)
         requires
-            from <= to
-                <= self@.len(),  // MODIFIED - Range::index panics if from > to
-
+            from <= to <= self@.len(),
         ensures
             ret@ == self@.subrange(from as int, to as int),
     {
@@ -244,26 +241,24 @@ impl StrSliceExecFns for str {
         }
         let byte_start = byte_start.unwrap();
         let byte_end = byte_end.unwrap();
+        // Range::index panics if from > to or from > self@.len()
         &self[byte_start..byte_end]
     }
 
     fn get_ascii(&self, i: usize) -> (b: u8)
         requires
             self.is_ascii(),
-            0 <= i < self@.len(),  // NEW - would panic if i is not a valid index
-
+            0 <= i < self@.len(),
         ensures
             self@.index(i as int) as u8 == b,
     {
         proof {
             is_ascii_spec_bytes(self);
         }
+        // panics if i is not a valid index
         self.as_bytes()[i]
     }
 
-    // TODO:This should be the as_bytes function after
-    // slice support is added
-    // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
     fn as_bytes_vec(&self) -> (ret: alloc::vec::Vec<u8>)
         ensures
             ret@ == self.spec_bytes(),
