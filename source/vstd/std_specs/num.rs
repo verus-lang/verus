@@ -216,6 +216,7 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::is_multiple_of](x: $uN, y: $uN) -> bool
                 returns (
                     if y == 0 { x == 0 } else { x % y == 0 }

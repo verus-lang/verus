@@ -36,7 +36,7 @@ use super::prelude::*;
 use super::raw_ptr::*;
 use super::seq::*;
 use crate::vstd::group_vstd_default;
-use core::marker::{MetaSized, PointeeSized};
+use core::marker::{MetaSized, PhantomData, PointeeSized};
 
 verus! {
 
@@ -834,7 +834,7 @@ pub broadcast proof fn ptr_metadata_encoding_well_defined_sized_types<T: Sized>(
 /// - For `T: ?Sized`, if the encoding for `<T as core::ptr::Pointee>::Metadata` is not implemented as specified by `ptr_metadata_encoding_well_defined::<T>()`,
 ///   then this `AbstractByteEncoding` will not provide an implementation for the encodings of `*mut T` or `*const T`.
 pub struct RawPtrRepresentation<T: PointeeSized> {
-    _t: T,
+    _t: PhantomData<T>,
 }
 
 impl<T: PointeeSized> AbstractByteEncoding<*mut T> for RawPtrRepresentation<T> {
