@@ -1015,31 +1015,6 @@ impl<T> AtomicPointsTo<T> {
             self.hist().contains(cas.hist()),
     ;
 
-    // AT-SN-VALID
-    // pub axiom fn history_seen_agree(tracked &self, tracked sn: &HistorySeen<T>)
-    //     requires
-    //         self.loc() == sn.loc(),
-    //     ensures
-    //         self.hist().contains(sn.hist()),
-    // ;
-
-    // pub proof fn history_sync_agree(tracked &self, tracked sy: &HistorySync<T>)
-    //     requires
-    //         self.loc() == sy.loc(),
-    //     ensures
-    //         self.hist().contains(sy.hist()),
-    // {
-    //     let tracked sn = sy.get_history_seen();
-    //     self.history_seen_agree(&sn);
-    // }
-
-    // AT-SY
-    // pub axiom fn get_history_sync(tracked &self) -> (tracked out: HistorySync<T>)
-    //     ensures
-    //         self.loc() == out.loc(),
-    //         self.hist() == out.hist(),
-    // ;
-
     // AT-NA
     pub axiom fn as_nonatomic_points_to(tracked self) -> (tracked out: (
         NonAtomicPointsTo<T>,
@@ -1137,117 +1112,6 @@ impl<T> AtomicPointsTo<T> {
     ;
 }
 
-// note: #[derive(Clone)] doesn't seem to work due to PhantomData
-// #[derive(Copy)]
-// pub tracked struct HistorySeen<T> {
-//     v: T
-// }
-
-// impl<T> Clone for HistorySeen<T> {
-//     #[verifier::external_body]
-//     fn clone(&self) -> Self {
-//         unimplemented!()
-//     }
-// }
-
-// impl<T> HistorySeen<T> {
-//     pub uninterp spec fn loc(&self) -> CellId;
-
-//     pub uninterp spec fn hist(&self) -> History<T>;
-
-//     #[verifier::type_invariant]
-//     pub closed spec fn inv(&self) -> bool {
-//         self.hist().0.dom().len() > 0
-//     }
-
-//     // AT-SN-JOIN
-//     // note: there was a typo in Hai's thesis: https://gitlab.mpi-sws.org/iris/gpfsl/-/blob/master/gpfsl/logic/atomic_preds.v#L624
-//     pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
-//         requires
-//             self.loc() == other.loc(),
-//         ensures
-//             out.loc() == self.loc(),
-//             out.hist() == self.hist().join(other.hist()),
-//     ;
-
-//     // AT-SN-MONO
-//     pub axiom fn restrict(tracked &mut self, h: History<T>)
-//         requires
-//             h.0.dom().len() > 0,
-//             old(self).hist().contains(h),
-//         ensures
-//             self.loc() == old(self).loc(),
-//             self.hist() == h,
-//     ;
-
-//     // AT-SN-UNFOLD
-//     pub axiom fn get_view_seen(tracked &self, timestamp: nat) -> (tracked out: ViewSeen)
-//         requires
-//             self.hist().contains_timestamp(timestamp) && self.hist().has_view(timestamp),
-//         ensures
-//             out.view() == View::singleton(self.loc(), timestamp),
-//     ;
-// }
-
-// #[derive(Copy)]
-// pub tracked struct HistorySync<T> {
-//     v: T
-// }
-
-// impl<T> Clone for HistorySync<T> {
-//     #[verifier::external_body]
-//     fn clone(&self) -> Self {
-//         unimplemented!()
-//     }
-// }
-
-// impl<T> HistorySync<T> {
-//     pub uninterp spec fn loc(&self) -> CellId;
-
-//     pub uninterp spec fn hist(&self) -> History<T>;
-
-//     #[verifier::type_invariant]
-//     pub closed spec fn inv(&self) -> bool {
-//         self.hist().0.dom().len() > 0
-//     }
-
-//     // AT-SY-SN
-//     pub axiom fn get_history_seen(tracked &self) -> (tracked out: HistorySeen<T>)
-//         ensures
-//             self.loc() == out.loc(),
-//             self.hist() == out.hist(),
-//     ;
-
-//     // AT-SY-UNFOLD
-//     pub axiom fn get_view_seen(tracked &self, timestamp: nat) -> (tracked out: (ViewSeen, ViewSeen))
-//         requires
-//             self.hist().contains_timestamp(timestamp) && self.hist().has_view(timestamp),
-//         ensures
-//             out.0.view() == self.hist().view(timestamp),
-//             out.1.view() == View::singleton(self.loc(), timestamp),
-//     ;
-
-//     // AT-SY-JOIN
-//     // note: there was a typo in Hai's thesis: https://gitlab.mpi-sws.org/iris/gpfsl/-/blob/master/gpfsl/logic/atomic_preds.v#L742
-//     pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
-//         requires
-//             self.loc() == other.loc(),
-//         ensures
-//             out.loc() == self.loc(),
-//             out.hist() == self.hist().join(other.hist()),
-//     ;
-
-//     // AT-SY-MONO
-//     pub axiom fn restrict(tracked &mut self, h: History<T>)
-//         requires
-//             h.0.dom().len() > 0,
-//             old(self).hist().contains(h),
-//         ensures
-//             self.loc() == old(self).loc(),
-//             self.hist() == h,
-//     ;
-// }
-
 pub tracked struct SingleWriter<T> {
     v: T
 }
@@ -1273,13 +1137,6 @@ impl<T> SingleWriter<T> {
         ensures
             self.loc() != other.loc(),
     ;
-
-    // AT-SW-SY
-    // pub axiom fn get_history_sync(tracked &self) -> (tracked out: HistorySync<T>)
-    //     ensures
-    //         self.loc() == out.loc(),
-    //         self.hist() == out.hist(),
-    // ;
 }
 
 // note: skipped timestamp
@@ -1306,12 +1163,6 @@ impl<T> CompareAndSwap<T> {
             out.hist() == self.hist().join(other.hist()),
     ;
 
-    // AT-CAS-SN
-    // pub axiom fn get_history_seen(tracked &self) -> (tracked out: HistorySeen<T>)
-    //     ensures
-    //         self.loc() == out.loc(),
-    //         self.hist() == out.hist(),
-    // ;
 }
 
 /// This trait is implemented on types which support atomic operations.
