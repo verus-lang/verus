@@ -291,24 +291,30 @@ pub open spec fn decode_utf8(bytes: Seq<u8>) -> Seq<char>
 
 /* Encoding chars as UTF-8 */
 
-/// True when the given scalar value has a 1-byte UTF-8 encoding.
-pub open spec fn has_width_1_encoding(scalar: u32) -> bool {
-    0 <= scalar <= 0x7F
+/// True when the given value is a Unicode scalar with a 1-byte UTF-8 encoding.
+pub open spec fn has_width_1_encoding(v: u32) -> bool {
+    0 <= v <= 0x7F
 }
 
-/// True when the given scalar value has a 2-byte UTF-8 encoding.
-pub open spec fn has_width_2_encoding(scalar: u32) -> bool {
-    0x80 <= scalar <= 0x7FF
+/// True when the given value is a Unicode scalar with a 2-byte UTF-8 encoding.
+pub open spec fn has_width_2_encoding(v: u32) -> bool {
+    0x80 <= v <= 0x7FF
 }
 
-/// True when the given scalar value has a 3-byte UTF-8 encoding.
-pub open spec fn has_width_3_encoding(scalar: u32) -> bool {
-    0x800 <= scalar <= 0xFFFF && !(0xD800 <= scalar <= 0xDFFF)
+/// True when the given value is a Unicode scalar with a 3-byte UTF-8 encoding.
+pub open spec fn has_width_3_encoding(v: u32) -> bool {
+    0x800 <= v <= 0xFFFF && !(0xD800 <= v <= 0xDFFF)
 }
 
-/// True when the given scalar value has a 4-byte UTF-8 encoding.
-pub open spec fn has_width_4_encoding(scalar: u32) -> bool {
-    0x10000 <= scalar <= 0x10FFFF
+/// True when the given value is a Unicode scalar with a 4-byte UTF-8 encoding.
+pub open spec fn has_width_4_encoding(v: u32) -> bool {
+    0x10000 <= v <= 0x10FFFF
+}
+
+/// True when the given `u32` represents a Unicode scalar, i.e., a value that can be encoded in UTF-8.
+/// This definition is equivalent to: `0 <= v <= 0x10ffff && !(0xD800 <= v <= 0xDFFF)`.
+pub open spec fn is_scalar(v: u32) -> bool {
+    has_width_1_encoding(v) || has_width_2_encoding(v) || has_width_3_encoding(v) || has_width_4_encoding(v)
 }
 
 /// The first (and only) byte of the UTF-8 encoding of the given scalar value, assuming that the scalar has a 1-byte UTF-8 encoding.
@@ -367,11 +373,6 @@ pub open spec fn third_last_continuation_byte(scalar: u32) -> u8
         has_width_4_encoding(scalar),
 {
     0x80 | ((scalar >> 12) & 0x3F) as u8
-}
-
-/// True when the given `u32` represents a Unicode scalar, i.e., a value that can be encoded in UTF-8.
-pub open spec fn is_scalar(v: u32) -> bool {
-    0 <= v <= 0x10ffff && !(0xD800 <= v <= 0xDFFF)
 }
 
 /// The UTF-8 encoding of the given value, assuming that it is a Unicode scalar.
@@ -434,7 +435,6 @@ proof fn decode_encode_width_1(b1: u8)
     ensures
         ({
             let c = codepoint_width_1(b1);
-            &&& is_scalar(c)
             &&& has_width_1_encoding(c)
             &&& leading_byte_width_1(c) == b1
         }),
@@ -467,7 +467,6 @@ proof fn decode_encode_width_2(b1: u8, b2: u8)
     ensures
         ({
             let c = codepoint_width_2(b1, b2);
-            &&& is_scalar(c)
             &&& has_width_2_encoding(c)
             &&& leading_byte_width_2(c) == b1
             &&& last_continuation_byte(c) == b2
@@ -505,7 +504,6 @@ proof fn decode_encode_width_3(b1: u8, b2: u8, b3: u8)
     ensures
         ({
             let c = codepoint_width_3(b1, b2, b3);
-            &&& is_scalar(c)
             &&& has_width_3_encoding(c)
             &&& leading_byte_width_3(c) == b1
             &&& second_last_continuation_byte(c) == b2
@@ -546,7 +544,6 @@ proof fn decode_encode_width_4(b1: u8, b2: u8, b3: u8, b4: u8)
     ensures
         ({
             let c = codepoint_width_4(b1, b2, b3, b4);
-            &&& is_scalar(c)
             &&& has_width_4_encoding(c)
             &&& leading_byte_width_4(c) == b1
             &&& third_last_continuation_byte(c) == b2
