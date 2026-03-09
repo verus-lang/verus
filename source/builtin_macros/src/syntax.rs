@@ -138,10 +138,9 @@ fn path_matches_idents(path: &Path, expected: &[&str]) -> bool {
 }
 
 fn split_off_proof_note_attrs(attrs: Vec<Attribute>) -> (Vec<Attribute>, Vec<Attribute>) {
-    let (mut proof_note_attrs, other_attrs): (Vec<Attribute>, Vec<Attribute>) =
-        attrs.into_iter().partition(|attr| {
-            path_matches_idents(&attr.path(), &["verifier", "proof_note"])
-        });
+    let (mut proof_note_attrs, other_attrs): (Vec<Attribute>, Vec<Attribute>) = attrs
+        .into_iter()
+        .partition(|attr| path_matches_idents(&attr.path(), &["verifier", "proof_note"]));
     for attr in &mut proof_note_attrs {
         attr.style = verus_syn::AttrStyle::Outer;
     }
