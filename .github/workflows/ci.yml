@@ -3,12 +3,23 @@ name: ci
 on:
   push:
     branches:
-      - 'main'
+      - "main"
 
   workflow_dispatch:
 
   pull_request:
     types: [opened, synchronize, reopened]
+
+# Cancel a workflow iff the branch for the pull request got updated
+#
+# How:
+#   - This creates a concurrency group for workflow runs;
+#   - When the workflow runs, it cancels in-progress runs if the concurrency group is the same
+#   - The group names are ci-<pr number> (in the case of PRs) and ci-<SHA> for main
+#   - This means that we still run CI for every commit on main (but those runs don't get updated anyway)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.push.after }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -24,7 +35,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.93.0
+          toolchain: 1.93.1
 
       - name: setup verusfmt
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
@@ -49,7 +60,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.93.0
+          toolchain: 1.93.1
           components: clippy
 
       - name: clippy check codebase
@@ -90,7 +101,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.93.0
+          toolchain: 1.93.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -147,7 +158,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.93.0
+          toolchain: 1.93.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -194,14 +205,14 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.93.0
+          toolchain: 1.93.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
 
       - name: download singular
         if: matrix.features == 'singular'
-        run: curl -LO https://www.singular.uni-kl.de/ftp/pub/Math/Singular/UNIX/Singular-4-3-2_M1.dmg
+        run: curl -fLO https://github.com/verus-lang/verus/releases/download/dependency/singular-4.3.2/Singular-4-3-2_M1.dmg
 
       - name: build
         working-directory: ./source
@@ -260,7 +271,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.93.0
+          toolchain: 1.93.1
 
       - name: build docs
         working-directory: ./source
@@ -317,7 +328,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.93.0
+          toolchain: 1.93.1
 
       - name: build
         working-directory: ./source

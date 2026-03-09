@@ -71,6 +71,7 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] test2 ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List<A> {
             Nil,
             Cons(A, Box<List<A>>),
@@ -120,6 +121,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test2_struct ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List<A> {
             Nil,
             Cons { hd: A, tl: Box<List<A>> },
@@ -169,6 +171,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test2_fails ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List<A> {
             Nil,
             Cons(A, Box<List<A>>),
@@ -575,6 +578,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_or_patterns verus_code! {
+        use vstd::std_specs::alloc::*;
         #[is_variant]
         enum Foo {
             Bar(u64),

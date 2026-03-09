@@ -76,7 +76,12 @@ pub struct OpaqueDef {
 #[derive(Debug, Clone)]
 pub enum VerifOrExternal {
     /// Path is the *module path* containing this item
-    VerusAware { module_path: Path, const_directive: bool, external_body: bool },
+    VerusAware {
+        module_path: Path,
+        const_directive: bool,
+        external_body: bool,
+        external_fn_specification: bool,
+    },
     /// Path/String to refer to this item for diagnostics
     /// Path is an Option because there are some items we can't compute a Path for
     External { path: Option<Path>, path_string: String, explicit: bool },
@@ -129,7 +134,7 @@ impl CrateItems {
 ///     individual items can be treated as external individually.
 ///     Trait impls need to be "whole" so we forbid external_body on individual
 ///     ImplItems in a trait_impl.
-pub(crate) fn get_crate_items<'tcx>(ctxt: &ContextX<'tcx>) -> Result<CrateItems, VirErr> {
+pub(crate) fn get_crate_items<'tcx>(ctxt: &ContextX<'tcx>) -> Result<CrateItems, Vec<VirErr>> {
     let default_state = if ctxt.cmd_line_args.no_external_by_default {
         VerifState::Verify
     } else {
@@ -151,7 +156,7 @@ pub(crate) fn get_crate_items<'tcx>(ctxt: &ContextX<'tcx>) -> Result<CrateItems,
     visitor.visit_mod(root_module, owner.span(), rustc_hir::CRATE_HIR_ID);
 
     if visitor.errors.len() > 0 {
-        return Err(visitor.errors[0].clone());
+        return Err(visitor.errors);
     }
 
     let mut map = HashMap::<OwnerId, VerifOrExternal>::new();
@@ -334,6 +339,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                     module_path: module_path,
                     const_directive: eattrs.size_of_global || eattrs.item_broadcast_use,
                     external_body: my_eattrs.external_body,
+                    external_fn_specification: my_eattrs.external_fn_specification,
                 }
             } else {
                 self.errors.push(crate::util::err_span_bare(
@@ -443,6 +449,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                             module_path,
                             const_directive: false,
                             external_body: false,
+                            external_fn_specification: false,
                         }
                     } else {
                         self.errors.push(crate::util::err_span_bare(
@@ -605,6 +612,7 @@ impl<'a> GeneralItem<'a> {
             GeneralItem::ForeignItem(_) => false,
             GeneralItem::ImplItem(i) => match i.kind {
                 ImplItemKind::Fn(..) => true,
+                ImplItemKind::Const(..) => true,
                 _ => false,
             },
             GeneralItem::TraitItem(i) => match i.kind {

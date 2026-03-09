@@ -128,6 +128,15 @@ fn path_is_ident(path: &Path, s: &str) -> bool {
     segments.len() == 1 && segments.first().unwrap().ident == s
 }
 
+fn path_matches_idents(path: &Path, expected: &[&str]) -> bool {
+    let segments = &path.segments;
+    segments.len() == expected.len()
+        && segments
+            .iter()
+            .zip(expected.iter())
+            .all(|(segment, expected)| segment.ident == *expected)
+}
+
 pub(crate) fn into_spans(span: Span) -> proc_macro2::extra::DelimSpan {
     let mut group = proc_macro2::Group::new(proc_macro2::Delimiter::None, TokenStream::new());
     group.set_span(span);
@@ -627,8 +636,9 @@ impl Visitor {
                     if let Some((p, ty)) = ret_pat {
                         if let Some(final_ret_pat) = final_ret_pat {
                             for expr in exprs.exprs.iter_mut() {
+                                let expr_span = expr.span();
                                 *expr = Expr::Verbatim(
-                                    quote_spanned! {token.span => {let #final_ret_pat = #p; #expr}},
+                                    quote_spanned! {expr_span => {let #final_ret_pat = #p; #expr}},
                                 )
                             }
                         }
@@ -1027,7 +1037,9 @@ impl Visitor {
             verus_inputs_to_tokens(&sig.inputs),
         );
         if !self.erase_ghost.erase() {
-            stmts.extend(spec_stmts);
+            if !(self.rustdoc && sig.constness.is_some()) {
+                stmts.extend(spec_stmts);
+            }
         }
 
         self.inside_ghost -= 1;
@@ -1183,7 +1195,7 @@ impl VisitMut for ExecGhostPatVisitor {
                         }
                     } else {
                         if self.inside_ghost == 0 {
-                            parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x;)
+                            parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(infer_proph)] let mut #x;)
                         } else if id.mutability.is_some() {
                             parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x = #tmp_x.view();)
                         } else {
@@ -1232,7 +1244,7 @@ impl VisitMut for ExecGhostPatVisitor {
                 x.mutability = None;
                 let span = id.span();
                 let decl = if self.ghost.is_some() {
-                    parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x;)
+                    parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(infer_proph)] let mut #x;)
                 } else {
                     parse_quote_spanned!(span => #[verus::internal(infer_mode)] let mut #x;)
                 };
@@ -1302,6 +1314,12 @@ impl Visitor {
             return (false, vec![]);
         }
 
+        for decl in visit_pat.x_decls.iter_mut() {
+            if let Stmt::Local(new_local) = decl {
+                new_local.attrs.extend(local.attrs.clone());
+            }
+        }
+
         let span = local.span();
         // Make proof block that will be subsequently visited with inside_ghost > 0
         let mk_proof_block = |block: Block| {
@@ -1324,7 +1342,7 @@ impl Visitor {
             let tmp_decl = if local.tracked.is_some() {
                 parse_quote_spanned!(span => #[verus::internal(proof)] #[verus::internal(unwrapped_binding)] let #tmp;)
             } else {
-                parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(unwrapped_binding)] let mut #tmp;)
+                parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(unwrapped_binding)] #[verus::internal(infer_proph)] let mut #tmp;)
             };
             stmts.push(tmp_decl);
             let pat = take_pat(&mut local.pat);
@@ -1333,7 +1351,7 @@ impl Visitor {
             stmts.push(Stmt::Expr(mk_proof_block(block1), Some(Semi { spans: [span] })));
             stmts.extend(visit_pat.x_decls);
             let let_pat = if local.tracked.is_some() {
-                parse_quote_spanned!(span => #[verus::internal(proof)] let #pat = #tmp;)
+                parse_quote_spanned!(span => #[verus::internal(proof)]  let #pat = #tmp;)
             } else {
                 parse_quote_spanned!(span => #[verus::internal(spec)] let #pat = #tmp;)
             };
@@ -1493,7 +1511,19 @@ impl Visitor {
         for item in items.iter_mut() {
             match &item {
                 Item::Global(global) => {
-                    let Global { attrs: _, global_token: _, inner, semi: _ } = global;
+                    let Global { attrs, global_token: _, inner, semi: _ } = global;
+                    let pass_through_attrs: Vec<&Attribute> = attrs
+                        .iter()
+                        .filter(|a| {
+                            let prefix = a
+                                .path()
+                                .segments
+                                .first()
+                                .map(|s| s.ident.to_string())
+                                .unwrap_or_default();
+                            prefix != "verus" && prefix != "verifier"
+                        })
+                        .collect();
                     let (type_, size_lit, align_lit) = match inner {
                         verus_syn::GlobalInner::SizeOf(size_of) => {
                             (&size_of.type_, &size_of.expr_lit, None)
@@ -1526,10 +1556,13 @@ impl Visitor {
                         quote! {}
                     };
                     if self.erase_ghost.erase() {
-                        *item = Item::Verbatim(quote_spanned! { span => const _: () = {
-                            #static_assert_size
-                            #static_assert_align
-                        }; });
+                        *item = Item::Verbatim(quote_spanned! { span =>
+                            #(#pass_through_attrs)*
+                            const _: () = {
+                                #static_assert_size
+                                #static_assert_align
+                            };
+                        });
                     } else {
                         let type_name_escaped = format!("{}", type_.into_token_stream())
                             .replace(" ", "")
@@ -1552,6 +1585,7 @@ impl Visitor {
 
                             *item = Item::Verbatim(
                                 quote_spanned_builtin_builtin_macros_vstd! { verus_builtin, verus_builtin_macros, vstd, span =>
+                                #(#pass_through_attrs)*
                                 #[verus::internal(size_of)] const _: () = {
                                     #verus_builtin::global_size_of::<#type_>(#size_lit);
 
@@ -1559,6 +1593,7 @@ impl Visitor {
                                     #static_assert_align
                                 };
 
+                                #(#pass_through_attrs)*
                                 #verus_builtin_macros::verus! {
                                     #[verus::internal(size_of_broadcast_proof)]
                                     #[verifier::external_body]
@@ -1609,11 +1644,15 @@ impl Visitor {
                     );
                 }
                 Item::AssumeSpecification(assume_specification) => {
-                    *item = self.handle_assume_specification(
-                        assume_specification,
-                        item.span(),
-                        &mut assume_spec_extra_impl_items,
-                    );
+                    *item = if self.erase_ghost.erase() {
+                        Item::Verbatim(quote! { const _: () = (); })
+                    } else {
+                        self.handle_assume_specification(
+                            assume_specification,
+                            item.span(),
+                            &mut assume_spec_extra_impl_items,
+                        )
+                    };
                 }
                 _ => (),
             }
@@ -1765,9 +1804,9 @@ impl Visitor {
         // We wrap the function call in an 'unsafe' block, since the user might be applying
         // a specification to an unsafe function.
         let e = if is_const {
-            Expr::Verbatim(quote!(unsafe { #callee }))
+            Expr::Verbatim(quote_spanned!(span => unsafe { #callee }))
         } else {
-            Expr::Verbatim(quote! {
+            Expr::Verbatim(quote_spanned! { span =>
                 unsafe { #callee(#(#args),*) }
             })
         };
@@ -2250,6 +2289,7 @@ impl Visitor {
                 | Expr::HasNot(_)
                 | Expr::Matches(_)
                 | Expr::GetField(_)
+                | Expr::Final(_)
         ) {
             return false;
         }
@@ -2355,6 +2395,13 @@ impl Visitor {
                 let member_ident = quote::format_ident!("arrow_{}", gf.member);
                 let get_call = quote_spanned!(gf.arrow_token.span() => .#member_ident());
                 *expr = Expr::Verbatim(quote_spanned!(span => (#base#get_call)));
+            }
+            Expr::Final(expr_final) => {
+                let span = expr_final.span();
+                let arg = expr_final.arg;
+                *expr = Expr::Verbatim(
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::final_(#arg)),
+                )
             }
             _ => unreachable!(),
         }
@@ -3613,6 +3660,31 @@ impl Visitor {
             self.inside_arith = is_inside_arith;
         }
     }
+
+    fn normalize_expr_proof_note_attrs(&mut self, expr: &mut Expr) {
+        let mut proof_note_attrs = Vec::new();
+        let mut other_attrs = Vec::new();
+        for mut attr in expr.replace_attrs(Vec::new()) {
+            if path_matches_idents(&attr.path(), &["verifier", "proof_note"]) {
+                attr.style = verus_syn::AttrStyle::Outer;
+                proof_note_attrs.push(attr);
+            } else {
+                other_attrs.push(attr);
+            }
+        }
+        expr.replace_attrs(other_attrs);
+
+        if proof_note_attrs.is_empty() {
+            return;
+        }
+
+        let inner = take_expr(expr);
+        *expr = Expr::Paren(verus_syn::ExprParen {
+            attrs: proof_note_attrs,
+            paren_token: Paren(inner.span()),
+            expr: Box::new(inner),
+        });
+    }
 }
 
 enum ExtractQuantTriggersFound {
@@ -3638,6 +3710,8 @@ enum ExtractQuantTriggersFound {
 
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        self.normalize_expr_proof_note_attrs(expr);
+
         if self.chain_operators(expr)
             || self.closure_quant_operators(expr)
             || self.handle_binary_ops(expr)

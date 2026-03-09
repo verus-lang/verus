@@ -489,16 +489,6 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_does_not_support_mut_param_fail ["vstd"] => verus_code! {
-        use vstd::prelude::*;
-
-        proof fn testfn() {
-            let tracked t = proof_fn|mut a: u64| { };
-        }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support 'mut' params for closures")
-}
-
-test_verify_one_file_with_options! {
     #[test] construct_exec_closure_in_spec_code_fail ["vstd"] => (code_str! {
         use vstd::prelude::*;
 

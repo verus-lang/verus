@@ -49,7 +49,6 @@ macro_rules! lemma_shr_is_div {
                 #[trigger] (x >> shift) == x as nat / pow2(shift as nat),
             decreases shift,
         {
-            reveal(pow2);
             if shift == 0 {
                 assert(x >> 0 == x) by (bit_vector);
                 reveal(pow);
@@ -87,6 +86,7 @@ lemma_shr_is_div!(lemma_u64_shr_is_div, u64);
 lemma_shr_is_div!(lemma_u32_shr_is_div, u32);
 lemma_shr_is_div!(lemma_u16_shr_is_div, u16);
 lemma_shr_is_div!(lemma_u8_shr_is_div, u8);
+lemma_shr_is_div!(lemma_usize_shr_is_div, usize);
 
 // Proofs of when a power of 2 fits in an unsigned type.
 macro_rules! lemma_pow2_no_overflow {
@@ -114,6 +114,7 @@ lemma_pow2_no_overflow!(lemma_u64_pow2_no_overflow, u64);
 lemma_pow2_no_overflow!(lemma_u32_pow2_no_overflow, u32);
 lemma_pow2_no_overflow!(lemma_u16_pow2_no_overflow, u16);
 lemma_pow2_no_overflow!(lemma_u8_pow2_no_overflow, u8);
+lemma_pow2_no_overflow!(lemma_usize_pow2_no_overflow, usize);
 
 // Proofs that shift left is equivalent to multiplication by power of 2.
 macro_rules! lemma_shl_is_mul {
@@ -175,6 +176,7 @@ lemma_shl_is_mul!(lemma_u64_shl_is_mul, lemma_u64_pow2_no_overflow, u64);
 lemma_shl_is_mul!(lemma_u32_shl_is_mul, lemma_u32_pow2_no_overflow, u32);
 lemma_shl_is_mul!(lemma_u16_shl_is_mul, lemma_u16_pow2_no_overflow, u16);
 lemma_shl_is_mul!(lemma_u8_shl_is_mul, lemma_u8_pow2_no_overflow, u8);
+lemma_shl_is_mul!(lemma_usize_shl_is_mul, lemma_usize_pow2_no_overflow, usize);
 
 macro_rules! lemma_mul_pow2_le_max_iff_max_shr {
     ($name:ident, $shr_is_div:ident, $uN:ty) => {
@@ -229,6 +231,11 @@ lemma_mul_pow2_le_max_iff_max_shr!(
     u16
 );
 lemma_mul_pow2_le_max_iff_max_shr!(lemma_u8_mul_pow2_le_max_iff_max_shr, lemma_u8_shr_is_div, u8);
+lemma_mul_pow2_le_max_iff_max_shr!(
+    lemma_usize_mul_pow2_le_max_iff_max_shr,
+    lemma_usize_shr_is_div,
+    usize
+);
 
 verus! {
 
@@ -326,7 +333,6 @@ pub proof fn lemma_low_bits_mask_values()
         low_bits_mask(32) == 0xffffffff,
         low_bits_mask(64) == 0xffffffffffffffff,
 {
-    reveal(pow2);
     #[verusfmt::skip]
     assert(
         low_bits_mask(0) == 0x0 &&
@@ -458,4 +464,10 @@ lemma_low_bits_mask_is_mod!(
     lemma_u8_and_split_low_bit,
     lemma_u8_pow2_no_overflow,
     u8
+);
+lemma_low_bits_mask_is_mod!(
+    lemma_usize_low_bits_mask_is_mod,
+    lemma_usize_and_split_low_bit,
+    lemma_usize_pow2_no_overflow,
+    usize
 );

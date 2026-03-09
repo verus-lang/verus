@@ -58,6 +58,14 @@ pub struct BuildOptions {
     /// Turn verbose logging on when building vstd
     #[arg(long)]
     pub vstd_log_all: bool,
+
+    /// Do not run lifetime checking when building vstd
+    #[arg(long)]
+    pub vstd_no_lifetime: bool,
+
+    /// Turn expand errors on when building vstd
+    #[arg(long)]
+    pub vstd_expand_errors: bool,
 }
 
 #[derive(Clone, Debug, Args, PartialEq, Eq)]

@@ -1,10 +1,10 @@
 // ANCHOR: example
-use vstd::prelude::*;
 use vstd::contrib::exec_spec::*;
+use vstd::prelude::*;
 
 verus! {
 
-exec_spec! {
+exec_spec_verified! {
 
 struct Point {
     x: i64,
@@ -18,18 +18,19 @@ spec fn on_line(points: Seq<Point>) -> bool {
 
 }
 
-}
+} // verus!
 // ANCHOR_END: example
-
 // ANCHOR: check
 verus! {
-    fn main() {
-        let p1 = ExecPoint { x: 1, y: 1 };
-        let p2 = ExecPoint { x: 2, y: 2 };
-        let points = vec![p1, p2];
-        assert(on_line(points.deep_view()));
-        let b = exec_on_line(points.as_slice());
-        assert(b);
-    }
+
+fn main() {
+    let p1 = ExecPoint { x: 1, y: 1 };
+    let p2 = ExecPoint { x: 2, y: 2 };
+    let points = vec![p1, p2];
+    assert(on_line(points.deep_view()));
+    let b = exec_on_line(points.as_slice());
+    assert(b);
 }
+
+} // verus!
 // ANCHOR_END: check

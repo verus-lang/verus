@@ -83,6 +83,7 @@ pub struct ArgsX {
     pub no_external_by_default: bool,
     pub no_verify: bool,
     pub no_lifetime: bool,
+    pub no_erasure_check: bool,
     pub no_auto_recommends_check: bool,
     pub no_cheating: bool,
     pub time: bool,
@@ -103,7 +104,6 @@ pub struct ArgsX {
     pub profile_all: bool,
     pub capture_profiles: bool,
     pub spinoff_all: bool,
-    pub use_internal_profiler: bool,
     pub vstd: Vstd,
     pub compile: bool,
     pub solver_version_check: bool,
@@ -131,6 +131,7 @@ impl ArgsX {
             no_external_by_default: Default::default(),
             no_verify: Default::default(),
             no_lifetime: Default::default(),
+            no_erasure_check: Default::default(),
             no_auto_recommends_check: Default::default(),
             no_cheating: Default::default(),
             time: Default::default(),
@@ -151,7 +152,6 @@ impl ArgsX {
             profile_all: Default::default(),
             capture_profiles: Default::default(),
             spinoff_all: Default::default(),
-            use_internal_profiler: Default::default(),
             vstd: Vstd::Imported,
             compile: Default::default(),
             solver_version_check: Default::default(),
@@ -196,9 +196,13 @@ pub fn enable_default_features_and_verus_attr(
 ) {
     if syntax_macro {
         // REVIEW: syntax macro adds superfluous parentheses and braces
-        for allow in
-            &["unused_parens", "unused_braces", "unconditional_panic", "arithmetic_overflow"]
-        {
+        for allow in &[
+            "unused_parens",
+            "unused_braces",
+            "unconditional_panic",
+            "arithmetic_overflow",
+            "irrefutable_let_patterns",
+        ] {
             rustc_args.push("-A".to_string());
             rustc_args.push(allow.to_string());
         }
@@ -303,6 +307,7 @@ pub fn parse_args_with_imports(
     const OPT_NO_EXTERNAL_BY_DEFAULT: &str = "no-external-by-default";
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
+    const OPT_NO_ERASURE_CHECK: &str = "no-erasure-check";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
     const OPT_NO_CHEATING: &str = "no-cheating";
     const OPT_TIME: &str = "time";
@@ -395,7 +400,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
-    const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
     const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
@@ -414,10 +418,6 @@ pub fn parse_args_with_imports(
         (
             EXTENDED_CAPTURE_PROFILES,
             "Always collect prover performance data, but don't generate output reports",
-        ),
-        (
-            EXTENDED_USE_INTERNAL_PROFILER,
-            "Use an internal profiler that shows internal quantifier instantiations",
         ),
         (EXTENDED_CVC5, "Use the cvc5 SMT solver, rather than the default (Z3)"),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
@@ -471,6 +471,7 @@ pub fn parse_args_with_imports(
     opts.optflag("", OPT_NO_EXTERNAL_BY_DEFAULT, "(deprecated) Verify all items, even those declared outside the verus! macro, and even if they aren't marked #[verifier::verify]");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
+    opts.optflag("", OPT_NO_ERASURE_CHECK, "Do not run the final erasure check");
     opts.optflag(
         "",
         OPT_NO_AUTO_RECOMMENDS_CHECK,
@@ -683,6 +684,7 @@ pub fn parse_args_with_imports(
         no_external_by_default: matches.opt_present(OPT_NO_EXTERNAL_BY_DEFAULT),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
+        no_erasure_check: matches.opt_present(OPT_NO_ERASURE_CHECK),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
         no_cheating: matches.opt_present(OPT_NO_CHEATING),
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
@@ -810,7 +812,6 @@ pub fn parse_args_with_imports(
             extended.contains_key(EXTENDED_CAPTURE_PROFILES)
         },
         spinoff_all: extended.contains_key(EXTENDED_SPINOFF_ALL),
-        use_internal_profiler: extended.contains_key(EXTENDED_USE_INTERNAL_PROFILER),
         compile: matches.opt_present(OPT_COMPILE),
         vstd,
         solver_version_check: !extended.contains_key(EXTENDED_NO_SOLVER_VERSION_CHECK),
@@ -828,6 +829,10 @@ pub fn parse_args_with_imports(
         new_mut_ref: extended.contains_key(EXTENDED_NEW_MUT_REF),
         no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
     };
+
+    if args.compile && args.no_erasure_check {
+        error("--compile and --no-erasure-check are mutually exclusive".to_string())
+    }
 
     if args.new_mut_ref {
         NEW_MUT_REF.store(true, std::sync::atomic::Ordering::SeqCst);

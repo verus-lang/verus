@@ -28,6 +28,9 @@ test_verify_one_file! {
             assert(p0 == p2);
             assert(p0 != p3);
 
+            let p4: f32 = p0.clone();
+            assert(p4 == p0);
+
             let n0: f32 = -3.14;
 
             let q = p0 + p3;

@@ -743,7 +743,12 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             &ProjectedUserTypesNode::None,
             &mut |this, name, mode, var, span, ty, user_tys| {
                 let saved_scope = this.source_scope;
-                this.set_correct_source_scope_for_arg(var.0, saved_scope, span);
+
+                // NOTE(verus): getting the HirId out of the LocalVarId makes it difficult
+                // for us to produce new LocalVarIds. This seems to only have to do with
+                // lints, though. (REVIEW: double-check this)
+                //this.set_correct_source_scope_for_arg(var.0, saved_scope, span);
+
                 let vis_scope = *visibility_scope
                     .get_or_insert_with(|| this.new_source_scope(scope_span, LintLevel::Inherited));
                 let source_info = SourceInfo { span, scope: this.source_scope };

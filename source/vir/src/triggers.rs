@@ -114,7 +114,6 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             UnaryOp::Trigger(_)
             | UnaryOp::HeightTrigger
             | UnaryOp::CoerceMode { .. }
-            | UnaryOp::ToDyn
             | UnaryOp::MustBeFinalized
             | UnaryOp::MustBeElaborated => {
                 // recurse inside coercions
@@ -136,7 +135,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-            UnaryOpr::CustomErr(_) => {
+            UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) | UnaryOpr::ToDyn(_) => {
                 // recurse inside coercions
                 check_trigger_expr_arg(state, arg)
             }
@@ -277,7 +276,6 @@ fn check_trigger_expr(
                 UnaryOp::Trigger(_)
                 | UnaryOp::HeightTrigger
                 | UnaryOp::CoerceMode { .. }
-                | UnaryOp::ToDyn
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated
                 | UnaryOp::CastToInteger => Ok(()),
@@ -291,7 +289,7 @@ fn check_trigger_expr(
             },
             ExpX::UnaryOpr(op, arg) => match op {
                 UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-                UnaryOpr::CustomErr(_) => Ok(()),
+                UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) | UnaryOpr::ToDyn(_) => Ok(()),
                 UnaryOpr::IsVariant { .. } | UnaryOpr::Field { .. } => {
                     check_trigger_expr_arg(state, arg);
                     Ok(())

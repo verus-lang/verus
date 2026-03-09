@@ -9,22 +9,22 @@ verus! {
 
 ////// Add is_variant-style spec functions
 pub trait ResultAdditionalSpecFns<T, E> {
-    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_Ok(&self) -> bool;
 
-    #[deprecated(note = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn get_Ok_0(&self) -> T;
 
     #[allow(non_snake_case)]
     spec fn arrow_Ok_0(&self) -> T;
 
-    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_Err(&self) -> bool;
 
-    #[deprecated(note = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn get_Err_0(&self) -> E;
 

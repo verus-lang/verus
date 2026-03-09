@@ -517,6 +517,10 @@ macro_rules! seq_internal {
         $crate::vstd::seq::Seq::empty()
             .push($elem)
     };
+    [$elem:expr,] => {
+        $crate::vstd::seq::Seq::empty()
+            .push($elem)
+    };
     [$($elem:expr),* $(,)?] => {
         <_ as $crate::vstd::view::View>::view(&[$($elem),*])
     };

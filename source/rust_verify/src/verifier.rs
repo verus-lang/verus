@@ -7,7 +7,7 @@ use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
-use crate::util::error;
+use crate::util::{HashMapAbsorbWith, error};
 use crate::verus_items::VerusItems;
 use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
@@ -94,9 +94,10 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         let mut multispan = MultiSpan::from_spans(v);
 
-        for MessageLabel { note, span: sp } in &msg.labels {
+        for MessageLabel { note, span: sp, is_proof_note } in &msg.labels {
+            let note = if *is_proof_note { format!("note: {}", note) } else { note.clone() };
             if let Some(span) = self.spans.from_air_span(&sp, Some(self.source_map)) {
-                multispan.push_span_label(span, note.clone());
+                multispan.push_span_label(span, note);
             } else {
                 dbg!(&note, &sp.as_string);
             }
@@ -306,6 +307,11 @@ pub struct Verifier {
     /// smt runtimes for each function per bucket
     pub func_times: HashMap<BucketId, HashMap<Fun, FunctionSmtStats>>,
 
+    /// Details about each function
+    pub func_details: HashMap<Fun, FuncDetails>,
+    /// Errors to report after verification has run
+    deferred_errors: Vec<VirErr>,
+
     pub via_cargo_args: Option<CargoVerusArgs>,
     // Some(DepTracker) if via_cargo_args.is_some(), None otherwise
     // In both cases, is set to None when VerifierCallbacksEraseMacro.config finishes with it
@@ -329,6 +335,29 @@ pub struct Verifier {
     expand_flag: bool,
 
     error_format: Option<ErrorOutputType>,
+}
+
+#[derive(serde::Serialize)]
+pub struct FuncDetails {
+    pub obligation_proof_notes: HashSet<String>,
+    pub failed_proof_notes: HashSet<String>,
+}
+
+impl Default for FuncDetails {
+    fn default() -> Self {
+        Self { obligation_proof_notes: Default::default(), failed_proof_notes: Default::default() }
+    }
+}
+
+impl FuncDetails {
+    fn absorb(&mut self, other: Self) {
+        self.obligation_proof_notes.extend(other.obligation_proof_notes);
+        self.failed_proof_notes.extend(other.failed_proof_notes);
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap()
+    }
 }
 
 fn report_chosen_triggers(
@@ -462,6 +491,9 @@ impl Verifier {
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
 
+            func_details: HashMap::new(),
+            deferred_errors: Vec::new(),
+
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
             via_cargo_args,
             import_virs_via_cargo: None,
@@ -508,6 +540,9 @@ impl Verifier {
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
 
+            func_details: HashMap::new(),
+            deferred_errors: Vec::new(),
+
             via_cargo_args: self.via_cargo_args.clone(),
             dep_tracker: None,
             import_virs_via_cargo: self.import_virs_via_cargo.clone(),
@@ -538,6 +573,8 @@ impl Verifier {
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
         self.bucket_stats.extend(other.bucket_stats);
         self.func_times.extend(other.func_times);
+        self.func_details.absorb_with(other.func_details, |lhs, rhs| lhs.absorb(rhs));
+        self.deferred_errors.extend(other.deferred_errors);
     }
 
     fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
@@ -668,41 +705,6 @@ impl Verifier {
             );
 
             diagnostics.report(&msg.to_any());
-        }
-    }
-
-    fn print_internal_profile_stats(
-        &self,
-        diagnostics: &impl air::messages::Diagnostics,
-        profile: Vec<(String, u64, Vec<(String, u64)>)>,
-        qid_map: &HashMap<String, vir::sst::BndInfo>,
-    ) {
-        let max = 50;
-        for (index, (name, count, identcounts)) in profile.iter().take(max).enumerate() {
-            let index = index + 1;
-            // Report the quantifier
-            if let Some(bnd_info) = qid_map.get(name) {
-                let mut msg =
-                    format!("{:2}. Quantifier {}, instantiations: {}\n", index, name, count);
-                for (ident, count) in identcounts {
-                    msg += format!("    at: {}, instantiations: {}\n", ident, count).as_str();
-                }
-
-                let mut msg = note_bare(msg);
-                if let Some(span) = bnd_info.user.as_ref().map(|u| &u.span) {
-                    msg = msg.primary_span(span);
-                }
-                diagnostics.report(&msg.to_any());
-            } else {
-                let mut msg =
-                    format!("{:2}. Quantifier {}, instantiations: {}\n", index, name, count);
-                for (ident, count) in identcounts {
-                    msg += format!("    at: {}, instantiations: {}\n", ident, count).as_str();
-                }
-
-                let msg = note_bare(msg);
-                diagnostics.report(&msg.to_any());
-            }
         }
     }
 
@@ -905,6 +907,15 @@ impl Verifier {
                             }
                         }
                     }
+
+                    // Collect `proof_note` labels related to this failure.
+                    let mut proof_notes = HashSet::new();
+                    for label in &error.labels {
+                        if label.is_proof_note {
+                            proof_notes.insert(label.note.clone());
+                        }
+                    }
+                    self.record_func_failed_proof_notes(context.fun.clone(), proof_notes);
 
                     if level == Some(MessageLevel::Error) {
                         if self.args.expand_errors {
@@ -1430,8 +1441,25 @@ impl Verifier {
 
         let mut function_decl_commands = vec![];
 
+        let func_to_requires_proof_notes =
+            HashMap::from_iter(krate.functions.iter().map(|function| {
+                (
+                    function.x.name.clone(),
+                    vir::sst_util::func_collect_requires_proof_notes(function),
+                )
+            }));
+
         // Declare the function symbols
         for function in &krate.functions {
+            let obligation_proof_notes = vir::sst_util::func_collect_obligation_proof_notes(
+                function,
+                &func_to_requires_proof_notes,
+            );
+            self.record_func_obligation_proof_notes(
+                function.x.name.clone(),
+                obligation_proof_notes,
+            );
+
             ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
             let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, function)?;
             let comment =
@@ -1707,77 +1735,48 @@ impl Verifier {
                                         op.to_friendly_desc().map(|x| x + " ").unwrap_or("".into())
                                             + &fun_as_friendly_rust_name(&function.x.name);
 
-                                    if !self.args.use_internal_profiler {
-                                        match Profiler::parse(
-                                            message_interface.clone(),
-                                            &profile_file_name,
-                                            Some(&current_profile_description),
-                                            self.args.profile || self.args.profile_all,
-                                            reporter,
-                                            self.args.capture_profiles,
-                                        ) {
-                                            Ok(profiler) => {
-                                                if self.args.capture_profiles {
-                                                    // if capture profiles was passed, silence the report
-                                                    // as we are only interested in the graph/profile data
-                                                    crate::profiler::write_instantiation_graph(
-                                                        &bucket_id,
-                                                        Some(&op),
-                                                        &function_opgen.ctx().func_map,
-                                                        profiler.instantiation_graph().unwrap(),
-                                                        &function_opgen
-                                                            .ctx()
-                                                            .global
-                                                            .qid_map
-                                                            .borrow(),
-                                                        profile_file_name,
-                                                    );
-                                                } else {
-                                                    reporter.report(
-                                                        &note_bare(format!(
-                                                            "Profile statistics for {}",
-                                                            fun_as_friendly_rust_name(
-                                                                &function.x.name
-                                                            )
-                                                        ))
-                                                        .to_any(),
-                                                    );
-                                                    self.print_profile_stats(
-                                                        reporter,
-                                                        profiler,
-                                                        &function_opgen
-                                                            .ctx()
-                                                            .global
-                                                            .qid_map
-                                                            .borrow(),
-                                                    );
-                                                }
-                                            }
-                                            Err(err) => {
-                                                reporter.report_now(
-                                                    &warning_bare(format!(
-                                                        "Failed parsing profile file for {}: {}",
-                                                        current_profile_description, err
+                                    match Profiler::parse(
+                                        message_interface.clone(),
+                                        &profile_file_name,
+                                        Some(&current_profile_description),
+                                        reporter,
+                                    ) {
+                                        Ok(profiler) => {
+                                            if self.args.capture_profiles {
+                                                // if capture profiles was passed, silence the report
+                                                // as we are only interested in the graph/profile data
+                                                crate::profiler::write_instantiation_graph(
+                                                    &bucket_id,
+                                                    Some(&op),
+                                                    &function_opgen.ctx().func_map,
+                                                    profiler.instantiation_graph(),
+                                                    &function_opgen.ctx().global.qid_map.borrow(),
+                                                    profile_file_name,
+                                                );
+                                            } else {
+                                                reporter.report(
+                                                    &note_bare(format!(
+                                                        "Profile statistics for {}",
+                                                        fun_as_friendly_rust_name(&function.x.name)
                                                     ))
                                                     .to_any(),
                                                 );
+                                                self.print_profile_stats(
+                                                    reporter,
+                                                    profiler,
+                                                    &function_opgen.ctx().global.qid_map.borrow(),
+                                                );
                                             }
                                         }
-                                    } else {
-                                        reporter.report(
-                                            &note_bare(format!(
-                                                "Internal profile statistics for {}",
-                                                fun_as_friendly_rust_name(&function.x.name)
-                                            ))
-                                            .to_any(),
-                                        );
-                                        let profiler =
-                                            air::profiler::internal::profile(&profile_file_name);
-                                        self.print_internal_profile_stats(
-                                            reporter,
-                                            profiler,
-                                            &function_opgen.ctx().global.qid_map.borrow(),
-                                        );
+                                        Err(err) => {
+                                            reporter.report_now(
+                                                &warning_bare(format!(
+                                                    "Failed parsing profile file for {}: {}",
+                                                    current_profile_description, err
+                                                ))
+                                                .to_any(),
+                                            );
+                                        }
                                     }
                                 }
                             } else {
@@ -1871,67 +1870,49 @@ impl Verifier {
         if let (Some(profile_all_file_name), false) = (profile_all_file_name, self.args.spinoff_all)
         {
             if air_context.check_valid_used() {
-                if !self.args.use_internal_profiler {
-                    match Profiler::parse(
-                        message_interface.clone(),
-                        &profile_all_file_name,
-                        Some(&bucket_id.friendly_name()),
-                        self.args.profile || self.args.profile_all,
-                        reporter,
-                        self.args.capture_profiles,
-                    ) {
-                        Ok(profiler) => {
-                            if self.args.capture_profiles {
-                                // if capture profiles was passed, silence the report
-                                // as we are only interested in the graph/profile data
-                                crate::profiler::write_instantiation_graph(
-                                    &bucket_id,
-                                    None,
-                                    &opgen.ctx.func_map,
-                                    profiler.instantiation_graph().unwrap(),
-                                    &opgen.ctx.global.qid_map.borrow(),
-                                    profile_all_file_name,
-                                );
-                            } else {
-                                reporter.report(
-                                    &note_bare(format!(
-                                        "Profile statistics for {}",
-                                        bucket_id.friendly_name()
-                                    ))
-                                    .to_any(),
-                                );
-                                self.print_profile_stats(
-                                    reporter,
-                                    profiler,
-                                    &opgen.ctx.global.qid_map.borrow(),
-                                );
-                            }
-                        }
-                        Err(err) => {
-                            reporter.report_now(
-                                &warning_bare(format!(
-                                    "Failed parsing profile file for {}: {}",
-                                    bucket_id.friendly_name(),
-                                    err
+                match Profiler::parse(
+                    message_interface.clone(),
+                    &profile_all_file_name,
+                    Some(&bucket_id.friendly_name()),
+                    reporter,
+                ) {
+                    Ok(profiler) => {
+                        if self.args.capture_profiles {
+                            // if capture profiles was passed, silence the report
+                            // as we are only interested in the graph/profile data
+                            crate::profiler::write_instantiation_graph(
+                                &bucket_id,
+                                None,
+                                &opgen.ctx.func_map,
+                                profiler.instantiation_graph(),
+                                &opgen.ctx.global.qid_map.borrow(),
+                                profile_all_file_name,
+                            );
+                        } else {
+                            reporter.report(
+                                &note_bare(format!(
+                                    "Profile statistics for {}",
+                                    bucket_id.friendly_name()
                                 ))
                                 .to_any(),
                             );
+                            self.print_profile_stats(
+                                reporter,
+                                profiler,
+                                &opgen.ctx.global.qid_map.borrow(),
+                            );
                         }
                     }
-                } else {
-                    reporter.report(
-                        &note_bare(format!(
-                            "Internal profile statistics for {}",
-                            bucket_id.friendly_name()
-                        ))
-                        .to_any(),
-                    );
-                    let profiler = air::profiler::internal::profile(&profile_all_file_name);
-                    self.print_internal_profile_stats(
-                        reporter,
-                        profiler,
-                        &opgen.ctx.global.qid_map.borrow(),
-                    );
+                    Err(err) => {
+                        reporter.report_now(
+                            &warning_bare(format!(
+                                "Failed parsing profile file for {}: {}",
+                                bucket_id.friendly_name(),
+                                err
+                            ))
+                            .to_any(),
+                        );
+                    }
                 }
             }
         }
@@ -2670,7 +2651,7 @@ impl Verifier {
         other_vir_crates: Vec<Krate>,
         diagnostics: &impl air::messages::Diagnostics,
         crate_name: String,
-    ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
+    ) -> Result<bool, (Vec<VirErr>, Vec<vir::ast::VirErrAs>)> {
         if self.args.no_lifetime {
             rustc_mir_build_verus::verus::set_verus_aware_def_ids(Arc::new(HashSet::new()));
         }
@@ -2719,6 +2700,9 @@ impl Verifier {
             external_functions: vec![],
             ignored_functions: vec![],
             bodies: vec![],
+            shadow_check: vec![],
+            extra_erase_ast_ids: vec![],
+            extra_erase_hir_ids_including_adjustments: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
 
@@ -2736,9 +2720,11 @@ impl Verifier {
 
         let ctxt_diagnostics = ctxtx.diagnostics.clone();
         let map_err_diagnostics =
-            |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
+            |err: VirErr| (vec![err], ctxt_diagnostics.borrow_mut().drain(..).collect());
+        let map_errs_diagnostics =
+            |errs: Vec<VirErr>| (errs, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
-        let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_err_diagnostics)?;
+        let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_errs_diagnostics)?;
 
         check_no_opaque_types_in_trait(ctxtx.tcx, &crate_items).map_err(map_err_diagnostics)?;
 
@@ -2775,7 +2761,7 @@ impl Verifier {
 
         let (ctxt, vir_crate) =
             crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
-                .map_err(map_err_diagnostics)?;
+                .map_err(map_errs_diagnostics)?;
 
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
@@ -2844,12 +2830,12 @@ impl Verifier {
             vir::traits::demote_external_traits(diagnostics, &path_to_well_known_item, &vir_crate)
                 .map_err(map_err_diagnostics)?;
         let vir_crate =
-            vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (e, Vec::new()))?;
+            vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         let vir_crate = vir::traits::fixup_ens_has_return_for_trait_method_impls(vir_crate)
-            .map_err(|e| (e, Vec::new()))?;
+            .map_err(|e| (vec![e], Vec::new()))?;
 
         if self.args.check_api_safety {
-            vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (e, Vec::new()))?;
+            vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         }
 
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
@@ -2860,8 +2846,22 @@ impl Verifier {
             self.args.no_verify,
             self.args.no_cheating,
         );
-        let mut first_error: Option<VirErr> =
-            check_crate_result1.err().or(check_crate_result.err());
+        let mut first_error: Option<VirErr> = check_crate_result1.err();
+        match check_crate_result {
+            Ok(check_details) => {
+                for (func, failed_proof_notes) in check_details.func_failed_proof_notes {
+                    self.record_func_failed_proof_notes(
+                        func,
+                        failed_proof_notes.into_iter().collect(),
+                    );
+                }
+            }
+            Err(err) => {
+                if first_error.is_none() {
+                    first_error = Some(err);
+                }
+            }
+        }
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
@@ -2893,6 +2893,9 @@ impl Verifier {
                         diagnostics.report_as(&err.to_any(), MessageLevel::Error)
                     }
                 }
+                vir::ast::VirErrAs::NonFatalError(err, _) => {
+                    self.deferred_errors.push(err);
+                }
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
                 }
@@ -2902,13 +2905,14 @@ impl Verifier {
             }
         }
         if let Some(first_error) = first_error {
-            return Err((first_error, Vec::new()));
+            return Err((vec![first_error], Vec::new()));
         }
 
-        let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        let vir_crate =
+            vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         let (vir_crate, erasure_modes, _read_kind_finals) =
             vir::modes::check_crate(&vir_crate, self.args.new_mut_ref)
-                .map_err(|e| (e, Vec::new()))?;
+                .map_err(|e| (vec![e], Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_name = Some(crate_name);
@@ -2922,6 +2926,10 @@ impl Verifier {
         let external_functions = erasure_info.external_functions.clone();
         let ignored_functions = erasure_info.ignored_functions.clone();
         let bodies = erasure_info.bodies.clone();
+        let shadow_check = erasure_info.shadow_check.clone();
+        let extra_erase_ast_ids = erasure_info.extra_erase_ast_ids.clone();
+        let extra_erase_hir_ids_including_adjustments =
+            erasure_info.extra_erase_hir_ids_including_adjustments.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate: unpruned_crate,
             hir_vir_ids,
@@ -2932,15 +2940,19 @@ impl Verifier {
             external_functions,
             ignored_functions,
             bodies,
+            shadow_check,
+            extra_erase_ast_ids,
+            extra_erase_hir_ids_including_adjustments,
         };
         self.erasure_hints = Some(erasure_hints);
 
         if !self.args.no_lifetime {
             crate::erase::setup_verus_ctxt_for_thir_erasure(
+                tcx,
                 &self.verus_items.as_ref().unwrap(),
                 self.erasure_hints.as_ref().unwrap(),
             )
-            .map_err(|e| (e, Vec::new()))?;
+            .map_err(|e| (vec![e], Vec::new()))?;
         }
 
         // These can invoke mir_borrowck when opaque types are involved.
@@ -2965,6 +2977,40 @@ impl Verifier {
                 .find(|function| function.x.name == *f)
                 .map(|function| &function.x.mode)
         })
+    }
+
+    fn record_func_obligation_proof_notes(
+        &mut self,
+        func: Fun,
+        obligation_proof_notes: HashSet<String>,
+    ) {
+        use std::collections::hash_map::Entry;
+        match self.func_details.entry(func) {
+            Entry::Occupied(mut occupied_entry) => {
+                occupied_entry.get_mut().obligation_proof_notes.extend(obligation_proof_notes);
+            }
+            Entry::Vacant(vacant_entry) => {
+                let _ = vacant_entry.insert(FuncDetails {
+                    obligation_proof_notes: obligation_proof_notes,
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
+    fn record_func_failed_proof_notes(&mut self, func: Fun, failed_proof_notes: HashSet<String>) {
+        use std::collections::hash_map::Entry;
+        match self.func_details.entry(func) {
+            Entry::Occupied(mut occupied_entry) => {
+                occupied_entry.get_mut().failed_proof_notes.extend(failed_proof_notes);
+            }
+            Entry::Vacant(vacant_entry) => {
+                let _ = vacant_entry.insert(FuncDetails {
+                    failed_proof_notes: failed_proof_notes,
+                    ..Default::default()
+                });
+            }
+        }
     }
 }
 
@@ -3100,6 +3146,17 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
                 rustc_mir_build_verus::verus_provide(providers);
 
+                providers.mir_built = |tcx, def| {
+                    // We need to override this to call our verus of build_mir.
+                    // mir_built is defined in the crate rustc_mir_transform, which I prefer
+                    // not to fork. The actual implementation of mir_built is more complicated
+                    // than this, but this seems to be the essential functionality.
+                    let body = rustc_mir_build_verus::builder::build_mir(tcx, def);
+                    //let pass = rustc_mir_transform::simplify::SimplifyCfg::Initial;
+                    //pass.run_pass(tcx, &mut body);
+                    tcx.alloc_steal_mir(body)
+                };
+
                 // check_well_formed when called on an OpaqueTy will trigger mir_borrowck to run.
                 // This happens earlier than we'd like, so we disable it.
                 // TODO: when we support opaque types we should run this check later
@@ -3172,7 +3229,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             if self.verifier.args.trace {
                 reporter.report_now(&note_bare("preparing crate for verification").to_any());
             }
-            if let Err((err, mut diagnostics)) = self.verifier.construct_vir_crate(
+            if let Err((errs, mut diagnostics)) = self.verifier.construct_vir_crate(
                 tcx,
                 verus_items.clone(),
                 &spans,
@@ -3181,7 +3238,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 &reporter,
                 crate_name.clone(),
             ) {
-                reporter.report_as(&err.to_any(), MessageLevel::Error);
+                assert!(errs.len() > 0);
+                for err in errs.into_iter() {
+                    reporter.report_as(&err.to_any(), MessageLevel::Error);
+                }
                 self.verifier.encountered_vir_error = true;
 
                 for diag in diagnostics.drain(..) {
@@ -3192,7 +3252,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         vir::ast::VirErrAs::Note(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Note)
                         }
-                        vir::ast::VirErrAs::NonBlockingError(err, _) => {
+                        vir::ast::VirErrAs::NonBlockingError(err, _)
+                        | vir::ast::VirErrAs::NonFatalError(err, _) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Error)
                         }
                     }
@@ -3304,6 +3365,7 @@ impl VerifierCallbacksEraseMacro {
                         module_path: _,
                         const_directive: false,
                         external_body: false,
+                        external_fn_specification: false,
                     }) => {
                         tcx.ensure_ok().mir_borrowck(def_id);
                     }
@@ -3317,15 +3379,19 @@ impl VerifierCallbacksEraseMacro {
 
     fn finish_verus(&mut self, compiler: &Compiler) {
         let spans = self.spans.clone().unwrap();
+        let reporter = Reporter::new(&spans, compiler);
         match self.verifier.verify_crate(compiler, &spans) {
             Ok(()) => {}
             Err(err) => {
                 if let VerifyErr::Vir(err) = err {
-                    let reporter = Reporter::new(&spans, compiler);
                     reporter.report_as(&err.to_any(), MessageLevel::Error);
                 }
                 self.verifier.encountered_vir_error = true;
             }
+        }
+        for err in std::mem::take(&mut self.verifier.deferred_errors) {
+            reporter.report_as(&err.to_any(), MessageLevel::Error);
+            self.verifier.encountered_vir_error = true;
         }
         if !self.verifier.args.output_json
             && !self.verifier.encountered_error
