@@ -314,7 +314,8 @@ pub open spec fn has_width_4_encoding(v: u32) -> bool {
 /// True when the given `u32` represents a Unicode scalar, i.e., a value that can be encoded in UTF-8.
 /// This definition is equivalent to: `0 <= v <= 0x10ffff && !(0xD800 <= v <= 0xDFFF)`.
 pub open spec fn is_scalar(v: u32) -> bool {
-    has_width_1_encoding(v) || has_width_2_encoding(v) || has_width_3_encoding(v) || has_width_4_encoding(v)
+    has_width_1_encoding(v) || has_width_2_encoding(v) || has_width_3_encoding(v)
+        || has_width_4_encoding(v)
 }
 
 /// The first (and only) byte of the UTF-8 encoding of the given scalar value, assuming that the scalar has a 1-byte UTF-8 encoding.

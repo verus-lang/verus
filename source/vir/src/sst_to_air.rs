@@ -13,14 +13,13 @@ use crate::context::Ctx;
 use crate::def::{
     ARCH_SIZE, CommandsWithContext, CommandsWithContextX, FUEL_BOOL, FUEL_BOOL_DEFAULT,
     FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, ProverChoice, SNAPSHOT_CALL,
-    SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_LEN,
-    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END, SnapPos, SpanKind, Spanned, U_HI, encode_dt_as_path, fun_to_string,
-    is_variant_ident, new_internal_qid, new_user_qid_name, path_to_string, prefix_box,
-    prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv, prefix_pre_var,
-    prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident, static_name,
-    suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, variant_field_ident,
-    variant_field_ident_internal, variant_ident,
+    SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
+    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, SnapPos,
+    SpanKind, Spanned, U_HI, encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid,
+    new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
+    prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type,
+    prefix_unbox, snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id,
+    suffix_typ_param_ids, variant_field_ident, variant_field_ident_internal, variant_ident,
 };
 use crate::messages::{Span, error, error_with_label};
 use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
