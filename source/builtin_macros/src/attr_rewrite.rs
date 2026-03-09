@@ -117,7 +117,15 @@ pub(crate) fn rewrite_verus_attribute(
     let mut spec_fun = None;
     const VERIFY_ATTRS: [&str; 3] = ["rlimit", "spinoff_prover", "external_derive"];
     const DUAL_ATTR: &str = "dual_spec";
-    const IGNORE_VERIFY_ATTRS: [&str; 2] = ["external", "external_body"];
+    const IGNORE_VERIFY_ATTRS: [&str; 3] =
+        ["external", "external_body", "external_type_specification"];
+    // Modifier attrs are compatible with both external and non-external attrs.
+    // They neither set contains_external nor contains_non_external.
+    const MODIFIER_ATTRS: [&str; 3] = [
+        "reject_recursive_types",
+        "reject_recursive_types_in_ground_variants",
+        "accept_recursive_types",
+    ];
 
     for arg in &args {
         let path = arg.path().get_ident().expect("Invalid verus verifier attribute");
@@ -126,6 +134,8 @@ pub(crate) fn rewrite_verus_attribute(
             attributes.push(quote_spanned!(arg.span() => #[verifier::#arg]));
         } else if VERIFY_ATTRS.contains(&path.to_string().as_str()) {
             contains_non_external = true;
+            attributes.push(quote_spanned!(arg.span() => #[verifier::#arg]));
+        } else if MODIFIER_ATTRS.contains(&path.to_string().as_str()) {
             attributes.push(quote_spanned!(arg.span() => #[verifier::#arg]));
         } else if DUAL_ATTR == path.to_string().as_str() {
             // This is a macro-level hack to support dual mode.

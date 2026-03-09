@@ -10,10 +10,10 @@ test_verify_one_file_with_options! {
     test_json_proof_note_on_requires ["--output-json"] => verus_code! {
         fn example(x: u64, y: u64) -> (z: u64)
             requires
-                #[verifier::proof_note("Property 732")]
-                (x == y),
-                #[verifier::proof_note("Label 451")]
-                (x != y),
+                #![verifier::proof_note("Property 732")]
+                x == y,
+                #![verifier::proof_note("Label 451")]
+                x != y,
         {
             x + y
         }
@@ -50,10 +50,10 @@ test_verify_one_file_with_options! {
         fn example(x: u64, y: u64) -> (z: u64)
             ensures
                 // both postconditions fail
-                #[verifier::proof_note("Property 732")]
-                (z == x + y),
-                #[verifier::proof_note("Label 451")]
-                (z == x - y),
+                #![verifier::proof_note("Property 732")]
+                z == x + y,
+                #![verifier::proof_note("Label 451")]
+                z == x - y,
         {
             x
         }
@@ -132,8 +132,8 @@ test_verify_one_file_with_options! {
     verus_code! {
         fn func_with_precond(x: u64) -> u64
             requires
-                #[verifier::proof_note("Precondition known to fail")]
-                (x < 10),
+                #![verifier::proof_note("Precondition known to fail")]
+                x < 10,
         {
             2 * x
         }

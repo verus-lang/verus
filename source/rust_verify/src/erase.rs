@@ -62,6 +62,8 @@ pub enum ResolvedCall {
     /// Erase the node and all subtrees completely. Suitable for ad hoc directives
     /// like `constraint_type`.
     MiscEraseAbsolutely,
+    /// InferSpecForLoopIter. May need to be erased depending on mode-checking results
+    InferSpecForLoopIter(AstId),
 }
 
 #[derive(Clone)]
@@ -86,6 +88,7 @@ pub struct ErasureHints {
     pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
     pub(crate) shadow_check: Vec<HirId>,
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
+    pub(crate) extra_erase_hir_ids_including_adjustments: Vec<HirId>,
 }
 
 /// How to erase the given var usage
@@ -122,6 +125,7 @@ fn resolved_call_to_call_erase(
     _datatypes: &HashMap<Path, Datatype>,
     resolved_call: &ResolvedCall,
     ctor_mode: Option<Mode>,
+    infer_spec_for_loop_iter_erase: &HashMap<AstId, bool>,
 ) -> Result<CallErasure, VirErr> {
     Ok(match resolved_call {
         ResolvedCall::SpecPure => CallErasure::EraseTree(TreeErase::IncludeBasicChecks),
@@ -171,6 +175,13 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
         },
         ResolvedCall::MiscEraseAbsolutely => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
+        ResolvedCall::InferSpecForLoopIter(ast_id) => {
+            if infer_spec_for_loop_iter_erase[ast_id] {
+                CallErasure::EraseTree(TreeErase::EraseAbsolutely)
+            } else {
+                CallErasure::Call(NodeErase::Erase)
+            }
+        }
     })
 }
 
@@ -284,13 +295,26 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         }
     }
 
+    let mut infer_spec_for_loop_iter_erase = HashMap::<AstId, bool>::new();
+    for (span, erase) in erasure_hints.erasure_modes.infer_spec_for_loop_iter_erase.iter() {
+        let found = infer_spec_for_loop_iter_erase.insert(span.id, *erase);
+        assert!(found.is_none());
+    }
+
     let mut calls = HashMap::<HirId, CallErasure>::new();
     for (hir_id, span_data, resolved_call) in &erasure_hints.resolved_calls {
         let span = span_data.span();
         let ctor_mode = ctor_modes.get(hir_id).cloned();
         calls.insert(
             *hir_id,
-            resolved_call_to_call_erase(span, &functions, &datatypes, resolved_call, ctor_mode)?,
+            resolved_call_to_call_erase(
+                span,
+                &functions,
+                &datatypes,
+                resolved_call,
+                ctor_mode,
+                &infer_spec_for_loop_iter_erase,
+            )?,
         );
     }
 
@@ -299,10 +323,16 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         bodies.insert(*hir_id, *c);
     }
 
+    let mut adjusted_node_erasure = HashSet::new();
+    for hir_id in erasure_hints.extra_erase_hir_ids_including_adjustments.iter() {
+        adjusted_node_erasure.insert(*hir_id);
+    }
+
     let verus_erasure_ctxt = VerusErasureCtxt {
         vars,
         calls,
         bodies,
+        adjusted_node_erasure,
 
         erased_ghost_value_fn_def_id: *verus_items
             .name_to_id
@@ -352,6 +382,13 @@ pub(crate) fn mark_tree_for_erasure<'tcx>(
         },
     )
     .unwrap();
+}
+
+pub(crate) fn mark_adjusted_node_for_erasure<'tcx>(
+    context: &crate::context::Context<'tcx>,
+    expr: &rustc_hir::Expr<'tcx>,
+) {
+    context.erasure_info.borrow_mut().extra_erase_hir_ids_including_adjustments.push(expr.hir_id);
 }
 
 pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
