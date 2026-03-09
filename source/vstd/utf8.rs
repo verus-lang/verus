@@ -1,10 +1,36 @@
+//! Definitions for UTF-8 encoding and decoding of character sequences.
+//!
+//! [UTF-8](https://en.wikipedia.org/wiki/UTF-8) is a variable-width character encoding scheme.
+//! Each character is encoded with between 1 and 4 bytes.
+//! Specifications for encoding and decoding characters to their UTF-8 byte sequences are given by [`encode_utf8`] and [`decode_utf8`], respectively.
+//! Characters in the ASCII character set are encoded in UTF-8 with 1-byte encodings identical to those used by ASCII.
+//! Thus, some UTF-8 byte sequences can also be considered ASCII byte sequences, as defined in [`is_ascii_chars`].
+//!
+//! UTF-8 encodes numerical values called Unicode _scalars_ (see below), which assign a unique value to each Unicode character.
+//! A scalar value is encoded in UTF-8 using a leading byte and between 0 and 2 continuation bytes, where larger scalar values require more continuation bytes.
+//! The first part of the bit pattern in the leading byte is reserved for describing the number of bytes in the scalar's encoding (e.g., [`is_leading_byte_width_1`]).
+//! The rest of the leading byte contains data bits corresponding to the scalar's value (e.g., [`leading_bits_width_1`]).
+//! The continuation bytes also follow a specific bit pattern ([`is_continuation_byte`]) and contain the remainder of the data bits ([`continuation_bits`]).
+//!
+//! This module makes use of terminology from the [Unicode standard](https://www.unicode.org/glossary/).
+//! A Unicode _scalar_ is a numerical value (represented in this module as a `u32`) corresponding to a character that can be encoded in UTF-8.
+//! All Rust `char`s correspond to Unicode scalars ([`char_is_scalar`]),
+//! and every numerical value encoded in a UTF-8 byte sequence must fall within the range defined for Unicode scalars ([`is_scalar`]).
+//! The Unicode standard also defines a _codepoint_ to be numerical value which falls in the range available for encoding characters in UTF-8.
+//! This may sound similar to the definition of scalar.
+//! However, the definition of codepoint is more permissive than that for scalars,
+//! as it includes some values which are technically possible to encode in the UTF-8 scheme,
+//! but in fact are not legal Unicode values
+//! (namely, the [high-surrogate and low-surrogate ranges](https://en.wikipedia.org/wiki/UTF-8#Surrogates)).
+//! To align with the Unicode terminology, in this module, we use the term "scalar" to describe the numerical values
+//! which can be encoded in valid UTF-8 byte sequences, and the term "codepoint" to describe numerical values which
+//! are learned upon decoding a byte sequence but may or may not be legal Unicode values.
 use super::prelude::*;
 use super::seq::*;
 
 verus! {
 
 broadcast use super::seq::group_seq_axioms;
-
 /* Decoding UTF-8 to chars */
 
 /// True when the given byte conforms to the bit pattern for the first byte of a 1-byte UTF-8 encoding of a single codepoint.
@@ -83,7 +109,7 @@ pub open spec fn leading_bits_width_4(byte: u8) -> u32
 }
 
 /// The codepoint encoded by the given byte, assuming that it is a valid leading byte for a 1-byte UTF-8 encoding.
-pub open spec fn codepoint_of_bytes_width_1(byte1: u8) -> u32
+pub open spec fn codepoint_width_1(byte1: u8) -> u32
     recommends
         is_leading_byte_width_1(byte1),
 {
@@ -96,7 +122,7 @@ pub open spec fn codepoint_of_bytes_width_1(byte1: u8) -> u32
 // If byte2 = 0xff then byte2 & 0x3f = 0x3f = 0011 1111
 // so highest possible is 0111 1111 = 0x7f < 0x80
 /// The codepoint encoded by the given 2 bytes, assuming that they are a valid leading and continuation byte, respectively, for 2-byte UTF-8 encoding.
-pub open spec fn codepoint_of_bytes_width_2(byte1: u8, byte2: u8) -> u32
+pub open spec fn codepoint_width_2(byte1: u8, byte2: u8) -> u32
     recommends
         is_leading_byte_width_2(byte1),
         is_continuation_byte(byte2),
@@ -105,7 +131,7 @@ pub open spec fn codepoint_of_bytes_width_2(byte1: u8, byte2: u8) -> u32
 }
 
 /// The codepoint encoded by the given 3 bytes, assuming that they are a valid leading and continuation bytes, respectively, for 3-byte UTF-8 encoding.
-pub open spec fn codepoint_of_bytes_width_3(byte1: u8, byte2: u8, byte3: u8) -> u32
+pub open spec fn codepoint_width_3(byte1: u8, byte2: u8, byte3: u8) -> u32
     recommends
         is_leading_byte_width_3(byte1),
         is_continuation_byte(byte2),
@@ -121,46 +147,48 @@ pub open spec fn codepoint_of_bytes_width_3(byte1: u8, byte2: u8, byte3: u8) -> 
 // 0xf5 & 0x07 = 0x05
 // 0x05 << 18 = 0001 0100 0000 0000 0000 0000 = 0x140000
 /// The codepoint encoded by the given 4 bytes, assuming that they are a valid leading and continuation bytes, respectively, for 4-byte UTF-8 encoding.
-pub open spec fn codepoint_of_bytes_width_4(byte1: u8, byte2: u8, byte3: u8, byte4: u8) -> u32
+pub open spec fn codepoint_width_4(byte1: u8, byte2: u8, byte3: u8, byte4: u8) -> u32
     recommends
         is_leading_byte_width_4(byte1),
         is_continuation_byte(byte2),
         is_continuation_byte(byte3),
         is_continuation_byte(byte4),
 {
-    (leading_bits_width_4(byte1) << 18) | (continuation_bits(byte2) << 12) | (continuation_bits(byte3) << 6) | continuation_bits(
-        byte4,
-    )
+    (leading_bits_width_4(byte1) << 18) | (continuation_bits(byte2) << 12) | (continuation_bits(
+        byte3,
+    ) << 6) | continuation_bits(byte4)
 }
 
 /// True when the given byte sequence begins with a well-formed leading byte and an appropriate number of well-formed continuation bytes for a UTF-8 encoding of a single codepoint.
-pub open spec fn valid_first_leading_and_continuation_bytes(bytes: Seq<u8>) -> bool {
+pub open spec fn valid_leading_and_continuation_bytes_first_codepoint(bytes: Seq<u8>) -> bool {
     ||| (bytes.len() >= 1 && is_leading_byte_width_1(bytes[0]))
     ||| (bytes.len() >= 2 && is_leading_byte_width_2(bytes[0]) && is_continuation_byte(bytes[1]))
-    ||| (bytes.len() >= 3 && is_leading_byte_width_3(bytes[0]) && is_continuation_byte(bytes[1]) && is_continuation_byte(bytes[2]))
-    ||| (bytes.len() >= 4 && is_leading_byte_width_4(bytes[0]) && is_continuation_byte(bytes[1]) && is_continuation_byte(bytes[2]) && is_continuation_byte(bytes[3]))
+    ||| (bytes.len() >= 3 && is_leading_byte_width_3(bytes[0]) && is_continuation_byte(bytes[1])
+        && is_continuation_byte(bytes[2]))
+    ||| (bytes.len() >= 4 && is_leading_byte_width_4(bytes[0]) && is_continuation_byte(bytes[1])
+        && is_continuation_byte(bytes[2]) && is_continuation_byte(bytes[3]))
 }
- 
+
 /// The first codepoint encoded in UTF-8 in the given byte sequence, assuming that the sequence begins with a well-formed leading byte and an appropriate number of well-formed continuation bytes.
-pub open spec fn first_codepoint(bytes: Seq<u8>) -> u32
+pub open spec fn decode_first_codepoint(bytes: Seq<u8>) -> u32
     recommends
-        valid_first_leading_and_continuation_bytes(bytes),
+        valid_leading_and_continuation_bytes_first_codepoint(bytes),
 {
     if is_leading_byte_width_1(bytes[0]) {
-        codepoint_of_bytes_width_1(bytes[0])
+        codepoint_width_1(bytes[0])
     } else if is_leading_byte_width_2(bytes[0]) {
-        codepoint_of_bytes_width_2(bytes[0], bytes[1])
+        codepoint_width_2(bytes[0], bytes[1])
     } else if is_leading_byte_width_3(bytes[0]) {
-        codepoint_of_bytes_width_3(bytes[0], bytes[1], bytes[2])
+        codepoint_width_3(bytes[0], bytes[1], bytes[2])
     } else {
-        codepoint_of_bytes_width_4(bytes[0], bytes[1], bytes[2], bytes[3])
+        codepoint_width_4(bytes[0], bytes[1], bytes[2], bytes[3])
     }
 }
 
 /// The length in bytes of first codepoint encoded in UTF-8 in the given byte sequence, assuming that the sequence begins with a well-formed leading byte and an appropriate number of well-formed continuation bytes.
 pub open spec fn length_of_first_codepoint(bytes: Seq<u8>) -> int
     recommends
-        valid_first_leading_and_continuation_bytes(bytes)
+        valid_leading_and_continuation_bytes_first_codepoint(bytes),
 {
     if is_leading_byte_width_1(bytes[0]) {
         1
@@ -174,40 +202,40 @@ pub open spec fn length_of_first_codepoint(bytes: Seq<u8>) -> int
 }
 
 /// True when the given codepoint, when encoded in UTF-8 using `len` number of bytes, would not be an "overlong encoding".
+/// An overlong encoding is one that uses more bytes than needed to encode the given value.
 pub open spec fn not_overlong_encoding(codepoint: u32, len: int) -> bool {
-    &&& (len == 2 ==> 0x80 <= codepoint) 
-    &&& (len == 3 ==> 0x800 <= codepoint) 
+    &&& (len == 2 ==> 0x80 <= codepoint)
+    &&& (len == 3 ==> 0x800 <= codepoint)
     &&& (len == 4 ==> 0x10000 <= codepoint <= 0x10ffff)
 }
 
-/// True when the given codepoint does not fall into the "surrogate range" of the UTF-8 standard.
+/// True when the given codepoint does not fall into the "surrogate range" of the Unicode standard.
+/// The surrogate range contains values which are technically possible to encode in UTF-8 but are not valid Unicode scalars.
 pub open spec fn not_surrogate(codepoint: u32) -> bool {
     !(0xD800 <= codepoint <= 0xDFFF)
 }
 
 /// True when the given byte sequence begins with a well-formed UTF-8 encoding of a single scalar.
-pub open spec fn valid_first_scalar(bytes: Seq<u8>) -> bool
-{
-    &&& valid_first_leading_and_continuation_bytes(bytes) 
-    &&& not_overlong_encoding(
-        first_codepoint(bytes),
-        length_of_first_codepoint(bytes),
-    )
-    &&& not_surrogate(first_codepoint(bytes))
+/// To be a well-formed encoding, the bytes must: follow the expected bit pattern for leading and continuation bytes
+/// for a single scalar encoding, not be an "overlong encoding", and not fall in the surrogate range.
+pub open spec fn valid_first_scalar(bytes: Seq<u8>) -> bool {
+    &&& valid_leading_and_continuation_bytes_first_codepoint(bytes)
+    &&& not_overlong_encoding(decode_first_codepoint(bytes), length_of_first_codepoint(bytes))
+    &&& not_surrogate(decode_first_codepoint(bytes))
 }
 
 /// The first scalar encoded in UTF-8 in the given byte sequence, assuming that the sequence begins with a well-formed encoding of a single scalar.
-pub open spec fn first_scalar(bytes: Seq<u8>) -> u32
+pub open spec fn decode_first_scalar(bytes: Seq<u8>) -> u32
     recommends
         valid_first_scalar(bytes),
 {
-    first_codepoint(bytes)
+    decode_first_codepoint(bytes)
 }
 
 /// The length in bytes of first scalar encoded in UTF-8 in the given byte sequence, assuming that the sequence begins with a well-formed encoding of a single scalar.
 pub open spec fn length_of_first_scalar(bytes: Seq<u8>) -> int
     recommends
-        valid_first_scalar(bytes)
+        valid_first_scalar(bytes),
 {
     length_of_first_codepoint(bytes)
 }
@@ -219,9 +247,9 @@ proof fn lemma_pop_first_scalar_decreases(bytes: Seq<u8>)
         pop_first_scalar(bytes).len() < bytes.len(),
 {
     assert(length_of_first_scalar(bytes) <= bytes.len() as int);
-    assert(pop_first_scalar(bytes).len() == bytes.len() as int - length_of_first_scalar(
-        bytes,
-    )) by { axiom_seq_subrange_len(bytes, length_of_first_scalar(bytes), bytes.len() as int) };
+    assert(pop_first_scalar(bytes).len() == bytes.len() as int - length_of_first_scalar(bytes)) by {
+        axiom_seq_subrange_len(bytes, length_of_first_scalar(bytes), bytes.len() as int)
+    };
 }
 
 /// Removes the first scalar encoded in UTF-8 in the given byte sequence and returns the rest of the sequence, assuming that the sequence begins with a well-formed encoding of a single scalar.
@@ -229,10 +257,7 @@ pub open spec fn pop_first_scalar(bytes: Seq<u8>) -> Seq<u8>
     recommends
         valid_first_scalar(bytes),
 {
-    bytes.subrange(
-        length_of_first_scalar(bytes),
-        bytes.len() as int,
-    )
+    bytes.subrange(length_of_first_scalar(bytes), bytes.len() as int)
 }
 
 /// Takes the bytes corresponding to the the first scalar encoded in UTF-8 in the given byte sequence, assuming that the sequence begins with a well-formed encoding of a single scalar.
@@ -250,7 +275,7 @@ pub open spec fn valid_utf8(bytes: Seq<u8>) -> bool
     bytes.len() != 0 ==> valid_first_scalar(bytes) && valid_utf8(pop_first_scalar(bytes))
 }
 
-/// The sequence of unicode scalars encoded in the given bytes, assuming that the bytes form a valid UTF-8 encoding.
+/// The sequence of characters encoded as Unicode scalars in the given bytes, assuming that the bytes form a valid UTF-8 encoding.
 pub open spec fn decode_utf8(bytes: Seq<u8>) -> Seq<char>
     recommends
         valid_utf8(bytes),
@@ -260,7 +285,7 @@ pub open spec fn decode_utf8(bytes: Seq<u8>) -> Seq<char>
     if bytes.len() == 0 {
         seq![]
     } else {
-        seq![first_scalar(bytes) as char] + decode_utf8(pop_first_scalar(bytes))
+        seq![decode_first_scalar(bytes) as char] + decode_utf8(pop_first_scalar(bytes))
     }
 }
 
@@ -321,7 +346,9 @@ pub open spec fn leading_byte_width_4(scalar: u32) -> u8
 /// The last continuation byte of the UTF-8 encoding of the given scalar value, assuming that the scalar has a 2, 3, or 4-byte UTF-8 encoding.
 pub open spec fn last_continuation_byte(scalar: u32) -> u8
     recommends
-        has_width_2_encoding(scalar) || has_width_3_encoding(scalar) || has_width_4_encoding(scalar),
+        has_width_2_encoding(scalar) || has_width_3_encoding(scalar) || has_width_4_encoding(
+            scalar,
+        ),
 {
     0x80 | (scalar & 0x3F) as u8
 }
@@ -342,15 +369,15 @@ pub open spec fn third_last_continuation_byte(scalar: u32) -> u8
     0x80 | ((scalar >> 12) & 0x3F) as u8
 }
 
-/// True when the given `u32` represents a scalar value that can be encoded in UTF-8.
-pub open spec fn valid_scalar(scalar: u32) -> bool {
-    0 <= scalar <= 0x10ffff && !(0xD800 <= scalar <= 0xDFFF)
+/// True when the given `u32` represents a Unicode scalar, i.e., a value that can be encoded in UTF-8.
+pub open spec fn is_scalar(v: u32) -> bool {
+    0 <= v <= 0x10ffff && !(0xD800 <= v <= 0xDFFF)
 }
 
-/// The UTF-8 encoding of the given value, assuming that it is a valid scalar in UTF-8.
-pub open spec fn encoding_of_scalar(scalar: u32) -> Seq<u8>
+/// The UTF-8 encoding of the given value, assuming that it is a Unicode scalar.
+pub open spec fn encode_scalar(scalar: u32) -> Seq<u8>
     recommends
-        valid_scalar(scalar),
+        is_scalar(scalar),
 {
     if has_width_1_encoding(scalar) {
         seq![leading_byte_width_1(scalar)]
@@ -379,7 +406,7 @@ pub open spec fn encode_utf8(chars: Seq<char>) -> Seq<u8>
     if chars.len() == 0 {
         seq![]
     } else {
-        encoding_of_scalar(chars[0] as u32) + encode_utf8(chars.drop_first())
+        encode_scalar(chars[0] as u32) + encode_utf8(chars.drop_first())
     }
 }
 
@@ -394,7 +421,7 @@ proof fn encode_decode_width_1(c: u32)
         ({
             let b1 = leading_byte_width_1(c);
             &&& is_leading_byte_width_1(b1)
-            &&& codepoint_of_bytes_width_1(b1) == c
+            &&& codepoint_width_1(b1) == c
         }),
 {
 }
@@ -406,8 +433,8 @@ proof fn decode_encode_width_1(b1: u8)
         is_leading_byte_width_1(b1),
     ensures
         ({
-            let c = codepoint_of_bytes_width_1(b1);
-            &&& valid_scalar(c)
+            let c = codepoint_width_1(b1);
+            &&& is_scalar(c)
             &&& has_width_1_encoding(c)
             &&& leading_byte_width_1(c) == b1
         }),
@@ -425,7 +452,7 @@ proof fn encode_decode_width_2(c: u32)
             let b2 = last_continuation_byte(c);
             &&& is_leading_byte_width_2(b1)
             &&& is_continuation_byte(b2)
-            &&& codepoint_of_bytes_width_2(b1, b2) == c
+            &&& codepoint_width_2(b1, b2) == c
         }),
 {
 }
@@ -436,11 +463,11 @@ proof fn decode_encode_width_2(b1: u8, b2: u8)
     requires
         is_leading_byte_width_2(b1),
         is_continuation_byte(b2),
-        not_overlong_encoding(codepoint_of_bytes_width_2(b1, b2), 2),
+        not_overlong_encoding(codepoint_width_2(b1, b2), 2),
     ensures
         ({
-            let c = codepoint_of_bytes_width_2(b1, b2);
-            &&& valid_scalar(c)
+            let c = codepoint_width_2(b1, b2);
+            &&& is_scalar(c)
             &&& has_width_2_encoding(c)
             &&& leading_byte_width_2(c) == b1
             &&& last_continuation_byte(c) == b2
@@ -461,7 +488,7 @@ proof fn encode_decode_width_3(c: u32)
             &&& is_leading_byte_width_3(b1)
             &&& is_continuation_byte(b2)
             &&& is_continuation_byte(b3)
-            &&& codepoint_of_bytes_width_3(b1, b2, b3) == c
+            &&& codepoint_width_3(b1, b2, b3) == c
         }),
 {
 }
@@ -473,12 +500,12 @@ proof fn decode_encode_width_3(b1: u8, b2: u8, b3: u8)
         is_leading_byte_width_3(b1),
         is_continuation_byte(b2),
         is_continuation_byte(b3),
-        not_overlong_encoding(codepoint_of_bytes_width_3(b1, b2, b3), 3),
-        not_surrogate(codepoint_of_bytes_width_3(b1, b2, b3))
+        not_overlong_encoding(codepoint_width_3(b1, b2, b3), 3),
+        not_surrogate(codepoint_width_3(b1, b2, b3)),
     ensures
         ({
-            let c = codepoint_of_bytes_width_3(b1, b2, b3);
-            &&& valid_scalar(c)
+            let c = codepoint_width_3(b1, b2, b3);
+            &&& is_scalar(c)
             &&& has_width_3_encoding(c)
             &&& leading_byte_width_3(c) == b1
             &&& second_last_continuation_byte(c) == b2
@@ -502,7 +529,7 @@ proof fn encode_decode_width_4(c: u32)
             &&& is_continuation_byte(b2)
             &&& is_continuation_byte(b3)
             &&& is_continuation_byte(b4)
-            &&& codepoint_of_bytes_width_4(b1, b2, b3, b4) == c
+            &&& codepoint_width_4(b1, b2, b3, b4) == c
         }),
 {
 }
@@ -515,11 +542,11 @@ proof fn decode_encode_width_4(b1: u8, b2: u8, b3: u8, b4: u8)
         is_continuation_byte(b2),
         is_continuation_byte(b3),
         is_continuation_byte(b4),
-        not_overlong_encoding(codepoint_of_bytes_width_4(b1, b2, b3, b4), 4),
+        not_overlong_encoding(codepoint_width_4(b1, b2, b3, b4), 4),
     ensures
         ({
-            let c = codepoint_of_bytes_width_4(b1, b2, b3, b4);
-            &&& valid_scalar(c)
+            let c = codepoint_width_4(b1, b2, b3, b4);
+            &&& is_scalar(c)
             &&& has_width_4_encoding(c)
             &&& leading_byte_width_4(c) == b1
             &&& third_last_continuation_byte(c) == b2
@@ -529,30 +556,32 @@ proof fn decode_encode_width_4(b1: u8, b2: u8, b3: u8, b4: u8)
 {
 }
 
-/// A `char` always represents a valid Unicode scalar value.
-pub proof fn char_is_valid_scalar(c: char)
+/// A `char` always represents a Unicode scalar value.
+pub broadcast proof fn char_is_scalar(c: char)
     ensures
-        valid_scalar(c as u32),
-{}
+        is_scalar(#[trigger] (c as u32)),
+{
+}
 
-/// Ensures that a `char`, when cast to a `u32`, can be cast back to a `char.
-pub proof fn char_u32_cast(c: char, u: u32)
+/// Ensures that a `char`, when cast to a `u32`, can be cast back to a `char`.
+pub broadcast proof fn char_u32_cast(c: char, u: u32)
     requires
-        u == c as u32,
+        u == #[trigger] (c as u32),
     ensures
-        u as char == c,
-{}
+        #[trigger] (u as char) == c,
+{
+}
 
 /// Properties of the first scalar from the result of [`encode_utf8`].
 pub proof fn encode_utf8_first_scalar(chars: Seq<char>)
     requires
         chars.len() > 0,
     ensures
-        first_scalar(encode_utf8(chars)) == chars[0] as u32,
-        length_of_first_scalar(encode_utf8(chars)) == encoding_of_scalar(chars[0] as u32).len(),
+        decode_first_scalar(encode_utf8(chars)) == chars[0] as u32,
+        length_of_first_scalar(encode_utf8(chars)) == encode_scalar(chars[0] as u32).len(),
         valid_first_scalar(encode_utf8(chars)),
 {
-    char_is_valid_scalar(chars[0]);
+    char_is_scalar(chars[0]);
     let s = chars[0] as u32;
     if has_width_1_encoding(s) {
         encode_decode_width_1(s);
@@ -592,7 +621,7 @@ pub broadcast proof fn encode_utf8_decode_utf8(chars: Seq<char>)
     } else {
         let bytes = encode_utf8(chars);
         encode_utf8_first_scalar(chars);
-        char_u32_cast(chars[0], first_scalar(bytes));
+        char_u32_cast(chars[0], decode_first_scalar(bytes));
 
         assert(pop_first_scalar(bytes) =~= encode_utf8(chars.drop_first()));
         let rest = chars.drop_first();
@@ -606,9 +635,7 @@ pub proof fn decode_utf8_first_scalar(bytes: Seq<u8>)
         valid_utf8(bytes),
         bytes.len() > 0,
     ensures
-        encoding_of_scalar((first_scalar(bytes) as char) as u32) == take_first_scalar(
-            bytes,
-        ),
+        encode_scalar((decode_first_scalar(bytes) as char) as u32) == take_first_scalar(bytes),
 {
     if is_leading_byte_width_1(bytes[0]) {
         decode_encode_width_1(bytes[0]);
@@ -634,11 +661,11 @@ pub broadcast proof fn decode_utf8_encode_utf8(bytes: Seq<u8>)
     if bytes.len() == 0 {
     } else {
         let chars = decode_utf8(bytes);
-        let first = first_scalar(bytes) as char;
+        let first = decode_first_scalar(bytes) as char;
         let rest = pop_first_scalar(bytes);
 
-        char_is_valid_scalar(first);
-        assert(encoding_of_scalar(first as u32) == take_first_scalar(bytes)) by {
+        char_is_scalar(first);
+        assert(encode_scalar(first as u32) == take_first_scalar(bytes)) by {
             decode_utf8_first_scalar(bytes);
         }
 
@@ -713,9 +740,7 @@ pub broadcast proof fn valid_utf8_concat(b1: Seq<u8>, b2: Seq<u8>)
     } else {
         let rest = pop_first_scalar(b1);
         // so valid_utf8(b1) implies valid_utf8(rest)?
-        assert(pop_first_scalar(b1).len() < b1.len()) by {
-            lemma_pop_first_scalar_decreases(b1)
-        };
+        assert(pop_first_scalar(b1).len() < b1.len()) by { lemma_pop_first_scalar_decreases(b1) };
         valid_utf8_concat(rest, b2);
         // now know valid_utf8(rest+b2)
         assert(pop_first_scalar(b1 + b2) =~= rest + b2);
@@ -772,7 +797,7 @@ pub broadcast proof fn valid_utf8_split(bytes: Seq<u8>, index: int)
         is_char_boundary(bytes, index),
     ensures
         #![trigger valid_utf8(bytes.subrange(0, index)), is_char_boundary(bytes, index)]
-        #![trigger valid_utf8(bytes.subrange(index, bytes.len() as int)), is_char_boundary(bytes, index)] 
+        #![trigger valid_utf8(bytes.subrange(index, bytes.len() as int)), is_char_boundary(bytes, index)]
         valid_utf8(bytes.subrange(0, index)),
         valid_utf8(bytes.subrange(index, bytes.len() as int)),
     decreases bytes.len(),
@@ -810,11 +835,13 @@ pub broadcast proof fn valid_utf8_split(bytes: Seq<u8>, index: int)
 pub broadcast proof fn decode_utf8_split(bytes: Seq<u8>, index: int)
     requires
         valid_utf8(bytes),
-        is_char_boundary(bytes, index)
+        is_char_boundary(bytes, index),
     ensures
         #![trigger decode_utf8(bytes.subrange(0, index)), is_char_boundary(bytes, index)]
-        #![trigger decode_utf8(bytes.subrange(index, bytes.len() as int)), is_char_boundary(bytes, index)] 
-        decode_utf8(bytes) =~= decode_utf8(bytes.subrange(0, index)) + decode_utf8(bytes.subrange(index, bytes.len() as int)),
+        #![trigger decode_utf8(bytes.subrange(index, bytes.len() as int)), is_char_boundary(bytes, index)]
+        decode_utf8(bytes) =~= decode_utf8(bytes.subrange(0, index)) + decode_utf8(
+            bytes.subrange(index, bytes.len() as int),
+        ),
     decreases index,
 {
     if index == 0 {
@@ -826,8 +853,8 @@ pub broadcast proof fn decode_utf8_split(bytes: Seq<u8>, index: int)
         valid_utf8_split(bytes, index);
         let bytes_tail = pop_first_scalar(bytes);
         let first_tail = pop_first_scalar(first);
-        let bytes_head = first_scalar(bytes) as char;
-        let first_head = first_scalar(first) as char;
+        let bytes_head = decode_first_scalar(bytes) as char;
+        let first_head = decode_first_scalar(first) as char;
         let new_index = (index - length_of_first_scalar(bytes)) as int;
         decode_utf8_split(bytes_tail, new_index);
         assert(second =~= bytes_tail.subrange(new_index, bytes_tail.len() as int));
@@ -848,14 +875,13 @@ proof fn is_char_boundary_len_first_scalar(bytes: Seq<u8>, index: int)
 /// Ensures that the start and end of a valid UTF-8 byte sequence are character boundaries.
 pub broadcast proof fn is_char_boundary_start_end_of_seq(bytes: Seq<u8>)
     requires
-        valid_utf8(bytes)
+        valid_utf8(bytes),
     ensures
         #![trigger is_char_boundary(bytes, 0)]
-        #![trigger is_char_boundary(bytes, bytes.len() as int)] 
+        #![trigger is_char_boundary(bytes, bytes.len() as int)]
         is_char_boundary(bytes, 0),
-        is_char_boundary(bytes, bytes.len() as int)
-    decreases
-        bytes.len()
+        is_char_boundary(bytes, bytes.len() as int),
+    decreases bytes.len(),
 {
     if bytes.len() == 0 {
     } else {
@@ -864,41 +890,49 @@ pub broadcast proof fn is_char_boundary_start_end_of_seq(bytes: Seq<u8>)
 }
 
 /// Ensures that any byte in a valid UTF-8 byte sequence falls on a character boundary if and only if it does not have the form of a UTF-8 continuation byte.
-pub broadcast proof fn is_char_boundary_iff_not_is_continuation_byte(bytes: Seq<u8>, index: int) 
+pub broadcast proof fn is_char_boundary_iff_not_is_continuation_byte(bytes: Seq<u8>, index: int)
     requires
         valid_utf8(bytes),
-        0 <= index < bytes.len()
+        0 <= index < bytes.len(),
     ensures
-        #[trigger] is_char_boundary(bytes, index) <==> !(#[trigger] is_continuation_byte(bytes[index]))
-    decreases
-        bytes.len()
+        #[trigger] is_char_boundary(bytes, index) <==> !(#[trigger] is_continuation_byte(
+            bytes[index],
+        )),
+    decreases bytes.len(),
 {
     if 0 <= index < length_of_first_scalar(bytes) {
         reveal_with_fuel(is_char_boundary, 2);
     } else {
-        is_char_boundary_iff_not_is_continuation_byte(pop_first_scalar(bytes), index - length_of_first_scalar(bytes));
-    } 
+        is_char_boundary_iff_not_is_continuation_byte(
+            pop_first_scalar(bytes),
+            index - length_of_first_scalar(bytes),
+        );
+    }
 }
 
 /// Ensures that any byte in a valid UTF-8 byte sequence falls on a character boundary if and only if it has the form of a UTF-8 leading byte.
-pub broadcast proof fn is_char_boundary_iff_is_leading_byte(bytes: Seq<u8>, index: int) 
+pub broadcast proof fn is_char_boundary_iff_is_leading_byte(bytes: Seq<u8>, index: int)
     requires
         valid_utf8(bytes),
-        0 <= index < bytes.len()
+        0 <= index < bytes.len(),
     ensures
         #![trigger is_char_boundary(bytes, index), is_leading_byte_width_1(bytes[index])]
         #![trigger is_char_boundary(bytes, index), is_leading_byte_width_2(bytes[index])]
         #![trigger is_char_boundary(bytes, index), is_leading_byte_width_3(bytes[index])]
         #![trigger is_char_boundary(bytes, index), is_leading_byte_width_4(bytes[index])]
-        is_char_boundary(bytes, index) <==> (is_leading_byte_width_1(bytes[index]) || is_leading_byte_width_2(bytes[index]) || is_leading_byte_width_3(bytes[index]) || is_leading_byte_width_4(bytes[index]))
-    decreases
-        bytes.len()
+        is_char_boundary(bytes, index) <==> (is_leading_byte_width_1(bytes[index])
+            || is_leading_byte_width_2(bytes[index]) || is_leading_byte_width_3(bytes[index])
+            || is_leading_byte_width_4(bytes[index])),
+    decreases bytes.len(),
 {
     if 0 <= index < length_of_first_scalar(bytes) {
         reveal_with_fuel(is_char_boundary, 2);
     } else {
-        is_char_boundary_iff_is_leading_byte(pop_first_scalar(bytes), index - length_of_first_scalar(bytes));
-    } 
+        is_char_boundary_iff_is_leading_byte(
+            pop_first_scalar(bytes),
+            index - length_of_first_scalar(bytes),
+        );
+    }
 }
 
 proof fn take_first_scalar_valid_utf8(bytes: Seq<u8>)
@@ -926,13 +960,14 @@ pub broadcast proof fn utf8_byte_ranges_bitwise(b: u8)
         0xe0 <= b <= 0xef <==> b & 0xf0 == 0xe0,
         0xf0 <= b <= 0xf7 <==> b & 0xf8 == 0xf0,
         0x00 <= b < 0x80 <==> b & 0x7f == b,
-{}
+{
+}
 
 /* ASCII */
 
 /// True when the given character sequence only contains ASCII characters.
 pub open spec fn is_ascii_chars(chars: Seq<char>) -> bool {
-    forall|i| 0 <= i < chars.len() ==> '\0' <= #[trigger] chars[i] <= '\x7f'
+    forall|i| 0 <= i < chars.len() ==> '\0' <= #[trigger] chars[i] <= '\u{7f}'
 }
 
 /// Ensures that the UTF-8 encoding for an ASCII character sequence has the same length of the original sequence and corresponds byte-by-byte to the characters in the original sequence.
@@ -984,6 +1019,8 @@ pub broadcast group group_utf8_lib {
     encode_utf8_valid_utf8,
     encode_utf8_decode_utf8,
     decode_utf8_encode_utf8,
+    char_is_scalar,
+    char_u32_cast,
     valid_utf8_concat,
     partial_valid_utf8_extend,
     valid_utf8_split,
@@ -994,7 +1031,7 @@ pub broadcast group group_utf8_lib {
     utf8_byte_ranges_bitwise,
     is_ascii_chars_encode_utf8,
     is_ascii_chars_nat_bound,
-    is_ascii_chars_concat
+    is_ascii_chars_concat,
 }
 
 } // verus!
