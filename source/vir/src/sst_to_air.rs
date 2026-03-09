@@ -1076,6 +1076,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 // (except for cast to/from real, which needs a separate uninterpreted function
                 // because real has a different SMT type)
                 let fname = match (&*t_from, &*t_to) {
+                    (TypX::Real, TypX::Real) => unreachable!("no real->real cast in IeeeFloatCast"),
                     (TypX::Real, _) => {
                         args.push(typ_to_id(ctx, &t_to));
                         crate::def::IEEE_FLOAT_CAST_FROM_REAL
