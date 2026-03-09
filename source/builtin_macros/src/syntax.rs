@@ -128,6 +128,15 @@ fn path_is_ident(path: &Path, s: &str) -> bool {
     segments.len() == 1 && segments.first().unwrap().ident == s
 }
 
+fn path_matches_idents(path: &Path, expected: &[&str]) -> bool {
+    let segments = &path.segments;
+    segments.len() == expected.len()
+        && segments
+            .iter()
+            .zip(expected.iter())
+            .all(|(segment, expected)| segment.ident == *expected)
+}
+
 pub(crate) fn into_spans(span: Span) -> proc_macro2::extra::DelimSpan {
     let mut group = proc_macro2::Group::new(proc_macro2::Delimiter::None, TokenStream::new());
     group.set_span(span);
@@ -3651,6 +3660,31 @@ impl Visitor {
             self.inside_arith = is_inside_arith;
         }
     }
+
+    fn normalize_expr_proof_note_attrs(&mut self, expr: &mut Expr) {
+        let mut proof_note_attrs = Vec::new();
+        let mut other_attrs = Vec::new();
+        for mut attr in expr.replace_attrs(Vec::new()) {
+            if path_matches_idents(&attr.path(), &["verifier", "proof_note"]) {
+                attr.style = verus_syn::AttrStyle::Outer;
+                proof_note_attrs.push(attr);
+            } else {
+                other_attrs.push(attr);
+            }
+        }
+        expr.replace_attrs(other_attrs);
+
+        if proof_note_attrs.is_empty() {
+            return;
+        }
+
+        let inner = take_expr(expr);
+        *expr = Expr::Paren(verus_syn::ExprParen {
+            attrs: proof_note_attrs,
+            paren_token: Paren(inner.span()),
+            expr: Box::new(inner),
+        });
+    }
 }
 
 enum ExtractQuantTriggersFound {
@@ -3676,6 +3710,8 @@ enum ExtractQuantTriggersFound {
 
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        self.normalize_expr_proof_note_attrs(expr);
+
         if self.chain_operators(expr)
             || self.closure_quant_operators(expr)
             || self.handle_binary_ops(expr)
