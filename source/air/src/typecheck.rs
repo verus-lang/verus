@@ -252,6 +252,7 @@ fn check_float_unary_exprs(
     expr: &Expr,
 ) -> Result<Typ, TypeError> {
     let t0 = check_expr(typing, expr)?;
+    // See https://smt-lib.org/theories-FloatingPoint.shtml for types of each operation
     match &*t0 {
         TypX::Float { .. } => match op {
             UnaryOp::FloatNeg => Ok(t0.clone()),
@@ -283,6 +284,7 @@ fn check_float_exprs(
 ) -> Result<Typ, TypeError> {
     let t0 = check_expr(typing, &exprs[0])?;
     let t1 = check_expr(typing, &exprs[1])?;
+    // See https://smt-lib.org/theories-FloatingPoint.shtml for types of each operation
     match (&*t0, &*t1) {
         (
             TypX::Float { exp_bits: exp_bits0, sig_bits: sig_bits0 },

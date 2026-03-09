@@ -989,7 +989,7 @@ fn bv_typ_for_vir_typ(state: &mut State, span: &Span, typ: &Typ) -> Result<BvTyp
         Err(error(
             span,
             format!(
-                "error: bit_vector prover cannot handle this type (bit_vector can only handle variables of type `bool` or of fixed-width integers)"
+                "error: bit_vector prover cannot handle this type (bit_vector can only handle variables of type `bool`, fixed-width integers, or floating point)"
             ),
         ))
     }

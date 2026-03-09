@@ -1072,6 +1072,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let t_from = undecorate_typ(&e.typ);
                 let t_to = undecorate_typ(&exp.typ);
                 let mut args: Vec<Expr> = Vec::new();
+                // translate to uninterpreted function ieee_float_cast
+                // (except for cast to/from real, which needs a separate uninterpreted function
+                // because real has a different SMT type)
                 let fname = match (&*t_from, &*t_to) {
                     (TypX::Real, _) => {
                         args.push(typ_to_id(ctx, &t_to));

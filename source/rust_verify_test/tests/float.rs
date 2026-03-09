@@ -52,6 +52,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] f32_ieee verus_code! {
+        // TODO: replace explicit calls to ieee_cast with "as" when support for "as" is added
+        // (and use this to replace === with ==)
         fn test1(x: f32, y: f32) {
             assert(2.0f32 <= x <= 5.0f32 ==> x + x <= 10.0f32) by(bit_vector);
             assert(2.0f32 <= x <= 5.0f32 && 2.0f32 <= y <= 5.0f32 ==> x + y == y + x) by(bit_vector);
