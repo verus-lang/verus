@@ -36,6 +36,7 @@ use super::prelude::*;
 use super::raw_ptr::*;
 use super::seq::*;
 use crate::vstd::group_vstd_default;
+use core::marker::{MetaSized, PointeeSized};
 
 verus! {
 
@@ -554,8 +555,11 @@ signed_int_encoding! {
 /// For example, all zero-sized types can use the same (trivial) encode and decode specifications.
 ///
 /// This trait can also be used to define an encoding on any `T: MyTrait` for some trait `MyTrait`.
-/// We cannot implement `AbstractByteRepresentation` generically for all `T: MyTrait` because Rust cannot know that `AbstractByteRepresentation` has not already been implemented for any given `T: MyTrait`.
-/// However, we can define a `AbstractByteEncoding` for such `T`, and then use it to implement the `AbstractByteRepresentation` for each concrete `T`. See `PrimitiveAbstractByteEncodingEncoding` for an example.
+/// We cannot implement `AbstractByteRepresentation` generically for all `T: MyTrait`
+/// because Rust cannot know that `AbstractByteRepresentation` has not already been implemented for any given `T: MyTrait`.
+/// However, we can define a `AbstractByteEncoding` for such `T`,
+/// and then use it to implement the `AbstractByteRepresentation` for each concrete `T`.
+/// See `PrimitiveAbstractByteEncodingEncoding` for an example.
 pub trait AbstractByteEncoding<T> {
     /// Is encoding allowed for this type?
     spec fn can_be_encoded() -> bool;
@@ -730,7 +734,7 @@ pub open spec fn encoding_exists<T>(value: T) -> bool {
 }
 
 /// Has a suitable encoding been implemented for the pointer metadata type `<T as core::ptr::Pointee>::Metadata`?
-pub open spec fn ptr_metadata_encoding_well_defined<T: ?Sized>() -> bool {
+pub open spec fn ptr_metadata_encoding_well_defined<T: PointeeSized>() -> bool {
     // the size of the metadata should correspond to the amount of bytes that it must occupy in the pointer's encoding
     // (the first usize bytes in the pointer's encoding are the address)
     &&& size_of::<<T as core::ptr::Pointee>::Metadata>() + size_of::<usize>() == size_of::<
@@ -829,11 +833,11 @@ pub broadcast proof fn ptr_metadata_encoding_well_defined_sized_types<T: Sized>(
 ///   this `AbstractByteEncoding` provides an implementation for the encodings of raw pointers to all sized types.
 /// - For `T: ?Sized`, if the encoding for `<T as core::ptr::Pointee>::Metadata` is not implemented as specified by `ptr_metadata_encoding_well_defined::<T>()`,
 ///   then this `AbstractByteEncoding` will not provide an implementation for the encodings of `*mut T` or `*const T`.
-pub struct RawPtrRepresentation<T: ?Sized> {
+pub struct RawPtrRepresentation<T: PointeeSized> {
     _t: T,
 }
 
-impl<T: ?Sized> AbstractByteEncoding<*mut T> for RawPtrRepresentation<T> {
+impl<T: PointeeSized> AbstractByteEncoding<*mut T> for RawPtrRepresentation<T> {
     open spec fn can_be_encoded() -> bool {
         ptr_metadata_encoding_well_defined::<T>()
     }
@@ -906,7 +910,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
     )+) => {$(
         verus! {
             /// The abstract encoding for `*$mutability T` is derived from `RawPtrRepresentation`.
-            impl<T: ?Sized> AbstractByteRepresentation for *$mutability T {
+            impl<T: PointeeSized> AbstractByteRepresentation for *$mutability T {
                 open spec fn can_be_encoded() -> bool {
                     RawPtrRepresentation::<T>::can_be_encoded()
                 }
