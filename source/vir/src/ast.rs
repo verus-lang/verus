@@ -152,16 +152,6 @@ pub enum IntRange {
     Char,
 }
 
-/// Represents a type involved in a nondeterministic cast (int or float).
-/// Used by `UnaryOp::NondeterministicCast` to identify the source and destination types.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
-pub enum CastType {
-    /// An integer type, identified by its IntRange
-    Int(IntRange),
-    /// A floating-point type, identified by its bit width (e.g., 32 or 64)
-    Float(u32),
-}
-
 /// Type information relevant to Rust but generally not relevant to the SMT encoding.
 /// This information is relevant for resolving traits.
 ///
@@ -458,13 +448,6 @@ pub enum UnaryOp {
 
     /// Length of an array or slice
     Length(ArrayKind),
-    /// Nondeterministic cast (e.g. int to float, float to int, float to float).
-    /// The result is constrained by an uninterpreted `_ensures` predicate in vstd::float.
-    /// `src` and `dst` identify the source and destination types.
-    NondeterministicCast {
-        src: CastType,
-        dst: CastType,
-    },
 }
 
 /// Which builtin source name does this come from

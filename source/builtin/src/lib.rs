@@ -1503,6 +1503,49 @@ impl_binary_op!(SpecShr, spec_shr, Self, [
     isize i8 i16 i32 i64 i128
 ]);
 
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait IeeeFloatCast<To> {
+    // rounding modes:
+    // - to integer: RTZ
+    // - to float: RNE
+    // - to real: no rounding
+    #[cfg(verus_keep_ghost)]
+    #[verifier::spec]
+    fn ieee_cast(self) -> To;
+}
+
+macro_rules! impl_ieee_float_cast {
+    ($from:ty, [$($to:ty)*]) => {
+        $(
+            impl IeeeFloatCast<$to> for $from {
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_cast(self) -> $to {
+                    unimplemented!()
+                }
+            }
+        )*
+    }
+}
+
+impl_ieee_float_cast!(f32, [real f64]);
+impl_ieee_float_cast!(f64, [real f32]);
+impl_ieee_float_cast!(real, [f32 f64]);
+impl_ieee_float_cast!(u8, [f32 f64]);
+impl_ieee_float_cast!(u16, [f32 f64]);
+impl_ieee_float_cast!(u32, [f32 f64]);
+impl_ieee_float_cast!(u64, [f32 f64]);
+impl_ieee_float_cast!(u128, [f32 f64]);
+impl_ieee_float_cast!(i8, [f32 f64]);
+impl_ieee_float_cast!(i16, [f32 f64]);
+impl_ieee_float_cast!(i32, [f32 f64]);
+impl_ieee_float_cast!(i64, [f32 f64]);
+impl_ieee_float_cast!(i128, [f32 f64]);
+impl_ieee_float_cast!(f32, [u8 u16 u32 u64 u128]);
+impl_ieee_float_cast!(f32, [i8 i16 i32 i64 i128]);
+impl_ieee_float_cast!(f64, [u8 u16 u32 u64 u128]);
+impl_ieee_float_cast!(f64, [i8 i16 i32 i64 i128]);
+
 #[cfg(verus_keep_ghost)]
 #[verifier::spec]
 #[rustc_diagnostic_item = "verus::verus_builtin::f32_to_bits"]

@@ -486,15 +486,6 @@ impl ExpX {
                 UnaryOp::Length(_kind) => {
                     (format!("length({})", exp.x.to_string_prec(global, 99)), 0)
                 }
-                UnaryOp::NondeterministicCast { src, dst } => (
-                    format!(
-                        "nondeterministic_cast::<{}, {}>({})",
-                        crate::ast_util::cast_type_to_type_string(src),
-                        crate::ast_util::cast_type_to_type_string(dst),
-                        exp.x.to_user_string(global)
-                    ),
-                    99,
-                ),
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;

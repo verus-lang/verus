@@ -53,10 +53,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] int_to_f64_cast verus_code! {
         fn test_i32_as_f64(n: i32) {
-            use vstd::float::i32_as_f64_ensures;
+            use vstd::float::float_cast_spec;
             let x: f64 = n as f64;
             // The ensures predicate should hold for the cast result
-            assert(i32_as_f64_ensures(n, x));
+            assert(float_cast_spec(n, x));
         }
     } => Ok(())
 }
@@ -64,9 +64,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] int_to_f32_cast verus_code! {
         fn test_u32_as_f32(n: u32) {
-            use vstd::float::u32_as_f32_ensures;
+            use vstd::float::float_cast_spec;
             let x: f32 = n as f32;
-            assert(u32_as_f32_ensures(n, x));
+            assert(float_cast_spec(n, x));
         }
     } => Ok(())
 }
@@ -74,9 +74,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] f64_to_int_cast verus_code! {
         fn test_f64_as_u32(f: f64) {
-            use vstd::float::f64_as_u32_ensures;
+            use vstd::float::float_cast_spec;
             let n: u32 = f as u32;
-            assert(f64_as_u32_ensures(f, n));
+            assert(float_cast_spec(f, n));
         }
     } => Ok(())
 }
@@ -84,9 +84,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] f32_to_int_cast verus_code! {
         fn test_f32_as_i64(f: f32) {
-            use vstd::float::f32_as_i64_ensures;
+            use vstd::float::float_cast_spec;
             let n: i64 = f as i64;
-            assert(f32_as_i64_ensures(f, n));
+            assert(float_cast_spec(f, n));
         }
     } => Ok(())
 }
@@ -94,15 +94,15 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] float_to_float_cast verus_code! {
         fn test_f32_as_f64(f: f32) {
-            use vstd::float::f32_as_f64_ensures;
+            use vstd::float::float_cast_spec;
             let d: f64 = f as f64;
-            assert(f32_as_f64_ensures(f, d));
+            assert(float_cast_spec(f, d));
         }
 
         fn test_f64_as_f32(d: f64) {
-            use vstd::float::f64_as_f32_ensures;
+            use vstd::float::float_cast_spec;
             let f: f32 = d as f32;
-            assert(f64_as_f32_ensures(d, f));
+            assert(float_cast_spec(d, f));
         }
     } => Ok(())
 }
@@ -127,19 +127,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] cast_usize_and_isize verus_code! {
+    #[test] cast_usize_to_f64_unsupported verus_code! {
         fn test_usize_as_f64(n: usize) {
-            use vstd::float::usize_as_f64_ensures;
             let x: f64 = n as f64;
-            assert(usize_as_f64_ensures(n, x));
         }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `usize` to `f64`")
+}
 
+test_verify_one_file! {
+    #[test] cast_f64_to_isize_unsupported verus_code! {
         fn test_f64_as_isize(f: f64) {
-            use vstd::float::f64_as_isize_ensures;
             let n: isize = f as isize;
-            assert(f64_as_isize_ensures(f, n));
         }
-    } => Ok(())
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f64` to `isize`")
 }
 
 test_verify_one_file_with_options! {
