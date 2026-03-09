@@ -693,7 +693,7 @@ verus! {
 #[verifier::external_body]
 pub struct AtomicUpdate<X, Y, Pred> {
     pred: Pred,
-    _dummy: core::marker::PhantomData<fn(fn(X) -> Y)>,
+    _dummy: core::marker::PhantomData<fn (fn (X) -> Y)>,
 }
 
 impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
@@ -855,7 +855,7 @@ pub struct BlockGuard<T> {
 #[doc(hidden)]
 #[verifier::external]  /* vattr */
 pub fn bind_lifetime_internal<'a, X: 'a, Y, P>(
-    _block_guard: &'a BlockGuard<AtomicUpdate<X, Y, P>>
+    _block_guard: &'a BlockGuard<AtomicUpdate<X, Y, P>>,
 ) -> X {
     unimplemented!()
 }

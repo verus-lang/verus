@@ -1483,8 +1483,8 @@ pub(crate) fn expr_to_stm_opt(
             let e0 = to_exp_or_return_never!(e0, stms);
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::Loc(e0))))))
         }
-        ExprX::AssignToPlace { place, rhs, op: Some(binary_op), resolve } => {
-            assert!(resolve.is_none());
+        ExprX::AssignToPlace { place, rhs, op: Some(binary_op), resolve, typ: _ } => {
+            assert!(!resolve);
 
             // No support for short-circuit ops here
             assert!(!matches!(binary_op, BinaryOp::And | BinaryOp::Or | BinaryOp::Implies));
@@ -1519,7 +1519,7 @@ pub(crate) fn expr_to_stm_opt(
 
             Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
-        ExprX::AssignToPlace { place, rhs, op: None, resolve } => {
+        ExprX::AssignToPlace { place, rhs, op: None, resolve, typ } => {
             let (stms_r, e_r) = expr_to_stm_opt(ctx, state, rhs)?;
             let e_r = to_exp_or_return_never!(e_r, stms_r);
 
@@ -1540,8 +1540,8 @@ pub(crate) fn expr_to_stm_opt(
 
             let (mut stms, e_r, e_l) = sequr.into_stms_exps_expect_2(state);
 
-            if let Some(t) = resolve {
-                let resx = ExpX::UnaryOpr(UnaryOpr::HasResolved(t.clone()), e_l.clone());
+            if *resolve {
+                let resx = ExpX::UnaryOpr(UnaryOpr::HasResolved(typ.clone()), e_l.clone());
                 let res = SpannedTyped::new(&expr.span, &bool_typ(), resx);
                 let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(res));
                 stms.push(assume_stm);

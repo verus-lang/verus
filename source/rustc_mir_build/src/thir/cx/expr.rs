@@ -49,6 +49,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
     #[instrument(level = "trace", skip(self, hir_expr))]
     pub(super) fn mirror_expr_inner(&mut self, hir_expr: &'tcx hir::Expr<'tcx>) -> ExprId {
+        if let Some(expr_id) = crate::verus_expr::mirror_expr_adjusted_pre(self, hir_expr) {
+            return expr_id;
+        }
+
         let expr_scope =
             region::Scope { local_id: hir_expr.hir_id.local_id, data: region::ScopeData::Node };
 
