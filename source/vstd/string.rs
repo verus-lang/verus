@@ -18,14 +18,14 @@ verus! {
 
 broadcast use super::seq::group_seq_axioms;
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 impl View for str {
     type V = Seq<char>;
 
     uninterp spec fn view(&self) -> Seq<char>;
 }
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 impl DeepView for str {
     type V = Seq<char>;
 
@@ -270,13 +270,13 @@ impl StrSliceExecFns for str {
     }
 }
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn axiom_str_literal_len<'a>(s: &'a str)
     ensures
         #[trigger] s@.len() == strslice_len(s),
 ;
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
     ensures
         #[trigger] s@.index(i) == strslice_get_char(s, i),
