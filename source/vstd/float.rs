@@ -107,13 +107,8 @@ pub trait ExIeeeFloatCast<To> {
     type ExternalTraitSpecificationFor: IeeeFloatCast<To>;
 }
 
-#[verifier::external_trait_specification]
-pub trait ExDecimal: Copy {
-    type ExternalTraitSpecificationFor: Decimal;
-}
-
 // TODO: when IEEE float support is merged, this should point to IeeeFloatCast::ieee_cast
-pub uninterp spec fn ieee_float_cast<From: IeeeFloatCast<To>, To: Decimal>(from: From) -> To;
+pub uninterp spec fn ieee_float_cast<From: IeeeFloatCast<To>, To>(from: From) -> To;
 
 pub uninterp spec fn float_cast_spec<From, To>(from: From, to: To) -> bool;
 
@@ -125,13 +120,13 @@ pub uninterp spec fn float_cast_spec<From, To>(from: From, to: To) -> bool;
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::float::float_cast")]
 #[verifier::when_used_as_spec(ieee_float_cast)]
-pub fn float_cast<From: Copy + IeeeFloatCast<To>, To: Decimal>(from: From) -> (to: To)
+pub fn float_cast<From: Copy + IeeeFloatCast<To>, To>(from: From) -> (to: To)
     ensures
         float_cast_spec(from, to),
     opens_invariants none
     no_unwind
 {
-    To::CONST_DEFAULT
+    unimplemented!{}
 }
 
 } // verus!
