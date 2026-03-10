@@ -1221,7 +1221,7 @@ test_verify_one_file! {
             ensures
                 s1 == s2,
         {
-            assert(s1 == s2);
+            assert(s1 =~= s2);
         }
         } // verus!
     } => Ok(())
