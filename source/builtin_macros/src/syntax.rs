@@ -3483,7 +3483,7 @@ impl Visitor {
         ));
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
-            match verus_builtin::infer_spec_for_loop_iter(
+            match vstd::prelude::infer_spec_for_loop_iter(
                 &::core::iter::IntoIterator::into_iter(#x_verus_iter_init),
                 &::core::iter::IntoIterator::into_iter(#expr_inv),
                 #print_hint,
