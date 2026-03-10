@@ -1037,9 +1037,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_rust_error_msg(err, "cannot borrow `(Verus spec x)` as immutable because it is also borrowed as mutable")
 }
 
-// TODO(new_mut_ref): un-ignore this test; swap needs to be restricted to non-exec types
 test_verify_one_file_with_options! {
-    #[ignore] #[test] tracked_swap_requires_non_exec_type ["new-mut-ref"] => verus_code! {
+    #[test] tracked_swap_requires_non_exec_place ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
         use vstd::modes::*;
         fn test() {
@@ -1051,7 +1050,113 @@ test_verify_one_file_with_options! {
                 tracked_swap(a_ref, b_ref);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call tracked_swap with exec types")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in ghost code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_swap_requires_non_exec_place2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        fn test(x: &mut u32, y: &mut u32) {
+            proof {
+                tracked_swap(x, y);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in ghost code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_swap_requires_non_exec_place3 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        fn test(x: &mut u32, y: &mut u32) {
+            let tracked a: u32 = 0;
+            let tracked b: u32 = 0;
+            proof {
+                tracked_swap(&mut a, &mut b);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_swap_requires_non_exec_place4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        fn test(x: &mut u32, y: &mut u32) {
+            let a: u32 = 0;
+            let tracked b: u32 = 0;
+            proof {
+                tracked_swap(&mut a, &mut b);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in ghost code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_swap_requires_non_exec_place5 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        fn test(x: &mut u32, y: &mut u32) {
+            let tracked a: u32 = 0;
+            let b: u32 = 0;
+            proof {
+                tracked_swap(&mut a, &mut b);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in ghost code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_swap_requires_non_exec_place6 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        tracked struct X { }
+        fn test(Tracked(x): Tracked<&mut X>, Tracked(y): Tracked<&mut X>) {
+            proof {
+                tracked_swap(x, y);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_swap_requires_non_exec_place7 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        struct X { }
+        fn test(Tracked(x): Tracked<&mut Tracked<X>>, Tracked(y): Tracked<&mut Tracked<X>>) {
+            proof {
+                tracked_swap(x, y);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_swap_requires_non_exec_place8 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        tracked struct X { a: u64 }
+        fn test(Tracked(x): Tracked<&mut X>, Tracked(y): Tracked<&mut X>) {
+            proof {
+                tracked_swap(&mut x.a, &mut y.a);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_swap_requires_non_exec_place9 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        struct X { a: u64 }
+        fn test(Tracked(x): Tracked<&mut X>, Tracked(y): Tracked<&mut X>) {
+            proof {
+                tracked_swap(&mut x.a, &mut y.a);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in ghost code")
 }
 
 test_verify_one_file_with_options! {
