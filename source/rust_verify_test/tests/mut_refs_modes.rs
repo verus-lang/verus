@@ -98,7 +98,7 @@ test_verify_one_file_with_options! {
                 mut_ref1.borrow_mut().y = Y { };
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file_with_options! {
@@ -113,7 +113,7 @@ test_verify_one_file_with_options! {
                 mut_ref1.borrow_mut().y = Y { };
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file_with_options! {
@@ -914,6 +914,18 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] deref_ghost_mut_ref_is_ghost ["new-mut-ref"] => verus_code! {
+        struct X { }
+
+        proof fn g(tracked m: X) { }
+
+        proof fn f(m: &mut X) {
+            g(*m);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file_with_options! {
     #[test] dont_resolve_ghost_field ["new-mut-ref"] => verus_code! {
         broadcast proof fn stronger_resolver_axiom<A, B>(pair: TGPair<A, B>)
             ensures #[trigger] has_resolved(pair) ==> has_resolved(pair.t)
@@ -1007,9 +1019,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-// TODO(new_mut_ref): un-ignore this
 test_verify_one_file_with_options! {
-    #[ignore] #[test] read_from_borrowed_ghost_location_and_then_assign_to_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] read_from_borrowed_ghost_location_and_then_assign_to_mut_ref ["new-mut-ref"] => verus_code! {
         fn test() {
             let mut x: Ghost<bool> = Ghost(false);
 
@@ -1023,7 +1034,7 @@ test_verify_one_file_with_options! {
 
             assert(false);
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot use `x` because it was mutably borrowed")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `(Verus spec x)` as immutable because it is also borrowed as mutable")
 }
 
 // TODO(new_mut_ref): un-ignore this test; swap needs to be restricted to non-exec types
@@ -1230,7 +1241,7 @@ test_verify_one_file_with_options! {
             let tracked y2: &mut Ghost<u64> = &mut *x;
             proof { *y = Ghost(3); }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file_with_options! {
@@ -1319,7 +1330,7 @@ test_verify_one_file_with_options! {
                 **x_ref = 30u64;
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x` because it is borrowed")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot assign to `x` because it is borrowed")
 }
 
 test_verify_one_file_with_options! {
@@ -1476,7 +1487,7 @@ test_verify_one_file_with_options! {
                 x_ref.0 = 30u64;
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x` because it is borrowed")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot assign to `x` because it is borrowed")
 }
 
 test_verify_one_file_with_options! {
@@ -1717,4 +1728,62 @@ test_verify_one_file_with_options! {
             x.0 = 2;
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode proof")
+}
+
+test_verify_one_file_with_options! {
+    #[test] write_in_proof_mode_with_decoration_1 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        tracked struct T { }
+        proof fn test1(tracked m: &mut Box<T>) {
+            *m = Box::new(T{});
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] write_in_proof_mode_with_decoration_2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        tracked struct T { }
+        proof fn test2(tracked m: &mut Box<T>) {
+            **m = T {};
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] write_in_proof_mode_with_decoration_3 ["new-mut-ref"] => verus_code! {
+        tracked struct T { }
+        proof fn test3<'a>(tracked m: &mut &'a T, tracked t_ref: &'a T) {
+            *m = t_ref;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] write_in_proof_mode_with_decoration_4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        tracked struct T { }
+        proof fn test4(tracked m: &mut Box<Tracked<T>>) {
+            *m = Box::new(Tracked(T{}));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] write_in_proof_mode_with_decoration_5 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        tracked struct T { }
+        proof fn test5(tracked m: &mut Box<Tracked<T>>) {
+            **m = Tracked(T {});
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] write_in_proof_mode_with_decoration_6 ["new-mut-ref"] => verus_code! {
+        tracked struct T { }
+        proof fn test6<'a>(tracked m: &mut &'a Tracked<T>, tracked t_ref: &'a Tracked<T>) {
+            *m = t_ref;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
 }

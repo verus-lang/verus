@@ -578,10 +578,6 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
-                UnaryOp::ToDyn => {
-                    let e1 = coerce_exp_to_poly(ctx, &e1);
-                    mk_exp(ExpX::Unary(*op, e1))
-                }
                 UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } => {
                     mk_exp_typ(&e1.typ, ExpX::Unary(*op, e1.clone()))
                 }
@@ -622,6 +618,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 }
                 UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) => {
                     mk_exp_typ(&e1.typ, ExpX::UnaryOpr(op.clone(), e1.clone()))
+                }
+                UnaryOpr::ToDyn(_) => {
+                    let e1 = coerce_exp_to_poly(ctx, &e1);
+                    mk_exp(ExpX::UnaryOpr(op.clone(), e1))
                 }
                 UnaryOpr::Field(FieldOpr {
                     datatype,

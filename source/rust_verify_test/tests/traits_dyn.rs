@@ -410,3 +410,24 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dyn with more that one trait")
 }
+
+test_verify_one_file! {
+    #[test] test_dyn2 verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            spec fn f(&self) -> int;
+        }
+        impl T for u32 {
+            spec fn f(&self) -> int { 3 }
+        }
+        impl T for Box<u32> {
+            spec fn f(&self) -> int { 4 }
+        }
+        fn test_coerce() {
+            let x: Box<u32> = Box::new(9);
+            let d: Box<dyn T> = Box::new(x); // ToDyn coercion
+            assert(d.f() == 4);
+            assert(d.f() == 3); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

@@ -339,6 +339,7 @@ pub(crate) fn translate_trait<'tcx>(
                     ex_item_id_for,
                     external_info,
                     None,
+                    &mut vir.opaque_types,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);
@@ -347,7 +348,7 @@ pub(crate) fn translate_trait<'tcx>(
             TraitItemKind::Const(_ty, None) => {
                 let has_default = false;
                 let mid_ty = ctxt.tcx.type_of(owner_id.to_def_id()).skip_binder();
-                let typ = ctxt.mid_ty_to_vir(owner_id.to_def_id(), *span, &mid_ty, false)?;
+                let typ = ctxt.mid_ty_to_vir(owner_id.to_def_id(), *span, &mid_ty, false, None)?;
                 let fun = crate::rust_to_vir_func::check_item_fn(
                     ctxt,
                     &mut methods,
@@ -365,6 +366,7 @@ pub(crate) fn translate_trait<'tcx>(
                     ex_item_id_for,
                     external_info,
                     None,
+                    &mut vir.opaque_types,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);

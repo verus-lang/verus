@@ -1734,7 +1734,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            assert(x == 20);
+            assert(after_borrow(x) == 20);
 
             let x_ref_shr: &u64 = x_ref;
             assert(x_ref_shr == 20);
@@ -1748,7 +1748,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            assert(x == 20);
+            assert(after_borrow(x) == 20);
 
             foo(x_ref);
         }
@@ -1759,7 +1759,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            assert(x == 20);
+            assert(after_borrow(x) == 20);
 
             let x_ref_shr: &u64 = x_ref;
             assert(x_ref_shr == 20);
@@ -1774,7 +1774,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            assert(x == 20);
+            assert(after_borrow(x) == 20);
 
             foo(x_ref);
             assert(false); // FAILS
@@ -3234,9 +3234,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "For more flexible mutable reference support, disable the backwards-compatability")
 }
 
-// TODO(new_mut_ref): un-ignore after paradox-checking
 test_verify_one_file_with_options! {
-    #[ignore] #[test] false_two_phase ["new-mut-ref"] => verus_code! {
+    #[test] false_two_phase ["new-mut-ref"] => verus_code! {
         fn set_to(Tracked(a): Tracked<&mut Ghost<int>>, Tracked(b): Tracked<Ghost<int>>)
             ensures *final(a) == b
         {
@@ -3246,20 +3245,13 @@ test_verify_one_file_with_options! {
         fn test() {
             let tracked mut x: Ghost<int> = Ghost(0);
             let tracked x_ref = &mut x;
-            set_to(Tracked(x_ref), Tracked(Ghost(x_ref@ + 1)));
-            assert(x == 1);
-        }
-
-        fn test_fail() {
-            let tracked mut x: Ghost<int> = Ghost(0);
-            let tracked x_ref = &mut x;
             // The x_ref here is two-phase with respect to `Tracked` rather than to
             // the `set_to` call.
             set_to(Tracked(x_ref), Tracked(Ghost(x_ref@ + 1)));
             assert(x == 1);
-            assert(false); // FAILS
+            assert(false);
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot use `*x_ref` because it was mutably borrowed")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `(Verus spec x_ref)` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file_with_options! {
@@ -3572,8 +3564,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): read tests are failing
-    #[ignore] #[test] overwrite_during_indexing ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_during_indexing ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
 
         // I was kinda surprised most of these are accepted by rustc,
@@ -3746,11 +3737,192 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
-// TODO(new_mut_ref) fix test
 test_verify_one_file_with_options! {
-    #[ignore] #[test] overwrite_during_indexing2 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_during_indexing_fails ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
-        fn id<A>(a: A) -> A { a }
+
+        fn array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let b: [u64; 2] = [2, 3];
+
+            let j = a[({ a = b; 0 })];
+            assert(j == 2);
+            assert(false); // FAILS
+        }
+
+        fn array_index_assign() {
+            let mut a: [u64; 2] = [0, 1];
+            let b: [u64; 2] = [2, 3];
+
+            a[({ a = b; 0 })] = 100;
+            assert(a === [100, 3]);
+            assert(b === [2, 3]);
+            assert(false); // FAILS
+        }
+
+        fn array_index_mut_ref() {
+            let mut a: [u64; 2] = [0, 1];
+            let b: [u64; 2] = [2, 3];
+
+            let r = &mut a[({ a = b; 0 })];
+            *r = 100;
+            assert(a === [100, 3]);
+            assert(b === [2, 3]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let mut x = &mut a;
+            let j = x[({ x = &mut b; 0 })];
+            assert(j === 2);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_assign() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let mut x = &mut a;
+            x[({ x = &mut b; 0 })] = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_mut_ref() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let mut x = &mut a;
+            let r = &mut x[({ x = &mut b; 0 })];
+            *r = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x: &mut &mut [u64; 2] = &mut a_ref;
+            let j = x[({ x = &mut b_ref; 0 })];
+            assert(j === 2);
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_assign() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x: &mut &mut [u64; 2] = &mut a_ref;
+            x[({ x = &mut b_ref; 0 })] = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_mut_ref() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x: &mut &mut [u64; 2] = &mut a_ref;
+            let r = &mut x[({ x = &mut b_ref; 0 })];
+            *r = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_read() {
+            let mut a: [[u64; 2]; 2] = [[0, 1], [10, 11]];
+            let mut b: [[u64; 2]; 2] = [[2, 3], [12, 13]];
+
+            let mut x = &mut a;
+            let j = x[1][({ x = &mut b; 0 })];
+            assert(j === 12);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_assign() {
+            let mut a: [[u64; 2]; 2] = [[0, 1], [10, 11]];
+            let mut b: [[u64; 2]; 2] = [[2, 3], [12, 13]];
+
+            let mut x = &mut a;
+            x[1][({ x = &mut b; 0 })] = 100;
+            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
+            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_mut_ref() {
+            let mut a: [[u64; 2]; 2] = [[0, 1], [10, 11]];
+            let mut b: [[u64; 2]; 2] = [[2, 3], [12, 13]];
+
+            let mut x = &mut a;
+            let r = &mut x[1][({ x = &mut b; 0 })];
+            *r = 100;
+            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
+            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let slice1: &mut [u64] = &mut a;
+            let slice2: &mut [u64] = &mut b;
+
+            let mut x = slice1;
+            let j = x[({ x = slice2; 0 })];
+            assert(j === 2);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_assign() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let slice1: &mut [u64] = &mut a;
+            let slice2: &mut [u64] = &mut b;
+
+            let mut x = slice1;
+            x[({ x = slice2; 0 })] = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_mut_ref() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let slice1: &mut [u64] = &mut a;
+            let slice2: &mut [u64] = &mut b;
+
+            let mut x = slice1;
+            x[({ x = slice2; 0 })] = 100;
+            assert(a === [0, 1]);
+            assert(b === [100, 3]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 15)
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_indexing2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        fn id<A>(a: A) -> (ret: A) ensures ret == a { a }
 
         fn array_index_read() {
             let mut a: [u64; 2] = [0, 1];
@@ -3803,9 +3975,69 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
-// TODO(new_mut_ref) fix test
 test_verify_one_file_with_options! {
-    #[ignore] #[test] overwrite_during_ctor_tail ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_during_indexing2_fails ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        fn id<A>(a: A) -> (ret: A) ensures ret == a { a }
+
+        fn array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let b: [u64; 2] = [2, 3];
+
+            let j = id(a[({ a = b; 0 })]);
+            assert(j == 2);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let mut x = &mut a;
+            let j = id(x[({ x = &mut b; 0 })]);
+            assert(j == 2);
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x = &mut a_ref;
+            let j = id(x[({ x = &mut b_ref; 0 })]);
+            assert(j == 2);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_read() {
+            let mut a: [[u64; 2]; 2] = [[0, 1], [10, 11]];
+            let mut b: [[u64; 2]; 2] = [[2, 3], [12, 13]];
+
+            let mut x = &mut a;
+            let j = id(x[1][({ x = &mut b; 0 })]);
+            assert(j == 12);
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_read() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+
+            let slice1: &mut [u64] = &mut a;
+            let slice2: &mut [u64] = &mut b;
+
+            let mut x = slice1;
+            let j = id(x[({ x = slice2; 0 })]);
+            assert(j == 2);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_ctor_tail ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
         struct Foo {
             i: u64,
@@ -3868,6 +4100,77 @@ test_verify_one_file_with_options! {
             assert(j == Foo { i: 12, j: 7, k: 8 });
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_ctor_tail_fails ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        struct Foo {
+            i: u64,
+            j: u64,
+            k: u64,
+        }
+
+        fn array_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let j = Foo { i: 12, .. a[({ a = b; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let mut x = &mut a;
+            let j = Foo { i: 12, .. x[({ x = &mut b; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x = &mut a_ref;
+            let j = Foo { i: 12, .. x[({ x = &mut b_ref; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_ctor_tail() {
+            let mut a: [[Foo; 2]; 2] = [
+                [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}],
+                [Foo{i: 200, j: 201, k: 202}, Foo{i: 203, j: 204, k: 205}],
+            ];
+            let mut b: [[Foo; 2]; 2] = [
+                [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}],
+                [Foo{i: 206, j: 207, k: 208}, Foo{i: 209, j: 2010, k: 2011}],
+            ];
+
+            let mut x = &mut a;
+            let j = Foo { i: 12, .. x[1][({ x = &mut b; 0 })] };
+            assert(j == Foo { i: 12, j: 207, k: 208 });
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_ctor_tail() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let slice1: &mut [Foo] = &mut a;
+            let slice2: &mut [Foo] = &mut b;
+
+            let mut x = slice1;
+            let j = Foo { i: 12, .. x[({ x = slice2; 0 })] };
+            assert(j == Foo { i: 12, j: 7, k: 8 });
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
 }
 
 test_verify_one_file_with_options! {
@@ -3944,4 +4247,122 @@ test_verify_one_file_with_options! {
             assert(j === (6, 7, 8));
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_during_scrutinee_fails ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        struct Foo {
+            i: u64,
+            j: u64,
+            k: u64,
+        }
+
+        fn array_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let j = match a[({ a = b; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let mut x = &mut a;
+            let j = match x[({ x = &mut b; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+            assert(false); // FAILS
+        }
+
+        fn double_mut_ref_array_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+            let mut a_ref = &mut a;
+            let mut b_ref = &mut b;
+
+            let mut x = &mut a_ref;
+            let j = match x[({ x = &mut b_ref; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_array2_index_read() {
+            let mut a: [[Foo; 2]; 2] = [
+                [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}],
+                [Foo{i: 200, j: 201, k: 202}, Foo{i: 203, j: 204, k: 205}],
+            ];
+            let mut b: [[Foo; 2]; 2] = [
+                [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}],
+                [Foo{i: 206, j: 207, k: 208}, Foo{i: 209, j: 2010, k: 2011}],
+            ];
+
+            let mut x = &mut a;
+            let j = match x[1][({ x = &mut b; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (206, 207, 208));
+            assert(false); // FAILS
+        }
+
+        fn mut_ref_slice_index_read() {
+            let mut a: [Foo; 2] = [Foo{i: 0, j: 1, k: 2}, Foo{i: 3, j: 4, k: 5}];
+            let mut b: [Foo; 2] = [Foo{i: 6, j: 7, k: 8}, Foo{i: 9, j: 10, k: 11}];
+
+            let slice1: &mut [Foo] = &mut a;
+            let slice2: &mut [Foo] = &mut b;
+
+            let mut x = slice1;
+            let j = match x[({ x = slice2; 0 })] {
+                Foo { i, j, k } => (i, j, k),
+            };
+            assert(j === (6, 7, 8));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] resolution_move_from_array_error ["new-mut-ref"] => verus_code! {
+        struct X { }
+
+        fn id<A>(a: A) -> A { a }
+
+        fn test_basic_move<T>(t: [X; 2]) {
+            let r = id(t[0]);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::X; 2]`, which is non-copy")
+}
+
+test_verify_one_file_with_options! {
+    #[test] resolution_move_from_array_error2 ["new-mut-ref"] => verus_code! {
+        struct X { }
+
+        fn test_basic_move<T>(t: [X; 2]) {
+            let r = t[0];
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of type `[X; 2]`, a non-copy array")
+}
+
+test_verify_one_file_with_options! {
+    #[test] resolution_move_from_array_error3 ["new-mut-ref"] => verus_code! {
+        struct X { }
+
+        struct Pair<A, B> {
+            a: A,
+            b: B,
+        }
+
+        fn test_ctor_move<T>(t: [Pair<X, X>; 2]) {
+            let r = Pair { a: X{}, .. t[0] };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::Pair<crate::X, crate::X>; 2]`, which is non-copy")
 }

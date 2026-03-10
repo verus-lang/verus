@@ -1865,14 +1865,14 @@ test_verify_one_file! {
             p.0 = 5;
             p.1 = 20;
             update_u64(&mut p.0);
-            assert(p == (19u64, 20u64));
+            assert(*p == (19u64, 20u64));
         }
 
         fn test_mut_ref_fails(p: &mut (u64, u64)) {
             p.0 = 5;
             p.1 = 20;
             update_u64(&mut p.0);
-            assert(p == (19u64, 20u64));
+            assert(*p == (19u64, 20u64));
             assert(false); // FAILS
         }
 
