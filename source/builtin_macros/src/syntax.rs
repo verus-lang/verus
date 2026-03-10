@@ -137,6 +137,27 @@ fn path_matches_idents(path: &Path, expected: &[&str]) -> bool {
             .all(|(segment, expected)| segment.ident == *expected)
 }
 
+fn split_off_proof_note_attrs(attrs: Vec<Attribute>) -> (Vec<Attribute>, Vec<Attribute>) {
+    let (mut proof_note_attrs, other_attrs): (Vec<Attribute>, Vec<Attribute>) = attrs
+        .into_iter()
+        .partition(|attr| path_matches_idents(&attr.path(), &["verifier", "proof_note"]));
+    for attr in &mut proof_note_attrs {
+        attr.style = verus_syn::AttrStyle::Outer;
+    }
+    (proof_note_attrs, other_attrs)
+}
+
+fn wrap_expr_with_attrs(expr: Expr, attrs: Vec<Attribute>) -> Expr {
+    if attrs.is_empty() {
+        return expr;
+    }
+    Expr::Paren(verus_syn::ExprParen {
+        attrs,
+        paren_token: Paren(expr.span()),
+        expr: Box::new(expr),
+    })
+}
+
 pub(crate) fn into_spans(span: Span) -> proc_macro2::extra::DelimSpan {
     let mut group = proc_macro2::Group::new(proc_macro2::Delimiter::None, TokenStream::new());
     group.set_span(span);
@@ -2766,8 +2787,8 @@ impl Visitor {
         let Expr::Assume(assume) = take_expr(expr) else { unreachable!() };
 
         let span = assume.assume_token.span;
-        let arg = assume.expr;
-        let attrs = assume.attrs;
+        let (proof_note_attrs, attrs) = split_off_proof_note_attrs(assume.attrs);
+        let arg = Box::new(wrap_expr_with_attrs(*assume.expr, proof_note_attrs));
         *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::assume_(#arg));
 
         self.auto_proof_block(expr, span);
@@ -2788,8 +2809,8 @@ impl Visitor {
         let Expr::Assert(assert) = take_expr(expr) else { unreachable!() };
 
         let span = assert.assert_token.span;
-        let arg = assert.expr;
-        let attrs = assert.attrs;
+        let (proof_note_attrs, attrs) = split_off_proof_note_attrs(assert.attrs);
+        let arg = Box::new(wrap_expr_with_attrs(*assert.expr, proof_note_attrs));
 
         if let Some(prover) = &assert.prover {
             let prover_id = prover.1.to_string();
@@ -3662,16 +3683,12 @@ impl Visitor {
     }
 
     fn normalize_expr_proof_note_attrs(&mut self, expr: &mut Expr) {
-        let mut proof_note_attrs = Vec::new();
-        let mut other_attrs = Vec::new();
-        for mut attr in expr.replace_attrs(Vec::new()) {
-            if path_matches_idents(&attr.path(), &["verifier", "proof_note"]) {
-                attr.style = verus_syn::AttrStyle::Outer;
-                proof_note_attrs.push(attr);
-            } else {
-                other_attrs.push(attr);
-            }
+        if matches!(expr, Expr::Assert(_) | Expr::Assume(_)) {
+            return;
         }
+
+        let (proof_note_attrs, other_attrs) =
+            split_off_proof_note_attrs(expr.replace_attrs(Vec::new()));
         expr.replace_attrs(other_attrs);
 
         if proof_note_attrs.is_empty() {
@@ -3679,11 +3696,7 @@ impl Visitor {
         }
 
         let inner = take_expr(expr);
-        *expr = Expr::Paren(verus_syn::ExprParen {
-            attrs: proof_note_attrs,
-            paren_token: Paren(inner.span()),
-            expr: Box::new(inner),
-        });
+        *expr = wrap_expr_with_attrs(inner, proof_note_attrs);
     }
 }
 
