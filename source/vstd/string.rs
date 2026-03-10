@@ -431,8 +431,10 @@ impl <'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
 // Ideally, we would write this postcondition directly on the definition of
 // next below.  However, Verus says that this introduces a cyclic  dependency.
 // Hence we introduce a layer of indirection via this uninterp spec function.
+#[cfg(feature = "alloc")]
 pub uninterp spec fn next_post<'a>(old_chars: &Chars<'a>, new_chars: &Chars<'a>, ret: Option<char>) -> bool;
 
+#[cfg(feature = "alloc")]
 pub broadcast axiom fn next_postcondition<'a>(old_chars: &Chars<'a>, new_chars: &Chars<'a>, ret: Option<char>)
     requires
         #[trigger] next_post(old_chars, new_chars, ret),
