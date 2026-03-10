@@ -1416,7 +1416,7 @@ impl MyHashMap {
         let mut entry1 = *self.matrix[old_row].borrow(Tracked(&r1.pt));
         let mut entry2 = *self.matrix[new_row].borrow(Tracked(&r2.pt));
 
-        // We should be able to prove this check always passes
+        // The key might have been deleted since we last took the lock on this entry.
         if entry1[old_col].is_some() && entry1[old_col].unwrap().0 == key && entry2[new_col].is_none() {
             entry2[new_col] = entry1[old_col];
             entry1[old_col] = None;
