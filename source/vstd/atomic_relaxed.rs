@@ -1294,7 +1294,7 @@ impl PWeakAtomicU8 {
     #[inline(always)]
     #[verifier::external_body]
     #[verifier::atomic]
-    pub fn load_relaxed_concurrent(
+    pub fn store_relaxed_concurrent(
         &self,
         v: u8,
         Tracked(v_sn): Tracked<&mut ViewSeen>,
