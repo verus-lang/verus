@@ -6,15 +6,16 @@ use common::*;
 test_verify_one_file! {
     #[test] test_basic verus_code! {
         trait Tr {
-            fn stuff() -> (res: (u8, u8))
-                ensures 0 <= res.0 < 20;
+            fn stuff() -> ((a, b): (u8, u8))
+                ensures 0 <= a < 20,
+                        25 <= b < 40;
         }
 
         struct X { }
 
         impl Tr for X {
-            fn stuff() -> (res: (u8, u8))
-                ensures 25 <= res.1 < 40,
+            fn stuff() -> ((a, b): (u8, u8))
+                ensures 25 <= b < 40,
             {
                 return (10, 90); // FAILS
             }
@@ -297,16 +298,16 @@ test_verify_one_file! {
         }
 
         trait Tr<B: Compare> {
-            proof fn stuff(a: B, b: B, c: B) -> (res: (B, B, B))
+            proof fn stuff(a: B, b: B, c: B) -> ((x, y, _): (B, B, B))
                 requires a.comp(&b), b.comp(&c),
-                ensures res.0.comp(&res.1);
+                ensures x.comp(&y);
         }
 
         struct X<B> { b: B }
 
         impl<B: Compare> Tr<B> for X<B> {
-            proof fn stuff(a: B, b: B, c: B) -> (res: (B, B, B))
-                ensures res.1.comp(&res.2)
+            proof fn stuff(a: B, b: B, c: B) -> ((_, y, z): (B, B, B))
+                ensures y.comp(&z)
             {
                 return (a, a, b); // FAILS
             }
@@ -315,8 +316,8 @@ test_verify_one_file! {
         struct X2<B> { b: B }
 
         impl<B: Compare> Tr<B> for X2<B> {
-            proof fn stuff(a: B, b: B, c: B) -> (res: (B, B, B))
-                ensures res.1.comp(&res.2)
+            proof fn stuff(a: B, b: B, c: B) -> ((_, y, z): (B, B, B))
+                ensures y.comp(&z)
             {
                 return (a, b, b); // FAILS
             }
@@ -325,8 +326,8 @@ test_verify_one_file! {
         struct X3<B> { b: B }
 
         impl<B: Compare> Tr<B> for X3<B> {
-            proof fn stuff(a: B, b: B, c: B) -> (res: (B, B, B))
-                ensures res.1.comp(&res.2)
+            proof fn stuff(a: B, b: B, c: B) -> ((_, y, z): (B, B, B))
+                ensures y.comp(&z)
             {
                 return (a, b, c);
             }
@@ -350,8 +351,8 @@ test_verify_one_file! {
         struct Z { j: int }
 
         impl Tr<u8> for Z {
-            proof fn stuff(a: u8, b: u8, c: u8) -> (res: (u8, u8, u8))
-                ensures res.1.comp(&res.2)
+            proof fn stuff(a: u8, b: u8, c: u8) -> ((_, y, z): (u8, u8, u8))
+                ensures y.comp(&z)
             {
                 return (1, 1, 0); // FAILS
             }
