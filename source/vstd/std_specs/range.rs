@@ -172,7 +172,7 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
     }
 }
 
-pub assume_specification<A: std::iter::Step>[ <Range<A> as Iterator>::next ](
+pub assume_specification<A: core::iter::Step>[ <Range<A> as Iterator>::next ](
     range: &mut Range<A>,
 ) -> (r: Option<A>)
     ensures
