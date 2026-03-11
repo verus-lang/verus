@@ -1,7 +1,7 @@
 use super::super::prelude::*;
 use super::super::view::View;
 use super::cmp::{PartialOrdIs, PartialOrdSpec};
-use super::iter::IteratorSpec;
+use super::iter::{IteratorSpec,StepSpec,StepSpecImpl};
 use core::ops::{Range, RangeInclusive};
 
 verus! {
@@ -63,27 +63,6 @@ impl<Idx> View for RangeInclusive<Idx> {
     uninterp spec fn view(&self) -> Self::V;
 }
 
-#[verifier::external_trait_specification]
-#[verifier::external_trait_extension(StepSpec via StepSpecImpl)]
-pub trait ExIterStep: Clone + PartialOrd + Sized {
-    type ExternalTraitSpecificationFor: core::iter::Step;
-
-    // REVIEW: it would be nice to be able to use SpecOrd::spec_lt (not yet supported)
-    // TODO: We should now be able to use cmp_spec or partial_cmp_spec here.
-    spec fn spec_is_lt(self, other: Self) -> bool;
-
-    spec fn spec_steps_between(self, end: Self) -> Option<usize>;
-
-    spec fn spec_steps_between_int(self, end: Self) -> int;
-
-    spec fn spec_forward_checked(self, count: usize) -> Option<Self>;
-
-    spec fn spec_forward_checked_int(self, count: int) -> Option<Self>;
-
-    spec fn spec_backward_checked(self, count: usize) -> Option<Self>;
-
-    spec fn spec_backward_checked_int(self, count: int) -> Option<Self>;
-}
 
 pub uninterp spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
 

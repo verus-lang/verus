@@ -456,6 +456,37 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     }
 }
 
+
+/********************************************************************************
+ * Definitions for the Step trait
+ ********************************************************************************/
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(StepSpec via StepSpecImpl)]
+pub trait ExIterStep: Clone + PartialOrd + Sized {
+    type ExternalTraitSpecificationFor: core::iter::Step;
+
+    // REVIEW: it would be nice to be able to use SpecOrd::spec_lt (not yet supported)
+    // TODO: We should now be able to use cmp_spec or partial_cmp_spec here.
+    spec fn spec_is_lt(self, other: Self) -> bool;
+
+    spec fn spec_steps_between(self, end: Self) -> Option<usize>;
+
+    spec fn spec_steps_between_int(self, end: Self) -> int;
+
+    spec fn spec_forward_checked(self, count: usize) -> Option<Self>;
+
+    spec fn spec_forward_checked_int(self, count: int) -> Option<Self>;
+
+    spec fn spec_backward_checked(self, count: usize) -> Option<Self>;
+
+    spec fn spec_backward_checked_int(self, count: int) -> Option<Self>;
+}
+
+
+/********************************************************************************
+ * Collect our broadcast definitions
+ ********************************************************************************/
+
 // REVIEW: Can we automatically pull these in?
 pub broadcast group group_iter_axioms {
     rev_postcondition,
