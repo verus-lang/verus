@@ -1,7 +1,7 @@
 use super::super::prelude::*;
 use super::super::view::View;
 use super::cmp::{PartialOrdIs, PartialOrdSpec};
-use super::iter::{IteratorSpec,StepSpec,StepSpecImpl};
+use super::iter::{IteratorSpec, StepSpec, StepSpecImpl};
 use core::ops::{Range, RangeInclusive};
 
 verus! {
@@ -62,7 +62,6 @@ impl<Idx> View for RangeInclusive<Idx> {
 
     uninterp spec fn view(&self) -> Self::V;
 }
-
 
 pub uninterp spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
 
