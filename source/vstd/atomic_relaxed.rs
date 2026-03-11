@@ -1,7 +1,5 @@
 use crate::prelude::*;
 use crate::cell::CellId;
-use crate::invariant::AtomicInvariant;
-use crate::invariant::InvariantPredicate;
 use crate::pcm::*;
 use core::sync::atomic::Ordering;
 use std::marker::PhantomData;
@@ -1168,6 +1166,19 @@ impl PWeakAtomicU8 {
         (at, Tracked(pt), vs, ts)
     }
 
+    #[inline(always)]
+    #[verifier::external_body]
+    pub fn into_inner(self, Tracked(pt): Tracked<AtomicPointsTo<u8>>) -> (ret: u8)
+        requires
+            self.loc() == pt.loc(),
+        ensures
+            ret == pt.hist().value(pt.hist().max_timestamp())
+        opens_invariants none
+        no_unwind
+    {
+        return self.ato.into_inner();
+    }
+
     // AT-READ-SN -- acquire, and also AT-READ-SN-ACQ
     #[inline(always)]
     #[verifier::external_body]
@@ -1364,17 +1375,20 @@ impl PWeakAtomicU8 {
         opens_invariants none
         no_unwind
     {
-        // problem: here sw is &mut, but single_writer_as_concurrent expects full ownership
+        // problem: here sw is &mut, but single_writer_as_concurrent expects full ownership of the SingleWriter<u8>
+        // would we want to "borrow" a &mut Concurrent AtomicPointsTo<u8> from a &mut SingleWriter AtomicPointsTo<u8> and a &mut SingleWriter<u8>?
+        //
+        // Verus gives an error for the following signature: 
+        // pub axiom fn borrow_single_writer_as_concurrent(tracked &mut self, tracked sw: &mut SingleWriter<T>) -> (tracked out: &mut Self);
+        // 
+        // error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
         assume(false);
         let (_, ts) = self.store_release_concurrent(
             v,
             Tracked(v_sn),
             Tracked(pt),
         );
-        //let tracked sw_new = pt.concurrent_as_single_writer();
-        //sw = sw_new;
-        //ts
-        Ghost(proof_from_false())
+        ts
     }
 
     // AT-WRITE-SW-REL
