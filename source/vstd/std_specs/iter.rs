@@ -1,9 +1,11 @@
 use super::super::prelude::*;
-use super::super::seq::{axiom_seq_subrange_index, axiom_seq_subrange_len, axiom_seq_empty, group_seq_axioms};
+use super::super::seq::{
+    axiom_seq_empty, axiom_seq_subrange_index, axiom_seq_subrange_len, group_seq_axioms,
+};
 
 use verus as verus_;
 
-use core::iter::{Iterator,Rev};
+use core::iter::{Iterator, Rev};
 
 verus_! {
 
@@ -95,14 +97,14 @@ pub trait ExIterator {
     //         //r == into_map_spec::<B, I, F>(self, f),
     //         IteratorSpec::remaining(&r).len() <= self.remaining().len(),
     //         forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (self.remaining()[k],), IteratorSpec::remaining(&r)[k]),
-    //         IteratorSpec::completes(&r) ==> self.completes() && 
+    //         IteratorSpec::completes(&r) ==> self.completes() &&
     //             IteratorSpec::remaining(&r).len() == self.remaining().len(),
     //         IteratorSpec::decrease(&r) is Some == self.decrease() is Some,
     //         IteratorSpec::initial_value_inv(&r, &r),
     //         map_iter(r) == self,
     //         map_fun(r) == f,
     // ;
-    
+
     //#[verifier::when_used_as_spec(into_rev_spec)]
     fn rev(self) -> (r: Rev<Self>)
         where Self: Sized,
@@ -130,7 +132,7 @@ pub trait ExDoubleEndedIterator : Iterator {
             (&*self).obeys_prophetic_iter_laws() ==> (&*self).completes() == (&*old(self)).completes(),
             (&*self).obeys_prophetic_iter_laws() ==> ((&*old(self)).decrease() is Some <==> (&*self).decrease() is Some),
             // `next` pops the tail of the prophesized remaining(), or returns None
-            (&*self).obeys_prophetic_iter_laws() ==> 
+            (&*self).obeys_prophetic_iter_laws() ==>
             ({
                 if (&*old(self)).remaining().len() > 0 {
                     (&*self).remaining() == (&*old(self)).remaining().drop_last()
@@ -140,10 +142,10 @@ pub trait ExDoubleEndedIterator : Iterator {
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
-            (&*self).obeys_prophetic_iter_laws() && (&*old(self)).remaining().len() > 0 && (&*self).decrease() is Some ==> 
+            (&*self).obeys_prophetic_iter_laws() && (&*old(self)).remaining().len() > 0 && (&*self).decrease() is Some ==>
                 (&*old(self)).decrease()->0 > (&*self).decrease()->0,
     ;
-    
+
     /******* Mechanisms that support ergonomic `for` loops *********/
 
     // If we can make a useful guess as to what the i-th value from the back will be, return it.
@@ -308,7 +310,7 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
 // // Spec version of I::map
 // pub uninterp spec fn into_map_spec<B, I, F>(i: I, f: F) -> MyMap<B, I, F>
 //     where
-//         I: Iterator + IteratorSpec, 
+//         I: Iterator + IteratorSpec,
 //         F: FnMut(I::Item) -> B,
 // ;
 
@@ -317,7 +319,7 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
 // #[verifier::when_used_as_spec(into_map_spec)]
 // pub fn to_map<B, I, F>(i: I, f: F) -> (r: MyMap<B, I, F>)
 //     where
-//         I: Iterator + IteratorSpec, 
+//         I: Iterator + IteratorSpec,
 //         F: FnMut(I::Item) -> B,
 //     requires
 //         i.obeys_prophetic_iter_laws(),
@@ -327,7 +329,7 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
 //         r == into_map_spec::<B, I, F>(i, f),
 //         IteratorSpec::remaining(&r).len() <= IteratorSpec::remaining(&i).len(),
 //         forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (IteratorSpec::remaining(&i)[k],), IteratorSpec::remaining(&r)[k]),
-//         IteratorSpec::completes(&r) ==> IteratorSpec::completes(&i) && 
+//         IteratorSpec::completes(&r) ==> IteratorSpec::completes(&i) &&
 //             IteratorSpec::remaining(&r).len() == IteratorSpec::remaining(&i).len(),
 //         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
 //         IteratorSpec::initial_value_inv(&r, &r),

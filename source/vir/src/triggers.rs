@@ -296,7 +296,10 @@ fn check_trigger_expr(
             },
             ExpX::UnaryOpr(op, arg) => match op {
                 UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-                UnaryOpr::CustomErr(_) | UnaryOpr::AutoDecreases | UnaryOpr::ProofNote(_) | UnaryOpr::ToDyn(_) => Ok(()),
+                UnaryOpr::CustomErr(_)
+                | UnaryOpr::AutoDecreases
+                | UnaryOpr::ProofNote(_)
+                | UnaryOpr::ToDyn(_) => Ok(()),
                 UnaryOpr::IsVariant { .. } | UnaryOpr::Field { .. } => {
                     check_trigger_expr_arg(state, arg);
                     Ok(())

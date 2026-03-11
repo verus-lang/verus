@@ -667,19 +667,19 @@ fn verus_item_to_vir<'tcx, 'a>(
                             return err_span(arg.span, "invariant needs a bool expression");
                         }
                     }
-                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let vir_args = vec_map_result(&subargs, |arg| {
-                    let mut vir_expr = expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)?;
-                    // Wrap expressions with #[verus::internal(auto_decreases)] attribute
-                    let arg_attrs = bctx.ctxt.tcx.hir_attrs(arg.hir_id);
-                    if crate::attributes::has_auto_decreases_attr(arg_attrs) {
-                        vir_expr = vir_expr.new_x(vir::ast::ExprX::UnaryOpr(
-                            vir::ast::UnaryOpr::AutoDecreases,
-                            vir_expr.clone(),
-                        ));
-                    }
-                    Ok::<vir::ast::Expr, VirErr>(vir_expr)
-                })?;
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let vir_args = vec_map_result(&subargs, |arg| {
+                        let mut vir_expr = expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)?;
+                        // Wrap expressions with #[verus::internal(auto_decreases)] attribute
+                        let arg_attrs = bctx.ctxt.tcx.hir_attrs(arg.hir_id);
+                        if crate::attributes::has_auto_decreases_attr(arg_attrs) {
+                            vir_expr = vir_expr.new_x(vir::ast::ExprX::UnaryOpr(
+                                vir::ast::UnaryOpr::AutoDecreases,
+                                vir_expr.clone(),
+                            ));
+                        }
+                        Ok::<vir::ast::Expr, VirErr>(vir_expr)
+                    })?;
                     let header = match spec_item {
                         SpecItem::InvariantExceptBreak => {
                             Arc::new(HeaderExprX::InvariantExceptBreak(Arc::new(vir_args)))

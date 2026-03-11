@@ -1137,7 +1137,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-
 test_verify_one_file! {
     #[test] for_loop_slice verus_code! {
         use vstd::prelude::*;
@@ -1154,10 +1153,9 @@ test_verify_one_file! {
                 b = b && *x > 0;
             }
             b
-        }     
+        }
     } => Ok(())
 }
-
 
 test_verify_one_file_with_options! {
     #[test] for_loop1 ["exec_allows_no_decreases_clause"] => verus_code! {
@@ -1794,7 +1792,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] 
+    #[ignore]
     #[test] map_iter verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::to_map;
@@ -1821,7 +1819,7 @@ test_verify_one_file! {
             }
 
             assert(w@ == seq![1u8, 3u8, 5u8]);
-        }        
+        }
     } => Ok(())
 }
 
@@ -1830,7 +1828,7 @@ test_verify_one_file! {
       use vstd::prelude::*;
       use vstd::std_specs::vecdeque::*;
       use std::collections::VecDeque;
-      spec fn sum(s: Seq<u32>) -> nat 
+      spec fn sum(s: Seq<u32>) -> nat
           decreases s.len(),
       {
           if s.len() == 0 {
@@ -1927,7 +1925,7 @@ test_verify_one_file! {
               invariant count == i * 4,
           {
               for j in 0u64..4u64
-                  invariant 
+                  invariant
                       count == i * 4 + j,
                       i < 3
               {
@@ -1973,4 +1971,3 @@ test_verify_one_file! {
       }
   } => Ok(())
 }
-

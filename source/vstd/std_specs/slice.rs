@@ -1,7 +1,7 @@
 use super::super::prelude::*;
-use super::iter::IteratorSpec;
 use super::core::IndexSetTrustedSpec;
 use super::core::TrustedSpecSealed;
+use super::iter::IteratorSpec;
 
 use core::slice::Iter;
 
@@ -99,7 +99,7 @@ pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>
 ;
 
 #[verifier::when_used_as_spec(spec_slice_iter)]
-pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_iter] (s: &'a [T]) -> 
+pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_iter] (s: &'a [T]) ->
     (iter: Iter<'a, T>)
     ensures
         iter == spec_slice_iter(s),

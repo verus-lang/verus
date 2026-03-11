@@ -364,18 +364,14 @@ pub uninterp spec fn into_iter_elts<'a>(i: Chars<'a>) -> Seq<char>;
 // #[cfg(feature = "alloc")]
 // impl<'a> View for Chars<'a> {
 //     type V = (int, Seq<char>);
-
 //     uninterp spec fn view(&self) -> (int, Seq<char>);
 // }
-
 // #[cfg(feature = "alloc")]
 // impl<'a> DeepView for Chars<'a> {
 //     type V = <Self as View>::V;
-
 //     open spec fn deep_view(&self) -> Self::V {
 //         self@
 //     }
-
 // To allow reasoning about the ghost iterator when the executable
 // function `iter()` is invoked in a `for` loop header (e.g., in
 // `for x in it: v.iter() { ... }`), we need to specify the behavior of
@@ -403,12 +399,13 @@ pub assume_specification[ str::chars ](s: &str) -> (iter: Chars<'_>)
 
 #[cfg(verus_keep_ghost)]
 #[cfg(feature = "alloc")]
-impl <'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
+impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
@@ -432,58 +429,81 @@ impl <'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
 // next below.  However, Verus says that this introduces a cyclic  dependency.
 // Hence we introduce a layer of indirection via this uninterp spec function.
 #[cfg(feature = "alloc")]
-pub uninterp spec fn next_post<'a>(old_chars: &Chars<'a>, new_chars: &Chars<'a>, ret: Option<char>) -> bool;
+pub uninterp spec fn next_post<'a>(
+    old_chars: &Chars<'a>,
+    new_chars: &Chars<'a>,
+    ret: Option<char>,
+) -> bool;
 
 #[cfg(feature = "alloc")]
-pub broadcast axiom fn next_postcondition<'a>(old_chars: &Chars<'a>, new_chars: &Chars<'a>, ret: Option<char>)
+pub broadcast axiom fn next_postcondition<'a>(
+    old_chars: &Chars<'a>,
+    new_chars: &Chars<'a>,
+    ret: Option<char>,
+)
     requires
-        #[trigger] next_post(old_chars, new_chars, ret),
-    // TODO: These are copied from the Iterator::next function.  Eventually, we should
-    //       relax Verus's retrictions and allow this function to inherit those specs.
+        #[trigger] next_post(
+            old_chars,
+            new_chars,
+            ret,
+        ),
+// TODO: These are copied from the Iterator::next function.  Eventually, we should
+//       relax Verus's retrictions and allow this function to inherit those specs.
+
     ensures
-        // The iterator consistently obeys, completes, and decreases throughout its lifetime
+// The iterator consistently obeys, completes, and decreases throughout its lifetime
+
         new_chars.obeys_prophetic_iter_laws() == old_chars.obeys_prophetic_iter_laws(),
         new_chars.obeys_prophetic_iter_laws() ==> new_chars.completes() == old_chars.completes(),
-        new_chars.obeys_prophetic_iter_laws() ==> (old_chars.decrease() is Some <==> new_chars.decrease() is Some),
+        new_chars.obeys_prophetic_iter_laws() ==> (old_chars.decrease() is Some
+            <==> new_chars.decrease() is Some),
         // `next` pops the head of the prophesized remaining(), or returns None
-        new_chars.obeys_prophetic_iter_laws() ==>
-        ({
+        new_chars.obeys_prophetic_iter_laws() ==> ({
             if old_chars.remaining().len() > 0 {
                 &&& new_chars.remaining() == old_chars.remaining().drop_first()
                 &&& ret == Some(old_chars.remaining()[0])
             } else {
-                new_chars.remaining() === old_chars.remaining() && ret === None && new_chars.completes()
+                new_chars.remaining() === old_chars.remaining() && ret === None
+                    && new_chars.completes()
             }
         }),
         // If the iterator isn't done yet, then it successfully decreases its metric (if any)
-        new_chars.obeys_prophetic_iter_laws() && old_chars.remaining().len() > 0 && new_chars.decrease() is Some ==>
-            decreases_to!(old_chars.decrease()->0 => new_chars.decrease()->0),
+        new_chars.obeys_prophetic_iter_laws() && old_chars.remaining().len() > 0
+            && new_chars.decrease() is Some
+            ==> decreases_to!(old_chars.decrease()->0 => new_chars.decrease()->0),
 ;
 
-
 #[cfg(feature = "alloc")]
-pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (ret: Option<char>)
-    // TODO: These are copied from the Iterator::next function.  Eventually, we should
-    //       relax Verus's retrictions and allow this function to inherit those specs.
+pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (ret: Option<
+    char,
+>)
+// TODO: These are copied from the Iterator::next function.  Eventually, we should
+//       relax Verus's retrictions and allow this function to inherit those specs.
+
     ensures
-        next_post(old(chars), chars, ret),
-        // // The iterator consistently obeys, completes, and decreases throughout its lifetime
-        // (&*chars).obeys_prophetic_iter_laws() == (&*old(chars)).obeys_prophetic_iter_laws(),
-        // (&*chars).obeys_prophetic_iter_laws() ==> (&*chars).completes() == (&*old(chars)).completes(),
-        // (&*chars).obeys_prophetic_iter_laws() ==> ((&*old(chars)).decrease() is Some <==> (&*chars).decrease() is Some),
-        // // `next` pops the head of the prophesized remaining(), or returns None
-        // (&*chars).obeys_prophetic_iter_laws() ==>
-        // ({
-        //     if (&*old(chars)).remaining().len() > 0 {
-        //         &&& (&*chars).remaining() == (&*old(chars)).remaining().drop_first()
-        //         &&& ret == Some((&*old(chars)).remaining()[0])
-        //     } else {
-        //         (&*chars).remaining() === (&*old(chars)).remaining() && ret === None && (&*chars).completes()
-        //     }
-        // }),
-        // // If the iterator isn't done yet, then it successfully decreases its metric (if any)
-        // (&*chars).obeys_prophetic_iter_laws() && (&*old(chars)).remaining().len() > 0 && (&*chars).decrease() is Some ==>
-        //     decreases_to!((&*old(chars)).decrease()->0 => (&*chars).decrease()->0),
+        next_post(
+            old(chars),
+            chars,
+            ret,
+        ),//
+// The iterator consistently obeys, completes, and decreases throughout its lifetime
+// (&*chars).obeys_prophetic_iter_laws() == (&*old(chars)).obeys_prophetic_iter_laws(),
+// (&*chars).obeys_prophetic_iter_laws() ==> (&*chars).completes() == (&*old(chars)).completes(),
+// (&*chars).obeys_prophetic_iter_laws() ==> ((&*old(chars)).decrease() is Some <==> (&*chars).decrease() is Some),
+// // `next` pops the head of the prophesized remaining(), or returns None
+// (&*chars).obeys_prophetic_iter_laws() ==>
+// ({
+//     if (&*old(chars)).remaining().len() > 0 {
+//         &&& (&*chars).remaining() == (&*old(chars)).remaining().drop_first()
+//         &&& ret == Some((&*old(chars)).remaining()[0])
+//     } else {
+//         (&*chars).remaining() === (&*old(chars)).remaining() && ret === None && (&*chars).completes()
+//     }
+// }),
+// // If the iterator isn't done yet, then it successfully decreases its metric (if any)
+// (&*chars).obeys_prophetic_iter_laws() && (&*old(chars)).remaining().len() > 0 && (&*chars).decrease() is Some ==>
+//     decreases_to!((&*old(chars)).decrease()->0 => (&*chars).decrease()->0),
+
 ;
 
 pub use super::view::View;

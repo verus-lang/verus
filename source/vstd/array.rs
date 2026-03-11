@@ -99,7 +99,10 @@ pub broadcast axiom fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_array_iter)` to the specification for
 // the executable `into_iter` method and define that spec function here.
-pub uninterp spec fn spec_array_iter<T, const N: usize>(s: &[T; N]) -> (iter: core::slice::Iter<'_, T>);
+pub uninterp spec fn spec_array_iter<T, const N: usize>(s: &[T; N]) -> (iter: core::slice::Iter<
+    '_,
+    T,
+>);
 
 pub broadcast proof fn axiom_spec_array_iter<T, const N: usize>(s: &[T; N])
     ensures
@@ -109,8 +112,14 @@ pub broadcast proof fn axiom_spec_array_iter<T, const N: usize>(s: &[T; N])
 }
 
 #[verifier::when_used_as_spec(spec_array_iter)]
-pub assume_specification<'a, T, const N: usize> [<&'a [T; N] as core::iter::IntoIterator>::into_iter] (s: &'a [T; N]) -> 
-    (iter: core::slice::Iter<'a, T>)
+pub assume_specification<
+    'a,
+    T,
+    const N: usize,
+>[ <&'a [T; N] as core::iter::IntoIterator>::into_iter ](s: &'a [T; N]) -> (iter: core::slice::Iter<
+    'a,
+    T,
+>)
     ensures
         iter == spec_array_iter(s),
         IteratorSpec::decrease(&iter) is Some,

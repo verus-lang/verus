@@ -266,12 +266,13 @@ pub struct ExIter<'a, T: 'a>(Iter<'a, T>);
 // a prophecy, we need a function that gives us the underlying sequence of the original vec.
 pub uninterp spec fn into_iter_elts<'a, T: 'a>(i: Iter<'a, T>) -> Seq<&'a T>;
 
-impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
+impl<'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
@@ -291,7 +292,7 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     }
 }
 
-impl <'a, T: 'a> super::iter::DoubleEndedIteratorSpecImpl for Iter<'a, T> {
+impl<'a, T: 'a> super::iter::DoubleEndedIteratorSpecImpl for Iter<'a, T> {
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         if 0 <= index < into_iter_elts(*self).len() {
             Some(&into_iter_elts(*self)[into_iter_elts(*self).len() - index - 1])

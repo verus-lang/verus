@@ -872,7 +872,7 @@ test_verify_one_file_with_options! {
             assert(items@.to_set() =~= set![4i8, -8i8]) by {
                 assert(m_values.remaining().take(m_values.remaining().len() as int) == m_values.remaining());
             }
-        }        
+        }
     } => Ok(())
 }
 

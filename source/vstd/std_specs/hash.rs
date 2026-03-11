@@ -278,11 +278,9 @@ pub struct ExKeys<'a, Key: 'a, Value: 'a>(Keys<'a, Key, Value>);
 // pub trait KeysAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
 //     spec fn view(self: &Self) -> (int, Seq<Key>);
 // }
-
 // impl<'a, Key: 'a, Value: 'a> KeysAdditionalSpecFns<'a, Key, Value> for Keys<'a, Key, Value> {
 //     uninterp spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
 // }
-
 // To allow reasoning about the "contents" of the Keys iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original keys.
 pub uninterp spec fn into_iter_keys<'a, Key, Value>(i: Keys<'a, Key, Value>) -> Seq<Key>;
@@ -293,6 +291,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
@@ -330,6 +329,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
@@ -357,10 +357,11 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
 #[verifier::accept_recursive_types(Value)]
 pub struct ExMapIter<'a, Key: 'a, Value: 'a>(hash_map::Iter<'a, Key, Value>);
 
-
 // To allow reasoning about the "contents" of the Iter iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original map.
-pub uninterp spec fn into_iter<'a, Key, Value>(i: hash_map::Iter<'a, Key, Value>) -> Seq<(Key, Value)>;
+pub uninterp spec fn into_iter<'a, Key, Value>(i: hash_map::Iter<'a, Key, Value>) -> Seq<
+    (Key, Value),
+>;
 
 impl<'a, K, V> super::iter::IteratorSpecImpl for hash_map::Iter<'a, K, V> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
@@ -368,12 +369,15 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for hash_map::Iter<'a, K, V> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter(*self) == IteratorSpec::remaining(self).map_values(|i: Self::Item| (*i.0, *i.1))
+        &&& into_iter(*self) == IteratorSpec::remaining(self).map_values(
+            |i: Self::Item| (*i.0, *i.1),
+        )
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -404,12 +408,10 @@ pub broadcast proof fn axiom_spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMa
             let v = #[trigger] spec_hash_map_iter(m).remaining();
             &&& v.len() == m@.dom().len()
             &&& forall|i: int|
-                    #![trigger m@.contains_key(*v[i].0)]
-                    #![trigger m@[*v[i].0]]
-                    0 <= i < v.len() ==>
-                        m@.contains_key(*v[i].0) &&
-                        m@[*v[i].0] == *v[i].1
-            &&& forall |k: Key| #[trigger] m@.contains_key(k) ==> v.contains((&k, &m@[k]))
+                #![trigger m@.contains_key(*v[i].0)]
+                #![trigger m@[*v[i].0]]
+                0 <= i < v.len() ==> m@.contains_key(*v[i].0) && m@[*v[i].0] == *v[i].1
+            &&& forall|k: Key| #[trigger] m@.contains_key(k) ==> v.contains((&k, &m@[k]))
             &&& v.map_values(|t: (&Key, &Value)| (*t.0, *t.1)).to_set() == m@.kv_pairs()
         }),
 {
@@ -826,20 +828,20 @@ pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::clear ](
         m@ == Map::<Key, Value>::empty(),
 ;
 
-
 // To allow reasoning about the ghost Keys iterator when the executable
 // function `keys()` is invoked in a `for` loop header (e.g., in
 // `for x in it: m.keys() { ... }`), we need to specify the behavior of
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_iter)` to the specification for
 // the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_keys_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>) -> (keys: Keys<'a, Key, Value>);
+pub uninterp spec fn spec_keys_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>) -> (keys:
+    Keys<'a, Key, Value>);
 
 pub broadcast proof fn axiom_spec_keys_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
     ensures
         (#[trigger] spec_keys_iter(m).remaining()).map_values(|v: &Key| *v).to_set() == m@.dom(),
         spec_keys_iter(m).remaining().no_duplicates(),
-        spec_keys_iter(m).remaining().len() == m@.dom().len()
+        spec_keys_iter(m).remaining().len() == m@.dom().len(),
 {
     admit();
 }
@@ -862,12 +864,14 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::keys ](
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_iter)` to the specification for
 // the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_values_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>) -> (values: Values<'a, Key, Value>);
+pub uninterp spec fn spec_values_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>) -> (values:
+    Values<'a, Key, Value>);
 
 pub broadcast proof fn axiom_spec_values_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
     ensures
-        (#[trigger] spec_values_iter(m).remaining()).map_values(|v: &Value| *v).to_set() == m@.values(),
-        spec_values_iter(m).remaining().len() == m@.dom().len()
+        (#[trigger] spec_values_iter(m).remaining()).map_values(|v: &Value| *v).to_set()
+            == m@.values(),
+        spec_values_iter(m).remaining().len() == m@.dom().len(),
 {
     admit();
 }
@@ -908,12 +912,15 @@ impl<'a, K> super::iter::IteratorSpecImpl for hash_set::Iter::<'a, K> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_hash_keys(*self) == IteratorSpec::remaining(self).map_values(|v: Self::Item| *v)
+        &&& into_iter_hash_keys(*self) == IteratorSpec::remaining(self).map_values(
+            |v: Self::Item| *v,
+        )
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -1146,21 +1153,22 @@ pub assume_specification<Key, S>[ HashSet::<Key, S>::clear ](m: &mut HashSet<Key
         m@ == Set::<Key>::empty(),
 ;
 
-
-
 // To allow reasoning about the ghost keys in the HashSet iterator when the executable
 // function `iter()` is invoked in a `for` loop header (e.g., in
 // `for x in it: m.keys() { ... }`), we need to specify the behavior of
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_iter)` to the specification for
 // the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_hash_keys_iter<'a, Key, S>(m: &'a HashSet<Key, S>) ->  (r: hash_set::Iter<'a, Key>);
+pub uninterp spec fn spec_hash_keys_iter<'a, Key, S>(m: &'a HashSet<Key, S>) -> (r: hash_set::Iter<
+    'a,
+    Key,
+>);
 
 pub broadcast proof fn axiom_spec_hash_keys_iter<'a, Key, S>(m: &'a HashSet<Key, S>)
     ensures
         (#[trigger] spec_hash_keys_iter(m).remaining()).map_values(|v: &Key| *v).to_set() == m@,
         spec_hash_keys_iter(m).remaining().no_duplicates(),
-        spec_hash_keys_iter(m).remaining().len() == m@.len()
+        spec_hash_keys_iter(m).remaining().len() == m@.len(),
 {
     admit();
 }
@@ -1176,7 +1184,6 @@ pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](
             &&& IteratorSpec::initial_value_inv(&hash_keys, &hash_keys)
         },
 ;
-
 
 pub broadcast proof fn axiom_hashset_decreases<Key, S>(m: HashSet<Key, S>)
     ensures

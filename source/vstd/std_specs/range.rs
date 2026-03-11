@@ -133,21 +133,29 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         // Standard invariant for the iterator itself:
-        //   If there are no steps between start and end, then remaining is empty; 
+        //   If there are no steps between start and end, then remaining is empty;
         //   otherwise it contains all of the steps in between start and end
-        &&& (self.start.spec_steps_between_int(self.end) <= 0 && IteratorSpec::remaining(self).len() == 0)
-          || (self.start.spec_steps_between_int(self.end) == IteratorSpec::remaining(self).len() as int)
-        &&& forall |i: int| 0 <= i < IteratorSpec::remaining(self).len() ==> 
-            #[trigger] IteratorSpec::remaining(self)[i] == self.start.spec_forward_checked_int(i).unwrap()
-
+        &&& (self.start.spec_steps_between_int(self.end) <= 0 && IteratorSpec::remaining(self).len()
+            == 0) || (self.start.spec_steps_between_int(self.end) == IteratorSpec::remaining(
+            self,
+        ).len() as int)
+        &&& forall|i: int|
+            0 <= i < IteratorSpec::remaining(self).len() ==> #[trigger] IteratorSpec::remaining(
+                self,
+            )[i] == self.start.spec_forward_checked_int(
+                i,
+            ).unwrap()
         // Connections to init
         &&& self.start == init.start
         &&& self.end == init.end
-
-        &&& (init.start.spec_steps_between_int(init.end) <= 0 && IteratorSpec::remaining(self).len() == 0)
-          || (init.start.spec_steps_between_int(self.end) == IteratorSpec::remaining(self).len() as int)
-        &&& forall |i: int| 0 <= i < IteratorSpec::remaining(self).len() ==> 
-            #[trigger] IteratorSpec::remaining(self)[i] == init.start.spec_forward_checked_int(i).unwrap()
+        &&& (init.start.spec_steps_between_int(init.end) <= 0 && IteratorSpec::remaining(self).len()
+            == 0) || (init.start.spec_steps_between_int(self.end) == IteratorSpec::remaining(
+            self,
+        ).len() as int)
+        &&& forall|i: int|
+            0 <= i < IteratorSpec::remaining(self).len() ==> #[trigger] IteratorSpec::remaining(
+                self,
+            )[i] == init.start.spec_forward_checked_int(i).unwrap()
     }
 
     open spec fn decrease(&self) -> Option<nat> {

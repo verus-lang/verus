@@ -65,10 +65,8 @@ pub struct ExKeys<'a, Key, Value>(Keys<'a, Key, Value>);
 
 // impl<'a, Key, Value> View for Keys<'a, Key, Value> {
 //     type V = (int, Seq<Key>);
-
 //     uninterp spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
 // }
-
 // To allow reasoning about the "contents" of the Keys iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original keys.
 pub uninterp spec fn into_iter_keys<'a, Key, Value>(i: Keys<'a, Key, Value>) -> Seq<Key>;
@@ -79,6 +77,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
@@ -108,18 +107,14 @@ pub struct ExValues<'a, Key, Value>(Values<'a, Key, Value>);
 
 // impl<'a, Key, Value> View for Values<'a, Key, Value> {
 //     type V = (int, Seq<Value>);
-
 //     uninterp spec fn view(self: &Values<'a, Key, Value>) -> (int, Seq<Value>);
 // }
-
 // impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
 //     type V = Seq<Value>;
-
 //     open spec fn view(&self) -> Seq<Value> {
 //         self.values.take(self.pos)
 //     }
 // }
-
 // To allow reasoning about the "contents" of the Values iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original values.
 pub uninterp spec fn into_iter_values<'a, Key, Value>(i: Values<'a, Key, Value>) -> Seq<Value>;
@@ -130,6 +125,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
@@ -160,17 +156,15 @@ pub struct ExMapIter<'a, K, V>(btree_map::Iter<'a, K, V>);
 // pub trait MapIterAdditionalSpecFns<'a, Key, Value> {
 //     spec fn view(self: &Self) -> (int, Seq<(Key, Value)>);
 // }
-
 // impl<'a, K: 'a, V: 'a> View for btree_map::Iter<'a, K, V> {
 //     type V = (int, Seq<(K, V)>);
-
 //     uninterp spec fn view(self: &btree_map::Iter<'a, K, V>) -> (int, Seq<(K, V)>);
 // }
-
-
 // To allow reasoning about the "contents" of the Iter iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original map.
-pub uninterp spec fn into_iter<'a, Key, Value>(i: btree_map::Iter<'a, Key, Value>) -> Seq<(Key, Value)>;
+pub uninterp spec fn into_iter<'a, Key, Value>(i: btree_map::Iter<'a, Key, Value>) -> Seq<
+    (Key, Value),
+>;
 
 impl<'a, K, V> super::iter::IteratorSpecImpl for btree_map::Iter<'a, K, V> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
@@ -178,12 +172,15 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for btree_map::Iter<'a, K, V> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter(*self) == IteratorSpec::remaining(self).map_values(|i: Self::Item| (*i.0, *i.1))
+        &&& into_iter(*self) == IteratorSpec::remaining(self).map_values(
+            |i: Self::Item| (*i.0, *i.1),
+        )
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -217,12 +214,10 @@ pub broadcast axiom fn axiom_spec_btree_map_iter<'a, Key, Value, A: Allocator + 
             let v = #[trigger] spec_btree_map_iter(m).remaining();
             &&& v.len() == m@.dom().len()
             &&& forall|i: int|
-                    #![trigger m@.contains_key(*v[i].0)]
-                    #![trigger m@[*v[i].0]]
-                    0 <= i < v.len() ==>
-                        m@.contains_key(*v[i].0) &&
-                        m@[*v[i].0] == *v[i].1
-            &&& forall |k: Key| #[trigger] m@.contains_key(k) ==> v.contains((&k, &m@[k]))
+                #![trigger m@.contains_key(*v[i].0)]
+                #![trigger m@[*v[i].0]]
+                0 <= i < v.len() ==> m@.contains_key(*v[i].0) && m@[*v[i].0] == *v[i].1
+            &&& forall|k: Key| #[trigger] m@.contains_key(k) ==> v.contains((&k, &m@[k]))
             &&& v.map_values(|t: (&Key, &Value)| (*t.0, *t.1)).to_set() == m@.kv_pairs()
         }),
 ;
@@ -623,9 +618,13 @@ pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Valu
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_iter)` to the specification for
 // the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_keys_iter<'a, Key, Value, A: Allocator + Clone>(m: &'a BTreeMap<Key, Value, A>) -> (keys: Keys<'a, Key, Value>);
+pub uninterp spec fn spec_keys_iter<'a, Key, Value, A: Allocator + Clone>(
+    m: &'a BTreeMap<Key, Value, A>,
+) -> (keys: Keys<'a, Key, Value>);
 
-pub broadcast proof fn axiom_spec_keys_iter<'a, Key, Value, A: Allocator + Clone>(m: &'a BTreeMap<Key, Value, A>)
+pub broadcast proof fn axiom_spec_keys_iter<'a, Key, Value, A: Allocator + Clone>(
+    m: &'a BTreeMap<Key, Value, A>,
+)
     ensures
         (#[trigger] spec_keys_iter(m).remaining()).map_values(|v: &Key| *v).to_set() == m@.dom(),
         spec_keys_iter(m).remaining().no_duplicates(),
@@ -653,12 +652,17 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_iter)` to the specification for
 // the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_values_iter<'a, Key, Value, A: Allocator + Clone>(m: &'a BTreeMap<Key, Value, A>) -> (values: Values<'a, Key, Value>);
+pub uninterp spec fn spec_values_iter<'a, Key, Value, A: Allocator + Clone>(
+    m: &'a BTreeMap<Key, Value, A>,
+) -> (values: Values<'a, Key, Value>);
 
-pub broadcast proof fn axiom_spec_values_iter<'a, Key, Value, A: Allocator + Clone>(m: &'a BTreeMap<Key, Value, A>)
+pub broadcast proof fn axiom_spec_values_iter<'a, Key, Value, A: Allocator + Clone>(
+    m: &'a BTreeMap<Key, Value, A>,
+)
     ensures
-        (#[trigger] spec_values_iter(m).remaining()).map_values(|v: &Value| *v).to_set() == m@.values(),
-        spec_values_iter(m).remaining().len() == m@.dom().len()
+        (#[trigger] spec_values_iter(m).remaining()).map_values(|v: &Value| *v).to_set()
+            == m@.values(),
+        spec_values_iter(m).remaining().len() == m@.dom().len(),
 {
     admit();
 }
@@ -698,10 +702,8 @@ pub struct ExSetIter<'a, K: 'a>(btree_set::Iter<'a, K>);
 
 // impl<'a, Key> View for btree_set::Iter<'a, Key> {
 //     type V = (int, Seq<Key>);
-
 //     uninterp spec fn view(self: &btree_set::Iter<'a, Key>) -> (int, Seq<Key>);
 // }
-
 // To allow reasoning about the "contents" of the BtreeSet iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original keys.
 pub uninterp spec fn into_iter_btree_keys<'a, Key>(i: btree_set::Iter::<'a, Key>) -> Seq<Key>;
@@ -712,12 +714,15 @@ impl<'a, T> super::iter::IteratorSpecImpl for btree_set::Iter::<'a, T> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn completes(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_btree_keys(*self) == IteratorSpec::remaining(self).map_values(|v: Self::Item| *v)
+        &&& into_iter_btree_keys(*self) == IteratorSpec::remaining(self).map_values(
+            |v: Self::Item| *v,
+        )
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -939,16 +944,19 @@ pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::clear ]
         m@ == Set::<Key>::empty(),
 ;
 
-
 // To allow reasoning about the ghost keys in the BtreeSet iterator when the executable
 // function `iter()` is invoked in a `for` loop header (e.g., in
 // `for x in it: m.keys() { ... }`), we need to specify the behavior of
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_iter)` to the specification for
 // the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_btree_keys_iter<'a, Key, A: Allocator + Clone>(m: &'a BTreeSet<Key, A>) ->  (r: btree_set::Iter<'a, Key>);
+pub uninterp spec fn spec_btree_keys_iter<'a, Key, A: Allocator + Clone>(
+    m: &'a BTreeSet<Key, A>,
+) -> (r: btree_set::Iter<'a, Key>);
 
-pub broadcast proof fn axiom_spec_btree_keys_iter<'a, Key, A: Allocator + Clone>(m: &'a BTreeSet<Key, A>)
+pub broadcast proof fn axiom_spec_btree_keys_iter<'a, Key, A: Allocator + Clone>(
+    m: &'a BTreeSet<Key, A>,
+)
     ensures
         (#[trigger] spec_btree_keys_iter(m).remaining()).map_values(|v: &Key| *v).to_set() == m@,
         spec_btree_keys_iter(m).remaining().no_duplicates(),

@@ -405,7 +405,7 @@ test_verify_one_file_with_options! {
                     iter.seq().map_values(|v: (&u32, &i8)| (*v.0, *v.1)).to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
             {
                 // OBSERVE: triggers the extensionality in the invariant
-                assert(m@.kv_pairs().contains((*k, *v)));        
+                assert(m@.kv_pairs().contains((*k, *v)));
                 assert(*k == 3 ==> *v == 4);
                 assert(*k == 6 ==> *v == -8);
             }
@@ -429,7 +429,7 @@ test_verify_one_file_with_options! {
             m.insert(6);
             let ghost m_iter = m.iter();
             assert(m_iter.remaining().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32]);
-            
+
             let mut items = Vec::<u32>::new();
 
             for k in iter: m.iter()
@@ -443,7 +443,7 @@ test_verify_one_file_with_options! {
                 assert(m_iter.remaining().take(m_iter.remaining().len() as int) == m_iter.remaining());
             }
             assert(items@.no_duplicates());
-        }        
+        }
     } => Ok(())
 }
 

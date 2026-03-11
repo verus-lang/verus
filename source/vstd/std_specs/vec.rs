@@ -447,7 +447,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
 ;
 
 #[verifier::when_used_as_spec(spec_into_iter_borrowed)]
-pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::IntoIterator>::into_iter] (vec: &'a Vec<T, A>) -> 
+pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::IntoIterator>::into_iter] (vec: &'a Vec<T, A>) ->
     (iter: <&'a Vec<T, A> as core::iter::IntoIterator>::IntoIter)
     ensures
         iter == spec_into_iter_borrowed(vec),
