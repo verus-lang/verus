@@ -21,7 +21,6 @@ pub struct V {
 }
 
 pub struct InvPred;
-pub open spec const INV_PRED: int = 12345;
 impl vstd::invariant::InvariantPredicate<K, V> for InvPred {
     open spec fn inv(k: K, v: V) -> bool {
         let K { patomic_id, ghost_var_id } = k;
@@ -63,7 +62,6 @@ impl MyPAtomicU64 {
     pub open spec fn wf(self) -> bool {
         let ghost K { patomic_id, .. } = self.inv@.constant();
         &&& self.inner.id() == patomic_id
-        &&& self.inv.namespace() == INV_PRED
     }
 
     pub open spec fn id(self) -> int {
@@ -71,23 +69,29 @@ impl MyPAtomicU64 {
         ghost_var_id
     }
 
-    pub fn new(v: u64) -> (out: (MyPAtomicU64, Tracked<MyPermissionU64>))
+    pub open spec fn inv_namespace(self) -> int {
+        self.inv@.namespace()
+    }
+
+    pub fn new(v: u64, inv_ns: Ghost<int>) -> (out: (MyPAtomicU64, Tracked<MyPermissionU64>))
         ensures
             out.0.wf(),
+            out.0.inv_namespace() == inv_ns@,
             out.1@.is_for(out.0),
             out.1@.points_to(v),
     {
         let (patomic, perm) = PAtomicU64::new(v);
-        Self::from_patomic(patomic, perm)
+        Self::from_patomic(patomic, perm, inv_ns)
     }
 
-    pub fn from_patomic(patomic: PAtomicU64, perm: Tracked<PermissionU64>)
+    pub fn from_patomic(patomic: PAtomicU64, perm: Tracked<PermissionU64>, Ghost(inv_ns): Ghost<int>)
         -> (out: (MyPAtomicU64, Tracked<MyPermissionU64>))
         requires
             perm@.is_for(patomic),
         ensures
             out.0.inner == patomic,
             out.0.wf(),
+            out.0.inv_namespace() == inv_ns,
             out.1@.is_for(out.0),
             out.1@.points_to(perm@.value()),
     {
@@ -97,7 +101,7 @@ impl MyPAtomicU64 {
             inv: Tracked(AtomicInvariant::<K, V, InvPred>::new(
                 K { patomic_id: perm@.id(), ghost_var_id: gva.id(), },
                 V { perm: perm.get(), auth: gva, },
-                INV_PRED,
+                inv_ns,
             )),
         };
 
@@ -299,7 +303,7 @@ pub fn increment<Carrier>(var: &MyPAtomicU64, Tracked(carrier): Tracked<Carrier>
     requires
         var.wf(),
         carrier.pre(IncrementOp { id: var.id() }),
-        !carrier.namespaces().contains(INV_PRED),
+        !carrier.namespaces().contains(var.inv_namespace()),
     ensures
         carrier.post(IncrementOp { id: var.id() }, out.0, out.1@),
 {
@@ -401,7 +405,7 @@ impl logatom::MutLinearizer<IncrementOp> for ClientSyncCarrier {
 }
 
 pub fn client_sync() {
-    let (my_patomic, Tracked(my_perm)) = MyPAtomicU64::new(6);
+    let (my_patomic, Tracked(my_perm)) = MyPAtomicU64::new(6, Ghost(1234));
     assert(my_perm.points_to(6));
 
     let tracked carrier = ClientSyncCarrier { my_perm };
@@ -471,7 +475,7 @@ impl logatom::MutLinearizer<IncrementOp> for ClientInvCarrier<'_> {
 }
 
 pub fn client_inv() {
-    let (my_patomic, Tracked(my_perm)) = MyPAtomicU64::new(6);
+    let (my_patomic, Tracked(my_perm)) = MyPAtomicU64::new(6, Ghost(1234));
     let tracked inv = AtomicInvariant::<_, _, UserInv>::new(my_perm.id(), my_perm, USER_INV);
     let Tracked(mut credit) = vstd::invariant::create_open_invariant_credit();
 
