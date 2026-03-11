@@ -1,6 +1,8 @@
 use crate::prelude::*;
 use crate::cell::CellId;
 use crate::pcm::*;
+use crate::invariant::*;
+use crate::atomic_ghost::AtomicInvariantPredicate;
 use core::sync::atomic::Ordering;
 use std::marker::PhantomData;
 use std::sync::atomic::*;
@@ -1148,7 +1150,7 @@ impl PWeakAtomicU8 {
         (at, Tracked(pt), Tracked(cas), vs, ts)
     }
 
-    pub fn new_atomic_concurrent(t: u8) -> (res: (
+    pub fn new_concurrent(t: u8) -> (res: (
         Self,
         Tracked<AtomicPointsTo<u8>>,
         Tracked<ViewSeen>,
@@ -1441,6 +1443,96 @@ impl PWeakAtomicU8 {
         }
         //reveal(History::agrees);
         (Tracked(va_rsrc), timestamp)
+    }
+}
+
+// version of atomic_ghost types for weak memory
+// todo - macro to declare all atomic types
+
+pub struct WeakAtomicPredU8<Pred> { p: Pred }
+
+// changed from SC atomic_ghost:
+// - Pred is over a History<u8> instead of a u8
+// - AtomicPointsTo is SingleWriter mode
+//
+// It seems like we might need different APIs for each of the AtomicPointsTo modes. 
+// Some atomic ops have preconditions on AtomicPointsTo::mode()
+impl<K, G, Pred> InvariantPredicate<(K, CellId), (AtomicPointsTo<u8>, G)> for WeakAtomicPredU8<Pred>
+    where Pred: AtomicInvariantPredicate<K, History<u8>, G>
+{
+    open spec fn inv(k_loc: (K, CellId), perm_g: (AtomicPointsTo<u8>, G)) -> bool {
+        let (k, loc) = k_loc;
+        let (perm, g) = perm_g;
+
+        &&& perm.loc() == loc
+        &&& Pred::atomic_inv(k, perm.hist(), g)
+        &&& perm_g.0.mode() == AtomicMode::SingleWriter
+    }
+}
+
+pub struct WeakAtomicU8<K, G, Pred>
+{
+    #[doc(hidden)]
+    pub patomic: PWeakAtomicU8,
+
+    #[doc(hidden)]
+    pub atomic_inv: Tracked<AtomicInvariant<(K, CellId), (AtomicPointsTo<u8>, G), WeakAtomicPredU8<Pred>>>,
+}
+
+impl<K, G, Pred> WeakAtomicU8<K, G, Pred>
+    where Pred: AtomicInvariantPredicate<K, History<u8>, G>
+{
+    pub open spec fn well_formed(&self) -> bool {
+        self.atomic_inv@.constant().1 == self.patomic.loc()
+    }
+
+    pub open spec fn constant(&self) -> K {
+        self.atomic_inv@.constant().0
+    }
+
+    pub closed spec fn loc(&self) -> CellId {
+        self.patomic.loc()
+    }
+
+    // todo - make const    
+    #[inline(always)]
+    pub /*const*/ fn new_single_writer(Ghost(k): Ghost<K>, u: u8, Tracked(g): Tracked<G>) -> (out: (Self, Tracked<SingleWriter<u8>>, Tracked<ViewSeen>, Ghost<nat>))
+        requires 
+            forall |ts, v| #[trigger] Pred::atomic_inv(k, History::singleton(ts, u, Some(v)), g),
+        ensures 
+            out.0.well_formed(), 
+            out.0.constant() == k,
+            out.0.loc() == out.1@.loc(),
+            out.1@.hist() == History::singleton(out.3@, u, Some(out.2@.view()))
+    {
+
+        let (patomic, Tracked(perm), sw, vs, ts) = PWeakAtomicU8::new_single_writer(u);
+
+        let tracked pair = (perm, g);
+        let tracked atomic_inv = AtomicInvariant::new(
+            (k, patomic.loc()), pair, 0);
+
+        let at = WeakAtomicU8 {
+            patomic,
+            atomic_inv: Tracked(atomic_inv),
+        };
+
+        (at, sw, vs, ts)
+    }
+
+    #[inline(always)]
+    pub fn into_inner(self) -> (res: (u8, Ghost<History<u8>>, Tracked<G>))
+        requires 
+            self.well_formed(),
+        ensures 
+            Pred::atomic_inv(self.constant(), res.1@, res.2@),
+            res.0 == res.1@.value(res.1@.max_timestamp())
+    {
+        let Self { patomic, atomic_inv: Tracked(atomic_inv) } = self;
+        let tracked (perm, g) = atomic_inv.into_inner();
+        let ghost hist = perm.hist();
+        let v = patomic.into_inner(Tracked(perm));
+        (v, Ghost(hist), Tracked(g))
     }
 }
 
