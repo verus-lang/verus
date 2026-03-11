@@ -14,15 +14,17 @@ verus! {
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn increment_bad(var: &PAtomicU64, Tracked(perm): Tracked<&mut PermissionU64>)
+pub fn increment_bad(var: &PAtomicU64, Tracked(perm): Tracked<&mut PermissionU64>) -> (out: u64)
     requires
         old(perm)@.patomic == var.id(),
     ensures
         perm@.patomic == old(perm)@.patomic,
         perm@.value == old(perm)@.value.wrapping_add(1),
+        out == old(perm)@.value,
 {
-    let val = var.load(Tracked(&*perm));
-    var.store(Tracked(perm), val.wrapping_add(1));
+    let curr = var.load(Tracked(&*perm));
+    var.store(Tracked(perm), curr.wrapping_add(1));
+    return curr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,7 +41,7 @@ fn call_increment_bad() {
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn increment_good(var: &PAtomicU64)
+pub fn increment_good(var: &PAtomicU64) -> (out: u64)
     atomically (atomic_update) {
         (perm: PermissionU64) -> (res: Result<PermissionU64, (PermissionU64, OpenInvariantCredit)>),
         requires
@@ -54,6 +56,8 @@ pub fn increment_good(var: &PAtomicU64)
         outer_mask any,
         inner_mask none,
     },
+    ensures
+        out == perm@.value,
 {
     let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
     let tracked mut au = atomic_update;
@@ -85,7 +89,7 @@ pub fn increment_good(var: &PAtomicU64)
         match res {
             Ok(_) => {
                 assert(atomic_update.resolves());
-                break;
+                return curr;
             }
 
             Err(new) => {
@@ -102,7 +106,7 @@ pub fn increment_good(var: &PAtomicU64)
 fn call_increment_good_sync() {
     let (var, Tracked(mut perm)) = PAtomicU64::new(6);
 
-    increment_good(&var) atomically |update|
+    let prev = increment_good(&var) atomically |update|
         invariant
             perm.is_for(var),
             perm.points_to(6),
@@ -113,6 +117,7 @@ fn call_increment_good_sync() {
         }
     };
 
+    assert(prev == 6);
     assert(perm.is_for(var));
     assert(perm.points_to(7));
 }

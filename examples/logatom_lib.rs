@@ -260,7 +260,7 @@ pub struct IncrementOp {
 
 impl logatom::MutOperation for IncrementOp {
     type Resource = IncrementUpdate;
-    type ExecResult = ();
+    type ExecResult = u64;
     type NewState = ();
 
     open spec fn requires(
@@ -270,6 +270,7 @@ impl logatom::MutOperation for IncrementOp {
         e: Self::ExecResult
     ) -> bool {
         &&& pre.id() == self.id
+        &&& pre.value() == e
     }
 
     open spec fn ensures(
@@ -292,7 +293,7 @@ impl logatom::MutOperation for IncrementOp {
 }
 
 pub fn increment<Carrier>(var: &MyPAtomicU64, Tracked(carrier): Tracked<Carrier>)
-        -> (out: Tracked<Carrier::Completion>)
+        -> (out: (u64, Tracked<Carrier::Completion>))
     where
         Carrier: logatom::MutLinearizer<IncrementOp>,
     requires
@@ -300,7 +301,7 @@ pub fn increment<Carrier>(var: &MyPAtomicU64, Tracked(carrier): Tracked<Carrier>
         carrier.pre(IncrementOp { id: var.id() }),
         !carrier.namespaces().contains(INV_PRED),
     ensures
-        carrier.post(IncrementOp { id: var.id() }, (), out@),
+        carrier.post(IncrementOp { id: var.id() }, out.0, out.1@),
 {
     let tracked inv = var.inv.borrow();
     let mut curr;
@@ -332,7 +333,7 @@ pub fn increment<Carrier>(var: &MyPAtomicU64, Tracked(carrier): Tracked<Carrier>
                     let op = IncrementOp { id: var.id() };
                     let tracked mut update = IncrementUpdate { auth };
                     let tracked carrier = maybe_carrier.tracked_take();
-                    compl = Some(carrier.apply(op, &mut update, (), &()));
+                    compl = Some(carrier.apply(op, &mut update, (), &curr));
                     let tracked IncrementUpdate { auth } = update;
 
                     v = V { perm, auth };
@@ -345,7 +346,7 @@ pub fn increment<Carrier>(var: &MyPAtomicU64, Tracked(carrier): Tracked<Carrier>
         });
 
         match res {
-            Ok(_) => return Tracked(compl.tracked_unwrap()),
+            Ok(_) => return (curr, Tracked(compl.tracked_unwrap())),
             Err(new) => {
                 curr = new;
                 continue;
@@ -377,6 +378,7 @@ impl logatom::MutLinearizer<IncrementOp> for ClientSyncCarrier {
     ) -> bool {
         &&& out.id() == op.id
         &&& out.value() == 7
+        &&& r == 6
     }
 
     proof fn apply(
@@ -403,11 +405,12 @@ pub fn client_sync() {
     assert(my_perm.points_to(6));
 
     let tracked carrier = ClientSyncCarrier { my_perm };
-    let Tracked(my_perm) = increment::<ClientSyncCarrier>(
+    let (prev, Tracked(my_perm)) = increment::<ClientSyncCarrier>(
         &my_patomic,
         Tracked(carrier)
     );
 
+    assert(prev == 6);
     assert(my_perm.points_to(7));
 }
 
@@ -473,7 +476,7 @@ pub fn client_inv() {
     let Tracked(mut credit) = vstd::invariant::create_open_invariant_credit();
 
     let tracked carrier = ClientInvCarrier { my_inv: &inv, credit };
-    let Tracked(my_perm) = increment::<ClientInvCarrier>(
+    let (prev, Tracked(_unit)) = increment::<ClientInvCarrier>(
         &my_patomic,
         Tracked(carrier)
     );
