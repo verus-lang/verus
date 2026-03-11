@@ -9,14 +9,14 @@
 //!
 //! The `AbstractByteRepresentation` trait is implemented on a given type in order to add axioms for `abs_encode`, `abs_decode`, and `can_be_encoded` for that type.
 //! The trait is used to ensure that the encoding axioms satisfy certain validity properties, e.g. that the resulting byte sequence is the correct length for the value/type,
-//! and that a value's encoding can be decoded back to the same value (see: https://github.com/minirust/minirust/blob/master/spec/lang/representation.md#generic-properties).
+//! and that a value's encoding can be decoded back to the same value (see: <https://github.com/minirust/minirust/blob/master/spec/lang/representation.md#generic-properties>).
 //! `AbstractByteRepresentation` is implemented here for primitive integers (e.g., `u8`, `isize`), `bool`, `()`, and raw pointers.
 //! `AbstractByteRepresentationUnsized` is the version of this trait for unsized types.
 //!
 //! The `PrimitiveRepresentation`, `TransparentRepresentation`, and `ScalarRangeRepresentation` traits are used to help
 //! implement `AbstractByteRepresentation` for enums or structs with primitive, transparent, or scalar range representations.
-//! (See: https://doc.rust-lang.org/reference/type-layout.html for more about primitive and transparent representations.
-//! For scalar range representations, see the non-zero niche types for an example: https://doc.rust-lang.org/1.88.0/src/core/num/niche_types.rs.html.)
+//! (See: <https://doc.rust-lang.org/reference/type-layout.html> for more about primitive and transparent representations.
+//! For scalar range representations, see the non-zero niche types for an example: <https://doc.rust-lang.org/1.88.0/src/core/num/niche_types.rs.html>.)
 //!
 //! The `AbstractByteEncoding` trait is used to make intermediate or shared definitions about encodings to byte sequences.
 //! It is essentially the same as `AbstractByteRepresentation`, except that it does not include axioms tying the definitions to `abs_encode`, `abs_decode`, and `can_be_encoded`.
@@ -443,7 +443,7 @@ unsigned_int_encoding! {
 
 /// When x is negative, the bitwise result of this function is equivalent
 /// to the two's complement representation of x in the given base.
-/// https://en.wikipedia.org/wiki/Two%27s_complement#Subtraction_from_2N
+/// <https://en.wikipedia.org/wiki/Two%27s_complement#Subtraction_from_2N>
 pub open spec fn twos_complement(x: int, len: nat) -> nat {
     (pow(u8::base() as int, len) - abs(x)) as nat
 }
