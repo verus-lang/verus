@@ -12,10 +12,6 @@ pub trait ExIntoIterator {
     type ExternalTraitSpecificationFor: core::iter::IntoIterator;
 }
 
-#[verifier::external_trait_specification]
-pub trait ExIterStep: Clone + PartialOrd + Sized {
-    type ExternalTraitSpecificationFor: core::iter::Step;
-}
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IteratorSpec via IteratorSpecImpl)]

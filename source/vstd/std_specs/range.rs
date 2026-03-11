@@ -63,7 +63,11 @@ impl<Idx> View for RangeInclusive<Idx> {
     uninterp spec fn view(&self) -> Self::V;
 }
 
-pub trait StepSpec where Self: Sized {
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(StepSpec via StepSpecImpl)]
+pub trait ExIterStep: Clone + PartialOrd + Sized {
+    type ExternalTraitSpecificationFor: core::iter::Step;
+
     // REVIEW: it would be nice to be able to use SpecOrd::spec_lt (not yet supported)
     // TODO: We should now be able to use cmp_spec or partial_cmp_spec here.
     spec fn spec_is_lt(self, other: Self) -> bool;
@@ -112,7 +116,7 @@ pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx
         ret@.exhausted == false,
 ;
 
-impl<A: core::iter::Step + StepSpec> super::iter::IteratorSpecImpl for Range<A> {
+impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
@@ -171,7 +175,7 @@ pub assume_specification<A: std::iter::Step>[ <Range<A> as Iterator>::next ](
 macro_rules! step_specs {
     ($t: ty, $axiom: ident) => {
         verus! {
-        impl StepSpec for $t {
+        impl StepSpecImpl for $t {
             open spec fn spec_is_lt(self, other: Self) -> bool {
                 self < other
             }
@@ -187,7 +191,7 @@ macro_rules! step_specs {
                 end - self
             }
             open spec fn spec_forward_checked(self, count: usize) -> Option<Self> {
-                self.spec_forward_checked_int(count as int)
+                StepSpec::spec_forward_checked_int(self, count as int)
             }
             open spec fn spec_forward_checked_int(self, count: int) -> Option<Self> {
                 if self + count <= $t::MAX {
@@ -197,7 +201,7 @@ macro_rules! step_specs {
                 }
             }
             open spec fn spec_backward_checked(self, count: usize) -> Option<Self> {
-                self.spec_backward_checked_int(count as int)
+                StepSpec::spec_backward_checked_int(self, count as int)
             }
             open spec fn spec_backward_checked_int(self, count: int) -> Option<Self> {
                 if self - count >= $t::MIN {
@@ -211,14 +215,14 @@ macro_rules! step_specs {
         // once we settle on a way to connect std traits like Step with spec traits like StepSpec.
         pub broadcast proof fn $axiom(range: Range<$t>)
             ensures
-                range.start.spec_is_lt(range.end) ==>
+                StepSpec::spec_is_lt(range.start, range.end) ==>
                     // TODO (not important): use new "matches ==>" syntax here
-                    (if let Some(n) = range.start.spec_forward_checked(1) {
+                    (if let Some(n) = StepSpec::spec_forward_checked(range.start, 1) {
                         spec_range_next(range) == (Range { start: n, ..range }, Some(range.start))
                     } else {
                         true
                     }),
-                !range.start.spec_is_lt(range.end) ==>
+                !StepSpec::spec_is_lt(range.start, range.end) ==>
                     #[trigger] spec_range_next(range) == (range, None::<$t>),
         {
             admit();
