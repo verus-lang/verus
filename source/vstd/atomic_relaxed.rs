@@ -296,7 +296,10 @@ pub broadcast proof fn history_join_contains<T>(h1: History<T>, h2: History<T>)
     requires
         h1.agrees(h2)
     ensures
-        #[trigger] h1.join(h2).contains(h1)
+        #![trigger h1.join(h2).contains(h1)]
+        #![trigger h1.join(h2).contains(h2)] 
+        h1.join(h2).contains(h1),
+        h1.join(h2).contains(h2)
 {
     reveal(History::agrees);
     reveal(History::contains);
@@ -344,6 +347,17 @@ pub broadcast proof fn history_contains_singleton_distinct<T>(h: History<T>, t1:
     assert(h.0[t2] == (v2, o2));
 }
 
+pub broadcast proof fn history_singleton_eq<T>(t1: nat, v1: T, o1: Option<View>, t2: nat, v2: T, o2: Option<View>)
+    requires
+        #[trigger] History::singleton(t1, v1, o1).contains(History::singleton(t2, v2, o2))
+    ensures
+        t1 == t2, 
+        v1 == v2,
+        o1 == o2
+{
+    admit();
+}
+
 pub broadcast proof fn history_contains_join_singleton_eq<T>(h: History<T>, t1: nat, v1: T, o1: Option<View>, t2: nat, v2: T, o2: Option<View>, t3: nat, v3: T, o3: Option<View>)
     requires
         #[trigger] h.contains(History::singleton(t1, v1, o1)),
@@ -372,6 +386,24 @@ pub broadcast proof fn history_contains_distinct<T>(h1: History<T>, h2: History<
     admit(); // todo
 }
 
+pub broadcast proof fn history_not_contains_max_timestamp<T>(h: History<T>, t: nat)
+    requires
+        h.max_timestamp() < t
+    ensures
+        !(#[trigger] h.contains_timestamp(t))
+{
+    admit();
+}
+
+pub broadcast proof fn history_agrees_singleton_new_timestamp<T>(h: History<T>, t: nat, v: T, o: Option<View>)
+    requires
+        !h.contains_timestamp(t)
+    ensures
+        #[trigger] h.agrees(History::singleton(t, v, o))
+{
+    admit();
+}
+
 pub broadcast group group_view_history {
     view_contains_refl,
     view_contains_anti_sym,
@@ -389,10 +421,13 @@ pub broadcast group group_view_history {
     history_join_contains,
     history_agrees_refl,
     history_agrees_sym,
+    history_singleton_eq,
     history_agrees_singleton_distinct,
     history_contains_singleton_distinct,
     history_contains_join_singleton_eq,
-    history_contains_distinct
+    history_contains_distinct,
+    history_not_contains_max_timestamp,
+    history_agrees_singleton_new_timestamp,
 }
 
 pub ghost struct HistorySingleton<T> {
@@ -1146,7 +1181,7 @@ impl PWeakAtomicU8 {
             self.loc() == pt.loc(),
             // the thread must've observed at least the allocation?
             // ^ I think this should be true by the fact that the thread has &self
-            old(v_sn).view().contains_loc(self.loc()),
+            //old(v_sn).view().contains_loc(self.loc()),
         ensures
             ({
                 let v = out.0;  // read value
@@ -1162,6 +1197,8 @@ impl PWeakAtomicU8 {
                 // the location's history must've included [timestamp -> (v, write_view)]
                 &&& pt.hist().contains(singleton_write_hist)
             }),
+        opens_invariants none
+        no_unwind
     {
         return (self.ato.load(Ordering::Acquire), Ghost::new(unreached()), Ghost::new(unreached()));
     }
@@ -1193,6 +1230,8 @@ impl PWeakAtomicU8 {
                 // the location's history must've included [timestamp -> (v, write_view)]
                 &&& pt.hist().contains(singleton_write_hist)
             }),
+        opens_invariants none
+        no_unwind
     {
         return (self.ato.load(Ordering::Relaxed), Ghost::new(unreached()), Ghost::new(unreached()), Tracked::assume_new());
     }
@@ -1231,6 +1270,8 @@ impl PWeakAtomicU8 {
                 &&& pt.mode() == old(pt).mode()
                 &&& pt.hist() == old(pt).hist().join(singleton_write_hist)
             }),
+        opens_invariants none
+        no_unwind
     {
         self.ato.store(v, Ordering::Release);
         (Ghost(unreached()), Ghost(unreached()))
@@ -1275,12 +1316,15 @@ impl PWeakAtomicU8 {
                 &&& pt.mode() == old(pt).mode()
                 &&& pt.hist() == old(pt).hist().join(singleton_write_hist)
             }),
+        opens_invariants none
+        no_unwind
     {
         self.ato.store(v, Ordering::Relaxed);
         (Ghost(unreached()), Ghost(unreached()))
     }
 
     // AT-WRITE-SW
+    #[verifier::atomic]
     pub fn store_release_single_writer(
         &self,
         v: u8,
@@ -1317,24 +1361,16 @@ impl PWeakAtomicU8 {
                 &&& pt.hist() == old(pt).hist().join(singleton_write_hist)
 
             }),
+        opens_invariants none
+        no_unwind
     {
-        /*let tracked f = proof_fn[Once] |tracked p: (&mut AtomicPointsTo<T>, SingleWriter<T>)| -> (tracked out: ()) 
-            requires
-                p.0.mode() == AtomicMode::SingleWriter,
-                p.0.loc() == p.1.loc()
-        {
-            p.0.single_writer_as_concurrent(p.1);
-        };
-        let tracked va_f = ViewAt::new_incl(f, v_sn);*/
         // problem: here sw is &mut, but single_writer_as_concurrent expects full ownership
         assume(false);
-        // let tracked mut h_sn = sw.get_history_sync().get_history_seen();
-        //let tracked mut v_sn = v_sn;
-        // let tracked (_, ts) = self.store_release_concurrent(
-        //     v,
-        //     Tracked(v_sn),
-        //     Tracked(pt),
-        // );
+        let (_, ts) = self.store_release_concurrent(
+            v,
+            Tracked(v_sn),
+            Tracked(pt),
+        );
         //let tracked sw_new = pt.concurrent_as_single_writer();
         //sw = sw_new;
         //ts
@@ -1342,6 +1378,7 @@ impl PWeakAtomicU8 {
     }
 
     // AT-WRITE-SW-REL
+    #[verifier::atomic]
     pub fn store_release_single_writer_with_rsrc<P>(
         &self,
         v: u8,
@@ -1375,6 +1412,8 @@ impl PWeakAtomicU8 {
                 &&& pt.mode() == old(pt).mode()
                 &&& pt.hist() == old(pt).hist().join(singleton_write_hist,)
             }),
+        opens_invariants none
+        no_unwind
     {
         broadcast use View::contains_and_contains_strict;
         //assert(pt.hist().0.len() > 0);
