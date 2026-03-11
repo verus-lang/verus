@@ -167,6 +167,65 @@ pub exec fn increment_seq(var: &MyPAtomicU64, Tracked(my_perm): Tracked<&mut MyP
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
 
+pub fn increment_perm(var: &MyPAtomicU64, Tracked(my_perm): Tracked<&mut MyPermissionU64>)
+    requires
+        var.wf(),
+        old(my_perm).is_for(*var),
+    ensures
+        my_perm.is_for(*var),
+        my_perm.points_to(old(my_perm).value().wrapping_add(1)),
+{
+    let tracked inv = var.inv.borrow();
+    let mut curr;
+    open_atomic_invariant!(inv => v => {
+        let tracked V { perm, auth } = v;
+        curr = var.inner.load(Tracked(&perm));
+        proof { v = V { perm, auth } }
+    });
+
+    let ghost orig_perm = *my_perm;
+    loop invariant *my_perm == orig_perm {
+        let next = curr.wrapping_add(1);
+        let res;
+
+        open_atomic_invariant!(inv => v => {
+            let tracked V { perm, auth } = v;
+            let ghost prev: u64 = perm@.value;
+
+            res = var.inner.compare_exchange_weak(Tracked(&mut perm), curr, next);
+
+            proof {
+                if res is Ok {
+                    assert(prev == curr);
+                    assert(next == prev.wrapping_add(1));
+
+                    auth.update(&mut my_perm.inner, next);
+
+                    v = V { perm, auth };
+                    assert(inv.inv(v));
+                } else {
+                    v = V { perm, auth };
+                    assert(inv.inv(v));
+                }
+            }
+        });
+
+        match res {
+            Ok(_) => break,
+            Err(new) => {
+                curr = new;
+                continue;
+            }
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+
 pub struct IncrementUpdate {
     pub auth: GhostVarAuth<u64>,
 }

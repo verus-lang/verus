@@ -99,6 +99,27 @@ pub fn increment_good(var: &PAtomicU64)
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
+fn call_increment_good_sync() {
+    let (var, Tracked(mut perm)) = PAtomicU64::new(6);
+
+    increment_good(&var) atomically |update|
+        invariant
+            perm.is_for(var),
+            perm.points_to(6),
+    {
+        match update(perm) {
+            Err((p, _)) => perm = p,
+            Ok(p) => { perm = p; break }
+        }
+    };
+
+    assert(perm.is_for(var));
+    assert(perm.points_to(7));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
 pub struct UserInv;
 pub open spec const USER_INV: int = 12345;
 impl InvariantPredicate<int, PermissionU64> for UserInv {
@@ -107,7 +128,7 @@ impl InvariantPredicate<int, PermissionU64> for UserInv {
     }
 }
 
-fn call_increment_good() {
+fn call_increment_good_inv() {
     let (var, Tracked(perm)) = PAtomicU64::new(6);
     let tracked inv = AtomicInvariant::<_, _, UserInv>::new(perm.id(), perm, USER_INV);
     let Tracked(mut credit) = vstd::invariant::create_open_invariant_credit();
@@ -136,27 +157,6 @@ fn call_increment_good() {
 
     let tracked perm = inv.into_inner();
     assert(perm.is_for(var));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-
-fn call_increment_good_sync() {
-    let (var, Tracked(mut perm)) = PAtomicU64::new(6);
-
-    increment_good(&var) atomically |update|
-        invariant
-            perm.is_for(var),
-            perm.points_to(6),
-    {
-        match update(perm) {
-            Err((p, _)) => perm = p,
-            Ok(p) => { perm = p; break }
-        }
-    };
-
-    assert(perm.is_for(var));
-    assert(perm.points_to(7));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
