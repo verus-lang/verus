@@ -527,8 +527,7 @@ impl<T> ViewAt<T> {
     // VA-ELIM
     pub axiom fn into_inner(tracked self, tracked sn: ViewSeen) -> (tracked out: T)
         requires
-            self.view() == sn.view(),  // could be sn.view().contains(self.view())
-
+            sn.view().contains(self.view())
         ensures
             out == self.value(),
     ;
