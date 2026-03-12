@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_is_core ["--is-core", "no-auto-import-verus_builtin", "new-mut-ref"] => code! {
+    #[test] test_is_core ["--is-core", "no-auto-import-verus_builtin", "new-mut-ref"] => code! {
         #![allow(unused_parens)]
         #![allow(unused_imports)]
         #![allow(dead_code)]
