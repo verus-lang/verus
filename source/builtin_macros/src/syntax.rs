@@ -3438,11 +3438,14 @@ impl Visitor {
         let decrease_is_some_msg = "Failed to prove that the iterator always returns a decreases metric.
             If you don't expect the iterator to provide such a metric, try adding #[verifier::exec_allows_no_decreases_clause].
             You might also try using a `loop` instead of a `for`.";
-        let exec_inv_msg = "For-loop iterator invariant failed. \
+        let exec_wf_inv_msg = "For-loop iterator invariant failed to prove the VerusForLoopWrapper is well-formed. \
             This may indicate a bug in the definition of the VerusForLoopWrapper. \
             You might try using a `loop` instead of a `for`.";
-        let ghost_inv_msg = "Automatically generated loop invariant failed. \
-            You can disable the automatic generation by adding \
+        let exec_snapshot_inv_msg = "For-loop iterator invariant failed to prove the VerusForLoopWrapper snapshot is unchanged. \
+            This may indicate a bug in the definition of the VerusForLoopWrapper. \
+            You might try using a `loop` instead of a `for`.";
+        let ghost_inv_msg = "Automatically generated loop invariant failed to track the iterator's initial value. \
+            You can disable the automatic invariant generation by adding \
             #[verifier::no_auto_loop_invariant] \
             to the loop. \
             You might also try storing the loop expression in a variable outside the loop \
@@ -3474,11 +3477,11 @@ impl Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         let expr_inv = expr.clone();
         let init_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
-            #[verifier::custom_err(#exec_inv_msg)]
+            #[verifier::custom_err(#exec_snapshot_inv_msg)]
             #vstd::prelude::spec_eq(#x_iter_name.snapshot.view(), #x_snapshot)
         ));
         let wf_inv: Expr = Expr::Verbatim(quote_spanned!( expr.span() =>
-            #[verifier::custom_err(#exec_inv_msg)]
+            #[verifier::custom_err(#exec_wf_inv_msg)]
             #x_iter_name.wf()
         ));
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
