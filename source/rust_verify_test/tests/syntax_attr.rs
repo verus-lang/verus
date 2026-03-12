@@ -1281,3 +1281,16 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_const code! {
+        #[verus_verify]
+        const MY_CONST: u64 = 1u64;
+
+        #[verus_verify]
+        fn test_use_const() {
+            let x = MY_CONST;
+            proof!{ assert(x == 1u64); }
+        }
+    } => Ok(())
+}
