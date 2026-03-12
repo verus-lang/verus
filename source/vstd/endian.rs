@@ -1100,6 +1100,10 @@ impl<B: Base> EndianNat<B> {
 
         reveal(EndianNat::to_big);
         assert(x =~= x.take_least(Self::exp()));
+        assert(0nat % Self::exp() == 0) by (nonlinear_arith)
+            requires
+                Self::exp() > 0,
+        ;
         assert(Self::to_big(x) =~= Self::to_big(x.skip_least(Self::exp())).append_least(
             EndianNat::new(x.endian, seq![x.take_least(Self::exp()).to_nat() as int]),
         ));
