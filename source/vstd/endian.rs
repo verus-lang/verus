@@ -1096,7 +1096,7 @@ impl<B: Base> EndianNat<B> {
             Self::to_big(x).len() == 1,
             Self::to_big(x).index(0) == x.to_nat() as int,
     {
-        broadcast use EndianNat::exp_properties;
+        broadcast use EndianNat::exp_properties, EndianNat::to_big_properties;
 
         reveal(EndianNat::to_big);
         assert(x =~= x.take_least(Self::exp()));
@@ -1109,9 +1109,10 @@ impl<B: Base> EndianNat<B> {
 /***** Functions involving both little and big endian *****/
 
 /// Converts a sequence of digits in base `B` in default endianness ([`endianness()`]) to an `EndianNat` in base `B`.
-// pub open spec fn to_endian_from_digits<B>(n: Seq<B>) -> EndianNat<B> where B: Base + Integer {
-//     EndianNat::<B>::new(endianness(), n.map(|i, d| d as int))
-// }
+pub open spec fn to_endian_from_digits<B>(n: Seq<B>) -> EndianNat<B> where B: Base + Integer {
+    EndianNat::<B>::new(endianness(), n.map(|i, d| d as int))
+}
+
 /// Converts a sequence of digits in base `B` in default endianness ([`endianness()`]) to an `EndianNat` in the larger base `BIG`.
 pub open spec fn to_big_from_digits<BIG, B>(n: Seq<B>) -> EndianNat<BIG> where
     BIG: BasePow2,
@@ -1120,19 +1121,21 @@ pub open spec fn to_big_from_digits<BIG, B>(n: Seq<B>) -> EndianNat<BIG> where
     EndianNat::<B>::to_big::<BIG>(EndianNat::<B>::new(endianness(), n.map(|i, d| d as int)))
 }
 
-// pub proof fn to_big_from_digits_single<BIG, B>(n: Seq<B>) where
-//     BIG: BasePow2,
-//     B: CompatibleSmallerBaseFor<BIG> + Integer,
-//     requires
-//         EndianNat::<B>::in_bounds(n.map(|i, d| d as int)),
-//         n.len() == EndianNat::<B>::exp::<BIG>(),
-//         n.len() > 0,
-//     ensures
-//         to_big_from_digits(n).len() == 1,
-//         to_big_from_digits(n).index(0) == to_endian_from_digits::<B>(n).to_nat(),
-// {
-//     EndianNat::<B>::to_big_single::<BIG>(to_endian_from_digits::<B>(n));
-// }
+pub proof fn to_big_from_digits_single<BIG, B>(n: Seq<B>) where
+    BIG: BasePow2,
+    B: CompatibleSmallerBaseFor<BIG> + Integer,
+
+    requires
+        EndianNat::<B>::in_bounds(n.map(|i, d| d as int)),
+        n.len() == EndianNat::<B>::exp::<BIG>(),
+        n.len() > 0,
+    ensures
+        to_big_from_digits(n).len() == 1,
+        to_big_from_digits(n).index(0) == to_endian_from_digits::<B>(n).to_nat(),
+{
+    EndianNat::<B>::to_big_single::<BIG>(to_endian_from_digits::<B>(n));
+}
+
 /***** Implementations and proofs for specific types *****/
 
 impl Base for u8 {
