@@ -520,8 +520,6 @@ test_verify_one_file! {
             ensures
                 ret@.len() > 10
         {
-            broadcast use vstd::string::is_ascii_spec_bytes;
-
             x.as_bytes_vec()
         }
     } => Ok(())
