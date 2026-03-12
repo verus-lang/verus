@@ -337,7 +337,10 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
             if let Some(module_path) = self.module_path.clone() {
                 VerifOrExternal::VerusAware {
                     module_path: module_path,
-                    const_directive: eattrs.size_of_global || eattrs.item_broadcast_use,
+                    const_directive: eattrs.size_of_global
+                        || eattrs.item_broadcast_use
+                        || matches!(general_item, GeneralItem::Item(i) if matches!(i.kind, ItemKind::Const(..)))
+                        || matches!(general_item, GeneralItem::ImplItem(i) if matches!(i.kind, ImplItemKind::Const(..))),
                     external_body: my_eattrs.external_body,
                     external_fn_specification: my_eattrs.external_fn_specification,
                 }
