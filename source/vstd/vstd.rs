@@ -75,7 +75,9 @@ pub mod string;
 #[cfg(feature = "std")]
 pub mod thread;
 pub mod tokens;
+#[cfg(verus_keep_ghost)]
 pub mod transmute;
+#[cfg(verus_keep_ghost)]
 pub mod type_representation;
 pub mod view;
 
