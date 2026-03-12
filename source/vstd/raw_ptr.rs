@@ -1890,6 +1890,9 @@ impl<'a, T> SharedReference<'a, [T]> {
         ensures
             *out == self.value()@.index(idx as int),
     {
+        // Only needed to make test_is_core pass (since it runs with -V new-mut-ref)
+        broadcast use crate::vstd::group_vstd_default;
+
         &(self.as_ref())[idx]
     }
 
