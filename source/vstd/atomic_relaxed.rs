@@ -102,7 +102,9 @@ impl<T> History<T> {
     }
 
     pub open spec fn is_singleton(&self, timestamp: nat, val: T, view: Option<View>) -> bool {
-        forall |ts| #[trigger] self.contains_timestamp(ts) ==> ts == timestamp && self.get(ts) == Some((val, view))
+        //forall |ts| #[trigger] self.contains_timestamp(ts) ==> ts == timestamp && self.get(ts) == Some((val, view))
+        // todo. try literal expr here instead map![ => ]
+        self.0 == map![timestamp => (val, view)]
     }
 
     pub open spec fn last(&self) -> T 
@@ -237,124 +239,27 @@ unsafe impl<T> Objective for Acquire<T> {
 
 #[verifier::external_body]
 // HOARE-REL-FENCE
-pub fn rel_fence<T>(Tracked(rsrc): Tracked<T>) -> (out: Tracked<Release<T>>)
+pub fn fence_release(Tracked(vs): Tracked<ViewSeen>) -> (rel_vs: Tracked<ReleaseViewSeen>)
     ensures
-        rsrc == out@.value(),
+        vs.view() == rel_vs@.view(),
+    opens_invariants none
+    no_unwind
 {
     core::sync::atomic::fence(Ordering::Release);
-    Tracked(proof_from_false())
+    Tracked::assume_new()
 }
 
 #[verifier::external_body]
 // HOARE-ACQ-FENCE
-pub fn acq_fence<T>(Tracked(rsrc): Tracked<Acquire<T>>) -> (out: Tracked<T>)
+pub fn fence_acquire(Tracked(acq_vs): Tracked<AcquireViewSeen>) -> (vs: Tracked<ViewSeen>)
     ensures
-        out@ == rsrc.value(),
+        acq_vs.view() == vs@.view(),
+    opens_invariants none
+    no_unwind
 {
     core::sync::atomic::fence(Ordering::Acquire);
-    Tracked(proof_from_false())
+    Tracked::assume_new()
 }
-
-/// Release modality rules
-// skip - RELMOD-MONO
-// NOTE skipping RELMOD-PURE (what does owning a pure proposition mean in Verus?)
-// skip - RELMOD-AND
-// skip - RELMOD-OR. in theory we could encode this rule for all enums, but maybe not necssasry
-// NOTE skipping RELMOD-FORALL and RELMOD-EXIST for now
-// NOTE skipping RELMOD-LATER-INTRO and RELMOD-UNOPS
-impl<T> Release<T> {
-    // This is only sound if the goal is a WP, where Release<T> is known to be interpreted under the release view, and T is known to be interpreted under the current view which includes the release view.
-    // HOARE-REL-FENCE-ELIM
-    pub axiom fn to_inner(tracked self) -> (tracked out: T)
-        ensures
-            out == self.value(),
-    ;
-
-    // RELMOD-SEP -|
-    pub axiom fn join<U>(tracked self, tracked other: Release<U>) -> (tracked out: Release<(T, U)>)
-        ensures
-            out.value() == (self.value(), other.value()),
-    ;
-}
-
-impl<T, U> Release<(T, U)> {
-    // RELMOD-SEP |-
-    pub axiom fn split(tracked self) -> (tracked out: (Release<T>, Release<U>))
-        ensures
-            out.0.value() == self.value().0,
-            out.1.value() == self.value().1,
-    ;
-}
-
-impl<P: PCM> Release<Resource<P>> {
-    // GHOST-RELMOD
-    pub proof fn as_release(tracked rsrc: Resource<P>) -> (tracked out: Self)
-        ensures
-            out.value() == rsrc,
-    {
-        objective_as_release(rsrc)
-    }
-}
-
-// NOTE The specs seem weak
-// RELMOD-WAND
-pub axiom fn apply_release_fn<P, Q>(
-    tracked f: Release<proof_fn[Once](tracked p: P) -> tracked Q>,
-    tracked rsrc: Release<P>,
-) -> (tracked out: Release<Q>)
-    requires
-        f.value().requires((rsrc.value(),)),
-    ensures
-        f.value().ensures((rsrc.value(),), out.value()),
-;
-
-/// Acquire modality rules
-// skip - ACQMOD-MONO
-// skip - ACQMOD-OR
-impl<T> Acquire<T> {
-    // See note on HOARE-REL-FENCE-ELIM
-    // HOARE-ACQ-FENCE-INTRO
-    pub axiom fn as_acquire(tracked rsrc: T) -> (tracked out: Self)
-        ensures
-            out.value() == rsrc,
-    ;
-
-    // ACQMOD-SEP -|
-    pub axiom fn join<U>(tracked self, tracked other: Acquire<U>) -> (tracked out: Acquire<(T, U)>)
-        ensures
-            out.value() == (self.value(), other.value()),
-    ;
-}
-
-impl<T, U> Acquire<(T, U)> {
-    // ACQMOD-SEP |-
-    pub axiom fn split(tracked rsrc: Self) -> (tracked out: (Acquire<T>, Acquire<U>))
-        ensures
-            out.0.value() == rsrc.value().0,
-            out.1.value() == rsrc.value().1,
-    ;
-}
-
-impl<P: PCM> Acquire<Resource<P>> {
-    // ACQMOD-GHOST
-    pub proof fn to_inner(tracked self) -> (tracked out: Resource<P>)
-        ensures
-            out == self.value(),
-    {
-        objective_from_acquire(self)
-    }
-}
-
-// ACQMOD-WAND
-pub axiom fn apply_acquire_fn<P, Q>(
-    tracked f: Acquire<proof_fn[Once](tracked p: P) -> tracked Q>,
-    tracked rsrc: Acquire<P>,
-) -> (tracked out: Acquire<Q>)
-    requires
-        f.value().requires((rsrc.value(),)),
-    ensures
-        f.value().ensures((rsrc.value(),), out.value()),
-;
 
 // Objective
 /// This trait should be implemented on types P such that objective(P) holds
@@ -481,6 +386,22 @@ impl EmptyViewSeen {
         ensures
             out.view() == View::empty(),
     ;
+}
+
+#[derive(Clone, Copy)]
+#[verifier::external_body]
+pub tracked struct ReleaseViewSeen;
+
+impl ReleaseViewSeen {
+    pub uninterp spec fn view(&self) -> View;
+}
+
+#[derive(Clone, Copy)]
+#[verifier::external_body]
+pub tracked struct AcquireViewSeen;
+
+impl AcquireViewSeen {
+    pub uninterp spec fn view(&self) -> View;
 }
 
 // ViewAt<T> is persistent when T is persistent
@@ -768,27 +689,27 @@ impl PWeakAtomicU8 {
         &self,
         Tracked(v_sn): Tracked<&mut ViewSeen>,
         Tracked(pt): Tracked<&AtomicPointsTo<u8>>,
-    ) -> (out: (u8, Ghost<nat>, Ghost<View>, Tracked<Acquire<ViewSeen>>))
+    ) -> (out: (u8, Tracked<AcquireViewSeen>, Ghost<nat>, Ghost<View>))
         requires
             self.loc() == pt.loc(),
         ensures
             ({
                 let v = out.0;  // read value
-                let timestamp = out.1@;  // timestamp of the write that was read
-                let write_view = out.2@;  // message view for the write that was read
-                let acq_v_sn = out.3@;  // new ViewSeen, under the acquire modality
+                let acq_v_sn = out.1@;  // new ViewSeen, under the acquire modality
+                let timestamp = out.2@;  // timestamp of the write that was read
+                let write_view = out.3@;  // message view for the write that was read
                 &&& old(v_sn).view().get_timestamp(self.loc()) <= timestamp
                 &&& v_sn.view().contains(old(v_sn).view())
                 &&& timestamp <= v_sn.view().get_timestamp(self.loc())
                 // because this is a relaxed read, the message view is joined to the thread's acquire view
-                &&& acq_v_sn.value().view().contains(write_view)
+                &&& acq_v_sn.view().contains(write_view)
                 // the location's history must've included [timestamp -> (v, write_view)]
                 &&& pt.hist().get(timestamp) == Some((v, Some(write_view)))
             }),
         opens_invariants none
         no_unwind
     {
-        return (self.ato.load(Ordering::Relaxed), Ghost::new(unreached()), Ghost::new(unreached()), Tracked::assume_new());
+        return (self.ato.load(Ordering::Relaxed), Tracked::assume_new(), Ghost::new(unreached()), Ghost::new(unreached()));
     }
 
     // AT-WRITE-SN -- release
@@ -835,7 +756,7 @@ impl PWeakAtomicU8 {
         &self,
         v: u8,
         Tracked(v_sn): Tracked<&mut ViewSeen>,
-        Tracked(rel_v_sn): Tracked<Release<ViewSeen>>,
+        Tracked(rel_v_sn): Tracked<ReleaseViewSeen>,
         Tracked(pt): Tracked<&mut AtomicPointsTo<u8>>,
     ) -> (out: (Ghost<View>, Ghost<nat>))
         requires
@@ -855,7 +776,7 @@ impl PWeakAtomicU8 {
                 &&& timestamp <= v_sn.view().get_timestamp(self.loc())
                 // because this is a relaxed write, the write view contains the release view
                 // and the new thread view contains the write view
-                &&& write_view.contains(rel_v_sn.value().view())
+                &&& write_view.contains(rel_v_sn.view())
                 &&& v_sn.view().contains(write_view)
                 // the points-to's history is updated to contain the new write, 
                 &&& pt.loc() == old(pt).loc()
