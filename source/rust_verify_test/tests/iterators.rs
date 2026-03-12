@@ -137,7 +137,7 @@ test_verify_one_file! {
                     })),
                     idx: Ghost(0),
                 };
-                
+
                 assert(s.map_iterator_type_inv());
                 proof {
                     s.prophs.borrow().proph_elem_meets_pred();
@@ -199,7 +199,7 @@ test_verify_one_file! {
         {
             type Item = Item;
 
-            fn next(&mut self) -> (ret: Option<Self::Item>) 
+            fn next(&mut self) -> (ret: Option<Self::Item>)
             {
                 assume(self.map_iterator_type_inv());
 
@@ -259,7 +259,7 @@ test_verify_one_file! {
             open spec fn peek(&self, index: int) -> Option<Self::Item> {
                 match self.inner().peek(index) {
                     Some(v) => {
-                        let x = choose |x| self.func().ensures((v,), x); 
+                        let x = choose |x| self.func().ensures((v,), x);
                         Some(x)
                     }
                     None => None,
@@ -269,4 +269,3 @@ test_verify_one_file! {
 
     } => Ok(())
 }
-

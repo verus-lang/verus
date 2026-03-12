@@ -359,6 +359,7 @@ pub struct ExIntoIter<T, A: Allocator>(IntoIter<T, A>);
 
 // To allow reasoning about the "contents" of the Vec iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original vec.
+// REVIEW: This could also be implemented as a function in an AdditionalFns trait.  Is that a better style?
 pub uninterp spec fn into_iter_elts<T, A: Allocator>(i: IntoIter<T, A>) -> Seq<T>;
 
 impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {

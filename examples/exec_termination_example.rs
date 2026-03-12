@@ -73,7 +73,7 @@ verus! {
             invariant n == x * 3,
             // You can write a `decreases` if you want, but it's not needed
             // because Verus inserts a decreases automatically for `for` loops:
-            //   decreases 10 - iter.cur,
+            //   decreases 10 - iter.index@,
         {
             n += 3;
         }
@@ -88,7 +88,7 @@ verus! {
                 end == 10,
             // You can write a `decreases` if you want, but it's not needed
             // because Verus inserts a decreases automatically for `for` loops:
-            //   decreases end - iter.cur,
+            //   decreases end - iter.index@,
         {
             n += 3;
         }

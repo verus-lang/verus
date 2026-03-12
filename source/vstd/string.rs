@@ -361,17 +361,6 @@ pub struct ExChars<'a>(Chars<'a>);
 #[cfg(feature = "alloc")]
 pub uninterp spec fn into_iter_elts<'a>(i: Chars<'a>) -> Seq<char>;
 
-// #[cfg(feature = "alloc")]
-// impl<'a> View for Chars<'a> {
-//     type V = (int, Seq<char>);
-//     uninterp spec fn view(&self) -> (int, Seq<char>);
-// }
-// #[cfg(feature = "alloc")]
-// impl<'a> DeepView for Chars<'a> {
-//     type V = <Self as View>::V;
-//     open spec fn deep_view(&self) -> Self::V {
-//         self@
-//     }
 // To allow reasoning about the ghost iterator when the executable
 // function `iter()` is invoked in a `for` loop header (e.g., in
 // `for x in it: v.iter() { ... }`), we need to specify the behavior of

@@ -275,12 +275,6 @@ pub broadcast proof fn axiom_random_state_builds_valid_hashers()
 #[verifier::accept_recursive_types(Value)]
 pub struct ExKeys<'a, Key: 'a, Value: 'a>(Keys<'a, Key, Value>);
 
-// pub trait KeysAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
-//     spec fn view(self: &Self) -> (int, Seq<Key>);
-// }
-// impl<'a, Key: 'a, Value: 'a> KeysAdditionalSpecFns<'a, Key, Value> for Keys<'a, Key, Value> {
-//     uninterp spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
-// }
 // To allow reasoning about the "contents" of the Keys iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original keys.
 pub uninterp spec fn into_iter_keys<'a, Key, Value>(i: Keys<'a, Key, Value>) -> Seq<Key>;

@@ -131,7 +131,6 @@ test_verify_one_file! {
                     i == it.index@,
                     it.seq().map_values(|v: &u32| *v) == seq![0u32, 2u32, 4u32],
             {
-                // REVIEW: Needed to trigger the extensionality in the second invariant above
                 assert(it.seq().map_values(|v: &u32| *v).contains(*x));
                 assert(x < 5);
                 assert(x % 2 == 0);

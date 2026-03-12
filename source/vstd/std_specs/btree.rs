@@ -63,10 +63,6 @@ pub broadcast axiom fn axiom_increasing_seq_meaning<K: Ord>(s: Seq<K>)
 #[verifier::accept_recursive_types(Value)]
 pub struct ExKeys<'a, Key, Value>(Keys<'a, Key, Value>);
 
-// impl<'a, Key, Value> View for Keys<'a, Key, Value> {
-//     type V = (int, Seq<Key>);
-//     uninterp spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
-// }
 // To allow reasoning about the "contents" of the Keys iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original keys.
 pub uninterp spec fn into_iter_keys<'a, Key, Value>(i: Keys<'a, Key, Value>) -> Seq<Key>;
@@ -105,16 +101,6 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
 #[verifier::accept_recursive_types(Value)]
 pub struct ExValues<'a, Key, Value>(Values<'a, Key, Value>);
 
-// impl<'a, Key, Value> View for Values<'a, Key, Value> {
-//     type V = (int, Seq<Value>);
-//     uninterp spec fn view(self: &Values<'a, Key, Value>) -> (int, Seq<Value>);
-// }
-// impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
-//     type V = Seq<Value>;
-//     open spec fn view(&self) -> Seq<Value> {
-//         self.values.take(self.pos)
-//     }
-// }
 // To allow reasoning about the "contents" of the Values iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original values.
 pub uninterp spec fn into_iter_values<'a, Key, Value>(i: Values<'a, Key, Value>) -> Seq<Value>;
@@ -153,13 +139,6 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
 #[verifier::accept_recursive_types(V)]
 pub struct ExMapIter<'a, K, V>(btree_map::Iter<'a, K, V>);
 
-// pub trait MapIterAdditionalSpecFns<'a, Key, Value> {
-//     spec fn view(self: &Self) -> (int, Seq<(Key, Value)>);
-// }
-// impl<'a, K: 'a, V: 'a> View for btree_map::Iter<'a, K, V> {
-//     type V = (int, Seq<(K, V)>);
-//     uninterp spec fn view(self: &btree_map::Iter<'a, K, V>) -> (int, Seq<(K, V)>);
-// }
 // To allow reasoning about the "contents" of the Iter iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original map.
 pub uninterp spec fn into_iter<'a, Key, Value>(i: btree_map::Iter<'a, Key, Value>) -> Seq<
@@ -700,10 +679,6 @@ pub broadcast axiom fn axiom_btree_map_decreases<Key, Value, A: Allocator + Clon
 #[verifier::accept_recursive_types(K)]
 pub struct ExSetIter<'a, K: 'a>(btree_set::Iter<'a, K>);
 
-// impl<'a, Key> View for btree_set::Iter<'a, Key> {
-//     type V = (int, Seq<Key>);
-//     uninterp spec fn view(self: &btree_set::Iter<'a, Key>) -> (int, Seq<Key>);
-// }
 // To allow reasoning about the "contents" of the BtreeSet iterator, without using
 // a prophecy, we need a function that gives us the underlying sequence of the original keys.
 pub uninterp spec fn into_iter_btree_keys<'a, Key>(i: btree_set::Iter::<'a, Key>) -> Seq<Key>;
