@@ -144,10 +144,10 @@ pub broadcast axiom fn start_addr_aligned(p: Provenance)
 
 /// Allocations should always start with a non-null address, even zero-sized allocations.
 /// `Allocator::allocate` returns a `NonNull` pointer, and documentation here
-/// (https://doc.rust-lang.org/1.88.0/core/alloc/trait.Allocator.html)
+/// (<https://doc.rust-lang.org/1.88.0/core/alloc/trait.Allocator.html>)
 /// implies that returning a null pointer should not happen.
 /// Additionally, MiniRust's allocate cannot return a null address.
-/// https://github.com/minirust/minirust/blob/master/spec/mem/basic.md
+/// <https://github.com/minirust/minirust/blob/master/spec/mem/basic.md>
 pub broadcast axiom fn is_nonnull(p: Provenance)
     ensures
         #[trigger] p.start_addr() != 0,
@@ -1890,6 +1890,8 @@ impl<'a, T> SharedReference<'a, [T]> {
         ensures
             *out == self.value()@.index(idx as int),
     {
+        broadcast use crate::vstd::group_vstd_default;
+
         &(self.as_ref())[idx]
     }
 

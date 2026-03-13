@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(verus_verify_core), no_std)]
 #![allow(internal_features)]
 #![cfg_attr(
     verus_keep_ghost,
