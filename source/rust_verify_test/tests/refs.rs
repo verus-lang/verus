@@ -622,7 +622,7 @@ test_verify_one_file! {
         }
 
         #[verifier::external_trait_specification]
-        pub trait ExDeref {
+        pub trait ExDeref: core::marker::PointeeSized {
             type ExternalTraitSpecificationFor: core::ops::Deref;
 
             type Target: ?Sized;

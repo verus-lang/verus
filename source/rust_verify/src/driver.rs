@@ -1,9 +1,9 @@
 use crate::config::Vstd;
 use crate::externs::VerusExterns;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
-use rustc_attr_data_structures::AttributeKind;
+use rustc_hir::attrs::AttributeKind;
 use rustc_hir::{Attribute, AttributeMap};
-use rustc_hir::{HirId, ItemKind, OwnerId, OwnerNode};
+use rustc_hir::{HirId, ImplItemKind, ItemKind, MaybeOwner, OwnerId, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::{Span, sym};
 use std::time::{Duration, Instant};
@@ -36,6 +36,65 @@ pub fn is_verifying_entire_crate(verifier: &Verifier) -> bool {
     verifier.args.verify_function.is_none()
         && verifier.args.verify_module.is_empty()
         && !verifier.args.verify_root
+}
+
+// Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
+pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>, do_lifetime: bool) {
+    rustc_hir_analysis::check_crate(tcx);
+    if tcx.dcx().err_count() != 0 {
+        return;
+    }
+    if !do_lifetime {
+        return;
+    }
+    let krate = tcx.hir_crate(());
+    for owner in &krate.owners {
+        if let MaybeOwner::Owner(owner) = owner {
+            match owner.node() {
+                OwnerNode::Item(item) => match &item.kind {
+                    rustc_hir::ItemKind::Fn { .. } => {
+                        tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
+                    }
+                    ItemKind::Impl(impll) => {
+                        for item_id in impll.items {
+                            let item = tcx.hir_impl_item(*item_id);
+                            match item.kind {
+                                ImplItemKind::Fn { .. } => {
+                                    tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => (),
+                },
+                _ => {}
+            }
+        }
+    }
+}
+
+pub(crate) struct TCCallbacks {
+    pub(crate) code: String,
+}
+
+impl rustc_driver::Callbacks for TCCallbacks {
+    // note: we only need to call into config here,
+    // to change the file_loader
+    fn config<'tcx>(&mut self, cfg: &mut rustc_interface::interface::Config) {
+        cfg.file_loader =
+            Some(Box::new(crate::trait_check::TCFileLoader { rust_code: self.code.clone() }));
+    }
+
+    fn after_expansion<'tcx>(
+        &mut self,
+        _compiler: &rustc_interface::interface::Compiler,
+        queries: TyCtxt<'tcx>,
+    ) -> rustc_driver::Compilation {
+        // REVIEW: is this call needed for trait-conflict checking?
+        check(queries, false);
+        rustc_driver::Compilation::Stop
+    }
 }
 
 /*
@@ -95,6 +154,8 @@ struct CompilerCallbacksEraseMacro {
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
+    // Adding `override_stability` and `stable_attr` functions is a hacky solution specifically for verifying core,
+    // to fix an issue with stability attributes.
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         if self.override_stability {
             config.override_queries = Some(|_session, providers| {
@@ -116,7 +177,7 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         tcx: rustc_middle::ty::TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         if !self.do_compile {
-            crate::lifetime::check(tcx, true);
+            check(tcx, true);
             rustc_driver::Compilation::Stop
         } else {
             rustc_driver::Compilation::Continue
@@ -131,8 +192,8 @@ pub struct Stats {
     pub time_rustc: Duration,
     /// time it took to verify the crate (this includes VIR generation, SMT solving, etc.)
     pub time_verify: Duration,
-    /// tiem for lifetime/borrow checking
-    pub time_lifetime: Duration,
+    /// time for lifetime/borrow checking
+    pub time_trait_conflicts: Duration,
     /// compilation time
     pub time_compile: Duration,
 }
@@ -146,7 +207,7 @@ pub(crate) fn run_with_erase_macro_compile(
         do_compile: compile,
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
     };
-    rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
+    rustc_args.extend(["--cfg", "verus_only", "--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     if matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
         rustc_args.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
     } else if vstd == Vstd::NoVstd {
@@ -252,6 +313,7 @@ pub fn run(
 
     let time0 = Instant::now();
     let mut rustc_args_verify = rustc_args.clone();
+    rustc_args_verify.extend(["--cfg", "verus_only"].map(|s| s.to_string()));
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost_body"].map(|s| s.to_string()));
     if matches!(verifier.args.vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
@@ -262,8 +324,8 @@ pub fn run(
         verifier,
         rust_start_time: Instant::now(),
         rust_end_time: None,
-        lifetime_start_time: None,
-        lifetime_end_time: None,
+        tc_start_time: None,
+        tc_end_time: None,
         rustc_args: rustc_args.clone(),
         verus_externs,
         spans: None,
@@ -273,12 +335,12 @@ pub fn run(
         verifier,
         rust_start_time,
         rust_end_time,
-        lifetime_start_time,
-        lifetime_end_time,
+        tc_start_time,
+        tc_end_time,
         ..
     } = verifier_callbacks;
     let time1 = Instant::now();
-    let time_lifetime = match (lifetime_start_time, lifetime_end_time) {
+    let time_trait_conflicts = match (tc_start_time, tc_end_time) {
         (Some(t1), Some(t2)) => t2 - t1,
         _ => Duration::new(0, 0),
     };
@@ -293,26 +355,27 @@ pub fn run(
             verifier,
             Stats {
                 time_rustc,
-                time_verify: (time1 - time0) - time_lifetime,
-                time_lifetime,
+                time_verify: (time1 - time0) - time_trait_conflicts,
+                time_trait_conflicts,
                 time_compile: Duration::new(0, 0),
             },
             Err(()),
         );
     }
 
-    let compile_status = if !verifier.compile && verifier.args.no_lifetime {
-        Ok(())
-    } else {
-        run_with_erase_macro_compile(rustc_args, verifier.compile, verifier.args.vstd)
-    };
+    let compile_status =
+        if !verifier.compile && (verifier.args.no_erasure_check || verifier.args.no_lifetime) {
+            Ok(())
+        } else {
+            run_with_erase_macro_compile(rustc_args, verifier.compile, verifier.args.vstd)
+        };
 
     let time2 = Instant::now();
 
     let stats = Stats {
         time_rustc,
-        time_verify: (time1 - time0) - time_lifetime,
-        time_lifetime,
+        time_verify: (time1 - time0) - time_trait_conflicts,
+        time_trait_conflicts,
         time_compile: time2 - time1,
     };
 
@@ -325,7 +388,7 @@ pub fn run(
 }
 
 fn stable_attr(span: Span) -> Attribute {
-    use rustc_attr_data_structures::*;
+    use rustc_hir::*;
     Attribute::Parsed(AttributeKind::Stability {
         stability: Stability {
             level: StabilityLevel::Unstable {
@@ -333,6 +396,7 @@ fn stable_attr(span: Span) -> Attribute {
                 issue: None,
                 is_soft: false,
                 implied_by: None,
+                old_name: None,
             },
             feature: sym::rustc_private,
         },
@@ -373,17 +437,6 @@ fn add_stable_attr<'tcx>(
 
     m.map.insert(hir_id.local_id, Box::leak(attrs.into_boxed_slice()));
     Box::leak(Box::new(m))
-
-    /*
-    let max_id = 0;
-    for (id, _) in attrmap.map.iter() {
-        let max_id = std::cmp::max(max_id, id.as_u32());
-    }
-    let local_id = ItemLocalId::from_u32(max_id + 1);
-    let span = tcx.hir_span(owner_id.hir_id);
-    m.map.insert(local_id, stable_attr(span));
-    Box::leak(Box::new(m))
-    */
 }
 
 fn needs_stable_attr<'tcx>(tcx: TyCtxt<'tcx>, owner_id: OwnerId) -> bool {

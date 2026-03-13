@@ -105,21 +105,19 @@ impl<V> Node<V> {
             Node::<V>::optional_as_map(*node) =~= Node::<V>::optional_as_map(*old(node)).insert(key, value),
         decreases *old(node),
     {
-        if node.is_none() {
-            *node = Some(Box::new(Node::<V> {
-                key: key,
-                value: value,
-                left: None,
-                right: None,
-            }));
-        } else {
-            let mut tmp = None;
-            std::mem::swap(&mut tmp, node);
-            let mut boxed_node = tmp.unwrap();
-
-            (&mut *boxed_node).insert(key, value);
-
-            *node = Some(boxed_node);
+        match node.take() {
+            None => {
+                *node = Some(Box::new(Node::<V> {
+                    key: key,
+                    value: value,
+                    left: None,
+                    right: None,
+                }));
+            }
+            Some(mut boxed_node) => {
+                (&mut *boxed_node).insert(key, value);
+                *node = Some(boxed_node);
+            }
         }
     }
 
@@ -173,10 +171,7 @@ impl<V> Node<V> {
             Node::<V>::optional_as_map(*node) =~= Node::<V>::optional_as_map(*old(node)).remove(key),
         decreases *old(node),
     {
-        if node.is_some() {
-            let mut tmp = None;
-            std::mem::swap(&mut tmp, node);
-            let mut boxed_node = tmp.unwrap();
+        if let Some(mut boxed_node) = node.take() {
 
             if key == boxed_node.key {
                 assert(!Node::<V>::optional_as_map(boxed_node.left).dom().contains(key));
@@ -218,9 +213,7 @@ impl<V> Node<V> {
             forall |elem| Node::<V>::optional_as_map(*old(node)).dom().contains(elem) ==> popped.0 >= elem,
         decreases *old(node),
     {
-        let mut tmp = None;
-        std::mem::swap(&mut tmp, node);
-        let mut boxed_node = tmp.unwrap();
+        let mut boxed_node = node.take().unwrap();
 
         if boxed_node.right.is_none() {
             *node = boxed_node.left;

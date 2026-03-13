@@ -14,6 +14,11 @@ pub open spec fn injective<X, Y>(r: spec_fn(X) -> Y) -> bool {
     forall|x1: X, x2: X| #[trigger] r(x1) == #[trigger] r(x2) ==> x1 == x2
 }
 
+pub open spec fn injective_on<X, Y>(r: spec_fn(X) -> Y, dom: Set<X>) -> bool {
+    forall|x1: X, x2: X|
+        dom.contains(x1) && dom.contains(x2) && #[trigger] r(x1) == #[trigger] r(x2) ==> x1 == x2
+}
+
 pub open spec fn commutative<T, U>(r: spec_fn(T, T) -> U) -> bool {
     forall|x: T, y: T| #[trigger] r(x, y) == #[trigger] r(y, x)
 }

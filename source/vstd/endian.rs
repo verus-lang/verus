@@ -1100,7 +1100,6 @@ impl<B: Base> EndianNat<B> {
 
         reveal(EndianNat::to_big);
         assert(x =~= x.take_least(Self::exp()));
-        assert(x.skip_least(Self::exp()).len() == 0);
         assert(0nat % Self::exp() == 0) by (nonlinear_arith)
             requires
                 Self::exp() > 0,
@@ -1123,7 +1122,7 @@ pub open spec fn to_big_from_digits<BIG, B>(n: Seq<B>) -> EndianNat<BIG> where
     BIG: BasePow2,
     B: CompatibleSmallerBaseFor<BIG> + Integer,
  {
-    EndianNat::<B>::to_big::<BIG>(to_endian_from_digits(n))
+    EndianNat::<B>::to_big::<BIG>(EndianNat::<B>::new(endianness(), n.map(|i, d| d as int)))
 }
 
 pub proof fn to_big_from_digits_single<BIG, B>(n: Seq<B>) where

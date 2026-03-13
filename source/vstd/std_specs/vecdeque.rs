@@ -81,6 +81,13 @@ pub assume_specification<T>[ VecDeque::<T>::new ]() -> (v: VecDeque<T>)
         v@ == Seq::<T>::empty(),
 ;
 
+pub assume_specification<T>[ <VecDeque<T> as core::default::Default>::default ]() -> (v: VecDeque<
+    T,
+>)
+    ensures
+        v@ == Seq::<T>::empty(),
+;
+
 pub assume_specification<T>[ VecDeque::<T>::with_capacity ](capacity: usize) -> (v: VecDeque<T>)
     ensures
         v@ == Seq::<T>::empty(),

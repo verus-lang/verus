@@ -1,4 +1,4 @@
-use crate::lifetime_ast::*;
+use crate::trait_check_ast::*;
 use rustc_span::{BytePos, Span};
 
 pub(crate) fn encode_id(kind: IdKind, rename_count: usize, raw_id: &String) -> String {
@@ -85,6 +85,13 @@ impl ToString for TypX {
             TypX::Datatype(path, lifetimes, args) => {
                 typ_args_to_string(Some(path), lifetimes, args, &None)
             }
+            TypX::Dyn(path, args) => {
+                format!("dyn {}", typ_args_to_string(Some(path), &vec![], args, &None))
+            }
+            TypX::Slice(elem) => {
+                format!("[{}]", elem.to_string())
+            }
+            TypX::StrSlice => "str".to_string(),
             TypX::Projection { self_typ, trait_as_datatype: tr, name, assoc_typ_args } => {
                 format!(
                     "<{} as {}>::{}",
@@ -263,7 +270,7 @@ fn emit_generic_params(state: &mut EmitState, generics: &Vec<GenericParam>) {
     }
 }
 
-fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
+fn emit_generic_bound(bound: &GenericBound, bare: bool) -> Option<String> {
     let mut buf = String::new();
     if !bound.bound_vars.is_empty() {
         buf += "for<";
@@ -273,21 +280,26 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
         }
         buf += "> ";
     }
+    let mut clause = String::new();
     if !bare {
-        buf += &bound.typ.to_string();
-        buf += ": ";
+        clause += &bound.typ.to_string();
+        clause += ": ";
     }
     match &bound.bound {
         Bound::Sized => {
             if *bound.typ == TypX::TraitSelf {
+                buf += &clause;
                 buf += "Sized";
             }
         }
         Bound::Trait { trait_path, args, equality } => {
+            buf += &clause;
             buf += &typ_args_to_string(Some(trait_path), &vec![], args, equality);
         }
     }
-    buf
+    // We need to ensure that we don't emit empty bounds to avoid triggering
+    // https://github.com/rust-lang/rust/issues/148349
+    if buf.is_empty() { None } else { Some(buf) }
 }
 
 // Return (bare bounds ": U", where bounds "where ...")
@@ -340,8 +352,10 @@ fn emit_generic_bounds(
     let mut sized: HashSet<Id> = HashSet::new();
     for bound in bounds.iter() {
         print_where(state, &mut printed_where);
-        state.write(emit_generic_bound(bound, false));
-        state.write(", ");
+        emit_generic_bound(bound, false).into_iter().for_each(|b| {
+            state.write(b);
+            state.write(", ");
+        });
         if bound.bound == Bound::Sized {
             if let TypX::TypParam(x) = &*bound.typ {
                 sized.insert(x.clone());
@@ -407,7 +421,7 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
             state.write(" : ");
             let bounds_strs: Vec<_> = bares
                 .iter()
-                .map(|bound| emit_generic_bound(bound, true))
+                .filter_map(|bound| emit_generic_bound(bound, true))
                 .chain(unsize.into_iter())
                 .collect();
             state.write(bounds_strs.join("+"));

@@ -2,42 +2,66 @@
 use super::super::prelude::*;
 
 use core::option::Option;
-use core::option::Option::None;
-use core::option::Option::Some;
 
 use core::result::Result;
-use core::result::Result::Err;
-use core::result::Result::Ok;
 
 verus! {
 
 ////// Add is_variant-style spec functions
 pub trait ResultAdditionalSpecFns<T, E> {
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    // #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_Ok(&self) -> bool;
 
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    // #[deprecated(note = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn get_Ok_0(&self) -> T;
 
     #[allow(non_snake_case)]
     spec fn arrow_Ok_0(&self) -> T;
 
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    // #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_Err(&self) -> bool;
 
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    // #[deprecated(note = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn get_Err_0(&self) -> E;
 
     #[allow(non_snake_case)]
     spec fn arrow_Err_0(&self) -> E;
+
+    #[allow(deprecated)]
+    proof fn tracked_unwrap(tracked self) -> (tracked t: T)
+        requires
+            self.is_Ok(),
+        ensures
+            t == self->Ok_0,
+    ;
+
+    #[allow(deprecated)]
+    proof fn tracked_unwrap_err(tracked self) -> (tracked t: E)
+        requires
+            self.is_Err(),
+        ensures
+            t == self->Err_0,
+    ;
+
+    #[allow(deprecated)]
+    proof fn tracked_expect(tracked self, msg: &str) -> (tracked t: T)
+        requires
+            self.is_Ok(),
+        ensures
+            t == self->Ok_0,
+    ;
+
+    #[allow(deprecated)]
+    proof fn tracked_expect_err(tracked self, msg: &str) -> (tracked t: E)
+        requires
+            self.is_Err(),
+        ensures
+            t == self->Err_0,
+    ;
 }
 
 impl<T, E> ResultAdditionalSpecFns<T, E> for Result<T, E> {
@@ -69,6 +93,34 @@ impl<T, E> ResultAdditionalSpecFns<T, E> for Result<T, E> {
     #[verifier::inline]
     open spec fn arrow_Err_0(&self) -> E {
         get_variant_field(self, "Err", "0")
+    }
+
+    proof fn tracked_unwrap(tracked self) -> (tracked t: T) {
+        match self {
+            Result::Ok(t) => t,
+            Result::Err(_) => proof_from_false(),
+        }
+    }
+
+    proof fn tracked_unwrap_err(tracked self) -> (tracked t: E) {
+        match self {
+            Result::Ok(_) => proof_from_false(),
+            Result::Err(e) => e,
+        }
+    }
+
+    proof fn tracked_expect(tracked self, msg: &str) -> (tracked t: T) {
+        match self {
+            Result::Ok(t) => t,
+            Result::Err(_) => proof_from_false(),
+        }
+    }
+
+    proof fn tracked_expect_err(tracked self, msg: &str) -> (tracked t: E) {
+        match self {
+            Result::Ok(_) => proof_from_false(),
+            Result::Err(e) => e,
+        }
     }
 }
 

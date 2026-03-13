@@ -2,25 +2,20 @@
 use super::super::prelude::*;
 
 use core::option::Option;
-use core::option::Option::None;
-use core::option::Option::Some;
 
 verus! {
 
 ////// Add is_variant-style spec functions
 pub trait OptionAdditionalFns<T>: Sized {
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    // #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_Some(&self) -> bool;
 
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    // #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn get_Some_0(&self) -> T;
 
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    // #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_None(&self) -> bool;
 
@@ -30,36 +25,37 @@ pub trait OptionAdditionalFns<T>: Sized {
     #[allow(non_snake_case)]
     spec fn arrow_0(&self) -> T;
 
-    /// Auxilliary spec function for the spec of `tracked_unwrap`, `tracked_borrow`, and `tracked_take`.
-    spec fn tracked_is_some(&self) -> bool;
-
+    #[allow(deprecated)]
     proof fn tracked_unwrap(tracked self) -> (tracked t: T)
         requires
-            self.tracked_is_some(),
+            self.is_Some(),
         ensures
             t == self->0,
     ;
 
+    #[allow(deprecated)]
     proof fn tracked_expect(tracked self, msg: &str) -> (tracked t: T)
         requires
-            self.tracked_is_some(),
+            self.is_Some(),
         ensures
             t == self->0,
     ;
 
+    #[allow(deprecated)]
     proof fn tracked_borrow(tracked &self) -> (tracked t: &T)
         requires
-            self.tracked_is_some(),
+            self.is_Some(),
         ensures
             t == self->0,
     ;
 
+    #[allow(deprecated)]
     proof fn tracked_take(tracked &mut self) -> (tracked t: T)
         requires
-            old(self).tracked_is_some(),
+            old(self).is_Some(),
         ensures
             t == old(self)->0,
-            !self.tracked_is_some(),
+            self.is_None(),
     ;
 }
 
@@ -87,10 +83,6 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     #[verifier::inline]
     open spec fn arrow_0(&self) -> T {
         get_variant_field(self, "Some", "0")
-    }
-
-    open spec fn tracked_is_some(&self) -> bool {
-        is_variant(self, "Some")
     }
 
     proof fn tracked_unwrap(tracked self) -> (tracked t: T) {
@@ -206,7 +198,7 @@ pub assume_specification<T>[ Option::<T>::expect ](option: Option<T>, msg: &str)
 // take
 pub assume_specification<T>[ Option::<T>::take ](option: &mut Option<T>) -> (t: Option<T>)
     ensures
-        t == old(option),
+        t == *old(option),
         *option is None,
 ;
 
@@ -220,7 +212,67 @@ pub assume_specification<T, U, F: FnOnce(T) -> U>[ Option::<T>::map ](a: Option<
         ret.is_some() ==> f.ensures((a.unwrap(),), ret.unwrap()),
 ;
 
+// cloned
+pub assume_specification<'a, T: Clone>[ Option::<&'a T>::cloned ](opt: Option<&'a T>) -> (res:
+    Option<T>)
+    ensures
+        opt.is_none() ==> res.is_none(),
+        opt.is_some() ==> res.is_some() && cloned::<T>(*opt.unwrap(), res.unwrap()),
+;
+
+// and_then
+pub assume_specification<T, U, F: FnOnce(T) -> Option<U>>[ Option::<T>::and_then ](
+    option: Option<T>,
+    f: F,
+) -> (res: Option<U>)
+    requires
+        option.is_some() ==> f.requires((option.unwrap(),)),
+    ensures
+        option.is_none() ==> res.is_none(),
+        option.is_some() ==> f.ensures((option.unwrap(),), res),
+;
+
+// ok_or_else
+pub assume_specification<T, E, F: FnOnce() -> E>[ Option::<T>::ok_or_else ](
+    option: Option<T>,
+    err: F,
+) -> (res: Result<T, E>)
+    requires
+        option.is_none() ==> err.requires(()),
+    ensures
+        option.is_some() ==> res == Ok::<T, E>(option.unwrap()),
+        option.is_none() ==> {
+            &&& res.is_err()
+            &&& err.ensures((), res->Err_0)
+        },
+;
+
+// unwrap_or_default
+pub assume_specification<T: core::default::Default>[ Option::<T>::unwrap_or_default ](
+    option: Option<T>,
+) -> (res: T)
+    ensures
+        option.is_some() ==> res == option.unwrap(),
+        option.is_none() ==> T::default.ensures((), res),
+;
+
+// unwrap_or_else
+pub assume_specification<T, F: FnOnce() -> T>[ Option::<T>::unwrap_or_else ](
+    option: Option<T>,
+    f: F,
+) -> (res: T)
+    requires
+        option.is_none() ==> f.requires(()),
+    ensures
+        option.is_some() ==> res == option.unwrap(),
+        option.is_none() ==> f.ensures((), res),
+;
+
 // clone
+// CHANGED: added cfg it out due to the error "cannot find trait `T407_Destruct` in this scope,"
+// which came with the note: "This error was found in Verus's Trait-Conflict-Checker"
+// TODO: figure out error
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone ](opt: &Option<T>) -> (res: Option<
     T,
 >)
@@ -304,6 +356,60 @@ pub open spec fn spec_ok_or<T, E>(option: Option<T>, err: E) -> Result<T, E> {
 pub assume_specification<T, E>[ Option::ok_or ](option: Option<T>, err: E) -> (res: Result<T, E>)
     ensures
         res == spec_ok_or(option, err),
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T>[ Option::as_mut ](option: &mut Option<T>) -> (res: Option<&mut T>)
+    ensures
+        (match *old(option) {
+            None => final(option).is_none() && res.is_none(),
+            Some(r) => final(option).is_some() && res.is_some() && *res.unwrap() === r
+                && *final(res.unwrap()) === final(option).unwrap(),
+        }),
+;
+
+pub assume_specification<T>[ Option::as_slice ](option: &Option<T>) -> (res: &[T])
+    ensures
+        res@ == (match *option {
+            Some(x) => seq![x],
+            None => seq![],
+        }),
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T>[ Option::as_mut_slice ](option: &mut Option<T>) -> (res: &mut [T])
+    ensures
+        res@ == (match *old(option) {
+            Some(x) => seq![x],
+            None => seq![],
+        }),
+        final(res)@.len() == res@.len(),  // TODO this should be broadcast for all `&mut [T]`
+        final(option)@ == (match *old(option) {
+            Some(_) => Some(final(res)@[0]),
+            None => None,
+        }),
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T>[ Option::insert ](option: &mut Option<T>, value: T) -> (res: &mut T)
+    ensures
+        *res == value,
+        *final(option) == Some(*final(res)),
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T>[ Option::get_or_insert ](option: &mut Option<T>, value: T) -> (res:
+    &mut T)
+    ensures
+        *res == (match *old(option) {
+            Some(x) => x,
+            None => value,
+        }),
+        *final(option) == Some(*final(res)),
 ;
 
 } // verus!

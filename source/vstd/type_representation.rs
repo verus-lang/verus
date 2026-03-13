@@ -9,14 +9,14 @@
 //!
 //! The `AbstractByteRepresentation` trait is implemented on a given type in order to add axioms for `abs_encode`, `abs_decode`, and `can_be_encoded` for that type.
 //! The trait is used to ensure that the encoding axioms satisfy certain validity properties, e.g. that the resulting byte sequence is the correct length for the value/type,
-//! and that a value's encoding can be decoded back to the same value (see: https://github.com/minirust/minirust/blob/master/spec/lang/representation.md#generic-properties).
+//! and that a value's encoding can be decoded back to the same value (see: <https://github.com/minirust/minirust/blob/master/spec/lang/representation.md#generic-properties>).
 //! `AbstractByteRepresentation` is implemented here for primitive integers (e.g., `u8`, `isize`), `bool`, `()`, and raw pointers.
 //! `AbstractByteRepresentationUnsized` is the version of this trait for unsized types.
 //!
 //! The `PrimitiveRepresentation`, `TransparentRepresentation`, and `ScalarRangeRepresentation` traits are used to help
 //! implement `AbstractByteRepresentation` for enums or structs with primitive, transparent, or scalar range representations.
-//! (See: https://doc.rust-lang.org/reference/type-layout.html for more about primitive and transparent representations.
-//! For scalar range representations, see the non-zero niche types for an example: https://doc.rust-lang.org/1.88.0/src/core/num/niche_types.rs.html.)
+//! (See: <https://doc.rust-lang.org/reference/type-layout.html> for more about primitive and transparent representations.
+//! For scalar range representations, see the non-zero niche types for an example: <https://doc.rust-lang.org/1.88.0/src/core/num/niche_types.rs.html>.)
 //!
 //! The `AbstractByteEncoding` trait is used to make intermediate or shared definitions about encodings to byte sequences.
 //! It is essentially the same as `AbstractByteRepresentation`, except that it does not include axioms tying the definitions to `abs_encode`, `abs_decode`, and `can_be_encoded`.
@@ -36,6 +36,7 @@ use super::prelude::*;
 use super::raw_ptr::*;
 use super::seq::*;
 use crate::vstd::group_vstd_default;
+use core::marker::{MetaSized, PhantomData, PointeeSized};
 
 verus! {
 
@@ -442,7 +443,7 @@ unsigned_int_encoding! {
 
 /// When x is negative, the bitwise result of this function is equivalent
 /// to the two's complement representation of x in the given base.
-/// https://en.wikipedia.org/wiki/Two%27s_complement#Subtraction_from_2N
+/// <https://en.wikipedia.org/wiki/Two%27s_complement#Subtraction_from_2N>
 pub open spec fn twos_complement(x: int, len: nat) -> nat {
     (pow(u8::base() as int, len) - abs(x)) as nat
 }
@@ -554,8 +555,11 @@ signed_int_encoding! {
 /// For example, all zero-sized types can use the same (trivial) encode and decode specifications.
 ///
 /// This trait can also be used to define an encoding on any `T: MyTrait` for some trait `MyTrait`.
-/// We cannot implement `AbstractByteRepresentation` generically for all `T: MyTrait` because Rust cannot know that `AbstractByteRepresentation` has not already been implemented for any given `T: MyTrait`.
-/// However, we can define a `AbstractByteEncoding` for such `T`, and then use it to implement the `AbstractByteRepresentation` for each concrete `T`. See `PrimitiveAbstractByteEncodingEncoding` for an example.
+/// We cannot implement `AbstractByteRepresentation` generically for all `T: MyTrait`
+/// because Rust cannot know that `AbstractByteRepresentation` has not already been implemented for any given `T: MyTrait`.
+/// However, we can define a `AbstractByteEncoding` for such `T`,
+/// and then use it to implement the `AbstractByteRepresentation` for each concrete `T`.
+/// See `PrimitiveAbstractByteEncodingEncoding` for an example.
 pub trait AbstractByteEncoding<T> {
     /// Is encoding allowed for this type?
     spec fn can_be_encoded() -> bool;
@@ -730,7 +734,7 @@ pub open spec fn encoding_exists<T>(value: T) -> bool {
 }
 
 /// Has a suitable encoding been implemented for the pointer metadata type `<T as core::ptr::Pointee>::Metadata`?
-pub open spec fn ptr_metadata_encoding_well_defined<T: ?Sized>() -> bool {
+pub open spec fn ptr_metadata_encoding_well_defined<T: PointeeSized>() -> bool {
     // the size of the metadata should correspond to the amount of bytes that it must occupy in the pointer's encoding
     // (the first usize bytes in the pointer's encoding are the address)
     &&& size_of::<<T as core::ptr::Pointee>::Metadata>() + size_of::<usize>() == size_of::<
@@ -829,11 +833,11 @@ pub broadcast proof fn ptr_metadata_encoding_well_defined_sized_types<T: Sized>(
 ///   this `AbstractByteEncoding` provides an implementation for the encodings of raw pointers to all sized types.
 /// - For `T: ?Sized`, if the encoding for `<T as core::ptr::Pointee>::Metadata` is not implemented as specified by `ptr_metadata_encoding_well_defined::<T>()`,
 ///   then this `AbstractByteEncoding` will not provide an implementation for the encodings of `*mut T` or `*const T`.
-pub struct RawPtrRepresentation<T: ?Sized> {
-    _t: T,
+pub struct RawPtrRepresentation<T: PointeeSized> {
+    _t: PhantomData<T>,
 }
 
-impl<T: ?Sized> AbstractByteEncoding<*mut T> for RawPtrRepresentation<T> {
+impl<T: PointeeSized> AbstractByteEncoding<*mut T> for RawPtrRepresentation<T> {
     open spec fn can_be_encoded() -> bool {
         ptr_metadata_encoding_well_defined::<T>()
     }
@@ -906,7 +910,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
     )+) => {$(
         verus! {
             /// The abstract encoding for `*$mutability T` is derived from `RawPtrRepresentation`.
-            impl<T: ?Sized> AbstractByteRepresentation for *$mutability T {
+            impl<T: PointeeSized> AbstractByteRepresentation for *$mutability T {
                 open spec fn can_be_encoded() -> bool {
                     RawPtrRepresentation::<T>::can_be_encoded()
                 }

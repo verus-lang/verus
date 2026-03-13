@@ -46,9 +46,9 @@ impl<A> Set<A> {
     /// assert(forall |x: A| !Set::<A>::empty().contains(x));
     /// ```
     /// Axioms around the empty set are: <br>
-    /// * [`axiom_set_empty_finite`](crate::set::axiom_set_empty_finite) <br>
-    /// * [`axiom_set_empty_len`](crate::set::axiom_set_empty_len) <br>
-    /// * [`axiom_set_empty`](crate::set::axiom_set_empty)
+    /// * [`axiom_set_empty_finite`]
+    /// * [`axiom_set_empty_len`] <br>
+    /// * [`axiom_set_empty`]
     #[rustc_diagnostic_item = "verus::vstd::set::Set::empty"]
     pub closed spec fn empty() -> Set<A> {
         Set { set: |a| false }

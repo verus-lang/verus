@@ -361,7 +361,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
     }
 }
 
-pub(crate) fn smt_update_statistics(context: &mut Context) -> Result<(), ValidityResult> {
+pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, ValidityResult> {
     assert!(matches!(context.solver, SmtSolver::Z3)); // the CVC5 output format for statistics is different
 
     context.smt_log.log_get_info("all-statistics");
@@ -395,9 +395,7 @@ pub(crate) fn smt_update_statistics(context: &mut Context) -> Result<(), Validit
             "expected rlimit-count in smt statistics"
         )));
     };
-    context.rlimit_count = Some(rlimit_count);
-
-    Ok(())
+    Ok(rlimit_count)
 }
 
 fn smt_get_model(
@@ -486,6 +484,16 @@ pub(crate) fn smt_check_query<'ctx>(
         context.push_name_scope();
     }
 
+    let rlimit_count_1 = if matches!(context.solver, SmtSolver::Z3) {
+        let rlimit_count = match smt_get_rlimit_count(context) {
+            Ok(rlimit_count) => rlimit_count,
+            Err(e) => return e,
+        };
+        Some(rlimit_count)
+    } else {
+        None
+    };
+
     // add query-local declarations
     for decl in query.local.iter() {
         if let Err(err) = crate::typecheck::add_decl(context, decl, false) {
@@ -516,8 +524,30 @@ pub(crate) fn smt_check_query<'ctx>(
     // check assertion
     let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, labeled_assertion));
     context.smt_log.log_assert(&None, &not_expr);
+
+    let rlimit_count_2 = if matches!(context.solver, SmtSolver::Z3) {
+        let rlimit_count = match smt_get_rlimit_count(context) {
+            Ok(rlimit_count) => rlimit_count,
+            Err(e) => return e,
+        };
+        Some(rlimit_count)
+    } else {
+        None
+    };
+
     let result =
         smt_check_assertion(context, diagnostics, infos, air_model, false, report_long_running);
+
+    if matches!(context.solver, SmtSolver::Z3) {
+        let (ctx_rlimit_init, ctx_rlimit_run) = context.rlimit_count.unwrap();
+        let rlimit_count_3 = match smt_get_rlimit_count(context) {
+            Ok(rlimit_count) => rlimit_count,
+            Err(e) => return e,
+        };
+        let rlimit_init = rlimit_count_2.unwrap() - rlimit_count_1.unwrap();
+        let rlimit_run = rlimit_count_3 - rlimit_count_2.unwrap();
+        context.rlimit_count = Some((ctx_rlimit_init + rlimit_init, ctx_rlimit_run + rlimit_run));
+    }
 
     result
 }

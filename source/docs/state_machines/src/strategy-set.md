@@ -65,11 +65,11 @@ In the following table, `e: E` and `s: Set<E>`.
       <td><code>remove field -= (s);</code></td>
       <td><code style="white-space: pre">require s.<a href="https://verus-lang.github.io/verus/verusdoc/vstd/set/struct.Set.html#method.subset_of">subset_of</a>(field);</code><br>
           <code>update field = field.<a href="https://verus-lang.github.io/verus/verusdoc/vstd/set/struct.Set.html#method.difference">difference</a>(s);</code></td>
-      <td>Input <code><a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.SetToken.html">SetToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</code></a></code></td>
+      <td>Input <code><a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.SetToken.html">SetToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</a></code></td>
     </tr> <tr>
       <td><code>have field &gt;= (s);</code></td>
       <td><code style="white-space: pre">require s.<a href="https://verus-lang.github.io/verus/verusdoc/vstd/set/struct.Set.html#method.subset_of">subset_of</a>(field);</code></td>
-      <td>Input <code>&amp;<a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.SetToken.html">SetToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</code></a></code></td>
+      <td>Input <code>&amp;<a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.SetToken.html">SetToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</a></code></td>
     </tr> <tr>
       <td><code>add field += (s);</code></td>
       <td><code style="white-space: pre">assert field.<a href="https://verus-lang.github.io/verus/verusdoc/vstd/set/struct.Set.html#method.disjoint">disjoint</a>(s);</code><br>

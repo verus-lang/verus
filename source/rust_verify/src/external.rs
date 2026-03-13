@@ -38,7 +38,7 @@ then it's nested items can be marked VerusAware, but if it's External, this this
 
 use crate::attributes::ExternalAttrs;
 use crate::automatic_derive::AutomaticDeriveAction;
-use crate::context::Context;
+use crate::context::ContextX;
 use crate::rust_to_vir_base::def_id_to_vir_path_option;
 use crate::rustc_hir::intravisit::*;
 use crate::verus_items::get_rust_item;
@@ -76,7 +76,12 @@ pub struct OpaqueDef {
 #[derive(Debug, Clone)]
 pub enum VerifOrExternal {
     /// Path is the *module path* containing this item
-    VerusAware { module_path: Path, const_directive: bool, external_body: bool },
+    VerusAware {
+        module_path: Path,
+        const_directive: bool,
+        external_body: bool,
+        external_fn_specification: bool,
+    },
     /// Path/String to refer to this item for diagnostics
     /// Path is an Option because there are some items we can't compute a Path for
     External { path: Option<Path>, path_string: String, explicit: bool },
@@ -129,8 +134,7 @@ impl CrateItems {
 ///     individual items can be treated as external individually.
 ///     Trait impls need to be "whole" so we forbid external_body on individual
 ///     ImplItems in a trait_impl.
-
-pub(crate) fn get_crate_items<'a, 'b, 'tcx>(ctxt: &'a Context<'tcx>) -> Result<CrateItems, VirErr> {
+pub(crate) fn get_crate_items<'tcx>(ctxt: &ContextX<'tcx>) -> Result<CrateItems, Vec<VirErr>> {
     let default_state = if ctxt.cmd_line_args.no_external_by_default {
         VerifState::Verify
     } else {
@@ -152,7 +156,7 @@ pub(crate) fn get_crate_items<'a, 'b, 'tcx>(ctxt: &'a Context<'tcx>) -> Result<C
     visitor.visit_mod(root_module, owner.span(), rustc_hir::CRATE_HIR_ID);
 
     if visitor.errors.len() > 0 {
-        return Err(visitor.errors[0].clone());
+        return Err(visitor.errors);
     }
 
     let mut map = HashMap::<OwnerId, VerifOrExternal>::new();
@@ -186,7 +190,7 @@ struct InsideImpl {
 
 struct VisitMod<'a, 'tcx> {
     items: Vec<CrateItem>,
-    ctxt: &'a Context<'tcx>,
+    ctxt: &'a ContextX<'tcx>,
     errors: Vec<VirErr>,
 
     state: VerifState,
@@ -335,6 +339,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                     module_path: module_path,
                     const_directive: eattrs.size_of_global || eattrs.item_broadcast_use,
                     external_body: my_eattrs.external_body,
+                    external_fn_specification: my_eattrs.external_fn_specification,
                 }
             } else {
                 self.errors.push(crate::util::err_span_bare(
@@ -436,7 +441,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                 if in_impl.is_trait {
                     self.errors.push(crate::util::err_span_bare(
                         span,
-                        "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.",
+                    "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.",
                     ));
                 } else {
                     if let Some(module_path) = self.module_path.clone() {
@@ -444,6 +449,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                             module_path,
                             const_directive: false,
                             external_body: false,
+                            external_fn_specification: false,
                         }
                     } else {
                         self.errors.push(crate::util::err_span_bare(
@@ -463,7 +469,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
 
 /// Emit warnings and errors from nonsense combinations.
 fn emit_errors_warnings_for_ignored_attrs<'tcx>(
-    ctxt: &Context<'tcx>,
+    ctxt: &ContextX<'tcx>,
     state: VerifState,
     eattrs: &ExternalAttrs,
     diagnostics: &mut Vec<VirErrAs>,
@@ -606,6 +612,7 @@ impl<'a> GeneralItem<'a> {
             GeneralItem::ForeignItem(_) => false,
             GeneralItem::ImplItem(i) => match i.kind {
                 ImplItemKind::Fn(..) => true,
+                ImplItemKind::Const(..) => true,
                 _ => false,
             },
             GeneralItem::TraitItem(i) => match i.kind {
@@ -625,14 +632,13 @@ impl<'a> GeneralItem<'a> {
 ///
 /// Different traits are handled on a case-by-case basis; see automatic_derive.rs
 fn get_attributes_for_automatic_derive<'tcx>(
-    ctxt: &Context<'tcx>,
+    ctxt: &ContextX<'tcx>,
     general_item: &GeneralItem<'tcx>,
     attrs: &[rustc_hir::Attribute],
     span: Span,
 ) -> Option<ExternalAttrs> {
     let warn_unknown = || {
-        let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
-        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+        ctxt.diagnostics.borrow_mut().push(VirErrAs::Warning(crate::util::err_span_bare(
             span,
             format!(
                 "Verus doesn't known how to handle this automatically derived item; ignoring it"
@@ -675,7 +681,7 @@ fn get_attributes_for_automatic_derive<'tcx>(
                         crate::attributes::AutoDerivesAttr::Regular => false,
                         crate::attributes::AutoDerivesAttr::AllExternal => true,
                         crate::attributes::AutoDerivesAttr::SomeExternal(names) => {
-                            let def_path = ctxt.tcx.def_path(of_trait.path.res.def_id());
+                            let def_path = ctxt.tcx.def_path(of_trait.trait_ref.path.res.def_id());
                             def_path
                                 .data
                                 .last()
@@ -699,7 +705,7 @@ fn get_attributes_for_automatic_derive<'tcx>(
                     }
 
                     if opts_in_to_verus(&type_eattrs) {
-                        let trait_def_id = impll.of_trait.unwrap().path.res.def_id();
+                        let trait_def_id = impll.of_trait.unwrap().trait_ref.path.res.def_id();
                         let rust_item = get_rust_item(ctxt.tcx, trait_def_id);
                         let action = crate::automatic_derive::get_action(rust_item);
                         match action {
