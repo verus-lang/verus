@@ -9,6 +9,7 @@ use quote::format_ident;
 use quote::{quote, quote_spanned};
 use syn::token::Comma;
 use verus_syn::BroadcastUse;
+use verus_syn::DefaultEnsures;
 use verus_syn::ExprBlock;
 use verus_syn::ExprForLoop;
 use verus_syn::Generics;
@@ -567,8 +568,7 @@ impl Visitor {
 
         let ensures = {
             let mut ensures = ensures;
-            if let Some(default_ensures) = default_ensures {
-                let verus_syn::DefaultEnsures { token, mut exprs } = default_ensures;
+            if let Some(DefaultEnsures { token, mut exprs }) = default_ensures {
                 for expr in exprs.exprs.iter_mut() {
                     let span = expr.span();
                     if let Some((ret_pat, _)) = &ret_pat {
