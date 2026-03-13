@@ -156,6 +156,7 @@ pub open spec fn spec_unwrap<T>(option: Option<T>) -> T
 }
 
 #[verifier::when_used_as_spec(spec_unwrap)]
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ Option::<T>::unwrap ](option: Option<T>) -> (t: T)
     requires
         option is Some,
