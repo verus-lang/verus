@@ -548,9 +548,11 @@ impl Visitor {
         fn wrap_with_ret_binding_pat(expr: &mut Expr, ret_pat: &Pat, final_ret_pat: &Option<Pat>) {
             if let Some(final_ret_pat) = final_ret_pat {
                 let expr_span = expr.span();
-                *expr = Expr::Verbatim(
-                    quote_spanned! {expr_span => {let #final_ret_pat = #ret_pat; #expr}},
-                )
+                let attrs = expr.replace_attrs(Vec::new());
+                let inner = take_expr(expr);
+                let wrapped: Expr =
+                    parse_quote_spanned!(expr_span => { let #final_ret_pat = #ret_pat; #inner });
+                *expr = wrap_expr_with_attrs(wrapped, attrs);
             }
         }
 
