@@ -481,13 +481,14 @@ fn erased_ghost_value_remove_type_if_possible<'tcx>(
         },
         ExprKind::Scope { region_scope, value, hir_id } => {
             let region_scope = *region_scope;
+            let hir_id = *hir_id;
             let value = *value;
             let value =
-                erased_ghost_value_remove_type_if_possible(cx, erasure_ctxt, value, *hir_id, span);
+                erased_ghost_value_remove_type_if_possible(cx, erasure_ctxt, value, hir_id, span);
             match value {
                 Some(v) => {
                     let mut expr = cx.thir.exprs[e].clone();
-                    expr.kind = ExprKind::Scope { region_scope, value: v, hir_id: *hir_id };
+                    expr.kind = ExprKind::Scope { region_scope, value: v, hir_id };
                     expr.ty = cx.thir.exprs[v].ty;
                     Some(cx.thir.exprs.push(expr))
                 }
