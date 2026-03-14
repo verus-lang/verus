@@ -3132,22 +3132,22 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
         if self.verifier.args.no_lifetime {
             config.override_queries = Some(|_session, providers| {
-                providers.hir_crate = hir_crate;
-                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-                providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
-                providers.check_mod_deathness = |_, _| {};
+                providers.queries.hir_crate = hir_crate;
+                providers.queries.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.queries.lint_mod = |_, _| {};
+                providers.queries.check_liveness = |_, _| DenseBitSet::new_empty(0);
+                providers.queries.check_mod_deathness = |_, _| {};
 
-                providers.mir_borrowck =
+                providers.queries.mir_borrowck =
                     |tcx, _local_def_id| Ok(tcx.arena.alloc(Default::default()));
             });
         } else {
             config.override_queries = Some(|_session, providers| {
-                providers.hir_crate = hir_crate;
-                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-                providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
-                providers.check_mod_deathness = |_, _| {};
+                providers.queries.hir_crate = hir_crate;
+                providers.queries.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.queries.lint_mod = |_, _| {};
+                providers.queries.check_liveness = |_, _| DenseBitSet::new_empty(0);
+                providers.queries.check_mod_deathness = |_, _| {};
 
                 rustc_mir_build_verus::verus_provide(providers);
 
@@ -3172,7 +3172,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         if matches!(node, rustc_hir::Node::OpaqueTy(_)) {
                             return Ok(());
                         }
-                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.check_well_formed)(tcx, def_id)
+                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.check_well_formed)(tcx, def_id)
                     };
             });
         }
