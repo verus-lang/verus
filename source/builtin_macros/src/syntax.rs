@@ -557,6 +557,8 @@ impl Visitor {
             }
         }
 
+        // Rewrite the `ensures` clauses to protect against edge cases e.g.
+        //     a name collision between the return-value and the function
         let ensures = ensures.map(|mut ensures| {
             if let Some((ret_pat, _)) = &ret_pat {
                 for expr in &mut ensures.exprs.exprs {
@@ -566,6 +568,8 @@ impl Visitor {
             ensures
         });
 
+        // Rewrite the `default_ensures` clauses to protect against edge cases e.g.
+        //     a name collision between the return-value and the function
         let ensures = {
             let mut ensures = ensures;
             if let Some(DefaultEnsures { token, mut exprs }) = default_ensures {
