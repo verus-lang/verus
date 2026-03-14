@@ -1797,6 +1797,7 @@ pub(crate) fn make_let<'tcx>(
             is_primary: true,
             is_shorthand: false,
         },
+        extra: None,
     });
 
     let remainder_scope = region::Scope {

@@ -888,6 +888,7 @@ fn make_tie_halves_components<'tcx>(
             is_primary: true,
             is_shorthand: false,
         },
+        extra: None,
     });
 
     let e1 = expr_id_from_kind(
@@ -932,6 +933,7 @@ fn make_shadow_decl<'tcx>(
             is_primary: true,
             is_shorthand: false,
         },
+        extra: None,
     });
 
     let initializer = erased_ghost_value(cx, erasure_ctxt, hir_id, binding.span, binding.ty);
@@ -970,6 +972,7 @@ fn make_shadow_let_expr<'tcx>(
             is_primary: true,
             is_shorthand: false,
         },
+        extra: None,
     });
 
     let initializer = erased_ghost_value(cx, erasure_ctxt, hir_id, binding.span, binding.ty);
