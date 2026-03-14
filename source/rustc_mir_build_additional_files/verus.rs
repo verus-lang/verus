@@ -10,7 +10,6 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::hir::place::{Place, Projection, ProjectionKind};
 use rustc_middle::middle::region;
 use rustc_middle::mir::FakeReadCause;
-use rustc_middle::thir;
 use rustc_middle::thir::{
     AdtExprBase, Arm, ArmId, Block, BlockId, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, Pat,
     PatKind, Stmt, StmtId, StmtKind,
@@ -915,7 +914,7 @@ fn erase_let_for_pattern_checking<'tcx>(
     let hir::StmtKind::Let(local) = stmt.kind else {
         unreachable!();
     };
-    let rustc_hir::LetStmt { super_: _, pat, ty, init, els, hir_id, span, source: _ } = local;
+    let rustc_hir::LetStmt { super_: _, pat, ty: _, init, els, hir_id, span, source: _ } = local;
     if els.is_some() {
         panic!("erase_let_for_pattern_checking: let-else statement not expected in erased code");
     }
