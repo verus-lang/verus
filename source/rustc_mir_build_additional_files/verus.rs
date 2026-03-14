@@ -661,9 +661,6 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
     match &mut p.kind {
         PatKind::Missing => {}
         PatKind::Wild => {}
-        PatKind::AscribeUserType { ascription: _, subpattern } => {
-            erase_pat_rec(emode, subpattern);
-        }
         PatKind::Binding {
             name: _,
             mode: _,

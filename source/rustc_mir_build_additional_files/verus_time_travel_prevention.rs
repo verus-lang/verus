@@ -595,9 +595,6 @@ fn pattern_bindings_rec<'tcx>(bindings: &mut Vec<Binding<'tcx>>, pat: &Pat<'tcx>
     match &pat.kind {
         PatKind::Missing => {}
         PatKind::Wild => {}
-        PatKind::AscribeUserType { ascription: _, subpattern } => {
-            pattern_bindings_rec(bindings, subpattern);
-        }
         PatKind::Binding { name, mode, var, ty, subpattern, is_primary: _, is_shorthand: _ } => {
             bindings.push(Binding {
                 name: *name,
@@ -673,9 +670,6 @@ fn make_half_pat_rec<'tcx>(pat: &mut Pat<'tcx>, half_kind: Half) {
     match &mut pat.kind {
         PatKind::Missing => {}
         PatKind::Wild => {}
-        PatKind::AscribeUserType { ascription: _, subpattern } => {
-            make_half_pat_rec(subpattern, half_kind);
-        }
         PatKind::Binding {
             name: _,
             mode,
@@ -766,7 +760,7 @@ fn stmt_update_pat<'tcx>(
     };
     let stmt = Stmt {
         kind: StmtKind::Let {
-            hir_id: *hir_id,
+            hir_id,
             remainder_scope,
             init_scope,
             pattern: new_pat,
