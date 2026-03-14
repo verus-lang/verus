@@ -17,7 +17,7 @@ use rustc_ast::UnsafeBinderCastKind;
 use rustc_data_structures::fx::FxIndexMap;
 use rustc_hir::def::{CtorOf, Res};
 use rustc_hir::def_id::LocalDefId;
-use rustc_hir::{self as hir, HirId, PatExpr, PatExprKind, PatKind};
+use rustc_hir::{self as hir, HirId, PatExpr, PatExprKind, PatKind, Expr};
 use rustc_lint::LateContext;
 use rustc_middle::hir::place::ProjectionKind;
 // Export these here so that Clippy can use them.
