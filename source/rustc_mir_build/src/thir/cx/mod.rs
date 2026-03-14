@@ -129,11 +129,24 @@ impl<'tcx> ThirBuildCx<'tcx> {
         }
     }
 
-    fn pattern_from_hir(&mut self, p: &'tcx hir::Pat<'tcx>) -> Box<Pat<'tcx>> {
+    fn pattern_from_hir(&mut self, pat: &'tcx hir::Pat<'tcx>) -> Box<Pat<'tcx>> {
+        self.pattern_from_hir_with_annotation(pat, None)
+    }
+
+    fn pattern_from_hir_with_annotation(
+        &mut self,
+        pat: &'tcx hir::Pat<'tcx>,
+        let_stmt_type: Option<&hir::Ty<'tcx>>,
+    ) -> Box<Pat<'tcx>> {
         crate::verus::erase_pat(
             self,
-            // TODO(1.94.0): do we need to pass the extra Ty argument to par_from_hir here?
-            pat_from_hir(self.tcx, self.typing_env, self.typeck_results, p, None),
+            crate::thir::pattern::pat_from_hir(
+                self.tcx,
+                self.typing_env,
+                self.typeck_results,
+                pat,
+                let_stmt_type,
+            )
         )
     }
 
