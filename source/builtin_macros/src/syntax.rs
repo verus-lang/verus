@@ -483,29 +483,6 @@ fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) 
     unwrap_ghost_tracked
 }
 
-fn merge_default_ensures(
-    ensures: Option<Ensures>,
-    default_ensures: Option<DefaultEnsures>,
-) -> Option<Ensures> {
-    let Some(default_ensures) = default_ensures else {
-        return ensures;
-    };
-    let DefaultEnsures { token, mut exprs } = default_ensures;
-    for expr in exprs.exprs.iter_mut() {
-        let span = expr.span();
-        *expr = parse_quote_spanned_builtin!(verus_builtin, span => #verus_builtin::default_ensures(#expr));
-    }
-    if let Some(mut ensures) = ensures {
-        for expr in exprs.exprs.into_iter() {
-            ensures.exprs.exprs.push(expr);
-        }
-        Some(ensures)
-    } else {
-        let token = Token![ensures](token.span());
-        Some(Ensures { attrs: vec![], token, exprs })
-    }
-}
-
 impl Visitor {
     fn take_ghost<T: Default>(&self, dest: &mut T) -> T {
         take_ghost(self.erase_ghost, dest)
@@ -569,7 +546,49 @@ impl Visitor {
 
         let (self_token_op, args) = inputs;
 
-        let ensures = merge_default_ensures(ensures, default_ensures);
+        fn wrap_with_ret_binding_pat(expr: &mut Expr, ret_pat: &Pat, final_ret_pat: &Option<Pat>) {
+            if let Some(final_ret_pat) = final_ret_pat {
+                let expr_span = expr.span();
+                let attrs = expr.replace_attrs(Vec::new());
+                let inner = take_expr(expr);
+                let wrapped: Expr =
+                    parse_quote_spanned!(expr_span => { let #final_ret_pat = #ret_pat; #inner });
+                *expr = wrap_expr_with_attrs(wrapped, attrs);
+            }
+        }
+
+        // Rewrite the `ensures` clauses to protect against edge cases e.g.
+        //     a name collision between the return-value and the function
+        let ensures = ensures.map(|mut ensures| {
+            if let Some((ret_pat, _)) = &ret_pat {
+                for expr in &mut ensures.exprs.exprs {
+                    wrap_with_ret_binding_pat(expr, ret_pat, &final_ret_pat);
+                }
+            }
+            ensures
+        });
+
+        // Rewrite the `default_ensures` clauses to protect against edge cases e.g.
+        //     a name collision between the return-value and the function
+        let ensures = {
+            let mut ensures = ensures;
+            if let Some(DefaultEnsures { token, mut exprs }) = default_ensures {
+                for expr in exprs.exprs.iter_mut() {
+                    let span = expr.span();
+                    if let Some((ret_pat, _)) = &ret_pat {
+                        wrap_with_ret_binding_pat(expr, ret_pat, &final_ret_pat);
+                    }
+                    *expr = parse_quote_spanned_builtin!(verus_builtin, span => #verus_builtin::default_ensures(#expr));
+                }
+                if let Some(ensures_inner) = ensures.as_mut() {
+                    ensures_inner.exprs.exprs.extend(exprs.exprs.into_iter());
+                } else {
+                    let token = Token![ensures](token.span());
+                    ensures = Some(Ensures { attrs: vec![], token, exprs });
+                }
+            }
+            ensures
+        };
 
         let mut spec_stmts = Vec::new();
         // TODO: wrap specs inside ghost blocks
@@ -655,14 +674,6 @@ impl Visitor {
                 };
                 if cont {
                     if let Some((p, ty)) = ret_pat {
-                        if let Some(final_ret_pat) = final_ret_pat {
-                            for expr in exprs.exprs.iter_mut() {
-                                let expr_span = expr.span();
-                                *expr = Expr::Verbatim(
-                                    quote_spanned! {expr_span => {let #final_ret_pat = #p; #expr}},
-                                )
-                            }
-                        }
                         if is_closure {
                             // closures cannot return impl xxx so it's safe to
                             spec_stmts.push(Stmt::Expr(
