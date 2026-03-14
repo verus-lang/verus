@@ -59,7 +59,7 @@ use rustc_middle::util::Providers;
 rustc_fluent_macro::fluent_messages! { "../messages.ftl" }
 
 pub fn verus_provide(providers: &mut Providers) {
-    providers.thir_body = thir::cx::thir_body;
+    providers.queries.thir_body = thir::cx::thir_body;
 }
 
 pub fn provide(providers: &mut Providers) {
