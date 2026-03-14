@@ -709,9 +709,6 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
             erase_pat_rec(emode, subpattern);
         }
         PatKind::Constant { value: _ } => {}
-        PatKind::ExpandedConstant { def_id: _, subpattern } => {
-            erase_pat_rec(emode, subpattern);
-        }
         PatKind::Range(_pat_range) => {}
         PatKind::Slice { prefix, slice, suffix } | PatKind::Array { prefix, slice, suffix } => {
             for p in prefix.iter_mut() {

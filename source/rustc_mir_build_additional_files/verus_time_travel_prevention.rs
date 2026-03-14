@@ -621,9 +621,6 @@ fn pattern_bindings_rec<'tcx>(bindings: &mut Vec<Binding<'tcx>>, pat: &Pat<'tcx>
             pattern_bindings_rec(bindings, subpattern);
         }
         PatKind::Constant { value: _ } => {}
-        PatKind::ExpandedConstant { def_id: _, subpattern } => {
-            pattern_bindings_rec(bindings, subpattern);
-        }
         PatKind::Range(_pat_range) => {}
         PatKind::Slice { prefix, slice, suffix } | PatKind::Array { prefix, slice, suffix } => {
             for p in prefix.iter() {
@@ -714,9 +711,6 @@ fn make_half_pat_rec<'tcx>(pat: &mut Pat<'tcx>, half_kind: Half) {
             make_half_pat_rec(subpattern, half_kind);
         }
         PatKind::Constant { value: _ } => {}
-        PatKind::ExpandedConstant { def_id: _, subpattern } => {
-            make_half_pat_rec(subpattern, half_kind);
-        }
         PatKind::Range(_pat_range) => {}
         PatKind::Slice { prefix, slice, suffix } | PatKind::Array { prefix, slice, suffix } => {
             for p in prefix.iter_mut() {
