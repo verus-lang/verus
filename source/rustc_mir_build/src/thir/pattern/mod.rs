@@ -39,7 +39,6 @@ struct PatCtxt<'tcx> {
     rust_2024_migration: Option<PatMigration<'tcx>>,
 }
 
-#[instrument(level = "debug", skip(tcx, typing_env, typeck_results), ret)]
 pub(super) fn pat_from_hir<'tcx>(
     tcx: TyCtxt<'tcx>,
     typing_env: ty::TypingEnv<'tcx>,

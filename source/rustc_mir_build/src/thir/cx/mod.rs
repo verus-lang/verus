@@ -128,7 +128,6 @@ impl<'tcx> ThirBuildCx<'tcx> {
         }
     }
 
-    #[instrument(level = "debug", skip(self))]
     fn pattern_from_hir(&mut self, p: &'tcx hir::Pat<'tcx>) -> Box<Pat<'tcx>> {
         crate::verus::erase_pat(
             self,

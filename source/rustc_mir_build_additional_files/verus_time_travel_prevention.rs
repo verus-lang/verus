@@ -169,7 +169,6 @@ use rustc_hir as hir;
 use rustc_hir::{BindingMode, ByRef, HirId, Mutability, Pinnedness};
 use rustc_middle::middle::region;
 use rustc_middle::mir::{BorrowKind, MutBorrowKind};
-use rustc_middle::thir::LintLevel;
 use rustc_middle::thir::{
     Arm, ArmId, Block, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, LogicalOp, Pat, PatKind,
     Stmt, StmtId, StmtKind,
@@ -544,7 +543,6 @@ fn arm_post<'tcx>(
         pattern: pat,
         guard: arm.guard,
         body: new_body,
-        lint_level: arm.lint_level,
         scope: arm.scope,
         span: arm.span,
     };
@@ -759,7 +757,6 @@ fn stmt_update_pat<'tcx>(
         pattern: _,
         initializer,
         else_block,
-        lint_level,
         span,
     } = cx.thir.stmts[stmt].kind
     else {
@@ -772,7 +769,6 @@ fn stmt_update_pat<'tcx>(
             pattern: new_pat,
             initializer,
             else_block,
-            lint_level,
             span,
         },
     };
@@ -817,7 +813,6 @@ fn make_half_decl<'tcx>(
             pattern: pat,
             initializer: Some(shadow_rhs),
             else_block,
-            lint_level: LintLevel::Explicit(hir_id),
             span: span,
         },
     };
@@ -859,7 +854,6 @@ fn make_tie_halves_decl<'tcx>(
             pattern: pat,
             initializer: Some(tied),
             else_block: None,
-            lint_level: LintLevel::Explicit(hir_id),
             span: binding.span,
         },
     };
@@ -950,7 +944,6 @@ fn make_shadow_decl<'tcx>(
             pattern: pat,
             initializer: Some(initializer),
             else_block: None,
-            lint_level: LintLevel::Explicit(hir_id),
             span: binding.span,
         },
     };
@@ -1071,7 +1064,7 @@ fn shadow_place_rec<'tcx>(
 ) -> Option<ExprId> {
     let expr = cx.thir.exprs[arg].clone();
     let shadow_kind = match &expr.kind {
-        ExprKind::Scope { region_scope: _, lint_level: _, value } => {
+        ExprKind::Scope { region_scope: _, value } => {
             return shadow_place_rec(cx, hir_id, span, *value);
         }
         ExprKind::Deref { arg } => {
@@ -1303,7 +1296,7 @@ fn get_two_phase_arg<'tcx>(
             }
             None => None,
         },
-        ExprKind::Scope { region_scope: _, lint_level: _, value } => {
+        ExprKind::Scope { region_scope: _, value } => {
             get_two_phase_arg(cx, hir_expr, *value)
         }
         _ => None,

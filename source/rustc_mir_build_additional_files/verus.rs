@@ -309,7 +309,6 @@ pub(crate) fn erase_tree<'tcx>(
         kind: ExprKind::Scope {
             region_scope: expr_scope,
             value: cx.thir.exprs.push(expr),
-            lint_level: rustc_middle::thir::LintLevel::Explicit(hir_expr.hir_id),
         },
     };
     cx.thir.exprs.push(expr)
@@ -478,16 +477,15 @@ fn erased_ghost_value_remove_type_if_possible<'tcx>(
             }
             _ => None,
         },
-        ExprKind::Scope { region_scope, lint_level, value } => {
+        ExprKind::Scope { region_scope, value } => {
             let region_scope = *region_scope;
-            let lint_level = *lint_level;
             let value = *value;
             let value =
                 erased_ghost_value_remove_type_if_possible(cx, erasure_ctxt, value, hir_id, span);
             match value {
                 Some(v) => {
                     let mut expr = cx.thir.exprs[e].clone();
-                    expr.kind = ExprKind::Scope { region_scope, lint_level, value: v };
+                    expr.kind = ExprKind::Scope { region_scope, value: v };
                     expr.ty = cx.thir.exprs[v].ty;
                     Some(cx.thir.exprs.push(expr))
                 }
@@ -509,7 +507,7 @@ pub(crate) fn is_erased<'tcx>(
             TyKind::FnDef(fn_def_id, _) => *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id,
             _ => false,
         },
-        ExprKind::Scope { region_scope: _, lint_level: _, value } => {
+        ExprKind::Scope { region_scope: _, value } => {
             is_erased(cx, erasure_ctxt, &cx.thir.exprs[*value].kind)
         }
         _ => false,
@@ -947,7 +945,6 @@ fn erase_let_for_pattern_checking<'tcx>(
             pattern,
             initializer: init,
             else_block: None,
-            lint_level: rustc_middle::thir::LintLevel::Explicit(local.hir_id),
             span: *span,
         },
     };
@@ -1004,7 +1001,6 @@ fn erase_arm_for_pattern_checking<'tcx>(
         pattern,
         guard,
         body,
-        lint_level: rustc_middle::thir::LintLevel::Explicit(arm.hir_id),
         scope: region::Scope { local_id: arm.hir_id.local_id, data: region::ScopeData::Node },
         span: arm.span,
     };
@@ -1814,7 +1810,6 @@ pub(crate) fn make_let<'tcx>(
             pattern,
             initializer: Some(e),
             else_block: None,
-            lint_level: thir::LintLevel::Explicit(let_stmt.hir_id),
             span: stmt.span,
         },
     };
