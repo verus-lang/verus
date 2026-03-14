@@ -479,15 +479,15 @@ fn erased_ghost_value_remove_type_if_possible<'tcx>(
             }
             _ => None,
         },
-        ExprKind::Scope { region_scope, value } => {
+        ExprKind::Scope { region_scope, value, hir_id } => {
             let region_scope = *region_scope;
             let value = *value;
             let value =
-                erased_ghost_value_remove_type_if_possible(cx, erasure_ctxt, value, hir_id, span);
+                erased_ghost_value_remove_type_if_possible(cx, erasure_ctxt, value, *hir_id, span);
             match value {
                 Some(v) => {
                     let mut expr = cx.thir.exprs[e].clone();
-                    expr.kind = ExprKind::Scope { region_scope, value: v };
+                    expr.kind = ExprKind::Scope { region_scope, value: v, hir_id: *hir_id };
                     expr.ty = cx.thir.exprs[v].ty;
                     Some(cx.thir.exprs.push(expr))
                 }
@@ -509,7 +509,7 @@ pub(crate) fn is_erased<'tcx>(
             TyKind::FnDef(fn_def_id, _) => *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id,
             _ => false,
         },
-        ExprKind::Scope { region_scope: _, value } => {
+        ExprKind::Scope { region_scope: _, value , hir_id: _ } => {
             is_erased(cx, erasure_ctxt, &cx.thir.exprs[*value].kind)
         }
         _ => false,
@@ -943,6 +943,7 @@ fn erase_let_for_pattern_checking<'tcx>(
     };
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id: root_hir_id,
             remainder_scope,
             init_scope: region::Scope { local_id: hir_id.local_id, data: region::ScopeData::Node },
             pattern,
@@ -1002,6 +1003,7 @@ fn erase_arm_for_pattern_checking<'tcx>(
     let body = erased_ghost_value(cx, erasure_ctxt, root_hir_id, arm.body.span, match_ty);
 
     let arm = Arm {
+        hir_id: root_hir_id,
         pattern,
         guard,
         body,
@@ -1806,6 +1808,7 @@ pub(crate) fn make_let<'tcx>(
     };
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id: let_stmt.hir_id,
             remainder_scope,
             init_scope: region::Scope {
                 local_id: stmt.hir_id.local_id,

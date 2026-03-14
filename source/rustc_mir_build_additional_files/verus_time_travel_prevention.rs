@@ -540,6 +540,7 @@ fn arm_post<'tcx>(
 
     let arm = &cx.thir.arms[arm_id];
     let new_arm = Arm {
+        hir_id: arm.hir_id,
         pattern: pat,
         guard: arm.guard,
         body: new_body,
@@ -758,12 +759,14 @@ fn stmt_update_pat<'tcx>(
         initializer,
         else_block,
         span,
+        hir_id,
     } = cx.thir.stmts[stmt].kind
     else {
         panic!("stmt_update_pat");
     };
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id: *hir_id,
             remainder_scope,
             init_scope,
             pattern: new_pat,
@@ -808,6 +811,7 @@ fn make_half_decl<'tcx>(
 
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id,
             remainder_scope,
             init_scope: region::Scope { local_id: hir_id.local_id, data: region::ScopeData::Node },
             pattern: pat,
@@ -849,6 +853,7 @@ fn make_tie_halves_decl<'tcx>(
 
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id,
             remainder_scope,
             init_scope: region::Scope { local_id: hir_id.local_id, data: region::ScopeData::Node },
             pattern: pat,
@@ -939,6 +944,7 @@ fn make_shadow_decl<'tcx>(
 
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id,
             remainder_scope,
             init_scope: region::Scope { local_id: hir_id.local_id, data: region::ScopeData::Node },
             pattern: pat,
@@ -1064,7 +1070,7 @@ fn shadow_place_rec<'tcx>(
 ) -> Option<ExprId> {
     let expr = cx.thir.exprs[arg].clone();
     let shadow_kind = match &expr.kind {
-        ExprKind::Scope { region_scope: _, value } => {
+        ExprKind::Scope { hir_id: _, region_scope: _, value } => {
             return shadow_place_rec(cx, hir_id, span, *value);
         }
         ExprKind::Deref { arg } => {
@@ -1296,7 +1302,7 @@ fn get_two_phase_arg<'tcx>(
             }
             None => None,
         },
-        ExprKind::Scope { region_scope: _, value } => {
+        ExprKind::Scope { hir_id: _, region_scope: _, value } => {
             get_two_phase_arg(cx, hir_expr, *value)
         }
         _ => None,
