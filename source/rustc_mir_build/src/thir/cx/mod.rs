@@ -12,7 +12,6 @@ use rustc_hir::{self as hir, HirId, find_attr};
 use rustc_middle::bug;
 use rustc_middle::thir::*;
 use rustc_middle::ty::{self, TyCtxt};
-use crate::thir::pattern::pat_from_hir;
 
 /// Query implementation for [`TyCtxt::thir_body`].
 pub(crate) fn thir_body(
@@ -129,7 +128,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         }
     }
 
-    fn pattern_from_hir(&mut self, pat: &'tcx hir::Pat<'tcx>) -> Box<Pat<'tcx>> {
+    pub(crate) fn pattern_from_hir(&mut self, pat: &'tcx hir::Pat<'tcx>) -> Box<Pat<'tcx>> {
         self.pattern_from_hir_with_annotation(pat, None)
     }
 

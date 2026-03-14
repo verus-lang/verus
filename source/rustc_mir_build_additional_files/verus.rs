@@ -1,6 +1,6 @@
 use crate::rustc_index::Idx;
 use crate::thir::cx::ThirBuildCx;
-use crate::thir::pattern::pat_from_hir;
+// use crate::thir::pattern::pat_from_hir;
 use hir::HirId;
 use itertools::Itertools;
 use rustc_hir as hir;
@@ -920,12 +920,8 @@ fn erase_let_for_pattern_checking<'tcx>(
         panic!("erase_let_for_pattern_checking: let-else statement not expected in erased code");
     }
 
-    let pattern = erase_pat_all_binders(pat_from_hir(
-        cx.tcx,
-        cx.typing_env,
-        cx.typeck_results,
+    let pattern = erase_pat_all_binders(cx.pattern_from_hir(
         pat,
-        *ty,
     ));
 
     let init_ty = cx.typeck_results.node_type(pat.hir_id);
@@ -983,12 +979,8 @@ fn erase_arm_for_pattern_checking<'tcx>(
     arm: &'tcx hir::Arm<'tcx>,
     match_ty: Ty<'tcx>,
 ) -> ArmId {
-    let pattern = erase_pat_all_binders(crate::thir::pattern::pat_from_hir(
-        cx.tcx,
-        cx.typing_env,
-        cx.typeck_results,
+    let pattern = erase_pat_all_binders(cx.pattern_from_hir(
         &arm.pat,
-        None,
     ));
     let guard = arm.guard.map(|guard| {
         let bool_ty = cx.tcx.mk_ty_from_kind(TyKind::Bool);
