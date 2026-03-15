@@ -292,3 +292,73 @@ test_verify_one_file! {
 
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] filter_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::group_iter_axioms;
+
+        broadcast use group_iter_axioms;
+
+        fn test()
+        {
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let w: Vec<u32> = v.into_iter().filter(|x: &u32| -> (b: bool)
+                ensures b == (*x > 2)
+            { *x > 2 }).collect();
+            assert(w@.len() <= 4);
+            assert(forall |k: int| 0 <= k < w@.len() ==> #[trigger] w@[k] > 2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] filter_specifics verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::group_iter_axioms;
+
+        broadcast use group_iter_axioms;
+
+        /// Establishes call_ensures for a boolean predicate on a specific value.
+        /// Sound because a verified predicate with satisfied preconditions is guaranteed
+        /// to produce a return value satisfying its postcondition.
+        proof fn lemma_pred_call_ensures<P: FnMut(&u32) -> bool>(p: P, a: u32) -> (b: bool)
+            requires call_requires(p, (&a,)),
+            ensures call_ensures(p, (&a,), b),
+        {
+            assume(false);
+            arbitrary()
+        }
+
+        // REVIEW: Is there an easier way to make this go through?
+        fn test()
+        {
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let ghost orig = v@;
+            let pred = |x: &u32| -> (b: bool)
+                ensures b == (*x > 2)
+            { *x > 2 };
+            let ghost ghost_pred = pred;
+
+            let w: Vec<u32> = v.into_iter().filter(pred).collect();
+            assert(w@.len() <= 4);
+            assert(forall |k: int| 0 <= k < w@.len() ==> #[trigger] w@[k] > 2);
+
+            // Establish call_ensures for the value of interest
+            proof {
+                let _ = lemma_pred_call_ensures(ghost_pred, 3u32);
+            }
+            assert(orig[2] == 3u32);
+            assert(w@.contains(3));
+
+            // For full equality, establish call_ensures for all elements and reveal filter
+            proof {
+                let _ = lemma_pred_call_ensures(ghost_pred, 1u32);
+                let _ = lemma_pred_call_ensures(ghost_pred, 2u32);
+                let _ = lemma_pred_call_ensures(ghost_pred, 4u32);
+                reveal_with_fuel(Seq::<_>::filter, 5);
+            }
+            assert(w@ == seq![3u32, 4]);
+        }
+    } => Ok(())
+}

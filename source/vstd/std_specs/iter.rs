@@ -5,7 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{FromIterator, Iterator, Rev};
+use core::iter::{Filter, FromIterator, Iterator, Rev};
 
 verus_! {
 
@@ -108,6 +108,17 @@ pub trait ExIterator {
         default_ensures
             r == into_rev_spec(self),
             rev_post(self, r),
+    ;
+
+    fn filter<P>(self, pred: P) -> (r: Filter<Self, P>)
+        where Self: Sized, P: FnMut(&Self::Item) -> bool,
+        requires
+            self.obeys_prophetic_iter_laws(),
+            forall |k: int| #![auto] 0 <= k < self.remaining().len() ==> call_requires(pred, (&self.remaining()[k],)),
+            self.initial_value_inv(&self),
+        default_ensures
+            r == into_filter_spec(self, pred),
+            filter_post(self, pred, r),
     ;
 
     fn collect<B>(self) -> (collection: B)
@@ -266,6 +277,79 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
 
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         rev_iter(*self).peek(index)
+    }
+}
+
+/********************************************************************************
+ * Definitions for `filter()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExFilter<I, P>(Filter<I, P>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn filter_iter<I, P>(f: Filter<I, P>) -> I;
+
+// Ghost accessor for the predicate
+pub uninterp spec fn filter_pred<I, P>(f: Filter<I, P>) -> P;
+
+// Spec version of Iterator::filter
+pub uninterp spec fn into_filter_spec<I, P>(i: I, p: P) -> Filter<I, P>;
+
+// Indirection for postcondition (avoids potential resolution issues at trait definition site)
+pub uninterp spec fn filter_post<I, P>(i: I, p: P, r: Filter<I, P>) -> bool;
+
+pub broadcast axiom fn filter_postcondition<I: IteratorSpec, P: FnMut(&<I as Iterator>::Item) -> bool>(i: I, p: P)
+    requires
+        filter_post(i, p, into_filter_spec(i, p)),
+    ensures
+        ({
+            let r = #[trigger] into_filter_spec(i, p);
+            &&& IteratorSpec::remaining(&r) == i.remaining().filter(
+                    |item: <I as Iterator>::Item| call_ensures(p, (&item,), true)
+                )
+            &&& IteratorSpec::remaining(&r).len() <= i.remaining().len()
+            &&& forall |k: int| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==>
+                    call_ensures(p, (&IteratorSpec::remaining(&r)[k],), true)
+            &&& IteratorSpec::completes(&r) ==> i.completes()
+            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
+            &&& IteratorSpec::initial_value_inv(&r, &r)
+        }),
+;
+
+impl<I, P> IteratorSpecImpl for Filter<I, P>
+    where I: Iterator + IteratorSpec, P: FnMut(&I::Item) -> bool
+{
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        filter_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    closed spec fn remaining(&self) -> Seq<Self::Item> {
+        filter_iter(*self).remaining().filter(
+            |item: I::Item| call_ensures(filter_pred::<I, P>(*self), (&item,), true)
+        )
+    }
+
+    #[verifier::prophetic]
+    closed spec fn completes(&self) -> bool {
+        filter_iter(*self).completes()
+    }
+
+    #[verifier::prophetic]
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& filter_iter(*self).initial_value_inv(&filter_iter(*init))
+    }
+
+    closed spec fn decrease(&self) -> Option<nat> {
+        filter_iter(*self).decrease()
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        None
     }
 }
 
@@ -529,6 +613,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 // REVIEW: Can we automatically pull these in?
 pub broadcast group group_iter_axioms {
     rev_postcondition,
+    filter_postcondition,
     axiom_from_iterator_ensures,
 }
 
