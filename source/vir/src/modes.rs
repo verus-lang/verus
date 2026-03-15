@@ -2941,8 +2941,12 @@ fn check_expr_handle_mut_arg(
                     }
                     Ghost::Ghost
                 }
-                (_, false, false) => {
-                    return Err(error(&expr.span, "already in proof mode"));
+                (Ghost::Ghost, false, false) => {
+                    // Already in proof/spec mode - proof block is redundant but allowed
+                    if !is_unit(&e1.typ) {
+                        return Err(error(&expr.span, "proof block must have type ()"));
+                    }
+                    Ghost::Ghost
                 }
                 (Ghost::Exec, false, true) => {
                     return Err(error(
