@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use super::iter::IteratorSpec;
+use super::iter::{IteratorSpec, FromIteratorSpecImpl};
 use verus_builtin::*;
 
 use alloc::collections::TryReserveError;
@@ -455,6 +455,16 @@ pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::Int
         IteratorSpec::decrease(&iter) is Some,
         IteratorSpec::initial_value_inv(&iter, &iter),
 ;
+
+impl<T>  FromIteratorSpecImpl<T> for Vec<T> {
+    open spec fn obeys_from_iterator_spec() -> bool {
+        true
+    }
+
+    open spec fn from_iter_ensures<I: Iterator + IteratorSpec>(iter: I, s: Self) -> bool {
+        iter.remaining() == s@
+    }
+}
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
     requires
