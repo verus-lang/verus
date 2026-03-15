@@ -600,7 +600,7 @@ impl<'a, Key, Value> View for MapIterGhostIterator<'a, Key, Value> {
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_iter)]` to the specification for
 // the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>) -> (r:
+pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S, A: Allocator>(m: &'a HashMap<Key, Value, S, A>) -> (r:
     hash_map::Iter<'a, Key, Value>);
 
 pub broadcast proof fn axiom_spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
@@ -1175,11 +1175,12 @@ impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
 #[verifier::reject_recursive_types(S)]
-pub struct ExHashSet<Key, S>(HashSet<Key, S>);
+#[verifier::reject_recursive_types(A)]
+pub struct ExHashSet<Key, S, A: Allocator>(HashSet<Key, S, A>);
 
-pub uninterp spec fn spec_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> usize;
+pub uninterp spec fn spec_hash_set_len<Key, S, A: Allocator>(m: &HashSet<Key, S, A>) -> usize;
 
-pub broadcast proof fn axiom_spec_hash_set_len<Key, S>(m: &HashSet<Key, S>)
+pub broadcast proof fn axiom_spec_hash_set_len<Key, S, A: Allocator>(m: &HashSet<Key, S, A>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> #[trigger] spec_hash_set_len(m)
             == m@.len(),
@@ -1188,12 +1189,12 @@ pub broadcast proof fn axiom_spec_hash_set_len<Key, S>(m: &HashSet<Key, S>)
 }
 
 #[verifier::when_used_as_spec(spec_hash_set_len)]
-pub assume_specification<Key, S>[ HashSet::<Key, S>::len ](m: &HashSet<Key, S>) -> (len: usize)
+pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::len ](m: &HashSet<Key, S, A>) -> (len: usize)
     ensures
         len == spec_hash_set_len(m),
 ;
 
-pub assume_specification<Key, S>[ HashSet::<Key, S>::is_empty ](m: &HashSet<Key, S>) -> (res: bool)
+pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::is_empty ](m: &HashSet<Key, S, A>) -> (res: bool)
     ensures
         res == m@.is_empty(),
 ;
@@ -1219,16 +1220,16 @@ pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) 
         m@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<Key: Eq + Hash, S: BuildHasher>[ HashSet::<Key, S>::reserve ](
-    m: &mut HashSet<Key, S>,
+pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<Key, S, A>::reserve ](
+    m: &mut HashSet<Key, S, A>,
     additional: usize,
 )
     ensures
         m@ == old(m)@,
 ;
 
-pub assume_specification<Key: Eq + Hash, S: BuildHasher>[ HashSet::<Key, S>::insert ](
-    m: &mut HashSet<Key, S>,
+pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<Key, S, A>::insert ](
+    m: &mut HashSet<Key, S, A>,
     k: Key,
 ) -> (result: bool)
     ensures
@@ -1271,8 +1272,9 @@ pub broadcast proof fn axiom_set_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
 pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
     S: BuildHasher,
+    A: Allocator,
     Q: Hash + Eq + ?Sized,
->[ HashSet::<Key, S>::contains ](m: &HashSet<Key, S>, k: &Q) -> (result: bool)
+>[ HashSet::<Key, S, A>::contains ](m: &HashSet<Key, S, A>, k: &Q) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result
             == set_contains_borrowed_key(m@, k),
@@ -1316,8 +1318,9 @@ pub assume_specification<
     'a,
     Key: Borrow<Q> + Hash + Eq,
     S: BuildHasher,
+    A: Allocator,
     Q: Hash + Eq + ?Sized,
->[ HashSet::<Key, S>::get::<Q> ](m: &'a HashSet<Key, S>, k: &Q) -> (result: Option<&'a Key>)
+>[ HashSet::<Key, S, A>::get::<Q> ](m: &'a HashSet<Key, S, A>, k: &Q) -> (result: Option<&'a Key>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
             Some(v) => sets_borrowed_key_to_key(m@, k, v),
@@ -1365,8 +1368,9 @@ pub broadcast proof fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: S
 pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
     S: BuildHasher,
+    A: Allocator,
     Q: Hash + Eq + ?Sized,
->[ HashSet::<Key, S>::remove::<Q> ](m: &mut HashSet<Key, S>, k: &Q) -> (result: bool)
+>[ HashSet::<Key, S, A>::remove::<Q> ](m: &mut HashSet<Key, S, A>, k: &Q) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& sets_differ_by_borrowed_key(old(m)@, m@, k)
@@ -1374,12 +1378,12 @@ pub assume_specification<
         },
 ;
 
-pub assume_specification<Key, S>[ HashSet::<Key, S>::clear ](m: &mut HashSet<Key, S>)
+pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::clear ](m: &mut HashSet<Key, S, A>)
     ensures
         m@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<Key, S>) -> (r:
+pub assume_specification<'a, Key, S, A: Allocator>[ HashSet::<Key, S, A>::iter ](m: &'a HashSet<Key, S, A>) -> (r:
     hash_set::Iter<'a, Key>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
@@ -1390,7 +1394,7 @@ pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<K
         },
 ;
 
-pub broadcast proof fn axiom_hashset_decreases<Key, S>(m: HashSet<Key, S>)
+pub broadcast proof fn axiom_hashset_decreases<Key, S, A: Allocator>(m: HashSet<Key, S, A>)
     ensures
         #[trigger] (decreases_to!(m => m@)),
 {

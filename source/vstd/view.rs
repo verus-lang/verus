@@ -134,14 +134,14 @@ impl<T: DeepView> DeepView for alloc::vec::Vec<T> {
     }
 }
 
-#[cfg(all(feature = "alloc"))]
+#[cfg(all(feature = "std", feature = "alloc"))]
 impl<Key, Value, S, A: core::alloc::Allocator> View for std::collections::HashMap<Key, Value, S, A> {
     type V = Map<Key, Value>;
 
     uninterp spec fn view(&self) -> Map<Key, Value>;
 }
 
-#[cfg(all(feature = "alloc"))]
+#[cfg(all(feature = "std", feature = "alloc"))]
 impl<Key: DeepView, Value: DeepView, S, A: core::alloc::Allocator> DeepView for std::collections::HashMap<Key, Value, S, A> {
     type V = Map<Key::V, Value::V>;
 
@@ -150,15 +150,15 @@ impl<Key: DeepView, Value: DeepView, S, A: core::alloc::Allocator> DeepView for 
     }
 }
 
-#[cfg(all(feature = "std"))]
-impl<Key, S> View for std::collections::HashSet<Key, S> {
+#[cfg(all(feature = "std", feature = "alloc"))]
+impl<Key, S, A: core::alloc::Allocator> View for std::collections::HashSet<Key, S, A> {
     type V = Set<Key>;
 
     uninterp spec fn view(&self) -> Set<Key>;
 }
 
-#[cfg(all(feature = "std"))]
-impl<Key: DeepView, S> DeepView for std::collections::HashSet<Key, S> {
+#[cfg(all(feature = "std", feature = "alloc"))]
+impl<Key: DeepView, S, A: core::alloc::Allocator> DeepView for std::collections::HashSet<Key, S, A> {
     type V = Set<Key::V>;
 
     open spec fn deep_view(&self) -> Set<Key::V> {
