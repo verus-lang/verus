@@ -5,7 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{Iterator, Rev};
+use core::iter::{FromIterator, Iterator, Rev};
 
 verus_! {
 
@@ -151,6 +151,22 @@ pub trait ExDoubleEndedIterator : Iterator {
     // If we can make a useful guess as to what the i-th value from the back will be, return it.
     // Otherwise, return None.
     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
+}
+
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(FromIteratorSpec via FromIteratorSpecImpl)]
+pub trait ExFromIterator<A>: Sized {
+    type ExternalTraitSpecificationFor: FromIterator<A>;
+
+    spec fn obeys_from_iterator_spec() -> bool;
+
+    spec fn from_iter_ensures<T>(iter: T, s: Self) -> bool;
+
+    fn from_iter<T>(iter: T) -> (s: Self)
+       where T: IntoIterator<Item = A>
+        ensures
+            Self::obeys_from_iterator_spec() ==> Self::from_iter_ensures(iter, s),
+    ;
 }
 
 /********************************************************************************
