@@ -10,12 +10,6 @@ use core::iter::{FromIterator, Iterator, Rev};
 verus_! {
 
 #[verifier::external_trait_specification]
-pub trait ExIntoIterator {
-    type ExternalTraitSpecificationFor: core::iter::IntoIterator;
-}
-
-
-#[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IteratorSpec via IteratorSpecImpl)]
 pub trait ExIterator {
     type ExternalTraitSpecificationFor: Iterator;
@@ -163,10 +157,24 @@ pub trait ExDoubleEndedIterator : Iterator {
     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
 }
 
+/********************************************************************************
+ * Definitions for `IntoIterator` and `FromIterator``
+ ********************************************************************************/
+#[verifier::external_trait_specification]
+pub trait ExIntoIterator {
+    type ExternalTraitSpecificationFor: core::iter::IntoIterator;
+}
 // Uninterpreted function representing the sequence of elements that will be
 // produced by the iterator obtained from an IntoIterator value.
 // This avoids requiring IteratorSpec bounds in from_iter's ensures clause.
 pub uninterp spec fn into_iter_remaining<A, T>(iter: T) -> Seq<A>;
+
+// Connects into_iter_remaining to remaining() for types implementing Iterator + IteratorSpec.
+// This allows callers of from_iter to relate the result to the iterator's remaining elements.
+pub broadcast axiom fn axiom_from_iterator_ensures<A, I: Iterator<Item = A> + IteratorSpec>(iter: I)
+    ensures
+        #[trigger] into_iter_remaining::<A, I>(iter) == iter.remaining(),
+;
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(FromIteratorSpec via FromIteratorSpecImpl)]
@@ -183,13 +191,6 @@ pub trait ExFromIterator<A>: Sized {
             Self::obeys_from_iterator_spec() ==> Self::from_iter_ensures(into_iter_remaining(iter), s),
     ;
 }
-
-// Connects into_iter_remaining to remaining() for types implementing Iterator + IteratorSpec.
-// This allows callers of from_iter to relate the result to the iterator's remaining elements.
-pub broadcast axiom fn axiom_from_iterator_ensures<A, I: Iterator<Item = A> + IteratorSpec>(iter: I)
-    ensures
-        #[trigger] into_iter_remaining::<A, I>(iter) == iter.remaining(),
-;
 
 /********************************************************************************
  * Definitions for `rev()`

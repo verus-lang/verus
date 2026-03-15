@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use super::iter::{IteratorSpec, FromIteratorSpecImpl};
+use super::iter::{FromIteratorSpecImpl, IteratorSpec};
 use verus_builtin::*;
 
 use alloc::collections::TryReserveError;
