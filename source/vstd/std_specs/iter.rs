@@ -5,7 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{Filter, FromIterator, Iterator, Rev};
+use core::iter::{Filter, FromIterator, Iterator, Rev, Zip};
 
 verus_! {
 
@@ -350,6 +350,98 @@ impl<I, P> IteratorSpecImpl for Filter<I, P>
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         None
+    }
+}
+
+/********************************************************************************
+ * Definitions for `zip()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(A)]
+#[verifier::reject_recursive_types(B)]
+pub struct ExZip<A, B>(Zip<A, B>);
+
+// Ghost accessor for the first inner iterator
+pub uninterp spec fn zip_iter_fst<A, B>(z: Zip<A, B>) -> A;
+
+// Ghost accessor for the second inner iterator
+pub uninterp spec fn zip_iter_snd<A, B>(z: Zip<A, B>) -> B;
+
+/// Helper spec function to compute the remaining elements of a zipped iterator.
+/// Truncates both sequences to the minimum length, then zips them.
+pub open spec fn zip_truncate<A, B>(a: Seq<A>, b: Seq<B>) -> Seq<(A, B)> {
+    if a.len() == b.len() {
+        // Simplify the triggers involved in the common case
+        a.zip_with(b)
+    } else if a.len() < b.len() {
+        a.zip_with(b.take(a.len() as int))
+    } else {
+        a.take(b.len() as int).zip_with(b)
+    }
+}
+
+/// Wrapper for `Iterator::zip` that establishes verifiable postconditions.
+/// Use this instead of `.zip()` when you need to reason about the zipped iterator.
+/// Note: `.zip()` itself cannot be given specs due to a Verus limitation with
+/// `IntoIterator::IntoIter` type projections (similar to issue 2236 for `map`).
+#[verifier::external_body]
+pub fn zip_iterators<A: Iterator, B: Iterator>(a: A, b: B) -> (r: Zip<A, B>)
+    requires
+        a.obeys_prophetic_iter_laws(),
+        a.initial_value_inv(&a),
+        b.obeys_prophetic_iter_laws(),
+        b.initial_value_inv(&b),
+    ensures
+        zip_iter_fst(r) == a,
+        zip_iter_snd(r) == b,
+        IteratorSpec::remaining(&r) == zip_truncate(a.remaining(), b.remaining()),
+        IteratorSpec::completes(&r) ==> a.completes() && b.completes(),
+        IteratorSpec::decrease(&r) is Some == (a.decrease() is Some || b.decrease() is Some),
+        IteratorSpec::initial_value_inv(&r, &r),
+{
+    a.zip(b)
+}
+
+impl<A, B> IteratorSpecImpl for Zip<A, B>
+    where A: Iterator + IteratorSpec, B: Iterator + IteratorSpec
+{
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        &&& zip_iter_fst(*self).obeys_prophetic_iter_laws()
+        &&& zip_iter_snd(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    closed spec fn remaining(&self) -> Seq<Self::Item> {
+        zip_truncate(zip_iter_fst(*self).remaining(), zip_iter_snd(*self).remaining())
+    }
+
+    #[verifier::prophetic]
+    closed spec fn completes(&self) -> bool {
+        zip_iter_fst(*self).completes() && zip_iter_snd(*self).completes()
+    }
+
+    #[verifier::prophetic]
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& zip_iter_fst(*self).initial_value_inv(&zip_iter_fst(*init))
+        &&& zip_iter_snd(*self).initial_value_inv(&zip_iter_snd(*init))
+    }
+
+    closed spec fn decrease(&self) -> Option<nat> {
+        match (zip_iter_fst(*self).decrease(), zip_iter_snd(*self).decrease()) {
+            (Some(a), Some(b)) => if a <= b { Some(a) } else { Some(b) },
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        match (zip_iter_fst(*self).peek(index), zip_iter_snd(*self).peek(index)) {
+            (Some(a), Some(b)) => Some((a, b)),
+            _ => None,
+        }
     }
 }
 

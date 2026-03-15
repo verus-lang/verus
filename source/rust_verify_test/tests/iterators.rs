@@ -362,3 +362,38 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] zip_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        broadcast use group_iter_axioms;
+
+        fn test()
+        {
+            let v1: Vec<u32> = vec![1, 2, 3];
+            let v2: Vec<u64> = vec![10, 20, 30];
+            let z: Vec<(u32, u64)> = zip_iterators(v1.into_iter(), v2.into_iter()).collect();
+            assert(z@ == seq![(1u32, 10u64), (2u32, 20u64), (3u32, 30u64)]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] zip_truncates verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        broadcast use group_iter_axioms;
+
+        fn test()
+        {
+            let v1: Vec<u32> = vec![1, 2, 3, 4];
+            let v2: Vec<u64> = vec![10, 20];
+            let z: Vec<(u32, u64)> = zip_iterators(v1.into_iter(), v2.into_iter()).collect();
+            assert(z@.len() == 2);
+            assert(z@ == seq![(1u32, 10u64), (2u32, 20u64)]);
+        }
+    } => Ok(())
+}
