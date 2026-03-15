@@ -163,6 +163,11 @@ pub trait ExDoubleEndedIterator : Iterator {
     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
 }
 
+// Uninterpreted function representing the sequence of elements that will be
+// produced by the iterator obtained from an IntoIterator value.
+// This avoids requiring IteratorSpec bounds in from_iter's ensures clause.
+pub uninterp spec fn into_iter_remaining<A, T>(iter: T) -> Seq<A>;
+
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(FromIteratorSpec via FromIteratorSpecImpl)]
 pub trait ExFromIterator<A>: Sized {
@@ -174,15 +179,17 @@ pub trait ExFromIterator<A>: Sized {
 
     fn from_iter<T>(iter: T) -> (s: Self)
        where T: IntoIterator<Item = A>
+        ensures
+            Self::obeys_from_iterator_spec() ==> Self::from_iter_ensures(into_iter_remaining(iter), s),
     ;
 }
 
-// pub axiom fn axiom_from_iterator_ensures<T, A>(iter: T)
-//     where T: IntoIterator<Item = A>, T::IntoIter: IteratorSpec,
-//     ensures
-//         FromIterator<A>::obeys_from_iterator_spec() ==>
-//             FromIterator<A>::from_iter_ensures(iter.remaining(), FromIterator<A>::from_iter(iter)),
-// ;
+// Connects into_iter_remaining to remaining() for types implementing Iterator + IteratorSpec.
+// This allows callers of from_iter to relate the result to the iterator's remaining elements.
+pub broadcast axiom fn axiom_from_iterator_ensures<A, I: Iterator<Item = A> + IteratorSpec>(iter: I)
+    ensures
+        #[trigger] into_iter_remaining::<A, I>(iter) == iter.remaining(),
+;
 
 /********************************************************************************
  * Definitions for `rev()`
@@ -521,6 +528,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 // REVIEW: Can we automatically pull these in?
 pub broadcast group group_iter_axioms {
     rev_postcondition,
+    axiom_from_iterator_ensures,
 }
 
 } // verus!

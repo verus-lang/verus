@@ -106,16 +106,6 @@ pub struct ExOption<V>(core::option::Option<V>);
 #[verifier::reject_recursive_types_in_ground_variants(E)]
 pub struct ExResult<T, E>(core::result::Result<T, E>);
 
-pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
-    i
-}
-
-#[verifier::when_used_as_spec(iter_into_iter_spec)]
-pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) -> (r: I)
-    ensures
-        r == i,
-;
-
 // I don't really expect this to be particularly useful;
 // this is mostly here because I wanted an easy way to test
 // the combination of external_type_specification & external_body
