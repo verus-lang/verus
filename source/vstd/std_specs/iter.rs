@@ -116,6 +116,16 @@ pub trait ExIterator {
             rev_post(self, r),
     ;
 
+    fn collect<B>(self) -> (collection: B)
+        where
+            B: FromIterator<Self::Item>,
+            Self: Sized,
+        requires
+            self.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
+            B::obeys_from_iterator_spec(),
+        default_ensures
+            FromIteratorSpec::from_iter_ensures(self, collection),
+    ;
 }
 
 #[verifier::external_trait_specification]
