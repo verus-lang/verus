@@ -93,7 +93,10 @@ impl SpanContextX {
             match *source_file.external_src.borrow() {
                 ExternalSource::Unneeded => {
                     let filename = match &source_file.name {
-                        FileName::Real(real_file_name) => real_file_name.local_path().map(|path| path.canonicalize().ok()).flatten(),
+                        FileName::Real(real_file_name) => real_file_name
+                            .local_path()
+                            .map(|path| path.canonicalize().ok())
+                            .flatten(),
                         _ => None,
                     };
                     let pos = FileStartEndPos {

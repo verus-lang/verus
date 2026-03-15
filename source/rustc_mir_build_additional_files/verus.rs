@@ -509,7 +509,7 @@ pub(crate) fn is_erased<'tcx>(
             TyKind::FnDef(fn_def_id, _) => *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id,
             _ => false,
         },
-        ExprKind::Scope { region_scope: _, value , hir_id: _ } => {
+        ExprKind::Scope { region_scope: _, value, hir_id: _ } => {
             is_erased(cx, erasure_ctxt, &cx.thir.exprs[*value].kind)
         }
         _ => false,
@@ -919,9 +919,7 @@ fn erase_let_for_pattern_checking<'tcx>(
         panic!("erase_let_for_pattern_checking: let-else statement not expected in erased code");
     }
 
-    let pattern = erase_pat_all_binders(cx.pattern_from_hir(
-        pat,
-    ));
+    let pattern = erase_pat_all_binders(cx.pattern_from_hir(pat));
 
     let init_ty = cx.typeck_results.node_type(pat.hir_id);
     let init =
@@ -978,9 +976,7 @@ fn erase_arm_for_pattern_checking<'tcx>(
     arm: &'tcx hir::Arm<'tcx>,
     match_ty: Ty<'tcx>,
 ) -> ArmId {
-    let pattern = erase_pat_all_binders(cx.pattern_from_hir(
-        &arm.pat,
-    ));
+    let pattern = erase_pat_all_binders(cx.pattern_from_hir(&arm.pat));
     let guard = arm.guard.map(|guard| {
         let bool_ty = cx.tcx.mk_ty_from_kind(TyKind::Bool);
         erased_ghost_value(cx, erasure_ctxt, root_hir_id, guard.span, bool_ty)

@@ -600,8 +600,9 @@ impl<'a, Key, Value> View for MapIterGhostIterator<'a, Key, Value> {
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_iter)]` to the specification for
 // the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S, A: Allocator>(m: &'a HashMap<Key, Value, S, A>) -> (r:
-    hash_map::Iter<'a, Key, Value>);
+pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S, A: Allocator>(
+    m: &'a HashMap<Key, Value, S, A>,
+) -> (r: hash_map::Iter<'a, Key, Value>);
 
 pub broadcast proof fn axiom_spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
     ensures
@@ -653,7 +654,12 @@ pub trait HashMapAdditionalSpecFns<Key, Value>: View<V = Map<Key, Value>> {
     ;
 }
 
-impl<Key, Value, S, A: Allocator> HashMapAdditionalSpecFns<Key, Value> for HashMap<Key, Value, S, A> {
+impl<Key, Value, S, A: Allocator> HashMapAdditionalSpecFns<Key, Value> for HashMap<
+    Key,
+    Value,
+    S,
+    A,
+> {
     #[verifier::inline]
     open spec fn spec_index(&self, k: Key) -> Value {
         self@.index(k)
@@ -666,9 +672,12 @@ impl<Key, Value, S, A: Allocator> HashMapAdditionalSpecFns<Key, Value> for HashM
 /// method is not supported. In most cases, it's easier to use one of the lemmas below instead
 /// of revealing this function directly.
 #[verifier::opaque]
-pub open spec fn hash_map_deep_view_impl<Key: DeepView, Value: DeepView, S, A: core::alloc::Allocator>(
-    m: HashMap<Key, Value, S, A>,
-) -> Map<Key::V, Value::V> {
+pub open spec fn hash_map_deep_view_impl<
+    Key: DeepView,
+    Value: DeepView,
+    S,
+    A: core::alloc::Allocator,
+>(m: HashMap<Key, Value, S, A>) -> Map<Key::V, Value::V> {
     Map::new(
         |k: Key::V|
             exists|orig_k: Key| #[trigger] m@.contains_key(orig_k) && k == orig_k.deep_view(),
@@ -769,9 +778,13 @@ pub broadcast proof fn axiom_hashmap_view_finite_dom<K, V>(m: HashMap<K, V>)
     admit();
 }
 
-pub uninterp spec fn spec_hash_map_len<Key, Value, S, A: Allocator>(m: &HashMap<Key, Value, S, A>) -> usize;
+pub uninterp spec fn spec_hash_map_len<Key, Value, S, A: Allocator>(
+    m: &HashMap<Key, Value, S, A>,
+) -> usize;
 
-pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S, A: Allocator>(m: &HashMap<Key, Value, S, A>)
+pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S, A: Allocator>(
+    m: &HashMap<Key, Value, S, A>,
+)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> #[trigger] spec_hash_map_len(m)
             == m@.len(),
@@ -794,9 +807,12 @@ pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, 
         res == m@.is_empty(),
 ;
 
-pub assume_specification<K: Clone, V: Clone, S: Clone, A: Allocator + Clone>[ <HashMap::<K, V, S, A> as Clone>::clone ](
-    this: &HashMap<K, V, S, A>,
-) -> (other: HashMap<K, V, S, A>)
+pub assume_specification<K: Clone, V: Clone, S: Clone, A: Allocator + Clone>[ <HashMap::<
+    K,
+    V,
+    S,
+    A,
+> as Clone>::clone ](this: &HashMap<K, V, S, A>) -> (other: HashMap<K, V, S, A>)
     ensures
         other@ == this@,
 ;
@@ -829,17 +845,18 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ H
     Key,
     Value,
     S,
-    A
+    A,
 >::reserve ](m: &mut HashMap<Key, Value, S, A>, additional: usize)
     ensures
         m@ == old(m)@,
 ;
 
-pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ HashMap::<Key, Value, S, A>::insert ](
-    m: &mut HashMap<Key, Value, S, A>,
-    k: Key,
-    v: Value,
-) -> (result: Option<Value>)
+pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ HashMap::<
+    Key,
+    Value,
+    S,
+    A,
+>::insert ](m: &mut HashMap<Key, Value, S, A>, k: Key, v: Value) -> (result: Option<Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& m@ == old(m)@.insert(k, v)
@@ -891,8 +908,10 @@ pub assume_specification<
     S: BuildHasher,
     A: Allocator,
     Q: Hash + Eq + ?Sized,
->[ HashMap::<Key, Value, S, A>::contains_key::<Q> ](m: &HashMap<Key, Value, S, A>, k: &Q) -> (result:
-    bool)
+>[ HashMap::<Key, Value, S, A>::contains_key::<Q> ](
+    m: &HashMap<Key, Value, S, A>,
+    k: &Q,
+) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result == contains_borrowed_key(
             m@,
@@ -948,9 +967,8 @@ pub assume_specification<
     S: BuildHasher,
     A: Allocator,
     Q: Hash + Eq + ?Sized,
->[ HashMap::<Key, Value, S, A>::get::<Q> ](m: &'a HashMap<Key, Value, S, A>, k: &Q) -> (result: Option<
-    &'a Value,
->)
+>[ HashMap::<Key, Value, S, A>::get::<Q> ](m: &'a HashMap<Key, Value, S, A>, k: &Q) -> (result:
+    Option<&'a Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
             Some(v) => maps_borrowed_key_to_value(m@, k, *v),
@@ -1189,12 +1207,16 @@ pub broadcast proof fn axiom_spec_hash_set_len<Key, S, A: Allocator>(m: &HashSet
 }
 
 #[verifier::when_used_as_spec(spec_hash_set_len)]
-pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::len ](m: &HashSet<Key, S, A>) -> (len: usize)
+pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::len ](
+    m: &HashSet<Key, S, A>,
+) -> (len: usize)
     ensures
         len == spec_hash_set_len(m),
 ;
 
-pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::is_empty ](m: &HashSet<Key, S, A>) -> (res: bool)
+pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::is_empty ](
+    m: &HashSet<Key, S, A>,
+) -> (res: bool)
     ensures
         res == m@.is_empty(),
 ;
@@ -1220,18 +1242,20 @@ pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) 
         m@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<Key, S, A>::reserve ](
-    m: &mut HashSet<Key, S, A>,
-    additional: usize,
-)
+pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<
+    Key,
+    S,
+    A,
+>::reserve ](m: &mut HashSet<Key, S, A>, additional: usize)
     ensures
         m@ == old(m)@,
 ;
 
-pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<Key, S, A>::insert ](
-    m: &mut HashSet<Key, S, A>,
-    k: Key,
-) -> (result: bool)
+pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<
+    Key,
+    S,
+    A,
+>::insert ](m: &mut HashSet<Key, S, A>, k: Key) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& m@ == old(m)@.insert(k)
@@ -1378,13 +1402,16 @@ pub assume_specification<
         },
 ;
 
-pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::clear ](m: &mut HashSet<Key, S, A>)
+pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::clear ](
+    m: &mut HashSet<Key, S, A>,
+)
     ensures
         m@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<'a, Key, S, A: Allocator>[ HashSet::<Key, S, A>::iter ](m: &'a HashSet<Key, S, A>) -> (r:
-    hash_set::Iter<'a, Key>)
+pub assume_specification<'a, Key, S, A: Allocator>[ HashSet::<Key, S, A>::iter ](
+    m: &'a HashSet<Key, S, A>,
+) -> (r: hash_set::Iter<'a, Key>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             let (index, s) = r@;

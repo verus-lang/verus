@@ -160,8 +160,9 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         if self.override_stability {
             config.override_queries = Some(|_session, providers| {
                 providers.queries.hir_attr_map = |tcx, owner_id| {
-                    let mut map =
-                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_attr_map)(tcx, owner_id);
+                    let mut map = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_attr_map)(
+                        tcx, owner_id,
+                    );
                     if needs_stable_attr(tcx, owner_id) && !has_stable_attr(&map, owner_id) {
                         map = add_stable_attr(tcx, owner_id, map);
                     }

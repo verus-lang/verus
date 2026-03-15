@@ -145,7 +145,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 self.typeck_results,
                 pat,
                 let_stmt_type,
-            )
+            ),
         )
     }
 
