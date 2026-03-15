@@ -461,8 +461,8 @@ impl<T>  FromIteratorSpecImpl<T> for Vec<T> {
         true
     }
 
-    open spec fn from_iter_ensures<I: Iterator + IteratorSpec>(iter: I, s: Self) -> bool {
-        iter.remaining() == s@
+    open spec fn from_iter_ensures(remaining: Seq<T>, s: Self) -> bool {
+        remaining == s@
     }
 }
 

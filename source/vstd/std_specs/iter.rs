@@ -124,7 +124,7 @@ pub trait ExIterator {
             self.obeys_prophetic_iter_laws(),   // REVIEW: Should this be moved to an implication on the ensures clauses?
             B::obeys_from_iterator_spec(),
         default_ensures
-            FromIteratorSpec::from_iter_ensures(self, collection),
+            FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
     ;
 }
 
@@ -170,14 +170,19 @@ pub trait ExFromIterator<A>: Sized {
 
     spec fn obeys_from_iterator_spec() -> bool;
 
-    spec fn from_iter_ensures<T>(iter: T, s: Self) -> bool;
+    spec fn from_iter_ensures(remaining: Seq<A>, s: Self) -> bool;
 
     fn from_iter<T>(iter: T) -> (s: Self)
        where T: IntoIterator<Item = A>
-        ensures
-            Self::obeys_from_iterator_spec() ==> Self::from_iter_ensures(iter, s),
     ;
 }
+
+// pub axiom fn axiom_from_iterator_ensures<T, A>(iter: T)
+//     where T: IntoIterator<Item = A>, T::IntoIter: IteratorSpec,
+//     ensures
+//         FromIterator<A>::obeys_from_iterator_spec() ==>
+//             FromIterator<A>::from_iter_ensures(iter.remaining(), FromIterator<A>::from_iter(iter)),
+// ;
 
 /********************************************************************************
  * Definitions for `rev()`

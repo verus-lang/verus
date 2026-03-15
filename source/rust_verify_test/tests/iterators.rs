@@ -4,6 +4,29 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] collect_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::group_iter_axioms;
+
+        broadcast use group_iter_axioms;    // TODO: This should be pulled in automatically
+
+        fn test(u: &Vec<u32>)
+        {
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let w: Vec<u32> = v.into_iter().collect();
+            assert(v@ == w@);
+            let x: Vec<u32> = w.into_iter().rev().collect();
+            assert(x@ == seq![4u32, 3, 2, 1]);
+
+
+            let y: Vec<u32> = vec![1, 2, 3, 4];
+            let z: Vec<u32> = y.into_iter().rev().rev().collect();
+            assert(z@ == y@);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] map_can_be_implemented verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;
