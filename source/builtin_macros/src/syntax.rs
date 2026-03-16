@@ -7,6 +7,7 @@ use proc_macro2::TokenTree;
 use quote::ToTokens;
 use quote::format_ident;
 use quote::{quote, quote_spanned};
+use std::collections::HashSet;
 use syn::token::Comma;
 use verus_syn::BroadcastUse;
 use verus_syn::DefaultEnsures;
@@ -5484,6 +5485,102 @@ fn get_ex_ident_mangle_path(qself: &Option<verus_syn::QSelf>, path: &Path) -> Id
     return Ident::new(&s, path.span());
 }
 
+fn verus_pat_bound_names(pat: &Pat, names: &mut HashSet<String>) {
+    match pat {
+        Pat::Ident(pat_ident) => {
+            names.insert(pat_ident.ident.to_string());
+            if let Some((_, subpat)) = &pat_ident.subpat {
+                verus_pat_bound_names(subpat, names);
+            }
+        }
+        Pat::Or(pat_or) => {
+            for case in pat_or.cases.iter() {
+                verus_pat_bound_names(case, names);
+            }
+        }
+        Pat::Paren(pat_paren) => verus_pat_bound_names(&pat_paren.pat, names),
+        Pat::Reference(pat_ref) => verus_pat_bound_names(&pat_ref.pat, names),
+        Pat::Slice(pat_slice) => {
+            for elem in pat_slice.elems.iter() {
+                verus_pat_bound_names(elem, names);
+            }
+        }
+        Pat::Struct(pat_struct) => {
+            for field in pat_struct.fields.iter() {
+                verus_pat_bound_names(&field.pat, names);
+            }
+        }
+        Pat::Tuple(pat_tuple) => {
+            for elem in pat_tuple.elems.iter() {
+                verus_pat_bound_names(elem, names);
+            }
+        }
+        Pat::TupleStruct(pat_tuple_struct) => {
+            for elem in pat_tuple_struct.elems.iter() {
+                verus_pat_bound_names(elem, names);
+            }
+        }
+        Pat::Type(pat_type) => verus_pat_bound_names(&pat_type.pat, names),
+        Pat::Const(_)
+        | Pat::Lit(_)
+        | Pat::Macro(_)
+        | Pat::Path(_)
+        | Pat::Range(_)
+        | Pat::Rest(_)
+        | Pat::Verbatim(_)
+        | Pat::Wild(_) => {}
+        _ => {}
+    }
+}
+
+fn syn_pat_bound_names(pat: &syn::Pat, names: &mut HashSet<String>) {
+    match pat {
+        syn::Pat::Ident(pat_ident) => {
+            names.insert(pat_ident.ident.to_string());
+            if let Some((_, subpat)) = &pat_ident.subpat {
+                syn_pat_bound_names(subpat, names);
+            }
+        }
+        syn::Pat::Or(pat_or) => {
+            for case in pat_or.cases.iter() {
+                syn_pat_bound_names(case, names);
+            }
+        }
+        syn::Pat::Paren(pat_paren) => syn_pat_bound_names(&pat_paren.pat, names),
+        syn::Pat::Reference(pat_ref) => syn_pat_bound_names(&pat_ref.pat, names),
+        syn::Pat::Slice(pat_slice) => {
+            for elem in pat_slice.elems.iter() {
+                syn_pat_bound_names(elem, names);
+            }
+        }
+        syn::Pat::Struct(pat_struct) => {
+            for field in pat_struct.fields.iter() {
+                syn_pat_bound_names(&field.pat, names);
+            }
+        }
+        syn::Pat::Tuple(pat_tuple) => {
+            for elem in pat_tuple.elems.iter() {
+                syn_pat_bound_names(elem, names);
+            }
+        }
+        syn::Pat::TupleStruct(pat_tuple_struct) => {
+            for elem in pat_tuple_struct.elems.iter() {
+                syn_pat_bound_names(elem, names);
+            }
+        }
+        syn::Pat::Type(pat_type) => syn_pat_bound_names(&pat_type.pat, names),
+        syn::Pat::Const(_)
+        | syn::Pat::Lit(_)
+        | syn::Pat::Macro(_)
+        | syn::Pat::Path(_)
+        | syn::Pat::Range(_)
+        | syn::Pat::Rest(_)
+        | syn::Pat::Verbatim(_)
+        | syn::Pat::Wild(_) => {}
+        _ => {}
+    }
+}
+
 /// In VIR there's the same check, but Rustc will complain first, and throw out
 /// some errors about "constrain_type", which ar confusing and the users should not see.
 /// Instead we give an early error with nice error msg here.
@@ -5491,9 +5588,14 @@ fn check_return_ident(
     ret_pat: &Pat,
     input_args: &syn::punctuated::Punctuated<syn::FnArg, Comma>,
 ) -> Option<Stmt> {
+    let mut ret_names = HashSet::new();
+    verus_pat_bound_names(ret_pat, &mut ret_names);
+
     for input in input_args {
         if let syn::FnArg::Typed(pt) = &input {
-            if pt.pat.to_token_stream().to_string() == ret_pat.to_token_stream().to_string() {
+            let mut input_names = HashSet::new();
+            syn_pat_bound_names(&pt.pat, &mut input_names);
+            if !ret_names.is_disjoint(&input_names) {
                 return Some(stmt_with_semi!(
                     input.span() =>
                     compile_error!("parameter name cannot be the same as the return value name")
@@ -5511,9 +5613,14 @@ fn check_verus_return_ident(
     ret_pat: &Pat,
     input_args: &Punctuated<FnArg, verus_syn::token::Comma>,
 ) -> Option<Stmt> {
+    let mut ret_names = HashSet::new();
+    verus_pat_bound_names(ret_pat, &mut ret_names);
+
     for input in input_args {
         if let FnArgKind::Typed(pt) = &input.kind {
-            if pt.pat.to_token_stream().to_string() == ret_pat.to_token_stream().to_string() {
+            let mut input_names = HashSet::new();
+            verus_pat_bound_names(&pt.pat, &mut input_names);
+            if !ret_names.is_disjoint(&input_names) {
                 return Some(stmt_with_semi!(
                     input.span() =>
                     compile_error!("parameter name cannot be the same as the return value name")
