@@ -161,22 +161,14 @@ impl<
 }
 
 #[cfg(all(feature = "alloc", not(verus_keep_ghost), not(feature = "allocator")))]
-impl<Key, Value, S> View for std::collections::HashMap<
-    Key,
-    Value,
-    S,
-> {
+impl<Key, Value, S> View for std::collections::HashMap<Key, Value, S> {
     type V = Map<Key, Value>;
 
     uninterp spec fn view(&self) -> Map<Key, Value>;
 }
 
 #[cfg(all(feature = "alloc", not(verus_keep_ghost), not(feature = "allocator")))]
-impl<
-    Key: DeepView,
-    Value: DeepView,
-    S,
-> DeepView for std::collections::HashMap<Key, Value, S> {
+impl<Key: DeepView, Value: DeepView, S> DeepView for std::collections::HashMap<Key, Value, S> {
     type V = Map<Key::V, Value::V>;
 
     open spec fn deep_view(&self) -> Map<Key::V, Value::V> {
@@ -212,10 +204,7 @@ impl<Key, S> View for std::collections::HashSet<Key, S> {
 }
 
 #[cfg(all(feature = "alloc", not(verus_keep_ghost), not(feature = "allocator")))]
-impl<Key: DeepView, S> DeepView for std::collections::HashSet<
-    Key,
-    S,
-> {
+impl<Key: DeepView, S> DeepView for std::collections::HashSet<Key, S> {
     type V = Set<Key::V>;
 
     open spec fn deep_view(&self) -> Set<Key::V> {
