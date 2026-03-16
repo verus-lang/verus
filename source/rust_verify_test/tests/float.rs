@@ -154,7 +154,7 @@ test_verify_one_file_with_options! {
                 let y: f16 = n as f16;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast to `f16`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `i32` to `f16`")
 }
 
 test_verify_one_file_with_options! {
