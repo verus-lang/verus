@@ -527,7 +527,6 @@ impl Visitor {
         &mut self,
         spec: &mut SignatureSpec,
         ret_pat: Option<(Pat, TType)>,
-        _final_ret_pat: Option<Pat>, // Some(pat) if different from ret_pat,
         _span: Span,
         is_impl_fn: bool,     // is the function a ImplItemFn or TraitImplFn
         is_closure: bool,     // some closures also use this function to handle
@@ -889,28 +888,7 @@ impl Visitor {
                 }
                 match std::mem::take(ret_opt) {
                     None => None,
-                    Some(ret) => {
-                        let original_pattern = ret.1.clone();
-                        let mut pattern = ret.1.clone();
-                        // Check if the pattern name conflicts with the function name
-                        let was_renamed = if let Pat::Ident(pat_ident) = &pattern {
-                            if pat_ident.ident == sig.ident {
-                                pattern = Pat::Verbatim(
-                                    quote_spanned! {pattern.span() => __verus_tmp_ret},
-                                );
-                                true
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        };
-                        Some((
-                            pattern,
-                            ty.clone(),
-                            if was_renamed { Some(original_pattern) } else { None },
-                        ))
-                    }
+                    Some(ret) => Some((ret.1.clone(), ty.clone())),
                 }
             }
         };
@@ -1056,7 +1034,7 @@ impl Visitor {
 
         let sig_span = sig.span().clone();
 
-        if let Some((p, _, _)) = &ret_pat {
+        if let Some((p, _)) = &ret_pat {
             if let Some(err_stmt) = check_verus_return_ident(p, &sig.inputs) {
                 stmts.push(err_stmt);
             }
@@ -1064,8 +1042,7 @@ impl Visitor {
 
         let spec_stmts = self.take_sig_specs(
             &mut sig.spec,
-            ret_pat.as_ref().map(|(pat, ty, _)| (pat.clone(), ty.clone())),
-            ret_pat.as_ref().and_then(|(_, _, original_pat)| original_pat.clone()),
+            ret_pat.as_ref().map(|(pat, ty)| (pat.clone(), ty.clone())),
             sig_span,
             is_impl_fn,
             false,
@@ -5031,25 +5008,13 @@ pub(crate) fn sig_specs_attr(
 ) -> Vec<Stmt> {
     let SignatureSpecAttr { ret_pat, mut spec } = spec_attr;
     let mut spec_stmts = vec![];
-    let ret_pat = ret_pat.map(|v| v.0);
-    let mut final_ret_pat = ret_pat.clone();
-    // If the provided ret_pat is not ident (e.g., A { a, b }),
-    // we need to replace it with ident pat.
-    // ensure_expr1 to
-    // {let A{a, b} = _tmp_ret; ensure_expr1}
+    let mut ret_pat = ret_pat.map(|v| v.0);
     if let Some(with) = spec.with {
-        spec_stmts.extend(take_sig_with_spec(erase_ghost, with, sig, &mut final_ret_pat));
+        spec_stmts.extend(take_sig_with_spec(erase_ghost, with, sig, &mut ret_pat));
     }
     spec.with = None;
     let ret_pat = match (ret_pat, &sig.output) {
-        (Some(pat), syn::ReturnType::Type(_, ty)) => {
-            let pat = if !matches!(pat, Pat::Ident(_)) {
-                Pat::Verbatim(quote_spanned! {pat.span() => __verus_tmp_ret})
-            } else {
-                pat
-            };
-            Some((pat, ty.clone()))
-        }
+        (Some(pat), syn::ReturnType::Type(_, ty)) => Some((pat, ty.clone())),
         _ => None,
     };
     let mut visitor = Visitor {
@@ -5074,7 +5039,6 @@ pub(crate) fn sig_specs_attr(
     spec_stmts.extend(visitor.take_sig_specs(
         &mut spec,
         ret_pat,
-        final_ret_pat,
         sig_span,
         is_impl_fn,
         is_closure,
