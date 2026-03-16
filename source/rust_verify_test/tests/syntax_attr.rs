@@ -1206,6 +1206,28 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_verus_verify_ext_equal code!{
+        #[verus_verify(ext_equal)]
+        struct MyStruct {
+            x: u32,
+            y: u64
+        }
+
+        verus! {
+        fn test_ext_equal(s1: MyStruct, s2: MyStruct)
+            requires
+                s1.x == s2.x,
+                s1.y == s2.y,
+            ensures
+                s1 == s2,
+        {
+            assert(s1 =~= s2);
+        }
+        } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_verus_verify_reject_recursive_types code!{
         #[verus_verify(reject_recursive_types(T))]
         enum X<T> {
@@ -1222,6 +1244,21 @@ test_verify_one_file! {
         #[verus_verify(external_type_specification, external_body, reject_recursive_types(U))]
         struct ExMyExtBody<U>(MyExtBody<U>);
     } => Ok(())
+}
+
+test_verify_one_file! {
+    // Check that a postcondition failure in #[verus_spec] points at the specific
+    // failing ensures clause, not at the `ensures` keyword.
+    #[test] test_verus_spec_ensures_span_on_failure code!{
+        #[verus_spec(ret =>
+            ensures
+                ret > 0,
+                ret < 0, // FAILS
+        )]
+        fn returns_one() -> i8 {
+            1
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
