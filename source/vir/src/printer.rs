@@ -236,6 +236,7 @@ impl ToDebugSNode for air::ast::TypX {
             TypX::BitVec(size) => {
                 Node::List(vec![Node::Atom("BitVec".to_string()), size.to_node(opts)])
             }
+            TypX::Float { exp_bits, sig_bits } => Node::Atom(format!("Float{exp_bits}_{sig_bits}")),
         }
     }
 }
