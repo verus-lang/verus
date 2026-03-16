@@ -1479,8 +1479,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                         varg,
                     ))
                 }
+                TypX::Float(_) => {
+                    mk_expr(ExprX::Unary(UnaryOp::IeeeFloat(vir::ast::IeeeFloatUnaryOp::Neg), varg))
+                }
                 _ => {
-                    return err_span(expr.span, "spec_neg expected int or real type");
+                    return err_span(expr.span, "spec_neg expected int or real or float type");
                 }
             }
         }
@@ -1491,9 +1494,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 ChainedItem::Value => {
                     unsupported_err_unless!(args_len == 1, expr.span, "spec_chained_value", &args);
                     unsupported_err_unless!(
-                        matches!(*undecorate_typ(&vir_args[0].typ), TypX::Int(_) | TypX::Real),
+                        matches!(
+                            *undecorate_typ(&vir_args[0].typ),
+                            TypX::Int(_) | TypX::Real | TypX::Float(_),
+                        ),
                         expr.span,
-                        "chained inequalities require integer or real types",
+                        "chained inequalities require integer or real or float types",
                         &args
                     );
                     let exprx = ExprX::Multi(
@@ -1519,9 +1525,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                         &args
                     );
                     unsupported_err_unless!(
-                        matches!(*undecorate_typ(&vir_args[1].typ), TypX::Int(_) | TypX::Real),
+                        matches!(
+                            *undecorate_typ(&vir_args[1].typ),
+                            TypX::Int(_) | TypX::Real | TypX::Float(_),
+                        ),
                         expr.span,
-                        "chained inequalities require integer or real types",
+                        "chained inequalities require integer or real or float types",
                         &args
                     );
                     if let ExprX::Multi(MultiOp::Chained(_), es) = &vir_args[0].x {
@@ -1531,12 +1540,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                             let types_match = match (&*first_typ, &*new_typ) {
                                 (TypX::Int(_), TypX::Int(_)) => true,
                                 (TypX::Real, TypX::Real) => true,
+                                (TypX::Float(f1), TypX::Float(f2)) => f1 == f2,
                                 _ => false,
                             };
                             unsupported_err_unless!(
                                 types_match,
                                 expr.span,
-                                "chained inequalities require all elements to have the same type (all integers or all reals)"
+                                "chained inequalities require all elements to have the same type (all integers or all reals or all floats)"
                             );
                         }
                     }
@@ -1789,15 +1799,74 @@ fn verus_item_to_vir<'tcx, 'a>(
             let vop = BinaryOp::Implies;
             mk_expr(ExprX::Binary(vop, lhs, rhs))
         }
+        VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(fop)) => {
+            use crate::verus_items::IeeeFloatUnaryItem;
+            use vir::ast::IeeeFloatUnaryOp;
+            record_spec_fn(bctx, expr);
+            let varg = mk_one_vir_arg(bctx, expr.span, &args)?;
+            let vop = match fop {
+                IeeeFloatUnaryItem::Cast => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Cast),
+                IeeeFloatUnaryItem::Neg => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Neg),
+                IeeeFloatUnaryItem::Floor => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Floor),
+                IeeeFloatUnaryItem::Ceil => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Ceil),
+                IeeeFloatUnaryItem::Round => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Round),
+                IeeeFloatUnaryItem::RoundTiesEven => {
+                    UnaryOp::IeeeFloat(IeeeFloatUnaryOp::RoundTiesEven)
+                }
+                IeeeFloatUnaryItem::Trunc => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Trunc),
+                IeeeFloatUnaryItem::IsNormal => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsNormal),
+                IeeeFloatUnaryItem::IsSubnormal => {
+                    UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsSubnormal)
+                }
+                IeeeFloatUnaryItem::IsZero => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsZero),
+                IeeeFloatUnaryItem::IsInfinite => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsInfinite),
+                IeeeFloatUnaryItem::IsNaN => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsNaN),
+                IeeeFloatUnaryItem::IsNegative => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsNegative),
+                IeeeFloatUnaryItem::IsPositive => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsPositive),
+            };
+            mk_expr(ExprX::Unary(vop, varg))
+        }
+        VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(fop)) => {
+            use crate::verus_items::IeeeFloatBinaryItem;
+            use vir::ast::IeeeFloatBinaryOp;
+            record_spec_fn(bctx, expr);
+            let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
+            let vop = match fop {
+                IeeeFloatBinaryItem::Add => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Add),
+                IeeeFloatBinaryItem::Sub => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Sub),
+                IeeeFloatBinaryItem::Mul => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Mul),
+                IeeeFloatBinaryItem::Div => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Div),
+                IeeeFloatBinaryItem::Eq => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Eq),
+                IeeeFloatBinaryItem::Le => {
+                    BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Le))
+                }
+                IeeeFloatBinaryItem::Ge => {
+                    BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Ge))
+                }
+                IeeeFloatBinaryItem::Lt => {
+                    BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Lt))
+                }
+                IeeeFloatBinaryItem::Gt => {
+                    BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Gt))
+                }
+            };
+            mk_expr(ExprX::Binary(vop, lhs, rhs))
+        }
         VerusItem::BinaryOp(
             BinaryOpItem::Arith(_)
             | BinaryOpItem::SpecArith(_)
             | BinaryOpItem::SpecBitwise(_)
             | BinaryOpItem::SpecOrd(_),
         ) => {
+            use crate::rust_to_vir_base::is_float_arith;
+
             record_spec_fn(bctx, expr);
 
-            if !is_smt_arith(bctx, args[0].span, args[1].span, &args[0].hir_id, &args[1].hir_id)? {
+            let is_smt =
+                is_smt_arith(bctx, args[0].span, args[1].span, &args[0].hir_id, &args[1].hir_id)?;
+            let is_float =
+                is_float_arith(bctx, args[0].span, args[1].span, &args[0].hir_id, &args[1].hir_id)?;
+            if !is_smt && !is_float {
                 let t1 = bctx.types.expr_ty_adjusted(&args[0]);
                 let t2 = bctx.types.expr_ty_adjusted(&args[1]);
                 return err_span(
@@ -1812,6 +1881,25 @@ fn verus_item_to_vir<'tcx, 'a>(
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
 
             let vop = match verus_item {
+                VerusItem::BinaryOp(BinaryOpItem::SpecOrd(spec_ord_item))
+                    if matches!(&*undecorate_typ(&lhs.typ), TypX::Float(_)) =>
+                {
+                    use vir::ast::IeeeFloatBinaryOp;
+                    match spec_ord_item {
+                        SpecOrdItem::Le => {
+                            BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Le))
+                        }
+                        SpecOrdItem::Ge => {
+                            BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Ge))
+                        }
+                        SpecOrdItem::Lt => {
+                            BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Lt))
+                        }
+                        SpecOrdItem::Gt => {
+                            BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Gt))
+                        }
+                    }
+                }
                 VerusItem::BinaryOp(BinaryOpItem::SpecOrd(spec_ord_item)) => match spec_ord_item {
                     SpecOrdItem::Le => BinaryOp::Inequality(InequalityOp::Le),
                     SpecOrdItem::Ge => BinaryOp::Inequality(InequalityOp::Ge),
@@ -1842,6 +1930,22 @@ fn verus_item_to_vir<'tcx, 'a>(
                         SpecArithItem::EuclideanOrRealDiv => BinaryOp::RealArith(RealArithOp::Div),
                         SpecArithItem::EuclideanMod => {
                             unreachable!("spec mod operation cannot have type real")
+                        }
+                    }
+                }
+                VerusItem::BinaryOp(BinaryOpItem::SpecArith(spec_arith_item))
+                    if matches!(&*undecorate_typ(&expr_typ()?), TypX::Float(_)) =>
+                {
+                    use vir::ast::IeeeFloatBinaryOp;
+                    match spec_arith_item {
+                        SpecArithItem::Add => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Add),
+                        SpecArithItem::Sub => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Sub),
+                        SpecArithItem::Mul => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Mul),
+                        SpecArithItem::EuclideanOrRealDiv => {
+                            BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Div)
+                        }
+                        SpecArithItem::EuclideanMod => {
+                            unreachable!("spec mod operation cannot have floating point type")
                         }
                     }
                 }

@@ -560,9 +560,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
             match op {
                 UnaryOp::Not
                 | UnaryOp::Clip { .. }
-                | UnaryOp::FloatToBits
                 | UnaryOp::IntToReal
                 | UnaryOp::RealToInt
+                | UnaryOp::FloatToBits
+                | UnaryOp::IeeeFloat(..)
                 | UnaryOp::BitNot(_)
                 | UnaryOp::StrLen => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
@@ -669,6 +670,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 BinaryOp::RealArith(..) => (true, false),
                 BinaryOp::Eq(_) | BinaryOp::Ne => (false, false),
                 BinaryOp::Bitwise(..) => (true, false),
+                BinaryOp::IeeeFloat(..) => (true, false),
                 BinaryOp::StrGetChar { .. } => (true, false),
                 BinaryOp::Index(..) => unreachable!("Index"),
             };

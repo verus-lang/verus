@@ -87,10 +87,8 @@ test_verify_one_file_with_options! {
     #[test]
     test_json_proof_note_on_assert ["--output-json"] => verus_code! {
         fn caller() {
-            assert(
-                #[verifier::proof_note("Statement known to be false")]
-                (1 > 2)
-            ); // assertion fails
+            #[verifier::proof_note("Statement known to be false")]
+            assert(1 > 2); // assertion fails
         }
     } => Err(err) => {
         let label = "Statement known to be false".to_string();
@@ -111,10 +109,8 @@ test_verify_one_file_with_options! {
     test_json_proof_note_on_assume_with_no_cheating ["--output-json", "--no-cheating"] =>
     verus_code! {
         fn caller() {
-            assume(
-                #[verifier::proof_note("Statement known to be false")]
-                (1 > 2)
-            ); // assumption fails
+            #[verifier::proof_note("Statement known to be false")]
+            assume(1 > 2); // assumption fails
         }
     } => Err(err) => {
         let label = "Statement known to be false".to_string();
@@ -144,10 +140,8 @@ test_verify_one_file_with_options! {
 
         fn caller() {
             let _ = func_with_precond(42);
-            assume(
-                #[verifier::proof_note("Assumption forbidden by no-cheating")]
-                (1 > 2)
-            );
+            #[verifier::proof_note("Assumption forbidden by no-cheating")]
+            assume(1 > 2);
         }
     } => Err(err) => {
         let assume_label = "Assumption forbidden by no-cheating".to_string();

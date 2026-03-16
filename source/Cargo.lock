@@ -46,7 +46,7 @@ version = "0.1.0"
 dependencies = [
  "getopts 0.2.21",
  "indexmap 1.9.3",
- "petgraph 0.6.5",
+ "petgraph",
  "serde",
  "sise",
  "smt-scope",
@@ -632,12 +632,6 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
-
-[[package]]
-name = "fixedbitset"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37ab347416e802de484e4d03c7316c48f1ecb56574dfd4a46a80f173ce1de04d"
 
 [[package]]
 name = "fixedbitset"
@@ -1534,21 +1528,11 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "petgraph"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "467d164a6de56270bd7c4d070df81d07beace25012d5103ced4e9ff08d6afdb7"
-dependencies = [
- "fixedbitset 0.2.0",
- "indexmap 1.9.3",
-]
-
-[[package]]
-name = "petgraph"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4c5cc86750666a3ed20bdaf5ca2a0344f9c67674cae0515bec2da16fbaa47db"
 dependencies = [
- "fixedbitset 0.4.2",
+ "fixedbitset",
  "indexmap 2.12.0",
 ]
 
@@ -1743,18 +1727,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89ae43fd86e4158d6db51ad8e2b80f313af9cc74f5c0e03ccb87de09998732de"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "qi-graph"
-version = "0.1.0"
-dependencies = [
- "bincode 1.3.3",
- "getopts 0.2.23",
- "internals_interface",
- "petgraph 0.5.1",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -2205,7 +2177,7 @@ dependencies = [
  "lasso",
  "nonmax",
  "num",
- "petgraph 0.6.5",
+ "petgraph",
  "regex",
  "semver",
  "serde",
@@ -2682,7 +2654,7 @@ version = "0.0.0-2026-03-01-0109"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-03-08-0103"
+version = "0.0.0-2026-03-15-0111"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2694,7 +2666,7 @@ dependencies = [
 
 [[package]]
 name = "verus_prettyplease"
-version = "0.0.0-2026-02-24-1505"
+version = "0.0.0-2026-03-15-0111"
 dependencies = [
  "proc-macro2",
  "verus_syn",
@@ -2702,7 +2674,7 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-03-01-0109"
+version = "0.0.0-2026-03-15-0111"
 dependencies = [
  "indexmap 1.9.3",
  "proc-macro2",
@@ -2712,7 +2684,7 @@ dependencies = [
 
 [[package]]
 name = "verus_syn"
-version = "0.0.0-2026-02-24-1505"
+version = "0.0.0-2026-03-15-0111"
 dependencies = [
  "proc-macro2",
  "quote",

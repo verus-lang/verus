@@ -1054,7 +1054,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 };
                 apply_range_fun(&f_name, &range, vec![expr])
             }
-            UnaryOp::FloatToBits => exp_to_expr(ctx, e, expr_ctxt)?,
             UnaryOp::IntToReal => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 Arc::new(ExprX::Unary(air::ast::UnaryOp::ToReal, expr))
@@ -1062,6 +1061,54 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::RealToInt => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 Arc::new(ExprX::Unary(air::ast::UnaryOp::RealToInt, expr))
+            }
+            UnaryOp::FloatToBits => exp_to_expr(ctx, e, expr_ctxt)?,
+            UnaryOp::IeeeFloat(crate::ast::IeeeFloatUnaryOp::Cast) => {
+                let t_from = undecorate_typ(&e.typ);
+                let t_to = undecorate_typ(&exp.typ);
+                let mut args: Vec<Expr> = Vec::new();
+                // translate to uninterpreted function ieee_float_cast
+                // (except for cast to/from real, which needs a separate uninterpreted function
+                // because real has a different SMT type)
+                let fname = match (&*t_from, &*t_to) {
+                    (TypX::Real, TypX::Real) => unreachable!("no real->real cast in IeeeFloatCast"),
+                    (TypX::Real, _) => {
+                        args.push(typ_to_id(ctx, &t_to));
+                        crate::def::IEEE_FLOAT_CAST_FROM_REAL
+                    }
+                    (_, TypX::Real) => {
+                        args.push(typ_to_id(ctx, &t_from));
+                        crate::def::IEEE_FLOAT_CAST_TO_REAL
+                    }
+                    _ => {
+                        args.push(typ_to_id(ctx, &t_from));
+                        args.push(typ_to_id(ctx, &t_to));
+                        crate::def::IEEE_FLOAT_CAST
+                    }
+                };
+                args.push(exp_to_expr(ctx, e, expr_ctxt)?);
+                Arc::new(ExprX::Apply(Arc::new(fname.to_string()), Arc::new(args)))
+            }
+            UnaryOp::IeeeFloat(fop) => {
+                use crate::ast::IeeeFloatUnaryOp;
+                let expr = exp_to_expr(ctx, e, expr_ctxt)?;
+                let fname = match fop {
+                    IeeeFloatUnaryOp::Cast => unreachable!(),
+                    IeeeFloatUnaryOp::Neg => crate::def::IEEE_FLOAT_NEG,
+                    IeeeFloatUnaryOp::Floor => crate::def::IEEE_FLOAT_FLOOR,
+                    IeeeFloatUnaryOp::Ceil => crate::def::IEEE_FLOAT_CEIL,
+                    IeeeFloatUnaryOp::Round => crate::def::IEEE_FLOAT_ROUND,
+                    IeeeFloatUnaryOp::RoundTiesEven => crate::def::IEEE_FLOAT_ROUND_TIES_EVEN,
+                    IeeeFloatUnaryOp::Trunc => crate::def::IEEE_FLOAT_TRUNC,
+                    IeeeFloatUnaryOp::IsNormal => crate::def::IEEE_FLOAT_IS_NORMAL,
+                    IeeeFloatUnaryOp::IsSubnormal => crate::def::IEEE_FLOAT_IS_SUBNORMAL,
+                    IeeeFloatUnaryOp::IsZero => crate::def::IEEE_FLOAT_IS_ZERO,
+                    IeeeFloatUnaryOp::IsInfinite => crate::def::IEEE_FLOAT_IS_INFINITE,
+                    IeeeFloatUnaryOp::IsNaN => crate::def::IEEE_FLOAT_IS_NAN,
+                    IeeeFloatUnaryOp::IsNegative => crate::def::IEEE_FLOAT_IS_NEGATIVE,
+                    IeeeFloatUnaryOp::IsPositive => crate::def::IEEE_FLOAT_IS_POSITIVE,
+                };
+                Arc::new(ExprX::Apply(Arc::new(fname.to_string()), Arc::new(vec![expr])))
             }
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: CoerceMode should have been removed before here")
@@ -1365,6 +1412,21 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
 
                     return clip_bitwise_result(bit_expr, exp);
                 }
+                BinaryOp::IeeeFloat(fop) => {
+                    use crate::ast::IeeeFloatBinaryOp;
+                    let fname = match fop {
+                        IeeeFloatBinaryOp::Add => crate::def::IEEE_FLOAT_ADD,
+                        IeeeFloatBinaryOp::Sub => crate::def::IEEE_FLOAT_SUB,
+                        IeeeFloatBinaryOp::Mul => crate::def::IEEE_FLOAT_MUL,
+                        IeeeFloatBinaryOp::Div => crate::def::IEEE_FLOAT_DIV,
+                        IeeeFloatBinaryOp::Eq => crate::def::IEEE_FLOAT_EQ,
+                        IeeeFloatBinaryOp::InEq(InequalityOp::Le) => crate::def::IEEE_FLOAT_LE,
+                        IeeeFloatBinaryOp::InEq(InequalityOp::Ge) => crate::def::IEEE_FLOAT_GE,
+                        IeeeFloatBinaryOp::InEq(InequalityOp::Lt) => crate::def::IEEE_FLOAT_LT,
+                        IeeeFloatBinaryOp::InEq(InequalityOp::Gt) => crate::def::IEEE_FLOAT_GT,
+                    };
+                    ExprX::Apply(Arc::new(fname.to_string()), Arc::new(vec![lh, rh]))
+                }
                 _ => {
                     let aop = match op {
                         BinaryOp::And => unreachable!(),
@@ -1389,6 +1451,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         }
                         BinaryOp::RealArith(..) => unreachable!(),
                         BinaryOp::Bitwise(..) => unreachable!(),
+                        BinaryOp::IeeeFloat(_) => unreachable!(),
                         BinaryOp::StrGetChar => unreachable!(),
                         BinaryOp::Index(..) => unreachable!(),
                     };

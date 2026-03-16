@@ -2264,6 +2264,51 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         expr_vattrs.truncate,
                     )))
                 }
+                (TypX::Float(src_bits), TypX::Float(dst_bits)) if src_bits == dst_bits => {
+                    // Same float type, identity cast
+                    Ok(ExprOrPlace::Expr(source_vir_expr))
+                }
+                (t1 @ TypX::Float(_), t2 @ TypX::Float(_))
+                | (t1 @ TypX::Int(_), t2 @ TypX::Float(_))
+                | (t1 @ TypX::Float(_), t2 @ TypX::Int(_)) => {
+                    let is_supported = |t: &TypX| match t {
+                        TypX::Int(IntRange::U(_) | IntRange::I(_)) => true,
+                        TypX::Float(32 | 64) => true,
+                        _ => false,
+                    };
+                    if !(is_supported(t1) && is_supported(t2)) {
+                        return err_span(
+                            expr.span,
+                            format!(
+                                "Verus does not support `as` cast from `{}` to `{}`",
+                                typ_to_diagnostic_str(&source_vir_ty),
+                                typ_to_diagnostic_str(&to_vir_ty),
+                            ),
+                        );
+                    }
+                    if bctx.ctxt.no_vstd {
+                        return err_span(
+                            expr.span,
+                            "Float `as` cast is not supported with --no-vstd",
+                        );
+                    }
+                    let fun = vir::fun!("vstd" => "float", "float_cast");
+                    let from_typ = undecorate_typ(source_vir_ty);
+                    let to_typ = undecorate_typ(&to_vir_ty);
+                    let typ_args = Arc::new(vec![from_typ, to_typ]);
+                    let autospec_usage =
+                        if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                    let call_target = CallTarget::Fun(
+                        vir::ast::CallTargetKind::Static,
+                        fun,
+                        typ_args,
+                        Arc::new(vec![]),
+                        autospec_usage,
+                        false,
+                    );
+                    let args = Arc::new(vec![source_vir_expr.clone()]);
+                    mk_expr(ExprX::Call(call_target, args, None))
+                }
                 _ => {
                     let to_ty = bctx.types.expr_ty(expr);
                     return err_span(
