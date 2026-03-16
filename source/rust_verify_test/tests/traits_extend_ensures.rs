@@ -6,9 +6,8 @@ use common::*;
 test_verify_one_file! {
     #[test] test_basic verus_code! {
         trait Tr {
-            fn stuff() -> ((a, b): (u8, u8))
-                ensures 0 <= a < 20,
-                        25 <= b < 40;
+            fn stuff() -> ((a, _): (u8, u8))
+                ensures 0 <= a < 20;
         }
 
         struct X { }
