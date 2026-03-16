@@ -107,9 +107,13 @@ pub trait ExIeeeFloatCast<To> {
     type ExternalTraitSpecificationFor: IeeeFloatCast<To>;
 }
 
-// TODO: when IEEE float support is merged, this should point to IeeeFloatCast::ieee_cast
-pub uninterp spec fn ieee_float_cast<From: IeeeFloatCast<To>, To>(from: From) -> To;
+// deterministic IEEE cast
+#[verifier::inline]
+pub open spec fn ieee_float_cast<From: IeeeFloatCast<To>, To>(from: From) -> To {
+    from.ieee_cast()
+}
 
+// (possibly) non-deterministic Rust cast
 pub uninterp spec fn float_cast_spec<From, To>(from: From, to: To) -> bool;
 
 // Used only for internal Verus translation of "as" operator;

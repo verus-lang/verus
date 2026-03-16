@@ -1224,8 +1224,6 @@ pub(crate) fn pointee_metadata_prelude() -> Vec<Node> {
 pub(crate) fn ieee_float_prelude() -> Vec<Node> {
     let typ = str_to_node(TYPE);
     let ieee_float_cast = str_to_node(IEEE_FLOAT_CAST);
-    let ieee_float_cast_from_real = str_to_node(IEEE_FLOAT_CAST_FROM_REAL);
-    let ieee_float_cast_to_real = str_to_node(IEEE_FLOAT_CAST_TO_REAL);
     let ieee_float_neg = str_to_node(IEEE_FLOAT_NEG);
     let ieee_float_floor = str_to_node(IEEE_FLOAT_FLOOR);
     let ieee_float_ceil = str_to_node(IEEE_FLOAT_CEIL);
@@ -1250,9 +1248,7 @@ pub(crate) fn ieee_float_prelude() -> Vec<Node> {
     let ieee_float_gt = str_to_node(IEEE_FLOAT_GT);
 
     nodes_vec!(
-        (declare-fun [ieee_float_cast] ([typ] [typ] Int) Int)
-        (declare-fun [ieee_float_cast_from_real] ([typ] Real) Int)
-        (declare-fun [ieee_float_cast_to_real] ([typ] Int) Real)
+        (declare-fun [ieee_float_cast] ([typ] [typ] Poly) Poly)
         (declare-fun [ieee_float_neg] (Int) Int)
         (declare-fun [ieee_float_floor] (Int) Int)
         (declare-fun [ieee_float_ceil] (Int) Int)

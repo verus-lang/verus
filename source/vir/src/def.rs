@@ -252,8 +252,6 @@ pub const STRSLICE_NEW_STRLIT: &str = "str%new_strlit";
 pub const STRSLICE_FROM_STRLIT: &str = "str%from_strlit";
 
 pub const IEEE_FLOAT_CAST: &str = "ieee_float_cast";
-pub const IEEE_FLOAT_CAST_FROM_REAL: &str = "ieee_float_cast_from_real";
-pub const IEEE_FLOAT_CAST_TO_REAL: &str = "ieee_float_cast_to_real";
 pub const IEEE_FLOAT_NEG: &str = "ieee_float_neg";
 pub const IEEE_FLOAT_FLOOR: &str = "ieee_float_floor";
 pub const IEEE_FLOAT_CEIL: &str = "ieee_float_ceil";
