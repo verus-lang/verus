@@ -631,4 +631,22 @@ pub fn exec_spec_unverified(input: proc_macro::TokenStream) -> proc_macro::Token
     contrib::exec_spec::exec_spec(input, true)
 }
 
+/// Automate generating spec types and their View/DeepView implementations
+/// https://github.com/verus-lang/verus/pull/1798
+#[proc_macro_attribute]
+pub fn make_spec_type(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    contrib::spec_derive::make_spec_type(attr, input)
+}
+
+#[proc_macro_attribute]
+pub fn self_view(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    contrib::spec_derive::self_view(attr, input)
+}
+
 /*** End of contrib macros ***/

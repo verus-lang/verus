@@ -409,6 +409,8 @@ pub struct ErasureModes {
     pub var_modes: Vec<(Span, (Mode, Mode))>,
     // Modes of calls and struct Ctors
     pub ctor_modes: Vec<(Span, Mode)>,
+    // Results for the InferSpecForLoopIter nodes
+    pub infer_spec_for_loop_iter_erase: Vec<(Span, bool)>,
 }
 
 impl Ghost {
@@ -1112,17 +1114,17 @@ fn check_place_has_mode(
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 enum PlaceAccess {
     Read,
-    MutAssign,
+    MutAssign(Typ),
     MutBorrow,
 }
 
 impl PlaceAccess {
     fn is_mut(&self) -> bool {
         match self {
-            PlaceAccess::MutAssign | PlaceAccess::MutBorrow => true,
+            PlaceAccess::MutAssign(_) | PlaceAccess::MutBorrow => true,
             PlaceAccess::Read => false,
         }
     }
@@ -1148,7 +1150,7 @@ fn check_place(
         &mut note,
         outer_mode,
         place,
-        access,
+        &access,
         expect,
         outer_proph,
     )?;
@@ -1158,7 +1160,7 @@ fn check_place(
         context_mode = Mode::Spec;
     }
 
-    let final_mode = match access {
+    let final_mode = match &access {
         PlaceAccess::Read => {
             // For non-mutating: coerce the mode to whatever is necessary for the context.
 
@@ -1168,7 +1170,7 @@ fn check_place(
             let coerced_mode = mode_join(mode_join(place_mode, context_mode), expect.0);
             coerced_mode
         }
-        PlaceAccess::MutAssign => {
+        PlaceAccess::MutAssign(typ) => {
             // If mutating assignment: we can't coerce the mode;
             // thus, if a coercion is needed, then we produce an error.
             //
@@ -1180,7 +1182,7 @@ fn check_place(
             if coerced_mode == Mode::Proof && place_mode == Mode::Exec {
                 // There are some special cases to allow mutating an
                 // exec-place via a mutable reference in proof code.
-                if !ok_to_assign_exec_place_in_erased_code(ctxt, place) {
+                if !ok_to_assign_exec_place_in_erased_code(ctxt, place, typ) {
                     let mut e = error_with_label(
                         &place.span,
                         format!("cannot mutate {place_mode}-mode place in {context_mode}-code"),
@@ -1241,7 +1243,7 @@ fn check_place_rec(
     note: &mut Option<ProofModeMutRefNote>,
     outer_mode: Mode,
     place: &Place,
-    access: PlaceAccess,
+    access: &PlaceAccess,
     expect: Expect,
     outer_proph: &Proph,
 ) -> Result<(Mode, Proph), VirErr> {
@@ -1252,7 +1254,7 @@ fn check_place_rec(
         note,
         outer_mode,
         place,
-        access,
+        &access,
         expect,
         outer_proph,
     )?;
@@ -1280,7 +1282,7 @@ fn check_place_rec_inner(
     note: &mut Option<ProofModeMutRefNote>,
     outer_mode: Mode,
     place: &Place,
-    access: PlaceAccess,
+    access: &PlaceAccess,
     expect: Expect,
     outer_proph: &Proph,
 ) -> Result<(Mode, Proph), VirErr> {
@@ -1455,7 +1457,7 @@ fn check_place_rec_inner(
 /// It would be really nice to support `Option<T>`, but the problem is that this is a non-ZST;
 /// even if T is tracked, it's possible to create an `Option<T>` in exec-mode via `None`
 /// and prohibiting this would be difficult to do.
-fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place) -> bool {
+fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place, typ: &Typ) -> bool {
     // Always say no if this doesn't involve a mutable reference.
     // This isn't really necessary as a restriction, but it's only for mutable references
     // that we need this extra allowance in the first place, i.e., if it's not a mutable
@@ -1465,9 +1467,7 @@ fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place) -> bool {
         return false;
     }
 
-    // TODO(new_mut_ref): need to make sure type is correct up to decoration
-    // for this check to make sense
-    match &*place.typ {
+    match &**typ {
         TypX::Decorate(TypDecoration::Ghost | TypDecoration::Tracked, _, _) => {
             return true;
         }
@@ -2087,6 +2087,10 @@ fn check_expr_handle_mut_arg(
             );
             let (mode, proph) = mode_opt.unwrap_or((Mode::Exec, Proph::No));
             if let Some(infer_spec) = record.infer_spec_for_loop_iter_modes.as_mut() {
+                record
+                    .erasure_modes
+                    .infer_spec_for_loop_iter_erase
+                    .push((expr.span.clone(), mode != Mode::Spec));
                 infer_spec.push((expr.span.clone(), mode));
             } else {
                 return Err(error(
@@ -2421,7 +2425,7 @@ fn check_expr_handle_mut_arg(
             )?;
             Ok((Mode::Spec, proph))
         }
-        ExprX::AssignToPlace { place, rhs, op: _, resolve: _ } => {
+        ExprX::AssignToPlace { place, rhs, op: _, resolve: _, typ } => {
             if typing.in_forall_stmt {
                 return Err(error(
                     &expr.span,
@@ -2464,7 +2468,7 @@ fn check_expr_handle_mut_arg(
                         typing,
                         outer_mode,
                         place,
-                        PlaceAccess::MutAssign,
+                        PlaceAccess::MutAssign(typ.clone()),
                         Expect::none(),
                         outer_proph,
                     )?;
@@ -2477,7 +2481,7 @@ fn check_expr_handle_mut_arg(
                         typing,
                         outer_mode,
                         place,
-                        PlaceAccess::MutAssign,
+                        PlaceAccess::MutAssign(typ.clone()),
                         Expect::none(),
                         outer_proph,
                     )?;
@@ -3706,7 +3710,11 @@ pub fn check_crate(
             }
         }
     }
-    let erasure_modes = ErasureModes { var_modes: vec![], ctor_modes: vec![] };
+    let erasure_modes = ErasureModes {
+        var_modes: vec![],
+        ctor_modes: vec![],
+        infer_spec_for_loop_iter_erase: vec![],
+    };
     let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
     let special_paths = SpecialPaths::new(vstd_crate_name);
     let mut ctxt = Ctxt {

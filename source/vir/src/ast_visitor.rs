@@ -124,6 +124,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         })
     }
 
+    #[allow(dead_code)]
     fn visit_opt_typ(&mut self, typ_opt: &Option<Typ>) -> Result<R::Opt<Typ>, Err> {
         R::map_opt(typ_opt, &mut |t| self.visit_typ(t))
     }
@@ -464,16 +465,17 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let rhs = self.visit_expr(rhs)?;
                 R::ret(|| expr_new(ExprX::Assign { lhs: R::get(lhs), rhs: R::get(rhs), op: *op }))
             }
-            ExprX::AssignToPlace { place, rhs, op, resolve } => {
+            ExprX::AssignToPlace { place, rhs, op, resolve, typ } => {
                 let place = self.visit_place(place)?;
                 let rhs = self.visit_expr(rhs)?;
-                let resolve = self.visit_opt_typ(resolve)?;
+                let typ = self.visit_typ(typ)?;
                 R::ret(|| {
                     expr_new(ExprX::AssignToPlace {
                         place: R::get(place),
                         rhs: R::get(rhs),
                         op: *op,
-                        resolve: R::get_opt(resolve),
+                        resolve: *resolve,
+                        typ: R::get(typ),
                     })
                 })
             }

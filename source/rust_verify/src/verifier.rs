@@ -8,7 +8,7 @@ use crate::externs::VerusExterns;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
 use crate::util::{HashMapAbsorbWith, error};
-use crate::verus_items::VerusItems;
+use crate::verus_items::{VerusItem, VerusItems};
 use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, SmtSolver, ValidityResult};
@@ -2680,6 +2680,11 @@ impl Verifier {
             })
         };
 
+        if !verus_items.name_to_id.contains_key(&VerusItem::ErasedGhostValue) {
+            let err = crate::util::no_builtin_err(self.air_no_span.as_ref().unwrap());
+            return Err((vec![err], vec![]));
+        }
+
         let mut crate_names: Vec<String> = vec![crate_name.clone()];
         crate_names.extend(other_crate_names.into_iter());
         // TODO vec![vir::verus_builtins::verus_builtin_krate(&self.air_no_span.clone().unwrap())];
@@ -2702,6 +2707,7 @@ impl Verifier {
             bodies: vec![],
             shadow_check: vec![],
             extra_erase_ast_ids: vec![],
+            extra_erase_hir_ids_including_adjustments: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
 
@@ -2927,6 +2933,8 @@ impl Verifier {
         let bodies = erasure_info.bodies.clone();
         let shadow_check = erasure_info.shadow_check.clone();
         let extra_erase_ast_ids = erasure_info.extra_erase_ast_ids.clone();
+        let extra_erase_hir_ids_including_adjustments =
+            erasure_info.extra_erase_hir_ids_including_adjustments.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate: unpruned_crate,
             hir_vir_ids,
@@ -2939,6 +2947,7 @@ impl Verifier {
             bodies,
             shadow_check,
             extra_erase_ast_ids,
+            extra_erase_hir_ids_including_adjustments,
         };
         self.erasure_hints = Some(erasure_hints);
 

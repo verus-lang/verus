@@ -185,4 +185,42 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f16` to `f64`")
+    #[test] f32_ieee verus_code! {
+        // TODO: replace explicit calls to ieee_cast with "as" when support for "as" is added
+        // (and use this to replace === with ==)
+        fn test1(x: f32, y: f32) {
+            assert(2.0f32 <= x <= 5.0f32 ==> x + x <= 10.0f32) by(bit_vector);
+            assert(2.0f32 <= x <= 5.0f32 && 2.0f32 <= y <= 5.0f32 ==> x + y == y + x) by(bit_vector);
+            assert(0.5f32.ieee_cast() === 0.5real) by(bit_vector);
+            assert(0.5f32 === 0.5real.ieee_cast()) by(bit_vector);
+            assert(4f32.ieee_cast() === 4u8) by(bit_vector);
+            assert(4f32 === 4u8.ieee_cast()) by(bit_vector);
+            assert(4f32 === 4f64.ieee_cast()) by(bit_vector);
+            assert(4f32.ieee_cast() === 4f64) by(bit_vector);
+        }
+        fn test2(x: f32, y: f32) {
+            assert(2.0f32 <= x <= 7.0f32 ==> x + x <= 10.0f32) by(bit_vector); // FAILS
+        }
+        fn test3(x: f32, y: f32) {
+            assert(2.0f32 <= x <= 5.0f32 && 2.0f32 <= y <= 5.0f32 ==> x + y == x + x) by(bit_vector); // FAILS
+        }
+        fn test4(x: f32, y: f32) {
+            assert(0.5f32.ieee_cast() === 0.6real) by(bit_vector); // FAILS
+        }
+        fn test5(x: f32, y: f32) {
+            assert(0.5f32 === 0.6real.ieee_cast()) by(bit_vector); // FAILS
+        }
+        fn test6(x: f32, y: f32) {
+            assert(4f32.ieee_cast() === 5u8) by(bit_vector); // FAILS
+        }
+        fn test7(x: f32, y: f32) {
+            assert(4f32 === 5u8.ieee_cast()) by(bit_vector); // FAILS
+        }
+        fn test8(x: f32, y: f32) {
+            assert(4f32 === 5f64.ieee_cast()) by(bit_vector); // FAILS
+        }
+        fn test9(x: f32, y: f32) {
+            assert(4f32.ieee_cast() === 5f64) by(bit_vector); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 8)
 }

@@ -18,7 +18,7 @@
 //     $ATTR_VALUE
 //     ```
 //
-// The ATTR_NAME can be requires, ensures, recommends or modes.
+// The ATTR_NAME can be requires, ensures, returns, recommends or modes.
 //
 // The reason we use a codeblock here is that so rustdoc will perform syntax highlighting
 // on the value which is applicable if it's an expression. For example, if it's a
@@ -123,6 +123,14 @@ fn attr_for_sig(
         Some(es) => {
             for expr in es.exprs.exprs.iter() {
                 v.push(encoded_expr("ensures", expr));
+            }
+        }
+        None => {}
+    }
+    match &sig.spec.returns {
+        Some(rs) => {
+            for expr in rs.exprs.exprs.iter() {
+                v.push(encoded_expr("returns", expr));
             }
         }
         None => {}

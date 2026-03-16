@@ -1,10 +1,31 @@
 use crate::thir::cx::ThirBuildCx;
 use crate::verus::CallErasure;
 use crate::verus::{
-    erase_node, erase_node_unadjusted, erase_tree_kind, handle_call, is_node_with_single_arg_erased,
+    erase_node, erase_node_unadjusted, erase_tree_kind, erased_ghost_value, handle_call,
+    is_node_with_single_arg_erased,
 };
 use rustc_hir::{Expr, ExprKind, UnOp};
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow};
+
+pub(crate) fn mirror_expr_adjusted_pre<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    expr: &'tcx Expr<'tcx>,
+) -> Option<rustc_middle::thir::ExprId> {
+    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
+        return None;
+    };
+    if erasure_ctxt.adjusted_node_erasure.contains(&expr.hir_id) {
+        Some(erased_ghost_value(
+            cx,
+            &erasure_ctxt,
+            expr.hir_id,
+            expr.span,
+            cx.typeck_results.expr_ty_adjusted(expr),
+        ))
+    } else {
+        None
+    }
+}
 
 // To avoid edits and conflicts in thir/cx/expr.rs, postprocess some of the work for expr.rs here
 pub(crate) fn apply_adjustment_post<'tcx>(
@@ -18,7 +39,7 @@ pub(crate) fn apply_adjustment_post<'tcx>(
     };
 
     let kind = match adjustment.kind {
-        Adjust::Deref(None | Some(_)) | Adjust::Borrow(AutoBorrow::Ref(_)) => {
+        Adjust::Deref(None | Some(_)) | Adjust::Borrow(AutoBorrow::Ref(_)) | Adjust::NeverToAny => {
             // Adjust::Deref(None) -> implicit *
             // Adjust::Borrow(AutoBorrow::Ref(_)) -> implicit &
             // Adjust::Deref(Some(_)) -> This case means inserting a Deref::deref function.

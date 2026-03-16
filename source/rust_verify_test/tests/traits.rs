@@ -956,6 +956,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_termination_tuple_clone verus_code! {
+        use vstd::prelude::*;
+        fn f<A: Clone>() {
+        }
+        fn g() {
+            f::<(u8, u8)>();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_termination_tuple_clone_fail verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            proof fn f();
+        }
+
+        struct S<A>(A);
+        impl<A: T + Clone> Clone for S<A> {
+            fn clone(&self) -> Self {
+                S(self.0.clone())
+            }
+        }
+
+        proof fn g<A: Clone>() {}
+
+        impl T for u8 {
+            proof fn f() {
+                let _ = g::<(u8, S<u8>)>();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
+}
+
+test_verify_one_file! {
     #[test] test_termination_assoc_bounds_fail_1 verus_code! {
         trait Z { }
         trait T { type X: Z; }

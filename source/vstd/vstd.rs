@@ -76,6 +76,7 @@ pub mod string;
 pub mod thread;
 pub mod tokens;
 pub mod view;
+pub mod wrapping;
 
 #[cfg(verus_keep_ghost)]
 pub mod std_specs;

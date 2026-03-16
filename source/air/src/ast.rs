@@ -22,7 +22,13 @@ pub enum TypX {
     // Fun deliberately omits argument, return types to make box/unbox for generics easier
     Fun,
     Named(Ident),
+    // Bit vector; the u32 is the number of bits (e.g. (_ BitVec 64) is BitVec(64))
     BitVec(u32),
+    // IEEE floating point type with exp_bits exponent bits and sig_bits significand bits,
+    // counting the implicit leading 1 bit in the significand
+    // (e.g. f32 is Float { exp_bits: 8, sig_bits: 24 })
+    // See https://smt-lib.org/theories-FloatingPoint.shtml
+    Float { exp_bits: u32, sig_bits: u32 },
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)] // for Debug, see ast_util
@@ -36,6 +42,20 @@ pub enum Constant {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum RoundingMode {
+    // roundNearestTiesToEven
+    RNE,
+    // roundNearestTiesToAway
+    RNA,
+    // roundTowardPositive
+    RTP,
+    // roundTowardNegative
+    RTN,
+    // roundTowardZero
+    RTZ,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Not,
     BitNot,
@@ -43,6 +63,19 @@ pub enum UnaryOp {
     BitExtract(u32, u32),
     BitZeroExtend(u32),
     BitSignExtend(u32),
+    FloatNeg,
+    FloatRoundToInt(RoundingMode),
+    FloatIsNormal,
+    FloatIsSubnormal,
+    FloatIsZero,
+    FloatIsInfinite,
+    FloatIsNaN,
+    FloatIsNegative,
+    FloatIsPositive,
+    FloatFromIeeeBits { exp_bits: u32, sig_bits: u32 },
+    FloatFrom { exp_bits: u32, sig_bits: u32, signed: bool, round: RoundingMode },
+    FloatToBitVec { bits: u32, signed: bool, round: RoundingMode },
+    FloatToReal,
     ToReal,
     RealToInt,
 }
@@ -102,6 +135,15 @@ pub enum BinaryOp {
     LShr,
     Shl,
     BitConcat,
+    FloatAdd(RoundingMode),
+    FloatSub(RoundingMode),
+    FloatMul(RoundingMode),
+    FloatDiv(RoundingMode),
+    FloatEq,
+    FloatLt,
+    FloatGt,
+    FloatLe,
+    FloatGe,
     FieldUpdate(Ident),
 }
 
@@ -114,6 +156,8 @@ pub enum MultiOp {
     Sub,
     Mul,
     Distinct,
+    // (fp sign exp sig) constructor, taking bit vectors as arguments and returning a Float
+    Float,
 }
 
 pub type Binder<A> = Arc<BinderX<A>>;

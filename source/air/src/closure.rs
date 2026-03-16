@@ -551,6 +551,23 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                     TypX::BitVec(n) => Arc::new(TypX::BitVec(n + w)),
                     _ => panic!("internal error during processing bit extend"),
                 },
+                UnaryOp::FloatNeg => ts[0].0.clone(),
+                UnaryOp::FloatRoundToInt(_) => ts[0].0.clone(),
+                UnaryOp::FloatIsNormal => Arc::new(TypX::Bool),
+                UnaryOp::FloatIsSubnormal => Arc::new(TypX::Bool),
+                UnaryOp::FloatIsZero => Arc::new(TypX::Bool),
+                UnaryOp::FloatIsInfinite => Arc::new(TypX::Bool),
+                UnaryOp::FloatIsNaN => Arc::new(TypX::Bool),
+                UnaryOp::FloatIsNegative => Arc::new(TypX::Bool),
+                UnaryOp::FloatIsPositive => Arc::new(TypX::Bool),
+                UnaryOp::FloatFromIeeeBits { exp_bits, sig_bits } => {
+                    Arc::new(TypX::Float { exp_bits: *exp_bits, sig_bits: *sig_bits })
+                }
+                UnaryOp::FloatFrom { exp_bits, sig_bits, signed: _, round: _ } => {
+                    Arc::new(TypX::Float { exp_bits: *exp_bits, sig_bits: *sig_bits })
+                }
+                UnaryOp::FloatToBitVec { bits, .. } => Arc::new(TypX::BitVec(*bits)),
+                UnaryOp::FloatToReal => Arc::new(TypX::Real),
                 UnaryOp::ToReal => Arc::new(TypX::Real),
                 UnaryOp::RealToInt => Arc::new(TypX::Int),
             };
@@ -570,6 +587,11 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 BinaryOp::BitSGt | BinaryOp::BitSLt | BinaryOp::BitSGe | BinaryOp::BitSLe => {
                     Arc::new(TypX::Bool)
                 }
+                BinaryOp::FloatEq
+                | BinaryOp::FloatLt
+                | BinaryOp::FloatGt
+                | BinaryOp::FloatLe
+                | BinaryOp::FloatGe => Arc::new(TypX::Bool),
                 BinaryOp::BitXor
                 | BinaryOp::BitAnd
                 | BinaryOp::BitOr
@@ -582,7 +604,11 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 | BinaryOp::LShr
                 | BinaryOp::AShr
                 | BinaryOp::Shl
-                | BinaryOp::BitURem => {
+                | BinaryOp::BitURem
+                | BinaryOp::FloatAdd(_)
+                | BinaryOp::FloatSub(_)
+                | BinaryOp::FloatMul(_)
+                | BinaryOp::FloatDiv(_) => {
                     assert!(typ_eq(&(ts[0].0), &(ts[1].0)));
                     ts[0].0.clone()
                 }
@@ -607,6 +633,12 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                     }
                 }
                 MultiOp::Distinct => Arc::new(TypX::Bool),
+                MultiOp::Float => match (&*ts[0].0, &*ts[1].0, &*ts[2].0) {
+                    (TypX::BitVec(1), TypX::BitVec(exp_bits), TypX::BitVec(sig1_bits)) => {
+                        Arc::new(TypX::Float { exp_bits: *exp_bits, sig_bits: *sig1_bits + 1 })
+                    }
+                    _ => panic!("internal error during processing float"),
+                },
             };
             let (es, t) = enclose(state, App::Multi(*op), es, ts);
             (typ, Arc::new(ExprX::Multi(*op, Arc::new(es))), t)

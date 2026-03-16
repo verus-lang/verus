@@ -1189,6 +1189,79 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_verus_verify_external_type_specification code!{
+        #[verus_verify(external)]
+        struct MyExtStruct<T> { t: T }
+
+        #[verus_verify(external_type_specification)]
+        struct ExMyExtStruct<U>(MyExtStruct<U>);
+
+        verus! {
+        fn test_ext_type_spec() {
+            let s = MyExtStruct::<u64> { t: 5 };
+            assert(s.t == 5);
+        }
+        } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_ext_equal code!{
+        #[verus_verify(ext_equal)]
+        struct MyStruct {
+            x: u32,
+            y: u64
+        }
+
+        verus! {
+        fn test_ext_equal(s1: MyStruct, s2: MyStruct)
+            requires
+                s1.x == s2.x,
+                s1.y == s2.y,
+            ensures
+                s1 == s2,
+        {
+            assert(s1 =~= s2);
+        }
+        } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_reject_recursive_types code!{
+        #[verus_verify(reject_recursive_types(T))]
+        enum X<T> {
+            ZZ(T),
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_external_type_spec_with_reject_recursive code!{
+        #[verus_verify(external)]
+        struct MyExtBody<T> { t: T }
+
+        #[verus_verify(external_type_specification, external_body, reject_recursive_types(U))]
+        struct ExMyExtBody<U>(MyExtBody<U>);
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Check that a postcondition failure in #[verus_spec] points at the specific
+    // failing ensures clause, not at the `ensures` keyword.
+    #[test] test_verus_spec_ensures_span_on_failure code!{
+        #[verus_spec(ret =>
+            ensures
+                ret > 0,
+                ret < 0, // FAILS
+        )]
+        fn returns_one() -> i8 {
+            1
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_erase_unverified_code code!{
         use vstd::prelude::*;
         #[verus_spec(
