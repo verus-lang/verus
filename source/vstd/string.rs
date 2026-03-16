@@ -192,7 +192,7 @@ impl StrSliceExecFns for str {
     #[verifier::external_body]
     fn get_char(&self, i: usize) -> (c: char)
         requires
-            0 <= i < self@.len(),
+            i < self@.len(),
         ensures
             self@.index(i as int) == c,
     {
@@ -248,14 +248,13 @@ impl StrSliceExecFns for str {
     fn get_ascii(&self, i: usize) -> (b: u8)
         requires
             self.is_ascii(),
-            0 <= i < self@.len(),
+            i < self@.len(),
         ensures
             self@.index(i as int) as u8 == b,
     {
-        proof {
-            is_ascii_spec_bytes(self);
-        }
+        broadcast use is_ascii_spec_bytes;
         // panics if i is not a valid index
+
         self.as_bytes()[i]
     }
 
@@ -263,9 +262,6 @@ impl StrSliceExecFns for str {
         ensures
             ret@ == self.spec_bytes(),
     {
-        proof {
-            is_ascii_spec_bytes(self);
-        }
         slice_to_vec(self.as_bytes())
     }
 }

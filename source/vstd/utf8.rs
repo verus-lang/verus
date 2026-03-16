@@ -7,7 +7,7 @@
 //! Thus, some UTF-8 byte sequences can also be considered ASCII byte sequences, as defined in [`is_ascii_chars`].
 //!
 //! UTF-8 encodes numerical values called Unicode _scalars_ (see below), which assign a unique value to each Unicode character.
-//! A scalar value is encoded in UTF-8 using a leading byte and between 0 and 2 continuation bytes, where larger scalar values require more continuation bytes.
+//! A scalar value is encoded in UTF-8 using a leading byte and between 0 and 3 continuation bytes, where larger scalar values require more continuation bytes.
 //! The first part of the bit pattern in the leading byte is reserved for describing the number of bytes in the scalar's encoding (e.g., [`is_leading_byte_width_1`]).
 //! The rest of the leading byte contains data bits corresponding to the scalar's value (e.g., [`leading_bits_width_1`]).
 //! The continuation bytes also follow a specific bit pattern ([`is_continuation_byte`]) and contain the remainder of the data bits ([`continuation_bits`]).
@@ -16,7 +16,7 @@
 //! A Unicode _scalar_ is a numerical value (represented in this module as a `u32`) corresponding to a character that can be encoded in UTF-8.
 //! All Rust `char`s correspond to Unicode scalars ([`char_is_scalar`]),
 //! and every numerical value encoded in a UTF-8 byte sequence must fall within the range defined for Unicode scalars ([`is_scalar`]).
-//! The Unicode standard also defines a _codepoint_ to be numerical value which falls in the range available for encoding characters in UTF-8.
+//! The Unicode standard also defines a _codepoint_ to be a numerical value which falls in the range available for encoding characters in UTF-8.
 //! This may sound similar to the definition of scalar.
 //! However, the definition of codepoint is more permissive than that for scalars,
 //! as it includes some values which are technically possible to encode in the UTF-8 scheme,
@@ -169,7 +169,7 @@ pub open spec fn valid_leading_and_continuation_bytes_first_codepoint(bytes: Seq
         && is_continuation_byte(bytes[2]) && is_continuation_byte(bytes[3]))
 }
 
-/// The first codepoint encoded in UTF-8 in the given byte sequence, assuming that the sequence begins with a well-formed leading byte and an appropriate number of well-formed continuation bytes.
+/// Returns the first codepoint encoded in UTF-8 in the given byte sequence, assuming that the sequence begins with a well-formed leading byte and an appropriate number of well-formed continuation bytes.
 pub open spec fn decode_first_codepoint(bytes: Seq<u8>) -> u32
     recommends
         valid_leading_and_continuation_bytes_first_codepoint(bytes),
@@ -185,7 +185,7 @@ pub open spec fn decode_first_codepoint(bytes: Seq<u8>) -> u32
     }
 }
 
-/// The length in bytes of first codepoint encoded in UTF-8 in the given byte sequence, assuming that the sequence begins with a well-formed leading byte and an appropriate number of well-formed continuation bytes.
+/// The length in bytes of the first codepoint encoded in UTF-8 in the given byte sequence, assuming that the sequence begins with a well-formed leading byte and an appropriate number of well-formed continuation bytes.
 pub open spec fn length_of_first_codepoint(bytes: Seq<u8>) -> int
     recommends
         valid_leading_and_continuation_bytes_first_codepoint(bytes),
@@ -240,6 +240,14 @@ pub open spec fn length_of_first_scalar(bytes: Seq<u8>) -> int
     length_of_first_codepoint(bytes)
 }
 
+/// Removes the first scalar encoded in UTF-8 in the given byte sequence and returns the rest of the sequence, assuming that the sequence begins with a well-formed encoding of a single scalar.
+pub open spec fn pop_first_scalar(bytes: Seq<u8>) -> Seq<u8>
+    recommends
+        valid_first_scalar(bytes),
+{
+    bytes.subrange(length_of_first_scalar(bytes), bytes.len() as int)
+}
+
 proof fn lemma_pop_first_scalar_decreases(bytes: Seq<u8>)
     requires
         valid_first_scalar(bytes),
@@ -250,14 +258,6 @@ proof fn lemma_pop_first_scalar_decreases(bytes: Seq<u8>)
     assert(pop_first_scalar(bytes).len() == bytes.len() as int - length_of_first_scalar(bytes)) by {
         axiom_seq_subrange_len(bytes, length_of_first_scalar(bytes), bytes.len() as int)
     };
-}
-
-/// Removes the first scalar encoded in UTF-8 in the given byte sequence and returns the rest of the sequence, assuming that the sequence begins with a well-formed encoding of a single scalar.
-pub open spec fn pop_first_scalar(bytes: Seq<u8>) -> Seq<u8>
-    recommends
-        valid_first_scalar(bytes),
-{
-    bytes.subrange(length_of_first_scalar(bytes), bytes.len() as int)
 }
 
 /// Takes the bytes corresponding to the the first scalar encoded in UTF-8 in the given byte sequence, assuming that the sequence begins with a well-formed encoding of a single scalar.
@@ -314,8 +314,10 @@ pub open spec fn has_width_4_encoding(v: u32) -> bool {
 /// True when the given `u32` represents a Unicode scalar, i.e., a value that can be encoded in UTF-8.
 /// This definition is equivalent to: `0 <= v <= 0x10ffff && !(0xD800 <= v <= 0xDFFF)`.
 pub open spec fn is_scalar(v: u32) -> bool {
-    has_width_1_encoding(v) || has_width_2_encoding(v) || has_width_3_encoding(v)
-        || has_width_4_encoding(v)
+    ||| has_width_1_encoding(v)
+    ||| has_width_2_encoding(v)
+    ||| has_width_3_encoding(v)
+    ||| has_width_4_encoding(v)
 }
 
 /// The first (and only) byte of the UTF-8 encoding of the given scalar value, assuming that the scalar has a 1-byte UTF-8 encoding.
