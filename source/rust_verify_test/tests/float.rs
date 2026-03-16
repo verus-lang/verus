@@ -185,6 +185,9 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f16` to `f64`")
+}
+
+test_verify_one_file! {
     #[test] f32_ieee verus_code! {
         // TODO: replace explicit calls to ieee_cast with "as" when support for "as" is added
         // (and use this to replace === with ==)
