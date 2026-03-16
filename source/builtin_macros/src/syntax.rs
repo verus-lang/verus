@@ -527,7 +527,7 @@ impl Visitor {
         &mut self,
         spec: &mut SignatureSpec,
         ret_pat: Option<(Pat, TType)>,
-        final_ret_pat: Option<Pat>, // Some(pat) if different from ret_pat,
+        _final_ret_pat: Option<Pat>, // Some(pat) if different from ret_pat,
         _span: Span,
         is_impl_fn: bool,     // is the function a ImplItemFn or TraitImplFn
         is_closure: bool,     // some closures also use this function to handle
@@ -546,23 +546,28 @@ impl Visitor {
 
         let (self_token_op, args) = inputs;
 
-        fn wrap_with_ret_binding_pat(expr: &mut Expr, ret_pat: &Pat, final_ret_pat: &Option<Pat>) {
-            if let Some(final_ret_pat) = final_ret_pat {
-                let expr_span = expr.span();
-                let attrs = expr.replace_attrs(Vec::new());
-                let inner = take_expr(expr);
-                let wrapped: Expr =
-                    parse_quote_spanned!(expr_span => { let #final_ret_pat = #ret_pat; #inner });
-                *expr = wrap_expr_with_attrs(wrapped, attrs);
-            }
+        let (ret_pat, ret_ty) = match ret_pat {
+            Some((pat, ty)) => (Some(pat), Some(ty)),
+            None => (None, None),
+        };
+
+        let ret_val_ident: Ident = Ident::new("_VERUS_ret_ident", Span::call_site());
+
+        fn wrap_with_ret_binding_pat(expr: &mut Expr, ret_val_ident: &Ident, ret_pat: &Pat) {
+            let expr_span = expr.span();
+            let attrs = expr.replace_attrs(Vec::new());
+            let inner = take_expr(expr);
+            let wrapped: Expr =
+                parse_quote_spanned!(expr_span => { let #ret_pat = #ret_val_ident; #inner });
+            *expr = wrap_expr_with_attrs(wrapped, attrs);
         }
 
         // Rewrite the `ensures` clauses to protect against edge cases e.g.
         //     a name collision between the return-value and the function
         let ensures = ensures.map(|mut ensures| {
-            if let Some((ret_pat, _)) = &ret_pat {
+            if let Some(ret_pat) = &ret_pat {
                 for expr in &mut ensures.exprs.exprs {
-                    wrap_with_ret_binding_pat(expr, ret_pat, &final_ret_pat);
+                    wrap_with_ret_binding_pat(expr, &ret_val_ident, ret_pat);
                 }
             }
             ensures
@@ -575,8 +580,8 @@ impl Visitor {
             if let Some(DefaultEnsures { token, mut exprs }) = default_ensures {
                 for expr in exprs.exprs.iter_mut() {
                     let span = expr.span();
-                    if let Some((ret_pat, _)) = &ret_pat {
-                        wrap_with_ret_binding_pat(expr, ret_pat, &final_ret_pat);
+                    if let Some(ret_pat) = &ret_pat {
+                        wrap_with_ret_binding_pat(expr, &ret_val_ident, ret_pat);
                     }
                     *expr = parse_quote_spanned_builtin!(verus_builtin, span => #verus_builtin::default_ensures(#expr));
                 }
@@ -673,12 +678,12 @@ impl Visitor {
                     }
                 };
                 if cont {
-                    if let Some((p, ty)) = ret_pat {
+                    if let Some(ty) = ret_ty {
                         if is_closure {
                             // closures cannot return impl xxx so it's safe to
                             spec_stmts.push(Stmt::Expr(
                                 Expr::Verbatim(
-                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures(|#p: #ty| [#exprs])),
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures(|#ret_val_ident: #ty| [#exprs])),
                                 ),
                                 Some(Semi { spans: [token.span] }),
                             ));
@@ -704,12 +709,12 @@ impl Visitor {
                                         }
                                     }
                                 };
-                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#p, #receiver_token#ident#generics_token(#args)))
+                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #receiver_token#ident#generics_token(#args)))
                             };
                             let contrain_typ_expr = Expr::Verbatim(constrain_type);
                             spec_stmts.push(Stmt::Expr(
                                     Expr::Verbatim(
-                                        quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures(|#p| [#contrain_typ_expr, #exprs])),
+                                        quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures(|#ret_val_ident| [#contrain_typ_expr, #exprs])),
                                     ),
                                     Some(Semi { spans: [token.span] }),
                                 ));
