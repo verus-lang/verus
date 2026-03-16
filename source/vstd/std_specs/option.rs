@@ -269,10 +269,6 @@ pub assume_specification<T, F: FnOnce() -> T>[ Option::<T>::unwrap_or_else ](
 ;
 
 // clone
-// CHANGED: added cfg it out due to the error "cannot find trait `T407_Destruct` in this scope,"
-// which came with the note: "This error was found in Verus's Trait-Conflict-Checker"
-// TODO: figure out error
-#[cfg(not(verus_verify_core))]
 pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone ](opt: &Option<T>) -> (res: Option<
     T,
 >)
