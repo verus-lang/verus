@@ -931,7 +931,7 @@ fn erase_let_for_pattern_checking<'tcx>(
     };
     let stmt = Stmt {
         kind: StmtKind::Let {
-            hir_id: root_hir_id,
+            hir_id: *hir_id,
             remainder_scope,
             init_scope: region::Scope { local_id: hir_id.local_id, data: region::ScopeData::Node },
             pattern,
@@ -985,7 +985,7 @@ fn erase_arm_for_pattern_checking<'tcx>(
     let body = erased_ghost_value(cx, erasure_ctxt, root_hir_id, arm.body.span, match_ty);
 
     let arm = Arm {
-        hir_id: root_hir_id,
+        hir_id: arm.hir_id,
         pattern,
         guard,
         body,

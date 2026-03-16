@@ -68,7 +68,7 @@ pub(crate) fn closure_saved_names_of_captured_variables<'tcx>(
 ///
 /// This is the implementation of hook `build_mir_inner_impl`, which should only
 /// be called by the query `mir_built`.
-pub(crate) fn build_mir_inner_impl<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Body<'tcx> {
+pub fn build_mir_inner_impl<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Body<'tcx> {
     tcx.ensure_done().thir_abstract_const(def);
     if let Err(e) = tcx.ensure_ok().check_match(def) {
         return construct_error(tcx, def, e);
