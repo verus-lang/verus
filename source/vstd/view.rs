@@ -134,7 +134,7 @@ impl<T: DeepView> DeepView for alloc::vec::Vec<T> {
     }
 }
 
-#[cfg(all(feature = "alloc", any(verus_keep_ghost, feature = "allocator")))]
+#[cfg(all(feature = "alloc", feature = "std", any(verus_keep_ghost, feature = "allocator")))]
 impl<Key, Value, S, A: core::alloc::Allocator> View for std::collections::HashMap<
     Key,
     Value,
@@ -146,7 +146,7 @@ impl<Key, Value, S, A: core::alloc::Allocator> View for std::collections::HashMa
     uninterp spec fn view(&self) -> Map<Key, Value>;
 }
 
-#[cfg(all(feature = "alloc", any(verus_keep_ghost, feature = "allocator")))]
+#[cfg(all(feature = "alloc", feature = "std", any(verus_keep_ghost, feature = "allocator")))]
 impl<
     Key: DeepView,
     Value: DeepView,
@@ -160,14 +160,14 @@ impl<
     }
 }
 
-#[cfg(all(feature = "alloc", not(verus_keep_ghost), not(feature = "allocator")))]
+#[cfg(all(feature = "alloc", feature = "std", not(verus_keep_ghost), not(feature = "allocator")))]
 impl<Key, Value, S> View for std::collections::HashMap<Key, Value, S> {
     type V = Map<Key, Value>;
 
     uninterp spec fn view(&self) -> Map<Key, Value>;
 }
 
-#[cfg(all(feature = "alloc", not(verus_keep_ghost), not(feature = "allocator")))]
+#[cfg(all(feature = "alloc", feature = "std", not(verus_keep_ghost), not(feature = "allocator")))]
 impl<Key: DeepView, Value: DeepView, S> DeepView for std::collections::HashMap<Key, Value, S> {
     type V = Map<Key::V, Value::V>;
 
@@ -176,14 +176,14 @@ impl<Key: DeepView, Value: DeepView, S> DeepView for std::collections::HashMap<K
     }
 }
 
-#[cfg(all(feature = "alloc", any(verus_keep_ghost, feature = "allocator")))]
+#[cfg(all(feature = "alloc", feature = "std", any(verus_keep_ghost, feature = "allocator")))]
 impl<Key, S, A: core::alloc::Allocator> View for std::collections::HashSet<Key, S, A> {
     type V = Set<Key>;
 
     uninterp spec fn view(&self) -> Set<Key>;
 }
 
-#[cfg(all(feature = "alloc", any(verus_keep_ghost, feature = "allocator")))]
+#[cfg(all(feature = "alloc", feature = "std", any(verus_keep_ghost, feature = "allocator")))]
 impl<Key: DeepView, S, A: core::alloc::Allocator> DeepView for std::collections::HashSet<
     Key,
     S,
@@ -196,14 +196,14 @@ impl<Key: DeepView, S, A: core::alloc::Allocator> DeepView for std::collections:
     }
 }
 
-#[cfg(all(feature = "alloc", not(verus_keep_ghost), not(feature = "allocator")))]
+#[cfg(all(feature = "alloc", feature = "std", not(verus_keep_ghost), not(feature = "allocator")))]
 impl<Key, S> View for std::collections::HashSet<Key, S> {
     type V = Set<Key>;
 
     uninterp spec fn view(&self) -> Set<Key>;
 }
 
-#[cfg(all(feature = "alloc", not(verus_keep_ghost), not(feature = "allocator")))]
+#[cfg(all(feature = "alloc", feature = "std", not(verus_keep_ghost), not(feature = "allocator")))]
 impl<Key: DeepView, S> DeepView for std::collections::HashSet<Key, S> {
     type V = Set<Key::V>;
 
