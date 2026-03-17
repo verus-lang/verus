@@ -526,7 +526,8 @@ impl Visitor {
     fn take_sig_specs<TType: ToTokens>(
         &mut self,
         spec: &mut SignatureSpec,
-        ret_pat: Option<(&Pat, &TType)>,
+        ret_pat: Option<&Pat>,
+        ret_ty: Option<&TType>,
         _span: Span,
         is_impl_fn: bool,     // is the function a ImplItemFn or TraitImplFn
         is_closure: bool,     // some closures also use this function to handle
@@ -544,11 +545,6 @@ impl Visitor {
         let unwind = self.take_ghost(&mut spec.unwind);
 
         let (self_token_op, args) = inputs;
-
-        let (ret_pat, ret_ty) = match ret_pat {
-            Some((pat, ty)) => (Some(pat), Some(ty)),
-            None => (None, None),
-        };
 
         let ret_val_ident: Ident = Ident::new("_VERUS_ret_ident", Span::call_site());
 
@@ -874,9 +870,9 @@ impl Visitor {
 
             arg.tracked = None;
         }
-        let ret_pat = match &mut sig.output {
-            ReturnType::Default => None,
-            ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
+        let (ret_pat, ret_ty) = match &mut sig.output {
+            ReturnType::Default => (None, None),
+            ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ref mut ty) => {
                 self.visit_type_mut(ty);
                 if let Some(token) = tracked {
                     if !self.erase_ghost.erase_all() {
@@ -885,8 +881,8 @@ impl Visitor {
                     *tracked = None;
                 }
                 match std::mem::take(ret_opt) {
-                    None => None,
-                    Some(ret) => Some((ret.1.clone(), ty.clone())),
+                    None => (None, None),
+                    Some(ret) => (Some(ret.1), Some(*ty.clone())),
                 }
             }
         };
@@ -1032,15 +1028,16 @@ impl Visitor {
 
         let sig_span = sig.span().clone();
 
-        if let Some((p, _)) = &ret_pat {
-            if let Some(err_stmt) = check_verus_return_idents(p, &sig.inputs) {
+        if let Some(pat) = &ret_pat {
+            if let Some(err_stmt) = check_verus_return_idents(pat, &sig.inputs) {
                 stmts.push(err_stmt);
             }
         }
 
         let spec_stmts = self.take_sig_specs(
             &mut sig.spec,
-            ret_pat.as_ref().map(|(pat, ty)| (pat, ty)),
+            ret_pat.as_ref(),
+            ret_ty.as_ref(),
             sig_span,
             is_impl_fn,
             false,
@@ -5011,9 +5008,9 @@ pub(crate) fn sig_specs_attr(
         spec_stmts.extend(take_sig_with_spec(erase_ghost, with, sig, &mut ret_pat));
     }
     spec.with = None;
-    let ret_pat = match (&ret_pat, &sig.output) {
-        (Some(pat), syn::ReturnType::Type(_, ty)) => Some((pat, ty)),
-        _ => None,
+    let (ret_pat, ret_ty) = match (&ret_pat, &sig.output) {
+        (Some(pat), syn::ReturnType::Type(_, ty)) => (Some(pat), Some(ty.as_ref())),
+        _ => (None, None),
     };
     let mut visitor = Visitor {
         erase_ghost,
@@ -5027,8 +5024,8 @@ pub(crate) fn sig_specs_attr(
         rustdoc: env_rustdoc(),
     };
 
-    if let Some((p, _)) = ret_pat {
-        if let Some(err_stmt) = check_return_idents(p, &sig.inputs) {
+    if let Some(pat) = ret_pat {
+        if let Some(err_stmt) = check_return_idents(pat, &sig.inputs) {
             spec_stmts.push(err_stmt);
         }
     }
@@ -5037,6 +5034,7 @@ pub(crate) fn sig_specs_attr(
     spec_stmts.extend(visitor.take_sig_specs(
         &mut spec,
         ret_pat,
+        ret_ty,
         sig_span,
         is_impl_fn,
         is_closure,
