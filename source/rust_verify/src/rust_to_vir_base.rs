@@ -1680,6 +1680,23 @@ pub(crate) fn is_smt_arith<'tcx>(
     }
 }
 
+pub(crate) fn is_float_arith<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span1: Span,
+    span2: Span,
+    id1: &HirId,
+    id2: &HirId,
+) -> Result<bool, VirErr> {
+    let (t1, t2) = (
+        typ_of_expr_adjusted(bctx, span1, id1, false)?,
+        typ_of_expr_adjusted(bctx, span2, id2, false)?,
+    );
+    match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
+        (TypX::Float(_), TypX::Float(_)) => Ok(true),
+        _ => Ok(false),
+    }
+}
+
 fn get_proof_fn_one_mode<'tcx>(
     ctxt: &Context<'tcx>,
     span: Span,
