@@ -78,18 +78,6 @@ impl<T> History<T> {
         self.0.dom().contains(timestamp)
     }
 
-    pub open spec fn is_max_timestamp(&self, timestamp: nat) -> bool {
-        &&& self.contains_timestamp(timestamp)
-        &&& forall|t| #[trigger] self.contains_timestamp(t) ==> t <= timestamp
-    }
-
-    pub open spec fn max_timestamp(&self) -> nat
-        recommends
-            self.0.len() > 0,
-    {
-        self.0.dom().to_seq().map(|i, t| t as int).max() as nat
-    }
-
     pub open spec fn get(&self, timestamp: nat) -> Option<(T, Option<View>)> {
         self.0.get(timestamp)
     }
@@ -101,17 +89,14 @@ impl<T> History<T> {
         History(self.0.insert(timestamp, (val, view)))
     }
 
-    pub open spec fn is_singleton(&self, timestamp: nat, val: T, view: Option<View>) -> bool {
-        //forall |ts| #[trigger] self.contains_timestamp(ts) ==> ts == timestamp && self.get(ts) == Some((val, view))
-        // todo. try literal expr here instead map![ => ]
-        self.0 == map![timestamp => (val, view)]
+    pub open spec fn is_singleton(&self, timestamp: nat, val: (T, Option<View>)) -> bool {
+        &&& self.contains_timestamp(timestamp)
+        &&& forall|ts| #[trigger] self.contains_timestamp(ts) ==> ts == timestamp && self.get(ts) == Some(val)
     }
 
-    pub open spec fn last(&self) -> T 
-        recommends
-            self.0.len() > 0
-    {
-        self.get(self.max_timestamp()).unwrap().0
+    pub open spec fn is_max_timestamp(&self, timestamp: nat) -> bool {
+        &&& self.contains_timestamp(timestamp)
+        &&& forall|ts| #[trigger] self.contains_timestamp(ts) ==> ts <= timestamp
     }
 }
 
@@ -185,11 +170,16 @@ pub broadcast proof fn view_join_contains(v1: View, v2: View)
     reveal(View::join);
 }
 
-pub broadcast proof fn history_insert_contains_timestamp<T>(h: History<T>, t: nat, v: T, o: Option<View>, t2: nat)
+pub broadcast proof fn history_insert_contains_timestamp_cases<T>(h: History<T>, t: nat, v: T, o: Option<View>, t2: nat)
     requires
         #[trigger] h.insert(t, v, o).contains_timestamp(t2)
     ensures
         t == t2 || h.contains_timestamp(t2)
+{}
+
+pub broadcast proof fn history_insert_contains_inserted_timestamp<T>(h: History<T>, t: nat, v: T, o: Option<View>)
+    ensures
+        (#[trigger] h.insert(t, v, o)).contains_timestamp(t)
 {}
 
 pub broadcast proof fn history_get_contains_timestamp<T>(h: History<T>, t: nat)
@@ -207,7 +197,8 @@ pub broadcast group group_view_history {
     view_join_comm,
     view_join_idemp,
     view_join_contains,
-    history_insert_contains_timestamp,
+    history_insert_contains_inserted_timestamp,
+    history_insert_contains_timestamp_cases,
     history_get_contains_timestamp
 }
 
@@ -340,7 +331,7 @@ impl ViewSeen {
     pub uninterp spec fn view(&self) -> View;
 
     // VS_BOT
-    pub axiom fn empty() -> (tracked out: ViewSeen)
+    pub axiom fn new() -> (tracked out: ViewSeen)
         ensures
             out.view() == View::empty(),
     ;
@@ -394,6 +385,10 @@ pub tracked struct ReleaseViewSeen;
 
 impl ReleaseViewSeen {
     pub uninterp spec fn view(&self) -> View;
+
+    pub axiom fn new() -> (tracked out: Self)
+        ensures
+            out.view() == View::empty();
 }
 
 #[derive(Clone, Copy)]
@@ -402,6 +397,10 @@ pub tracked struct AcquireViewSeen;
 
 impl AcquireViewSeen {
     pub uninterp spec fn view(&self) -> View;
+
+    pub axiom fn new() -> (tracked out: Self)
+        ensures
+            out.view() == View::empty();
 }
 
 // ViewAt<T> is persistent when T is persistent
@@ -631,7 +630,9 @@ impl PWeakAtomicU8 {
     ))
         ensures
             res.0.loc() == res.1@.loc(),
-            res.1@.hist().is_singleton(res.3@, i, Some(res.2@.view())),
+            res.1@.hist().is_singleton(res.3@, (i, Some(res.2@.view()))),
+            res.2@.view().contains_loc(res.1@.loc()),
+            res.2@.view().get_timestamp(res.1@.loc()) == res.3@
     {
         let p = PWeakAtomicU8 { ato: AtomicU8::new(i) };
         (p, Tracked::assume_new(), Tracked::assume_new(), Ghost::new(unreached()))
@@ -639,15 +640,16 @@ impl PWeakAtomicU8 {
 
     #[inline(always)]
     #[verifier::external_body]
-    pub fn into_inner(self, Tracked(pt): Tracked<AtomicPointsTo<u8>>) -> (ret: u8)
+    pub fn into_inner(self, Tracked(pt): Tracked<AtomicPointsTo<u8>>) -> (ret: (u8, Ghost<nat>))
         requires
             self.loc() == pt.loc(),
         ensures
-            ret == pt.hist().last()
+            pt.hist().is_max_timestamp(ret.1@),
+            ret.0 == pt.hist().get(ret.1@).unwrap().0
         opens_invariants none
         no_unwind
     {
-        return self.ato.into_inner();
+        (self.ato.into_inner(), Ghost::new(unreached()))
     }
 
     // AT-READ-SN -- acquire, and also AT-READ-SN-ACQ
@@ -788,6 +790,63 @@ impl PWeakAtomicU8 {
         self.ato.store(v, Ordering::Relaxed);
         (Ghost(unreached()), Ghost(unreached()))
     }
+
+    #[inline(always)]
+    #[verifier::external_body]
+    #[verifier::atomic]
+    pub fn store_relaxed_mut(
+        &mut self,
+        v: u8,
+        Tracked(v_sn): Tracked<&mut ViewSeen>,
+        Tracked(rel_v_sn): Tracked<ReleaseViewSeen>,
+        Tracked(pt): Tracked<&mut AtomicPointsTo<u8>>,
+    ) -> (out: (Ghost<View>, Ghost<nat>))
+        requires
+            old(self).loc() == old(pt).loc(),
+        ensures
+            ({
+                let write_view = out.0@; // view for the write message
+                let timestamp = out.1@;  // timestamp of the new write
+                // latest thread view is strictly greater than the old one,
+                // and the write view is not contained in the old thread view
+                &&& v_sn.view().contains_strict(old(v_sn).view())
+                &&& !old(v_sn).view().contains(write_view)
+                // timestamp is greater than all of the thread's observations and is unique for the history
+                &&& old(v_sn).view().get_timestamp(self.loc()) < timestamp
+                &&& !old(pt).hist().contains_timestamp(timestamp)
+                // the thread's current view has seen the write timestamps
+                &&& timestamp == v_sn.view().get_timestamp(self.loc())
+                // because this is a relaxed write, the write view contains the release view
+                // and the new thread view contains the write view
+                &&& write_view.contains(rel_v_sn.view())
+                &&& v_sn.view().contains(write_view)
+                // the points-to's history is updated to contain the new write, and is also truncated to remove all other entries
+                &&& pt.loc() == old(pt).loc()
+                &&& pt.hist().is_singleton(timestamp, (v, Some(write_view)))
+                &&& self.loc() == old(self).loc()
+            }),
+        opens_invariants none
+        no_unwind
+    {
+        self.ato.store(v, Ordering::Relaxed);
+        (Ghost(unreached()), Ghost(unreached()))
+    }
+
+    #[inline(always)]
+    #[verifier::external_body]
+    pub fn truncate_history(&mut self, Tracked(pt): Tracked<&mut AtomicPointsTo<u8>>) -> (ts: Ghost<nat>)
+        requires
+            old(self).loc() == old(pt).loc()
+        ensures
+            *self == *old(self),
+            pt.loc() == old(pt).loc(),
+            old(pt).hist().is_max_timestamp(ts@),
+            pt.hist().is_singleton(ts@, old(pt).hist().get(ts@).unwrap())
+        opens_invariants none
+        no_unwind
+    {
+        Ghost(unreached())
+    }
 }
 
 // version of atomic_ghost types for weak memory
@@ -871,7 +930,7 @@ impl<K, G, Pred> WeakAtomicU8<K, G, Pred>
             self.well_formed(),
         ensures 
             Pred::atomic_inv(self.constant(), res.1@, res.2@),
-            res.0 == res.1@.value(res.1@.max_timestamp())
+            res.0 == res.1@.value(res.1@.is_max_timestamp())
     {
         let Self { patomic, atomic_inv: Tracked(atomic_inv) } = self;
         let tracked (perm, g) = atomic_inv.into_inner();
