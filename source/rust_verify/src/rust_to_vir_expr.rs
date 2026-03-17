@@ -494,7 +494,6 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                 },
             }
         }
-        PatExprKind::ConstBlock(_) => err_span(span, "PatExprKind::ConstBlock"),
     }
 }
 
@@ -3237,7 +3236,7 @@ fn lit_to_vir<'tcx>(
                 let lit_const = LitToConstInput { lit: lit.node, ty, neg: negated };
                 let c = bctx.ctxt.tcx.lit_to_const(lit_const);
                 if let rustc_middle::ty::ConstKind::Value(v) = c.kind() {
-                    if let Some(i) = v.valtree.try_to_scalar_int() {
+                    if let Some(i) = v.valtree.try_to_leaf() {
                         match i.size().bytes() {
                             4 => {
                                 let c = vir::ast::Constant::Float32(i.to_u32());

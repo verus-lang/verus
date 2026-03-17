@@ -42,7 +42,7 @@ use verus_syn::{
 /// Check if VERUSDOC=1.
 #[cfg(verus_keep_ghost)]
 pub fn env_rustdoc() -> bool {
-    match proc_macro::tracked_env::var("VERUSDOC") {
+    match proc_macro::tracked::env_var("VERUSDOC") {
         Err(_) => false, // VERUSDOC key not present in environment
         Ok(s) => s == "1",
     }
