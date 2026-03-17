@@ -5008,8 +5008,8 @@ pub(crate) fn sig_specs_attr(
         spec_stmts.extend(take_sig_with_spec(erase_ghost, with, sig, &mut ret_pat));
     }
     spec.with = None;
-    let (ret_pat, ret_ty) = match (&ret_pat, &sig.output) {
-        (Some(pat), syn::ReturnType::Type(_, ty)) => (Some(pat), Some(ty.as_ref())),
+    let (ret_pat, ret_ty) = match (ret_pat, &sig.output) {
+        (Some(pat), syn::ReturnType::Type(_, ty)) => (Some(pat), Some(ty)),
         _ => (None, None),
     };
     let mut visitor = Visitor {
@@ -5024,7 +5024,7 @@ pub(crate) fn sig_specs_attr(
         rustdoc: env_rustdoc(),
     };
 
-    if let Some(pat) = ret_pat {
+    if let Some(pat) = &ret_pat {
         if let Some(err_stmt) = check_return_idents(pat, &sig.inputs) {
             spec_stmts.push(err_stmt);
         }
@@ -5033,8 +5033,8 @@ pub(crate) fn sig_specs_attr(
     let sig_span = sig.span().clone();
     spec_stmts.extend(visitor.take_sig_specs(
         &mut spec,
-        ret_pat,
-        ret_ty,
+        ret_pat.as_ref(),
+        ret_ty.as_ref(),
         sig_span,
         is_impl_fn,
         is_closure,
