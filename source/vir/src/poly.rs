@@ -600,9 +600,6 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOp::MutRefFinal(_) => {
                     panic!("internal error: MustBeFinalized in SST")
                 }
-                UnaryOp::MutRefFinal(_) => {
-                    panic!("internal error: MustBeFinalized in SST")
-                }
             }
         }
         ExpX::UnaryOpr(op, e1) => {
