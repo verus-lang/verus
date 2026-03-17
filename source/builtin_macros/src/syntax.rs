@@ -5533,7 +5533,7 @@ fn check_return_idents(
 
     for param_ident in &param_idents {
         for ret_ident in &ret_idents {
-            if ret_ident.to_string() == param_ident.to_string() {
+            if param_ident == ret_ident {
                 return Some(stmt_with_semi!(
                     param_ident.span() =>
                     compile_error!("parameter name cannot be the same as the return value name")
@@ -5564,7 +5564,7 @@ fn check_verus_return_idents(
 
     for param_ident in &param_idents {
         for ret_ident in &ret_idents {
-            if ret_ident.to_string() == param_ident.to_string() {
+            if param_ident == ret_ident {
                 return Some(stmt_with_semi!(
                     param_ident.span() =>
                     compile_error!("parameter name cannot be the same as the return value name")
