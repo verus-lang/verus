@@ -1881,9 +1881,19 @@
             "syn": "Expr"
           }
         },
+        "invariant_except_break": {
+          "option": {
+            "syn": "InvariantExceptBreak"
+          }
+        },
         "invariant": {
           "option": {
             "syn": "Invariant"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
           }
         },
         "decreases": {

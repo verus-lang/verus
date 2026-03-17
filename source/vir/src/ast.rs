@@ -534,6 +534,9 @@ pub enum UnaryOpr {
     IntegerTypeBound(IntegerTypeBoundKind, Mode),
     /// Custom diagnostic message
     CustomErr(Arc<String>),
+    /// Marker for expressions with #[verus::internal(auto_decreases)] attribute
+    /// Used to filter out auto-generated decreases-related invariants
+    AutoDecreases,
     /// Label from a `proof_note` attribute.
     ProofNote(Arc<String>),
     /// Predicate over any type that indicates its mutable references has resolved.

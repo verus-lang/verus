@@ -935,7 +935,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     InternalFun::ClosureReq => str_ident(crate::def::CLOSURE_REQ),
                     InternalFun::ClosureEns => str_ident(crate::def::CLOSURE_ENS),
                     InternalFun::DefaultEns => str_ident(crate::def::DEFAULT_ENS),
-                    InternalFun::CheckDecreaseInt => str_ident(crate::def::CHECK_DECREASE_INT),
                     InternalFun::CheckDecreaseHeight => {
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)
                     }
@@ -1233,6 +1232,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOpr::ProofNote(_) => {
                 // A `proof_note` label is metadata and has no effect otherwise.
+                return exp_to_expr(ctx, e, expr_ctxt);
+            }
+            UnaryOpr::AutoDecreases => {
+                // AutoDecreases is just a marker for filtering invariants
+                // during loop construction. Unwrap and process the inner expression.
                 return exp_to_expr(ctx, e, expr_ctxt);
             }
             UnaryOpr::HasResolved(t) => {

@@ -123,15 +123,15 @@ test_verify_one_file! {
         use vstd::seq;
 
         fn test() {
-            let sl = &[0u32, 2u32, 4u32];
+            let sl: &[u32] = &[0u32, 2u32, 4u32];
 
             let mut i: usize = 0;
-            let iter = sl.iter();
-            for x in it: iter
+            for x in it: sl.iter()
                 invariant
-                    i == it.pos,
-                    it.elements == seq![0u32, 2u32, 4u32],
+                    i == it.index@,
+                    it.seq().map_values(|v: &u32| *v) == seq![0u32, 2u32, 4u32],
             {
+                assert(it.seq().map_values(|v: &u32| *v).contains(*x));
                 assert(x < 5);
                 assert(x % 2 == 0);
                 i = i + 1;

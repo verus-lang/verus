@@ -271,6 +271,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         sorted_order: Option<&HashMap<T, usize>>,
     ) -> bool {
         assert!(self.has_run);
+        assert!(self.mapping.contains_key(source));
         let src = self.mapping[source];
         let tgt = self.mapping[target];
         let tgt_sort_index = sorted_order.map(|order| order[&self.get_scc_rep(target)]);

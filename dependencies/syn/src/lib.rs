@@ -1058,8 +1058,10 @@ pub fn rejoin_tokens(stream: proc_macro2::TokenStream) -> proc_macro2::TokenStre
         match (t0, t1_ident.as_ref().map(|(a, b)| (a.as_str(), *b))) {
             (Some(('!', Alone, s1)), Some(("is", s2))) => {
                 if adjacent(s1, s2) {
-                    tokens[i] =
-                        TokenTree::Ident(proc_macro2::Ident::new("isnt", s1.join(s2).unwrap()));
+                    tokens[i] = TokenTree::Ident(proc_macro2::Ident::new(
+                        "isnt",
+                        s1.join(s2).unwrap_or(s1),
+                    ));
                     tokens.remove(i + 1);
                     i += 1;
                     till -= 1;
@@ -1068,8 +1070,10 @@ pub fn rejoin_tokens(stream: proc_macro2::TokenStream) -> proc_macro2::TokenStre
             }
             (Some(('!', Alone, s1)), Some(("has", s2))) => {
                 if adjacent(s1, s2) {
-                    tokens[i] =
-                        TokenTree::Ident(proc_macro2::Ident::new("hasnt", s1.join(s2).unwrap()));
+                    tokens[i] = TokenTree::Ident(proc_macro2::Ident::new(
+                        "hasnt",
+                        s1.join(s2).unwrap_or(s1),
+                    ));
                     tokens.remove(i + 1);
                     i += 1;
                     till -= 1;

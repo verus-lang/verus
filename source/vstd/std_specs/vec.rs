@@ -1,4 +1,5 @@
 use super::super::prelude::*;
+use super::iter::IteratorSpec;
 use verus_builtin::*;
 
 use alloc::collections::TryReserveError;
@@ -356,45 +357,44 @@ impl<T: super::cmp::PartialEqSpec<U>, U, A1: Allocator, A2: Allocator> super::cm
 #[verifier::reject_recursive_types(A)]
 pub struct ExIntoIter<T, A: Allocator>(IntoIter<T, A>);
 
-impl<T, A: Allocator> View for IntoIter<T, A> {
-    type V = (int, Seq<T>);
+// To allow reasoning about the "contents" of the Vec iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original vec.
+// REVIEW: This could also be implemented as a function in an AdditionalFns trait.  Is that a better style?
+pub uninterp spec fn into_iter_elts<T, A: Allocator>(i: IntoIter<T, A>) -> Seq<T>;
 
-    uninterp spec fn view(self: &IntoIter<T, A>) -> (int, Seq<T>);
+impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
+
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+    uninterp spec fn completes(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_elts(*self).len() {
+            Some(into_iter_elts(*self)[index])
+        } else {
+            None
+        }
+    }
 }
 
-pub assume_specification<T, A: Allocator>[ IntoIter::<T, A>::next ](
-    elements: &mut IntoIter<T, A>,
-) -> (r: Option<T>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(elements)@;
-            match r {
-                None => {
-                    &&& elements@ == old(elements)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(element) => {
-                    let (new_index, new_seq) = elements@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
-                },
-            }
-        }),
-;
-
-pub struct IntoIterGhostIterator<T, A: Allocator> {
-    pub pos: int,
-    pub elements: Seq<T>,
-    pub _marker: PhantomData<A>,
-}
-
-impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIteratorNew for IntoIter<T, A> {
-    type GhostIter = IntoIterGhostIterator<T, A>;
-
-    open spec fn ghost_iter(&self) -> IntoIterGhostIterator<T, A> {
-        IntoIterGhostIterator { pos: self@.0, elements: self@.1, _marker: PhantomData }
+impl <T, A: Allocator> super::iter::DoubleEndedIteratorSpecImpl for IntoIter<T, A> {
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        let len = into_iter_elts(*self).len();
+        if 0 <= index < len {
+            Some(into_iter_elts(*self)[len - index - 1])
+        } else {
+            None
+        }
     }
 }
 
@@ -404,59 +404,7 @@ pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -
         v.len() == n,
         forall |i| 0 <= i < n ==> cloned(elem, #[trigger] v@[i]);
 
-impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIterator for IntoIterGhostIterator<
-    T,
-    A,
-> {
-    type ExecIter = IntoIter<T, A>;
-
-    type Item = T;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &IntoIter<T, A>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.elements == exec_iter@.1
-    }
-
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.elements == self.elements
-            &&& 0 <= self.pos <= self.elements.len()
-        }
-    }
-
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.elements.len()
-    }
-
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.elements.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<T> {
-        if 0 <= self.pos < self.elements.len() {
-            Some(self.elements[self.pos])
-        } else {
-            None
-        }
-    }
-
-    open spec fn ghost_advance(&self, _exec_iter: &IntoIter<T, A>) -> IntoIterGhostIterator<T, A> {
-        Self { pos: self.pos + 1, ..*self }
-    }
-}
-
-impl<T, A: Allocator> View for IntoIterGhostIterator<T, A> {
-    type V = Seq<T>;
-
-    open spec fn view(&self) -> Seq<T> {
-        self.elements.take(self.pos)
-    }
-}
-
-// To allow reasoning about the ghost iterator when the executable
+// To allow reasoning about the returned iterator when the executable
 // function `into_iter()` is invoked in a `for` loop header (e.g., in
 // `for x in it: v.into_iter() { ... }`), we need to specify the behavior of
 // the iterator in spec mode. To do that, we add
@@ -467,9 +415,23 @@ pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Ve
     A,
 > as core::iter::IntoIterator>::IntoIter);
 
+// TODO: This seems like it's redundant
+pub uninterp spec fn spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>) -> (iter: <&Vec<
+    T,
+    A,
+> as core::iter::IntoIterator>::IntoIter);
+
+
 pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
     ensures
-        (#[trigger] spec_into_iter(v))@ == (0int, v@),
+        #[trigger] spec_into_iter(v).remaining() == v@,
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>)
+    ensures
+        #[trigger] spec_into_iter_borrowed(v).remaining() == v@.map_values(|x| &x),
 {
     admit();
 }
@@ -480,7 +442,18 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
     A,
 > as core::iter::IntoIterator>::IntoIter)
     ensures
-        iter@ == (0int, vec@),
+        iter == spec_into_iter(vec),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_inv(&iter, &iter),
+;
+
+#[verifier::when_used_as_spec(spec_into_iter_borrowed)]
+pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::IntoIterator>::into_iter] (vec: &'a Vec<T, A>) ->
+    (iter: <&'a Vec<T, A> as core::iter::IntoIterator>::IntoIter)
+    ensures
+        iter == spec_into_iter_borrowed(vec),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_inv(&iter, &iter),
 ;
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
@@ -538,6 +511,7 @@ pub broadcast group group_vec_axioms {
     axiom_vec_index_decreases,
     vec_clone_deep_view_proof,
     axiom_spec_into_iter,
+    axiom_spec_into_iter_borrowed,
     axiom_vec_has_resolved,
 }
 

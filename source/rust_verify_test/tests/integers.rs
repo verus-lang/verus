@@ -252,6 +252,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_step verus_code! {
         use vstd::std_specs::range::*;
+        use vstd::std_specs::iter::StepSpec;
         spec fn and_then<A, B>(o: Option<A>, f: spec_fn(A) -> Option<B>) -> Option<B> {
             if let Some(a) = o {
                 f(a)

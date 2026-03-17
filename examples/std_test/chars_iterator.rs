@@ -1,5 +1,7 @@
 use vstd::pervasive::runtime_assert;
 use vstd::prelude::*;
+use vstd::std_specs::iter::IteratorSpec;
+use std::str::*;
 
 verus! {
 #[verifier::loop_isolation(false)]
