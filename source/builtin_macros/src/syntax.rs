@@ -526,7 +526,7 @@ impl Visitor {
     fn take_sig_specs<TType: ToTokens>(
         &mut self,
         spec: &mut SignatureSpec,
-        ret_pat: Option<(Pat, TType)>,
+        ret_pat: Option<(&Pat, &TType)>,
         _span: Span,
         is_impl_fn: bool,     // is the function a ImplItemFn or TraitImplFn
         is_closure: bool,     // some closures also use this function to handle
@@ -563,7 +563,7 @@ impl Visitor {
 
         // Rewrite each `ensures` clause to allow a pattern to bind the return value.
         let ensures = ensures.map(|mut ensures| {
-            if let Some(ret_pat) = &ret_pat {
+            if let Some(ret_pat) = ret_pat {
                 for expr in &mut ensures.exprs.exprs {
                     wrap_with_ret_binding_pat(expr, &ret_val_ident, ret_pat);
                 }
@@ -577,7 +577,7 @@ impl Visitor {
             if let Some(DefaultEnsures { token, mut exprs }) = default_ensures {
                 for expr in exprs.exprs.iter_mut() {
                     let span = expr.span();
-                    if let Some(ret_pat) = &ret_pat {
+                    if let Some(ret_pat) = ret_pat {
                         wrap_with_ret_binding_pat(expr, &ret_val_ident, ret_pat);
                     }
                     *expr = parse_quote_spanned_builtin!(verus_builtin, span => #verus_builtin::default_ensures(#expr));
@@ -1040,7 +1040,7 @@ impl Visitor {
 
         let spec_stmts = self.take_sig_specs(
             &mut sig.spec,
-            ret_pat.as_ref().map(|(pat, ty)| (pat.clone(), ty.clone())),
+            ret_pat.as_ref().map(|(pat, ty)| (pat, ty)),
             sig_span,
             is_impl_fn,
             false,
@@ -5036,7 +5036,7 @@ pub(crate) fn sig_specs_attr(
     let sig_span = sig.span().clone();
     spec_stmts.extend(visitor.take_sig_specs(
         &mut spec,
-        ret_pat,
+        ret_pat.as_ref().map(|(pat, ty)| (pat, ty)),
         sig_span,
         is_impl_fn,
         is_closure,
