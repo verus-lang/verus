@@ -8,6 +8,7 @@ use quote::ToTokens;
 use quote::format_ident;
 use quote::{quote, quote_spanned};
 use syn::token::Comma;
+use syn::visit::Visit as SynVisit;
 use verus_syn::BroadcastUse;
 use verus_syn::DefaultEnsures;
 use verus_syn::ExprBlock;
@@ -19,6 +20,7 @@ use verus_syn::punctuated::Punctuated;
 use verus_syn::spanned::Spanned;
 use verus_syn::token;
 use verus_syn::token::{Brace, Bracket, Paren, Semi};
+use verus_syn::visit::Visit as VerusVisit;
 use verus_syn::visit_mut::{
     VisitMut, visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut,
     visit_field_mut, visit_impl_item_const_mut, visit_impl_item_fn_mut, visit_item_const_mut,
@@ -5480,99 +5482,35 @@ fn get_ex_ident_mangle_path(qself: &Option<verus_syn::QSelf>, path: &Path) -> Id
     return Ident::new(&s, path.span());
 }
 
-fn verus_collect_idents_in_pat(pat: &Pat, names: &mut Vec<Ident>) {
-    match pat {
-        Pat::Ident(pat_ident) => {
-            names.push(pat_ident.ident.clone());
-            if let Some((_, subpat)) = &pat_ident.subpat {
-                verus_collect_idents_in_pat(subpat, names);
-            }
-        }
-        Pat::Or(pat_or) => {
-            for case in pat_or.cases.iter() {
-                verus_collect_idents_in_pat(case, names);
-            }
-        }
-        Pat::Paren(pat_paren) => verus_collect_idents_in_pat(&pat_paren.pat, names),
-        Pat::Reference(pat_ref) => verus_collect_idents_in_pat(&pat_ref.pat, names),
-        Pat::Slice(pat_slice) => {
-            for elem in pat_slice.elems.iter() {
-                verus_collect_idents_in_pat(elem, names);
-            }
-        }
-        Pat::Struct(pat_struct) => {
-            for field in pat_struct.fields.iter() {
-                verus_collect_idents_in_pat(&field.pat, names);
-            }
-        }
-        Pat::Tuple(pat_tuple) => {
-            for elem in pat_tuple.elems.iter() {
-                verus_collect_idents_in_pat(elem, names);
-            }
-        }
-        Pat::TupleStruct(pat_tuple_struct) => {
-            for elem in pat_tuple_struct.elems.iter() {
-                verus_collect_idents_in_pat(elem, names);
-            }
-        }
-        Pat::Type(pat_type) => verus_collect_idents_in_pat(&pat_type.pat, names),
-        Pat::Const(_)
-        | Pat::Lit(_)
-        | Pat::Macro(_)
-        | Pat::Path(_)
-        | Pat::Range(_)
-        | Pat::Rest(_)
-        | Pat::Verbatim(_)
-        | Pat::Wild(_) => {}
-        _ => {}
+fn verus_collect_idents_in_pat(pat: &Pat, idents: &mut Vec<Ident>) {
+    let mut collector = VerusPatIdentCollector { idents };
+    VerusVisit::visit_pat(&mut collector, pat);
+}
+
+struct VerusPatIdentCollector<'a> {
+    idents: &'a mut Vec<Ident>,
+}
+
+impl<'ast, 'a> verus_syn::visit::Visit<'ast> for VerusPatIdentCollector<'a> {
+    fn visit_pat_ident(&mut self, pat_ident: &'ast PatIdent) {
+        self.idents.push(pat_ident.ident.clone());
+        verus_syn::visit::visit_pat_ident(self, pat_ident);
     }
 }
 
-fn syn_collect_idents_in_pat(pat: &syn::Pat, names: &mut Vec<Ident>) {
-    match pat {
-        syn::Pat::Ident(pat_ident) => {
-            names.push(pat_ident.ident.clone());
-            if let Some((_, subpat)) = &pat_ident.subpat {
-                syn_collect_idents_in_pat(subpat, names);
-            }
-        }
-        syn::Pat::Or(pat_or) => {
-            for case in pat_or.cases.iter() {
-                syn_collect_idents_in_pat(case, names);
-            }
-        }
-        syn::Pat::Paren(pat_paren) => syn_collect_idents_in_pat(&pat_paren.pat, names),
-        syn::Pat::Reference(pat_ref) => syn_collect_idents_in_pat(&pat_ref.pat, names),
-        syn::Pat::Slice(pat_slice) => {
-            for elem in pat_slice.elems.iter() {
-                syn_collect_idents_in_pat(elem, names);
-            }
-        }
-        syn::Pat::Struct(pat_struct) => {
-            for field in pat_struct.fields.iter() {
-                syn_collect_idents_in_pat(&field.pat, names);
-            }
-        }
-        syn::Pat::Tuple(pat_tuple) => {
-            for elem in pat_tuple.elems.iter() {
-                syn_collect_idents_in_pat(elem, names);
-            }
-        }
-        syn::Pat::TupleStruct(pat_tuple_struct) => {
-            for elem in pat_tuple_struct.elems.iter() {
-                syn_collect_idents_in_pat(elem, names);
-            }
-        }
-        syn::Pat::Type(pat_type) => syn_collect_idents_in_pat(&pat_type.pat, names),
-        syn::Pat::Const(_)
-        | syn::Pat::Lit(_)
-        | syn::Pat::Macro(_)
-        | syn::Pat::Path(_)
-        | syn::Pat::Range(_)
-        | syn::Pat::Rest(_)
-        | syn::Pat::Verbatim(_)
-        | syn::Pat::Wild(_) => {}
-        _ => {}
+fn syn_collect_idents_in_pat(pat: &syn::Pat, idents: &mut Vec<Ident>) {
+    let mut collector = SynPatIdentCollector { idents };
+    SynVisit::visit_pat(&mut collector, pat);
+}
+
+struct SynPatIdentCollector<'a> {
+    idents: &'a mut Vec<Ident>,
+}
+
+impl<'ast, 'a> syn::visit::Visit<'ast> for SynPatIdentCollector<'a> {
+    fn visit_pat_ident(&mut self, pat_ident: &'ast syn::PatIdent) {
+        self.idents.push(pat_ident.ident.clone());
+        syn::visit::visit_pat_ident(self, pat_ident);
     }
 }
 
