@@ -16,7 +16,6 @@ members = [
   "vstd_build",
   "tools/internals_interface",
   "tools/line_count",
-  "tools/qi-graph",
 ]
 exclude = [
   "vstd",

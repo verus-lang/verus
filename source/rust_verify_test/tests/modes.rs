@@ -1660,3 +1660,32 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
 }
+
+test_verify_one_file! {
+    #[test] ghost_tracked_explicit_type_args verus_code! {
+        fn test_ghost_explicit_type_arg() {
+            let g1 = Ghost::<int>(1);
+            assert(g1@ == 1);
+        }
+
+        proof fn test_tracked_explicit_type_arg() {
+            let tracked t1 = Tracked::<int>(1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ghost_explicit_type_arg_in_spec verus_code! {
+        spec fn test_ghost_in_spec() -> int {
+            Ghost::<int>(1)@
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ghost_explicit_type_arg_mismatch verus_code! {
+        fn test_ghost_type_mismatch() {
+            let g1 = Ghost::<bool>(1int);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+}

@@ -1221,6 +1221,59 @@ pub(crate) fn pointee_metadata_prelude() -> Vec<Node> {
     )
 }
 
+pub(crate) fn ieee_float_prelude() -> Vec<Node> {
+    let typ = str_to_node(TYPE);
+    let ieee_float_cast = str_to_node(IEEE_FLOAT_CAST);
+    let ieee_float_neg = str_to_node(IEEE_FLOAT_NEG);
+    let ieee_float_floor = str_to_node(IEEE_FLOAT_FLOOR);
+    let ieee_float_ceil = str_to_node(IEEE_FLOAT_CEIL);
+    let ieee_float_round = str_to_node(IEEE_FLOAT_ROUND);
+    let ieee_float_round_ties_even = str_to_node(IEEE_FLOAT_ROUND_TIES_EVEN);
+    let ieee_float_trunc = str_to_node(IEEE_FLOAT_TRUNC);
+    let ieee_float_is_normal = str_to_node(IEEE_FLOAT_IS_NORMAL);
+    let ieee_float_is_subnormal = str_to_node(IEEE_FLOAT_IS_SUBNORMAL);
+    let ieee_float_is_zero = str_to_node(IEEE_FLOAT_IS_ZERO);
+    let ieee_float_is_infinite = str_to_node(IEEE_FLOAT_IS_INFINITE);
+    let ieee_float_is_nan = str_to_node(IEEE_FLOAT_IS_NAN);
+    let ieee_float_is_negative = str_to_node(IEEE_FLOAT_IS_NEGATIVE);
+    let ieee_float_is_positive = str_to_node(IEEE_FLOAT_IS_POSITIVE);
+    let ieee_float_add = str_to_node(IEEE_FLOAT_ADD);
+    let ieee_float_sub = str_to_node(IEEE_FLOAT_SUB);
+    let ieee_float_mul = str_to_node(IEEE_FLOAT_MUL);
+    let ieee_float_div = str_to_node(IEEE_FLOAT_DIV);
+    let ieee_float_eq = str_to_node(IEEE_FLOAT_EQ);
+    let ieee_float_le = str_to_node(IEEE_FLOAT_LE);
+    let ieee_float_ge = str_to_node(IEEE_FLOAT_GE);
+    let ieee_float_lt = str_to_node(IEEE_FLOAT_LT);
+    let ieee_float_gt = str_to_node(IEEE_FLOAT_GT);
+
+    nodes_vec!(
+        (declare-fun [ieee_float_cast] ([typ] [typ] Poly) Poly)
+        (declare-fun [ieee_float_neg] (Int) Int)
+        (declare-fun [ieee_float_floor] (Int) Int)
+        (declare-fun [ieee_float_ceil] (Int) Int)
+        (declare-fun [ieee_float_round] (Int) Int)
+        (declare-fun [ieee_float_round_ties_even] (Int) Int)
+        (declare-fun [ieee_float_trunc] (Int) Int)
+        (declare-fun [ieee_float_is_normal] (Int) Bool)
+        (declare-fun [ieee_float_is_subnormal] (Int) Bool)
+        (declare-fun [ieee_float_is_zero] (Int) Bool)
+        (declare-fun [ieee_float_is_infinite] (Int) Bool)
+        (declare-fun [ieee_float_is_nan] (Int) Bool)
+        (declare-fun [ieee_float_is_negative] (Int) Bool)
+        (declare-fun [ieee_float_is_positive] (Int) Bool)
+        (declare-fun [ieee_float_add] (Int Int) Int)
+        (declare-fun [ieee_float_sub] (Int Int) Int)
+        (declare-fun [ieee_float_mul] (Int Int) Int)
+        (declare-fun [ieee_float_div] (Int Int) Int)
+        (declare-fun [ieee_float_eq] (Int Int) Bool)
+        (declare-fun [ieee_float_le] (Int Int) Bool)
+        (declare-fun [ieee_float_ge] (Int Int) Bool)
+        (declare-fun [ieee_float_lt] (Int Int) Bool)
+        (declare-fun [ieee_float_gt] (Int Int) Bool)
+    )
+}
+
 fn datatype_height_axiom(
     typ_name1: &Path,
     typ_name2: &Option<Path>,
