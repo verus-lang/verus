@@ -598,6 +598,43 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                             {
                                 // Sized, MetaSized, Tuple, Pointee, Thin are all ok to do nothing.
                                 // There can't be user impls of these traits, they can only be built-in.
+                            } else if Some(trait_def_id) == tcx.lang_items().clone_trait() {
+                                // tuple: Clone and closure: Clone are special cases
+                                // because they require handling (unlike the do-nothings above) but
+                                // they are not user defined like tuple: PartialEq or tuple: Hash.
+                                // TODO: closure: Clone
+                                match trait_args.into_type_list(tcx)[0].kind() {
+                                    TyKind::Tuple(ts) => {
+                                        // Turn (t1, ..., tn): Clone
+                                        // into t1: Clone, ..., tn: Clone
+                                        for ty in ts.iter() {
+                                            use crate::rustc_type_ir::Upcast;
+                                            use rustc_middle::ty::Binder;
+                                            let polarity =
+                                                rustc_middle::ty::PredicatePolarity::Positive;
+                                            let clause =
+                                                Binder::dummy(ClauseKind::Trait(TraitPredicate {
+                                                    trait_ref: rustc_middle::ty::TraitRef::new(
+                                                        tcx,
+                                                        trait_def_id,
+                                                        [GenericArg::from(ty)],
+                                                    ),
+                                                    polarity,
+                                                }))
+                                                .upcast(tcx);
+                                            predicate_worklist.push((None, clause));
+                                        }
+                                    }
+                                    _ => {
+                                        return err_span(
+                                            span,
+                                            format!(
+                                                "Verus does not recognize this trait bound: {:?}",
+                                                trait_refs
+                                            ),
+                                        );
+                                    }
+                                }
                             } else {
                                 // If we don't recognize the trait bound, we don't know whether
                                 // we need to recurse further.
@@ -1639,6 +1676,23 @@ pub(crate) fn is_smt_arith<'tcx>(
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
         (TypX::Real, TypX::Real) => Ok(true),
+        _ => Ok(false),
+    }
+}
+
+pub(crate) fn is_float_arith<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span1: Span,
+    span2: Span,
+    id1: &HirId,
+    id2: &HirId,
+) -> Result<bool, VirErr> {
+    let (t1, t2) = (
+        typ_of_expr_adjusted(bctx, span1, id1, false)?,
+        typ_of_expr_adjusted(bctx, span2, id2, false)?,
+    );
+    match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
+        (TypX::Float(_), TypX::Float(_)) => Ok(true),
         _ => Ok(false),
     }
 }

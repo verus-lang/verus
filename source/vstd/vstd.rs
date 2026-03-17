@@ -80,6 +80,7 @@ pub mod transmute;
 #[cfg(verus_keep_ghost)]
 pub mod type_representation;
 pub mod view;
+pub mod wrapping;
 
 #[cfg(verus_keep_ghost)]
 pub mod std_specs;
