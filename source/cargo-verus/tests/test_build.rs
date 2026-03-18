@@ -8,11 +8,8 @@ fn lib_with_example_imports_own_lib() {
     let package_name = "mylib";
     let args_prefix = format!(" __VERUS_DRIVER_ARGS_FOR_{package_name}-0.1.0-");
 
-    let project_dir = MockPackage::new(package_name)
-        .lib()
-        .example("foo")
-        .verify(true)
-        .materialize();
+    let project_dir =
+        MockPackage::new(package_name).lib().example("foo").verify(true).materialize();
 
     let (status, data) = run_cargo_verus(|cmd| {
         cmd.current_dir(&project_dir).arg("build");
@@ -33,10 +30,7 @@ fn bin_only_no_own_lib_import() {
     let package_name = "mybin";
     let args_prefix = format!(" __VERUS_DRIVER_ARGS_FOR_{package_name}-0.1.0-");
 
-    let project_dir = MockPackage::new(package_name)
-        .bin("main")
-        .verify(true)
-        .materialize();
+    let project_dir = MockPackage::new(package_name).bin("main").verify(true).materialize();
 
     let (status, data) = run_cargo_verus(|cmd| {
         cmd.current_dir(&project_dir).arg("build");
