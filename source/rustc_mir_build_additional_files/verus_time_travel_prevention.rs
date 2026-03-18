@@ -169,7 +169,6 @@ use rustc_hir as hir;
 use rustc_hir::{BindingMode, ByRef, HirId, Mutability, Pinnedness};
 use rustc_middle::middle::region;
 use rustc_middle::mir::{BorrowKind, MutBorrowKind};
-use rustc_middle::thir::LintLevel;
 use rustc_middle::thir::{
     Arm, ArmId, Block, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, LogicalOp, Pat, PatKind,
     Stmt, StmtId, StmtKind,
@@ -541,10 +540,10 @@ fn arm_post<'tcx>(
 
     let arm = &cx.thir.arms[arm_id];
     let new_arm = Arm {
+        hir_id: arm.hir_id,
         pattern: pat,
         guard: arm.guard,
         body: new_body,
-        lint_level: arm.lint_level,
         scope: arm.scope,
         span: arm.span,
     };
@@ -596,9 +595,6 @@ fn pattern_bindings_rec<'tcx>(bindings: &mut Vec<Binding<'tcx>>, pat: &Pat<'tcx>
     match &pat.kind {
         PatKind::Missing => {}
         PatKind::Wild => {}
-        PatKind::AscribeUserType { ascription: _, subpattern } => {
-            pattern_bindings_rec(bindings, subpattern);
-        }
         PatKind::Binding { name, mode, var, ty, subpattern, is_primary: _, is_shorthand: _ } => {
             bindings.push(Binding {
                 name: *name,
@@ -625,9 +621,6 @@ fn pattern_bindings_rec<'tcx>(bindings: &mut Vec<Binding<'tcx>>, pat: &Pat<'tcx>
             pattern_bindings_rec(bindings, subpattern);
         }
         PatKind::Constant { value: _ } => {}
-        PatKind::ExpandedConstant { def_id: _, subpattern } => {
-            pattern_bindings_rec(bindings, subpattern);
-        }
         PatKind::Range(_pat_range) => {}
         PatKind::Slice { prefix, slice, suffix } | PatKind::Array { prefix, slice, suffix } => {
             for p in prefix.iter() {
@@ -674,9 +667,6 @@ fn make_half_pat_rec<'tcx>(pat: &mut Pat<'tcx>, half_kind: Half) {
     match &mut pat.kind {
         PatKind::Missing => {}
         PatKind::Wild => {}
-        PatKind::AscribeUserType { ascription: _, subpattern } => {
-            make_half_pat_rec(subpattern, half_kind);
-        }
         PatKind::Binding {
             name: _,
             mode,
@@ -721,9 +711,6 @@ fn make_half_pat_rec<'tcx>(pat: &mut Pat<'tcx>, half_kind: Half) {
             make_half_pat_rec(subpattern, half_kind);
         }
         PatKind::Constant { value: _ } => {}
-        PatKind::ExpandedConstant { def_id: _, subpattern } => {
-            make_half_pat_rec(subpattern, half_kind);
-        }
         PatKind::Range(_pat_range) => {}
         PatKind::Slice { prefix, slice, suffix } | PatKind::Array { prefix, slice, suffix } => {
             for p in prefix.iter_mut() {
@@ -759,20 +746,20 @@ fn stmt_update_pat<'tcx>(
         pattern: _,
         initializer,
         else_block,
-        lint_level,
         span,
+        hir_id,
     } = cx.thir.stmts[stmt].kind
     else {
         panic!("stmt_update_pat");
     };
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id,
             remainder_scope,
             init_scope,
             pattern: new_pat,
             initializer,
             else_block,
-            lint_level,
             span,
         },
     };
@@ -812,12 +799,12 @@ fn make_half_decl<'tcx>(
 
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id,
             remainder_scope,
             init_scope: region::Scope { local_id: hir_id.local_id, data: region::ScopeData::Node },
             pattern: pat,
             initializer: Some(shadow_rhs),
             else_block,
-            lint_level: LintLevel::Explicit(hir_id),
             span: span,
         },
     };
@@ -854,12 +841,12 @@ fn make_tie_halves_decl<'tcx>(
 
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id,
             remainder_scope,
             init_scope: region::Scope { local_id: hir_id.local_id, data: region::ScopeData::Node },
             pattern: pat,
             initializer: Some(tied),
             else_block: None,
-            lint_level: LintLevel::Explicit(hir_id),
             span: binding.span,
         },
     };
@@ -895,6 +882,7 @@ fn make_tie_halves_components<'tcx>(
             is_primary: true,
             is_shorthand: false,
         },
+        extra: None,
     });
 
     let e1 = expr_id_from_kind(
@@ -939,18 +927,19 @@ fn make_shadow_decl<'tcx>(
             is_primary: true,
             is_shorthand: false,
         },
+        extra: None,
     });
 
     let initializer = erased_ghost_value(cx, erasure_ctxt, hir_id, binding.span, binding.ty);
 
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id,
             remainder_scope,
             init_scope: region::Scope { local_id: hir_id.local_id, data: region::ScopeData::Node },
             pattern: pat,
             initializer: Some(initializer),
             else_block: None,
-            lint_level: LintLevel::Explicit(hir_id),
             span: binding.span,
         },
     };
@@ -977,6 +966,7 @@ fn make_shadow_let_expr<'tcx>(
             is_primary: true,
             is_shorthand: false,
         },
+        extra: None,
     });
 
     let initializer = erased_ghost_value(cx, erasure_ctxt, hir_id, binding.span, binding.ty);
@@ -1071,7 +1061,7 @@ fn shadow_place_rec<'tcx>(
 ) -> Option<ExprId> {
     let expr = cx.thir.exprs[arg].clone();
     let shadow_kind = match &expr.kind {
-        ExprKind::Scope { region_scope: _, lint_level: _, value } => {
+        ExprKind::Scope { hir_id: _, region_scope: _, value } => {
             return shadow_place_rec(cx, hir_id, span, *value);
         }
         ExprKind::Deref { arg } => {
@@ -1303,7 +1293,7 @@ fn get_two_phase_arg<'tcx>(
             }
             None => None,
         },
-        ExprKind::Scope { region_scope: _, lint_level: _, value } => {
+        ExprKind::Scope { hir_id: _, region_scope: _, value } => {
             get_two_phase_arg(cx, hir_expr, *value)
         }
         _ => None,

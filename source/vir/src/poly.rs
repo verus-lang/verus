@@ -558,6 +558,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
         ExpX::Unary(op, e1) => {
             let e1 = visit_exp(ctx, state, e1);
             match op {
+                UnaryOp::IeeeFloat(crate::ast::IeeeFloatUnaryOp::Cast) => {
+                    let e1 = coerce_exp_to_poly(ctx, &e1);
+                    mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1))
+                }
                 UnaryOp::Not
                 | UnaryOp::Clip { .. }
                 | UnaryOp::IntToReal
@@ -591,7 +595,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 }
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
-                    mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1.clone()))
+                    mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1))
                 }
                 UnaryOp::MutRefFinal(_) => {
                     panic!("internal error: MustBeFinalized in SST")

@@ -1071,23 +1071,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::IeeeFloat(crate::ast::IeeeFloatUnaryOp::Cast) => {
                 let t_from = undecorate_typ(&e.typ);
                 let t_to = undecorate_typ(&exp.typ);
-                let mut args: Vec<Expr> = Vec::new();
-                let fname = match (&*t_from, &*t_to) {
-                    (TypX::Real, _) => {
-                        args.push(typ_to_id(ctx, &t_to));
-                        crate::def::IEEE_FLOAT_CAST_FROM_REAL
-                    }
-                    (_, TypX::Real) => {
-                        args.push(typ_to_id(ctx, &t_from));
-                        crate::def::IEEE_FLOAT_CAST_TO_REAL
-                    }
-                    _ => {
-                        args.push(typ_to_id(ctx, &t_from));
-                        args.push(typ_to_id(ctx, &t_to));
-                        crate::def::IEEE_FLOAT_CAST
-                    }
-                };
-                args.push(exp_to_expr(ctx, e, expr_ctxt)?);
+                let args = vec![
+                    typ_to_id(ctx, &t_from),
+                    typ_to_id(ctx, &t_to),
+                    exp_to_expr(ctx, e, expr_ctxt)?,
+                ];
+                let fname = crate::def::IEEE_FLOAT_CAST;
                 Arc::new(ExprX::Apply(Arc::new(fname.to_string()), Arc::new(args)))
             }
             UnaryOp::IeeeFloat(fop) => {

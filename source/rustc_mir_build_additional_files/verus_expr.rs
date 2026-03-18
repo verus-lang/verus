@@ -39,7 +39,7 @@ pub(crate) fn apply_adjustment_post<'tcx>(
     };
 
     let kind = match adjustment.kind {
-        Adjust::Deref(None | Some(_)) | Adjust::Borrow(AutoBorrow::Ref(_)) => {
+        Adjust::Deref(None | Some(_)) | Adjust::Borrow(AutoBorrow::Ref(_)) | Adjust::NeverToAny => {
             // Adjust::Deref(None) -> implicit *
             // Adjust::Borrow(AutoBorrow::Ref(_)) -> implicit &
             // Adjust::Deref(Some(_)) -> This case means inserting a Deref::deref function.

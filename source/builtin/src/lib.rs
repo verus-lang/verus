@@ -1097,6 +1097,14 @@ pub const fn spec_cast_real<From: Copy>(_from: From) -> real {
     real::CONST_DEFAULT
 }
 
+// represent "expr as f16", "expr as f32", "expr as f64", "expr as f128"
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_cast_float"]
+#[verifier::spec]
+pub const fn spec_cast_float<From: Copy + IeeeFloatCast<To>, To: Decimal>(_from: From) -> To {
+    To::CONST_DEFAULT
+}
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_eq"]
 #[verifier::spec]

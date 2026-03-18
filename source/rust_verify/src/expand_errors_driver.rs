@@ -555,7 +555,7 @@ impl ExpandErrorsDriver {
 
         let (in_fancy_note, in_msg) = match error_format {
             Some(ErrorOutputType::HumanReadable {
-                kind: HumanReadableErrorType::Default { short: true },
+                kind: HumanReadableErrorType { short: true, unicode: _ },
                 ..
             }) => (false, false),
             Some(ErrorOutputType::HumanReadable { .. }) => (true, false),

@@ -119,8 +119,8 @@ const TEST_REQUIRES1: &str = verus_code_str! {
     proof fn test_requires1(a: int, b: int, c: int)
         requires
             a <= b,
-            #[verifier::proof_note("Test label #1")]
-            (b <= c),
+            #![verifier::proof_note("Test label #1")]
+            b <= c,
     {
         assert(a <= c);
     }
@@ -158,8 +158,8 @@ const TEST_RET: &str = verus_code_str! {
         requires
             a <= b,
         ensures
-            #[verifier::proof_note("Test label #3")]
-            (ret <= a + b),
+            #![verifier::proof_note("Test label #3")]
+            ret <= a + b,
             ret <= a + a, // FAILS
             ret <= b + b,
     {
@@ -175,8 +175,8 @@ test_verify_one_file! {
     #[test] test_proof_note_on_requires verus_code! {
         fn example(x: u64, y: u64) -> (z: u64)
             requires
-                #[verifier::proof_note("Property 732")]
-                (x == y),
+                #![verifier::proof_note("Property 732")]
+                x == y,
         {
             x + y
         }
@@ -191,8 +191,8 @@ test_verify_one_file! {
     #[test] test_proof_note_on_ensures verus_code! {
         fn example(x: u64, y: u64) -> (z: u64)
             ensures
-                #[verifier::proof_note("Property 732")]
-                (z == x + y),
+                #![verifier::proof_note("Property 732")]
+                z == x + y,
         {
             x
         }
@@ -206,10 +206,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_proof_note_on_assert verus_code! {
         fn caller() {
-            assert(
-                #[verifier::proof_note("Statement known to be false")]
-                (1 > 2)
-            ); // assertion fails
+            #[verifier::proof_note("Statement known to be false")]
+            assert(1 > 2); // assertion fails
         }
     } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
 }
@@ -217,10 +215,8 @@ test_verify_one_file! {
 test_verify_one_file_with_options! {
     #[test] test_proof_note_on_assume_with_no_cheating ["--no-cheating"] => verus_code! {
         fn caller() {
-            assume(
-                #[verifier::proof_note("Statement known to be false")]
-                (1 > 2)
-            ); // assumption fails
+            #[verifier::proof_note("Statement known to be false")]
+            assume(1 > 2); // assumption fails
         }
     } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
 }

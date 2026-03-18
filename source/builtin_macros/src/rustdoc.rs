@@ -18,7 +18,7 @@
 //     $ATTR_VALUE
 //     ```
 //
-// The ATTR_NAME can be requires, ensures, recommends or modes.
+// The ATTR_NAME can be requires, ensures, returns, recommends or modes.
 //
 // The reason we use a codeblock here is that so rustdoc will perform syntax highlighting
 // on the value which is applicable if it's an expression. For example, if it's a
@@ -42,7 +42,7 @@ use verus_syn::{
 /// Check if VERUSDOC=1.
 #[cfg(verus_keep_ghost)]
 pub fn env_rustdoc() -> bool {
-    match proc_macro::tracked_env::var("VERUSDOC") {
+    match proc_macro::tracked::env_var("VERUSDOC") {
         Err(_) => false, // VERUSDOC key not present in environment
         Ok(s) => s == "1",
     }
@@ -123,6 +123,14 @@ fn attr_for_sig(
         Some(es) => {
             for expr in es.exprs.exprs.iter() {
                 v.push(encoded_expr("ensures", expr));
+            }
+        }
+        None => {}
+    }
+    match &sig.spec.returns {
+        Some(rs) => {
+            for expr in rs.exprs.exprs.iter() {
+                v.push(encoded_expr("returns", expr));
             }
         }
         None => {}
