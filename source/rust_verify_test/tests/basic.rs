@@ -259,6 +259,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_ensures_ret_val_collision verus_code! {
+        fn f(k: u32, n: u32) -> ((_, n): (u32, u32))
+            ensures
+                n <= k,
+        {
+            (42, k / 2)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "parameter name cannot be the same as the return value name")
+}
+
+test_verify_one_file! {
     #[test] test_short_circuit verus_code! {
         fn f1(a: bool, b: bool) {
             let mut x: u64 = 0;
