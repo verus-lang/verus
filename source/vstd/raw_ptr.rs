@@ -626,7 +626,7 @@ impl PointsTo<str> {
 
 pub tracked struct MapPointsTo<T> {
     points_to: Map<nat, PointsTo<T>>,
-    ghost ptr: *mut [T],
+    ptr: Ghost<*mut [T]>,
 }
 
 /// If the domain exactly contains the indices bounded by `self.ptr()@.metadata`,
@@ -698,7 +698,7 @@ impl<T> MapPointsTo<T> {
     /// Every index in the map should be bounded by `ptr()@.metadata`,
     /// so that all of the addresses of the individual `PointsTo`s fall within this pointer.
     pub closed spec fn ptr(self) -> *mut [T] {
-        self.ptr
+        self.ptr@
     }
 
     /// The `Map<nat, PointsTo<T>>` that this type is a wrapper for.
@@ -857,7 +857,7 @@ impl<T> MapPointsTo<T> {
 
         };
 
-        let tracked out_map = MapPointsTo { points_to: submap, ptr: out_ptr };
+        let tracked out_map = MapPointsTo { points_to: submap, ptr: Ghost(out_ptr) };
         out_map
     }
 

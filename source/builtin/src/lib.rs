@@ -387,6 +387,10 @@ pub struct Ghost<A> {
     phantom: PhantomData<A>,
 }
 
+// Ghost structs are always Send and Sync, since they are spec
+unsafe impl<A> Send for Ghost<A> {}
+unsafe impl<A> Sync for Ghost<A> {}
+
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Tracked")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types_in_ground_variants(A))]
