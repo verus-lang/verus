@@ -306,6 +306,7 @@ pub fn increment<Carrier>(var: &MyPAtomicU64, Tracked(carrier): Tracked<Carrier>
         !carrier.namespaces().contains(var.inv_namespace()),
     ensures
         carrier.post(IncrementOp { id: var.id() }, out.0, out.1@),
+    opens_invariants any,
 {
     let tracked inv = var.inv.borrow();
     let mut curr;
