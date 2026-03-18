@@ -5535,8 +5535,8 @@ fn check_return_idents(
         for ret_ident in &ret_idents {
             if param_ident == ret_ident {
                 return Some(stmt_with_semi!(
-                    param_ident.span() =>
-                    compile_error!("parameter name cannot be the same as the return value name")
+                    ret_ident.span() =>
+                    compile_error!("return value name collides with a parameter name")
                 ));
             }
         }
@@ -5566,8 +5566,8 @@ fn check_verus_return_idents(
         for ret_ident in &ret_idents {
             if param_ident == ret_ident {
                 return Some(stmt_with_semi!(
-                    param_ident.span() =>
-                    compile_error!("parameter name cannot be the same as the return value name")
+                    ret_ident.span() =>
+                    compile_error!("return value name collides with a parameter name")
                 ));
             }
         }

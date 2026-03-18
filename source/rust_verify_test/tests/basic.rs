@@ -266,7 +266,7 @@ test_verify_one_file! {
         {
             (42, k / 2)
         }
-    } => Err(err) => assert_vir_error_msg(err, "parameter name cannot be the same as the return value name")
+    } => Err(err) => assert_vir_error_msg(err, "return value name collides with a parameter name")
 }
 
 test_verify_one_file! {
@@ -350,7 +350,7 @@ test_verify_one_file! {
         {
             x > 10
         }
-    } => Err(err) => assert_vir_error_msg(err, "parameter name cannot be the same as the return value name")
+    } => Err(err) => assert_vir_error_msg(err, "return value name collides with a parameter name")
 }
 
 test_verify_one_file! {
