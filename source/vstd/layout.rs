@@ -74,7 +74,6 @@ pub open spec fn align_of_val_as_usize<V: ?Sized>(val: &V) -> usize
 }
 
 #[verifier::when_used_as_spec(size_of_as_usize)]
-#[cfg(not(verus_verify_core))]
 pub assume_specification<V>[ core::mem::size_of::<V> ]() -> (u: usize)
     ensures
         u as nat == size_of::<V>(),
@@ -83,7 +82,6 @@ pub assume_specification<V>[ core::mem::size_of::<V> ]() -> (u: usize)
 ;
 
 #[verifier::when_used_as_spec(align_of_as_usize)]
-#[cfg(not(verus_verify_core))]
 pub assume_specification<V>[ core::mem::align_of::<V> ]() -> (u: usize)
     ensures
         u as nat == align_of::<V>(),
