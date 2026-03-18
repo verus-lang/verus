@@ -12,9 +12,7 @@ We connect the correctness of `loop_triangle`'s return value to our mathematical
 in `loop_triangle`'s `ensures` clause.
 
 However, to successfully verify `loop_triangle`, we need a few more things.  First, in executable
-code, we have to worry about the possibility of arithmetic overflow.  To that end, the function requires its
-output to be less than `0x1_0000_0000`. This is 16^8, or 2^32, which is the limit of the range of values that can fit
-in a `u32`.
+code, we have to worry about the possibility of arithmetic overflow.  To keep the overflow reasoning simple, we add a precondition to `loop_triangle` saying that the result needs to fit within a `u32`.
 
 We also need to translate the knowledge that the final `triangle` result fits in a `u32`
 into the knowledge that each individual step of computing the result won't overflow,
