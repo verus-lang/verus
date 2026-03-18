@@ -2277,5 +2277,5 @@ test_verify_one_file! {
                 A { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not recognize this trait bound: <(A, i32) as std::clone::Clone>")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
 }

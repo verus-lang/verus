@@ -1034,6 +1034,8 @@ unsafe impl Decimal for f64 {
 pub unsafe trait Chainable: Copy {}
 unsafe impl<T: Integer> Chainable for T {}
 unsafe impl Chainable for real {}
+unsafe impl Chainable for f32 {}
+unsafe impl Chainable for f64 {}
 
 // spec literals of the form "33", which could have any Integer type
 #[cfg(verus_keep_ghost)]
@@ -1115,6 +1117,14 @@ pub const fn spec_cast_integer<From: Copy, To: Integer>(_from: From) -> To {
 #[verifier::spec]
 pub const fn spec_cast_real<From: Copy>(_from: From) -> real {
     real::CONST_DEFAULT
+}
+
+// represent "expr as f16", "expr as f32", "expr as f64", "expr as f128"
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_cast_float"]
+#[verifier::spec]
+pub const fn spec_cast_float<From: Copy + IeeeFloatCast<To>, To: Decimal>(_from: From) -> To {
+    To::CONST_DEFAULT
 }
 
 #[cfg(verus_keep_ghost)]
@@ -1436,6 +1446,8 @@ impl_ord!([
 ]);
 
 impl_ord_self_rhs!([real]);
+impl_ord_self_rhs!([f32]);
+impl_ord_self_rhs!([f64]);
 
 impl_unary_op!(SpecNeg, spec_neg, int, [
     int nat
@@ -1444,6 +1456,8 @@ impl_unary_op!(SpecNeg, spec_neg, int, [
 ]);
 
 impl_unary_op!(SpecNeg, spec_neg, real, [real]);
+impl_unary_op!(SpecNeg, spec_neg, f32, [f32]);
+impl_unary_op!(SpecNeg, spec_neg, f64, [f64]);
 
 impl_binary_op!(SpecAdd, spec_add, int, [
     int
@@ -1499,6 +1513,16 @@ impl_binary_op_rhs!(SpecSub, spec_sub, Self, Self, [real]);
 impl_binary_op_rhs!(SpecMul, spec_mul, Self, Self, [real]);
 impl_binary_op_rhs!(SpecEuclideanOrRealDiv, spec_euclidean_or_real_div, Self, Self, [real]);
 
+impl_binary_op_rhs!(SpecAdd, spec_add, Self, Self, [f32]);
+impl_binary_op_rhs!(SpecSub, spec_sub, Self, Self, [f32]);
+impl_binary_op_rhs!(SpecMul, spec_mul, Self, Self, [f32]);
+impl_binary_op_rhs!(SpecEuclideanOrRealDiv, spec_euclidean_or_real_div, Self, Self, [f32]);
+
+impl_binary_op_rhs!(SpecAdd, spec_add, Self, Self, [f64]);
+impl_binary_op_rhs!(SpecSub, spec_sub, Self, Self, [f64]);
+impl_binary_op_rhs!(SpecMul, spec_mul, Self, Self, [f64]);
+impl_binary_op_rhs!(SpecEuclideanOrRealDiv, spec_euclidean_or_real_div, Self, Self, [f64]);
+
 impl_binary_op_rhs!(SpecBitAnd, spec_bitand, Self, Self, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
@@ -1524,6 +1548,314 @@ impl_binary_op!(SpecShr, spec_shr, Self, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
+
+//
+// IEEE floats ( https://smt-lib.org/theories-FloatingPoint.shtml )
+// Note that for float types, spec-level +, -, *, /, <=, >=, <, > are synonyms for ieee_add, etc.
+//
+
+// rounding modes: RNE unless otherwise specified
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait IeeeFloat {
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_add"]
+    #[verifier::spec]
+    fn ieee_add(self, rhs: Self) -> Self;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_sub"]
+    #[verifier::spec]
+    fn ieee_sub(self, rhs: Self) -> Self;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_mul"]
+    #[verifier::spec]
+    fn ieee_mul(self, rhs: Self) -> Self;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_div"]
+    #[verifier::spec]
+    fn ieee_div(self, rhs: Self) -> Self;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_eq"]
+    #[verifier::spec]
+    fn ieee_eq(self, rhs: Self) -> bool;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_le"]
+    #[verifier::spec]
+    fn ieee_le(self, rhs: Self) -> bool;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_ge"]
+    #[verifier::spec]
+    fn ieee_ge(self, rhs: Self) -> bool;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_lt"]
+    #[verifier::spec]
+    fn ieee_lt(self, rhs: Self) -> bool;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_gt"]
+    #[verifier::spec]
+    fn ieee_gt(self, rhs: Self) -> bool;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_neg"]
+    #[verifier::spec]
+    fn ieee_neg(self) -> Self;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_floor"]
+    #[verifier::spec]
+    fn ieee_floor(self) -> Self;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_ceil"]
+    #[verifier::spec]
+    fn ieee_ceil(self) -> Self;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_round"]
+    #[verifier::spec]
+    fn ieee_round(self) -> Self;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_round_ties_even"]
+    #[verifier::spec]
+    fn ieee_round_ties_even(self) -> Self;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_trunc"]
+    #[verifier::spec]
+    fn ieee_trunc(self) -> Self;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_is_normal"]
+    #[verifier::spec]
+    fn ieee_is_normal(self) -> bool;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_is_subnormal"]
+    #[verifier::spec]
+    fn ieee_is_subnormal(self) -> bool;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_is_zero"]
+    #[verifier::spec]
+    fn ieee_is_zero(self) -> bool;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_is_infinite"]
+    #[verifier::spec]
+    fn ieee_is_infinite(self) -> bool;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_is_nan"]
+    #[verifier::spec]
+    fn ieee_is_nan(self) -> bool;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_is_negative"]
+    #[verifier::spec]
+    fn ieee_is_negative(self) -> bool;
+
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloat::ieee_is_positive"]
+    #[verifier::spec]
+    fn ieee_is_positive(self) -> bool;
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait IeeeFloatCast<To> {
+    // rounding modes:
+    // - to integer: RTZ
+    // - to float: RNE
+    // - to real: no rounding
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::IeeeFloatCast::ieee_cast"]
+    #[verifier::spec]
+    fn ieee_cast(self) -> To;
+}
+
+macro_rules! impl_ieee_float {
+    ([$($t:ty)*]) => {
+        $(
+            impl IeeeFloat for $t {
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_add(self, _rhs : Self) -> Self {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_sub(self, _rhs : Self) -> Self {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_mul(self, _rhs : Self) -> Self {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_div(self, _rhs : Self) -> Self {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_eq(self, _rhs : Self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_le(self, _rhs : Self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_ge(self, _rhs : Self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_lt(self, _rhs : Self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_gt(self, _rhs : Self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_neg(self) -> Self {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_floor(self) -> Self {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_ceil(self) -> Self {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_round(self) -> Self {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_round_ties_even(self) -> Self {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_trunc(self) -> Self {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_is_normal(self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_is_subnormal(self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_is_zero(self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_is_infinite(self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_is_nan(self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_is_negative(self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_is_positive(self) -> bool {
+                    unimplemented!()
+                }
+            }
+        )*
+    }
+}
+
+macro_rules! impl_ieee_float_cast {
+    ($from:ty, [$($to:ty)*]) => {
+        $(
+            impl IeeeFloatCast<$to> for $from {
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn ieee_cast(self) -> $to {
+                    unimplemented!()
+                }
+            }
+        )*
+    }
+}
+
+impl_ieee_float!([f32 f64]);
+impl_ieee_float_cast!(f32, [real f64]);
+impl_ieee_float_cast!(f64, [real f32]);
+impl_ieee_float_cast!(real, [f32 f64]);
+impl_ieee_float_cast!(u8, [f32 f64]);
+impl_ieee_float_cast!(u16, [f32 f64]);
+impl_ieee_float_cast!(u32, [f32 f64]);
+impl_ieee_float_cast!(u64, [f32 f64]);
+impl_ieee_float_cast!(u128, [f32 f64]);
+impl_ieee_float_cast!(i8, [f32 f64]);
+impl_ieee_float_cast!(i16, [f32 f64]);
+impl_ieee_float_cast!(i32, [f32 f64]);
+impl_ieee_float_cast!(i64, [f32 f64]);
+impl_ieee_float_cast!(i128, [f32 f64]);
+impl_ieee_float_cast!(f32, [u8 u16 u32 u64 u128]);
+impl_ieee_float_cast!(f32, [i8 i16 i32 i64 i128]);
+impl_ieee_float_cast!(f64, [u8 u16 u32 u64 u128]);
+impl_ieee_float_cast!(f64, [i8 i16 i32 i64 i128]);
+
+//
+//
+//
 
 #[cfg(verus_keep_ghost)]
 #[verifier::spec]

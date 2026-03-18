@@ -542,6 +542,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_default_ensures_ret_val_collision verus_code! {
+        trait T {
+            fn f(i: u32) -> (f: u32)
+                ensures
+                    f <= i,
+                default_ensures
+                    f == i / 2,
+            {
+                i / 2
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_default_ensures2 verus_code! {
         trait T {
             fn f(i: u32) -> (r: u32)

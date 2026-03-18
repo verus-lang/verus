@@ -586,20 +586,29 @@ fn simplify_one_expr(
         }
         ExprX::Unary(UnaryOp::CoerceMode { .. }, expr0) => Ok(expr0.clone()),
         ExprX::Multi(MultiOp::Chained(ops), args) => {
+            use crate::ast::IeeeFloatBinaryOp;
             assert!(args.len() == ops.len() + 1);
             let mut stmts: Vec<Stmt> = Vec::new();
             let mut es: Vec<Expr> = Vec::new();
+            let mut is_float = false;
             // Execute each argument in order; no short-circuiting
             for i in 0..args.len() {
+                let t = crate::ast_util::undecorate_typ(&args[i].typ);
+                if matches!(*t, TypX::Float(_)) {
+                    is_float = true;
+                }
                 let (decl, e) = temp_expr(state, &args[i]);
                 stmts.push(decl);
                 es.push(e);
             }
             let mut conjunction: Expr = es[0].clone();
             for i in 0..ops.len() {
-                let op = match ops[i] {
-                    ChainedOp::Inequality(a) => BinaryOp::Inequality(a),
-                    ChainedOp::MultiEq => BinaryOp::Eq(Mode::Spec),
+                let op = match (is_float, ops[i]) {
+                    (false, ChainedOp::Inequality(a)) => BinaryOp::Inequality(a),
+                    (true, ChainedOp::Inequality(a)) => {
+                        BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(a))
+                    }
+                    (_, ChainedOp::MultiEq) => BinaryOp::Eq(Mode::Spec),
                 };
                 let left = es[i].clone();
                 let right = es[i + 1].clone();

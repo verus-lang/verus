@@ -1,7 +1,7 @@
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::StableCrateId;
 use rustc_span::source_map::SourceMap;
-use rustc_span::{BytePos, ExternalSource, FileName, RealFileName, Span, SpanData};
+use rustc_span::{BytePos, ExternalSource, FileName, Span, SpanData};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -93,7 +93,9 @@ impl SpanContextX {
             match *source_file.external_src.borrow() {
                 ExternalSource::Unneeded => {
                     let filename = match &source_file.name {
-                        FileName::Real(RealFileName::LocalPath(path)) => path.canonicalize().ok(),
+                        FileName::Real(real_file_name) => {
+                            real_file_name.local_path().and_then(|path| path.canonicalize().ok())
+                        }
                         _ => None,
                     };
                     let pos = FileStartEndPos {
@@ -115,8 +117,8 @@ impl SpanContextX {
                         remaining_crate_files.get_mut(&imported_crate).unwrap().remove(&hash);
                         let info = if let FileName::Real(real_file_name) = &source_file.name {
                             // Ideally we'd change this into Remapped, but I don't know how to do that
-                            if let (Some(path_mappings), RealFileName::LocalPath(local_file_name)) =
-                                (&path_mappings, real_file_name)
+                            if let (Some(path_mappings), Some(local_file_name)) =
+                                (&path_mappings, real_file_name.local_path())
                             {
                                 let mut found_match = None;
                                 for (name, epath) in path_mappings.iter() {

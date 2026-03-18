@@ -4,7 +4,7 @@ use crate::messages::Reporter;
 #[allow(unused_imports)]
 use crate::parser::Parser;
 #[allow(unused_imports)]
-use crate::printer::macro_push_node;
+use crate::printer::{macro_push_node, str_to_node};
 #[allow(unused_imports)]
 use sise::Node;
 
@@ -181,6 +181,32 @@ fn no_int_axiom() {
             (axiom (>= x 3))
             (assert
                 (> x 3)
+            )
+        )
+    );
+}
+
+#[test]
+fn yes_float() {
+    yes!(
+        (check-valid
+            (declare-const x (_ FloatingPoint 2 3))
+            (declare-const y (_ FloatingPoint 2 3))
+            (assert
+                (= ({str_to_node("fp.add")} RNE x y) ({str_to_node("fp.add")} RNE y x))
+            )
+        )
+    );
+}
+
+#[test]
+fn no_float() {
+    no!(
+        (check-valid
+            (declare-const x (_ FloatingPoint 2 3))
+            (declare-const y (_ FloatingPoint 2 3))
+            (assert
+                (= ({str_to_node("fp.add")} RNE x y) (fp (_ bv0 1) (_ bv2 2) (_ bv2 2)))
             )
         )
     );

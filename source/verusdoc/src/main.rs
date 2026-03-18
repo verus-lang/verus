@@ -33,7 +33,7 @@ enum VerusDocAttr {
 }
 
 // Types of spec clauses we handle.
-static SPEC_NAMES: [&str; 4] = ["requires", "ensures", "recommends", "body"];
+static SPEC_NAMES: [&str; 5] = ["requires", "ensures", "returns", "recommends", "body"];
 
 fn main() {
     // Manipulate the auto-generated files in `doc/` to clean them up to make
