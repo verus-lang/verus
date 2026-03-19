@@ -35,6 +35,7 @@ pub const SMT_TRANSCRIPT_FILE_SUFFIX: &str = ".smt_transcript";
 pub const PROFILE_FILE_SUFFIX: &str = ".profile";
 pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
+pub const IMPL_NAMES_SUFFIX: &str = ".impl_names";
 pub const CALL_GRAPH_FILE_SUFFIX_FULL_INITIAL: &str = "-call-graph-full-initial.dot";
 pub const CALL_GRAPH_FILE_SUFFIX_FULL_SIMPLIFIED: &str = "-call-graph-full-simplified.dot";
 pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_INITIAL: &str = "-call-graph-nostd-initial.dot";
@@ -54,6 +55,7 @@ pub struct LogArgs {
     pub log_smt: bool,
     pub log_smt_transcript: bool,
     pub log_triggers: bool,
+    pub log_impl_names: bool,
     pub log_call_graph: bool,
 }
 
@@ -338,6 +340,7 @@ pub fn parse_args_with_imports(
     const LOG_SMT: &str = "smt";
     const LOG_SMT_TRANSCRIPT: &str = "smt-transcript";
     const LOG_TRIGGERS: &str = "triggers";
+    const LOG_IMPL_NAMES: &str = "impl-names";
     const LOG_CALL_GRAPH: &str = "call-graph";
 
     const LOG_ITEMS: &[(&str, &str)] = &[
@@ -356,6 +359,7 @@ pub fn parse_args_with_imports(
         (LOG_SMT, "Log SMT queries"),
         (LOG_SMT_TRANSCRIPT, "Log complete SMT transcript"),
         (LOG_TRIGGERS, "Log automatically chosen triggers"),
+        (LOG_IMPL_NAMES, "Log rustc's internal trait impl names"),
         (LOG_CALL_GRAPH, "Log the call graph"),
     ];
 
@@ -751,6 +755,7 @@ pub fn parse_args_with_imports(
             log_smt: log.contains_key(LOG_SMT),
             log_smt_transcript: log.contains_key(LOG_SMT_TRANSCRIPT),
             log_triggers: log.contains_key(LOG_TRIGGERS),
+            log_impl_names: log.contains_key(LOG_IMPL_NAMES),
             log_call_graph: log.contains_key(LOG_CALL_GRAPH),
         },
         show_triggers: if matches.opt_present(OPT_TRIGGERS) {
