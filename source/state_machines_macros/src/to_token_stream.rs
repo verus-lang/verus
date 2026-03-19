@@ -1112,11 +1112,11 @@ fn output_other_fns(
         let self_ty = get_self_ty(&bundle.sm);
         impl_stream.extend(quote_vstd! { vstd =>
             #[cfg(verus_keep_ghost_body)]
-            #[verifier::custom_req_err(#error_msg)] /* vattr */
             #[verifier::external_body] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::proof]
             fn #lemma_msg_ident(s: #self_ty) {
+                #[verifier::proof_note(#error_msg)] /* vattr */
                 #vstd::prelude::requires(s.#inv_ident());
                 #vstd::prelude::ensures(s.#inv_ident());
             }
