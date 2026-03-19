@@ -105,7 +105,7 @@ fn rec_triangle(n: u32) -> (sum: u32)
 // ANCHOR: rec
 fn rec_triangle(n: u32) -> (sum: u32)
     requires
-        triangle(n as nat) < u32::MAX,
+        triangle(n as nat) <= u32::MAX,
     ensures
         sum == triangle(n as nat),
     decreases n,
@@ -121,7 +121,7 @@ fn rec_triangle(n: u32) -> (sum: u32)
 // ANCHOR: mut
 fn mut_triangle(n: u32, sum: &mut u32)
     requires
-        triangle(n as nat) < u32::MAX,
+        triangle(n as nat) <= u32::MAX,
     ensures
         *sum == triangle(n as nat),
     decreases n,
@@ -141,7 +141,7 @@ fn tail_triangle(n: u32, idx: u32, sum: &mut u32)
     requires
         idx <= n,
         *old(sum) == triangle(idx as nat),
-        triangle(n as nat) < u32::MAX,
+        triangle(n as nat) <= u32::MAX,
     ensures
         *sum == triangle(n as nat),
 {
@@ -197,14 +197,14 @@ fn tail_triangle(n: u32, idx: u32, sum: &mut u32)
     requires
         idx <= n,
         *old(sum) == triangle(idx as nat),
-        triangle(n as nat) < u32::MAX,
+        triangle(n as nat) <= u32::MAX,
     ensures
         *sum == triangle(n as nat),
     decreases n - idx,
 {
     if idx < n {
         let idx = idx + 1;
-        assert(*sum + idx < u32::MAX) by {
+        assert(*sum + idx <= u32::MAX) by {
             triangle_is_monotonic(idx as nat, n as nat);
         }
         *sum = *sum + idx;
@@ -216,7 +216,7 @@ fn tail_triangle(n: u32, idx: u32, sum: &mut u32)
 // ANCHOR: loop
 fn loop_triangle(n: u32) -> (sum: u32)
     requires
-        triangle(n as nat) < u32::MAX,
+        triangle(n as nat) <= u32::MAX,
     ensures
         sum == triangle(n as nat),
 {
@@ -226,11 +226,11 @@ fn loop_triangle(n: u32) -> (sum: u32)
         invariant
             idx <= n,
             sum == triangle(idx as nat),
-            triangle(n as nat) < u32::MAX,
+            triangle(n as nat) <= u32::MAX,
         decreases n - idx,
     {
         idx = idx + 1;
-        assert(sum + idx < u32::MAX) by {
+        assert(sum + idx <= u32::MAX) by {
             triangle_is_monotonic(idx as nat, n as nat);
         }
         sum = sum + idx;
@@ -242,7 +242,7 @@ fn loop_triangle(n: u32) -> (sum: u32)
 // ANCHOR: loop_return
 fn loop_triangle_return(n: u32) -> (sum: u32)
     ensures
-        sum == triangle(n as nat) || (sum == 0xffff_ffff && triangle(n as nat) >= u32::MAX),
+        sum == triangle(n as nat) || (sum == 0xffff_ffff && triangle(n as nat) > u32::MAX),
 {
     let mut sum: u32 = 0;
     let mut idx: u32 = 0;
@@ -253,7 +253,7 @@ fn loop_triangle_return(n: u32) -> (sum: u32)
         decreases n - idx,
     {
         idx = idx + 1;
-        if sum as u64 + idx as u64 >= u32::MAX as u64 {
+        if sum as u64 + idx as u64 > u32::MAX as u64 {
             proof {
                 triangle_is_monotonic(idx as nat, n as nat);
             }
@@ -269,7 +269,7 @@ fn loop_triangle_return(n: u32) -> (sum: u32)
 // ANCHOR: loop_break
 fn loop_triangle_break(n: u32) -> (sum: u32)
     ensures
-        sum == triangle(n as nat) || (sum == 0xffff_ffff && triangle(n as nat) >= u32::MAX),
+        sum == triangle(n as nat) || (sum == 0xffff_ffff && triangle(n as nat) > u32::MAX),
 {
     let mut sum: u32 = 0;
     let mut idx: u32 = 0;
@@ -278,11 +278,11 @@ fn loop_triangle_break(n: u32) -> (sum: u32)
             idx <= n,
             sum == triangle(idx as nat),
         ensures
-            sum == triangle(n as nat) || (sum == 0xffff_ffff && triangle(n as nat) >= u32::MAX),
+            sum == triangle(n as nat) || (sum == 0xffff_ffff && triangle(n as nat) > u32::MAX),
         decreases n - idx,
     {
         idx = idx + 1;
-        if sum as u64 + idx as u64 >= u32::MAX as u64 {
+        if sum as u64 + idx as u64 > u32::MAX as u64 {
             proof {
                 triangle_is_monotonic(idx as nat, n as nat);
             }
@@ -298,7 +298,7 @@ fn loop_triangle_break(n: u32) -> (sum: u32)
 // ANCHOR: for_loop
 fn for_loop_triangle(n: u32) -> (sum: u32)
     requires
-        triangle(n as nat) < u32::MAX,
+        triangle(n as nat) <= u32::MAX,
     ensures
         sum == triangle(n as nat),
 {
@@ -307,9 +307,9 @@ fn for_loop_triangle(n: u32) -> (sum: u32)
     for idx in iter: 0..n
         invariant
             sum == triangle(idx as nat),
-            triangle(n as nat) < u32::MAX,
+            triangle(n as nat) <= u32::MAX,
     {
-        assert(sum + idx + 1 < u32::MAX) by {
+        assert(sum + idx + 1 <= u32::MAX) by {
             triangle_is_monotonic((idx + 1) as nat, n as nat);
         }
         sum = sum + idx + 1;
