@@ -175,6 +175,17 @@ pub trait ExDoubleEndedIterator : Iterator {
 pub trait ExIntoIterator {
     type ExternalTraitSpecificationFor: core::iter::IntoIterator;
 }
+
+pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
+    i
+}
+
+#[verifier::when_used_as_spec(iter_into_iter_spec)]
+pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) -> (r: I)
+    ensures
+        r == i,
+;
+
 // Uninterpreted function representing the sequence of elements that will be
 // produced by the iterator obtained from an IntoIterator value.
 // This avoids requiring IteratorSpec bounds in from_iter's ensures clause.
