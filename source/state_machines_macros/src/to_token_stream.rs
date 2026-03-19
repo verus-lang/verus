@@ -1116,8 +1116,10 @@ fn output_other_fns(
             #[verus::internal(verus_macro)]
             #[verifier::proof]
             fn #lemma_msg_ident(s: #self_ty) {
-                #[verifier::proof_note(#error_msg)] /* vattr */
-                #vstd::prelude::requires(s.#inv_ident());
+                #vstd::prelude::requires(
+                    #[verifier::proof_note(#error_msg)] /* vattr */
+                    s.#inv_ident(),
+                );
                 #vstd::prelude::ensures(s.#inv_ident());
             }
         });
