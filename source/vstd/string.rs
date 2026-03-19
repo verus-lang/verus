@@ -102,21 +102,24 @@ pub assume_specification[ str::as_bytes ](s: &str) -> (b: &[u8])
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
-pub assume_specification[ str::len ](s: &str) -> (res: usize)
-    ensures
-        res == s.spec_bytes().len(),
+#[verifier::allow_in_spec]
+pub assume_specification[ str::len ](s: &str) -> usize
+    returns
+        s.spec_bytes().len() as usize,
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
-pub assume_specification[ str::is_empty ](s: &str) -> (res: bool)
-    ensures
-        res == (s@.len() == 0),
+#[verifier::allow_in_spec]
+pub assume_specification[ str::is_empty ](s: &str) -> bool
+    returns
+        s@.len() == 0,
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
-pub assume_specification[ str::is_char_boundary ](s: &str, index: usize) -> (res: bool)
-    ensures
-        res == (is_char_boundary(s.spec_bytes(), index as int)),
+#[verifier::allow_in_spec]
+pub assume_specification[ str::is_char_boundary ](s: &str, index: usize) -> bool
+    returns
+        is_char_boundary(s.spec_bytes(), index as int),
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]

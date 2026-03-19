@@ -720,7 +720,6 @@ proof fn partial_valid_utf8_invalid_subrange_helper(bytes: Seq<u8>, i: int, j: i
                 j + k,
                 bytes.len() as int,
             ));
-        } else {
         }
     }
 }
@@ -739,10 +738,8 @@ pub broadcast proof fn valid_utf8_concat(b1: Seq<u8>, b2: Seq<u8>)
         assert(valid_utf8(b1 + b2));
     } else {
         let rest = pop_first_scalar(b1);
-        // so valid_utf8(b1) implies valid_utf8(rest)?
         assert(pop_first_scalar(b1).len() < b1.len()) by { lemma_pop_first_scalar_decreases(b1) };
         valid_utf8_concat(rest, b2);
-        // now know valid_utf8(rest+b2)
         assert(pop_first_scalar(b1 + b2) =~= rest + b2);
         assert(valid_utf8(b1 + b2));
     }
@@ -774,7 +771,7 @@ pub broadcast proof fn partial_valid_utf8_extend(bytes: Seq<u8>, i: int)
 
 /* Reasoning about character boundaries */
 
-/// True when the given index into the byte sequence falls on a character boundary, assuming that the sequence is valid UTF-8.
+/// True when the given index into the byte sequence is the first byte of a character's encoding or the end of the sequence, assuming that the sequence is valid UTF-8.
 pub open spec fn is_char_boundary(bytes: Seq<u8>, index: int) -> bool
     recommends
         valid_utf8(bytes),
