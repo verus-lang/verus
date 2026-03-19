@@ -571,7 +571,8 @@ impl<T> PointsTo<[T]> {
                 #![trigger m[i].mem_contents()]
                 m.indices().contains(i) ==> m[i].mem_contents()
                     == self.mem_contents_seq()[i as int],
-            m.ptr() == self.ptr(),
+            m.ptr() == self.ptr() as *mut T,
+            m.len() == self.ptr()@.metadata,
     ;
 }
 
@@ -626,10 +627,11 @@ impl PointsTo<str> {
 
 pub tracked struct MapPointsTo<T> {
     points_to: Map<nat, PointsTo<T>>,
-    ptr: Ghost<*mut [T]>,
+    ptr: Ghost<*mut T>,
+    len: nat,
 }
 
-/// If the domain exactly contains the indices bounded by `self.ptr()@.metadata`,
+/// If the domain exactly contains the indices bounded by `self.len()`,
 /// we can convert this permission into a `PointsTo<[T]>` with the same pointer
 /// and the same memory contents at every index.
 pub axiom fn into_slice<T>(tracked mpt: MapPointsTo<T>) -> (tracked pt: PointsTo<[T]>)
@@ -639,10 +641,11 @@ pub axiom fn into_slice<T>(tracked mpt: MapPointsTo<T>) -> (tracked pt: PointsTo
         forall|i|
             0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
                 == mpt[i].mem_contents(),
-        pt.ptr() == mpt.ptr(),
+        pt.ptr() as *mut T == mpt.ptr(),
+        pt.ptr()@.metadata == mpt.len(),
 ;
 
-pub open spec fn addr_from_index<T>(ptr: *mut [T], i: nat) -> usize
+pub open spec fn addr_from_index<T>(ptr: *mut T, i: nat) -> usize
     recommends
         ptr@.addr + i * layout::size_of::<T>() <= usize::MAX,
 {
@@ -657,7 +660,7 @@ pub open spec fn bounded_set(len: nat) -> Set<nat> {
     range_set(0, len)
 }
 
-pub open spec fn get_index_offset<T>(base_ptr: *mut [T], other_ptr: *mut [T]) -> nat
+pub open spec fn get_index_offset<T>(base_ptr: *mut T, other_ptr: *mut T) -> nat
     recommends
         layout::size_of::<T>() != 0,
         base_ptr@.addr <= other_ptr@.addr,
@@ -674,7 +677,7 @@ pub open spec fn map_keys<T>(map: Map<nat, T>, offset: nat) -> Map<nat, T> {
 }
 
 impl<T> MapPointsTo<T> {
-    /// The keys must fall in the range `[0, self.ptr()@.metadata)`.
+    /// The keys must fall in the range `[0, self.len())`.
     /// For each key `i`, the corresponding `PointsTo<T>` must have the same provenance as
     /// the `self.ptr()`, and its pointer's address is offset from `self.ptr()` by `i`.
     #[verifier::type_invariant]
@@ -686,24 +689,29 @@ impl<T> MapPointsTo<T> {
             self.indices().contains(i) ==> {
                 &&& self[i].ptr()@.provenance == self.ptr()@.provenance
                 &&& self[i].ptr()@.addr == self.ptr()@.addr + i * layout::size_of::<T>()
-                &&& i < self.ptr()@.metadata
+                &&& i < self.len()
             }
         &&& self.ptr()@.provenance.start_addr() <= self.ptr()@.addr
-        &&& self.ptr()@.addr + self.ptr()@.metadata * layout::size_of::<T>()
+        &&& self.ptr()@.addr + self.len() * layout::size_of::<T>()
             <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
         &&& self.ptr()@.addr as nat % align_of::<T>() == 0
     }
 
     /// The pointer that this permission is associated with.
-    /// Every index in the map should be bounded by `ptr()@.metadata`,
-    /// so that all of the addresses of the individual `PointsTo`s fall within this pointer.
-    pub closed spec fn ptr(self) -> *mut [T] {
+    pub closed spec fn ptr(self) -> *mut T {
         self.ptr@
     }
 
     /// The `Map<nat, PointsTo<T>>` that this type is a wrapper for.
     pub closed spec fn points_to(self) -> Map<nat, PointsTo<T>> {
         self.points_to
+    }
+
+    /// This permission gives access to `len` many elements, starting at `self.ptr()`.
+    /// Every index in the map should be bounded by `self.len()`,
+    /// so that all of the addresses of the individual `PointsTo`s fall within bounds.
+    pub closed spec fn len(self) -> nat {
+        self.len
     }
 
     /// The index offsets for which this map has permissions.
@@ -719,14 +727,14 @@ impl<T> MapPointsTo<T> {
         self.points_to()[key]
     }
 
-    /// Set of all indices in the range `[0, self.ptr()@.metadata]`.
+    /// Set of all indices in the range `[0, self.len()]`.
     pub open spec fn all_indices(self) -> Set<nat> {
-        bounded_set(self.ptr()@.metadata as nat)
+        bounded_set(self.len())
     }
 
     /// The map contains permissions for all possible valid indices.
     pub open spec fn is_full(self) -> bool {
-        self.indices() == self.all_indices()
+        self.indices() =~= self.all_indices()
     }
 
     /// Returns `true` if all of the permission's associated memory is initialized.
@@ -755,7 +763,7 @@ impl<T> MapPointsTo<T> {
         forall|i| self.indices().contains(i) ==> #[trigger] self[i].is_uninit()
     }
 
-    /// Given that the domain exactly contains all possible keys bounded by `self.ptr()@.metadata`,
+    /// Given that the domain exactly contains all possible keys bounded by `self.len()`,
     /// and all of the permission's associated memory is initialized,
     /// returns the underlying values as a sequence.
     pub open spec fn to_seq(&self) -> Seq<T>
@@ -763,104 +771,105 @@ impl<T> MapPointsTo<T> {
             self.is_init(),
             self.is_full(),
     {
-        Seq::new(self.ptr()@.metadata as nat, |i| self[i as nat].value())
+        Seq::new(self.len(), |i| self[i as nat].value())
     }
 
-    /// Given that the addresses corresponding to the indices in [begin, begin + len) are in the domain,
-    /// returns a `MapPointsTo<T>` with only the permissions corresponding to those addresses,
-    /// removing them from the current map.
-    /// The pointer of the returned permission map has address `old(self).ptr()@.addr + begin`,
-    /// provenance `old(self).ptr()@.provenance`, and metadata `len`.
-    /// The pointer of `self` remains the same.
-    /// (By constructing the pointers this way, we ensure that the type invariant is upheld.)
-    ///
-    /// Note that this is more restrictive than a normal submap because we require the submap to be contiguous.
-    #[verifier::spinoff_prover]
-    pub proof fn contiguous_submap(tracked &mut self, begin: nat, len: nat) -> (tracked out_map:
-        Self)
-        requires
-            begin + len <= old(self).ptr()@.metadata,
-            old(self).ptr()@.addr + begin * layout::size_of::<T>() <= usize::MAX,
-            range_set(begin, len).subset_of(old(self).indices()),
+    /// It is always possible to construct a MapPointsTo with an empty map of permissions.
+    // Q: Does this have to be an axiom, in order to return a tracked resource?
+    pub axiom fn empty(ptr: *mut T) -> (tracked mpt: MapPointsTo<T>)
         ensures
-            out_map.points_to() == Map::new(
-                |i: nat| 0 <= i < len,
-                |i: nat| old(self).points_to()[(i + begin) as nat],
-            ),
-            self.points_to() == old(self).points_to().remove_keys(range_set(begin, len)),
-            out_map.ptr() == ptr_mut_from_data(
-                PtrData::<[T]> {
-                    addr: addr_from_index(old(self).ptr(), begin),
-                    provenance: old(self).ptr()@.provenance,
-                    metadata: len as usize,
-                },
-            ),
-            self.ptr() == old(self).ptr(),
-    {
-        broadcast use crate::vstd::group_vstd_default;
+            mpt.points_to() == Map::<nat, PointsTo<T>>::empty(),
+            mpt.ptr() == ptr,
+            mpt.len() == 0,
+    ;
 
-        use_type_invariant(&*self);
-
-        let out_ptr = ptr_mut_from_data(
-            PtrData::<[T]> {
-                addr: addr_from_index(old(self).ptr(), begin),
-                provenance: self.ptr()@.provenance,
-                metadata: len as usize,
-            },
-        );
-        let tracked mut submap = self.points_to.tracked_remove_keys(range_set(begin, len));
-        let old_submap = submap;
-        let key_map = Map::new(|i: nat| i < len, |i: nat| (i + begin) as nat);
-        submap.tracked_map_keys_in_place(key_map);
-
-        assert forall|i| #[trigger] submap.dom().contains(i) implies submap[i].ptr()@.addr
-            == out_ptr@.addr + i * layout::size_of::<T>() by {
-            calc! {
-                (==)
-                submap[i].ptr()@.addr as int; {}
-                old_submap[(i + begin) as nat].ptr()@.addr as int; {
-                    assert(forall|j|
-                        #![auto]
-                        key_map.dom().contains(j) ==> old_submap.dom().contains(key_map.index(j)));
-                }
-                self.ptr()@.addr + (i + begin) * layout::size_of::<T>(); {
-                    broadcast use group_mul_is_distributive;
-
-                }
-                self.ptr()@.addr + i * layout::size_of::<T>() + begin * layout::size_of::<T>(); {}
-                out_ptr@.addr + i * layout::size_of::<T>();
-            }
-        }
-
-        calc! {
-            (<=)
-            out_ptr@.addr + out_ptr@.metadata * layout::size_of::<T>(); (<=) {
-                broadcast use lemma_mul_inequality;
-
-            }
-            self.ptr()@.addr + begin * layout::size_of::<T>() + (self.ptr()@.metadata - begin)
-                * layout::size_of::<T>(); (==) {
-                broadcast use {lemma_mul_is_distributive_sub, lemma_mul_is_commutative};
-
-            }
-            self.ptr()@.addr + self.ptr()@.metadata * layout::size_of::<T>(); (<=) {}
-            out_ptr@.provenance.start_addr() + out_ptr@.provenance.alloc_len();
-        }
-
-        assert((self.ptr()@.addr + begin * layout::size_of::<T>()) as nat % layout::align_of::<T>()
-            == 0) by {
-            broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop};
-            // Know: (1) a % m == 0
-            // Know: (2) b % m == 0
-            // (3) By (2), (b * c) % m == 0 (lemma_mul_mod_noop_right)
-            // By (1) and (3), (a + b * c) % m == 0 (lemma_add_mod_noop)
-
-        };
-
-        let tracked out_map = MapPointsTo { points_to: submap, ptr: Ghost(out_ptr) };
-        out_map
-    }
-
+    // TODO?: fix proof with change to thin ptr and len
+    // /// Given that the addresses corresponding to the indices in [begin, begin + len) are in the domain,
+    // /// returns a `MapPointsTo<T>` with only the permissions corresponding to those addresses,
+    // /// removing them from the current map.
+    // /// The pointer of the returned permission map has address `old(self).ptr()@.addr + begin`,
+    // /// provenance `old(self).ptr()@.provenance`, and metadata `len`.
+    // /// The pointer of `self` remains the same.
+    // /// (By constructing the pointers this way, we ensure that the type invariant is upheld.)
+    // ///
+    // /// Note that this is more restrictive than a normal submap because we require the submap to be contiguous.
+    // #[verifier::spinoff_prover]
+    // pub proof fn contiguous_submap(tracked &mut self, begin: nat, len: nat) -> (tracked out_map:
+    //     Self)
+    //     requires
+    //         begin + len <= old(self).len(),
+    //         old(self).ptr()@.addr + begin * layout::size_of::<T>() <= usize::MAX,
+    //         range_set(begin, len).subset_of(old(self).indices()),
+    //     ensures
+    //         out_map.points_to() == Map::new(
+    //             |i: nat| 0 <= i < len,
+    //             |i: nat| old(self).points_to()[(i + begin) as nat],
+    //         ),
+    //         self.points_to() == old(self).points_to().remove_keys(range_set(begin, len)),
+    //         out_map.ptr() == ptr_mut_from_data(
+    //             PtrData::<T> {
+    //                 addr: addr_from_index(old(self).ptr(), begin),
+    //                 provenance: old(self).ptr()@.provenance,
+    //                 metadata: (),
+    //             },
+    //         ),
+    //         self.ptr() == old(self).ptr(),
+    //         out_map.len() == len,
+    //         self.len() == old(self).len()
+    // {
+    //     broadcast use crate::vstd::group_vstd_default;
+    //     use_type_invariant(&*self);
+    //     let out_ptr = ptr_mut_from_data(
+    //         PtrData::<T> {
+    //             addr: addr_from_index(old(self).ptr(), begin),
+    //             provenance: self.ptr()@.provenance,
+    //             metadata: (),
+    //         },
+    //     );
+    //     let tracked mut submap = self.points_to.tracked_remove_keys(range_set(begin, len));
+    //     let old_submap = submap;
+    //     let key_map = Map::new(|i: nat| i < len, |i: nat| (i + begin) as nat);
+    //     submap.tracked_map_keys_in_place(key_map);
+    //     assert forall|i| #[trigger] submap.dom().contains(i) implies submap[i].ptr()@.addr
+    //         == out_ptr@.addr + i * layout::size_of::<T>() by {
+    //         calc! {
+    //             (==)
+    //             submap[i].ptr()@.addr as int; {}
+    //             old_submap[(i + begin) as nat].ptr()@.addr as int; {
+    //                 assert(forall|j|
+    //                     #![auto]
+    //                     key_map.dom().contains(j) ==> old_submap.dom().contains(key_map.index(j)));
+    //             }
+    //             self.ptr()@.addr + (i + begin) * layout::size_of::<T>(); {
+    //                 broadcast use group_mul_is_distributive;
+    //             }
+    //             self.ptr()@.addr + i * layout::size_of::<T>() + begin * layout::size_of::<T>(); {}
+    //             out_ptr@.addr + i * layout::size_of::<T>();
+    //         }
+    //     }
+    //     calc! {
+    //         (<=)
+    //         out_ptr@.addr + len * layout::size_of::<T>(); (<=) {
+    //             broadcast use lemma_mul_inequality;
+    //         }
+    //         self.ptr()@.addr + begin * layout::size_of::<T>() + (len - begin)
+    //             * layout::size_of::<T>(); (==) {
+    //             broadcast use {lemma_mul_is_distributive_sub, lemma_mul_is_commutative};
+    //         }
+    //         self.ptr()@.addr + len * layout::size_of::<T>(); (<=) {}
+    //         out_ptr@.provenance.start_addr() + out_ptr@.provenance.alloc_len();
+    //     }
+    //     assert((self.ptr()@.addr + begin * layout::size_of::<T>()) as nat % layout::align_of::<T>()
+    //         == 0) by {
+    //         broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop};
+    //         // Know: (1) a % m == 0
+    //         // Know: (2) b % m == 0
+    //         // (3) By (2), (b * c) % m == 0 (lemma_mul_mod_noop_right)
+    //         // By (1) and (3), (a + b * c) % m == 0 (lemma_add_mod_noop)
+    //     };
+    //     let tracked out_map = MapPointsTo { points_to: submap, ptr: Ghost(out_ptr), len: Ghost(len) };
+    //     out_map
+    // }
     /// Given that two `MapPointsTo<T>` permissions have the same provenance and disjoint domains,
     /// and that the memory corresponding to `other.ptr()` is contained in the memory corresponding to `old(self).ptr()`,
     /// we can unify them into a single permission containing the union of the permissions,
@@ -870,9 +879,9 @@ impl<T> MapPointsTo<T> {
             layout::size_of::<T>() != 0,
             old(self).ptr()@.provenance == other.ptr()@.provenance,
             old(self).ptr()@.addr <= other.ptr()@.addr,
-            other.ptr()@.addr + other.ptr()@.metadata * layout::size_of::<T>() <= old(
+            other.ptr()@.addr + other.len() * layout::size_of::<T>() <= old(self).ptr()@.addr + old(
                 self,
-            ).ptr()@.addr + old(self).ptr()@.metadata * layout::size_of::<T>(),
+            ).len() * layout::size_of::<T>(),
             (other.ptr()@.addr - old(self).ptr()@.addr) as nat % layout::size_of::<T>() == 0,
             other.indices().map(
                 |i: nat| i + get_index_offset(old(self).ptr(), other.ptr()),
@@ -890,7 +899,7 @@ impl<T> MapPointsTo<T> {
         use_type_invariant(other);
 
         let begin = get_index_offset(self.ptr(), other.ptr());
-        let len = other.ptr()@.metadata;
+        let len = other.len();
         let mapped_other = map_keys(other.points_to(), begin);
 
         assert forall|i| #[trigger]
@@ -927,7 +936,7 @@ impl<T> MapPointsTo<T> {
         assert(forall|i| #[trigger]
             tmp.dom().contains(i) ==> tmp[i].ptr()@.provenance == self.ptr()@.provenance);
 
-        assert(len + begin <= self.ptr()@.metadata) by {
+        assert(len + begin <= self.len()) by {
             broadcast use {
                 lemma_div_is_ordered,
                 lemma_div_by_multiple,
@@ -935,9 +944,8 @@ impl<T> MapPointsTo<T> {
             };
 
             assert((other.ptr()@.addr - old(self).ptr()@.addr + len * layout::size_of::<T>())
-                / layout::size_of::<T>() as int <= old(self).ptr()@.metadata * layout::size_of::<
-                T,
-            >() / layout::size_of::<T>() as int);
+                / layout::size_of::<T>() as int <= old(self).len() * layout::size_of::<T>()
+                / layout::size_of::<T>());
             assert((other.ptr()@.addr - old(self).ptr()@.addr) / layout::size_of::<T>() as int + len
                 == (other.ptr()@.addr - old(self).ptr()@.addr + len * layout::size_of::<T>())
                 / layout::size_of::<T>() as int);
@@ -984,10 +992,10 @@ impl<T> MapPointsTo<T> {
     // )
     // // TODO: do I need this requires?
     //     requires
-    //         size_of::<T>() * self.ptr()@.metadata != 0,
+    //         size_of::<T>() * self.len() != 0,
     //     ensures
     //         self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
-    //         self.ptr()@.addr + self.ptr()@.metadata * size_of::<T>()
+    //         self.ptr()@.addr + self.len() * size_of::<T>()
     //             <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     // {
     // }
@@ -1572,11 +1580,12 @@ impl PointsToRaw {
             start as int % layout::align_of::<V>() as int == 0,
             self.is_range(start as int, (length * layout::size_of::<V>()) as int),
         ensures
-            points_to.ptr() == ptr_mut_from_data::<[V]>(
-                PtrData { addr: start, provenance: self.provenance(), metadata: length as usize },
+            points_to.ptr() == ptr_mut_from_data::<V>(
+                PtrData { addr: start, provenance: self.provenance(), metadata: () },
             ),
             points_to.is_uninit(),
             points_to.indices() == bounded_set(length),
+            points_to.len() == length,
     ;
 }
 
@@ -1627,9 +1636,9 @@ impl<V> PointsTo<[V]> {
 }
 
 impl<V> MapPointsTo<V> {
-    /// Provided that the domain of `self` is exactly the addresses bounded by `self.ptr()@.metadata`,
+    /// Provided that the domain of `self` is exactly the addresses bounded by `self.len()`,
     /// creates a `PointsToRaw` from a `MapPointsTo<V>` with the same provenance
-    /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.ptr()@.metadata`.
+    /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.len()`.
     ///
     /// Note that this is more restrictive because it only allows for converstion to a `PointsToRaw`
     /// when the `MapPointsTo<T>` has all of the permissions associated with its pointer.
@@ -1637,13 +1646,13 @@ impl<V> MapPointsTo<V> {
         requires
             self.is_full(),
         ensures
-            points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() * self.ptr()@.metadata),
+            points_to_raw.is_range(self.ptr().addr() as int, (size_of::<V>() * self.len()) as int),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
 
-    /// Provided that the domain of `self` is exactly the indices bounded by `self.ptr()@.metadata`,
+    /// Provided that the domain of `self` is exactly the indices bounded by `self.len()`,
     /// creates a reference to a `PointsToRaw` from a reference to a `MapPointsTo<V>` with the same provenance
-    /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.ptr()@.metadata`.
+    /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.len()`.
     ///
     /// Note that this is more restrictive because it only allows for converstion to a `PointsToRaw`
     /// when the `MapPointsTo<T>` has all of the permissions associated with its pointer.
@@ -1651,7 +1660,7 @@ impl<V> MapPointsTo<V> {
         requires
             self.is_full(),
         ensures
-            points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() * self.ptr()@.metadata),
+            points_to_raw.is_range(self.ptr().addr() as int, (size_of::<V>() * self.len()) as int),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
 }
