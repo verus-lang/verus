@@ -34,24 +34,24 @@ impl DeepView for str {
     }
 }
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 pub trait StringSliceAdditionalSpecFns {
     spec fn spec_bytes(&self) -> Seq<u8>;
 }
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 impl StringSliceAdditionalSpecFns for str {
     open spec fn spec_bytes(&self) -> Seq<u8> {
         encode_utf8(self@)
     }
 }
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 pub open spec fn is_ascii(s: &str) -> bool {
     is_ascii_chars(s@)
 }
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 pub broadcast proof fn is_ascii_spec_bytes(s: &str)
     ensures
         #[trigger] is_ascii(s) ==> #[trigger] s.spec_bytes() =~= Seq::new(
@@ -64,7 +64,7 @@ pub broadcast proof fn is_ascii_spec_bytes(s: &str)
     }
 }
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 pub broadcast proof fn is_ascii_concat(s1: &str, s2: &str, s3: &str)
     requires
         s1@ =~= s2@ + s3@,
@@ -79,7 +79,7 @@ pub broadcast proof fn is_ascii_concat(s1: &str, s2: &str, s3: &str)
     }
 }
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 #[verifier::when_used_as_spec(is_ascii)]
 pub assume_specification[ str::is_ascii ](s: &str) -> (b: bool)
     ensures
@@ -95,34 +95,34 @@ pub assume_specification[ str::to_owned ](s: &str) -> (res: String)
         s@ == res@,
 ;
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ str::as_bytes ](s: &str) -> (b: &[u8])
     ensures
         b@ == s.spec_bytes(),
 ;
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 #[verifier::allow_in_spec]
 pub assume_specification[ str::len ](s: &str) -> usize
     returns
         s.spec_bytes().len() as usize,
 ;
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 #[verifier::allow_in_spec]
 pub assume_specification[ str::is_empty ](s: &str) -> bool
     returns
         s@.len() == 0,
 ;
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 #[verifier::allow_in_spec]
 pub assume_specification[ str::is_char_boundary ](s: &str, index: usize) -> bool
     returns
         is_char_boundary(s.spec_bytes(), index as int),
 ;
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &str))
     requires
         is_char_boundary(s.spec_bytes(), mid as int),
@@ -131,7 +131,7 @@ pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &
         res.1.spec_bytes() =~= s.spec_bytes().subrange(mid as int, s.spec_bytes().len() as int),
 ;
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ str::from_utf8_unchecked ](v: &[u8]) -> (res: &str)
     requires
         valid_utf8(v@),
@@ -287,6 +287,8 @@ pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
 pub broadcast group group_string_axioms {
     axiom_str_literal_len,
     axiom_str_literal_get_char,
+    is_ascii_spec_bytes,
+    is_ascii_concat,
 }
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]

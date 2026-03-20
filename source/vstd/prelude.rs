@@ -65,7 +65,7 @@ pub use super::std_specs::maybe_uninit::MaybeUninitAdditionalSpecFns;
 #[cfg(feature = "alloc")]
 pub use super::pervasive::VecAdditionalExecFns;
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 pub use super::string::StrSliceExecFns;
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub use super::string::StringExecFns;
