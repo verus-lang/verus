@@ -2822,10 +2822,11 @@ impl Verifier {
                     imp.x.trait_typ_args.iter().map(vir::ast_util::typ_to_diagnostic_str).collect();
                 writeln!(
                     &mut file,
-                    "{}   ###   {}   ###   {}",
+                    "{}   ###   {}   ###   {}   ###   {}",
                     vir::ast_util::path_as_friendly_rust_name(&imp.x.impl_path),
                     vir::ast_util::path_as_friendly_rust_name(&imp.x.trait_path),
                     &ts.join(", "),
+                    &imp.span.as_string,
                 )
                 .map_err(|e| io_vir_err("log_impl_names".to_string(), e))
                 .map_err(map_err_diagnostics)?;
