@@ -416,7 +416,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::FloatToBits => 1,
                 UnaryOp::IeeeFloat(_) => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
-                UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
+                UnaryOp::StrLen => fail_on_strop(),
                 UnaryOp::MutRefFinal(_) => 1,
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
             };
