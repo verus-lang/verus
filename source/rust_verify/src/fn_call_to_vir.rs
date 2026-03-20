@@ -304,21 +304,27 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
     record_call(bctx, expr, ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost));
 
-    let arg_slice = args.as_deref().unwrap_or(&[]);
-    let hir_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
-    let vir_attrs = crate::attributes::parse_attrs(hir_attrs, None)?;
-    let vir_args = if vir_attrs.contains(&crate::attributes::Attr::AtomicCall) {
-        let [prefix @ .., au] = arg_slice else {
-            panic!("atomic call must have at least one argument");
-        };
+    let is_atomic_function_call = || -> Result<bool, VirErr> {
+        let hir_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
+        let vir_attrs = crate::attributes::parse_attrs(hir_attrs, None)?;
+        Ok(vir_attrs.contains(&crate::attributes::Attr::AtomicCall))
+    };
 
-        let mut args = mk_vir_args(bctx, node_substs, f, prefix)?;
-        let au_pred_args = Some(Arc::new(args.clone()));
-        let atomic_bctx = BodyCtxt { au_pred_args, ..bctx.clone() };
-        args.push(expr_to_vir_consume(&atomic_bctx, au, ExprModifier::REGULAR)?);
-        args
-    } else {
-        mk_vir_args(bctx, node_substs, f, arg_slice)?
+    let vir_args = match args.as_deref() {
+        Some(arg_slice) if is_atomic_function_call()? => {
+            let [prefix @ .., au] = arg_slice else {
+                panic!("atomic call must have at least one argument");
+            };
+
+            let mut args = mk_vir_args(bctx, node_substs, f, prefix)?;
+            let au_pred_args = Some(Arc::new(args.clone()));
+            let atomic_bctx = BodyCtxt { au_pred_args, ..bctx.clone() };
+            let au_expr = expr_to_vir_consume(&atomic_bctx, au, ExprModifier::REGULAR)?;
+            args.push(au_expr);
+            args
+        }
+        Some(arg_slice) => mk_vir_args(bctx, node_substs, f, arg_slice)?,
+        None => Vec::new(),
     };
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
