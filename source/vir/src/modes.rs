@@ -1488,9 +1488,25 @@ fn check_place_rec_inner(
     }
 }
 
-fn check_tracked_swap(ctxt: &Ctxt, record: &Record, expr: &Expr) -> Result<(), VirErr> {
-    let ExprX::Call(CallTarget::Fun(_, _, _, ..), args, None) = &expr.x else { unreachable!() };
-    assert!(args.len() == 2);
+fn check_tracked_swap(
+    ctxt: &Ctxt,
+    record: &Record,
+    expr: &Expr,
+    option_take: bool,
+) -> Result<(), VirErr> {
+    let ExprX::Call(CallTarget::Fun(_, _, typ_args, ..), args, None) = &expr.x else {
+        unreachable!()
+    };
+    if option_take {
+        // For tracked_take we also allow if the type argument is tracked-only
+        // This is only sound because tracked_take has a precondition that the argument is Some
+        // This is because if T is a proof-only type, then None is still constructible in exec
+        // mode, but Some(x) is not. Thus, Some(x) is proof that the place is tracked, whereas
+        // None is not.
+        if type_is_non_exec(ctxt, &typ_args[1]) {
+            return Ok(());
+        }
+    }
     for arg in args.iter() {
         let (ok, note) = ok_to_assign_to_mut_bor_in_erased_code(ctxt, record, arg);
         if !ok {
@@ -1528,7 +1544,7 @@ fn ok_to_assign_to_mut_bor_in_erased_code(
             }
             _ => {}
         },
-        ExprX::BorrowMut(place) => {
+        ExprX::BorrowMut(place) | ExprX::TwoPhaseBorrowMut(place) => {
             match record.mut_bor_place_modes.get(&place.span.id).unwrap() {
                 (Mode::Spec, _) => {
                     // If this passed type-checking before, this shouldn't be spec
@@ -1970,11 +1986,13 @@ fn check_expr_handle_mut_arg(
                     out_proph = out_proph.join(p);
                 }
             }
-            if ctxt.new_mut_ref && function.x.attrs.tracked_swap {
+            if ctxt.new_mut_ref
+                && (function.x.attrs.tracked_swap || function.x.attrs.tracked_take_option)
+            {
                 if typing.block_ghostness == Ghost::Exec {
                     return Err(error(&expr.span, mode_error_msg()));
                 }
-                check_tracked_swap(ctxt, record, &expr)?;
+                check_tracked_swap(ctxt, record, &expr, function.x.attrs.tracked_take_option)?;
             }
             Ok((function.x.ret.x.mode, out_proph))
         }

@@ -1160,6 +1160,62 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] tracked_take_requires_non_exec_place ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        struct X { a: u64 }
+        fn test(Tracked(x): Tracked<&mut Option<X>>) {
+            proof {
+                let tracked x = x.tracked_take();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in ghost code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_take_requires_non_exec_place2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        tracked struct X { a: u64 }
+        fn test(Tracked(x): Tracked<&mut Option<X>>)
+            requires x.is_some(),
+        {
+            proof {
+                let tracked x = x.tracked_take();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_take_requires_non_exec_place3 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        struct X { a: u64 }
+        // The type argument being a ZST isn't sufficient
+        fn test(Tracked(x): Tracked<&mut Option<Tracked<X>>>) {
+            proof {
+                let tracked x = x.tracked_take();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in ghost code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_swap_option_not_ok ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        tracked struct X { a: u64 }
+        // The type argument being a ZST isn't sufficient
+        fn test(Tracked(x): Tracked<&mut Option<X>>, Tracked(y): Tracked<&mut Option<X>>) {
+            proof {
+                tracked_swap(x, y);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in ghost code")
+}
+
+test_verify_one_file_with_options! {
     #[test] wrapped_params ["new-mut-ref"] => verus_code! {
         fn f(Tracked(x): Tracked<&mut Ghost<int>>)
             requires x.view() < 20,
