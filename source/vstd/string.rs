@@ -161,7 +161,7 @@ pub assume_specification<T: core::fmt::Display + ?Sized>[ <T as ToString>::to_st
         to_string_from_display_ensures::<T>(t, res),
 ;
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 #[verifier::external]
 pub trait StrSliceExecFns {
     fn unicode_len(&self) -> usize;
@@ -174,10 +174,11 @@ pub trait StrSliceExecFns {
 
     fn get_ascii(&self, i: usize) -> u8;
 
+    #[cfg(feature = "alloc")]
     fn as_bytes_vec(&self) -> alloc::vec::Vec<u8>;
 }
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+#[cfg(not(verus_verify_core))]
 impl StrSliceExecFns for str {
     /// The len() function in rust returns the byte length.
     /// It is more useful to talk about the length of characters and therefore this function was added.
@@ -261,6 +262,7 @@ impl StrSliceExecFns for str {
         self.as_bytes()[i]
     }
 
+    #[cfg(feature = "alloc")]
     fn as_bytes_vec(&self) -> (ret: alloc::vec::Vec<u8>)
         ensures
             ret@ == self.spec_bytes(),
