@@ -5,7 +5,7 @@ use crate::util::vec_map;
 use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /*
 In SMT-LIB format (used by Z3), symbols are built of letters, digits, and:
@@ -57,6 +57,7 @@ const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
 const PREFIX_TYPE_ID: &str = "TYPE%";
+const PREFIX_DYN_ID: &str = "DYN%";
 const PREFIX_DCR_ID: &str = "DCR%";
 const PREFIX_FNDEF_TYPE_ID: &str = "FNDEF%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
@@ -71,6 +72,7 @@ pub(crate) const PROJECT_POINTEE_METADATA: &str = "pointee_metadata%";
 pub(crate) const PROJECT_POINTEE_METADATA_DECORATION: &str = "pointee_metadata%%";
 const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
+const PREFIX_TO_DYN: &str = "to_dyn%";
 pub(crate) const SIZED_BOUND: &str = "sized";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
@@ -82,6 +84,7 @@ const GLOBAL_TYPE: &str = "allocator_global%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
+const RES_INF_TEMP_SEPARATOR: &str = "$$$$tempplace";
 const BITVEC_TMP_DECL_SEPARATOR: &str = "$$$$bitvectmp";
 const USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR: &str = "$$$$userdeftypeinvpass";
 const KRATE_SEPARATOR: &str = "!";
@@ -143,19 +146,27 @@ pub const SUB: &str = "Sub";
 pub const MUL: &str = "Mul";
 pub const EUC_DIV: &str = "EucDiv";
 pub const EUC_MOD: &str = "EucMod";
+pub const RADD: &str = "RAdd";
+pub const RSUB: &str = "RSub";
+pub const RMUL: &str = "RMul";
+pub const RDIV: &str = "RDiv";
 pub const SNAPSHOT_CALL: &str = "CALL";
 pub const SNAPSHOT_PRE: &str = "PRE";
 pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
+pub const SNAPSHOT_LOOP: &str = "LOOP";
 pub const T_HEIGHT: &str = "Height";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
+pub const BOX_REAL: &str = "R";
 pub const BOX_FNDEF: &str = "F";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
+pub const UNBOX_REAL: &str = "%R";
 pub const UNBOX_FNDEF: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
+pub const TYPE_ID_REAL: &str = "REAL";
 pub const TYPE_ID_INT: &str = "INT";
 pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_CHAR: &str = "CHAR";
@@ -169,6 +180,7 @@ pub const TYPE_ID_CONST_BOOL: &str = "CONST_BOOL";
 pub const DECORATION: &str = "Dcr";
 pub const DECORATE_NIL_SIZED: &str = "$";
 pub const DECORATE_NIL_SLICE: &str = "$slice"; // for 'str' and '[T]' types
+pub const DECORATE_NIL_DYN: &str = "$dyn"; // for 'dyn' types
 pub const DECORATE_DST_INHERIT: &str = "DST";
 pub const DECORATE_REF: &str = "REF";
 pub const DECORATE_MUT_REF: &str = "MUT_REF";
@@ -238,6 +250,30 @@ pub const STRSLICE_GET_CHAR: &str = "str%strslice_get_char";
 pub const STRSLICE_NEW_STRLIT: &str = "str%new_strlit";
 // only used to prove that new_strlit is injective
 pub const STRSLICE_FROM_STRLIT: &str = "str%from_strlit";
+
+pub const IEEE_FLOAT_CAST: &str = "ieee_float_cast";
+pub const IEEE_FLOAT_NEG: &str = "ieee_float_neg";
+pub const IEEE_FLOAT_FLOOR: &str = "ieee_float_floor";
+pub const IEEE_FLOAT_CEIL: &str = "ieee_float_ceil";
+pub const IEEE_FLOAT_ROUND: &str = "ieee_float_round";
+pub const IEEE_FLOAT_ROUND_TIES_EVEN: &str = "ieee_float_round_ties_even";
+pub const IEEE_FLOAT_TRUNC: &str = "ieee_float_trunc";
+pub const IEEE_FLOAT_IS_NORMAL: &str = "ieee_float_is_normal";
+pub const IEEE_FLOAT_IS_SUBNORMAL: &str = "ieee_float_is_subnormal";
+pub const IEEE_FLOAT_IS_ZERO: &str = "ieee_float_is_zero";
+pub const IEEE_FLOAT_IS_INFINITE: &str = "ieee_float_is_infinite";
+pub const IEEE_FLOAT_IS_NAN: &str = "ieee_float_is_nan";
+pub const IEEE_FLOAT_IS_NEGATIVE: &str = "ieee_float_is_negative";
+pub const IEEE_FLOAT_IS_POSITIVE: &str = "ieee_float_is_positive";
+pub const IEEE_FLOAT_ADD: &str = "ieee_float_add";
+pub const IEEE_FLOAT_SUB: &str = "ieee_float_sub";
+pub const IEEE_FLOAT_MUL: &str = "ieee_float_mul";
+pub const IEEE_FLOAT_DIV: &str = "ieee_float_div";
+pub const IEEE_FLOAT_EQ: &str = "ieee_float_eq";
+pub const IEEE_FLOAT_LE: &str = "ieee_float_le";
+pub const IEEE_FLOAT_GE: &str = "ieee_float_ge";
+pub const IEEE_FLOAT_LT: &str = "ieee_float_lt";
+pub const IEEE_FLOAT_GT: &str = "ieee_float_gt";
 
 pub const VERUSLIB: &str = "vstd";
 pub const VERUSLIB_PREFIX: &str = "vstd::";
@@ -419,6 +455,54 @@ pub fn strslice_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
+pub fn fn_slice_len(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_len".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_slice_index(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_index".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_slice_update(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_update".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_array_update(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("array".to_string()),
+                Arc::new("spec_array_update".to_string()),
+            ]),
+        }),
+    })
+}
+
 pub fn array_type() -> Path {
     let ident = Arc::new(ARRAY_TYPE.to_string());
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
@@ -440,6 +524,10 @@ pub fn prefix_dcr_id(ident: &Path) -> Ident {
 
 pub fn prefix_type_id(ident: &Path) -> Ident {
     Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(ident))
+}
+
+pub fn prefix_dyn_id(ident: &Path) -> Ident {
+    Arc::new(PREFIX_DYN_ID.to_string() + &path_to_string(ident))
 }
 
 pub fn prefix_fndef_type_id(fun: &Fun) -> Ident {
@@ -475,13 +563,7 @@ pub fn impl_ident(disambiguator: u32) -> Ident {
 
 pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
     let proj = if decoration { PREFIX_PROJECT_DECORATION } else { PREFIX_PROJECT };
-    Arc::new(format!(
-        "{}{}{}{}",
-        proj,
-        path_to_string(trait_path),
-        PROJECT_SEPARATOR,
-        name.to_string()
-    ))
+    Arc::new(format!("{}{}{}{}", proj, path_to_string(trait_path), PROJECT_SEPARATOR, name))
 }
 
 pub fn projection_pointee_metadata(decoration: bool) -> Ident {
@@ -498,6 +580,10 @@ pub fn proj_param(i: usize) -> Ident {
 
 pub fn trait_bound(trait_path: &Path) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
+}
+
+pub fn to_dyn(trait_path: &Path) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_TO_DYN, path_to_string(trait_path)))
 }
 
 pub fn sized_bound() -> Ident {
@@ -784,13 +870,12 @@ impl CommandContext {
 }
 
 #[derive(Debug)]
-#[derive(Clone)]
 pub struct CommandsWithContextX {
     pub context: CommandContext,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
-    pub hint_upon_failure: std::cell::RefCell<Option<crate::messages::Message>>,
+    pub hint_upon_failure: Mutex<Option<crate::messages::Message>>,
 }
 
 impl CommandsWithContextX {
@@ -807,8 +892,22 @@ impl CommandsWithContextX {
             commands,
             prover_choice,
             skip_recommends,
-            hint_upon_failure: std::cell::RefCell::new(None),
+            hint_upon_failure: Mutex::new(None),
         })
+    }
+}
+
+impl Clone for CommandsWithContextX {
+    fn clone(&self) -> Self {
+        CommandsWithContextX {
+            context: self.context.clone(),
+            commands: self.commands.clone(),
+            prover_choice: self.prover_choice.clone(),
+            skip_recommends: self.skip_recommends.clone(),
+            hint_upon_failure: Mutex::new(
+                self.hint_upon_failure.lock().expect("we abort on poisoning").clone(),
+            ),
+        }
     }
 }
 
@@ -1029,6 +1128,10 @@ pub fn unique_var_name(
         }
         VarIdentDisambiguate::UserDefinedTypeInvariantPass(id) => {
             out.push_str(USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
+        VarIdentDisambiguate::ResInfTemp(id) => {
+            out.push_str(RES_INF_TEMP_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
     }

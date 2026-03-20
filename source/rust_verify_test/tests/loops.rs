@@ -1569,3 +1569,43 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] loop_via_subrange verus_code! {
+        use vstd::prelude::*;
+        fn test_subrange(src: &Vec<u32>, dst: &mut Vec<u32>, lo: usize, hi: usize)
+            requires
+                lo <= hi,
+                hi <= src.len(),
+                hi <= old(dst).len(),
+            ensures
+                src@.subrange(lo as int, hi as int) == dst@.subrange(lo as int, hi as int),
+        {
+            for n in lo..hi
+                invariant
+                    lo <= hi,
+                    hi <= src.len(),
+                    hi <= dst.len(),
+                    src@.subrange(lo as int, n as int) =~= dst@.subrange(lo as int, n as int),
+            {
+                dst[n] = src[n];
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] loop_isolation_false_requires_allow_complex_invariants verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test1() {
+            let mut i = 0;
+            while i < 10
+                invariant_except_break i <= 9
+                invariant 0 <= i <= 10
+                decreases 10 - i
+            {
+                i = i + 1;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break or ensures, unless #[verifier::allow_complex_invariants] is used")
+}

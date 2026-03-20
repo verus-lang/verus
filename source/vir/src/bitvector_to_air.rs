@@ -250,12 +250,22 @@ enum Extend {
 enum BvTyp {
     Bool,
     Bv(u32, Extend),
+    Float { exp_bits: u32, sig_bits: u32 },
+    Real,
 }
 
 #[derive(Debug, Clone)]
 struct BvExpr {
     expr: Expr,
     bv_typ: BvTyp,
+}
+
+fn f32_typ() -> BvTyp {
+    BvTyp::Float { exp_bits: 8, sig_bits: 24 }
+}
+
+fn f64_typ() -> BvTyp {
+    BvTyp::Float { exp_bits: 11, sig_bits: 53 }
 }
 
 fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, VirErr> {
@@ -270,6 +280,19 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
         }
         ExpX::Const(crate::ast::Constant::Bool(b)) => {
             Ok(BvExpr { expr: Arc::new(ExprX::Const(Constant::Bool(*b))), bv_typ: BvTyp::Bool })
+        }
+        ExpX::Const(crate::ast::Constant::Float32(i)) => {
+            let e_i = Arc::new(ExprX::Const(Constant::BitVec(Arc::new(i.to_string()), 32)));
+            let op = air::ast::UnaryOp::FloatFromIeeeBits { exp_bits: 8, sig_bits: 24 };
+            Ok(BvExpr { expr: Arc::new(ExprX::Unary(op, e_i)), bv_typ: f32_typ() })
+        }
+        ExpX::Const(crate::ast::Constant::Float64(i)) => {
+            let e_i = Arc::new(ExprX::Const(Constant::BitVec(Arc::new(i.to_string()), 64)));
+            let op = air::ast::UnaryOp::FloatFromIeeeBits { exp_bits: 11, sig_bits: 53 };
+            Ok(BvExpr { expr: Arc::new(ExprX::Unary(op, e_i)), bv_typ: f64_typ() })
+        }
+        ExpX::Const(crate::ast::Constant::Real(r)) => {
+            Ok(BvExpr { expr: air::ast_util::mk_real(r), bv_typ: BvTyp::Real })
         }
         ExpX::Var(x) => {
             let id = suffix_local_unique_id(x);
@@ -323,7 +346,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             }
             UnaryOp::Clip { range: int_range, .. } => {
                 match &arg.x {
-                    ExpX::Binary(BinaryOp::Arith(arith_op, _), lhs, rhs) => {
+                    ExpX::Binary(BinaryOp::Arith(arith_op), lhs, rhs) => {
                         return do_arith_then_clip(
                             ctx,
                             state,
@@ -340,6 +363,64 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 let bv_expr = bv_exp_to_expr(ctx, state, arg)?;
                 do_clip(state, &arg.span, bv_expr, *int_range)
             }
+            UnaryOp::IeeeFloat(crate::ast::IeeeFloatUnaryOp::Cast) => {
+                use air::ast::RoundingMode;
+                let BvExpr { expr: e_from, bv_typ: t_from } = bv_exp_to_expr(ctx, state, arg)?;
+                let t_to = bv_typ_for_vir_typ(state, &exp.span, &exp.typ)?;
+                let op = match (t_from, t_to) {
+                    (_, BvTyp::Float { exp_bits, sig_bits }) => {
+                        let signed = !is_integer_type(&arg.typ) || is_integer_type_signed(&arg.typ);
+                        air::ast::UnaryOp::FloatFrom {
+                            exp_bits,
+                            sig_bits,
+                            signed,
+                            round: RoundingMode::RNE,
+                        }
+                    }
+                    (BvTyp::Float { .. }, BvTyp::Real) => air::ast::UnaryOp::FloatToReal,
+                    (BvTyp::Float { .. }, _) => {
+                        assert!(is_integer_type(&exp.typ));
+                        let signed = is_integer_type_signed(&exp.typ);
+                        let w = bitwidth_from_type(&exp.typ).expect("is_integer_type");
+                        let IntegerTypeBitwidth::Width(bits) = w else {
+                            panic!("internal error: unexpected usize/isize")
+                        };
+                        air::ast::UnaryOp::FloatToBitVec { bits, signed, round: RoundingMode::RTZ }
+                    }
+                    _ => {
+                        panic!("internal error: unexpected cast from {:?} to {:?}", t_from, t_to)
+                    }
+                };
+                Ok(BvExpr { expr: Arc::new(ExprX::Unary(op, e_from)), bv_typ: t_to })
+            }
+            UnaryOp::IeeeFloat(fop) => {
+                use crate::ast::IeeeFloatUnaryOp;
+                use air::ast::RoundingMode;
+                let BvExpr { expr, bv_typ } = bv_exp_to_expr(ctx, state, arg)?;
+                assert!(matches!(bv_typ, BvTyp::Float { .. }));
+                let round = |r: RoundingMode| (false, air::ast::UnaryOp::FloatRoundToInt(r));
+                let (is_bool, op) = match fop {
+                    IeeeFloatUnaryOp::Cast => unreachable!(),
+                    IeeeFloatUnaryOp::Neg => (false, air::ast::UnaryOp::FloatNeg),
+                    IeeeFloatUnaryOp::Floor => round(RoundingMode::RTN),
+                    IeeeFloatUnaryOp::Ceil => round(RoundingMode::RTP),
+                    IeeeFloatUnaryOp::Round => round(RoundingMode::RNA),
+                    IeeeFloatUnaryOp::RoundTiesEven => round(RoundingMode::RNE),
+                    IeeeFloatUnaryOp::Trunc => round(RoundingMode::RTZ),
+                    IeeeFloatUnaryOp::IsNormal => (true, air::ast::UnaryOp::FloatIsNormal),
+                    IeeeFloatUnaryOp::IsSubnormal => (true, air::ast::UnaryOp::FloatIsSubnormal),
+                    IeeeFloatUnaryOp::IsZero => (true, air::ast::UnaryOp::FloatIsZero),
+                    IeeeFloatUnaryOp::IsInfinite => (true, air::ast::UnaryOp::FloatIsInfinite),
+                    IeeeFloatUnaryOp::IsNaN => (true, air::ast::UnaryOp::FloatIsNaN),
+                    IeeeFloatUnaryOp::IsNegative => (true, air::ast::UnaryOp::FloatIsNegative),
+                    IeeeFloatUnaryOp::IsPositive => (true, air::ast::UnaryOp::FloatIsPositive),
+                };
+
+                let bv_typ = if is_bool { BvTyp::Bool } else { bv_typ };
+                Ok(BvExpr { expr: Arc::new(ExprX::Unary(op, expr)), bv_typ })
+            }
+            UnaryOp::IntToReal => panic!("internal error: unexpected int to real coercion"),
+            UnaryOp::RealToInt => panic!("internal error: unexpected real to int coercion"),
             UnaryOp::FloatToBits => panic!("internal error: unexpected float to bits coercion"),
             UnaryOp::HeightTrigger => panic!("internal error: unexpected HeightTrigger"),
             UnaryOp::Trigger(_) => bv_exp_to_expr(ctx, state, arg),
@@ -358,8 +439,11 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::CastToInteger => {
                 panic!("internal error: unexpected CastToInteger")
             }
-            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
+            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefFinal(_) => {
                 panic!("mut-ref operation not allowed in bitvector query")
+            }
+            UnaryOp::Length(_) => {
+                panic!("ArrayLength operation not allowed in bitvector query")
             }
         },
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp) => {
@@ -527,7 +611,30 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
 
             Ok(BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, extend) })
         }
-        ExpX::Binary(BinaryOp::Arith(arith_op, _), lhs, rhs) => {
+        ExpX::Binary(BinaryOp::IeeeFloat(fop), lhs, rhs) => {
+            use crate::ast::IeeeFloatBinaryOp;
+            use air::ast::RoundingMode;
+            let lhs = bv_exp_to_expr(ctx, state, lhs)?;
+            let rhs = bv_exp_to_expr(ctx, state, rhs)?;
+            assert!(matches!((lhs.bv_typ, rhs.bv_typ), (BvTyp::Float { .. }, BvTyp::Float { .. })));
+
+            let round = RoundingMode::RNE;
+            let (is_bool, op) = match fop {
+                IeeeFloatBinaryOp::Add => (false, air::ast::BinaryOp::FloatAdd(round)),
+                IeeeFloatBinaryOp::Sub => (false, air::ast::BinaryOp::FloatSub(round)),
+                IeeeFloatBinaryOp::Mul => (false, air::ast::BinaryOp::FloatMul(round)),
+                IeeeFloatBinaryOp::Div => (false, air::ast::BinaryOp::FloatDiv(round)),
+                IeeeFloatBinaryOp::Eq => (true, air::ast::BinaryOp::FloatEq),
+                IeeeFloatBinaryOp::InEq(InequalityOp::Le) => (true, air::ast::BinaryOp::FloatLe),
+                IeeeFloatBinaryOp::InEq(InequalityOp::Ge) => (true, air::ast::BinaryOp::FloatGe),
+                IeeeFloatBinaryOp::InEq(InequalityOp::Lt) => (true, air::ast::BinaryOp::FloatLt),
+                IeeeFloatBinaryOp::InEq(InequalityOp::Gt) => (true, air::ast::BinaryOp::FloatGt),
+            };
+
+            let bv_typ = if is_bool { BvTyp::Bool } else { lhs.bv_typ };
+            Ok(BvExpr { expr: Arc::new(ExprX::Binary(op, lhs.expr, rhs.expr)), bv_typ })
+        }
+        ExpX::Binary(BinaryOp::Arith(arith_op), lhs, rhs) => {
             return do_arith_then_clip(ctx, state, &exp.span, arith_op, lhs, rhs, None);
         }
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {
@@ -754,6 +861,12 @@ fn make_same_bv_typ(span: &Span, lhs: BvExpr, rhs: BvExpr) -> Result<(BvExpr, Bv
     if lhs.bv_typ == BvTyp::Bool && rhs.bv_typ == BvTyp::Bool {
         return Ok((lhs, rhs));
     }
+    if lhs.bv_typ == BvTyp::Real && rhs.bv_typ == BvTyp::Real {
+        return Ok((lhs, rhs));
+    }
+    if matches!((lhs.bv_typ, rhs.bv_typ), (BvTyp::Float { .. }, BvTyp::Float { .. })) {
+        return Ok((lhs, rhs));
+    }
 
     // Compute the minimum extension satisfying both constraints:
     //  - We need to extend both to be the same width
@@ -808,9 +921,13 @@ impl BvTyp {
     }
 
     fn to_air_typ(&self) -> air::ast::Typ {
-        match self {
-            BvTyp::Bv(w, _) => air::ast_util::bv_typ(*w),
+        match *self {
+            BvTyp::Bv(w, _) => air::ast_util::bv_typ(w),
             BvTyp::Bool => bool_typ(),
+            BvTyp::Float { exp_bits, sig_bits } => {
+                Arc::new(air::ast::TypX::Float { exp_bits, sig_bits })
+            }
+            BvTyp::Real => Arc::new(air::ast::TypX::Real),
         }
     }
 }
@@ -860,17 +977,21 @@ fn bv_typ_for_vir_typ(state: &mut State, span: &Span, typ: &Typ) -> Result<BvTyp
         let width = bitvector_expect_finite(state, span, typ, &width)?;
         let signed = is_integer_type_signed(typ);
         Ok(BvTyp::Bv(width, if signed { Extend::Sign } else { Extend::Zero }))
-    } else {
-        if allowed_bitvector_type(typ) {
-            Ok(BvTyp::Bool)
-        } else {
-            Err(error(
-                span,
-                format!(
-                    "error: bit_vector prover cannot handle this type (bit_vector can only handle variables of type `bool` or of fixed-width integers)"
-                ),
-            ))
+    } else if let Some(t) = allowed_bitvector_type(typ) {
+        match &*t {
+            TypX::Bool => Ok(BvTyp::Bool),
+            TypX::Float(32) => Ok(f32_typ()),
+            TypX::Float(64) => Ok(f64_typ()),
+            TypX::Real => Ok(BvTyp::Real),
+            _ => unreachable!(),
         }
+    } else {
+        Err(error(
+            span,
+            format!(
+                "error: bit_vector prover cannot handle this type (bit_vector can only handle variables of type `bool`, fixed-width integers, or floating point)"
+            ),
+        ))
     }
 }
 
@@ -901,7 +1022,7 @@ fn do_arith_then_clip(
     if int_range == Some(IntRange::Nat) {
         if lhs_extend == Extend::Zero
             && rhs_extend == Extend::Zero
-            && (*arith_op == ArithOp::Add || *arith_op == ArithOp::Mul)
+            && matches!(arith_op, ArithOp::Add(_) | ArithOp::Mul(_))
         {
             int_range = None;
         } else {
@@ -909,17 +1030,17 @@ fn do_arith_then_clip(
         }
     }
 
-    if matches!(arith_op, ArithOp::Add | ArithOp::Mul | ArithOp::Sub) {
+    if matches!(arith_op, ArithOp::Add(_) | ArithOp::Mul(_) | ArithOp::Sub(_)) {
         let op = match arith_op {
-            ArithOp::Add => air::ast::BinaryOp::BitAdd,
-            ArithOp::Sub => air::ast::BinaryOp::BitSub,
-            ArithOp::Mul => air::ast::BinaryOp::BitMul,
-            ArithOp::EuclideanDiv | ArithOp::EuclideanMod => unreachable!(),
+            ArithOp::Add(_) => air::ast::BinaryOp::BitAdd,
+            ArithOp::Sub(_) => air::ast::BinaryOp::BitSub,
+            ArithOp::Mul(_) => air::ast::BinaryOp::BitMul,
+            ArithOp::EuclideanDiv(_) | ArithOp::EuclideanMod(_) => unreachable!(),
         };
 
         // How can we represent the result losslessly?
         let (lossless_w, lossless_extend) = match arith_op {
-            ArithOp::Add => {
+            ArithOp::Add(_) => {
                 match (lhs_extend, rhs_extend) {
                     (Extend::Zero, Extend::Zero) => {
                         // If X and Y fit in N bits, unsigned,
@@ -954,7 +1075,7 @@ fn do_arith_then_clip(
                     }
                 }
             }
-            ArithOp::Sub => {
+            ArithOp::Sub(_) => {
                 let w = match (lhs_extend, rhs_extend) {
                     (Extend::Zero, Extend::Zero) => {
                         // max: 2^a - 1
@@ -981,7 +1102,7 @@ fn do_arith_then_clip(
                 };
                 (w, Extend::Sign)
             }
-            ArithOp::Mul => match (lhs_extend, rhs_extend) {
+            ArithOp::Mul(_) => match (lhs_extend, rhs_extend) {
                 (Extend::Zero, Extend::Zero) => (lhs_w + rhs_w, Extend::Zero),
                 (Extend::Zero, Extend::Sign) | (Extend::Sign, Extend::Zero) => {
                     (lhs_w + rhs_w, Extend::Sign)
@@ -1062,12 +1183,12 @@ fn do_div_or_mod_then_clip(
     let rhs_expr = bv_rhs.expr.clone();
 
     let bv_expr = match (arith_op, extend) {
-        (ArithOp::EuclideanDiv | ArithOp::EuclideanMod, Extend::Zero) => {
+        (ArithOp::EuclideanDiv(_) | ArithOp::EuclideanMod(_), Extend::Zero) => {
             // Nothing fancy, do the operation losslessly, then clip.
 
             let op = match arith_op {
-                ArithOp::EuclideanDiv => air::ast::BinaryOp::BitUDiv,
-                ArithOp::EuclideanMod => air::ast::BinaryOp::BitURem,
+                ArithOp::EuclideanDiv(_) => air::ast::BinaryOp::BitUDiv,
+                ArithOp::EuclideanMod(_) => air::ast::BinaryOp::BitURem,
                 _ => unreachable!(),
             };
 
@@ -1078,7 +1199,7 @@ fn do_div_or_mod_then_clip(
             let expr = Arc::new(ExprX::Binary(op, lhs_expr, rhs_expr));
             BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, Extend::Zero) }
         }
-        (ArithOp::EuclideanDiv, Extend::Sign) => {
+        (ArithOp::EuclideanDiv(_), Extend::Sign) => {
             // Euclidean division for signed integers in the theory of bit-vectors.
             //
             // See: https://www.microsoft.com/en-us/research/publication/division-and-modulus-for-computer-scientists/
@@ -1123,7 +1244,7 @@ fn do_div_or_mod_then_clip(
 
             BvExpr { expr: expr, bv_typ: BvTyp::Bv(w + 1, Extend::Sign) }
         }
-        (ArithOp::EuclideanMod, Extend::Sign) => {
+        (ArithOp::EuclideanMod(_), Extend::Sign) => {
             // Euclidean modulus for signed integers in the theory of bit-vectors.
             //
             // See: https://www.microsoft.com/en-us/research/publication/division-and-modulus-for-computer-scientists/

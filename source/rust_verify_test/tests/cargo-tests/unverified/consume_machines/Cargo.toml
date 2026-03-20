@@ -7,6 +7,5 @@ edition = "2021"
 state_machine_macro_usage = { path = "../../verified/state_machine_macro_usage" }
 
 [package.metadata.verus]
-test_ignore = true
 
 [workspace]

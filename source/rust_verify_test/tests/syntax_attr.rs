@@ -676,7 +676,7 @@ test_verify_one_file! {
         #[verus_verify(dual_spec(spec_f))]
         #[verus_spec(
             requires
-                x < 100,
+                *x < 100,
                 y < 100,
             returns
                 f(x, y),
@@ -685,7 +685,7 @@ test_verify_one_file! {
             *x = *x + y;
             *x
         }
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature")
+    } => Err(e) => assert_vir_error_msg(e, "&mut parameter not allowed for spec functions")
 }
 
 test_verify_one_file! {
@@ -1088,4 +1088,196 @@ test_verify_one_file! {
             const CONST_ITEM: u64 = const_fn();
         }
     } => Err(e) => assert_any_vir_error_msg(e, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] test_verus_spec_with_trailing_comma_simple code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+            requires
+                x < 100,
+            ensures
+        )]
+        fn foo(x: u32) -> u32 {
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+            requires
+                x < 100,
+        )]
+        fn bar(x: u32) -> u32 {
+            (x + 1)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_spec_with_trailing_comma_complex code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+                    -> z: Ghost<u32>,
+            requires
+                x < 100,
+            ensures
+                ret == x + 1,
+                z@ == x,
+            )]
+        fn foo(x: u32) -> u32 {
+            proof_with!(|= Ghost(x));
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>
+                    -> z: Ghost<u32>,
+            requires
+                x < 100,
+            ensures
+                ret == x + 1,
+                z@ == x,
+        )]
+        fn bar(x: u32) -> u32 {
+            proof_with!(|= Ghost(x));
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+                    -> z: Ghost<u32>
+            requires
+                x < 100,
+            ensures
+                ret == x + 1,
+                z@ == x,
+        )]
+        fn baz(x: u32) -> u32 {
+            proof_with!(|= Ghost(x));
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>
+                    -> z: Ghost<u32>
+            requires
+                x < 100,
+            ensures
+                ret == x + 1,
+                z@ == x,
+        )]
+        fn qux(x: u32) -> u32 {
+            proof_with!(|= Ghost(x));
+            (x + 1)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_external_type_specification code!{
+        #[verus_verify(external)]
+        struct MyExtStruct<T> { t: T }
+
+        #[verus_verify(external_type_specification)]
+        struct ExMyExtStruct<U>(MyExtStruct<U>);
+
+        verus! {
+        fn test_ext_type_spec() {
+            let s = MyExtStruct::<u64> { t: 5 };
+            assert(s.t == 5);
+        }
+        } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_ext_equal code!{
+        #[verus_verify(ext_equal)]
+        struct MyStruct {
+            x: u32,
+            y: u64
+        }
+
+        verus! {
+        fn test_ext_equal(s1: MyStruct, s2: MyStruct)
+            requires
+                s1.x == s2.x,
+                s1.y == s2.y,
+            ensures
+                s1 == s2,
+        {
+            assert(s1 =~= s2);
+        }
+        } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_reject_recursive_types code!{
+        #[verus_verify(reject_recursive_types(T))]
+        enum X<T> {
+            ZZ(T),
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_external_type_spec_with_reject_recursive code!{
+        #[verus_verify(external)]
+        struct MyExtBody<T> { t: T }
+
+        #[verus_verify(external_type_specification, external_body, reject_recursive_types(U))]
+        struct ExMyExtBody<U>(MyExtBody<U>);
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Check that a postcondition failure in #[verus_spec] points at the specific
+    // failing ensures clause, not at the `ensures` keyword.
+    #[test] test_verus_spec_ensures_span_on_failure code!{
+        #[verus_spec(ret =>
+            ensures
+                ret > 0,
+                ret < 0, // FAILS
+        )]
+        fn returns_one() -> i8 {
+            1
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_erase_unverified_code code!{
+        use vstd::prelude::*;
+        #[verus_spec(
+            with Tracked(x): Tracked<()>,
+            ensures true,
+        )]
+        fn foo() {
+            proof!{
+                let abcd = Tracked(x);
+                let y = x;
+            }
+            #[cfg_attr(not(customized_cfg), verus_spec(
+                invariant x == (),
+            ))]
+            for i in 0..10 {
+            }
+        }
+    } => Ok(())
 }

@@ -58,7 +58,7 @@ test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
         const C: u64 = S;
         const S: u64 = C;
-    } => Err(err) => assert_rust_error_msg(err, "cycle detected when simplifying constant for the type system `C`")
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when checking if `C` is a trivial const")
 }
 
 test_verify_one_file! {
@@ -413,8 +413,11 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// This test is now ignored since this example is no longer
+// accepted by standard Rust either;
+// See https://play.rust-lang.org/?version=stable&mode=debug&edition=2024&gist=10785374b063ad324e94c239589d5ac2
 test_verify_one_file! {
-    #[test] allow_external_body_const_regression_1322 verus_code! {
+    #[ignore] #[test] allow_external_body_const_regression_1322 verus_code! {
         #[verifier(external_body)]
         const A: usize = unimplemented!();
     } => Err(err) => assert_rust_error_msg(err, "evaluation of constant value failed")

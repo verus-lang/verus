@@ -1,5 +1,6 @@
 //! See docs in build/expr/mod.rs
 
+use rustc_middle::middle::region::TempLifetime;
 use rustc_middle::mir::*;
 use rustc_middle::thir::*;
 use tracing::{debug, instrument};
@@ -55,9 +56,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     /// local variable of unsized type. For example, consider this program:
     ///
     /// ```
-    /// #![feature(unsized_locals, unsized_fn_params)]
+    /// #![feature(unsized_fn_params)]
     /// # use core::fmt::Debug;
-    /// fn foo(p: dyn Debug) { dbg!(p); }
+    /// fn foo(_p: dyn Debug) {
+    ///     /* ... */
+    /// }
     ///
     /// fn bar(box_p: Box<dyn Debug>) { foo(*box_p); }
     /// ```
@@ -84,7 +87,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     /// will actually provide a pointer to the interior of the box, and not move the `dyn Debug`
     /// value to the stack.
     ///
-    /// See #68304 for more details.
+    /// See <https://github.com/rust-lang/rust/issues/68304> for more details.
     pub(crate) fn as_local_call_operand(
         &mut self,
         block: BasicBlock,
@@ -116,7 +119,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         local_info: LocalInfo<'tcx>,
         needs_temporary: NeedsTemporary,
     ) -> BlockAnd<Operand<'tcx>> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
 
         let expr = &this.thir[expr_id];
         if let ExprKind::Scope { region_scope, lint_level, value } = expr.kind {
@@ -158,7 +161,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         scope: TempLifetime,
         expr_id: ExprId,
     ) -> BlockAnd<Operand<'tcx>> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
         let expr = &this.thir[expr_id];
         debug!("as_call_operand(block={:?}, expr={:?})", block, expr);
 

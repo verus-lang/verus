@@ -1,6 +1,7 @@
 use crate::ast::{
     Axiom, BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs,
-    Ident, MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
+    Ident, MultiOp, Qid, Quant, Query, QueryX, RoundingMode, Stmt, StmtX, Triggers, Typ, TypX,
+    Typs, UnaryOp,
 };
 use crate::context::SmtSolver;
 use crate::def::mk_skolem_id;
@@ -94,6 +95,7 @@ impl Printer {
         match &**typ {
             TypX::Bool => str_to_node("Bool"),
             TypX::Int => str_to_node("Int"),
+            TypX::Real => str_to_node("Real"),
             TypX::Fun if self.print_as_smt => str_to_node(crate::def::FUNCTION),
             TypX::Fun => str_to_node("Fun"),
             TypX::Named(name) => str_to_node(&name.clone()),
@@ -101,6 +103,16 @@ impl Printer {
                 str_to_node("_"),
                 str_to_node("BitVec"),
                 str_to_node(&size.to_string()),
+            ]),
+            TypX::Float { exp_bits: 5, sig_bits: 11 } => str_to_node("Float16"),
+            TypX::Float { exp_bits: 8, sig_bits: 24 } => str_to_node("Float32"),
+            TypX::Float { exp_bits: 11, sig_bits: 53 } => str_to_node("Float64"),
+            TypX::Float { exp_bits: 15, sig_bits: 113 } => str_to_node("Float128"),
+            TypX::Float { exp_bits, sig_bits } => Node::List(vec![
+                str_to_node("_"),
+                str_to_node("FloatingPoint"),
+                str_to_node(&exp_bits.to_string()),
+                str_to_node(&sig_bits.to_string()),
             ]),
         }
     }
@@ -119,10 +131,21 @@ impl Printer {
         if let Some(filter) = filter { nodes!({ str_to_node(filter) }) } else { Node::List(vec![]) }
     }
 
+    fn rounding_mode_to_node(&self, r: &RoundingMode) -> Node {
+        match r {
+            RoundingMode::RNE => str_to_node("RNE"),
+            RoundingMode::RNA => str_to_node("RNA"),
+            RoundingMode::RTP => str_to_node("RTP"),
+            RoundingMode::RTN => str_to_node("RTN"),
+            RoundingMode::RTZ => str_to_node("RTZ"),
+        }
+    }
+
     pub fn expr_to_node(&self, expr: &Expr) -> Node {
         match &**expr {
             ExprX::Const(Constant::Bool(b)) => Node::Atom(b.to_string()),
             ExprX::Const(Constant::Nat(n)) => Node::Atom((**n).clone()),
+            ExprX::Const(Constant::Real(n)) => Node::Atom((**n).clone()),
             ExprX::Const(Constant::BitVec(n, width)) => self.bv_const_expr_to_node(n, *width),
             ExprX::Var(x) => Node::Atom(x.to_string()),
             ExprX::Old(snap, x) => {
@@ -146,6 +169,10 @@ impl Printer {
                 }
                 Node::List(nodes)
             }
+            ExprX::Unary(UnaryOp::FloatRoundToInt(r), expr) => {
+                let r = self.rounding_mode_to_node(r);
+                Node::List(vec![str_to_node("fp.roundToIntegral"), r, self.expr_to_node(expr)])
+            }
             ExprX::Unary(op, expr) => {
                 let sop = match op {
                     UnaryOp::Not => "not",
@@ -154,28 +181,72 @@ impl Printer {
                     UnaryOp::BitExtract(_, _) => "extract",
                     UnaryOp::BitZeroExtend(_) => "zero_extend",
                     UnaryOp::BitSignExtend(_) => "sign_extend",
+                    UnaryOp::FloatNeg => "fp.neg",
+                    UnaryOp::FloatRoundToInt(_) => unreachable!(),
+                    UnaryOp::FloatIsNormal => "fp.isNormal",
+                    UnaryOp::FloatIsSubnormal => "fp.isSubnormal",
+                    UnaryOp::FloatIsZero => "fp.isZero",
+                    UnaryOp::FloatIsInfinite => "fp.isInfinite",
+                    UnaryOp::FloatIsNaN => "fp.isNaN",
+                    UnaryOp::FloatIsNegative => "fp.isNegative",
+                    UnaryOp::FloatIsPositive => "fp.isPositive",
+                    UnaryOp::FloatFromIeeeBits { .. } => "to_fp",
+                    UnaryOp::FloatFrom { signed: false, .. } => "to_fp_unsigned",
+                    UnaryOp::FloatFrom { signed: true, .. } => "to_fp",
+                    UnaryOp::FloatToBitVec { signed: false, .. } => "fp.to_ubv",
+                    UnaryOp::FloatToBitVec { signed: true, .. } => "fp.to_sbv",
+                    UnaryOp::FloatToReal => "fp.to_real",
+                    UnaryOp::ToReal => "to_real",
+                    UnaryOp::RealToInt => "to_int",
                 };
                 // ( (_ extract numeral numeral) BitVec )
                 match op {
                     UnaryOp::BitExtract(high, low) => {
-                        let mut nodes: Vec<Node> = Vec::new();
-                        let mut nodes_in: Vec<Node> = Vec::new();
-                        nodes_in.push(str_to_node("_"));
-                        nodes_in.push(str_to_node(sop));
-                        nodes_in.push(str_to_node(&high.to_string()));
-                        nodes_in.push(str_to_node(&low.to_string()));
-                        nodes.push(Node::List(nodes_in));
-                        nodes.push(self.expr_to_node(expr));
+                        let nodes_in = vec![
+                            str_to_node("_"),
+                            str_to_node(sop),
+                            str_to_node(&high.to_string()),
+                            str_to_node(&low.to_string()),
+                        ];
+                        let nodes = vec![Node::List(nodes_in), self.expr_to_node(expr)];
+
                         Node::List(nodes)
                     }
                     UnaryOp::BitZeroExtend(w) | UnaryOp::BitSignExtend(w) => {
-                        let mut nodes: Vec<Node> = Vec::new();
-                        let mut nodes_in: Vec<Node> = Vec::new();
-                        nodes_in.push(str_to_node("_"));
-                        nodes_in.push(str_to_node(sop));
-                        nodes_in.push(str_to_node(&w.to_string()));
-                        nodes.push(Node::List(nodes_in));
-                        nodes.push(self.expr_to_node(expr));
+                        let nodes_in =
+                            vec![str_to_node("_"), str_to_node(sop), str_to_node(&w.to_string())];
+                        let nodes = vec![Node::List(nodes_in), self.expr_to_node(expr)];
+                        Node::List(nodes)
+                    }
+                    UnaryOp::FloatFromIeeeBits { exp_bits, sig_bits } => {
+                        let nodes_in = vec![
+                            str_to_node("_"),
+                            str_to_node(sop),
+                            str_to_node(&exp_bits.to_string()),
+                            str_to_node(&sig_bits.to_string()),
+                        ];
+                        let nodes = vec![Node::List(nodes_in), self.expr_to_node(expr)];
+                        Node::List(nodes)
+                    }
+                    UnaryOp::FloatFrom { exp_bits, sig_bits, signed: _, round } => {
+                        let nodes_in = vec![
+                            str_to_node("_"),
+                            str_to_node(sop),
+                            str_to_node(&exp_bits.to_string()),
+                            str_to_node(&sig_bits.to_string()),
+                        ];
+                        let r = self.rounding_mode_to_node(round);
+                        let nodes = vec![Node::List(nodes_in), r, self.expr_to_node(expr)];
+                        Node::List(nodes)
+                    }
+                    UnaryOp::FloatToBitVec { bits, signed: _, round } => {
+                        let nodes_in = vec![
+                            str_to_node("_"),
+                            str_to_node(sop),
+                            str_to_node(&bits.to_string()),
+                        ];
+                        let r = self.rounding_mode_to_node(round);
+                        let nodes = vec![Node::List(nodes_in), r, self.expr_to_node(expr)];
                         Node::List(nodes)
                     }
                     _ => Node::List(vec![str_to_node(sop), self.expr_to_node(expr)]),
@@ -203,6 +274,7 @@ impl Printer {
                     BinaryOp::Gt => str_to_node(">"),
                     BinaryOp::EuclideanDiv => str_to_node("div"),
                     BinaryOp::EuclideanMod => str_to_node("mod"),
+                    BinaryOp::RealDiv => str_to_node("/"),
                     BinaryOp::Relation(..) => unreachable!(),
                     BinaryOp::BitXor => str_to_node("bvxor"),
                     BinaryOp::BitAnd => str_to_node("bvand"),
@@ -226,13 +298,34 @@ impl Printer {
                     BinaryOp::AShr => str_to_node("bvashr"),
                     BinaryOp::Shl => str_to_node("bvshl"),
                     BinaryOp::BitConcat => str_to_node("concat"),
+                    BinaryOp::FloatAdd(_) => str_to_node("fp.add"),
+                    BinaryOp::FloatSub(_) => str_to_node("fp.sub"),
+                    BinaryOp::FloatMul(_) => str_to_node("fp.mul"),
+                    BinaryOp::FloatDiv(_) => str_to_node("fp.div"),
+                    BinaryOp::FloatEq => str_to_node("fp.eq"),
+                    BinaryOp::FloatLt => str_to_node("fp.lt"),
+                    BinaryOp::FloatGt => str_to_node("fp.gt"),
+                    BinaryOp::FloatLe => str_to_node("fp.leq"),
+                    BinaryOp::FloatGe => str_to_node("fp.geq"),
                     BinaryOp::FieldUpdate(field_ident) => Node::List(vec![
                         str_to_node("_"),
                         str_to_node("update-field"),
                         str_to_node(&**field_ident),
                     ]),
                 };
-                Node::List(vec![sop, self.expr_to_node(lhs), self.expr_to_node(rhs)])
+                let round = match op {
+                    BinaryOp::FloatAdd(r)
+                    | BinaryOp::FloatSub(r)
+                    | BinaryOp::FloatMul(r)
+                    | BinaryOp::FloatDiv(r) => Some(self.rounding_mode_to_node(r)),
+                    _ => None,
+                };
+                match round {
+                    None => Node::List(vec![sop, self.expr_to_node(lhs), self.expr_to_node(rhs)]),
+                    Some(r) => {
+                        Node::List(vec![sop, r, self.expr_to_node(lhs), self.expr_to_node(rhs)])
+                    }
+                }
             }
             ExprX::Multi(op, exprs) => {
                 let sop = match op {
@@ -243,6 +336,7 @@ impl Printer {
                     MultiOp::Sub => "-",
                     MultiOp::Mul => "*",
                     MultiOp::Distinct => "distinct",
+                    MultiOp::Float => "fp",
                 };
                 let mut nodes: Vec<Node> = Vec::new();
                 nodes.push(str_to_node(sop));

@@ -78,12 +78,14 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
         TypX::Bool => false,
         TypX::Int(_) => false,
+        TypX::Real => false,
         TypX::Float(_) => false,
         TypX::SpecFn(_, _) => true,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
         TypX::Datatype(path, _, _) => ctx.datatype_map[path].x.ext_equal,
+        TypX::Dyn(..) => false,
         TypX::Decorate(_, _, t) => uses_ext_equal(ctx, t),
         TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
         TypX::TypParam(_) => true,
@@ -820,6 +822,16 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         vec![]
     };
 
+    let ieee_float_commands = if ctx.used_builtins.uses_ieee_float {
+        let nodes = crate::prelude::ieee_float_prelude();
+        let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+            .nodes_to_commands(&nodes)
+            .expect("internal error: malformed IEEE float axioms");
+        (*cmds).clone()
+    } else {
+        vec![]
+    };
+
     let pointee_metadata_commands = if ctx.used_builtins.uses_pointee_metadata {
         let nodes = crate::prelude::pointee_metadata_prelude();
         let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
@@ -844,6 +856,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     commands.append(&mut axiom_commands);
     commands.extend(array_commands);
     commands.extend(strslice_commands);
+    commands.extend(ieee_float_commands);
     commands.extend(resolve_axiom_commands);
     Arc::new(commands)
 }

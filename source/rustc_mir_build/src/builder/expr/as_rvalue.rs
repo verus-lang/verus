@@ -1,15 +1,15 @@
 //! See docs in `build/expr/mod.rs`.
 
-use rustc_abi::{BackendRepr, FieldIdx, Primitive};
+use rustc_abi::FieldIdx;
 use rustc_hir::lang_items::LangItem;
 use rustc_index::{Idx, IndexVec};
 use rustc_middle::bug;
-use rustc_middle::middle::region;
+use rustc_middle::middle::region::{self, TempLifetime};
 use rustc_middle::mir::interpret::Scalar;
 use rustc_middle::mir::*;
 use rustc_middle::thir::*;
+use rustc_middle::ty::adjustment::PointerCoercion;
 use rustc_middle::ty::cast::{CastTy, mir_cast_kind};
-use rustc_middle::ty::layout::IntegerExt;
 use rustc_middle::ty::util::IntTypeExt;
 use rustc_middle::ty::{self, Ty, UpvarArgs};
 use rustc_span::source_map::Spanned;
@@ -47,7 +47,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         scope: TempLifetime,
         expr_id: ExprId,
     ) -> BlockAnd<Rvalue<'tcx>> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
         let expr = &this.thir[expr_id];
         debug!("expr_as_rvalue(block={:?}, scope={:?}, expr={:?})", block, scope, expr);
 
@@ -126,26 +126,17 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 let tcx = this.tcx;
                 let source_info = this.source_info(expr_span);
 
-                let size = this.temp(tcx.types.usize, expr_span);
-                this.cfg.push_assign(
-                    block,
-                    source_info,
-                    size,
-                    Rvalue::NullaryOp(NullOp::SizeOf, value_ty),
-                );
+                let size = tcx.require_lang_item(LangItem::SizeOf, expr_span);
+                let size = Operand::unevaluated_constant(tcx, size, &[value_ty.into()], expr_span);
 
-                let align = this.temp(tcx.types.usize, expr_span);
-                this.cfg.push_assign(
-                    block,
-                    source_info,
-                    align,
-                    Rvalue::NullaryOp(NullOp::AlignOf, value_ty),
-                );
+                let align = tcx.require_lang_item(LangItem::AlignOf, expr_span);
+                let align =
+                    Operand::unevaluated_constant(tcx, align, &[value_ty.into()], expr_span);
 
                 // malloc some memory of suitable size and align:
                 let exchange_malloc = Operand::function_handle(
                     tcx,
-                    tcx.require_lang_item(LangItem::ExchangeMalloc, Some(expr_span)),
+                    tcx.require_lang_item(LangItem::ExchangeMalloc, expr_span),
                     [],
                     expr_span,
                 );
@@ -157,8 +148,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     TerminatorKind::Call {
                         func: exchange_malloc,
                         args: [
-                            Spanned { node: Operand::Move(size), span: DUMMY_SP },
-                            Spanned { node: Operand::Move(align), span: DUMMY_SP },
+                            Spanned { node: size, span: DUMMY_SP },
+                            Spanned { node: align, span: DUMMY_SP },
                         ]
                         .into(),
                         destination: storage,
@@ -171,14 +162,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 this.diverge_from(block);
                 block = success;
 
-                // The `Box<T>` temporary created here is not a part of the HIR,
-                // and therefore is not considered during coroutine auto-trait
-                // determination. See the comment about `box` at `yield_in_scope`.
                 let result = this.local_decls.push(LocalDecl::new(expr.ty, expr_span));
-                this.cfg.push(
-                    block,
-                    Statement { source_info, kind: StatementKind::StorageLive(result) },
-                );
+                this.cfg
+                    .push(block, Statement::new(source_info, StatementKind::StorageLive(result)));
                 if let Some(scope) = scope.temp_lifetime {
                     // schedule a shallow free of that memory, lest we unwind:
                     this.schedule_drop_storage_and_value(expr_span, scope, result);
@@ -205,8 +191,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 {
                     let discr_ty = adt_def.repr().discr_type().to_ty(this.tcx);
                     let temp = unpack!(block = this.as_temp(block, scope, source, Mutability::Not));
-                    let layout =
-                        this.tcx.layout_of(this.typing_env().as_query_input(source_expr.ty));
                     let discr = this.temp(discr_ty, source_expr.span);
                     this.cfg.push_assign(
                         block,
@@ -214,80 +198,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         discr,
                         Rvalue::Discriminant(temp.into()),
                     );
-                    let (op, ty) = (Operand::Move(discr), discr_ty);
-
-                    if let BackendRepr::Scalar(scalar) = layout.unwrap().backend_repr
-                        && !scalar.is_always_valid(&this.tcx)
-                        && let Primitive::Int(int_width, _signed) = scalar.primitive()
-                    {
-                        let unsigned_ty = int_width.to_ty(this.tcx, false);
-                        let unsigned_place = this.temp(unsigned_ty, expr_span);
-                        this.cfg.push_assign(
-                            block,
-                            source_info,
-                            unsigned_place,
-                            Rvalue::Cast(CastKind::IntToInt, Operand::Copy(discr), unsigned_ty),
-                        );
-
-                        let bool_ty = this.tcx.types.bool;
-                        let range = scalar.valid_range(&this.tcx);
-                        let merge_op =
-                            if range.start <= range.end { BinOp::BitAnd } else { BinOp::BitOr };
-
-                        let mut comparer = |range: u128, bin_op: BinOp| -> Place<'tcx> {
-                            // We can use `ty::TypingEnv::fully_monomorphized()` here
-                            // as we only need it to compute the layout of a primitive.
-                            let range_val = Const::from_bits(
-                                this.tcx,
-                                range,
-                                ty::TypingEnv::fully_monomorphized(),
-                                unsigned_ty,
-                            );
-                            let lit_op = this.literal_operand(expr.span, range_val);
-                            let is_bin_op = this.temp(bool_ty, expr_span);
-                            this.cfg.push_assign(
-                                block,
-                                source_info,
-                                is_bin_op,
-                                Rvalue::BinaryOp(
-                                    bin_op,
-                                    Box::new((Operand::Copy(unsigned_place), lit_op)),
-                                ),
-                            );
-                            is_bin_op
-                        };
-                        let assert_place = if range.start == 0 {
-                            comparer(range.end, BinOp::Le)
-                        } else {
-                            let start_place = comparer(range.start, BinOp::Ge);
-                            let end_place = comparer(range.end, BinOp::Le);
-                            let merge_place = this.temp(bool_ty, expr_span);
-                            this.cfg.push_assign(
-                                block,
-                                source_info,
-                                merge_place,
-                                Rvalue::BinaryOp(
-                                    merge_op,
-                                    Box::new((
-                                        Operand::Move(start_place),
-                                        Operand::Move(end_place),
-                                    )),
-                                ),
-                            );
-                            merge_place
-                        };
-                        this.cfg.push(
-                            block,
-                            Statement {
-                                source_info,
-                                kind: StatementKind::Intrinsic(Box::new(
-                                    NonDivergingIntrinsic::Assume(Operand::Move(assert_place)),
-                                )),
-                            },
-                        );
-                    }
-
-                    (op, ty)
+                    (Operand::Move(discr), discr_ty)
                 } else {
                     let ty = source_expr.ty;
                     let source = unpack!(
@@ -500,10 +411,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 }))))
             }
 
-            ExprKind::OffsetOf { container, fields } => {
-                block.and(Rvalue::NullaryOp(NullOp::OffsetOf(fields), container))
-            }
-
             ExprKind::Literal { .. }
             | ExprKind::NamedConst { .. }
             | ExprKind::NonHirLiteral { .. }
@@ -538,6 +445,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | ExprKind::RawBorrow { .. }
             | ExprKind::Adt { .. }
             | ExprKind::Loop { .. }
+            | ExprKind::LoopMatch { .. }
             | ExprKind::LogicalOp { .. }
             | ExprKind::Call { .. }
             | ExprKind::Field { .. }
@@ -548,6 +456,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | ExprKind::UpvarRef { .. }
             | ExprKind::Break { .. }
             | ExprKind::Continue { .. }
+            | ExprKind::ConstContinue { .. }
             | ExprKind::Return { .. }
             | ExprKind::Become { .. }
             | ExprKind::InlineAsm { .. }
@@ -735,6 +644,27 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         block.and(rvalue)
     }
 
+    /// Recursively inspect a THIR expression and probe through unsizing
+    /// operations that can be const-folded today.
+    fn check_constness(&self, mut kind: &'a ExprKind<'tcx>) -> bool {
+        loop {
+            debug!(?kind, "check_constness");
+            match kind {
+                &ExprKind::ValueTypeAscription { source: eid, user_ty: _, user_ty_span: _ }
+                | &ExprKind::Use { source: eid }
+                | &ExprKind::PointerCoercion {
+                    cast: PointerCoercion::Unsize,
+                    source: eid,
+                    is_from_as_cast: _,
+                }
+                | &ExprKind::Scope { region_scope: _, lint_level: _, value: eid } => {
+                    kind = &self.thir[eid].kind
+                }
+                _ => return matches!(Category::of(&kind), Some(Category::Constant)),
+            }
+        }
+    }
+
     fn build_zero_repeat(
         &mut self,
         mut block: BasicBlock,
@@ -742,10 +672,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         scope: TempLifetime,
         outer_source_info: SourceInfo,
     ) -> BlockAnd<Rvalue<'tcx>> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
         let value_expr = &this.thir[value];
         let elem_ty = value_expr.ty;
-        if let Some(Category::Constant) = Category::of(&value_expr.kind) {
+        if this.check_constness(&value_expr.kind) {
             // Repeating a const does nothing
         } else {
             // For a non-const, we may need to generate an appropriate `Drop`
@@ -782,12 +712,12 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         mut block: BasicBlock,
         arg: ExprId,
     ) -> BlockAnd<Operand<'tcx>> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
 
         let source_info = this.source_info(upvar_span);
         let temp = this.local_decls.push(LocalDecl::new(upvar_ty, upvar_span));
 
-        this.cfg.push(block, Statement { source_info, kind: StatementKind::StorageLive(temp) });
+        this.cfg.push(block, Statement::new(source_info, StatementKind::StorageLive(temp)));
 
         let arg_place_builder = unpack!(block = this.as_place_builder(block, arg));
 
@@ -845,8 +775,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             Rvalue::Ref(this.tcx.lifetimes.re_erased, borrow_kind, arg_place),
         );
 
-        // See the comment in `expr_as_temp` and on the `rvalue_scopes` field for why
-        // this can be `None`.
+        // This can be `None` if the expression's temporary scope was extended so that it can be
+        // borrowed by a `const` or `static`. In that case, it's never dropped.
         if let Some(temp_lifetime) = temp_lifetime {
             this.schedule_drop_storage_and_value(upvar_span, temp_lifetime, temp);
         }

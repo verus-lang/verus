@@ -1162,3 +1162,35 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] chained_inequality_evaluation_order verus_code! {
+        proof fn test1() {
+            let mut y: int = 10;
+            // Is second arg evaluated before the third?
+            let b = (0 <= y <= ({ y = 30; 20 }) <= 40);
+            assert(b);
+        }
+
+        proof fn test2() {
+            // Is the second arg evaluated after the first?
+            let mut y: int = 0;
+            let b = (({ y = 1; 0 }) <= ({ assert(y == 1); 2 }) <= 3);
+            assert(b);
+        }
+
+        proof fn test3() {
+            // No short-circuiting
+            let mut y: int = 0;
+            let b = 1 <= 0 <= ({ y = 3; 10 }) <= 12;
+            assert(y == 3);
+        }
+
+        proof fn test4() {
+            // No short-circuiting
+            let mut y: int = 0;
+            let b = 1 <= 0 <= ({ y = 3; 10 });
+            assert(y == 3);
+        }
+    } => Ok(())
+}

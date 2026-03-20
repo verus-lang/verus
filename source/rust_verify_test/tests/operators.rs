@@ -136,7 +136,7 @@ test_verify_one_file! {
         use core::cmp::PartialEq;
 
         #[verifier::external_trait_specification]
-        pub trait ExPartialEqBasic<Rhs: ?Sized> {
+        pub trait ExPartialEqBasic<Rhs: core::marker::PointeeSized>: core::marker::PointeeSized {
             type ExternalTraitSpecificationFor: PartialEq<Rhs>;
             fn eq(&self, rhs: &Rhs) -> (ret: bool);
         }
