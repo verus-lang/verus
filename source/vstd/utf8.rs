@@ -289,6 +289,52 @@ pub open spec fn decode_utf8(bytes: Seq<u8>) -> Seq<char>
     }
 }
 
+/// The length in bytes of the last scalar encoded in UTF-8 in the given byte sequence, assuming that the bytes form a valid UTF-8 encoding.
+pub open spec fn length_of_last_scalar(bytes: Seq<u8>) -> int
+    recommends
+        valid_utf8(bytes),
+        bytes.len() > 0,
+{
+    let n = bytes.len() as int;
+    if !is_continuation_byte(bytes[n - 1]) {
+        1
+    } else if !is_continuation_byte(bytes[n - 2]) {
+        2
+    } else if !is_continuation_byte(bytes[n - 3]) {
+        3
+    } else {
+        4
+    }
+}
+
+/// Takes the bytes corresponding to the the last scalar encoded in UTF-8 in the given byte sequence, assuming that the bytes form a valid UTF-8 encoding.
+pub open spec fn take_last_scalar(bytes: Seq<u8>) -> Seq<u8>
+    recommends
+        valid_utf8(bytes),
+        bytes.len() > 0,
+{
+    let len = length_of_last_scalar(bytes);
+    bytes.subrange(bytes.len() - len, bytes.len() as int)
+}
+
+/// The last scalar encoded in UTF-8 in the given byte sequence, assuming that the bytes form a valid UTF-8 encoding.
+pub open spec fn decode_last_scalar(bytes: Seq<u8>) -> u32
+    recommends
+        valid_utf8(bytes),
+        bytes.len() > 0,
+{
+    let n = bytes.len() as int;
+    if !is_continuation_byte(bytes[n - 1]) {
+        codepoint_width_1(bytes[n - 1])
+    } else if !is_continuation_byte(bytes[n - 2]) {
+        codepoint_width_2(bytes[n - 2], bytes[n - 1])
+    } else if !is_continuation_byte(bytes[n - 3]) {
+        codepoint_width_3(bytes[n - 3], bytes[n - 2], bytes[n - 1])
+    } else {
+        codepoint_width_4(bytes[n - 4], bytes[n - 3], bytes[n - 2], bytes[n - 1])
+    }
+}
+
 /* Encoding chars as UTF-8 */
 
 /// True when the given value is a Unicode scalar with a 1-byte UTF-8 encoding.
@@ -769,6 +815,29 @@ pub broadcast proof fn partial_valid_utf8_extend(bytes: Seq<u8>, i: int)
     ));
 }
 
+/// Ensures that if the prefix of a byte sequence is valid UTF-8, and remainder of the sequence begins with a subsequence of valid UTF-8 encodings for 1-byte scalars (i.e. ASCII characters),
+/// then the prefix extended by that subsequence is also valid UTF-8.
+pub broadcast proof fn partial_valid_utf8_extend_ascii_block(bytes: Seq<u8>, start: int, end: int)
+    requires
+        forall|i: int|
+            0 <= start <= i < end <= bytes.len() ==> #[trigger] is_leading_byte_width_1(bytes[i]),
+        partial_valid_utf8(bytes, start),
+        0 <= start <= end <= bytes.len(),
+    ensures
+        #![trigger partial_valid_utf8(bytes, start), partial_valid_utf8(bytes, end)]
+        partial_valid_utf8(bytes, end),
+    decreases end - start,
+{
+    if end == start {
+    } else {
+        partial_valid_utf8_extend_ascii_block(bytes, start, end - 1);
+
+        let b = bytes[end - 1];
+        assert(is_leading_byte_width_1(b));
+        partial_valid_utf8_extend(bytes, end - 1);
+    }
+}
+
 /* Reasoning about character boundaries */
 
 /// True when the given index into the byte sequence is the first byte of a character's encoding or the end of the sequence, assuming that the sequence is valid UTF-8.
@@ -785,6 +854,15 @@ pub open spec fn is_char_boundary(bytes: Seq<u8>, index: int) -> bool
     } else {
         is_char_boundary(pop_first_scalar(bytes), index - length_of_first_scalar(bytes))
     }
+}
+
+proof fn take_first_scalar_valid_utf8(bytes: Seq<u8>)
+    requires
+        valid_utf8(bytes),
+    ensures
+        bytes.len() > 0 ==> valid_utf8(take_first_scalar(bytes)),
+{
+    reveal_with_fuel(valid_utf8, 2);
 }
 
 /// Ensures that the two subsequences formed by splitting a valid UTF-8 byte sequence at a character boundary are also valid UTF-8 byte sequences.
@@ -932,13 +1010,28 @@ pub broadcast proof fn is_char_boundary_iff_is_leading_byte(bytes: Seq<u8>, inde
     }
 }
 
-proof fn take_first_scalar_valid_utf8(bytes: Seq<u8>)
+pub broadcast proof fn valid_utf8_last(s: Seq<u8>)
     requires
-        valid_utf8(bytes),
+        valid_utf8(s),
+        s.len() > 0,
     ensures
-        bytes.len() > 0 ==> valid_utf8(take_first_scalar(bytes)),
+        #![trigger is_continuation_byte(s.last())]
+        #![trigger is_leading_byte_width_1(s.last())]
+        !is_continuation_byte(s.last()) ==> is_leading_byte_width_1(s.last()),
+    decreases s.len(),
 {
-    reveal_with_fuel(valid_utf8, 2);
+    // this proof must be discharged recursively, since valid_utf8 only tells you information
+    // about the first codepoint and recurses from there
+    let first = decode_first_scalar(s);
+    let rest = pop_first_scalar(s);
+
+    if rest.len() == 0 {
+        if s.len() > 1 {
+            assert(is_continuation_byte(s[s.len() - 1]));
+        }
+    } else {
+        valid_utf8_last(rest);
+    }
 }
 
 /* Bit-level reasoning */
@@ -951,12 +1044,12 @@ pub broadcast proof fn utf8_byte_ranges_bitwise(b: u8)
         #![trigger b & 0xf0]
         #![trigger b & 0xf8]
         #![trigger b & 0xe0]
-        #![trigger b & 0x7f]
+        #![trigger b & 0xc0]
         0x00 <= b <= 0x7f <==> b & 0x80 == 0,
         0xc0 <= b <= 0xdf <==> b & 0xe0 == 0xc0,
         0xe0 <= b <= 0xef <==> b & 0xf0 == 0xe0,
         0xf0 <= b <= 0xf7 <==> b & 0xf8 == 0xf0,
-        0x00 <= b < 0x80 <==> b & 0x7f == b,
+        0x80 <= b <= 0xbf <==> b & 0xc0 == 0x80,
 {
 }
 
@@ -1020,11 +1113,13 @@ pub broadcast group group_utf8_lib {
     char_u32_cast,
     valid_utf8_concat,
     partial_valid_utf8_extend,
+    partial_valid_utf8_extend_ascii_block,
     valid_utf8_split,
     decode_utf8_split,
     is_char_boundary_start_end_of_seq,
     is_char_boundary_iff_not_is_continuation_byte,
     is_char_boundary_iff_is_leading_byte,
+    valid_utf8_last,
     utf8_byte_ranges_bitwise,
     is_ascii_chars_encode_utf8,
     is_ascii_chars_nat_bound,
