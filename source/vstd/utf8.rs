@@ -260,7 +260,7 @@ proof fn lemma_pop_first_scalar_decreases(bytes: Seq<u8>)
     };
 }
 
-/// Takes the bytes corresponding to the the first scalar encoded in UTF-8 in the given byte sequence, assuming that the sequence begins with a well-formed encoding of a single scalar.
+/// Takes the bytes corresponding to the first scalar encoded in UTF-8 in the given byte sequence, assuming that the sequence begins with a well-formed encoding of a single scalar.
 pub open spec fn take_first_scalar(bytes: Seq<u8>) -> Seq<u8>
     recommends
         valid_first_scalar(bytes),
@@ -307,7 +307,7 @@ pub open spec fn length_of_last_scalar(bytes: Seq<u8>) -> int
     }
 }
 
-/// Takes the bytes corresponding to the the last scalar encoded in UTF-8 in the given byte sequence, assuming that the bytes form a valid UTF-8 encoding.
+/// Takes the bytes corresponding to the last scalar encoded in UTF-8 in the given byte sequence, assuming that the bytes form a valid UTF-8 encoding.
 pub open spec fn take_last_scalar(bytes: Seq<u8>) -> Seq<u8>
     recommends
         valid_utf8(bytes),
@@ -964,7 +964,7 @@ pub broadcast proof fn is_char_boundary_start_end_of_seq(bytes: Seq<u8>)
     }
 }
 
-/// Ensures that any byte in a valid UTF-8 byte sequence falls on a character boundary if and only if it does not have the form of a UTF-8 continuation byte.
+/// Ensures that any byte in a valid UTF-8 byte sequence falls on a character boundary (i.e. the first byte in a codepoint's encoding) if and only if it does not have the form of a UTF-8 continuation byte.
 pub broadcast proof fn is_char_boundary_iff_not_is_continuation_byte(bytes: Seq<u8>, index: int)
     requires
         valid_utf8(bytes),
@@ -985,7 +985,7 @@ pub broadcast proof fn is_char_boundary_iff_not_is_continuation_byte(bytes: Seq<
     }
 }
 
-/// Ensures that any byte in a valid UTF-8 byte sequence falls on a character boundary if and only if it has the form of a UTF-8 leading byte.
+/// Ensures that any byte in a valid UTF-8 byte sequence falls on a character boundary (i.e. the first byte in a codepoint's encoding) if and only if it has the form of a UTF-8 leading byte.
 pub broadcast proof fn is_char_boundary_iff_is_leading_byte(bytes: Seq<u8>, index: int)
     requires
         valid_utf8(bytes),
