@@ -57,7 +57,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOp::RealToInt => exp.clone(),
             UnaryOp::FloatToBits => exp.clone(),
             UnaryOp::IeeeFloat(_) => exp.clone(),
-            UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::Length(_) => exp.clone(),
+            UnaryOp::StrLen | UnaryOp::Length(_) => exp.clone(),
             UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
             UnaryOp::Trigger(_)
             | UnaryOp::CoerceMode { .. }
