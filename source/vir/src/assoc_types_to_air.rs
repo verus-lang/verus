@@ -66,11 +66,14 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
         //   forall A. T/X(decoration, S<A>, u8, u16) == bool
         let mut typ_params = typ_params.clone();
         let mut typ_bounds = typ_bounds.clone();
-        let extra_trigger_terms = crate::traits::fix_missing_trigger_params(
+        let (substs, extra_trigger_terms) = crate::traits::fix_missing_trigger_params(
             &mut typ_params,
             &mut typ_bounds,
             trait_typ_args,
         );
+        let substs: std::collections::HashMap<crate::ast::Ident, crate::ast::Typ> =
+            substs.into_iter().collect();
+        let typ = crate::sst_util::subst_typ(&substs, typ);
         let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
         let (typ_params, eqs) =
             crate::sst_to_air_func::hide_projections_air(ctx, &typ_params, holes);
@@ -81,7 +84,7 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
                 args.extend(typ_to_ids(ctx, arg));
             }
             let projection = ident_apply(&projector, &args);
-            let typ_id = typ_to_ids(ctx, typ)[index].clone();
+            let typ_id = typ_to_ids(ctx, &typ)[index].clone();
             let eq = mk_eq(&projection, &typ_id);
             let qname = format!("{}_{}_{}", projector, QID_ASSOC_TYPE_IMPL, decoration);
             let mut trigs = vec![projection];

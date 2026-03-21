@@ -950,10 +950,14 @@ test_verify_one_file! {
 
         trait U<B> {
             spec fn f() -> int;
+            type Y;
         }
 
+        uninterp spec fn dummy<A>() -> int;
+
         impl<A, B: T<X = A>> U<B> for u8 {
-            spec fn f() -> int { 3 }
+            spec fn f() -> int { dummy::<A>() - dummy::<A>() + 3 }
+            type Y = A;
         }
 
         proof fn test<A, B: T<X = A>>() {

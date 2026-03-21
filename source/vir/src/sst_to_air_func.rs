@@ -121,6 +121,7 @@ fn func_def_quant(
     params: &Pars,
     pre: &Vec<Expr>,
     extra_trigger_terms: &Vec<Typ>,
+    extra_binder: Option<Bind>,
     body: Expr,
 ) -> Result<Expr, VirErr> {
     let (opts, trait_default_ensures) = if is_trait_default_ensures {
@@ -134,7 +135,10 @@ fn func_def_quant(
     let f_args = func_def_typs_args(ctx, trait_default_ensures, typ_args, params);
     let f_app = string_apply(name, &Arc::new(f_args));
     let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
-    let f_imply = mk_implies(&mk_and(pre), &f_eq);
+    let mut f_imply = mk_implies(&mk_and(pre), &f_eq);
+    if let Some(extra_binder) = extra_binder {
+        f_imply = mk_bind_expr(&extra_binder, &f_imply);
+    }
     let mut trigs = vec![f_app];
     for extra_trigger_term in extra_trigger_terms.iter() {
         trigs.push(crate::sst_to_air::typ_to_id(ctx, extra_trigger_term));
@@ -236,7 +240,7 @@ fn func_body_to_air(
     let pars = &function.x.pars;
     let mut typ_params = function.x.typ_params.clone();
     let mut typ_bounds = function.x.typ_bounds.clone();
-    let extra_trigger_terms =
+    let (substs, extra_trigger_terms) =
         if let FunctionKind::TraitMethodImpl { impl_path, trait_typ_args, .. } = &function.x.kind {
             crate::traits::fix_missing_trigger_params_fn(
                 ctx,
@@ -246,7 +250,7 @@ fn func_body_to_air(
                 trait_typ_args,
             )
         } else {
-            vec![]
+            (None, vec![])
         };
 
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
@@ -398,6 +402,7 @@ fn func_body_to_air(
         pars,
         &def_reqs,
         &extra_trigger_terms,
+        substs,
         def_body,
     )?;
     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
@@ -506,6 +511,7 @@ fn req_ens_to_air(
             &params,
             &vec![],
             &vec![],
+            None,
             body,
         )?;
         let req_ens_axiom = mk_unnamed_axiom(e_forall);
@@ -825,13 +831,14 @@ pub fn func_axioms_to_air(
                     // (if trait bounds are satisfied)
                     let mut typ_params = function.x.typ_params.clone();
                     let mut typ_bounds = function.x.typ_bounds.clone();
-                    let extra_trigger_terms = crate::traits::fix_missing_trigger_params_fn(
-                        ctx,
-                        impl_path,
-                        &mut typ_params,
-                        &mut typ_bounds,
-                        trait_typ_args,
-                    );
+                    let (substs, extra_trigger_terms) =
+                        crate::traits::fix_missing_trigger_params_fn(
+                            ctx,
+                            impl_path,
+                            &mut typ_params,
+                            &mut typ_bounds,
+                            trait_typ_args,
+                        );
                     let (mut trait_typ_args, holes) =
                         crate::traits::hide_projections(trait_typ_args);
                     let (typ_params, eqs) = hide_projections_air(ctx, &typ_params, holes);
@@ -861,6 +868,7 @@ pub fn func_axioms_to_air(
                         &function.x.pars,
                         &pre,
                         &extra_trigger_terms,
+                        substs,
                         body,
                     )?;
                     let def_axiom = mk_unnamed_axiom(e_forall);
