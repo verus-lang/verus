@@ -1,7 +1,7 @@
 use crate::ast::{
     ArchWordBits, Datatype, Dt, Fun, Function, FunctionAttrs, GenericBounds, Ident, ImplPath,
-    IntRange, Krate, Mode, Module, OpaqueType, Path, Primitive, Trait, TypPositives, TypX,
-    Variants, VirErr,
+    IntRange, Krate, Mode, Module, OpaqueType, Path, Primitive, Trait, TraitImpl, TypPositives,
+    TypX, Variants, VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -108,6 +108,7 @@ pub struct Ctx {
     pub(crate) funcs_with_ensure_predicate: HashMap<Fun, bool>,
     pub(crate) datatype_map: HashMap<Dt, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
+    pub(crate) impl_map: HashMap<Path, TraitImpl>,
     pub fun: Option<FunctionCtx>,
     pub global: GlobalCtx,
     // In the very unlikely case where we get sha512 collisions
@@ -781,6 +782,10 @@ impl Ctx {
         for tr in krate.traits.iter() {
             trait_map.insert(tr.x.name.clone(), tr.clone());
         }
+        let mut impl_map: HashMap<Path, TraitImpl> = HashMap::new();
+        for ti in krate.trait_impls.iter() {
+            impl_map.insert(ti.x.impl_path.clone(), ti.clone());
+        }
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
         fun_ident_map.extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&g), g.clone())));
@@ -817,6 +822,7 @@ impl Ctx {
             funcs_with_ensure_predicate,
             datatype_map,
             trait_map,
+            impl_map,
             fun: None,
             global,
             string_hashes,

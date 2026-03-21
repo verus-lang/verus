@@ -1577,6 +1577,7 @@ pub struct FunctionX {
     pub mode: Mode,
     /// Type parameters to generic functions
     /// (for trait methods, the trait parameters come first, then the method parameters)
+    /// REVIEW: for trait methods, maybe we should separate the trait parameters (see fix_missing_trigger_params_fn)
     pub typ_params: Idents,
     /// Type bounds of generic functions
     pub typ_bounds: GenericBounds,

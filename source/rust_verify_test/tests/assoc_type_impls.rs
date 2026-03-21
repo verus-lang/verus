@@ -940,3 +940,45 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] trigger_from_assoc_type_constraint1 verus_code! {
+        // test vir::traits::fix_missing_trigger_params
+        trait T {
+            type X;
+        }
+
+        trait U<B> {
+            spec fn f() -> int;
+        }
+
+        impl<A, B: T<X = A>> U<B> for u8 {
+            spec fn f() -> int { 3 }
+        }
+
+        proof fn test<A, B: T<X = A>>() {
+            assert(<u8 as U<B>>::f() == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trigger_from_assoc_type_constraint2 verus_code! {
+        // test vir::traits::fix_missing_trigger_params
+        trait T {
+            type X;
+        }
+
+        trait U<B> {
+            spec fn f() -> int;
+        }
+
+        impl<A, B: T<X = A>> U<B> for u8 {
+            spec fn f() -> int { 3 }
+        }
+
+        proof fn test<A, B: T<X = A>>() {
+            assert(<u8 as U<B>>::f() == 3);
+        }
+    } => Ok(())
+}

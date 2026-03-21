@@ -1,8 +1,8 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
-    GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, Place, Sizedness,
-    SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility,
-    WellKnownItem,
+    GenericBoundX, GenericBounds, Ident, Idents, ImplPath, ImplPaths, Krate, Mode, Path, Place,
+    Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr,
+    Visibility, WellKnownItem,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -1086,6 +1086,121 @@ pub(crate) fn hide_projections(typs: &Typs) -> (Typs, Vec<(Ident, Typ)>) {
     (Arc::new(typs), visitor.holes)
 }
 
+// Example: impl<A, B: T<X = A>> U<B> for u8
+// Example: impl<A, B: T<X = S<A>>> U<B> for u8
+// In these, A is unconstrained by "U<B> for u8".
+// We need to either add terms to the trigger or remove A from the typ_params.
+pub(crate) fn fix_missing_trigger_params(
+    typ_params: &mut Idents,
+    typ_bounds: &mut GenericBounds,
+    trait_typ_args: &Typs,
+) -> Vec<Typ> {
+    let mut extra_trigger_terms: Vec<Typ> = Vec::new();
+    let mut already_in_trigger = crate::sst_util::free_vars_typs(trait_typ_args);
+    if typ_params.iter().all(|p| already_in_trigger.contains(p)) {
+        // By far the common case is that no fixups are needed:
+        return extra_trigger_terms;
+    }
+
+    // First, look for variables A that can be eliminated from typ_params via substitution
+    // (this is the good case where we can strictly improve the triggering)
+    loop {
+        // Collect all candidates A for which an equality bound T(args)::X == A
+        // Compute free vars of args of all candidates
+        let mut candidates: Vec<(usize, Ident, (Path, Typs, Ident))> = Vec::new();
+        let mut candidate_free_vars: HashSet<Ident> = HashSet::new();
+        for (i, bound) in typ_bounds.iter().enumerate() {
+            if let GenericBoundX::TypEquality(path, args, assoc, typ) = &**bound {
+                if let TypX::TypParam(a) = &**typ {
+                    if typ_params.contains(a) && !already_in_trigger.contains(a) {
+                        let candidate = (i, a.clone(), (path.clone(), args.clone(), assoc.clone()));
+                        candidates.push(candidate);
+                        for t in args.iter() {
+                            crate::sst_util::free_vars_typ_insert(t, &mut candidate_free_vars);
+                        }
+                    }
+                }
+            }
+        }
+        // Pick an A that does not appear in candidate_free_vars
+        if let Some((i, a, g)) =
+            candidates.iter().find(|(_, a, _)| !candidate_free_vars.contains(a))
+        {
+            let (trait_path, trait_typ_args, name) = g.clone();
+            let a_typ = Arc::new(TypX::Projection { trait_typ_args, trait_path, name });
+
+            // Substitute to eliminate A
+            Arc::make_mut(typ_params).retain(|p| p != a);
+            Arc::make_mut(typ_bounds).remove(*i);
+            let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+            typ_substs.insert(a.clone(), a_typ);
+            for bound in Arc::make_mut(typ_bounds).iter_mut() {
+                *bound = crate::sst_util::subst_typ_in_bound(&typ_substs, bound);
+            }
+            // Repeat to find next round candidates in revised typ_bounds
+            continue;
+        }
+        break;
+    }
+
+    // Second, for any remaining variables A, arbitrarily pick terms containing A for the trigger,
+    // preferring right hand sides of equalities (like S<A> in the example above)
+    // (this is the bad case where we might choose triggers that are too restrictive)
+    let mut candidate_terms1: Vec<Typ> = Vec::new();
+    let mut candidate_terms2: Vec<Typ> = Vec::new();
+    for bound in typ_bounds.iter() {
+        match &**bound {
+            GenericBoundX::Trait(_, typs) => {
+                candidate_terms2.extend(typs.iter().cloned());
+            }
+            GenericBoundX::TypEquality(_, typs, _, typ) => {
+                candidate_terms1.push(typ.clone());
+                candidate_terms2.extend(typs.iter().cloned());
+            }
+            GenericBoundX::ConstTyp(t1, t2) => {
+                candidate_terms2.push(t1.clone());
+                candidate_terms2.push(t2.clone());
+            }
+        }
+    }
+    candidate_terms1.append(&mut candidate_terms2);
+    'next: for p in typ_params.iter() {
+        if already_in_trigger.contains(p) {
+            continue;
+        }
+        for t in &candidate_terms1 {
+            if crate::sst_util::free_vars_typ(t).contains(p) {
+                extra_trigger_terms.push(t.clone());
+                crate::sst_util::free_vars_typ_insert(t, &mut already_in_trigger);
+                continue 'next;
+            }
+        }
+    }
+
+    extra_trigger_terms
+}
+
+pub(crate) fn fix_missing_trigger_params_fn(
+    ctx: &Ctx,
+    impl_path: &Path,
+    fn_typ_params: &mut Idents,
+    typ_bounds: &mut GenericBounds,
+    trait_typ_args: &Typs,
+) -> Vec<Typ> {
+    // FunctionX typ_params contains both the trait impl type params and the inner function params
+    // REVIEW: maybe these should be kept separate in FunctionX;
+    // it's inconvenient here to have to split them up and put them back together.
+    let trait_impl = &ctx.impl_map[impl_path];
+    assert!(*trait_impl.x.typ_params == fn_typ_params[0..trait_impl.x.typ_params.len()]);
+    let mut typ_params = trait_impl.x.typ_params.clone();
+    let extra_trigger_terms =
+        fix_missing_trigger_params(&mut typ_params, typ_bounds, trait_typ_args);
+    Arc::make_mut(&mut typ_params)
+        .extend(fn_typ_params[trait_impl.x.typ_params.len()..].iter().cloned());
+    *fn_typ_params = typ_params;
+    extra_trigger_terms
+}
+
 pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     // Axiom for bounds predicates (based on trait impls)
     // forall typ_params. typ_bounds ==> tr_bound%T(...typ_args...)
@@ -1095,9 +1210,12 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     //   impl<A: T1> T2<Set<A>> for S<Seq<A>>
     // -->
     //   forall A. tr_bound%T1(A) ==> tr_bound%T2(S<Seq<A>>, Set<A>)
-    let (trait_typ_args, holes) = crate::traits::hide_projections(&imp.x.trait_typ_args);
-    let (typ_params, eqs) =
-        crate::sst_to_air_func::hide_projections_air(ctx, &imp.x.typ_params, holes);
+    let mut typ_params = imp.x.typ_params.clone();
+    let mut typ_bounds = imp.x.typ_bounds.clone();
+    let extra_trigger_terms =
+        fix_missing_trigger_params(&mut typ_params, &mut typ_bounds, &imp.x.trait_typ_args);
+    let (trait_typ_args, holes) = hide_projections(&imp.x.trait_typ_args);
+    let (typ_params, eqs) = crate::sst_to_air_func::hide_projections_air(ctx, &typ_params, holes);
     let tr_bound =
         match trait_bound_to_air(ctx, &TraitId::Path(imp.x.trait_path.clone()), &trait_typ_args) {
             Some(tr_bound) => tr_bound,
@@ -1107,7 +1225,10 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
         };
     let name =
         format!("{}_{}", path_as_friendly_rust_name(&imp.x.impl_path), crate::def::QID_TRAIT_IMPL);
-    let trigs = vec![tr_bound.clone()];
+    let mut trigs = vec![tr_bound.clone()];
+    for extra_trigger_term in extra_trigger_terms.iter() {
+        trigs.push(crate::sst_to_air::typ_to_id(ctx, extra_trigger_term));
+    }
     let bind = crate::sst_to_air_func::func_bind_trig(
         ctx,
         name,
@@ -1116,7 +1237,7 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
         &trigs,
         None,
     );
-    let mut req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
+    let mut req_bounds = trait_bounds_to_air(ctx, &typ_bounds);
     req_bounds.extend(eqs);
     let imply = mk_implies(&air::ast_util::mk_and(&req_bounds), &tr_bound);
     let forall = mk_bind_expr(&bind, &imply);
