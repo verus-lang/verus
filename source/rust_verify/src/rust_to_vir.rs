@@ -399,14 +399,14 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     let mut external_info = ExternalInfo::new();
 
-    // TODO: when we stop ignoring these traits,
-    // they should probably declared explicitly as external traits
     let tcx = ctxtx.tcx;
+
+    // Sized is fundamental enough that we always want it even with no-vstd
     external_info.trait_id_set.insert(tcx.lang_items().sized_trait().expect("lang_item"));
-    external_info.trait_id_set.insert(tcx.lang_items().copy_trait().expect("lang_item"));
+
+    // TODO: remove the following when we have full support for auto traits:
     external_info.trait_id_set.insert(tcx.lang_items().unpin_trait().expect("lang_item"));
     external_info.trait_id_set.insert(tcx.lang_items().sync_trait().expect("lang_item"));
-    external_info.trait_id_set.insert(tcx.lang_items().tuple_trait().expect("lang_item"));
     external_info
         .trait_id_set
         .insert(tcx.get_diagnostic_item(rustc_span::sym::Send).expect("send"));

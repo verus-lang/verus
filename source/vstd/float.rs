@@ -109,7 +109,7 @@ pub trait ExIeeeFloatCast<To> {
 
 // deterministic IEEE cast
 #[verifier::inline]
-pub open spec fn ieee_float_cast<From: IeeeFloatCast<To>, To>(from: From) -> To {
+pub open spec fn ieee_float_cast<From: Copy + IeeeFloatCast<To>, To>(from: From) -> To {
     from.ieee_cast()
 }
 

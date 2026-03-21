@@ -703,6 +703,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] supertrait_assoc_type_lifetime3 verus_code! {
+        use vstd::prelude::*;
+
         // https://github.com/verus-lang/verus/issues/1155
         trait T: Copy {}
         trait U: T {}

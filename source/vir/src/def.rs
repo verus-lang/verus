@@ -65,6 +65,7 @@ const PREFIX_CLOSURE_TYPE: &str = "anonymous_closure%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
+pub(crate) const PREFIX_IMPL_TUPLE: &str = "impl_tuple&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 pub(crate) const PREFIX_DEFAULT_TYP_PARAM: &str = "def_typ_param%";
@@ -558,6 +559,10 @@ pub fn prefix_spec_fn_type(i: usize) -> Path {
 
 pub fn impl_ident(disambiguator: u32) -> Ident {
     Arc::new(format!("{}{}", PREFIX_IMPL_IDENT, disambiguator))
+}
+
+pub(crate) fn impl_tuple(trait_suffix: &str, arity: usize) -> Ident {
+    Arc::new(format!("{}{}{}", PREFIX_IMPL_TUPLE, trait_suffix, arity))
 }
 
 pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
