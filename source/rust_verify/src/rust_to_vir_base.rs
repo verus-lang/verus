@@ -902,7 +902,8 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
                 Some(RustItem::Box | RustItem::Rc | RustItem::Arc) => true,
                 _ => false,
             };
-            is_verus_type || is_rust_type || external_info.has_type_id(ctxt, adt_def_data.did)
+            let is_declared_to_verus = external_info.has_type_id(ctxt, adt_def_data.did).is_some();
+            is_verus_type || is_rust_type || is_declared_to_verus
         }
         TyKind::Alias(
             rustc_middle::ty::AliasTyKind::Projection | rustc_middle::ty::AliasTyKind::Inherent,
