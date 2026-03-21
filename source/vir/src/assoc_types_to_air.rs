@@ -74,7 +74,6 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
         let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
         let (typ_params, eqs) =
             crate::sst_to_air_func::hide_projections_air(ctx, &typ_params, holes);
-        let eqs = air::ast_util::mk_and(&eqs);
         let mut push_command = |decoration: bool, index: usize| {
             let projector = crate::def::projection(decoration, trait_path, name);
             let mut args: Vec<Expr> = Vec::new();
@@ -90,7 +89,9 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
                 trigs.push(crate::sst_to_air::typ_to_id(ctx, extra_trigger_term));
             }
             let bind = func_bind_trig(ctx, qname, &typ_params, &Arc::new(vec![]), &trigs, None);
-            let imply = air::ast_util::mk_implies(&eqs, &eq);
+            let mut req_bounds = crate::traits::trait_bounds_to_air(ctx, &typ_bounds);
+            req_bounds.extend(eqs.clone());
+            let imply = air::ast_util::mk_implies(&air::ast_util::mk_and(&req_bounds), &eq);
             let forall = mk_bind_expr(&bind, &imply);
             commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));
         };

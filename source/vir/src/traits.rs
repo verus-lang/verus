@@ -867,6 +867,7 @@ pub(crate) fn typ_equality_bound_to_air(
 }
 
 pub(crate) fn const_typ_bound_to_air(ctx: &Ctx, c: &Typ, t: &Typ) -> air::ast::Expr {
+    let t = if let TypX::Boxed(t) = &**t { t } else { t };
     let f = crate::ast_util::const_generic_to_primitive(t);
     let expr = air::ast_util::str_apply(f, &vec![crate::sst_to_air::typ_to_id(ctx, c)]);
     match crate::sst_to_air::typ_invariant(ctx, t, &expr) {

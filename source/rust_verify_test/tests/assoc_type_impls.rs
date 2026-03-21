@@ -982,3 +982,40 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] assoc_type_impl_axiom_depends_on_bounds verus_code! {
+        trait T {
+            type X;
+        }
+        trait U {}
+        trait V {
+            spec fn f() -> int;
+        }
+        impl U for () {
+        }
+        impl V for u8 {
+            spec fn f() -> int { 3 }
+        }
+        impl V for u16 {
+            spec fn f() -> int { 4 }
+        }
+
+        impl<A: U> T for A {
+            type X = u8;
+        }
+        impl T for bool {
+            type X = u16;
+        }
+
+        proof fn f<A: T>(x: &A) {
+        }
+
+        proof fn bad() {
+            f(&());
+            f(&true);
+            assert(<u8 as V>::f() == <u16 as V>::f()); // FAILS
+            assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
