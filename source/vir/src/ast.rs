@@ -1163,6 +1163,8 @@ pub enum ExprX {
     ///
     /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
+    /// Borrow from a tracked place to get &mut Tracked<T>
+    BorrowMutTracked(Place),
     /// In exec/tracked code ExprX::BorrowMut(PlaceX::DerefMut(place))
     /// (with bool true = TwoPhaseBorrowMut)
     /// In spec code, it's just a spec snapshot of the place without a borrow

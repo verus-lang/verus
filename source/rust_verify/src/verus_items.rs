@@ -443,6 +443,7 @@ pub(crate) enum VerusItem {
     ErasedGhostValue,
     MutableReferenceTie,
     DummyCapture(DummyCaptureItem),
+    MutRefTracked,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -704,6 +705,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::mut_ref_future",   VerusItem::MutRefFuture),
         ("verus::verus_builtin::final_",           VerusItem::Final),
         ("verus::verus_builtin::after_borrow",     VerusItem::AfterBorrow),
+        ("verus::verus_builtin::mut_ref_tracked",  VerusItem::MutRefTracked),
     ]
 }
 

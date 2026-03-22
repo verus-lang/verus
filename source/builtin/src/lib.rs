@@ -2374,3 +2374,9 @@ pub fn final_<T: ?Sized>(_mut_ref: &mut T) -> &mut T {
 pub fn after_borrow<T>(_: T) -> T {
     unimplemented!()
 }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::mut_ref_tracked"]
+pub fn mut_ref_tracked<T>(_: &mut T) -> &mut Tracked<T> {
+    unimplemented!()
+}

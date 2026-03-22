@@ -2875,7 +2875,7 @@ pub(crate) fn expr_to_stm_opt(
             let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
             Ok((vec![stm], Maybe::Some(Value::Exp(exp))))
         }
-        ExprX::BorrowMut(_place) => {
+        ExprX::BorrowMut(_place) | ExprX::BorrowMutTracked(_place) => {
             let (mut stms, bor_sst) = borrow_mut_to_sst(ctx, state, expr)?;
             match bor_sst {
                 Maybe::Never => Ok((stms, Maybe::Never)),
@@ -2929,7 +2929,7 @@ fn expr_to_stm_opt_with_delayed_obligations(
     expr: &Expr,
 ) -> Result<(Vec<Stm>, Maybe<(Value, Vec<Obligation>)>), VirErr> {
     match &expr.x {
-        ExprX::BorrowMut(_place) => {
+        ExprX::BorrowMut(_place) | ExprX::BorrowMutTracked(_place) => {
             let (mut stms, bor_sst) = borrow_mut_to_sst(ctx, state, expr)?;
             match bor_sst {
                 Maybe::Never => Ok((stms, Maybe::Never)),
@@ -3130,6 +3130,7 @@ fn borrow_mut_to_sst(
 ) -> Result<(Vec<Stm>, Maybe<(BorrowMutSst, Vec<Obligation>)>), VirErr> {
     let place = match &expr.x {
         ExprX::BorrowMut(p) => p,
+        ExprX::BorrowMutTracked(p) => p,
         ExprX::TwoPhaseBorrowMut(p) => p,
         _ => panic!("borrow_mut_to_sst must be called for BorrowMut or TwoPhaseBorrowMut"),
     };
@@ -3143,6 +3144,8 @@ fn borrow_mut_to_sst(
         &expr.typ,
         PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::BorrowMut)),
     );
+    // expr.typ might be &mut T or &mut Tracked<T>
+    // the latter if this is from mut_ref_tracked
     let has_typ_stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
 
     let cur_exp = sst_mut_ref_current(&expr.span, &mut_ref_exp);
