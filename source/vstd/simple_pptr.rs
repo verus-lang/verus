@@ -295,6 +295,8 @@ impl<V> PointsTo<V> {
     /// If both S and V are non-zero-sized, then this also implies the pointers
     /// have distinct addresses.
     pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
+        requires
+            (size_of::<V>() != 0 && size_of::<S>() != 0) || size_of::<V>() == size_of::<S>() == 0,
         ensures
             *old(self) == *self,
             self.addr() + size_of::<V>() <= other.addr() || other.addr() + size_of::<S>()
