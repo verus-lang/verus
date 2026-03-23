@@ -291,19 +291,18 @@ impl<T> PointsTo<T> {
             self.is_uninit(),
     ;
 
-    /// Guarantees that the memory ranges associated with two non-ZST permissions will not overlap,
-    /// since you cannot have two permissions to the same memory,
-    /// This implies the pointers have distinct addresses.
+    /// Guarantees that the memory ranges associated with two distinct permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
     ///
-    /// Note: Here `self` is a &mut reference so that you cannot pass the same PointsTo as both arguments.
+    /// Note: If both S and T are non-zero-sized, then this implies the pointers
+    /// have distinct addresses.
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
-        requires
-            size_of::<T>() != 0,
-            size_of::<S>() != 0,
         ensures
             *old(self) == *self,
-            self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= self.ptr() as int,
+            (size_of::<T>() != 0 && size_of::<S>() != 0) ==> (self.ptr() as int + size_of::<T>()
+                <= other.ptr() as int || other.ptr() as int + size_of::<S>() <= self.ptr() as int),
     ;
 }
 
