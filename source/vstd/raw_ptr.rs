@@ -27,6 +27,7 @@ use super::layout::*;
 use super::prelude::*;
 use super::set::group_set_axioms;
 use crate::vstd::endian::*;
+use crate::vstd::group_vstd_default;
 use crate::vstd::seq::*;
 use crate::vstd::slice::*;
 use core::ops::Index;
@@ -372,7 +373,16 @@ impl<T> PointsTo<T> {
     /// Note: If both S and T are non-zero-sized, then this implies the pointers
     /// have distinct addresses.
     /// Here `self` is a &mut reference so that you cannot pass the same PointsTo as both arguments.
+
+    /// Guarantees that the memory ranges associated with two permissions will not overlap,
+    /// provided that both `S` and `T` are non-zero-sized.
+    /// This is true because you cannot have two permissions to the same memory,
+    /// and it implies the pointers have distinct addresses.
+    ///
+    /// Note: Here `self` is a &mut reference so that you cannot pass the same PointsTo as both arguments.
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
+        requires
+            (size_of::<T>() != 0 && size_of::<S>() != 0) || (size_of::<T>() == 0 == size_of::<S>())
         ensures
             *old(self) == *self,
             self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
@@ -390,7 +400,7 @@ impl<T> PointsTo<T> {
 //     }
 // }
 /// The length of `mem_contents_seq()` should always match the pointer's metadata.
-pub broadcast axiom fn pt_slice_len<T>(pt: PointsTo<[T]>)
+pub broadcast axiom fn axiom_pt_slice_len<T>(pt: PointsTo<[T]>)
     ensures
         #[trigger] pt.mem_contents_seq().len() == pt.ptr()@.metadata,
 ;
@@ -398,6 +408,19 @@ pub broadcast axiom fn pt_slice_len<T>(pt: PointsTo<[T]>)
 impl<T> PointsTo<[T]> {
     /// The sequence of (possibly uninitialized) memory that this permission gives access to.
     pub uninterp spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
+
+    /// The length of the memory that this permission gives access to.
+    pub open spec fn len(self) -> nat {
+        self.mem_contents_seq().len()
+    }
+
+    /// `[]` operator, synonymous with `index`.
+    pub open spec fn spec_index(self, index: nat) -> MemContents<T>
+        recommends
+            0 <= index < self.len(),
+    {
+        self.mem_contents_seq()[index as int]
+    }
 
     /// Returns `true` if all of the permission's associated memory is initialized.
     // #[verifier::inline]
@@ -547,11 +570,13 @@ impl<T> PointsTo<[T]> {
     //         self.is_uninit(),
     // ;
     /// Guarantees that the memory ranges associated with two permissions will not overlap,
-    /// since you cannot have two permissions to the same memory.
-    ///
-    /// Note: If both S and T are non-zero-sized, then this implies the pointers
-    /// have distinct addresses.
+    /// provided that both `S` and `T` are non-zero-sized.
+    /// This is true because you cannot have two permissions to the same memory,
+    /// and it implies the pointers have distinct addresses.
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<[S]>)
+        requires
+            (size_of::<T>() * old(self).mem_contents_seq().len() != 0 && size_of::<S>() * other.mem_contents_seq().len() != 0)
+            || (size_of::<T>() * old(self).mem_contents_seq().len() == 0 == size_of::<S>() * other.mem_contents_seq().len())
         ensures
             *old(self) == *self,
             self.ptr() as int + size_of::<T>() * self.mem_contents_seq().len() <= other.ptr() as int
@@ -573,6 +598,21 @@ impl<T> PointsTo<[T]> {
                     == self.mem_contents_seq()[i as int],
             m.ptr() == self.ptr() as *mut T,
             m.len() == self.ptr()@.metadata,
+    ;
+
+    /// We can always convert a `PointsTo<[T]>` into a `SeqPointsTo<T>` for the same pointer,
+    /// whose elements are individual `PointsTo<T>` with the memory contents of the corresponding index.
+    pub axiom fn into_seq_pt(tracked self) -> (tracked s: SeqPointsTo<T>)
+        ensures
+            forall|i|
+                #![trigger s[i].mem_contents()]
+                #![trigger self.mem_contents_seq()[i as int]]
+                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
+                    == self.mem_contents_seq()[i as int],
+            // Do I need to specify the ptrs? Or does this follow from the invariant?
+            // && s.pt_seq()[i].ptr() == self.ptr()
+            s.ptr() == self.ptr() as *mut T,
+            s.len() == self.mem_contents_seq().len(),
     ;
 }
 
@@ -623,6 +663,186 @@ impl PointsTo<str> {
         ensures
             self.ptr()@.addr as nat % spec_align_of_val::<str>(self.value()) == 0,
     ;
+}
+
+pub tracked struct SeqPointsTo<T> {
+    perm: Seq<PointsTo<T>>,
+    ptr: Ghost<*mut T>,
+}
+
+/// If the domain exactly contains the indices bounded by `self.len()`,
+/// we can convert this permission into a `PointsTo<[T]>` with the same pointer
+/// and the same memory contents at every index.
+pub axiom fn seq_into_slice<T>(tracked spt: SeqPointsTo<T>) -> (tracked pt: PointsTo<[T]>)
+    ensures
+        forall|i|
+            0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
+                == spt[i].mem_contents(),
+        pt.ptr() as *mut T == spt.ptr(),
+        pt.ptr()@.metadata == spt.len(),
+;
+
+impl<T> SeqPointsTo<T> {
+    /// The keys must fall in the range `[0, self.len())`.
+    /// For each key `i`, the corresponding `PointsTo<T>` must have the same provenance as
+    /// the `self.ptr()`, and its pointer's address is offset from `self.ptr()` by `i`.
+    #[verifier::type_invariant]
+    spec fn inv(self) -> bool {
+        &&& forall|i|
+            #![trigger self[i].ptr()@.provenance]
+            #![trigger self[i].ptr()@.addr]
+            0 <= i < self.len() ==> {
+                &&& self[i].ptr()@.provenance == self.ptr()@.provenance
+                &&& self[i].ptr()@.addr == self.ptr()@.addr + i * layout::size_of::<T>()
+            }
+        &&& self.ptr()@.provenance.start_addr() <= self.ptr()@.addr
+        &&& self.ptr()@.addr + self.len() * layout::size_of::<T>()
+            <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
+        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
+    }
+
+    /// The pointer that this permission is associated with.
+    pub closed spec fn ptr(self) -> *mut T {
+        self.ptr@
+    }
+
+    /// The `Seq<PointsTo<T>>` that this type is a wrapper for.
+    pub closed spec fn perm(self) -> Seq<PointsTo<T>> {
+        self.perm
+    }
+
+    /// The length of the sequence of `PointsTo<T>`.
+    pub open spec fn len(self) -> nat {
+        self.perm().len()
+    }
+
+    /// `[]` operator, synonymous with `index`.
+    pub open spec fn spec_index(self, index: nat) -> PointsTo<T>
+        recommends
+            0 <= index < self.len(),
+    {
+        self.perm()[index as int]
+    }
+
+    /// Returns `true` if all of the permission's associated memory is initialized.
+    #[verifier::inline]
+    pub open spec fn is_init(&self) -> bool {
+        forall|i| 0 <= i < self.len() ==> #[trigger] self[i].is_init()
+    }
+
+    // /// Returns `true` if all of the permission's associated memory in the given subset is initialized.
+    // pub open spec fn is_init_subset(&self, subset: Set<nat>) -> bool
+    //     recommends
+    //         subset.subset_of(self.indices()),
+    // {
+    //     forall|i| subset.contains(i) ==> #[trigger] self[i].is_init()
+    // }
+    /// Returns `true` if any part of the permission's associated memory is uninitialized.
+    #[verifier::inline]
+    pub open spec fn is_uninit(&self) -> bool {
+        !self.is_init()
+    }
+
+    /// Returns `true` if all of the permission's associated memory is uninitialized.
+    #[verifier::inline]
+    pub open spec fn is_fully_uninit(&self) -> bool {
+        forall|i| 0 <= i < self.len() ==> #[trigger] self[i].is_uninit()
+    }
+
+    /// Given that all of the permission's associated memory is initialized,
+    /// returns the underlying values as a sequence.
+    pub open spec fn value(&self) -> Seq<T>
+        recommends
+            self.is_init(),
+    {
+        Seq::new(self.len(), |i| self[i as nat].value())
+    }
+
+    /// Given an aligned and non-null pointer,
+    /// it is always possible to construct a `SeqPointsTo` with an empty sequence of permissions.
+    pub proof fn empty(ptr: *mut T) -> (tracked spt: SeqPointsTo<T>)
+        requires
+            ptr@.addr != 0,
+            ptr@.addr as nat % align_of::<T>() == 0,
+        ensures
+            spt.perm() == Seq::<PointsTo<T>>::empty(),
+            spt.ptr() == ptr,
+            spt.len() == 0,
+    {
+        broadcast use group_vstd_default;
+
+        let tracked pt_raw = PointsToRaw::empty(ptr@.provenance);
+        pt_raw.into_typed_seq(ptr@.addr, 0)
+    }
+
+    /// We can construct a `SeqPointsTo` with `length`-many `PointsTo` permissions, 
+    /// provided that `T` is zero-sized and that the pointer is non-null and aligned.
+    pub proof fn zero_sized(ptr: *mut T, length: usize) -> (tracked spt: SeqPointsTo<T>)
+        requires
+            ptr@.addr != 0,
+            ptr@.addr as nat % align_of::<T>() == 0,
+            layout::size_of::<T>() == 0,
+        ensures
+            forall|i| #![auto] 0 <= i < spt.len() ==> 
+                spt[i].ptr() == spt.ptr() && spt[i].is_uninit(),
+            spt.ptr() == ptr,
+            spt.len() == length,                    
+    {
+        let tracked mut spt = SeqPointsTo::empty(ptr);
+        assume(false);
+        // spt.zero_sized_helper(0, length as int);
+        spt
+    }
+
+    proof fn zero_sized_helper(tracked &mut self, length: nat)
+        requires
+            old(self).ptr()@.addr != 0,
+            old(self).ptr()@.addr as nat % align_of::<T>() == 0,
+            layout::size_of::<T>() == 0,
+        ensures
+            self.ptr() == old(self).ptr(),
+            self.len() == length,
+            forall|i| #![auto] 0 <= i < self.len() ==> 
+                self[i].ptr() == self.ptr() && self[i].is_uninit(),
+        decreases length
+    {
+        broadcast use group_vstd_default;
+        assume(false);
+
+        if length > 0 {
+            // use_type_invariant(&self);
+            self.zero_sized_helper((length - 1) as nat);
+            assert(self.len() == length - 1);
+            assert(self.perm.len() == length - 1);
+            let tracked zs_pt = PointsToRaw::empty(self.ptr()@.provenance).into_typed(self.ptr()@.addr);
+            assert(zs_pt.ptr() == self.ptr());
+            // assert(zs_pt.mem_contents::<T>() == MemContents::<T>::Uninit);
+            self.perm.tracked_push(zs_pt);
+            assert(self[(length - 1) as nat].is_uninit());
+            assert(self.perm.len() == length);
+            assert(self.len() == self.perm.len());
+            assert(self.len() == length);
+            assert(self.inv());
+            assume(false);
+        } else {
+            assume(false);
+        }
+    }
+
+    /// Guarantees that the pointer address is non-null,
+    /// because it falls within an allocation and the start address of an allocation is non-null.
+    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
+    ///
+    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
+    // See https://doc.rust-lang.org/std/ptr/#safety
+    pub proof fn is_nonnull(tracked &self)
+        ensures
+            self.ptr()@.addr != 0,
+    {
+        use_type_invariant(self);
+        broadcast use is_nonnull;
+
+    }
 }
 
 pub tracked struct MapPointsTo<T> {
@@ -893,7 +1113,7 @@ impl<T> MapPointsTo<T> {
             self.ptr() == old(self).ptr(),
     {
         broadcast use group_set_axioms;
-        broadcast use crate::vstd::group_vstd_default;
+        broadcast use group_vstd_default;
 
         use_type_invariant(&*self);
         use_type_invariant(other);
@@ -1401,7 +1621,7 @@ pub broadcast group group_raw_ptr_axioms {
     ptrs_mut_eq,
     ptrs_mut_eq_sized,
     alloc_bound,
-    pt_slice_len,
+    axiom_pt_slice_len,
 }
 
 /// Tracked object that indicates a given provenance has been exposed.
@@ -1557,9 +1777,23 @@ impl PointsToRaw {
     /// with address `start`, the same provanance as the `PointsToRaw` permission, and metadata `length`;
     /// provided that `start` is aligned to `V` and
     /// that the domain of the `PointsToRaw` permission matches `length * size_of::<V>()`.
-    pub axiom fn into_typed_slice<V>(tracked self, start: usize, length: nat) -> (tracked points_to:
-        PointsTo<[V]>)
+    ///
+    /// Here `length` is a usize since it represents pointer metadata, which should fit in a usize.
+    ///
+    /// In combination with [`PointsToRaw::empty()`],
+    /// this lets us create a PointsTo for a ZST for _any_ non-null aligned pointer.
+    ///
+    /// To call this, it is necessary for the address to be non-null. This can be proved either
+    /// by showing `start != 0` or by showing the size of the type is non-zero (in which case
+    /// the non-null-ness follows from the existence of the `PointsToRaw`).
+    pub axiom fn into_typed_slice<V>(
+        tracked self,
+        start: usize,
+        length: nat,
+    ) -> (tracked points_to: PointsTo<[V]>)
         requires
+            length as usize as nat == length,
+            start != 0 || size_of::<V>() * length != 0,
             start as int % layout::align_of::<V>() as int == 0,
             self.is_range(start as int, (length * layout::size_of::<V>()) as int),
         ensures
@@ -1569,14 +1803,61 @@ impl PointsToRaw {
             points_to.is_uninit(),
     ;
 
+    /// Creates a `SeqPointsTo<V>` permission from a `PointsToRaw` permission
+    /// with address `start`, the same provanance as the `PointsToRaw` permission, and length `length`;
+    /// provided that `start` is aligned to `V` and
+    /// that the domain of the `PointsToRaw` permission matches `length * size_of::<V>()`.
+    ///
+    /// Here `length` is a usize since it represents pointer metadata, which should fit in a usize.
+    ///
+    /// In combination with [`PointsToRaw::empty()`],
+    /// this lets us create a PointsTo for a ZST for _any_ non-null aligned pointer.
+    ///
+    /// To call this, it is necessary for the address to be non-null. This can be proved either
+    /// by showing `start != 0` or by showing the size of the type is non-zero (in which case
+    /// the non-null-ness follows from the existence of the `PointsToRaw`).
+    pub proof fn into_typed_seq<V>(tracked self, start: usize, length: nat) -> (tracked spt:
+        SeqPointsTo<V>)
+        requires
+            length as usize as nat == length,
+            start != 0 || size_of::<V>() * length != 0,
+            start as int % layout::align_of::<V>() as int == 0,
+            self.is_range(start as int, (length * layout::size_of::<V>()) as int),
+        ensures
+            spt.ptr() == ptr_mut_from_data::<V>(
+                PtrData { addr: start, provenance: self.provenance(), metadata: () },
+            ),
+            spt.is_uninit(),
+            spt.len() == length as nat,
+    {
+        broadcast use group_raw_ptr_axioms;
+
+        let tracked pt_slice: PointsTo<[V]> = self.into_typed_slice(start, length);
+        let tracked out = pt_slice.into_seq_pt();
+        assert(forall|i: nat|
+            #![auto]
+            0 <= i < out.len() ==> pt_slice.mem_contents_seq()[i as int].is_init()
+                ==> out[i].is_init());
+        out
+    }
+
     /// Given that `start` is aligned to `V` and
     /// that the domain of the `PointsToRaw` permission matches `length * size_of::<V>()`,
     /// creates a `MapPointsTo<V>` permission from a `PointsToRaw` permission
     /// whose pointer has address `start`, the same provanance as the `PointsToRaw` permission, and metadata `length`,
     /// and whose domain is the indices bounded by `length`.
-    pub axiom fn into_typed_map<V>(tracked self, start: usize, length: nat) -> (tracked points_to:
+    ///
+    /// In combination with [`PointsToRaw::empty()`],
+    /// this lets us create a PointsTo for a ZST for _any_ non-null aligned pointer.
+    ///
+    /// To call this, it is necessary for the address to be non-null. This can be proved either
+    /// by showing `start != 0` or by showing the size of the type is non-zero (in which case
+    /// the non-null-ness follows from the existence of the `PointsToRaw`).
+    pub proof fn into_typed_map<V>(tracked self, start: usize, length: nat) -> (tracked points_to:
         MapPointsTo<V>)
         requires
+            length as usize as nat == length,
+            start != 0 || size_of::<V>() * length != 0,
             start as int % layout::align_of::<V>() as int == 0,
             self.is_range(start as int, (length * layout::size_of::<V>()) as int),
         ensures
@@ -1584,9 +1865,25 @@ impl PointsToRaw {
                 PtrData { addr: start, provenance: self.provenance(), metadata: () },
             ),
             points_to.is_uninit(),
-            points_to.indices() == bounded_set(length),
-            points_to.len() == length,
-    ;
+            points_to.indices() == bounded_set(length as nat),
+            points_to.len() == length as nat,
+    {
+        // broadcast use {axiom_ptr_mut_from_data, axiom_pt_slice_len};
+        broadcast use group_raw_ptr_axioms;
+
+        let tracked pt_slice: PointsTo<[V]> = self.into_typed_slice(start, length);
+        // assert(pt_slice.is_uninit());
+        // assert(!(forall |i| 0 <= i < pt_slice.mem_contents_seq().len() ==> pt_slice.mem_contents_seq()[i].is_init()));
+
+        let tracked out = pt_slice.into_map();
+        assert(out.indices() =~= bounded_set(pt_slice.mem_contents_seq().len()));
+        // TODO: go back and prove. Should follow from bounded_set
+        assume(forall|i| 0 <= i < pt_slice.mem_contents_seq().len() ==> out.indices().contains(i));
+
+        // assert(!(forall |i| (out.indices().contains(i) ==> out[i].mem_contents().is_init())));
+        // assert(out.is_uninit());
+        out
+    }
 }
 
 impl<V> PointsTo<V> {
@@ -1881,7 +2178,7 @@ impl<'a, T> SharedReference<'a, [T]> {
         ensures
             *out == self.value()@.index(idx as int),
     {
-        broadcast use crate::vstd::group_vstd_default;
+        broadcast use group_vstd_default;
 
         &(self.as_ref())[idx]
     }
