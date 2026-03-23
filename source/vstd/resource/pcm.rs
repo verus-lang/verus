@@ -1,5 +1,6 @@
 use super::super::prelude::*;
 use super::Loc;
+use super::algebra::ResourceAlgebra;
 use super::relations::*;
 
 #[cfg(verus_keep_ghost)]
@@ -53,48 +54,17 @@ pub tracked struct Resource<P: PCM> {
     p: core::marker::PhantomData<P>,
 }
 
-/// A Partial Commutative Monoid is a special type of `ResourceAlgebra`, where all elements have
+/// A Partial Commutative Monoid is a special type of [`ResourceAlgebra`], where all elements have
 /// the same core (which belongs in the carrier), the unit. For this reason, they are also called
 /// unitary resource algebras[^note].
 ///
 /// [^note]: This is slightly misleading. PCMs are partial in the sense that the operation is not
 /// defined for certain inputs. Because Verus does not support partial functions, we model that
 /// partiality with the validity predicate, which does make it a unitary resource algebra.
-// TODO(bsdinis): it should probably not be required that ghost things be sized, but that sounds
-// like a relatively complicated change -- needs to be done across the codebase
-pub trait PCM: Sized {
-    /// Whether an element is valid
-    spec fn valid(self) -> bool;
-
-    /// Compose two elements
-    ///
-    /// Sometimes the notation `a · b` is used to represent `P::op(a, b)`
-    spec fn op(a: Self, b: Self) -> Self;
-
+pub trait PCM: ResourceAlgebra {
     /// The unit of the monoid, i.e., the carrier value that composed with any other carrier value
     /// yields the identity function
     spec fn unit() -> Self;
-
-    /// The operation is associative
-    proof fn associative(a: Self, b: Self, c: Self)
-        ensures
-            Self::op(a, Self::op(b, c)) == Self::op(Self::op(a, b), c),
-    ;
-
-    /// The operation is commutative
-    proof fn commutative(a: Self, b: Self)
-        ensures
-            Self::op(a, b) == Self::op(b, a),
-    ;
-
-    /// The operation is closed under inclusion
-    /// (i.e., if the result of the operation is valid then its parts are also valid)
-    proof fn valid_op(a: Self, b: Self)
-        requires
-            Self::op(a, b).valid(),
-        ensures
-            a.valid(),
-    ;
 
     /// The core of an element `a` is, by definition, some other element `x`
     /// such that `a · x = a`
