@@ -373,7 +373,6 @@ impl<T> PointsTo<T> {
     /// Note: If both S and T are non-zero-sized, then this implies the pointers
     /// have distinct addresses.
     /// Here `self` is a &mut reference so that you cannot pass the same PointsTo as both arguments.
-
     /// Guarantees that the memory ranges associated with two permissions will not overlap,
     /// provided that both `S` and `T` are non-zero-sized.
     /// This is true because you cannot have two permissions to the same memory,
@@ -382,7 +381,8 @@ impl<T> PointsTo<T> {
     /// Note: Here `self` is a &mut reference so that you cannot pass the same PointsTo as both arguments.
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
         requires
-            (size_of::<T>() != 0 && size_of::<S>() != 0) || (size_of::<T>() == 0 == size_of::<S>())
+            size_of::<T>() != 0,
+            size_of::<S>() != 0,
         ensures
             *old(self) == *self,
             self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
@@ -575,8 +575,8 @@ impl<T> PointsTo<[T]> {
     /// and it implies the pointers have distinct addresses.
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<[S]>)
         requires
-            (size_of::<T>() * old(self).mem_contents_seq().len() != 0 && size_of::<S>() * other.mem_contents_seq().len() != 0)
-            || (size_of::<T>() * old(self).mem_contents_seq().len() == 0 == size_of::<S>() * other.mem_contents_seq().len())
+            size_of::<T>() * old(self).mem_contents_seq().len() != 0,
+            size_of::<S>() * other.mem_contents_seq().len() != 0,
         ensures
             *old(self) == *self,
             self.ptr() as int + size_of::<T>() * self.mem_contents_seq().len() <= other.ptr() as int
@@ -775,57 +775,49 @@ impl<T> SeqPointsTo<T> {
         pt_raw.into_typed_seq(ptr@.addr, 0)
     }
 
-    /// We can construct a `SeqPointsTo` with `length`-many `PointsTo` permissions, 
+    /// We can construct a `SeqPointsTo` with `length`-many `PointsTo` permissions,
     /// provided that `T` is zero-sized and that the pointer is non-null and aligned.
-    pub proof fn zero_sized(ptr: *mut T, length: usize) -> (tracked spt: SeqPointsTo<T>)
+    pub proof fn zero_sized(ptr: *mut T, length: nat) -> (tracked spt: Self)
         requires
             ptr@.addr != 0,
             ptr@.addr as nat % align_of::<T>() == 0,
             layout::size_of::<T>() == 0,
         ensures
-            forall|i| #![auto] 0 <= i < spt.len() ==> 
-                spt[i].ptr() == spt.ptr() && spt[i].is_uninit(),
+            forall|i| #![auto] 0 <= i < spt.len() ==> spt[i].is_uninit(),
             spt.ptr() == ptr,
-            spt.len() == length,                    
+            spt.len() == length,
     {
-        let tracked mut spt = SeqPointsTo::empty(ptr);
-        assume(false);
-        // spt.zero_sized_helper(0, length as int);
-        spt
+        SeqPointsTo::empty(ptr).zero_sized_helper(length, length)
     }
 
-    proof fn zero_sized_helper(tracked &mut self, length: nat)
+    proof fn zero_sized_helper(tracked self, remaining: nat, total: nat) -> (tracked spt: Self)
         requires
-            old(self).ptr()@.addr != 0,
-            old(self).ptr()@.addr as nat % align_of::<T>() == 0,
+            self.ptr()@.addr != 0,
+            self.ptr()@.addr as nat % align_of::<T>() == 0,
             layout::size_of::<T>() == 0,
+            self.len() + remaining == total,
+            forall|i| #![auto] 0 <= i < self.len() ==> self[i].is_uninit(),
         ensures
-            self.ptr() == old(self).ptr(),
-            self.len() == length,
-            forall|i| #![auto] 0 <= i < self.len() ==> 
-                self[i].ptr() == self.ptr() && self[i].is_uninit(),
-        decreases length
+            spt.ptr() == self.ptr(),
+            spt.len() == total,
+            forall|i| #![auto] 0 <= i < spt.len() ==> spt[i].is_uninit(),
+        decreases remaining,
     {
         broadcast use group_vstd_default;
-        assume(false);
 
-        if length > 0 {
-            // use_type_invariant(&self);
-            self.zero_sized_helper((length - 1) as nat);
-            assert(self.len() == length - 1);
-            assert(self.perm.len() == length - 1);
-            let tracked zs_pt = PointsToRaw::empty(self.ptr()@.provenance).into_typed(self.ptr()@.addr);
-            assert(zs_pt.ptr() == self.ptr());
-            // assert(zs_pt.mem_contents::<T>() == MemContents::<T>::Uninit);
-            self.perm.tracked_push(zs_pt);
-            assert(self[(length - 1) as nat].is_uninit());
-            assert(self.perm.len() == length);
-            assert(self.len() == self.perm.len());
-            assert(self.len() == length);
-            assert(self.inv());
-            assume(false);
+        if remaining == 0 {
+            self
         } else {
-            assume(false);
+            use_type_invariant(&self);
+            assert(forall|i| 0 <= i < self.len() ==> self.perm[i] == self[i as nat]);
+
+            let tracked zs_pt = PointsToRaw::empty(self.ptr()@.provenance).into_typed::<T>(
+                self.ptr()@.addr,
+            );
+            let tracked mut mut_spt = self;
+            mut_spt.perm.tracked_push(zs_pt);
+
+            mut_spt.zero_sized_helper((remaining - 1) as nat, total)
         }
     }
 
@@ -1786,11 +1778,8 @@ impl PointsToRaw {
     /// To call this, it is necessary for the address to be non-null. This can be proved either
     /// by showing `start != 0` or by showing the size of the type is non-zero (in which case
     /// the non-null-ness follows from the existence of the `PointsToRaw`).
-    pub axiom fn into_typed_slice<V>(
-        tracked self,
-        start: usize,
-        length: nat,
-    ) -> (tracked points_to: PointsTo<[V]>)
+    pub axiom fn into_typed_slice<V>(tracked self, start: usize, length: nat) -> (tracked points_to:
+        PointsTo<[V]>)
         requires
             length as usize as nat == length,
             start != 0 || size_of::<V>() * length != 0,
