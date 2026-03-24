@@ -36,6 +36,7 @@ pub enum CompilableOperator {
     UseTypeInvariant,
     ClosureToFnProof(Mode),
     GhostBorrowMut,
+    MutRefTracked,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).
@@ -172,6 +173,7 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::TrackedBorrow
             | CompilableOperator::TrackedBorrowMut
             | CompilableOperator::GhostBorrowMut
+            | CompilableOperator::MutRefTracked
             | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
         },
         ResolvedCall::MiscEraseAbsolutely => CallErasure::EraseTree(TreeErase::EraseAbsolutely),

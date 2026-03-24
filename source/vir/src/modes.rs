@@ -274,6 +274,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             // all borrow types checked in the main function
             | ExprX::ImplicitReborrowOrSpecRead(..)
             | ExprX::BorrowMut(..)
+            | ExprX::BorrowMutTracked(..)
             | ExprX::TwoPhaseBorrowMut(..)
             | ExprX::Old(..)
         => None,
@@ -1118,13 +1119,13 @@ fn check_place_has_mode(
 enum PlaceAccess {
     Read,
     MutAssign(Typ),
-    MutBorrow,
+    MutBorrow(Option<Typ>),
 }
 
 impl PlaceAccess {
     fn is_mut(&self) -> bool {
         match self {
-            PlaceAccess::MutAssign(_) | PlaceAccess::MutBorrow => true,
+            PlaceAccess::MutAssign(_) | PlaceAccess::MutBorrow(_) => true,
             PlaceAccess::Read => false,
         }
     }
@@ -1208,10 +1209,33 @@ fn check_place(
 
             coerced_mode
         }
-        PlaceAccess::MutBorrow => {
+        PlaceAccess::MutBorrow(None) => {
             // Don't coerce because we want to be able to take
             // mut-borrows to exec places from proof code.
             // (This is safe because we still cannot modify the exec state through the reference)
+            place_mode
+        }
+        PlaceAccess::MutBorrow(Some(mut_ref_tracked_typ)) => {
+            // Same cases as for assigning in proof mode
+            if place_mode == Mode::Exec {
+                if !ok_to_assign_exec_place_in_erased_code(ctxt, place, mut_ref_tracked_typ) {
+                    let mut e = error_with_label(
+                        &place.span,
+                        format!("cannot mutate {place_mode}-mode place in {context_mode}-code"),
+                        if note.is_some() {
+                            format!("this place may have mode {place_mode}")
+                        } else {
+                            format!("this place has mode {place_mode}")
+                        },
+                    );
+                    if let Some(note) = note {
+                        e = e.secondary_label(&note.1.span, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
+                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0.typ)));
+                    }
+                    return Err(e);
+                }
+            }
+
             place_mode
         }
     };
@@ -3145,7 +3169,18 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::BorrowMut(place)
         | ExprX::TwoPhaseBorrowMut(place)
+        | ExprX::BorrowMutTracked(place)
         | ExprX::ImplicitReborrowOrSpecRead(place, _, _) => {
+            let borrow_mut_tracked = matches!(&expr.x, ExprX::BorrowMutTracked(_));
+            if borrow_mut_tracked && typing.block_ghostness != Ghost::Ghost {
+                return Err(error(&expr.span, "mut_ref_tracked not allowed in exec context"));
+            }
+            let borrow_mut_tracked_typ = if borrow_mut_tracked {
+                Some(unwrap_mut_ref_tracked_typ(&expr.span, &expr.typ)?)
+            } else {
+                None
+            };
+
             if matches!(&expr.x, ExprX::ImplicitReborrowOrSpecRead(..)) {
                 if let Some(m) = &mut record.infer_spec_for_implicit_reborrows {
                     let found = m.insert(expr.span.id, false);
@@ -3173,7 +3208,7 @@ fn check_expr_handle_mut_arg(
                 typing,
                 outer_mode,
                 place,
-                PlaceAccess::MutBorrow,
+                PlaceAccess::MutBorrow(borrow_mut_tracked_typ),
                 Expect::none(),
                 outer_proph,
             )?;
@@ -3188,7 +3223,12 @@ fn check_expr_handle_mut_arg(
                 }
             }
             proph.check(&expr.span, NoProphReason::MutBorrow)?;
-            Ok((mode_join(mode, typing.block_ghostness.join_mode(outer_mode)), Proph::No))
+
+            let mut ref_mode = mode_join(mode, typing.block_ghostness.join_mode(outer_mode));
+            if borrow_mut_tracked {
+                ref_mode = mode_join(ref_mode, Mode::Proof);
+            }
+            Ok((ref_mode, Proph::No))
         }
         ExprX::UnaryOpr(UnaryOpr::HasResolved(_t), e) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -3243,6 +3283,18 @@ fn check_expr_handle_mut_arg(
     };
     let (mode, proph) = mode_proph?;
     Ok((mode, None, proph))
+}
+
+fn unwrap_mut_ref_tracked_typ(span: &Span, typ: &Typ) -> Result<Typ, VirErr> {
+    match &*crate::ast_util::undecorate_typ(typ) {
+        TypX::MutRef(t) => match &**t {
+            TypX::Decorate(TypDecoration::Tracked, _, t) => Ok(t.clone()),
+            _ => {
+                Err(error(span, "Verus Internal Error: mut_ref_tracked should be &mut Tracked<T>"))
+            }
+        },
+        _ => Err(error(span, "Verus Internal Error: mut_ref_tracked should be &mut Tracked<T>")),
+    }
 }
 
 fn check_stmt(

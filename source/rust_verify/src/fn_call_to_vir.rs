@@ -2168,6 +2168,19 @@ fn verus_item_to_vir<'tcx, 'a>(
             };
             mk_expr(ExprX::ReadPlace(p, rk))
         }
+        VerusItem::MutRefTracked => {
+            record_compilable_operator(bctx, expr, CompilableOperator::MutRefTracked);
+            if !bctx.new_mut_ref {
+                unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
+            }
+            if !bctx.in_ghost {
+                return err_span(expr.span, "`mut_ref_tracked` must be in a 'proof' block");
+            }
+            let p = expr_to_vir_place(&bctx, &args[0], ExprModifier::REGULAR)?;
+            let p =
+                crate::rust_to_vir_expr::deref_mut_allow_cancelling_two_phase(bctx, expr.span, &p)?;
+            mk_expr(ExprX::BorrowMutTracked(p))
+        }
         VerusItem::BuiltinDeref(d) => {
             // This would be easy to support (similar to handling borrow_mut etc.) but their usage
             // would be very rare so I'm skipping for now
