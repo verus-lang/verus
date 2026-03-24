@@ -5,8 +5,6 @@
 //! To get the spec for `wrapping_add` on `u8`, for example, call `u8_specs::wrapping_add`.
 //! (The module formulation seemed cleaner than defining a `wrapping_add_u8` for every
 //! operation and type.)
-use super::arithmetic::power2::pow2;
-use super::layout::unsigned_int_max_values;
 use super::prelude::*;
 
 macro_rules! wrapping_specs {
@@ -45,18 +43,6 @@ macro_rules! wrapping_specs {
 
                 pub open spec fn wrapping_mul(x: $uN, y: $uN) -> $uN {
                     ((x as nat * y as nat) % $range as nat) as $uN
-                }
-
-                pub broadcast proof fn wrapping_equiv(x: $uN, y: $uN)
-                    ensures
-                        #![trigger wrapping_add(x, y)]
-                        #![trigger wrapping_sub(x, y)]
-                        #![trigger wrapping_mul(x, y)]
-                        wrapping_add(x, y) == (x + y) % pow2($uN::BITS as nat) as int,
-                        wrapping_sub(x, y) == (x - y) % pow2($uN::BITS as nat) as int,
-                        wrapping_mul(x, y) == (x * y) % pow2($uN::BITS as nat) as int,
-                {
-                    unsigned_int_max_values();
                 }
             }
 
@@ -118,16 +104,3 @@ wrapping_specs!([
     (u128, i128, u128_specs, i128_specs, 0x1_0000_0000_0000_0000_0000_0000_0000_0000),
     (usize, isize, usize_specs, isize_specs, (usize::MAX - usize::MIN + 1)),
 ]);
-
-verus! {
-
-pub broadcast group group_wrapping_equiv {
-    u8_specs::wrapping_equiv,
-    u16_specs::wrapping_equiv,
-    u32_specs::wrapping_equiv,
-    u64_specs::wrapping_equiv,
-    u128_specs::wrapping_equiv,
-    usize_specs::wrapping_equiv,
-}
-
-} // verus!
