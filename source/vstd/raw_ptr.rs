@@ -324,7 +324,7 @@ impl<T: ?Sized> PointsTo<T> {
     /// https://doc.rust-lang.org/std/ptr/index.html#alignment
     /// Guarantee that the `PointsTo` points to an aligned address.
     #[verifier::type_invariant]
-    spec fn inv(self) -> bool {
+    pub closed spec fn inv(self) -> bool {
         let v: &T = arbitrary();
         self.inner.ptr()@.addr as int % spec_align_of_val::<T>(v) as int == 0
     }
@@ -790,7 +790,7 @@ impl<T> PointsTo<[T]> {
         pt_unaligned.as_aligned()
     }
 
-    /// Like [`cast_points_to`], but does not require alignment,
+    /// Like `cast_points_to`, but does not require alignment,
     /// producing a `PointsToUnaligned<V>` instead of a `PointsTo<V>`.
     ///
     /// We can cast a `[T]` permission to an unaligned `V` permission under the following conditions:
