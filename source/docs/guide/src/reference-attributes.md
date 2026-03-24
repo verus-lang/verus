@@ -15,6 +15,7 @@
  - [`loop_isolation`](#verifierloop_isolation)
  - [`memoize`](#verifiermemoize)
  - [`opaque`](#verifieropaque)
+ - [`proof_note`](#verifierproofnote)
  - `reject_recursive_types`
  - `reject_recursive_types_in_ground_variants`
  - [`rlimit`](#verifierrlimitn-and-verifierrlimitinfinity)
@@ -134,6 +135,12 @@ should "memoize" the results of this function.
 
 Directs the solver to not automatically reveal the definition of this function.
 The definition can then be revealed locally via the [`reveal` and `reveal_with_fuel` directives](./reference-reveal-hide.md).
+
+## `#[verifier::proof_note]`
+
+Attach an arbitrary string note to a `requires`/`ensures` clause or an `assume`/`assert` statement.
+
+The note is shown in errors for failed proof obligations, as well as in the JSON output under `function_details`.
 
 ## `#[verifier::rlimit(n)]` and `#[verifier::rlimit(infinity)]`
 
