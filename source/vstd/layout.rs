@@ -250,8 +250,11 @@ pub broadcast axiom fn layout_of_str(x: &str)
 pub broadcast axiom fn layout_of_str(x: &str)
     ensures
         #![trigger spec_align_of_val::<str>(x)]
-        spec_align_of_val::<str>(x) == align_of::<u8>(),
-        // cannot specify spec_size_of_val because we cannot talk about the byte representation of a str here
+        spec_align_of_val::<str>(x) == align_of::<
+            u8,
+        >(),
+// cannot specify spec_size_of_val because we cannot talk about the byte representation of a str here
+
 ;
 
 /// The size is a multiple of alignment and alignment is always a power of 2
