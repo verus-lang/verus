@@ -160,7 +160,11 @@ fn relax_exact_version_pins(
     }
 
     // [workspace.dependencies] requires two levels of navigation.
-    if doc.get("workspace").and_then(|w| w.get("dependencies")).is_some() {
+    if doc
+        .get("workspace")
+        .and_then(|w| w.get("dependencies"))
+        .is_some()
+    {
         if let Some(wdeps) = doc["workspace"]
             .as_table_mut()
             .and_then(|w| w.get_mut("dependencies"))
@@ -282,11 +286,7 @@ pub fn inject_verus_patches(
         let target_cargo_toml = target_dir.join("Cargo.toml");
         for path in [&workspace_cargo_toml, &target_cargo_toml] {
             if let Err(e) = relax_exact_version_pins(path, &local_versions) {
-                warn!(
-                    "Failed to relax version pins in {}: {}",
-                    path.display(),
-                    e
-                );
+                warn!("Failed to relax version pins in {}: {}", path.display(), e);
             }
         }
     }

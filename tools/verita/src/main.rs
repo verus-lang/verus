@@ -47,16 +47,16 @@ struct Args {
 }
 
 fn get_solver_version(
-    verus_repo: &PathBuf,
+    verus_repo: &Path,
     solver_exe: &str,
     fmt_str: &str,
 ) -> anyhow::Result<String> {
     let sh = Shell::new()?;
-    let solver_path = verus_repo
-        .join("source")
-        .join(format!("{}{}", solver_exe, std::env::consts::EXE_SUFFIX));
-    let output = cmd!(sh, "{solver_path} --version")
-        .output()?;
+    let solver_path =
+        verus_repo
+            .join("source")
+            .join(format!("{}{}", solver_exe, std::env::consts::EXE_SUFFIX));
+    let output = cmd!(sh, "{solver_path} --version").output()?;
     //dbg!(&output);
     let output_str = String::from_utf8(output.stdout)?;
     let fmt = format!("{fmt_str} ([0-9.]*) ");
@@ -164,27 +164,21 @@ fn process_target(
         }
 
         log_command(
-            cmd!(
-                sh,
-                "{cargo_verus_binary_path} verus focus"
-            )
-            .args(&cargo_target_args)
-            .args(["--", "--output-json", "--time"])
-            .args(ctx.run_configuration.verus_extra_args.iter().flatten())
-            .args(project.extra_args.iter().flatten())
-            .into(),
+            cmd!(sh, "{cargo_verus_binary_path} verus focus")
+                .args(&cargo_target_args)
+                .args(["--", "--output-json", "--time"])
+                .args(ctx.run_configuration.verus_extra_args.iter().flatten())
+                .args(project.extra_args.iter().flatten())
+                .into(),
         )
         .output()
         .map_err(|e| anyhow!("cannot execute cargo verus on {}: {}", &project.name, e))?
     } else {
         log_command(
-            cmd!(
-                sh,
-                "{verus_binary_path} --output-json --time {target}"
-            )
-            .args(ctx.run_configuration.verus_extra_args.iter().flatten())
-            .args(project.extra_args.iter().flatten())
-            .into(),
+            cmd!(sh, "{verus_binary_path} --output-json --time {target}")
+                .args(ctx.run_configuration.verus_extra_args.iter().flatten())
+                .args(project.extra_args.iter().flatten())
+                .into(),
         )
         .output()
         .map_err(|e| anyhow!("cannot execute verus on {}: {}", &project.name, e))?
@@ -281,31 +275,30 @@ fn process_target(
 
     let (output_json, verus_output) = if let Some(mut output_json) = all_objects.into_iter().next()
     {
-        let verus_output: Option<VerusOutput> =
-            match serde_json::from_value(output_json.clone()) {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    if verus_failed {
-                        // Verus already logged a warning above; the incomplete
-                        // JSON (e.g., missing `smt`) is expected in this case.
-                        debug!(
-                            "Verus JSON for {} is incomplete (failed before \
+        let verus_output: Option<VerusOutput> = match serde_json::from_value(output_json.clone()) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                if verus_failed {
+                    // Verus already logged a warning above; the incomplete
+                    // JSON (e.g., missing `smt`) is expected in this case.
+                    debug!(
+                        "Verus JSON for {} is incomplete (failed before \
                              verification): {}",
-                            &project.name, e
-                        );
-                    } else {
-                        error!(
-                            "cannot parse verus json output for {}: {}",
-                            &project.name, e
-                        );
-                        let stderr_str = String::from_utf8_lossy(&output.stderr);
-                        if !stderr_str.trim().is_empty() {
-                            error!("Verus stderr: {}", stderr_str.trim_end());
-                        }
+                        &project.name, e
+                    );
+                } else {
+                    error!(
+                        "cannot parse verus json output for {}: {}",
+                        &project.name, e
+                    );
+                    let stderr_str = String::from_utf8_lossy(&output.stderr);
+                    if !stderr_str.trim().is_empty() {
+                        error!("Verus stderr: {}", stderr_str.trim_end());
                     }
-                    None
                 }
-            };
+                None
+            }
+        };
         let duration_ms_value = serde_json::Value::Number(
             serde_json::Number::from_f64(project_verification_duration.as_millis() as f64)
                 .expect("valid verus_build_duration"),
@@ -403,9 +396,8 @@ fn process_project(
         } else {
             log_command(cmd!(ctx.sh, "sh -c {prepare_script}").into()).status()
         };
-        let exit_status = status.map_err(|e| {
-            anyhow!("cannot execute prepare script for {}: {}", &project.name, e)
-        })?;
+        let exit_status = status
+            .map_err(|e| anyhow!("cannot execute prepare script for {}: {}", &project.name, e))?;
         if !exit_status.success() {
             return Err(anyhow!(
                 "prepare script for {} failed with {}",
@@ -649,7 +641,10 @@ fn main() -> anyhow::Result<()> {
 
     for project in run_configuration.projects.iter() {
         if !args.projects.is_empty() && !args.projects.contains(&project.name) {
-            debug!("Skipping project {} (not in --project filter)", project.name);
+            debug!(
+                "Skipping project {} (not in --project filter)",
+                project.name
+            );
             continue;
         }
         if project.ignore && !args.run_ignored {
@@ -732,7 +727,11 @@ fn main() -> anyhow::Result<()> {
         succeeded_projects.len() + failed_projects.len() + ignored_projects.len()
     );
     if !succeeded_projects.is_empty() {
-        println!("Succeeded ({}): {}", succeeded_projects.len(), succeeded_projects.join(", "));
+        println!(
+            "Succeeded ({}): {}",
+            succeeded_projects.len(),
+            succeeded_projects.join(", ")
+        );
     }
     if !failed_projects.is_empty() {
         println!("Failed ({}):", failed_projects.len());
@@ -745,7 +744,11 @@ fn main() -> anyhow::Result<()> {
         }
     }
     if !ignored_projects.is_empty() {
-        println!("Ignored ({}): {}", ignored_projects.len(), ignored_projects.join(", "));
+        println!(
+            "Ignored ({}): {}",
+            ignored_projects.len(),
+            ignored_projects.join(", ")
+        );
     }
     if !all_warnings.is_empty() {
         println!("Warnings ({}):", all_warnings.len());
