@@ -49,10 +49,9 @@ jobs:
           vargo clean
           VERUS_SINGULAR_PATH="$(which Singular)" VERUS_Z3_PATH="$(pwd)/z3" vargo build --release --features singular
 
-      - name: clone and build verita
+      - name: build verita
+        working-directory: ./tools/verita
         run: |
-          git clone https://github.com/parno/verita.git /tmp/verita
-          cd /tmp/verita
           cargo build --release
 
       - name: try to download previous results
@@ -61,12 +60,12 @@ jobs:
         with:
           workflow: nightly-verita.yml
           name: verita-results
-          path: /tmp/verita/previous-results
+          path: ${{ github.workspace }}/tools/verita/previous-results
           search_artifacts: true
           if_no_artifact_found: warn
 
       - name: run verita
-        working-directory: /tmp/verita
+        working-directory: ./tools/verita
         run: |
           ./target/release/verita \
             --verus-repo "$GITHUB_WORKSPACE" \
@@ -78,7 +77,7 @@ jobs:
       - name: find output directory
         if: always()
         id: output
-        working-directory: /tmp/verita
+        working-directory: ./tools/verita
         run: |
           # verita creates output/<timestamp>-<label>/ — find the most recent one
           OUTPUT_DIR=$(ls -td output/*-nightly | head -1)
@@ -87,7 +86,7 @@ jobs:
 
       - name: summarize results
         if: always()
-        working-directory: /tmp/verita
+        working-directory: ./tools/verita
         run: |
           OUTPUT_DIR="${{ steps.output.outputs.dir }}"
 
@@ -112,5 +111,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: verita-results
-          path: /tmp/verita/${{ steps.output.outputs.dir }}
+          path: ${{ github.workspace }}/tools/verita/${{ steps.output.outputs.dir }}
           retention-days: 90
