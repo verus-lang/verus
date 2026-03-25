@@ -138,9 +138,9 @@ The definition can then be revealed locally via the [`reveal` and `reveal_with_f
 
 ## `#[verifier::proof_note]`
 
-Attach an arbitrary string note to a `requires`/`ensures` clause or an `assume`/`assert` statement.
+Attach a string note to a `requires`/`ensures` clause or an `assume`/`assert` statement.
 
-The note is shown in errors for failed proof obligations, as well as in the JSON output under `function_details`.
+The note is included in errors for failed proof obligations, as well as in the JSON output under the key `func-details`.
 
 ## `#[verifier::rlimit(n)]` and `#[verifier::rlimit(infinity)]`
 
