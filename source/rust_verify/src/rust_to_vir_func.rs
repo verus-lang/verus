@@ -2215,8 +2215,8 @@ pub(crate) fn check_item_fn<'tcx>(
         attrs: fattrs,
         body,
         extra_dependencies: header.extra_dependencies,
-        async_params_mode_binding_and_ret: if async_ret.is_some() {
-            Some((Arc::new(vec![]), async_ret.unwrap()))
+        async_params_mode_binding_and_ret: if let Some(async_ret) = async_ret {
+            Some((Arc::new(vec![]), async_ret))
         } else {
             None
         },
