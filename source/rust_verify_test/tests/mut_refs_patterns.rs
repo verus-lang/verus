@@ -486,7 +486,7 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `o_ref.0` as mutable, as it is behind a `&` reference")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `o_ref.0` as mutable, as it is behind a `&` reference")
 }
 
 test_verify_one_file_with_options! {
@@ -745,7 +745,7 @@ test_verify_one_file_with_options! {
                     assert(has_resolved(o->A_0.0.1)); // TODO(new_mut_ref): better triggering
 
                     *r_pair_0 = 20;
-                    assert(mut_ref_future(r_pair_0) == pair.0);
+                    assert(mut_ref_future(r_pair_0) == after_borrow(pair.0));
                     **rx = 21;
                     *ry = 22;
                 }
@@ -823,7 +823,7 @@ test_verify_one_file_with_options! {
                     assert(has_resolved(o->A_0.0.1));
 
                     *r_pair_0 = 20;
-                    assert(mut_ref_future(r_pair_0) == pair.0);
+                    assert(mut_ref_future(r_pair_0) == after_borrow(pair.0));
                     **rx = 21;
                     *ry = 22;
                 }
@@ -910,7 +910,7 @@ test_verify_one_file_with_options! {
             assert(has_resolved(o->A_0.0.1)); // TODO(new_mut_ref): better triggering
 
             *r_pair_0 = 20;
-            assert(mut_ref_future(r_pair_0) == pair.0);
+            assert(mut_ref_future(r_pair_0) == after_borrow(pair.0));
             **rx = 21;
             *ry = 22;
 
@@ -982,7 +982,7 @@ test_verify_one_file_with_options! {
             assert(has_resolved(o->A_0.0.1));
 
             *r_pair_0 = 20;
-            assert(mut_ref_future(r_pair_0) == pair.0);
+            assert(mut_ref_future(r_pair_0) == after_borrow(pair.0));
             **rx = 21;
             *ry = 22;
 
@@ -3889,7 +3889,7 @@ test_verify_one_file_with_options! {
             let mut o_ref = &o;
             let Some(ref mut i) = o_ref else { loop{} };
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `o_ref.0` as mutable, as it is behind a `&` reference")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `o_ref.0` as mutable, as it is behind a `&` reference")
 }
 
 test_verify_one_file_with_options! {
@@ -4041,7 +4041,7 @@ test_verify_one_file_with_options! {
             assert(has_resolved(o->A_0.0.1)); // TODO(new_mut_ref): better triggering
 
             *r_pair_0 = 20;
-            assert(mut_ref_future(r_pair_0) == pair.0);
+            assert(mut_ref_future(r_pair_0) == after_borrow(pair.0));
             **rx = 21;
             *ry = 22;
 
@@ -4118,7 +4118,7 @@ test_verify_one_file_with_options! {
             assert(has_resolved(o->A_0.0.1)); // TODO(new_mut_ref): better triggering
 
             *r_pair_0 = 20;
-            assert(mut_ref_future(r_pair_0) == pair.0);
+            assert(mut_ref_future(r_pair_0) == after_borrow(pair.0));
             **rx = 21;
             *ry = 22;
 

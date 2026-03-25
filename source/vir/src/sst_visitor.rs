@@ -297,6 +297,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         let t = self.visit_typ(t)?;
                         R::ret(|| UnaryOpr::HasResolved(R::get(t)))
                     }
+                    UnaryOpr::ToDyn(t) => {
+                        let t = self.visit_typ(t)?;
+                        R::ret(|| UnaryOpr::ToDyn(R::get(t)))
+                    }
                     UnaryOpr::IsVariant { .. }
                     | UnaryOpr::Field { .. }
                     | UnaryOpr::IntegerTypeBound(..)
@@ -822,7 +826,6 @@ where
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn stm_visitor_dfs<T, F>(stm: &Stm, f: &mut F) -> VisitorControlFlow<T>
 where
     F: FnMut(&Stm) -> VisitorControlFlow<T>,
@@ -831,6 +834,20 @@ where
     match visitor.visit_stm(stm) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(val) => VisitorControlFlow::Stop(val),
+    }
+}
+
+pub(crate) fn stm_visitor_check<E, MF>(stm: &Stm, mf: &mut MF) -> Result<(), E>
+where
+    MF: FnMut(&Stm) -> Result<(), E>,
+{
+    match stm_visitor_dfs(stm, &mut |stm| match mf(stm) {
+        Ok(()) => VisitorControlFlow::Recurse,
+        Err(e) => VisitorControlFlow::Stop(e),
+    }) {
+        VisitorControlFlow::Recurse => Ok(()),
+        VisitorControlFlow::Return => unreachable!(),
+        VisitorControlFlow::Stop(e) => Err(e),
     }
 }
 

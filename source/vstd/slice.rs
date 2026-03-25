@@ -67,7 +67,7 @@ pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
 }
 
 ////// Len (with autospec)
-#[cfg_attr(all(verus_keep_ghost, not(verus_verify_core)), rustc_diagnostic_item = "verus::vstd::slice::spec_slice_len")]
+#[cfg_attr(all(verus_keep_ghost), rustc_diagnostic_item = "verus::vstd::slice::spec_slice_len")]
 pub uninterp spec fn spec_slice_len<T>(slice: &[T]) -> usize;
 
 // This axiom is slightly better than defining spec_slice_len to just be `slice@.len() as usize`
@@ -77,10 +77,10 @@ pub broadcast axiom fn axiom_spec_len<T>(slice: &[T])
         #[trigger] spec_slice_len(slice) == slice@.len(),
 ;
 
-#[verifier::when_used_as_spec(spec_slice_len)]
+#[verifier::allow_in_spec]
 pub assume_specification<T>[ <[T]>::len ](slice: &[T]) -> (len: usize)
-    ensures
-        len == spec_slice_len(slice),
+    returns
+        spec_slice_len(slice),
 ;
 
 pub open spec fn spec_slice_is_empty<T>(slice: &[T]) -> bool {

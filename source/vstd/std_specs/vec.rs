@@ -68,9 +68,9 @@ pub fn vec_index_mut<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element
         i < vec.view().len(),
     ensures
         *element == old(vec)@.index(i as int),
-        fin(vec)@ == old(vec)@.update(i as int, *fin(element)),
+        final(vec)@ == old(vec)@.update(i as int, *final(element)),
 
-        *fin(element) == fin(vec).view().index(i as int),
+        *final(element) == final(vec).view().index(i as int),
     no_unwind
 {
     &mut vec[i]
@@ -241,7 +241,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut Vec<T, A>) -> (slice: &mut [T])
     ensures
         slice@ == old(vec)@,
-        fin(slice)@ == fin(vec)@,
+        final(slice)@ == final(vec)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::deref ](
@@ -533,12 +533,17 @@ pub broadcast axiom fn axiom_vec_has_resolved<T>(vec: Vec<T>, i: int)
         ),
 ;
 
+pub broadcast axiom fn axiom_vec_decreases_to_view<T>(v: Vec<T>)
+    ensures
+        #[trigger] (decreases_to!(v => v@));
+
 pub broadcast group group_vec_axioms {
     axiom_spec_len,
     axiom_vec_index_decreases,
     vec_clone_deep_view_proof,
     axiom_spec_into_iter,
     axiom_vec_has_resolved,
+    axiom_vec_decreases_to_view,
 }
 
 } // verus!

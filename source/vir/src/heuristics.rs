@@ -53,14 +53,14 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
     match &exp.x {
         ExpX::Unary(op, e) => match op {
             UnaryOp::Not | UnaryOp::BitNot(_) | UnaryOp::Clip { .. } => exp.clone(),
-            UnaryOp::FloatToBits => exp.clone(),
             UnaryOp::IntToReal => exp.clone(),
             UnaryOp::RealToInt => exp.clone(),
-            UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::Length(_) => exp.clone(),
+            UnaryOp::FloatToBits => exp.clone(),
+            UnaryOp::IeeeFloat(_) => exp.clone(),
+            UnaryOp::StrLen | UnaryOp::Length(_) => exp.clone(),
             UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
             UnaryOp::Trigger(_)
             | UnaryOp::CoerceMode { .. }
-            | UnaryOp::ToDyn
             | UnaryOp::MustBeFinalized
             | UnaryOp::MustBeElaborated
             | UnaryOp::HeightTrigger
@@ -74,7 +74,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOpr::Field(_) => exp.clone(),
             UnaryOpr::IntegerTypeBound(..) => exp.clone(),
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-            UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) => {
+            UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) | UnaryOpr::ToDyn(_) => {
                 exp.new_x(ExpX::UnaryOpr(op.clone(), insert_auto_ext_equal(ctx, e)))
             }
             UnaryOpr::HasResolved(..) => exp.clone(),
@@ -104,6 +104,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             | BinaryOp::Arith(..)
             | BinaryOp::RealArith(..)
             | BinaryOp::Bitwise(..)
+            | BinaryOp::IeeeFloat(_)
             | BinaryOp::StrGetChar
             | BinaryOp::Index(..) => exp.clone(),
         },

@@ -410,13 +410,13 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::CastToInteger
                 | UnaryOp::Length(_) => 0,
                 UnaryOp::HeightTrigger => 1,
-                UnaryOp::ToDyn => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
-                UnaryOp::FloatToBits => 1,
                 UnaryOp::IntToReal => 1,
                 UnaryOp::RealToInt => 1,
+                UnaryOp::FloatToBits => 1,
+                UnaryOp::IeeeFloat(_) => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
-                UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
+                UnaryOp::StrLen => fail_on_strop(),
                 UnaryOp::MutRefFinal(_) => 1,
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
             };
@@ -447,6 +447,10 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (is_pure, term1) = gather_terms(ctxt, ctx, e1, depth + 1);
             (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
+        ExpX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
+            let (_is_pure, term1) = gather_terms(ctxt, ctx, e1, 1);
+            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
+        }
         ExpX::UnaryOpr(
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }),
             lhs,
@@ -465,7 +469,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let depth = match op {
                 And | Or | Xor | Implies | Eq(_) => 0,
                 HeightCompare { .. } => 1,
-                Ne | Inequality(_) | Arith(..) | RealArith(..) => 1,
+                Ne | Inequality(_) | Arith(..) | RealArith(..) | IeeeFloat(..) => 1,
                 Bitwise(..) => 1,
                 StrGetChar => fail_on_strop(),
                 Index(..) => 1,

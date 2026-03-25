@@ -159,9 +159,10 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         if self.override_stability {
             config.override_queries = Some(|_session, providers| {
-                providers.hir_attr_map = |tcx, owner_id| {
-                    let mut map =
-                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.hir_attr_map)(tcx, owner_id);
+                providers.queries.hir_attr_map = |tcx, owner_id| {
+                    let mut map = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_attr_map)(
+                        tcx, owner_id,
+                    );
                     if needs_stable_attr(tcx, owner_id) && !has_stable_attr(&map, owner_id) {
                         map = add_stable_attr(tcx, owner_id, map);
                     }
@@ -363,11 +364,12 @@ pub fn run(
         );
     }
 
-    let compile_status = if !verifier.compile && verifier.args.no_lifetime {
-        Ok(())
-    } else {
-        run_with_erase_macro_compile(rustc_args, verifier.compile, verifier.args.vstd)
-    };
+    let compile_status =
+        if !verifier.compile && (verifier.args.no_erasure_check || verifier.args.no_lifetime) {
+            Ok(())
+        } else {
+            run_with_erase_macro_compile(rustc_args, verifier.compile, verifier.args.vstd)
+        };
 
     let time2 = Instant::now();
 

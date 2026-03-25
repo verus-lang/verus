@@ -240,7 +240,7 @@ use crate::ast::{
     ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
     VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
-use crate::ast_util::{bool_typ, mk_bool, undecorate_typ, unit_typ};
+use crate::ast_util::{bool_typ, mk_bool, typ_to_diagnostic_str, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
 use crate::messages::error;
@@ -796,13 +796,8 @@ impl<'a> Builder<'a> {
                 for (field_name, unfinal_read_kind) in taken_fields.iter() {
                     if self.is_move(unfinal_read_kind) {
                         if !matches!(p, ComputedPlaceTyped::Exact(..)) {
-                            // TODO(new_mut_ref): we need careful handling here; this case
-                            // should be impossible if the source program is well-formed,
-                            // but the problem is we haven't run lifetime  checking yet.
-                            // So we might get `try to move from foo[i]` error here or something.
-                            panic!(
-                                "Verus Internal State: inconsistent state, move out of ghost place or index"
-                            )
+                            self.emit_bad_move_err(&p, &place.span);
+                            break;
                         }
                         if let Some(mut p) = p.clone().get_place_for_move() {
                             p.projections.push(ProjectionTyped::struct_field(
@@ -927,7 +922,7 @@ impl<'a> Builder<'a> {
                 external_spec: _,
             } => {
                 // Build the closure interior as a disconnected part of the CFG
-                let fn_scope = self.build_closure(params, proof_fn_modes, body);
+                let fn_scope = self.build_closure(&expr.span, params, proof_fn_modes, body);
 
                 // Emit instructions in the parent function that correspond to the
                 // construction of the closure.
@@ -1095,8 +1090,8 @@ impl<'a> Builder<'a> {
                 let _ = self.build(e, bb)?;
                 Err(())
             }
-            ExprX::AssignToPlace { place, rhs, op, resolve } => {
-                assert!(resolve.is_none());
+            ExprX::AssignToPlace { place, rhs, op, resolve, typ: _ } => {
+                assert!(!resolve);
                 // Right-hand side first!
                 let bb = self.build(rhs, bb)?;
                 let (p, bb) = self.build_place_and_intern(place, bb, TypInv::Yes)?;
@@ -1139,7 +1134,7 @@ impl<'a> Builder<'a> {
                 // these nodes.
                 panic!("Verus Internal Error: unhandled TwoPhaseBorrowMut node");
             }
-            ExprX::BorrowMut(p) => {
+            ExprX::BorrowMut(p) | ExprX::BorrowMutTracked(p) => {
                 let (p, bb) = self.build_place_and_intern(p, bb, TypInv::Yes)?;
                 if let Some(p) = p.get_place_for_mutation() {
                     self.push_instruction_propagate(
@@ -1150,17 +1145,11 @@ impl<'a> Builder<'a> {
                 }
                 Ok(bb)
             }
-            ExprX::ReadPlace(p, unfinal_read_kind) => {
-                let (p, bb) = self.build_place_typed(p, bb, TypInv::No)?;
+            ExprX::ReadPlace(place, unfinal_read_kind) => {
+                let (p, bb) = self.build_place_typed(place, bb, TypInv::No)?;
                 if self.is_move(unfinal_read_kind) {
                     if !matches!(p, ComputedPlaceTyped::Exact(..)) {
-                        // TODO(new_mut_ref): we need careful handling here; this case
-                        // should be impossible if the source program is well-formed,
-                        // but the problem is we haven't run lifetime  checking yet.
-                        // So we might get `try to move from foo[i]` error here or something.
-                        panic!(
-                            "Verus Internal State: inconsistent state, move out of ghost place or index"
-                        )
+                        self.emit_bad_move_err(&p, &place.span);
                     }
                     if let Some(p) = p.get_place_for_move() {
                         let p = self.locals.add_place(&p);
@@ -1738,6 +1727,7 @@ impl<'a> Builder<'a> {
 
     fn build_closure(
         &mut self,
+        span: &Span,
         params: &VarBinders<Typ>,
         proof_fn_modes: &Option<(Arc<Vec<Mode>>, Mode)>,
         body: &Expr,
@@ -1779,8 +1769,13 @@ impl<'a> Builder<'a> {
         let mut fn_scope = self.pop_fn();
 
         if fn_scope.upvars_mutated.len() > 0 {
-            // TODO(new_mut_ref): make this a real error
-            panic!("Verus unsupported: closure mutable references");
+            let name = &self.locals.locals[fn_scope.upvars_mutated[0].local].name;
+            let name = match name {
+                LocalName::Named(var_ident) => crate::def::user_local_name(&var_ident),
+                LocalName::Temporary(..) => "[Verus Internal Error: mutably captured temporary]",
+            };
+            self.errors.push(error(span,
+                format!("Verus does not currently support closures capturing a mutable reference (mutably captured variable `{name}`)")));
         }
 
         fn_scope.upvars_moved = sort_and_remove_redundant(fn_scope.upvars_moved);
@@ -1811,8 +1806,7 @@ impl<'a> Builder<'a> {
     }
 
     fn push_scope(&mut self) {
-        // TODO(new_mut_ref): disallow shadowing
-        self.fns.last_mut().unwrap().scope_map.push_scope(true);
+        self.fns.last_mut().unwrap().scope_map.push_scope(false);
     }
 
     fn pop_scope(&mut self) {
@@ -1870,6 +1864,35 @@ impl<'a> Builder<'a> {
                 self.errors.push(error(&p.span, "Verus Internal Error: get_typ_inv_fun failed"));
                 None
             }
+        }
+    }
+
+    //// Errors
+
+    /// Call this when you try to move from a place and the place isn't Exact.
+    ///
+    /// The Partial case can only happen if the user tries to move out of an array
+    /// or slice. This is illegal, but lifetime checking hasn't run
+    /// yet, so we have to handle it here.
+    ///
+    /// If we get the Ghost case, that's an internal error; that should have been ruled
+    /// out by mode-checking.
+    fn emit_bad_move_err(&mut self, p: &ComputedPlaceTyped, span: &Span) {
+        match p {
+            ComputedPlaceTyped::Partial(fpt) => {
+                let t = typ_to_diagnostic_str(&undecorate_typ(&fpt.projected_typ()));
+                self.errors.push(error(
+                    span,
+                    format!("cannot move out of type `{:}`, which is non-copy", t),
+                ));
+            }
+            ComputedPlaceTyped::Ghost(_) => {
+                self.errors.push(error(
+                    span,
+                    "Verus Internal Error: inconsistent state, move out of ghost place",
+                ));
+            }
+            ComputedPlaceTyped::Exact(_) => unreachable!(),
         }
     }
 }
@@ -2113,7 +2136,12 @@ impl<'a> LocalCollection<'a> {
                 // 'place projection' common in this file.)
                 // Anyway, the `cur_typ` should be equivalent and should also be
                 // head-normalized, so use that instead.
-                let typ = undecorate_box_trk_decorations(&cur_typ);
+                //
+                // We can skip over Box and Tracked modifiers.
+                // We also skip over shared reference modifiers to avoid panicking,
+                // though those shouldn't show up in well-formed code.
+                // (If there are any, they will show up in lifetime-checking.)
+                let typ = undecorate_box_trk_shr_decorations(&cur_typ);
 
                 match &**typ {
                     TypX::MutRef(inner_typ) => {
@@ -2313,10 +2341,11 @@ impl<'a> LocalCollection<'a> {
     }
 }
 
-fn undecorate_box_trk_decorations(t: &Typ) -> &Typ {
+fn undecorate_box_trk_shr_decorations(t: &Typ) -> &Typ {
     match &**t {
-        TypX::Decorate(TypDecoration::Box, _, t) => undecorate_box_trk_decorations(t),
-        TypX::Decorate(TypDecoration::Tracked, _, t) => undecorate_box_trk_decorations(t),
+        TypX::Decorate(TypDecoration::Box, _, t)
+        | TypX::Decorate(TypDecoration::Tracked, _, t)
+        | TypX::Decorate(TypDecoration::Ref, _, t) => undecorate_box_trk_shr_decorations(t),
         _ => t,
     }
 }
@@ -2498,6 +2527,16 @@ impl ProjectionTyped {
         match self {
             ProjectionTyped::StructField(_, typ) => typ.clone(),
             ProjectionTyped::DerefMut(typ) => typ.clone(),
+        }
+    }
+}
+
+impl FlattenedPlaceTyped {
+    fn projected_typ(&self) -> Typ {
+        if self.projections.len() > 0 {
+            self.projections.last().unwrap().typ()
+        } else {
+            self.typ.clone()
         }
     }
 }
@@ -3234,7 +3273,7 @@ fn apply_resolutions(
                 id_map.get_mut(&expr.span.id)
             {
                 if *seen_yet {
-                    panic!("Verus internal error: duplicate AstId");
+                    panic!("Verus internal error: duplicate AstId {:?}", &expr.span);
                 }
                 *seen_yet = true;
 
@@ -3397,7 +3436,7 @@ fn filter_and_make_assumes(
 fn make_assume(cfg: &CFG, span: &Span, fp: &FlattenedPlace) -> Expr {
     let ast_place = cfg.locals.to_ast_place(span, fp);
     let e = crate::ast_util::place_to_spec_expr(&ast_place);
-    // TODO(new_mut_ref): are we sure that ast_place.typ is correct including decoration?
+    // The typ is correct up to Box and Tracked decorations, which is fine
     let has_resolvedx = ExprX::UnaryOpr(UnaryOpr::HasResolved(ast_place.typ.clone()), e);
     let has_resolved = SpannedTyped::new(&ast_place.span, &bool_typ(), has_resolvedx);
     let conditional_has_resolved =
@@ -3409,16 +3448,14 @@ fn make_assume(cfg: &CFG, span: &Span, fp: &FlattenedPlace) -> Expr {
 /// (Equivalently, adds an `assume(has_resolved(...))` for the value being overwritten
 fn apply_resolution_to_assignment(e: &Expr) -> Expr {
     match &e.x {
-        ExprX::AssignToPlace { place, rhs, op, resolve } => {
-            // TODO(new_mut_ref): are we sure that ast_place.typ is correct including decoration?
-            let typ = place.typ.clone();
-
-            assert!(resolve.is_none());
+        ExprX::AssignToPlace { place, rhs, op, resolve, typ } => {
+            assert!(!resolve);
             e.new_x(ExprX::AssignToPlace {
                 place: place.clone(),
                 rhs: rhs.clone(),
                 op: *op,
-                resolve: Some(typ),
+                resolve: true,
+                typ: typ.clone(),
             })
         }
         _ => {
@@ -3584,7 +3621,8 @@ fn apply_temp_simplification(cfg: &CFG, place: &Place, exprs: Vec<Expr>) -> Plac
             place: tmp_local_place.clone(),
             rhs: expr.clone(),
             op: None,
-            resolve: None,
+            typ: place.typ.clone(),
+            resolve: false,
         },
     );
 

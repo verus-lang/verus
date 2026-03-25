@@ -1170,16 +1170,15 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         Not => bool_new(!b),
                         BitNot(..)
                         | Clip { .. }
-                        | FloatToBits
                         | IntToReal
                         | RealToInt
+                        | FloatToBits
+                        | IeeeFloat(_)
                         | HeightTrigger
                         | Trigger(_)
                         | CoerceMode { .. }
-                        | ToDyn
                         | StrLen
                         | Length(..)
-                        | StrIsAscii
                         | MutRefCurrent
                         | MutRefFuture(_)
                         | MutRefFinal(_)
@@ -1293,14 +1292,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         Not
                         | HeightTrigger
                         | Trigger(_)
-                        | FloatToBits
                         | IntToReal
                         | RealToInt
+                        | FloatToBits
+                        | IeeeFloat(_)
                         | CoerceMode { .. }
-                        | ToDyn
                         | StrLen
                         | Length(..)
-                        | StrIsAscii
                         | MutRefCurrent
                         | MutRefFuture(_)
                         | MutRefFinal(_)
@@ -1362,6 +1360,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => ok,
                     }
                 }
+                ToDyn(_) => Ok(e),
                 CustomErr(_) => Ok(e),
                 ProofNote(_) => Ok(e),
                 HasResolved(_) => Ok(e),
@@ -1624,9 +1623,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     let e2 = eval_expr_internal(ctx, state, e2)?;
                     eval_array_index(state, exp, &e1, &e2)
                 }
-                Index(ArrayKind::Slice, _) | HeightCompare { .. } | StrGetChar | RealArith(..) => {
-                    ok_e2(e2.clone())
-                }
+                Index(ArrayKind::Slice, _)
+                | HeightCompare { .. }
+                | StrGetChar
+                | RealArith(..)
+                | IeeeFloat(_) => ok_e2(eval_expr_internal(ctx, state, e2)?),
             }
         }
         BinaryOpr(op, e1, e2) => {

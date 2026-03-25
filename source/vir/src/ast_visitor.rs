@@ -124,6 +124,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         })
     }
 
+    #[allow(dead_code)]
     fn visit_opt_typ(&mut self, typ_opt: &Option<Typ>) -> Result<R::Opt<Typ>, Err> {
         R::map_opt(typ_opt, &mut |t| self.visit_typ(t))
     }
@@ -277,6 +278,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             UnaryOpr::HasResolved(t) => {
                 let t = self.visit_typ(t)?;
                 R::ret(|| UnaryOpr::HasResolved(R::get(t)))
+            }
+            UnaryOpr::ToDyn(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| UnaryOpr::ToDyn(R::get(t)))
             }
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
@@ -460,16 +465,17 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let rhs = self.visit_expr(rhs)?;
                 R::ret(|| expr_new(ExprX::Assign { lhs: R::get(lhs), rhs: R::get(rhs), op: *op }))
             }
-            ExprX::AssignToPlace { place, rhs, op, resolve } => {
+            ExprX::AssignToPlace { place, rhs, op, resolve, typ } => {
                 let place = self.visit_place(place)?;
                 let rhs = self.visit_expr(rhs)?;
-                let resolve = self.visit_opt_typ(resolve)?;
+                let typ = self.visit_typ(typ)?;
                 R::ret(|| {
                     expr_new(ExprX::AssignToPlace {
                         place: R::get(place),
                         rhs: R::get(rhs),
                         op: *op,
-                        resolve: R::get_opt(resolve),
+                        resolve: *resolve,
+                        typ: R::get(typ),
                     })
                 })
             }
@@ -645,6 +651,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::TwoPhaseBorrowMut(p) => {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::TwoPhaseBorrowMut(R::get(p))))
+            }
+            ExprX::BorrowMutTracked(p) => {
+                let p = self.visit_place(p)?;
+                R::ret(|| expr_new(ExprX::BorrowMutTracked(R::get(p))))
             }
             ExprX::ImplicitReborrowOrSpecRead(p, two_phase, span) => {
                 let p = self.visit_place(p)?;
@@ -1535,7 +1545,7 @@ where
     }
 }
 
-pub(crate) fn ast_visitor_check<ERR, E, FE, FS, FP, FT, FPL>(
+pub fn ast_visitor_check<ERR, E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
     env: &mut E,
     fe: &mut FE,

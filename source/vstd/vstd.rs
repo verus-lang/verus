@@ -14,9 +14,9 @@
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
 #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
 #![cfg_attr(verus_keep_ghost, feature(freeze))]
-#![cfg_attr(verus_keep_ghost, feature(derive_clone_copy))]
-#![cfg_attr(verus_keep_ghost, feature(derive_eq))]
-#![cfg_attr(verus_keep_ghost, verifier::migrate_postconditions_with_mut_refs(true))]
+#![cfg_attr(verus_keep_ghost, feature(derive_clone_copy_internals))]
+#![cfg_attr(verus_keep_ghost, feature(derive_eq_internals))]
+#![cfg_attr(verus_keep_ghost, verifier::deprecated_postcondition_mut_ref_style(true))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 #![cfg_attr(verus_keep_ghost, feature(new_range_api))]
 
@@ -75,7 +75,9 @@ pub mod string;
 #[cfg(feature = "std")]
 pub mod thread;
 pub mod tokens;
+pub mod utf8;
 pub mod view;
+pub mod wrapping;
 
 #[cfg(verus_keep_ghost)]
 pub mod std_specs;
@@ -108,6 +110,7 @@ pub broadcast group group_vstd_default {
     //
     slice::group_slice_axioms,
     array::group_array_axioms,
+    #[cfg(not(verus_verify_core))]
     string::group_string_axioms,
     raw_ptr::group_raw_ptr_axioms,
     layout::group_layout_axioms,
@@ -131,6 +134,8 @@ pub broadcast group group_vstd_default {
     //
     #[cfg(all(feature = "alloc", feature = "std"))]
     std_specs::hash::group_hash_axioms,
+    #[cfg(all(feature = "alloc", feature = "std"))]
+    std_specs::btree::group_btree_axioms,
 }
 
 } // verus!

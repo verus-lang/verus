@@ -163,7 +163,10 @@ test_verify_one_file_with_options! {
                 no_method_body() // can't appear in implementation
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "no_method_body can only appear in trait method declarations",
+        "no_method_body can only appear in trait method declarations",
+    ])
 }
 
 test_verify_one_file! {
@@ -950,6 +953,41 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_termination_tuple_clone verus_code! {
+        use vstd::prelude::*;
+        fn f<A: Clone>() {
+        }
+        fn g() {
+            f::<(u8, u8)>();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_termination_tuple_clone_fail verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            proof fn f();
+        }
+
+        struct S<A>(A);
+        impl<A: T + Clone> Clone for S<A> {
+            fn clone(&self) -> Self {
+                S(self.0.clone())
+            }
+        }
+
+        proof fn g<A: Clone>() {}
+
+        impl T for u8 {
+            proof fn f() {
+                let _ = g::<(u8, S<u8>)>();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
 }
 
 test_verify_one_file! {
@@ -2712,7 +2750,10 @@ test_verify_one_file_with_options! {
             assert(false);
         }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: foreign types")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "The verifier does not yet support the following Rust feature: foreign types",
+        "The verifier does not yet support the following Rust feature: foreign types",
+    ])
 }
 
 test_verify_one_file! {
@@ -4528,6 +4569,80 @@ test_verify_one_file! {
             const C: u8;
         }
         impl T for bool {
+            const C: u8 = Q;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const1_default verus_code! {
+        trait U {}
+
+        trait T<A, B> {
+            const C: usize = 10;
+            const S: &str = "no";
+            const E: usize = 20;
+        }
+
+        impl U for u16 {}
+
+        const Q: u8 = 10;
+
+        impl<Z: U> T<u8, Z> for bool {
+            const C: usize = 13 - Q as usize;
+            const S: &str = "ha";
+
+            #[verifier::external_body]
+            const E: usize = 4;
+        }
+
+        impl<Z: U> T<u16, Z> for bool {
+        }
+
+        fn test1() {
+            assert(<bool as T<u8, u16>>::C == 3);
+            assert(<bool as T<u16, u16>>::C == 10);
+            let c = <bool as T<u8, u16>>::C;
+            assert(c == 3);
+            let c2 = <bool as T<u16, u16>>::C;
+            assert(c2 == 3); // FAILS
+        }
+
+        fn test2<A: T<u8, u16>>() {
+            assert(A::C == 3); // FAILS
+        }
+
+        fn test3<A: T<u8, u16>>() {
+            assert(A::C == 10); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const2_default verus_code! {
+        const fn f() -> u8 { 3 }
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8 = f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const3_default verus_code! {
+        spec const Q: u8 = 3;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8 = Q;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected mode")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const4_default verus_code! {
+        exec const Q: u8 = 3;
+        trait T {
+            // implicitly dual exec-spec mode:
             const C: u8 = Q;
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")

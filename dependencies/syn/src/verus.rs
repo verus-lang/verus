@@ -596,6 +596,15 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    pub struct ExprFinal {
+        pub attrs: Vec<Attribute>,
+        pub final_token: Token![final],
+        pub paren_token: token::Paren,
+        pub arg: Box<Expr>,
+    }
+}
+
 #[cfg(feature = "parsing")]
 pub mod parsing {
     use super::*;
@@ -716,7 +725,14 @@ pub mod parsing {
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             let mut exprs = Punctuated::new();
             while !input.is_empty() && Self::is_next_condition_valid(ctx, input) {
-                let expr = Expr::parse_without_eager_brace(input)?;
+                let inner_attrs = input.call(Attribute::parse_inner)?;
+                let mut expr = Expr::parse_without_eager_brace(input)?;
+                if !inner_attrs.is_empty() {
+                    let mut existing_attrs = expr.replace_attrs(Vec::new());
+                    let mut attrs = inner_attrs;
+                    attrs.append(&mut existing_attrs);
+                    expr.replace_attrs(attrs);
+                }
                 exprs.push(expr);
                 if !input.peek(Token![,]) {
                     break;
@@ -791,6 +807,41 @@ pub mod parsing {
                 || input.peek2(Token![when])
                 || input.peek2(Token![no_unwind])
                 || input.peek2(Token![opens_invariants])
+        }
+
+        /// Remove top-level attributes: `#![trigger ...]`, `#![all_triggers]`, and `#![auto]`.
+        ///
+        /// Those currently attach to the first clause as inner attributes,
+        /// even though semantically they apply to the entire `ensures` group.
+        fn remove_top_level_attrs(&mut self) -> Vec<Attribute> {
+            let Some(first_clause) = self.exprs.first_mut() else {
+                return Vec::new();
+            };
+
+            fn is_top_level_trigger_attr(attr: &Attribute) -> bool {
+                if !matches!(attr.style, AttrStyle::Inner(_)) {
+                    return false;
+                }
+                if attr.path().segments.len() != 1 {
+                    return false;
+                }
+                match attr.path().segments[0].ident.to_string().as_ref() {
+                    "trigger" | "all_triggers" | "auto" => true,
+                    _ => false,
+                }
+            }
+
+            let mut top_level_attrs = Vec::new();
+            let mut remaining_attrs = Vec::new();
+            for attr in first_clause.replace_attrs(Vec::new()) {
+                if is_top_level_trigger_attr(&attr) {
+                    top_level_attrs.push(attr);
+                } else {
+                    remaining_attrs.push(attr);
+                }
+            }
+            first_clause.replace_attrs(remaining_attrs);
+            top_level_attrs
         }
     }
 
@@ -882,13 +933,14 @@ pub mod parsing {
     impl Ensures {
         /// Parse an `ensures` clause group in a given context.
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
-            let mut attrs = Vec::new();
             let token = input.parse()?;
-            attr::parsing::parse_inner(input, &mut attrs)?;
+            let mut exprs = Specification::parse_in(ctx, input)?;
+            // Hoist attributes that semantically belong to the entire group.
+            let top_level_attrs = exprs.remove_top_level_attrs();
             Ok(Ensures {
-                attrs,
+                attrs: top_level_attrs,
                 token,
-                exprs: Specification::parse_in(ctx, input)?,
+                exprs,
             })
         }
 
@@ -1682,6 +1734,23 @@ pub mod parsing {
             }
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for ExprFinal {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = Vec::new();
+            let final_token: Token![final] = input.parse()?;
+            let content;
+            let paren_token = parenthesized!(content in input);
+            let arg: Expr = content.parse()?;
+            Ok(ExprFinal {
+                attrs,
+                final_token,
+                paren_token,
+                arg: Box::new(arg),
+            })
+        }
+    }
 }
 
 #[cfg(feature = "printing")]
@@ -2252,6 +2321,17 @@ mod printing {
             self.base.to_tokens(tokens);
             self.arrow_token.to_tokens(tokens);
             self.member.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprFinal {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.final_token.to_tokens(tokens);
+            self.paren_token.surround(tokens, |tokens| {
+                self.arg.to_tokens(tokens);
+            });
         }
     }
 

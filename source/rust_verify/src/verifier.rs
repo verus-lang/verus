@@ -8,7 +8,7 @@ use crate::externs::VerusExterns;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
 use crate::util::{HashMapAbsorbWith, error};
-use crate::verus_items::VerusItems;
+use crate::verus_items::{VerusItem, VerusItems};
 use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, SmtSolver, ValidityResult};
@@ -309,6 +309,8 @@ pub struct Verifier {
 
     /// Details about each function
     pub func_details: HashMap<Fun, FuncDetails>,
+    /// Errors to report after verification has run
+    deferred_errors: Vec<VirErr>,
 
     pub via_cargo_args: Option<CargoVerusArgs>,
     // Some(DepTracker) if via_cargo_args.is_some(), None otherwise
@@ -490,6 +492,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: HashMap::new(),
+            deferred_errors: Vec::new(),
 
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
             via_cargo_args,
@@ -538,6 +541,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: HashMap::new(),
+            deferred_errors: Vec::new(),
 
             via_cargo_args: self.via_cargo_args.clone(),
             dep_tracker: None,
@@ -570,6 +574,7 @@ impl Verifier {
         self.bucket_stats.extend(other.bucket_stats);
         self.func_times.extend(other.func_times);
         self.func_details.absorb_with(other.func_details, |lhs, rhs| lhs.absorb(rhs));
+        self.deferred_errors.extend(other.deferred_errors);
     }
 
     fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
@@ -2646,7 +2651,7 @@ impl Verifier {
         other_vir_crates: Vec<Krate>,
         diagnostics: &impl air::messages::Diagnostics,
         crate_name: String,
-    ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
+    ) -> Result<bool, (Vec<VirErr>, Vec<vir::ast::VirErrAs>)> {
         if self.args.no_lifetime {
             rustc_mir_build_verus::verus::set_verus_aware_def_ids(Arc::new(HashSet::new()));
         }
@@ -2675,6 +2680,11 @@ impl Verifier {
             })
         };
 
+        if !verus_items.name_to_id.contains_key(&VerusItem::ErasedGhostValue) {
+            let err = crate::util::no_builtin_err(self.air_no_span.as_ref().unwrap());
+            return Err((vec![err], vec![]));
+        }
+
         let mut crate_names: Vec<String> = vec![crate_name.clone()];
         crate_names.extend(other_crate_names.into_iter());
         // TODO vec![vir::verus_builtins::verus_builtin_krate(&self.air_no_span.clone().unwrap())];
@@ -2695,6 +2705,9 @@ impl Verifier {
             external_functions: vec![],
             ignored_functions: vec![],
             bodies: vec![],
+            shadow_check: vec![],
+            extra_erase_ast_ids: vec![],
+            extra_erase_hir_ids_including_adjustments: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
 
@@ -2712,9 +2725,11 @@ impl Verifier {
 
         let ctxt_diagnostics = ctxtx.diagnostics.clone();
         let map_err_diagnostics =
-            |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
+            |err: VirErr| (vec![err], ctxt_diagnostics.borrow_mut().drain(..).collect());
+        let map_errs_diagnostics =
+            |errs: Vec<VirErr>| (errs, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
-        let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_err_diagnostics)?;
+        let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_errs_diagnostics)?;
 
         check_no_opaque_types_in_trait(ctxtx.tcx, &crate_items).map_err(map_err_diagnostics)?;
 
@@ -2751,7 +2766,7 @@ impl Verifier {
 
         let (ctxt, vir_crate) =
             crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
-                .map_err(map_err_diagnostics)?;
+                .map_err(map_errs_diagnostics)?;
 
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
@@ -2798,6 +2813,26 @@ impl Verifier {
         let vir_crate =
             vir::traits::merge_external_traits(vir_crate).map_err(map_err_diagnostics)?;
 
+        if self.args.log_all || self.args.log_args.log_impl_names {
+            let mut file = self
+                .create_log_file(None, crate::config::IMPL_NAMES_SUFFIX)
+                .map_err(map_err_diagnostics)?;
+            for imp in &vir_crate.trait_impls {
+                let ts: Vec<String> =
+                    imp.x.trait_typ_args.iter().map(vir::ast_util::typ_to_diagnostic_str).collect();
+                writeln!(
+                    &mut file,
+                    "{}   ###   {}   ###   {}   ###   {}",
+                    vir::ast_util::path_as_friendly_rust_name(&imp.x.impl_path),
+                    vir::ast_util::path_as_friendly_rust_name(&imp.x.trait_path),
+                    &ts.join(", "),
+                    &imp.span.as_string,
+                )
+                .map_err(|e| io_vir_err("log_impl_names".to_string(), e))
+                .map_err(map_err_diagnostics)?;
+            }
+        }
+
         Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
 
         crate::import_export::export_crate(
@@ -2820,12 +2855,12 @@ impl Verifier {
             vir::traits::demote_external_traits(diagnostics, &path_to_well_known_item, &vir_crate)
                 .map_err(map_err_diagnostics)?;
         let vir_crate =
-            vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (e, Vec::new()))?;
+            vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         let vir_crate = vir::traits::fixup_ens_has_return_for_trait_method_impls(vir_crate)
-            .map_err(|e| (e, Vec::new()))?;
+            .map_err(|e| (vec![e], Vec::new()))?;
 
         if self.args.check_api_safety {
-            vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (e, Vec::new()))?;
+            vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         }
 
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
@@ -2836,8 +2871,22 @@ impl Verifier {
             self.args.no_verify,
             self.args.no_cheating,
         );
-        let mut first_error: Option<VirErr> =
-            check_crate_result1.err().or(check_crate_result.err());
+        let mut first_error: Option<VirErr> = check_crate_result1.err();
+        match check_crate_result {
+            Ok(check_details) => {
+                for (func, failed_proof_notes) in check_details.func_failed_proof_notes {
+                    self.record_func_failed_proof_notes(
+                        func,
+                        failed_proof_notes.into_iter().collect(),
+                    );
+                }
+            }
+            Err(err) => {
+                if first_error.is_none() {
+                    first_error = Some(err);
+                }
+            }
+        }
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
@@ -2869,6 +2918,9 @@ impl Verifier {
                         diagnostics.report_as(&err.to_any(), MessageLevel::Error)
                     }
                 }
+                vir::ast::VirErrAs::NonFatalError(err, _) => {
+                    self.deferred_errors.push(err);
+                }
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
                 }
@@ -2878,13 +2930,14 @@ impl Verifier {
             }
         }
         if let Some(first_error) = first_error {
-            return Err((first_error, Vec::new()));
+            return Err((vec![first_error], Vec::new()));
         }
 
-        let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        let vir_crate =
+            vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         let (vir_crate, erasure_modes, _read_kind_finals) =
             vir::modes::check_crate(&vir_crate, self.args.new_mut_ref)
-                .map_err(|e| (e, Vec::new()))?;
+                .map_err(|e| (vec![e], Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_name = Some(crate_name);
@@ -2898,6 +2951,10 @@ impl Verifier {
         let external_functions = erasure_info.external_functions.clone();
         let ignored_functions = erasure_info.ignored_functions.clone();
         let bodies = erasure_info.bodies.clone();
+        let shadow_check = erasure_info.shadow_check.clone();
+        let extra_erase_ast_ids = erasure_info.extra_erase_ast_ids.clone();
+        let extra_erase_hir_ids_including_adjustments =
+            erasure_info.extra_erase_hir_ids_including_adjustments.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate: unpruned_crate,
             hir_vir_ids,
@@ -2908,15 +2965,19 @@ impl Verifier {
             external_functions,
             ignored_functions,
             bodies,
+            shadow_check,
+            extra_erase_ast_ids,
+            extra_erase_hir_ids_including_adjustments,
         };
         self.erasure_hints = Some(erasure_hints);
 
         if !self.args.no_lifetime {
             crate::erase::setup_verus_ctxt_for_thir_erasure(
+                tcx,
                 &self.verus_items.as_ref().unwrap(),
                 self.erasure_hints.as_ref().unwrap(),
             )
-            .map_err(|e| (e, Vec::new()))?;
+            .map_err(|e| (vec![e], Vec::new()))?;
         }
 
         // These can invoke mir_borrowck when opaque types are involved.
@@ -3056,7 +3117,7 @@ pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
 > = std::sync::RwLock::new(None);
 
 fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
-    let mut crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.hir_crate)(tcx, ());
+    let mut crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_crate)(tcx, ());
     crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(&mut crate_, tcx);
     crate_
 }
@@ -3091,35 +3152,49 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
         if self.verifier.args.no_lifetime {
             config.override_queries = Some(|_session, providers| {
-                providers.hir_crate = hir_crate;
-                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-                providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
-                providers.check_mod_deathness = |_, _| {};
+                providers.queries.hir_crate = hir_crate;
+                providers.queries.mir_const_qualif =
+                    |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.queries.lint_mod = |_, _| {};
+                providers.queries.check_liveness = |_, _| DenseBitSet::new_empty(0);
+                providers.queries.check_mod_deathness = |_, _| {};
 
-                providers.mir_borrowck =
+                providers.queries.mir_borrowck =
                     |tcx, _local_def_id| Ok(tcx.arena.alloc(Default::default()));
             });
         } else {
             config.override_queries = Some(|_session, providers| {
-                providers.hir_crate = hir_crate;
-                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-                providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
-                providers.check_mod_deathness = |_, _| {};
+                providers.queries.hir_crate = hir_crate;
+                providers.queries.mir_const_qualif =
+                    |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.queries.lint_mod = |_, _| {};
+                providers.queries.check_liveness = |_, _| DenseBitSet::new_empty(0);
+                providers.queries.check_mod_deathness = |_, _| {};
 
                 rustc_mir_build_verus::verus_provide(providers);
+                providers.queries.mir_built = |tcx, def| {
+                    // We need to override this to call our verus of build_mir.
+                    // mir_built is defined in the crate rustc_mir_transform, which I prefer
+                    // not to fork. The actual implementation of mir_built is more complicated
+                    // than this, but this seems to be the essential functionality.
+                    let body = rustc_mir_build_verus::builder::build_mir_inner_impl(tcx, def);
+                    //let pass = rustc_mir_transform::simplify::SimplifyCfg::Initial;
+                    //pass.run_pass(tcx, &mut body);
+                    tcx.alloc_steal_mir(body)
+                };
 
                 // check_well_formed when called on an OpaqueTy will trigger mir_borrowck to run.
                 // This happens earlier than we'd like, so we disable it.
                 // TODO: when we support opaque types we should run this check later
-                providers.check_well_formed =
+                providers.queries.check_well_formed =
                     |tcx: TyCtxt<'_>, def_id: rustc_hir::def_id::LocalDefId| {
                         let node = tcx.hir_node_by_def_id(def_id);
                         if matches!(node, rustc_hir::Node::OpaqueTy(_)) {
                             return Ok(());
                         }
-                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.check_well_formed)(tcx, def_id)
+                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.check_well_formed)(
+                            tcx, def_id,
+                        )
                     };
             });
         }
@@ -3182,7 +3257,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             if self.verifier.args.trace {
                 reporter.report_now(&note_bare("preparing crate for verification").to_any());
             }
-            if let Err((err, mut diagnostics)) = self.verifier.construct_vir_crate(
+            if let Err((errs, mut diagnostics)) = self.verifier.construct_vir_crate(
                 tcx,
                 verus_items.clone(),
                 &spans,
@@ -3191,7 +3266,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 &reporter,
                 crate_name.clone(),
             ) {
-                reporter.report_as(&err.to_any(), MessageLevel::Error);
+                assert!(errs.len() > 0);
+                for err in errs.into_iter() {
+                    reporter.report_as(&err.to_any(), MessageLevel::Error);
+                }
                 self.verifier.encountered_vir_error = true;
 
                 for diag in diagnostics.drain(..) {
@@ -3202,7 +3280,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         vir::ast::VirErrAs::Note(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Note)
                         }
-                        vir::ast::VirErrAs::NonBlockingError(err, _) => {
+                        vir::ast::VirErrAs::NonBlockingError(err, _)
+                        | vir::ast::VirErrAs::NonFatalError(err, _) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Error)
                         }
                     }
@@ -3314,6 +3393,7 @@ impl VerifierCallbacksEraseMacro {
                         module_path: _,
                         const_directive: false,
                         external_body: false,
+                        external_fn_specification: false,
                     }) => {
                         tcx.ensure_ok().mir_borrowck(def_id);
                     }
@@ -3327,15 +3407,19 @@ impl VerifierCallbacksEraseMacro {
 
     fn finish_verus(&mut self, compiler: &Compiler) {
         let spans = self.spans.clone().unwrap();
+        let reporter = Reporter::new(&spans, compiler);
         match self.verifier.verify_crate(compiler, &spans) {
             Ok(()) => {}
             Err(err) => {
                 if let VerifyErr::Vir(err) = err {
-                    let reporter = Reporter::new(&spans, compiler);
                     reporter.report_as(&err.to_any(), MessageLevel::Error);
                 }
                 self.verifier.encountered_vir_error = true;
             }
+        }
+        for err in std::mem::take(&mut self.verifier.deferred_errors) {
+            reporter.report_as(&err.to_any(), MessageLevel::Error);
+            self.verifier.encountered_vir_error = true;
         }
         if !self.verifier.args.output_json
             && !self.verifier.encountered_error

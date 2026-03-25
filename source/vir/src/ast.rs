@@ -373,6 +373,28 @@ pub enum ArrayKind {
     Slice,
 }
 
+/// IEEE floating point unary ops
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum IeeeFloatUnaryOp {
+    /// Cast to integer: rounding mode RTZ
+    /// Cast to float: rounding mode RNE
+    /// Cast to real: no rounding
+    Cast,
+    Neg,
+    Floor,
+    Ceil,
+    Round,
+    RoundTiesEven,
+    Trunc,
+    IsNormal,
+    IsSubnormal,
+    IsZero,
+    IsInfinite,
+    IsNaN,
+    IsNegative,
+    IsPositive,
+}
+
 /// Primitive unary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -402,6 +424,8 @@ pub enum UnaryOp {
     RealToInt,
     /// Return raw bits of a float as an int
     FloatToBits,
+    /// IEEE unary floating point ops
+    IeeeFloat(IeeeFloatUnaryOp),
     /// Operations that coerce from/to verus_builtin::Ghost or verus_builtin::Tracked
     CoerceMode {
         op_mode: Mode,
@@ -409,8 +433,6 @@ pub enum UnaryOp {
         to_mode: Mode,
         kind: ModeCoercion,
     },
-    /// Coerce from concrete type to dyn T
-    ToDyn,
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
@@ -425,8 +447,6 @@ pub enum UnaryOp {
     HeightTrigger,
     /// Used only for handling verus_builtin::strslice_len
     StrLen,
-    /// Used only for handling verus_builtin::strslice_is_ascii
-    StrIsAscii,
     /// Given an exec/proof expression used to construct a loop iterator,
     /// try to infer a pure specification for the loop iterator.
     /// Evaluate to Some(spec) if successful, None otherwise.
@@ -519,6 +539,8 @@ pub enum UnaryOpr {
     /// For primitive types this is trivially true.
     /// For datatypes this is recursive in the natural way.
     HasResolved(Typ),
+    /// Coerce from concrete type to `dyn T`. Typ arg is the Self type
+    ToDyn(Typ),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -629,6 +651,17 @@ pub enum ChainedOp {
     MultiEq,
 }
 
+/// IEEE floating point binary ops (rounding mode RNE)
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum IeeeFloatBinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Eq,
+    InEq(InequalityOp),
+}
+
 /// Primitive binary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 /// Note that all integer operations are on mathematic integers (IntRange::Int),
@@ -660,6 +693,8 @@ pub enum BinaryOp {
     RealArith(RealArithOp),
     /// Bit Vector Operators
     Bitwise(BitwiseOp, BitshiftBehavior),
+    /// IEEE floating point binary ops (rounding mode RNE)
+    IeeeFloat(IeeeFloatBinaryOp),
     /// Used only for handling verus_builtin::strslice_get_char
     StrGetChar,
     /// Index into an array or slice, no bounds-checking.
@@ -1058,7 +1093,7 @@ pub enum ExprX {
     /// lower to a Call node instead.)
     ///
     /// Used only when new-mut-refs is enabled.
-    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp>, resolve: Option<Typ> },
+    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp>, typ: Typ, resolve: bool },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
     /// Reveal a string
@@ -1128,6 +1163,8 @@ pub enum ExprX {
     ///
     /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
+    /// Borrow from a tracked place to get &mut Tracked<T>
+    BorrowMutTracked(Place),
     /// In exec/tracked code ExprX::BorrowMut(PlaceX::DerefMut(place))
     /// (with bool true = TwoPhaseBorrowMut)
     /// In spec code, it's just a spec snapshot of the place without a borrow
@@ -1195,10 +1232,33 @@ pub enum ModeWrapperMode {
 /// A `Place` represents (the computation of) a place that can be read from,
 /// moved from, or mutated. Like ordinary Exprs, the evaluation of a Place expression
 /// can have arbitrary side-effects.
+/// The evaluation order is a bit complicated; see place_preconditions.rs.
 ///
 /// A `Place` tree is always a sequence of modifiers that terminates in either a Local
 /// or a Temporary. Note that there are no modifier nodes for dereferencing a box or dereferencing
 /// a shared reference. These are implicit.
+///
+/// The type of a place node should be correct, including decoration, and should NOT account
+/// for the implicit dereferences that might be applied on top.
+///
+/// Example: Suppose x is a local of type `Box<(&T, &T)>` and the expression `*(*x).0`.
+/// Conceptually, this would be:
+///
+/// ```
+/// ImmutableDeref(typ = T,
+///    Field("0", typ = &T,
+///        BoxDeref(typ = (&T, &T),
+///            Local("x", typ = Box<(&T, &T)>)
+/// )))
+/// ```
+///
+/// Since box and immutable deref are implicit, the "real" representation is:
+///
+/// ```
+/// Field("0", typ = &T,
+///     Local("x", typ = Box<(&T, &T)>)
+/// )
+/// ```
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
@@ -1224,8 +1284,10 @@ pub enum PlaceX {
     /// Therefore, to properly handle programs with are admitted due to these special
     /// cases, we also need to treat array indexing and slice indexing via a Place node.
     /// That's why `PlaceX::Index` exists.
-    /// It is _not_ necessary to handle other types (like Vec indexing) in this way
-    /// (although it wouldn't hurt, either).
+    ///
+    /// There are also subtle differences involving evaluation order (see above);
+    /// so Array and Slice need to be handled as Place nodes, while Vec indexing
+    /// (and others) needs to be handled as method calls.
     Index(Place, Expr, ArrayKind, BoundsCheck),
     /// Named local variable.
     Local(VarIdent),
@@ -1517,6 +1579,7 @@ pub struct FunctionX {
     pub mode: Mode,
     /// Type parameters to generic functions
     /// (for trait methods, the trait parameters come first, then the method parameters)
+    /// REVIEW: for trait methods, maybe we should separate the trait parameters (see fix_missing_trigger_params_fn)
     pub typ_params: Idents,
     /// Type bounds of generic functions
     pub typ_bounds: GenericBounds,

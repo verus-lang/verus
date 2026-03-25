@@ -49,6 +49,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
     #[instrument(level = "trace", skip(self, hir_expr))]
     pub(super) fn mirror_expr_inner(&mut self, hir_expr: &'tcx hir::Expr<'tcx>) -> ExprId {
+        if let Some(expr_id) = crate::verus_expr::mirror_expr_adjusted_pre(self, hir_expr) {
+            return expr_id;
+        }
+
         let expr_scope =
             region::Scope { local_id: hir_expr.hir_id.local_id, data: region::ScopeData::Node };
 
@@ -77,7 +81,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             kind: ExprKind::Scope {
                 region_scope: expr_scope,
                 value: self.thir.exprs.push(expr),
-                lint_level: LintLevel::Explicit(hir_expr.hir_id),
+                hir_id: hir_expr.hir_id,
             },
         };
 
@@ -738,7 +742,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         fake_reads,
                     }))
                 } else if self.verus_ctxt.skip_closure(def_id) {
-                    crate::verus::erase_tree_kind(self, expr)
+                    crate::verus::erase_tree_kind(self, expr, crate::verus::TreeErase::IncludeBasicChecks)
                 } else {
                 // leave unindented for easier merging
 
@@ -1223,7 +1227,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             pattern: self.pattern_from_hir(&arm.pat),
             guard: arm.guard.as_ref().map(|g| self.mirror_expr(g)),
             body: self.mirror_expr(arm.body),
-            lint_level: LintLevel::Explicit(arm.hir_id),
+            hir_id: arm.hir_id,
             scope: region::Scope { local_id: arm.hir_id.local_id, data: region::ScopeData::Node },
             span: arm.span,
         };
@@ -1486,7 +1490,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         }
     }
 
-    fn is_upvar(&mut self, var_hir_id: hir::HirId) -> bool {
+    pub(crate) fn is_upvar(&mut self, var_hir_id: hir::HirId) -> bool {
         self.tcx
             .upvars_mentioned(self.body_owner)
             .is_some_and(|upvars| upvars.contains_key(&var_hir_id))

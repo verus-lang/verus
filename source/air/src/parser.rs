@@ -1,7 +1,7 @@
 use crate::ast::{
     Axiom, BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl,
-    DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Qid, Quant, QueryX, Relation, Stmt, StmtX,
-    Stmts, Trigger, Triggers, Typ, TypX, UnaryOp,
+    DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Qid, Quant, QueryX, Relation, RoundingMode,
+    Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, UnaryOp,
 };
 use crate::def::mk_skolem_id;
 use crate::messages::ArcDynMessageLabel;
@@ -29,6 +29,23 @@ fn is_bitvec(nodes: &Vec<Node>) -> Option<u32> {
             match s.parse::<u32>() {
                 Ok(n) => return Some(n),
                 Err(_) => return None,
+            }
+        }
+    }
+    None
+}
+
+fn is_float_type(nodes: &Vec<Node>) -> Option<Typ> {
+    if nodes[0] == Node::Atom("_".to_string())
+        && nodes[1] == Node::Atom("FloatingPoint".to_string())
+        && nodes.len() == 4
+    {
+        if let (Node::Atom(s2), Node::Atom(s3)) = (&nodes[2], &nodes[3]) {
+            match (s2.parse::<u32>(), s3.parse::<u32>()) {
+                (Ok(exp_bits), Ok(sig_bits)) => {
+                    return Some(Arc::new(TypX::Float { exp_bits, sig_bits }));
+                }
+                _ => return None,
             }
         }
     }
@@ -116,9 +133,24 @@ impl Parser {
             Node::Atom(s) if s == "Int" => Ok(Arc::new(TypX::Int)),
             Node::Atom(s) if s == "Real" => Ok(Arc::new(TypX::Real)),
             Node::Atom(s) if s == "Fun" => Ok(Arc::new(TypX::Fun)),
+            Node::Atom(s) if s == "Float16" => {
+                Ok(Arc::new(TypX::Float { exp_bits: 5, sig_bits: 11 }))
+            }
+            Node::Atom(s) if s == "Float32" => {
+                Ok(Arc::new(TypX::Float { exp_bits: 8, sig_bits: 24 }))
+            }
+            Node::Atom(s) if s == "Float64" => {
+                Ok(Arc::new(TypX::Float { exp_bits: 11, sig_bits: 53 }))
+            }
+            Node::Atom(s) if s == "Float128" => {
+                Ok(Arc::new(TypX::Float { exp_bits: 15, sig_bits: 113 }))
+            }
             Node::Atom(s) if is_symbol(s) => Ok(Arc::new(TypX::Named(Arc::new(s.clone())))),
             Node::List(nodes) if is_bitvec(nodes).is_some() => {
                 Ok(Arc::new(TypX::BitVec(is_bitvec(nodes).unwrap())))
+            }
+            Node::List(nodes) if is_float_type(nodes).is_some() => {
+                Ok(is_float_type(nodes).unwrap())
             }
             _ => Err(format!("expected type, found: {}", node_to_string(node))),
         }
@@ -234,10 +266,82 @@ impl Parser {
                     }
                     _ => {}
                 }
-                let args = self.nodes_to_exprs(&nodes[1..])?;
+                let round = |args: &mut Exprs| {
+                    Arc::make_mut(args).remove(0);
+                    match nodes.get(1) {
+                        Some(Node::Atom(s)) => match s.as_str() {
+                            "RNE" | "roundNearestTiesToEven" => Ok(RoundingMode::RNE),
+                            "RNA" | "roundNearestTiesToAway" => Ok(RoundingMode::RNA),
+                            "RTP" | "roundTowardPositive" => Ok(RoundingMode::RTP),
+                            "RTN" | "roundTowardNegative" => Ok(RoundingMode::RTN),
+                            "RTZ" | "roundTowardZero" => Ok(RoundingMode::RTZ),
+                            _ => Err("expected rounding mode in fp operation"),
+                        },
+                        _ => Err("expected rounding mode in fp operation"),
+                    }
+                };
+                let mut args = self.nodes_to_exprs(&nodes[1..])?;
                 let uop = match &nodes[0] {
                     Node::Atom(s) if s == "not" => Some(UnaryOp::Not),
                     Node::Atom(s) if s == "bvnot" => Some(UnaryOp::BitNot),
+                    Node::Atom(s) if s == "bvneg" => Some(UnaryOp::BitNeg),
+                    Node::Atom(s) if s == "fp.neg" => Some(UnaryOp::FloatNeg),
+                    Node::Atom(s) if s == "fp.roundToIntegral" => {
+                        Some(UnaryOp::FloatRoundToInt(round(&mut args)?))
+                    }
+                    Node::Atom(s) if s == "fp.isNormal" => Some(UnaryOp::FloatIsNormal),
+                    Node::Atom(s) if s == "fp.isSubnormal" => Some(UnaryOp::FloatIsSubnormal),
+                    Node::Atom(s) if s == "fp.isZero" => Some(UnaryOp::FloatIsZero),
+                    Node::Atom(s) if s == "fp.isInfinite" => Some(UnaryOp::FloatIsInfinite),
+                    Node::Atom(s) if s == "fp.isNaN" => Some(UnaryOp::FloatIsNaN),
+                    Node::Atom(s) if s == "fp.isNegative" => Some(UnaryOp::FloatIsNegative),
+                    Node::Atom(s) if s == "fp.isPositive" => Some(UnaryOp::FloatIsPositive),
+                    Node::List(nodes)
+                        if nodes.len() == 4
+                            && nodes[0] == Node::Atom("_".to_string())
+                            && (nodes[1] == Node::Atom("to_fp".to_string())
+                                || nodes[1] == Node::Atom("to_fp_unsigned".to_string())) =>
+                    {
+                        let signed = nodes[1] == Node::Atom("to_fp".to_string());
+                        let exp_sig_bits = match (&nodes[2], &nodes[3]) {
+                            (Node::Atom(s2), Node::Atom(s3)) => {
+                                match (s2.parse::<u32>(), s3.parse::<u32>()) {
+                                    (Ok(exp_bits), Ok(sig_bits)) => Some((exp_bits, sig_bits)),
+                                    _ => None,
+                                }
+                            }
+                            _ => None,
+                        };
+                        if let Some((exp_bits, sig_bits)) = exp_sig_bits {
+                            if args.len() <= 1 && signed {
+                                Some(UnaryOp::FloatFromIeeeBits { exp_bits, sig_bits })
+                            } else if args.len() > 1 {
+                                let round = round(&mut args)?;
+                                Some(UnaryOp::FloatFrom { exp_bits, sig_bits, signed, round })
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    Node::List(nodes)
+                        if nodes.len() == 3
+                            && nodes[0] == Node::Atom("_".to_string())
+                            && (nodes[1] == Node::Atom("fp.to_ubv".to_string())
+                                || nodes[1] == Node::Atom("fp.to_sbv".to_string())) =>
+                    {
+                        let signed = nodes[1] == Node::Atom("fp.to_sbv".to_string());
+                        let round = round(&mut args)?;
+                        match &nodes[2] {
+                            Node::Atom(s2) => match s2.parse::<u32>() {
+                                Ok(bits) => Some(UnaryOp::FloatToBitVec { bits, signed, round }),
+                                _ => None,
+                            },
+                            _ => None,
+                        }
+                    }
+                    Node::Atom(s) if s == "fp.to_real" => Some(UnaryOp::FloatToReal),
                     Node::Atom(s) if s == "to_real" => Some(UnaryOp::ToReal),
                     Node::Atom(s) if s == "to_int" => Some(UnaryOp::RealToInt),
                     Node::List(nodes)
@@ -302,6 +406,15 @@ impl Parser {
                     Node::Atom(s) if s == "bvlshr" => Some(BinaryOp::LShr),
                     Node::Atom(s) if s == "bvshl" => Some(BinaryOp::Shl),
                     Node::Atom(s) if s == "concat" => Some(BinaryOp::BitConcat),
+                    Node::Atom(s) if s == "fp.add" => Some(BinaryOp::FloatAdd(round(&mut args)?)),
+                    Node::Atom(s) if s == "fp.sub" => Some(BinaryOp::FloatSub(round(&mut args)?)),
+                    Node::Atom(s) if s == "fp.mul" => Some(BinaryOp::FloatMul(round(&mut args)?)),
+                    Node::Atom(s) if s == "fp.div" => Some(BinaryOp::FloatDiv(round(&mut args)?)),
+                    Node::Atom(s) if s == "fp.eq" => Some(BinaryOp::FloatEq),
+                    Node::Atom(s) if s == "fp.lt" => Some(BinaryOp::FloatLt),
+                    Node::Atom(s) if s == "fp.gt" => Some(BinaryOp::FloatGt),
+                    Node::Atom(s) if s == "fp.leq" => Some(BinaryOp::FloatLe),
+                    Node::Atom(s) if s == "fp.geq" => Some(BinaryOp::FloatGe),
                     Node::List(nodes)
                         if nodes.len() == 3
                             && nodes[0] == Node::Atom("_".to_string())
@@ -326,6 +439,7 @@ impl Parser {
                     Node::Atom(s) if s == "-" => Some(MultiOp::Sub),
                     Node::Atom(s) if s == "*" => Some(MultiOp::Mul),
                     Node::Atom(s) if s == "distinct" => Some(MultiOp::Distinct),
+                    Node::Atom(s) if s == "fp" => Some(MultiOp::Float),
                     _ => None,
                 };
                 let ite = match &nodes[0] {

@@ -35,6 +35,7 @@ pub const SMT_TRANSCRIPT_FILE_SUFFIX: &str = ".smt_transcript";
 pub const PROFILE_FILE_SUFFIX: &str = ".profile";
 pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
+pub const IMPL_NAMES_SUFFIX: &str = ".impl_names";
 pub const CALL_GRAPH_FILE_SUFFIX_FULL_INITIAL: &str = "-call-graph-full-initial.dot";
 pub const CALL_GRAPH_FILE_SUFFIX_FULL_SIMPLIFIED: &str = "-call-graph-full-simplified.dot";
 pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_INITIAL: &str = "-call-graph-nostd-initial.dot";
@@ -54,6 +55,7 @@ pub struct LogArgs {
     pub log_smt: bool,
     pub log_smt_transcript: bool,
     pub log_triggers: bool,
+    pub log_impl_names: bool,
     pub log_call_graph: bool,
 }
 
@@ -83,6 +85,7 @@ pub struct ArgsX {
     pub no_external_by_default: bool,
     pub no_verify: bool,
     pub no_lifetime: bool,
+    pub no_erasure_check: bool,
     pub no_auto_recommends_check: bool,
     pub no_cheating: bool,
     pub time: bool,
@@ -130,6 +133,7 @@ impl ArgsX {
             no_external_by_default: Default::default(),
             no_verify: Default::default(),
             no_lifetime: Default::default(),
+            no_erasure_check: Default::default(),
             no_auto_recommends_check: Default::default(),
             no_cheating: Default::default(),
             time: Default::default(),
@@ -194,9 +198,13 @@ pub fn enable_default_features_and_verus_attr(
 ) {
     if syntax_macro {
         // REVIEW: syntax macro adds superfluous parentheses and braces
-        for allow in
-            &["unused_parens", "unused_braces", "unconditional_panic", "arithmetic_overflow"]
-        {
+        for allow in &[
+            "unused_parens",
+            "unused_braces",
+            "unconditional_panic",
+            "arithmetic_overflow",
+            "irrefutable_let_patterns",
+        ] {
             rustc_args.push("-A".to_string());
             rustc_args.push(allow.to_string());
         }
@@ -301,6 +309,7 @@ pub fn parse_args_with_imports(
     const OPT_NO_EXTERNAL_BY_DEFAULT: &str = "no-external-by-default";
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
+    const OPT_NO_ERASURE_CHECK: &str = "no-erasure-check";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
     const OPT_NO_CHEATING: &str = "no-cheating";
     const OPT_TIME: &str = "time";
@@ -331,6 +340,7 @@ pub fn parse_args_with_imports(
     const LOG_SMT: &str = "smt";
     const LOG_SMT_TRANSCRIPT: &str = "smt-transcript";
     const LOG_TRIGGERS: &str = "triggers";
+    const LOG_IMPL_NAMES: &str = "impl-names";
     const LOG_CALL_GRAPH: &str = "call-graph";
 
     const LOG_ITEMS: &[(&str, &str)] = &[
@@ -349,6 +359,7 @@ pub fn parse_args_with_imports(
         (LOG_SMT, "Log SMT queries"),
         (LOG_SMT_TRANSCRIPT, "Log complete SMT transcript"),
         (LOG_TRIGGERS, "Log automatically chosen triggers"),
+        (LOG_IMPL_NAMES, "Log rustc's internal trait impl names"),
         (LOG_CALL_GRAPH, "Log the call graph"),
     ];
 
@@ -464,6 +475,7 @@ pub fn parse_args_with_imports(
     opts.optflag("", OPT_NO_EXTERNAL_BY_DEFAULT, "(deprecated) Verify all items, even those declared outside the verus! macro, and even if they aren't marked #[verifier::verify]");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
+    opts.optflag("", OPT_NO_ERASURE_CHECK, "Do not run the final erasure check");
     opts.optflag(
         "",
         OPT_NO_AUTO_RECOMMENDS_CHECK,
@@ -676,6 +688,7 @@ pub fn parse_args_with_imports(
         no_external_by_default: matches.opt_present(OPT_NO_EXTERNAL_BY_DEFAULT),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
+        no_erasure_check: matches.opt_present(OPT_NO_ERASURE_CHECK),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
         no_cheating: matches.opt_present(OPT_NO_CHEATING),
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
@@ -742,6 +755,7 @@ pub fn parse_args_with_imports(
             log_smt: log.contains_key(LOG_SMT),
             log_smt_transcript: log.contains_key(LOG_SMT_TRANSCRIPT),
             log_triggers: log.contains_key(LOG_TRIGGERS),
+            log_impl_names: log.contains_key(LOG_IMPL_NAMES),
             log_call_graph: log.contains_key(LOG_CALL_GRAPH),
         },
         show_triggers: if matches.opt_present(OPT_TRIGGERS) {
@@ -820,6 +834,10 @@ pub fn parse_args_with_imports(
         new_mut_ref: extended.contains_key(EXTENDED_NEW_MUT_REF),
         no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
     };
+
+    if args.compile && args.no_erasure_check {
+        error("--compile and --no-erasure-check are mutually exclusive".to_string())
+    }
 
     if args.new_mut_ref {
         NEW_MUT_REF.store(true, std::sync::atomic::Ordering::SeqCst);
