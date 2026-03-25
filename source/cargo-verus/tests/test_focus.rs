@@ -171,3 +171,55 @@ fn workspace_package_hasdeps() {
     data.assert_env_has_no_key_prefix(&verify_optout_prefix);
     data.assert_env_has_no_key_prefix(&verify_unset_prefix);
 }
+
+#[test]
+fn workspace_package_hasdeps_forwards_verus_args_only_to_roots() {
+    let optin = "optin";
+    let hasdeps = "hasdeps";
+
+    let workspace_dir = MockWorkspace::new()
+        .members([
+            MockPackage::new(optin).lib().verify(true),
+            MockPackage::new(hasdeps).lib().deps([MockDep::workspace(optin)]).verify(true),
+        ])
+        .materialize();
+
+    // Canonicalize the path to avoid weirdness on e.g. macOS
+    let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
+
+    let (status, data) = run_cargo_verus(|cmd| {
+        cmd.current_dir(&workspace_dir);
+        cmd.arg("focus");
+        cmd.arg("--package").arg(hasdeps);
+        cmd.arg("--");
+        cmd.arg("--verify-module=bar");
+    });
+
+    assert!(status.success());
+
+    // Forwarded Verus args should not be globally set in `focus` mode.
+    if let Some(common_args) = data.env.get(" __VERUS_DRIVER_ARGS__") {
+        assert!(
+            !common_args.contains("--verify-module=bar"),
+            "`focus` should not forward Verus args as global setting; got: {common_args}"
+        );
+    }
+
+    // Selected root crates should receive forwarded Verus args.
+    let root_args = data
+        .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
+    assert!(
+        root_args.contains(&"--verify-module=bar"),
+        "expected root crate to receive --verify-module=bar, got: {:?}",
+        root_args
+    );
+
+    // Dependency crates should not receive forwarded Verus args.
+    let dep_args =
+        data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
+    assert!(
+        !dep_args.contains(&"--verify-module=bar"),
+        "dependency should not receive --verify-module=bar, got: {:?}",
+        dep_args
+    );
+}
