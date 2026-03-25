@@ -15,7 +15,7 @@
  - [`loop_isolation`](#verifierloop_isolation)
  - [`memoize`](#verifiermemoize)
  - [`opaque`](#verifieropaque)
- - [`proof_note`](#verifierproof_note-and-verifierproof_note)
+ - [`proof_note`](#verifierproof_notetext-and-verifierproof_notetext)
  - `reject_recursive_types`
  - `reject_recursive_types_in_ground_variants`
  - [`rlimit`](#verifierrlimitn-and-verifierrlimitinfinity)
