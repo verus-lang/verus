@@ -675,6 +675,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Old(R::get(e))))
             }
+            ExprX::Await(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Await(R::get(e))))
+            }
         }
     }
 
@@ -1084,6 +1088,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             attrs,
             body,
             extra_dependencies,
+            async_params_mode_binding_and_ret,
         } = &function.x;
         let kind = self.visit_function_kind(kind)?;
         let type_bounds = self.visit_generic_bounds(typ_bounds)?;
@@ -1097,6 +1102,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         }
         let ret = self.visit_param(rt)?;
         let require = self.visit_exprs(require)?;
+        let async_ret =
+            R::map_opt(async_params_mode_binding_and_ret, &mut |mode_binding_and_ret| {
+                self.visit_param(&mode_binding_and_ret.1)
+            })?;
 
         self.push_scope();
         if function.x.ens_has_return {
@@ -1147,6 +1156,14 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 attrs: attrs.clone(),
                 body: R::get_opt(body),
                 extra_dependencies: extra_dependencies.clone(),
+                async_params_mode_binding_and_ret: if async_params_mode_binding_and_ret.is_some() {
+                    Some((
+                        async_params_mode_binding_and_ret.as_ref().unwrap().0.clone(),
+                        R::get_opt(async_ret).unwrap(),
+                    ))
+                } else {
+                    None
+                },
             })
         })
     }

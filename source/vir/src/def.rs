@@ -47,6 +47,7 @@ const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_ENSURES: &str = "ens%";
+const PREFIX_ENSURES_ASYNC_RET: &str = "VERUS_ASYNC_FUNC_RETURN_VALUE_";
 const PREFIX_OPEN_INV: &str = "openinv%";
 const PREFIX_NO_UNWIND_WHEN: &str = "no_unwind_when%";
 const PREFIX_RECURSIVE: &str = "rec%";
@@ -617,6 +618,10 @@ pub fn prefix_ensures(ident: &Ident) -> Ident {
     Arc::new(PREFIX_ENSURES.to_string() + ident)
 }
 
+pub fn prefix_ensures_async_ret(ident: &Ident) -> Ident {
+    Arc::new(PREFIX_ENSURES_ASYNC_RET.to_string() + ident)
+}
+
 pub fn prefix_open_inv(ident: &Ident, i: usize) -> Ident {
     Arc::new(format!("{}{}%{}", PREFIX_OPEN_INV, i, ident))
 }
@@ -1135,6 +1140,16 @@ pub fn unique_var_name(
         }
     }
     out
+}
+
+pub fn exec_await_path(vstd_crate_name: &Option<Ident>) -> Path {
+    Arc::new(PathX {
+        krate: vstd_crate_name.clone(),
+        segments: Arc::new(vec![
+            Arc::new("future".to_string()),
+            Arc::new("exec_await".to_string()),
+        ]),
+    })
 }
 
 pub fn nonstatic_call_fun(vstd_crate_name: &Ident, is_proof: bool) -> Fun {
