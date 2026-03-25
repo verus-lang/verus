@@ -15,7 +15,7 @@
  - [`loop_isolation`](#verifierloop_isolation)
  - [`memoize`](#verifiermemoize)
  - [`opaque`](#verifieropaque)
- - [`proof_note`](#verifierproof_note)
+ - [`proof_note`](#verifierproof_note-and-verifierproof_note)
  - `reject_recursive_types`
  - `reject_recursive_types_in_ground_variants`
  - [`rlimit`](#verifierrlimitn-and-verifierrlimitinfinity)
@@ -136,7 +136,7 @@ should "memoize" the results of this function.
 Directs the solver to not automatically reveal the definition of this function.
 The definition can then be revealed locally via the [`reveal` and `reveal_with_fuel` directives](./reference-reveal-hide.md).
 
-## `#[verifier::proof_note]` & `#![verifier::proof_note]`
+## `#[verifier::proof_note]` and `#![verifier::proof_note]`
 
 These attributes attach a string note to a `requires`/`ensures` clause or `assume`/`assert` statement.
 
