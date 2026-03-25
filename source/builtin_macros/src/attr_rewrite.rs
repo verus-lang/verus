@@ -291,8 +291,8 @@ impl VisitMut for ExecReplacer {
         }
 
         // In verification mode, even without verus spec on the loop, we still
-        // need to desugar the forloop.
-        // Thus, add empty verus_spec if not exists
+        // need to desugar the for loop.
+        // So, if there's no `verus_spec` attribute, we need to add an empty one.
         if get_verus_spec(&for_loop.attrs).is_none() {
             for_loop.attrs.push(crate::syntax::mk_rust_attr_syn(
                 for_loop.span(),
