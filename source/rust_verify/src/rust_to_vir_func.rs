@@ -30,9 +30,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::vec;
 use vir::ast::{
-    BodyVisibility, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, ItemKind,
-    KrateX, Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX, VarIdent,
-    VirErr, Visibility,
+    BodyVisibility, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, ItemKind, KrateX, Mode,
+    OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX, VarIdent, VirErr, Visibility,
 };
 use vir::ast_util::{air_unique_var, unit_typ};
 use vir::def::{RETURN_VALUE, Spanned, VERUS_SPEC};
