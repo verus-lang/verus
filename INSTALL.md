@@ -1,9 +1,3 @@
-These instructions are for installing Verus using the binary releases, intended for most people who plan to use Verus from the command line.
-
-If you'd rather use the **VSCode IDE**, you should instead read the instructions [here](https://verus-lang.github.io/verus/guide/getting_started_vscode.html).
-
-If you're a **Verus developer**, or if you're looking for a **specific commit version**, you'll need to install from source. See [BUILD.md](./BUILD.md).
-
 # Support
 
 Verus provides first-tier support to relatively recent OS distributions (MacOS, Windows and Ubuntu).
@@ -17,6 +11,12 @@ These are the architectures that have release artifacts prebuilt:
 Otherwise, you may have to build `verus` from source (see the [build instructions](./BUILD.md)).
 
 # Installing Verus
+
+These instructions are for installing Verus using the binary releases, intended for most people who plan to use Verus from the command line.
+
+If you'd rather use the **VSCode IDE**, you should instead read the instructions [here](https://verus-lang.github.io/verus/guide/getting_started_vscode.html).
+
+If you're a **Verus developer**, or if you're looking for a **specific commit version**, you'll need to install from source. See [BUILD.md](./BUILD.md).
 
 ## 1. Download the binary release.
 
