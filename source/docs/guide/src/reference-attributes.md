@@ -136,12 +136,12 @@ should "memoize" the results of this function.
 Directs the solver to not automatically reveal the definition of this function.
 The definition can then be revealed locally via the [`reveal` and `reveal_with_fuel` directives](./reference-reveal-hide.md).
 
-## `#[verifier::proof_note]` and `#![verifier::proof_note]`
+## `#[verifier::proof_note("text")]` and `#![verifier::proof_note("text")]`
 
 These attributes attach a string note to a `requires`/`ensures` clause or `assume`/`assert` statement.
 
 - The outer attribute `#[verifier::proof_note]` must attach to an `assume`/`assert` statement.
-- The inner attribute `#![verifier::proof_note]` must attach to a `requires`/`ensures` clause.
+- The inner attribute `#![verifier::proof_note]` (note the `!`) must attach to a `requires`/`ensures` clause.
 
 The note is included in errors for failed proof obligations, as well as in the JSON output under the key `func-details`.
 
