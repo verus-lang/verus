@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{ArgAction, Args, Parser, Subcommand};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Clone, Debug, Parser)]
 #[command(
@@ -50,6 +50,21 @@ pub struct VerifyCommand {
     #[command(flatten)]
     pub cargo_opts: CargoOptions,
 
+    /// Make cargo-verus verbose
+    #[arg(short, long)]
+    pub verbose: bool,
+
+    /// Select crates to receive `verus` args
+    #[arg(
+        long,
+        value_name = "SELECTOR",
+        long_help = "\
+Select crates to receive `verus` args.
+
+Defaults to `all`, except in `focus` mode where it defaults to `roots`."
+    )]
+    pub fwd_verus_args_to: Option<VerusArgFwdSelector>,
+
     #[arg(
         value_name = "ARGS",
         last = true,
@@ -58,10 +73,19 @@ pub struct VerifyCommand {
         help = "Arguments passed to 'verus' after `--`"
     )]
     pub verus_args: Vec<String>,
+}
 
-    /// Make cargo-verus verbose
-    #[arg(short, long)]
-    pub verbose: bool,
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum VerusArgFwdSelector {
+    All,
+    Roots,
+    Deps,
+}
+
+impl Default for VerusArgFwdSelector {
+    fn default() -> Self {
+        Self::All
+    }
 }
 
 #[derive(Clone, Debug, Args)]
