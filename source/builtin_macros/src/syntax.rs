@@ -534,6 +534,7 @@ impl Visitor {
         ident: impl ToTokens, // function name.
         generics: Option<impl ToTokens>,
         inputs: (Option<impl ToTokens>, impl ToTokens), // optional self and args
+        is_async_fn: bool,                              // is the function an async function
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
         let recommends = self.take_ghost(&mut spec.recommends);
@@ -704,7 +705,11 @@ impl Visitor {
                                         }
                                     }
                                 };
-                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#p, #receiver_token#ident#generics_token(#args)))
+                                if is_async_fn {
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#p, #verus_builtin::get_future_output_type(#receiver_token#ident#generics_token(#args))))
+                                } else {
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#p, #receiver_token#ident#generics_token(#args)))
+                                }
                             };
                             let contrain_typ_expr = Expr::Verbatim(constrain_type);
                             spec_stmts.push(Stmt::Expr(
@@ -1067,6 +1072,7 @@ impl Visitor {
             sig.ident.clone(),
             verus_generic_to_tokens(&sig.generics),
             verus_inputs_to_tokens(&sig.inputs),
+            sig.asyncness.is_some(),
         );
         if !self.erase_ghost.erase() {
             if !(self.rustdoc && sig.constness.is_some()) {
@@ -5078,6 +5084,7 @@ pub(crate) fn sig_specs_attr(
         sig.ident.clone(),
         generic_to_tokens(&sig.generics),
         inputs_to_tokens(&sig.inputs),
+        sig.asyncness.is_some(),
     ));
     spec_stmts
 }
@@ -5548,7 +5555,7 @@ fn check_return_ident(
 }
 
 /// In VIR there's the same check, but Rustc will complain first, and throw out
-/// some errors about "constrain_type", which ar confusing and the users should not see.
+/// some errors about "constrain_type", which are confusing and the users should not see.
 /// Instead we give an early error with nice error msg here.
 fn check_verus_return_ident(
     ret_pat: &Pat,

@@ -1,7 +1,7 @@
 use crate::ast::{
-    Expr, ExprX, Fun, Function, FunctionKind, Ident, ItemKind, MaskSpec, Mode, Param, ParamX,
-    Params, Path, PlaceX, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX,
-    VarIdent, VirErr,
+    AutospecUsage, BinaryOp, CallTarget, DeclProph, Expr, ExprX, Fun, Function, FunctionKind,
+    Ident, ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PlaceX, SpannedTyped, StmtX, Typ,
+    TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
     FinalState, PreLocalDeclKind, State, expr_to_bind_decls_exp_skip_checks,
@@ -10,7 +10,6 @@ use crate::ast_to_sst::{
     expr_to_stm_or_error, stms_to_one_stm,
 };
 use crate::ast_util::{is_body_visible_to, unit_typ};
-use crate::ast_visitor;
 use crate::context::{Ctx, FunctionCtx};
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
@@ -22,6 +21,7 @@ use crate::sst::{
 };
 use crate::sst_util::subst_exp;
 use crate::util::vec_map;
+use crate::{ast_visitor, fun};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -277,6 +277,153 @@ fn func_body_to_sst(
     Ok(FuncSpecBodySst { decrease_when, termination_check, body_exp })
 }
 
+fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<Expr>, VirErr> {
+    let mut exprs: Vec<Expr> = Vec::new();
+
+    for e in specs {
+        let awaited_call = SpannedTyped::new(
+            &e.span,
+            &Arc::new(TypX::Bool),
+            ExprX::Call(
+                CallTarget::Fun(
+                    crate::ast::CallTargetKind::Dynamic,
+                    fun!("vstd" => "future", "FutureAdditionalSpecFns", "awaited"),
+                    Arc::new(vec![
+                        function
+                            .x
+                            .async_params_mode_binding_and_ret
+                            .as_ref()
+                            .expect("async function has no return type")
+                            .1
+                            .x
+                            .typ
+                            .clone(),
+                        function.x.ret.x.typ.clone(),
+                    ]),
+                    Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
+                        crate::def::prefix_spec_fn_type(0),
+                    )]),
+                    AutospecUsage::Final,
+                    false,
+                ),
+                Arc::new(vec![SpannedTyped::new(
+                    &e.span,
+                    &function
+                        .x
+                        .async_params_mode_binding_and_ret
+                        .as_ref()
+                        .expect("async function has no return type")
+                        .1
+                        .x
+                        .typ
+                        .clone(),
+                    ExprX::Var(
+                        function
+                            .x
+                            .async_params_mode_binding_and_ret
+                            .as_ref()
+                            .expect("async function has no return type")
+                            .1
+                            .x
+                            .name
+                            .clone(),
+                    ),
+                )]),
+                None,
+            ),
+        );
+        let view_call = SpannedTyped::new(
+            &e.span,
+            &function.x.ret.x.typ,
+            PlaceX::Temporary(SpannedTyped::new(
+                &e.span,
+                &function.x.ret.x.typ,
+                ExprX::Call(
+                    CallTarget::Fun(
+                        crate::ast::CallTargetKind::Dynamic,
+                        fun!("vstd" => "future", "FutureAdditionalSpecFns", "view"),
+                        Arc::new(vec![
+                            function
+                                .x
+                                .async_params_mode_binding_and_ret
+                                .as_ref()
+                                .expect("async function has no return type")
+                                .1
+                                .x
+                                .typ
+                                .clone(),
+                            function.x.ret.x.typ.clone(),
+                        ]),
+                        Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
+                            crate::def::prefix_spec_fn_type(0),
+                        )]),
+                        AutospecUsage::Final,
+                        false,
+                    ),
+                    Arc::new(vec![SpannedTyped::new(
+                        &e.span,
+                        &function
+                            .x
+                            .async_params_mode_binding_and_ret
+                            .as_ref()
+                            .expect("async function has no return type")
+                            .1
+                            .x
+                            .typ
+                            .clone(),
+                        ExprX::Var(
+                            function
+                                .x
+                                .async_params_mode_binding_and_ret
+                                .as_ref()
+                                .expect("async function has no return type")
+                                .1
+                                .x
+                                .name
+                                .clone(),
+                        ),
+                    )]),
+                    None,
+                ),
+            )),
+        );
+        let block = SpannedTyped::new(
+            &e.span,
+            &e.typ,
+            ExprX::Block(
+                Arc::new(vec![Spanned::new(
+                    e.span.clone(),
+                    StmtX::Decl {
+                        pattern: SpannedTyped::new(
+                            &e.span,
+                            &function.x.ret.x.typ,
+                            crate::ast::PatternX::Var(crate::ast::PatternBinding {
+                                name: function.x.ret.x.name.clone(),
+                                by_ref: crate::ast::ByRef::No,
+                                typ: function.x.ret.x.typ.clone(),
+                                user_mut: None,
+                                copy: false,
+                            }),
+                        ),
+                        mode: Some((Mode::Exec, DeclProph::Default)),
+                        init: Some(view_call),
+                        els: None,
+                    },
+                )]),
+                Some(e.clone()),
+            ),
+        );
+        let imply = SpannedTyped::new(
+            &e.span,
+            &Arc::new(TypX::Bool),
+            ExprX::Binary(BinaryOp::Implies, awaited_call, block),
+        );
+        exprs.push(imply);
+    }
+
+    Ok(exprs)
+}
+
 fn req_ens_to_sst(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
@@ -287,12 +434,31 @@ fn req_ens_to_sst(
     let mut pars = params_to_pre_post_pars(&function.x.params, pre);
     let pars_mut = Arc::make_mut(&mut pars);
     if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.ens_has_return {
-        pars_mut.push(param_to_par(&function.x.ret, false));
+        if !function.x.attrs.is_async {
+            pars_mut.push(param_to_par(&function.x.ret, false));
+        } else {
+            pars_mut.push(param_to_par(
+                &function
+                    .x
+                    .async_params_mode_binding_and_ret
+                    .as_ref()
+                    .expect("Async function has no return type")
+                    .1,
+                false,
+            ));
+        }
     }
     let mut exps: Vec<Exp> = Vec::new();
+
+    let specs = if function.x.attrs.is_async && !pre {
+        &rewrite_async_ens_vir(function, specs)?
+    } else {
+        specs
+    };
+
     for e in specs.iter() {
         // Use expr_to_exp_skip_checks because we check req/ens in body
-        let exp = expr_to_exp_skip_checks(ctx, diagnostics, &pars, e)?;
+        let exp = expr_to_exp_skip_checks(ctx, diagnostics, &pars, &e)?;
         exps.push(exp);
     }
     Ok((pars, exps))
@@ -996,6 +1162,10 @@ pub fn function_to_sst(
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        async_ret: match &function.x.async_params_mode_binding_and_ret {
+            Some((_, async_ret)) => Some(param_to_par(async_ret, true)),
+            None => None,
+        },
     };
     Ok(function.new_x(functionx))
 }

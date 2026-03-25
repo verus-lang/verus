@@ -80,7 +80,8 @@ fn expr_get_early_exits_rec(
             | ExprX::ReadPlace(..)
             | ExprX::EvalAndResolve(..)
             | ExprX::Old(..)
-            | ExprX::Block(..) => VisitorControlFlow::Recurse,
+            | ExprX::Block(..)
+            | ExprX::Await(_) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
             | ExprX::NonSpecClosure { .. }

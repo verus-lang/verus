@@ -10,6 +10,7 @@ use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_typ};
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
+use crate::fun;
 use crate::inv_masks::MaskSet;
 use crate::messages::{
     Span, ToAny, error, error_with_label, error_with_secondary_label, internal_error, warning,
@@ -817,6 +818,7 @@ impl Sequencer {
     }
 }
 
+#[derive(Debug)]
 struct ReturnedCall {
     fun: Fun,
     resolved_method: Option<(Fun, Typs)>,
@@ -2875,6 +2877,26 @@ pub(crate) fn expr_to_stm_opt(
             let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
             Ok((vec![stm], Maybe::Some(Value::Exp(exp))))
         }
+        ExprX::Await(e) => {
+            let call_expr = SpannedTyped::new(
+                &expr.span,
+                &expr.typ,
+                ExprX::Call(
+                    CallTarget::Fun(
+                        crate::ast::CallTargetKind::Static,
+                        fun!("vstd" => "future", "exec_await"),
+                        Arc::new(vec![e.typ.clone()]),
+                        Arc::new(vec![]),
+                        AutospecUsage::Final,
+                        false,
+                    ),
+                    Arc::new(vec![e.clone()]),
+                    None,
+                ),
+            );
+            let rewritten = expr_to_stm_opt(ctx, state, &call_expr)?;
+            Ok(rewritten)
+        }
         ExprX::BorrowMut(_place) | ExprX::BorrowMutTracked(_place) => {
             let (mut stms, bor_sst) = borrow_mut_to_sst(ctx, state, expr)?;
             match bor_sst {
@@ -3176,7 +3198,7 @@ fn borrow_mut_to_sst(
     ))
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Obligation {
     fun: Fun,
     exp: Exp,

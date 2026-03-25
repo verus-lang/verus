@@ -2217,7 +2217,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             ctx,
                             state,
                             &ret_exp.span,
-                            &ret_exp.typ,
+                            &try_reveal_opaque_ty_ctor(ret_exp),
                             &ret,
                         )?);
                     }
@@ -3288,6 +3288,62 @@ pub(crate) fn body_stm_to_air(
     Ok((state.commands, state.snap_map))
 }
 
+/// At function returns, we need to tell the SMT solver that the  
+/// future (impl Future<Output = T>) created by the async function will return the return value of
+/// the function body if await() is called on it.
+// fn async_fn_return_to_stmts(
+//     ctx: &Ctx,
+//     state: &mut State,
+//     expr_ctxt: &ExprCtxt,
+//     ret_op: &mut Option<Arc<TypX>>,
+//     async_rete: &Option<Arc<TypX>>,
+//     ret_exp: &Arc<SpannedTyped<ExpX>>,
+//     stm: &Stm,
+//     dest_id: VarIdent,
+// ) -> Result<Vec<Stmt>, VirErr> {
+//     let ret = ret_op.as_ref().expect("async function has no return type");
+//     let async_rete =
+//         async_rete.as_ref().expect("async function has no return type");
+//     let call = ExpX::Call(
+//         CallFun::Fun(
+//             Arc::new(crate::ast::FunX {
+//                 path: Arc::new(PathX {
+//                     krate: Some(Arc::new("vstd".to_string())),
+//                     segments: Arc::new(vec![
+//                         Arc::new("future".to_string()),
+//                         Arc::new("FutureAdditionalSpecFns".to_string()),
+//                         Arc::new("view".to_string()),
+//                     ]),
+//                 }),
+//             }),
+//             None,
+//         ),
+//         Arc::new(vec![ret.clone(), ret_exp.typ.clone()]),
+//         Arc::new(vec![SpannedTyped::new(&stm.span, &ret, ExpX::Var(dest_id.clone()))]),
+//     );
+//     let eq = ExprX::Binary(
+//         air::ast::BinaryOp::Eq,
+//         exp_to_expr(ctx, ret_exp, expr_ctxt)?,
+//         exp_to_expr(ctx, &SpannedTyped::new(&stm.span, &ret, call), expr_ctxt)?,
+//     );
+
+//     *ret_op = Some(async_rete.clone());
+//     Ok(vec![Arc::new(StmtX::Assume(eq.into()))])
+// }
+
+fn try_reveal_opaque_ty_ctor(exp: &Exp) -> Typ {
+    match &exp.x {
+        ExpX::Ctor(Dt::Tuple(len), _, items) => Arc::new(TypX::Datatype(
+            Dt::Tuple(*len),
+            Arc::new(items.iter().map(|x| try_reveal_opaque_ty_ctor(&x.a)).collect()),
+            Arc::new(vec![]),
+        )),
+        ExpX::UnaryOpr(_, exp) => try_reveal_opaque_ty_ctor(exp),
+        ExpX::If(_, exp, _) => try_reveal_opaque_ty_ctor(exp),
+        _ => exp.typ.clone(),
+    }
+}
+
 /// At function returns, we need to tell the SMT solver that the newly created opaque type is indeed the same type
 /// as the returned expression.
 fn opaque_ty_additional_stmts(
@@ -3297,6 +3353,10 @@ fn opaque_ty_additional_stmts(
     ret_exp_typ: &Typ,
     ret_typ: &Typ,
 ) -> Result<Vec<Stmt>, VirErr> {
+    if let TypX::Boxed(typ) = &**ret_exp_typ {
+        return opaque_ty_additional_stmts(ctx, state, span, typ, ret_typ);
+    }
+
     let mut stmts = vec![];
     let mut emit_eq_stmts = || {
         let ret_expr_typs = typ_to_ids(ctx, &ret_exp_typ);
@@ -3372,6 +3432,9 @@ fn opaque_ty_additional_stmts(
         }
         (TypX::Opaque { .. }, _) => {
             emit_eq_stmts();
+        }
+        (_, TypX::Boxed(typ)) => {
+            return opaque_ty_additional_stmts(ctx, state, span, typ, ret_typ);
         }
         _ => {}
     }
