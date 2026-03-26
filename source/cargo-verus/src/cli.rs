@@ -59,6 +59,8 @@ pub struct VerifyCommand {
     #[arg(
         long,
         value_name = "SELECTOR",
+        help = "\
+Crates to receive forwarded Verus args. Defaults to `roots` in `focus`, `all` otherwise.\n",
         long_help = "\
 Crates to receive forwarded Verus args.
 
