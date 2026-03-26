@@ -1281,3 +1281,31 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_proof_with_struct code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::PointsToRaw;
+
+        #[verus_verify]
+        pub struct STest {
+            pub u: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub p: Tracked<PointsToRaw>,
+        }
+
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            STest {
+                u,
+            }
+        }
+    } => Ok(())
+}
