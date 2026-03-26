@@ -35,16 +35,15 @@ fn workspace_workdir() {
     assert!(status.success());
     assert_eq!(data.args, vec!["build", "--release"]);
 
-    if let Some(common_args) = data.env.get(" __VERUS_DRIVER_ARGS__") {
-        assert!(
-            !common_args.contains("--expand-errors"),
-            "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__, got: {common_args}"
-        );
-        assert!(
-            !common_args.contains("--rlimit=100"),
-            "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__, got: {common_args}"
-        );
-    }
+    let common_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    assert!(
+        !common_args.contains(&"--expand-errors"),
+        "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
+    );
+    assert!(
+        !common_args.contains(&"--rlimit=100"),
+        "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
+    );
 
     let optin_driver_args =
         data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));

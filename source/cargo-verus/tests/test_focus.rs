@@ -198,12 +198,11 @@ fn workspace_package_hasdeps_forwards_verus_args_only_to_roots() {
     assert!(status.success());
 
     // Forwarded Verus args should not be globally set in `focus` mode.
-    if let Some(common_args) = data.env.get(" __VERUS_DRIVER_ARGS__") {
-        assert!(
-            !common_args.contains("--verify-module=bar"),
-            "`focus` should not forward Verus args as global setting; got: {common_args}"
-        );
-    }
+    let common_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    assert!(
+        !common_args.contains(&"--verify-module=bar"),
+        "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
+    );
 
     // Selected root crates should receive forwarded Verus args.
     let root_args = data
