@@ -73,20 +73,46 @@ jobs:
         working-directory: ./tools/vargo
         run: cargo clippy -- -D warnings
 
-  # run integration tests for cargo-verus
-  cargo-verus-test:
-    needs: [fmt, clippy]
+  # detect whether subprojects (e.g. cargo-verus) changed
+  change_filter:
     runs-on: ubuntu-22.04
+    outputs:
+      cargo_verus: ${{ steps.filter.outputs.cargo_verus }}
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            cargo_verus:
+              - 'source/cargo-verus/**'
+
+  # run integration tests for cargo-verus
+  cargo-verus-test:
+    needs: [fmt, clippy, change_filter]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: check for cargo-verus changes
+        if: needs.change_filter.outputs.cargo_verus != 'true'
+        run: echo "No source/cargo-verus changes detected; skipping cargo-verus tests."
+
+      - name: checkout
+        if: needs.change_filter.outputs.cargo_verus == 'true'
+        uses: actions/checkout@v4
 
       - name: setup rust
+        if: needs.change_filter.outputs.cargo_verus == 'true'
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.94.0
 
       - name: cargo-verus integration tests
+        if: needs.change_filter.outputs.cargo_verus == 'true'
         working-directory: ./source
         run: cargo test -p cargo-verus --features integration-tests -- --skip z_flag_with_space_is_accepted
 
