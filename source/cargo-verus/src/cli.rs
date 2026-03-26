@@ -180,13 +180,33 @@ fn has_late_verus_arg(opts: &CargoOptions) -> bool {
 impl CargoVerusCli {
     pub fn from_args(args: impl Iterator<Item = String>) -> Result<Self> {
         let normalized_args = normalize_args(args);
-        let parsed_cli = CargoVerusCli::parse_from(normalized_args).clap_trailing_args_hotfix();
+        let mut parsed_cli = CargoVerusCli::parse_from(normalized_args).clap_trailing_args_hotfix();
 
         if parsed_cli.has_inadvisable_verus_arg() {
             return Err(anyhow!("Args forwarded to Cargo must precede args forwarded to Verus"));
         }
 
+        parsed_cli.set_fwd_verus_args_to_default();
+
         Ok(parsed_cli)
+    }
+
+    fn set_fwd_verus_args_to_default(&mut self) {
+        match &mut self.command {
+            VerusSubcommand::New(_) => {}
+            VerusSubcommand::Verify(cmd)
+            | VerusSubcommand::Build(cmd)
+            | VerusSubcommand::Check(cmd) => {
+                if cmd.fwd_verus_args_to.is_none() {
+                    cmd.fwd_verus_args_to = Some(VerusArgFwdSelector::All)
+                }
+            }
+            VerusSubcommand::Focus(cmd) => {
+                if cmd.fwd_verus_args_to.is_none() {
+                    cmd.fwd_verus_args_to = Some(VerusArgFwdSelector::Roots)
+                }
+            }
+        }
     }
 
     fn clap_trailing_args_hotfix(mut self) -> Self {

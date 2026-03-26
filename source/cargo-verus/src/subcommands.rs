@@ -5,6 +5,7 @@ use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::PackageId;
+use clap::ValueEnum;
 use colored::Colorize;
 
 use crate::cli::{CargoOptions, VerifyCommand};
@@ -171,6 +172,10 @@ pub fn run_cargo(cfg: CargoRunConfig) -> Result<ExitCode> {
     )?;
 
     if cfg.options.verbose {
+        eprintln!(
+            "forwarding Verus args to crates: <{}>",
+            cfg.options.fwd_verus_args_to.unwrap().to_possible_value().unwrap().get_name(),
+        );
         eprintln!("running cargo command:\n{command:?}");
     }
 
