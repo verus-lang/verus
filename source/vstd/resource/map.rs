@@ -76,9 +76,15 @@
 use super::super::map::*;
 use super::super::map_lib::*;
 use super::super::modes::*;
-use super::super::pcm::*;
 use super::super::prelude::*;
 use super::super::set_lib::*;
+use super::Loc;
+#[cfg(verus_keep_ghost)]
+use super::incorporate;
+use super::pcm::PCM;
+use super::pcm::Resource;
+#[cfg(verus_keep_ghost)]
+use super::split_mut;
 
 verus! {
 
@@ -163,8 +169,8 @@ impl<K, V> PCM for MapCarrier<K, V> {
         }
     }
 
-    closed spec fn op(self, other: Self) -> Self {
-        let auth = match (self.auth, other.auth) {
+    closed spec fn op(a: Self, b: Self) -> Self {
+        let auth = match (a.auth, b.auth) {
             // Invalid carriers absorb
             (AuthCarrier::Invalid, _) => AuthCarrier::Invalid,
             (_, AuthCarrier::Invalid) => AuthCarrier::Invalid,
@@ -173,11 +179,11 @@ impl<K, V> PCM for MapCarrier<K, V> {
             // Fracs remain the same
             (AuthCarrier::Frac, AuthCarrier::Frac) => AuthCarrier::Frac,
             // Whoever is the auth has precedence
-            (AuthCarrier::Auth(_), _) => self.auth,
-            (_, AuthCarrier::Auth(_)) => other.auth,
+            (AuthCarrier::Auth(_), _) => a.auth,
+            (_, AuthCarrier::Auth(_)) => b.auth,
         };
 
-        let frac = match (self.frac, other.frac) {
+        let frac = match (a.frac, b.frac) {
             // Invalid fracs remain invalid
             (FracCarrier::Invalid, _) => FracCarrier::Invalid,
             (_, FracCarrier::Invalid) => FracCarrier::Invalid,
@@ -187,19 +193,19 @@ impl<K, V> PCM for MapCarrier<K, V> {
             //  - there is no real way to express this in the typesystem
             //  - we need to allow that through (because it does not equal Invalid)
             (
-                FracCarrier::Frac { owning: self_owning, dup: self_dup },
-                FracCarrier::Frac { owning: other_owning, dup: other_dup },
+                FracCarrier::Frac { owning: a_owning, dup: a_dup },
+                FracCarrier::Frac { owning: b_owning, dup: b_dup },
             ) => {
                 let non_overlapping = {
-                    &&& self_owning.dom().disjoint(other_dup.dom())
-                    &&& other_owning.dom().disjoint(self_dup.dom())
-                    &&& self_owning.dom().disjoint(other_owning.dom())
+                    &&& a_owning.dom().disjoint(b_dup.dom())
+                    &&& b_owning.dom().disjoint(a_dup.dom())
+                    &&& a_owning.dom().disjoint(b_owning.dom())
                 };
-                let aggreement = self_dup.agrees(other_dup);
+                let aggreement = a_dup.agrees(b_dup);
                 if non_overlapping && aggreement {
                     FracCarrier::Frac {
-                        owning: self_owning.union_prefer_right(other_owning),
-                        dup: self_dup.union_prefer_right(other_dup),
+                        owning: a_owning.union_prefer_right(b_owning),
+                        dup: a_dup.union_prefer_right(b_dup),
                     }
                 } else {
                     FracCarrier::Invalid
@@ -217,7 +223,7 @@ impl<K, V> PCM for MapCarrier<K, V> {
         }
     }
 
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn valid_op(a: Self, b: Self) {
         broadcast use lemma_submap_of_trans;
 
         let ab = MapCarrier::op(a, b);
@@ -249,9 +255,9 @@ impl<K, V> PCM for MapCarrier<K, V> {
         assert(a_bc == ab_c);
     }
 
-    proof fn op_unit(a: Self) {
-        let x = Self::op(a, Self::unit());
-        assert(a == x);
+    proof fn op_unit(self) {
+        let x = Self::op(self, Self::unit());
+        assert(self == x);
     }
 
     proof fn unit_valid() {
@@ -287,9 +293,9 @@ broadcast proof fn lemma_submap_of_op<K, V>(a: MapCarrier<K, V>, b: MapCarrier<K
         b.valid(),
 {
     lemma_submap_of_op_frac(a, b);
-    MapCarrier::closed_under_incl(a, b);
+    MapCarrier::valid_op(a, b);
     MapCarrier::commutative(a, b);
-    MapCarrier::closed_under_incl(b, a);
+    MapCarrier::valid_op(b, a);
     let ab = MapCarrier::op(a, b);
     assert(ab.auth.map() == a.auth.map().union_prefer_right(b.auth.map()));
 }
@@ -399,7 +405,8 @@ impl<K, V> GhostMapAuth<K, V> {
             result@ == Map::<K, V>::empty(),
     {
         use_type_invariant(self);
-        GhostSubmap::<K, V>::empty(self.id())
+        let tracked r = Resource::<MapCarrier<_, _>>::create_unit(self.r.loc());
+        GhostSubmap { r }
     }
 
     /// Insert a [`Map`] of values, receiving the [`GhostSubmap`] that asserts ownership over the key
@@ -637,13 +644,14 @@ impl<K, V> GhostSubmap<K, V> {
         submap
     }
 
-    /// Instantiate an empty [`GhostSubmap`] of a particular id
-    pub proof fn empty(id: int) -> (tracked result: GhostSubmap<K, V>)
+    /// Create an empty [`GhostSubmap`]
+    pub proof fn empty(tracked &self) -> (tracked result: GhostSubmap<K, V>)
         ensures
-            result.id() == id,
+            result.id() == self.id(),
             result@ == Map::<K, V>::empty(),
     {
-        let tracked r = Resource::create_unit(id);
+        use_type_invariant(self);
+        let tracked r = Resource::<MapCarrier<_, _>>::create_unit(self.r.loc());
         GhostSubmap { r }
     }
 
@@ -657,7 +665,7 @@ impl<K, V> GhostSubmap<K, V> {
     {
         use_type_invariant(&*self);
 
-        let tracked mut r = Self::empty(self.id());
+        let tracked mut r = self.empty();
         tracked_swap(self, &mut r);
         r
     }
@@ -711,10 +719,8 @@ impl<K, V> GhostSubmap<K, V> {
         use_type_invariant(&*self);
         use_type_invariant(&other);
 
-        let tracked mut r = Resource::alloc(MapCarrier::unit());
-        tracked_swap(&mut self.r, &mut r);
-        r.validate_2(&other.r);
-        self.r = r.join(other.r);
+        self.r.validate_2(&other.r);
+        incorporate(&mut self.r, other.r);
     }
 
     /// Combining a [`GhostPointsTo`] into [`GhostSubmap`] is possible, in a similar way to the way to combine
@@ -809,29 +815,25 @@ impl<K, V> GhostSubmap<K, V> {
     {
         use_type_invariant(&*self);
 
-        let tracked mut r = Resource::alloc(MapCarrier::<K, V>::unit());
-        tracked_swap(&mut self.r, &mut r);
-
         let self_carrier = MapCarrier {
             auth: AuthCarrier::Frac,
             frac: FracCarrier::Frac {
-                owning: r.value().frac.owning_map().remove_keys(s),
-                dup: r.value().frac.dup_map(),
+                owning: self.r.value().frac.owning_map().remove_keys(s),
+                dup: self.r.value().frac.dup_map(),
             },
         };
 
         let res_carrier = MapCarrier {
             auth: AuthCarrier::Frac,
             frac: FracCarrier::Frac {
-                owning: r.value().frac.owning_map().restrict(s),
-                dup: r.value().frac.dup_map(),
+                owning: self.r.value().frac.owning_map().restrict(s),
+                dup: self.r.value().frac.dup_map(),
             },
         };
 
-        assert(r.value().frac == MapCarrier::op(self_carrier, res_carrier).frac);
-        let tracked (self_r, res_r) = r.split(self_carrier, res_carrier);
-        self.r = self_r;
-        GhostSubmap { r: res_r }
+        assert(self.r.value().frac == MapCarrier::op(self_carrier, res_carrier).frac);
+        let tracked r = split_mut(&mut self.r, self_carrier, res_carrier);
+        GhostSubmap { r }
     }
 
     /// We can separate a single key out of a [`GhostSubmap`]
@@ -1013,14 +1015,15 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         owned.persist()
     }
 
-    /// Instantiate an empty [`GhostPersistentSubmap`] of a particular id
-    pub proof fn empty(id: int) -> (tracked result: GhostPersistentSubmap<K, V>)
+    /// Create an empty [`GhostPersistentSubmap`]
+    pub proof fn empty(tracked &self) -> (tracked result: GhostPersistentSubmap<K, V>)
         ensures
-            result.id() == id,
+            result.id() == self.id(),
             result@ == Map::<K, V>::empty(),
     {
-        let tracked r = Resource::create_unit(id);
-        GhostPersistentSubmap { r }
+        use_type_invariant(self);
+        let tracked r = Resource::<MapCarrier<_, _>>::create_unit(self.r.loc());
+        GhostSubmap { r }.persist()
     }
 
     /// Duplicate the [`GhostPersistentSubmap`]
@@ -1033,7 +1036,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
     {
         use_type_invariant(&*self);
 
-        let tracked mut owned = Self::empty(self.id());
+        let tracked mut owned = self.empty();
         let carrier = self.r.value();
         assert(carrier == MapCarrier::op(carrier, carrier));
 
@@ -1095,10 +1098,8 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         use_type_invariant(&*self);
         use_type_invariant(&other);
 
-        let tracked mut r = Resource::alloc(MapCarrier::unit());
-        tracked_swap(&mut self.r, &mut r);
-        r.validate_2(&other.r);
-        self.r = r.join(other.r);
+        self.r.validate_2(&other.r);
+        incorporate(&mut self.r, other.r);
     }
 
     /// Combining a [`GhostPersistentPointsTo`] into [`GhostPersistentSubmap`] is possible, in a similar way to the way to combine

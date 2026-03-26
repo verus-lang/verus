@@ -44,12 +44,16 @@
 //! assert(half_auth2@ == half_auth1@);
 //! ```
 #![allow(unused_imports)]
+use std::result::*;
 use verus_builtin::*;
 use verus_builtin_macros::*;
-use std::result::*;
-use vstd::pcm::*;
-use vstd::pcm_lib::*;
 use vstd::prelude::*;
+use vstd::resource::copy_duplicable_part;
+use vstd::resource::pcm::Resource;
+use vstd::resource::pcm::PCM;
+use vstd::resource::update_and_redistribute;
+use vstd::resource::update_mut;
+use vstd::resource::Loc;
 
 verus! {
 
@@ -70,16 +74,16 @@ impl<T> PCM for LogResourceValue<T> {
         &&& !(self is Invalid)
     }
 
-    open spec fn op(self, other: Self) -> Self {
-        match (self, other) {
+    open spec fn op(a: Self, b: Self) -> Self {
+        match (a, b) {
             (
                 Self::PrefixKnowledge { prefix: prefix1 },
                 Self::PrefixKnowledge { prefix: prefix2 },
             ) => if is_prefix(prefix1, prefix2) {
-                other
+                b
             } else {
                 if is_prefix(prefix2, prefix1) {
-                    self
+                    a
                 } else {
                     Self::Invalid
                 }
@@ -88,7 +92,7 @@ impl<T> PCM for LogResourceValue<T> {
                 prefix,
                 log,
             ) {
-                other
+                b
             } else {
                 Self::Invalid
             },
@@ -96,7 +100,7 @@ impl<T> PCM for LogResourceValue<T> {
                 prefix,
                 log,
             ) {
-                self
+                a
             } else {
                 Self::Invalid
             },
@@ -104,7 +108,7 @@ impl<T> PCM for LogResourceValue<T> {
                 prefix,
                 log,
             ) {
-                other
+                b
             } else {
                 Self::Invalid
             },
@@ -112,7 +116,7 @@ impl<T> PCM for LogResourceValue<T> {
                 prefix,
                 log,
             ) {
-                self
+                a
             } else {
                 Self::Invalid
             },
@@ -130,7 +134,7 @@ impl<T> PCM for LogResourceValue<T> {
         Self::PrefixKnowledge { prefix: Seq::<T>::empty() }
     }
 
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn valid_op(a: Self, b: Self) {
     }
 
     proof fn commutative(a: Self, b: Self) {
@@ -144,7 +148,7 @@ impl<T> PCM for LogResourceValue<T> {
         assert(forall|log| is_prefix(log, Seq::<T>::empty()) ==> log =~= Seq::<T>::empty());
     }
 
-    proof fn op_unit(a: Self) {
+    proof fn op_unit(self) {
         assert(forall|log| is_prefix(log, Seq::<T>::empty()) ==> log =~= Seq::<T>::empty());
     }
 
@@ -201,7 +205,8 @@ impl<T> LogResource<T> {
                 let (half1, half2) = halves;
                 &&& half1@ is HalfAuthority
                 &&& half2@ is HalfAuthority
-                &&& half1.id() == half2.id() == self.id()
+                &&& half1.id() == self.id()
+                &&& half2.id() == self.id()
                 &&& half1@.log() == self@.log()
                 &&& half2@ == half1@
             }),
@@ -230,7 +235,8 @@ impl<T> LogResource<T> {
             old(self).id() == old(other).id(),
         ensures
             self@ is HalfAuthority,
-            self.id() == other.id() == old(self).id(),
+            self.id() == old(self).id(),
+            other.id() == old(self).id(),
             self@.log() == old(self)@.log() + seq![v],
             other@ == self@,
     {
