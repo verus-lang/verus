@@ -63,6 +63,7 @@ jobs:
           path: ${{ github.workspace }}/tools/verita/previous-results
           search_artifacts: true
           if_no_artifact_found: warn
+          workflow_conclusion: ''
 
       - name: run verita
         working-directory: ./tools/verita
