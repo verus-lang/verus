@@ -3,6 +3,7 @@
 import argparse
 import json
 import glob
+import re
 from pathlib import Path
 
 
@@ -218,6 +219,14 @@ def _project_label(r):
     return label
 
 
+_ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def _strip_ansi(text):
+    """Remove ANSI escape sequences from text."""
+    return _ANSI_ESCAPE_RE.sub('', text)
+
+
 def print_error_summary_md(results):
     """Print a foldable error summary for any failed projects (Markdown mode)."""
     entries = sorted_entries(results)
@@ -230,7 +239,7 @@ def print_error_summary_md(results):
 
     for _, r in failed:
         label = _project_label(r)
-        stderr = (r.get("stderr") or "").strip()
+        stderr = _strip_ansi((r.get("stderr") or "")).strip()
         if not stderr:
             stderr = "_(no stderr captured)_"
 
