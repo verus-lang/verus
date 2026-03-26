@@ -24,6 +24,7 @@ name = "verified-storage"
 git_url = "https://github.com/microsoft/verified-storage.git"
 refspec = "main"
 cargo_verus = true
+extra_cargo_args = ["--no-default-features"]
 crate_roots = ["capybaraKV/capybarakv", "multilog/multilog", "pmemlog"]
 
 [[project]]
