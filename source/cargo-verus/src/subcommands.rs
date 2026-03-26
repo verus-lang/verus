@@ -8,7 +8,7 @@ use cargo_metadata::PackageId;
 use clap::ValueEnum;
 use colored::Colorize;
 
-use crate::cli::{CargoOptions, VerifyCommand};
+use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
@@ -114,6 +114,8 @@ pub struct CargoRunConfig {
 }
 
 pub fn run_cargo(cfg: CargoRunConfig) -> Result<ExitCode> {
+    let fwd_verus_args_to = cfg.options.fwd_verus_args_to.expect("fwd_verus_args_to must be set");
+
     //////////////////////////////////////////////////
     // Phase 1: fetch metadata via `cargo metadata` //
     //////////////////////////////////////////////////
@@ -130,9 +132,16 @@ pub fn run_cargo(cfg: CargoRunConfig) -> Result<ExitCode> {
     let root_packages: Set<PackageId> =
         included_packages.iter().map(|package| package.id.clone()).collect();
     let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
+    let dep_packages: Set<PackageId> = all_packages.difference(&root_packages).cloned().collect();
 
     let packages_to_process = &all_packages;
     let packages_to_verify = if cfg.verify_deps { &all_packages } else { &root_packages };
+
+    let fwd_verus_args_packages = match fwd_verus_args_to {
+        VerusArgFwdSelector::All => &all_packages,
+        VerusArgFwdSelector::Roots => &root_packages,
+        VerusArgFwdSelector::Deps => &dep_packages,
+    };
 
     /////////////////////////////////////////////////
     // Phase 2: run Verus via `cargo {subcommand}` //
@@ -161,7 +170,6 @@ pub fn run_cargo(cfg: CargoRunConfig) -> Result<ExitCode> {
         ]);
     }
 
-    common_verus_driver_args.extend(cfg.options.verus_args.iter().cloned());
     let (mut command, verified_something) = make_cargo_command(
         cfg.subcommand,
         &cargo_args,
@@ -169,12 +177,14 @@ pub fn run_cargo(cfg: CargoRunConfig) -> Result<ExitCode> {
         &metadata_index,
         packages_to_process,
         packages_to_verify,
+        &cfg.options.verus_args,
+        fwd_verus_args_packages,
     )?;
 
     if cfg.options.verbose {
         eprintln!(
             "forwarding Verus args to crates: <{}>",
-            cfg.options.fwd_verus_args_to.unwrap().to_possible_value().unwrap().get_name(),
+            fwd_verus_args_to.to_possible_value().expect("arg value").get_name(),
         );
         eprintln!("running cargo command:\n{command:?}");
     }
@@ -286,6 +296,10 @@ fn make_cargo_command(
     metadata_index: &MetadataIndex,
     packages_to_process: &Set<PackageId>,
     packages_to_verify: &Set<PackageId>,
+    // Args forwarded to Verus
+    fwd_verus_args: &[String],
+    // Packages to receive forwarded Verus args
+    fwd_verus_args_packages: &Set<PackageId>,
 ) -> Result<(Command, bool)> {
     // TODO: use the "+ ... toolchain" argument?
     let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
@@ -308,6 +322,7 @@ fn make_cargo_command(
     let mut verified_something = false;
     for pkg_id in packages_to_process {
         let no_verify = !packages_to_verify.contains(&pkg_id);
+        let receives_fwd_verus_args = fwd_verus_args_packages.contains(&pkg_id);
 
         let entry = metadata_index.get(pkg_id);
         let package = entry.package();
@@ -362,6 +377,10 @@ fn make_cargo_command(
                         format!("import-dep-if-present={}", dep.name),
                     ]);
                 }
+            }
+
+            if receives_fwd_verus_args {
+                verus_driver_args_for_package.extend(fwd_verus_args.iter().cloned());
             }
 
             if !verus_driver_args_for_package.is_empty() {
