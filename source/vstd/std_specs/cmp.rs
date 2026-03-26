@@ -90,6 +90,7 @@ pub trait ExPartialOrd<Rhs: PointeeSized = Self>: PartialEq<Rhs> + PointeeSized 
                     &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
                     &&& r <==> o == Some(Ordering::Greater)
                 }
+        no_unwind
     ;
 
     fn ge(&self, other: &Rhs) -> (r: bool)
