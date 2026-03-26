@@ -415,7 +415,7 @@ fn process_project(
         let status = if cfg!(windows) {
             log_command(cmd!(ctx.sh, "powershell -Command {prepare_script}").into()).status()
         } else {
-            log_command(cmd!(ctx.sh, "sh -c {prepare_script}").into()).status()
+            log_command(cmd!(ctx.sh, "bash -c {prepare_script}").into()).status()
         };
         let exit_status = status
             .map_err(|e| anyhow!("cannot execute prepare script for {}: {}", &project.name, e))?;
