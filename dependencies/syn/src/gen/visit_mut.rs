@@ -4960,11 +4960,17 @@ where
     }
     if let Some(it) = &mut node.outputs {
         skip!((it).0);
-        full!(v.visit_pat_mut(& mut (it).1));
+        for mut el in Punctuated::pairs_mut(&mut (it).1) {
+            let it = el.value_mut();
+            full!(v.visit_pat_mut(it));
+        }
     }
     if let Some(it) = &mut node.follows {
         skip!((it).0);
-        full!(v.visit_pat_mut(& mut (it).1));
+        for mut el in Punctuated::pairs_mut(&mut (it).1) {
+            let it = el.value_mut();
+            full!(v.visit_pat_mut(it));
+        }
     }
 }
 pub fn visit_with_spec_on_fn_mut<V>(v: &mut V, node: &mut crate::WithSpecOnFn)

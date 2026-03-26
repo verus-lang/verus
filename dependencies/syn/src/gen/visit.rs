@@ -5181,11 +5181,17 @@ where
     }
     if let Some(it) = &node.outputs {
         skip!((it).0);
-        full!(v.visit_pat(& (it).1));
+        for el in Punctuated::pairs(&(it).1) {
+            let it = el.value();
+            full!(v.visit_pat(it));
+        }
     }
     if let Some(it) = &node.follows {
         skip!((it).0);
-        full!(v.visit_pat(& (it).1));
+        for el in Punctuated::pairs(&(it).1) {
+            let it = el.value();
+            full!(v.visit_pat(it));
+        }
     }
 }
 pub fn visit_with_spec_on_fn<'ast, V>(v: &mut V, node: &'ast crate::WithSpecOnFn)
