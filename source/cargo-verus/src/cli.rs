@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use anyhow::{Result, anyhow};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Clone, Debug, Parser)]
@@ -177,7 +178,18 @@ fn has_late_verus_arg(opts: &CargoOptions) -> bool {
 }
 
 impl CargoVerusCli {
-    pub fn clap_trailing_args_hotfix(mut self) -> Self {
+    pub fn from_args(args: impl Iterator<Item = String>) -> Result<Self> {
+        let normalized_args = normalize_args(args);
+        let parsed_cli = CargoVerusCli::parse_from(normalized_args).clap_trailing_args_hotfix();
+
+        if parsed_cli.has_inadvisable_verus_arg() {
+            return Err(anyhow!("Args forwarded to Cargo must precede args forwarded to Verus"));
+        }
+
+        Ok(parsed_cli)
+    }
+
+    fn clap_trailing_args_hotfix(mut self) -> Self {
         // NOTE: For context see this issue: https://github.com/clap-rs/clap/issues/6200
         match &mut self.command {
             VerusSubcommand::Verify(cmd)
@@ -198,7 +210,7 @@ impl CargoVerusCli {
         self
     }
 
-    pub fn has_inadvisable_verus_arg(&self) -> bool {
+    fn has_inadvisable_verus_arg(&self) -> bool {
         match &self.command {
             VerusSubcommand::Verify(cmd)
             | VerusSubcommand::Focus(cmd)
@@ -209,4 +221,8 @@ impl CargoVerusCli {
             VerusSubcommand::New(_) => false,
         }
     }
+}
+
+fn normalize_args(args: impl Iterator<Item = String>) -> impl Iterator<Item = String> {
+    args.enumerate().filter(|(i, arg)| *i != 1 || arg != "verus").map(|(_, arg)| arg)
 }
