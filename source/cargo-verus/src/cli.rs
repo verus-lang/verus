@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Clone, Debug, Parser)]
@@ -55,12 +55,12 @@ pub struct VerifyCommand {
     #[arg(short, long)]
     pub verbose: bool,
 
-    /// Select crates to receive `verus` args
+    /// Crates to receive forwarded Verus args
     #[arg(
         long,
         value_name = "SELECTOR",
         long_help = "\
-Select crates to receive `verus` args.
+Crates to receive forwarded Verus args.
 
 Defaults to `all`, except in `focus` mode where it defaults to `roots`."
     )]
