@@ -31,24 +31,32 @@ def load_results(directory):
 
         # Determine which specific crate root this JSON represents.
         # When a project has multiple crate roots, main.rs names each output file
-        # "<project-name>-<parent-dir-with-slashes-as-dashes>.json".  We reverse
-        # that to recover the original crate root path.
+        # "<project-name>-<suffix>.json" where suffix is the parent directory
+        # (slashes → dashes) or, for bare names like "pmemlog", the target name
+        # itself.  We reverse that to recover the original crate root path.
         crate_roots = run_config.get("crate_roots", [])
         proj_name = run_config.get("name", stem)
         crate_root = None
         if len(crate_roots) > 1:
             if stem != proj_name and stem.startswith(proj_name + "-"):
-                suffix = stem[len(proj_name) + 1:]  # e.g. "src" or "foo-bar"
+                suffix = stem[len(proj_name) + 1:]  # e.g. "capybaraKV" or "pmemlog"
                 for cr in crate_roots:
                     parent = str(Path(cr).parent).replace("/", "-")
                     if parent == suffix:
                         crate_root = cr
                         break
                 if crate_root is None:
+                    # Try matching against the target name/stem itself
+                    # (for bare targets like "pmemlog" with no parent dir)
+                    for cr in crate_roots:
+                        if Path(cr).stem == suffix or cr == suffix:
+                            crate_root = cr
+                            break
+                if crate_root is None:
                     crate_root = suffix  # fallback: show the raw suffix
             else:
-                # Stem matched the project name exactly (parent dir was empty)
-                crate_root = crate_roots[0]
+                # Stem matched the project name exactly
+                crate_root = crate_roots[0] if len(crate_roots) == 1 else stem
 
         results[stem] = {
             "name": proj_name,
@@ -129,7 +137,10 @@ def print_top5_single(results):
     print()
 
     for _, r in entries:
-        print(f"--- {r['name']} ---")
+        label = r['name']
+        if r['crate_root']:
+            label += f" ({r['crate_root']})"
+        print(f"--- {label} ---")
         fns = r["functions"]
         if not fns:
             print("  (no timing data available)")
@@ -176,7 +187,10 @@ def print_top5_single_md(results):
     print()
 
     for _, r in entries:
-        print(f"**{r['name']}**")
+        label = r['name']
+        if r['crate_root']:
+            label += f" ({r['crate_root']})"
+        print(f"**{label}**")
         print()
         fns = r["functions"]
         if not fns:
@@ -317,8 +331,12 @@ def print_top5_comparison(old_results, new_results):
     for stem in all_stems:
         old = old_results.get(stem)
         new = new_results.get(stem)
-        name = (old or new)["name"]
-        print(f"--- {name} ---")
+        r = old or new
+        name = r["name"]
+        label = name
+        if r["crate_root"]:
+            label += f" ({r['crate_root']})"
+        print(f"--- {label} ---")
 
         # Collect all functions from each side
         old_fns_map = {fn["name"]: fn for fn in old["functions"]} if old else {}
@@ -441,8 +459,12 @@ def print_top5_comparison_md(old_results, new_results):
     for stem in all_stems:
         old = old_results.get(stem)
         new = new_results.get(stem)
-        name = (old or new)["name"]
-        print(f"**{name}**")
+        r = old or new
+        name = r["name"]
+        label = name
+        if r["crate_root"]:
+            label += f" ({r['crate_root']})"
+        print(f"**{label}**")
         print()
 
         old_fns_map = {fn["name"]: fn for fn in old["functions"]} if old else {}
