@@ -183,7 +183,9 @@ impl CargoVerusCli {
         let mut parsed_cli = CargoVerusCli::parse_from(normalized_args).clap_trailing_args_hotfix();
 
         if parsed_cli.has_inadvisable_verus_arg() {
-            return Err(anyhow!("Args forwarded to Cargo must precede args forwarded to Verus"));
+            eprintln!("Args forwarded to Cargo must precede args forwarded to Verus");
+            // TODO: Consider replacing this with `return Err(anyhow!("message above^"))`.
+            std::process::exit(2);
         }
 
         parsed_cli.set_fwd_verus_args_to_default();
