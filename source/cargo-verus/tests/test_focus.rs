@@ -198,27 +198,27 @@ fn workspace_package_hasdeps_forwards_verus_args_only_to_roots() {
     assert!(status.success());
 
     // Forwarded Verus args should not be globally set in `focus` mode.
-    let common_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
     assert!(
-        !common_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--verify-module=bar"),
         "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
     );
 
     // Selected root crates should receive forwarded Verus args.
-    let root_args = data
+    let root_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
     assert!(
-        root_args.contains(&"--verify-module=bar"),
+        root_driver_args.contains(&"--verify-module=bar"),
         "expected root crate to receive --verify-module=bar, got: {:?}",
-        root_args
+        root_driver_args
     );
 
     // Dependency crates should not receive forwarded Verus args.
-    let dep_args =
+    let dep_driver_args =
         data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
     assert!(
-        !dep_args.contains(&"--verify-module=bar"),
+        !dep_driver_args.contains(&"--verify-module=bar"),
         "dependency should not receive --verify-module=bar, got: {:?}",
-        dep_args
+        dep_driver_args
     );
 }

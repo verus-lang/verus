@@ -35,13 +35,13 @@ fn workspace_workdir() {
     assert!(status.success());
     assert_eq!(data.args, vec!["build", "--release"]);
 
-    let common_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
     assert!(
-        !common_args.contains(&"--expand-errors"),
+        !driver_args.contains(&"--expand-errors"),
         "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
     );
     assert!(
-        !common_args.contains(&"--rlimit=100"),
+        !driver_args.contains(&"--rlimit=100"),
         "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
     );
 

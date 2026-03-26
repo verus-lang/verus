@@ -41,23 +41,23 @@ fn workspace_explicit_all() {
 
     assert!(status.success());
 
-    let common_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
     assert!(
-        !common_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--verify-module=bar"),
         "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
     );
 
-    let hasdeps_args = data
+    let hasdeps_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
-    assert!(hasdeps_args.contains(&"--verify-module=bar"));
+    assert!(hasdeps_driver_args.contains(&"--verify-module=bar"));
 
-    let optin_args =
+    let optin_driver_args =
         data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
-    assert!(optin_args.contains(&"--verify-module=bar"));
+    assert!(optin_driver_args.contains(&"--verify-module=bar"));
 
-    let sibling_args = data
+    let sibling_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{sibling}-0.1.0-"));
-    assert!(sibling_args.contains(&"--verify-module=bar"));
+    assert!(sibling_driver_args.contains(&"--verify-module=bar"));
 
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optout}-0.1.0-"));
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{unset}-0.1.0-"));
@@ -101,23 +101,23 @@ fn workspace_explicit_roots() {
 
     assert!(status.success());
 
-    let common_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
     assert!(
-        !common_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--verify-module=bar"),
         "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
     );
 
-    let hasdeps_args = data
+    let hasdeps_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
-    assert!(hasdeps_args.contains(&"--verify-module=bar"));
+    assert!(hasdeps_driver_args.contains(&"--verify-module=bar"));
 
-    let optin_args =
+    let optin_driver_args =
         data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
-    assert!(!optin_args.contains(&"--verify-module=bar"));
+    assert!(!optin_driver_args.contains(&"--verify-module=bar"));
 
-    let sibling_args = data
+    let sibling_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{sibling}-0.1.0-"));
-    assert!(sibling_args.contains(&"--verify-module=bar"));
+    assert!(sibling_driver_args.contains(&"--verify-module=bar"));
 
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optout}-0.1.0-"));
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{unset}-0.1.0-"));
@@ -161,23 +161,23 @@ fn workspace_explicit_deps() {
 
     assert!(status.success());
 
-    let common_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
     assert!(
-        !common_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--verify-module=bar"),
         "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
     );
 
-    let hasdeps_args = data
+    let hasdeps_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
-    assert!(!hasdeps_args.contains(&"--verify-module=bar"));
+    assert!(!hasdeps_driver_args.contains(&"--verify-module=bar"));
 
-    let optin_args =
+    let optin_driver_args =
         data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
-    assert!(optin_args.contains(&"--verify-module=bar"));
+    assert!(optin_driver_args.contains(&"--verify-module=bar"));
 
-    let sibling_args = data
+    let sibling_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{sibling}-0.1.0-"));
-    assert!(!sibling_args.contains(&"--verify-module=bar"));
+    assert!(!sibling_driver_args.contains(&"--verify-module=bar"));
 
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optout}-0.1.0-"));
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{unset}-0.1.0-"));
@@ -220,23 +220,23 @@ fn workspace_default_for_verify_is_all() {
 
     assert!(status.success());
 
-    let common_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
     assert!(
-        !common_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--verify-module=bar"),
         "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
     );
 
-    let hasdeps_args = data
+    let hasdeps_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
-    assert!(hasdeps_args.contains(&"--verify-module=bar"));
+    assert!(hasdeps_driver_args.contains(&"--verify-module=bar"));
 
-    let optin_args =
+    let optin_driver_args =
         data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
-    assert!(optin_args.contains(&"--verify-module=bar"));
+    assert!(optin_driver_args.contains(&"--verify-module=bar"));
 
-    let sibling_args = data
+    let sibling_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{sibling}-0.1.0-"));
-    assert!(sibling_args.contains(&"--verify-module=bar"));
+    assert!(sibling_driver_args.contains(&"--verify-module=bar"));
 
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optout}-0.1.0-"));
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{unset}-0.1.0-"));
@@ -279,23 +279,23 @@ fn workspace_default_for_build_is_all() {
 
     assert!(status.success());
 
-    let common_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
     assert!(
-        !common_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--verify-module=bar"),
         "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
     );
 
-    let hasdeps_args = data
+    let hasdeps_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
-    assert!(hasdeps_args.contains(&"--verify-module=bar"));
+    assert!(hasdeps_driver_args.contains(&"--verify-module=bar"));
 
-    let optin_args =
+    let optin_driver_args =
         data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
-    assert!(optin_args.contains(&"--verify-module=bar"));
+    assert!(optin_driver_args.contains(&"--verify-module=bar"));
 
-    let sibling_args = data
+    let sibling_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{sibling}-0.1.0-"));
-    assert!(sibling_args.contains(&"--verify-module=bar"));
+    assert!(sibling_driver_args.contains(&"--verify-module=bar"));
 
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optout}-0.1.0-"));
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{unset}-0.1.0-"));
@@ -338,23 +338,23 @@ fn workspace_default_for_check_is_all() {
 
     assert!(status.success());
 
-    let common_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
     assert!(
-        !common_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--verify-module=bar"),
         "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
     );
 
-    let hasdeps_args = data
+    let hasdeps_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
-    assert!(hasdeps_args.contains(&"--verify-module=bar"));
+    assert!(hasdeps_driver_args.contains(&"--verify-module=bar"));
 
-    let optin_args =
+    let optin_driver_args =
         data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
-    assert!(optin_args.contains(&"--verify-module=bar"));
+    assert!(optin_driver_args.contains(&"--verify-module=bar"));
 
-    let sibling_args = data
+    let sibling_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{sibling}-0.1.0-"));
-    assert!(sibling_args.contains(&"--verify-module=bar"));
+    assert!(sibling_driver_args.contains(&"--verify-module=bar"));
 
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optout}-0.1.0-"));
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{unset}-0.1.0-"));
@@ -397,23 +397,23 @@ fn workspace_default_for_focus_is_roots() {
 
     assert!(status.success());
 
-    let common_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
     assert!(
-        !common_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--verify-module=bar"),
         "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
     );
 
-    let hasdeps_args = data
+    let hasdeps_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
-    assert!(hasdeps_args.contains(&"--verify-module=bar"));
+    assert!(hasdeps_driver_args.contains(&"--verify-module=bar"));
 
-    let optin_args =
+    let optin_driver_args =
         data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
-    assert!(!optin_args.contains(&"--verify-module=bar"));
+    assert!(!optin_driver_args.contains(&"--verify-module=bar"));
 
-    let sibling_args = data
+    let sibling_driver_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{sibling}-0.1.0-"));
-    assert!(sibling_args.contains(&"--verify-module=bar"));
+    assert!(sibling_driver_args.contains(&"--verify-module=bar"));
 
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optout}-0.1.0-"));
     data.assert_env_has_no_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{unset}-0.1.0-"));
