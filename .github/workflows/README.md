@@ -8,6 +8,7 @@ and publishing for the Verus project.
 ### 1. CI Workflow (`ci.yml`)
 
 **Triggers:**
+
 - Push to `main` branch
 - Pull requests (opened, synchronized, reopened)
 - Manual dispatch
@@ -20,30 +21,34 @@ and publishing for the Verus project.
    - Validates Rust code formatting with `rustfmt`
    - Validates `vstd` formatting with `verusfmt`
 
-2. **`cargo-verus-test`** (linux)
-   - Runs `cargo-verus` integration tests
-   - Runs after `fmt` passes
+2. **`change_filter`** (linux)
+   - Detects whether `source/cargo-verus/**` changed
 
-3. **`full-test`** (macOS ARM64)
+3. **`cargo-verus-test`** (linux)
+   - Only runs on changes to `source/cargo-verus/**`
+   - Runs `cargo-verus` integration tests
+   - Runs after `fmt` and `clippy` pass
+
+4. **`full-test`** (macOS ARM64)
    - Runs full test suite.
 
-4. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
+5. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
    - Runs basic tests only
 
-5. **`smoke-test`** (macOs ARM64)
+6. **`smoke-test`** (macOs ARM64)
    - Checks that `verus` builds with esoteric configurations
    - Runs minimal tests relevant to the configuration
 
-6. **`build-docs`** (linux)
+7. **`build-docs`** (linux)
    - Builds the `verusdoc` artifact
    - Uploads `verusdoc` artifact for documentation deployment
 
-7. **`build-release`** (macOS ARM64, macOs x64, Windows x64, and Linux x64)
+8. **`build-release`** (macOS ARM64, macOs x64, Windows x64, and Linux x64)
+   - Only runs if `basic-test`, `cargo-verus-test`, and `smoke-test` pass
    - Builds release binary artifacts for every supported platform
-   - Runs only if `basic-test`, `cargo-verus-test`, and `smoke-test` pass
    - Uploads `verus-<arch>-<os>.zip` artifacts
 
-8. **`release`** (linux)
+9. **`release`** (linux)
    - **Only runs on push to `main`** (not PRs)
    - Downloads all platform artifacts
    - Extracts version information from `version.txt`
@@ -55,6 +60,7 @@ and publishing for the Verus project.
    - Publishes the updated rolling release
 
 **Output:**
+
 - Continuous binary distribution via the Rolling Release
 - Documentation artifacts for GitHub Pages deployment
 - Platform artifacts available for download from the workflow run
@@ -64,6 +70,7 @@ and publishing for the Verus project.
 ### 2. Release Workflow (`release.yml`)
 
 **Triggers:**
+
 - Schedule: Weekly on Mondays at midnight UTC
 
 **Purpose:** Promote a Rolling Release to a permanent versioned release
@@ -120,6 +127,7 @@ and publishing for the Verus project.
 ```
 
 **Key Distinction:**
+
 - **Rolling Release**: Ephemeral, continuously updated with latest main
 - **Permanent Release**: Immutable snapshot at a point in time
 - Users tracking development use the rolling release
@@ -130,6 +138,7 @@ and publishing for the Verus project.
 ### 3. Pages Workflow (`pages.yml`)
 
 **Triggers:**
+
 - Workflow run completion (after `ci.yml` completes successfully on `main`)
 
 **Purpose:** Build and deploy project documentation to GitHub Pages
@@ -150,6 +159,7 @@ and publishing for the Verus project.
    - Makes documentation available at the GitHub Pages URL
 
 **Output:**
+
 - User-facing documentation at the project's GitHub Pages site
 - API documentation (verusdoc)
 - Tutorial guides
@@ -160,15 +170,16 @@ and publishing for the Verus project.
 ### 4. Crate Updates Workflow (`crate-updates.yml`)
 
 **Triggers:**
+
 - Manual dispatch
 - Schedule: Weekly on Sundays at midnight UTC
-    - This way, the updated versions are incorporated into the Monday release
+  - This way, the updated versions are incorporated into the Monday release
 
 **Purpose:** Automated maintenance of published crates on crates.io
 
 **Assumptions:**
-1. Assumes that `main` is in a building and verifying state.
 
+1. Assumes that `main` is in a building and verifying state.
 
 **Jobs:**
 
@@ -202,6 +213,7 @@ crate-updates.yml (weekly/manual) → Updates crate versions → Publishes to cr
 ## Platform Support
 
 All workflows build and test Verus on:
+
 - **Linux**: `x86_64` (ubuntu-22.04)
 - **macOS**: ARM64 (macOS 14) and `x86_64` (macOS 15)
 - **Windows**: `x86_64` (2022)
