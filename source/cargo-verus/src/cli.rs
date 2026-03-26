@@ -85,12 +85,6 @@ pub enum VerusArgFwdSelector {
     Deps,
 }
 
-impl Default for VerusArgFwdSelector {
-    fn default() -> Self {
-        Self::All
-    }
-}
-
 #[derive(Clone, Debug, Args)]
 pub struct CargoOptions {
     #[command(flatten)]
