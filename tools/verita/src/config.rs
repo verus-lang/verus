@@ -6,7 +6,8 @@ pub struct RunConfigurationProject {
     pub git_url: String,
     pub refspec: String,
     pub crate_roots: Vec<String>,
-    pub extra_args: Option<Vec<String>>,
+    pub extra_verus_args: Option<Vec<String>>,
+    pub extra_cargo_args: Option<Vec<String>>,
     pub prepare_script: Option<String>,
     pub prepare_script_windows: Option<String>,
     #[serde(default)]

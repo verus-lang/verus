@@ -166,9 +166,10 @@ fn process_target(
         log_command(
             cmd!(sh, "{cargo_verus_binary_path} verus focus")
                 .args(&cargo_target_args)
+                .args(project.extra_cargo_args.iter().flatten())
                 .args(["--", "--output-json", "--time"])
                 .args(ctx.run_configuration.verus_extra_args.iter().flatten())
-                .args(project.extra_args.iter().flatten())
+                .args(project.extra_verus_args.iter().flatten())
                 .into(),
         )
         .output()
@@ -177,7 +178,7 @@ fn process_target(
         log_command(
             cmd!(sh, "{verus_binary_path} --output-json --time {target}")
                 .args(ctx.run_configuration.verus_extra_args.iter().flatten())
-                .args(project.extra_args.iter().flatten())
+                .args(project.extra_verus_args.iter().flatten())
                 .into(),
         )
         .output()
@@ -531,6 +532,21 @@ fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow!("cannot parse run configuration: {}", e))?;
 
     debug!("Loaded run configuration:");
+
+    // Check that extra_cargo_args is only used with cargo_verus projects
+    let invalid_cargo_args: Vec<&str> = run_configuration
+        .projects
+        .iter()
+        .filter(|p| !p.cargo_verus && p.extra_cargo_args.is_some())
+        .map(|p| p.name.as_str())
+        .collect();
+    if !invalid_cargo_args.is_empty() {
+        return Err(anyhow!(
+            "the following projects set `extra_cargo_args` but do not have \
+             `cargo_verus = true`: {}",
+            invalid_cargo_args.join(", ")
+        ));
+    }
 
     // Check that cargo-verus executable is present if any project needs it
     if run_configuration.projects.iter().any(|p| p.cargo_verus) {

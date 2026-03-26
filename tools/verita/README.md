@@ -70,7 +70,8 @@ NOTE: At present, when running with `cargo verus`, we use `cargo verus focus` to
 | `git_url` | string | required | Git URL of the project repository |
 | `refspec` | string | required | Git refspec (branch, tag, or commit) to check out |
 | `crate_roots` | list of strings | required | Paths to crate root files or directories, relative to the repo root. For projects using `cargo verus` these are subdirectory paths; for projects that directly invoke `verus` these are paths to `.rs` files. Multiple entries cause `verita` to run `verus` (or `cargo verus`) separately on each root. |
-| `extra_args` | list of strings | `[]` | Additional arguments appended to the Verus command for this project |
+| `extra_verus_args` | list of strings | `[]` | Additional arguments appended to the Verus command for this project |
+| `extra_cargo_args` | list of strings | `[]` | Additional arguments passed to `cargo verus` (before the `--` separator). Only valid when `cargo_verus = true`. |
 | `prepare_script` | string | none | Shell script (bash/sh) run inside the cloned repo before verification. Useful for building dependencies. |
 | `prepare_script_windows` | string | none | PowerShell equivalent of `prepare_script` used on Windows. If omitted on Windows and `prepare_script` is set, the prepare step is skipped with a warning. |
 | `cargo_verus` | boolean | `false` | When `true`, use `cargo verus focus` instead of invoking `verus` directly. The crate roots are treated as package directories rather than `.rs` file paths. |

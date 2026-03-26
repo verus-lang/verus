@@ -97,13 +97,11 @@ jobs:
             echo ''
             echo ":package: [Download full results (verita-results artifact)]($ARTIFACTS_URL)"
             echo ''
-            echo '```'
             if [ -d previous-results ] && ls previous-results/*.json >/dev/null 2>&1; then
               python scripts/summarize.py --markdown previous-results "$OUTPUT_DIR"
             else
               python scripts/summarize.py --markdown "$OUTPUT_DIR"
             fi
-            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: upload results
