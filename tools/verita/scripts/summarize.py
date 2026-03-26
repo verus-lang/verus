@@ -62,6 +62,7 @@ def load_results(directory):
             "name": proj_name,
             "crate_root": crate_root,
             "success": runner.get("success"),
+            "stderr": runner.get("stderr", ""),
             "verified": vr.get("verified") if vr else None,
             "errors": vr.get("errors") if vr else None,
             "total_ms": times.get("total"),
@@ -204,6 +205,43 @@ def print_top5_single_md(results):
             t = fn["time_ms"]
             tstr = f"{t} ms" if t is not None else "N/A"
             print(f"| {i} | {tstr} | `{fn['name']}` |")
+        print()
+
+
+# ── Error summary (Markdown only) ─────────────────────────────────────────────
+
+def _project_label(r):
+    """Return a display label for a result entry (project name + crate root)."""
+    label = r["name"]
+    if r["crate_root"]:
+        label += f" ({r['crate_root']})"
+    return label
+
+
+def print_error_summary_md(results):
+    """Print a foldable error summary for any failed projects (Markdown mode)."""
+    entries = sorted_entries(results)
+    failed = [(stem, r) for stem, r in entries if r["success"] is not True]
+    if not failed:
+        return
+
+    print("### Error Summary")
+    print()
+
+    for _, r in failed:
+        label = _project_label(r)
+        stderr = (r.get("stderr") or "").strip()
+        if not stderr:
+            stderr = "_(no stderr captured)_"
+
+        print(f"<details>")
+        print(f"<summary>{label}</summary>")
+        print()
+        print("```")
+        print(stderr)
+        print("```")
+        print()
+        print("</details>")
         print()
 
 
@@ -553,6 +591,7 @@ def main():
         if md:
             print_single_summary_md(results)
             print_top5_single_md(results)
+            print_error_summary_md(results)
         else:
             print_single_summary(results)
             print_top5_single(results)
@@ -565,6 +604,7 @@ def main():
         if md:
             print_comparison_summary_md(old_results, new_results)
             print_top5_comparison_md(old_results, new_results)
+            print_error_summary_md(new_results)
         else:
             print_comparison_summary(old_results, new_results)
             print_top5_comparison(old_results, new_results)
