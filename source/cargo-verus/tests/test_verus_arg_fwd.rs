@@ -41,6 +41,13 @@ fn workspace_explicit_all() {
 
     assert!(status.success());
 
+    if let Some(common_args) = data.env.get(" __VERUS_DRIVER_ARGS__") {
+        assert!(
+            !common_args.contains("--verify-module=bar"),
+            "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__, got: {common_args}"
+        );
+    }
+
     let hasdeps_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
     assert!(hasdeps_args.contains(&"--verify-module=bar"));
@@ -94,6 +101,13 @@ fn workspace_explicit_roots() {
     });
 
     assert!(status.success());
+
+    if let Some(common_args) = data.env.get(" __VERUS_DRIVER_ARGS__") {
+        assert!(
+            !common_args.contains("--verify-module=bar"),
+            "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__, got: {common_args}"
+        );
+    }
 
     let hasdeps_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
@@ -149,6 +163,13 @@ fn workspace_explicit_deps() {
 
     assert!(status.success());
 
+    if let Some(common_args) = data.env.get(" __VERUS_DRIVER_ARGS__") {
+        assert!(
+            !common_args.contains("--verify-module=bar"),
+            "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__, got: {common_args}"
+        );
+    }
+
     let hasdeps_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
     assert!(!hasdeps_args.contains(&"--verify-module=bar"));
@@ -201,6 +222,13 @@ fn workspace_default_for_verify_is_all() {
     });
 
     assert!(status.success());
+
+    if let Some(common_args) = data.env.get(" __VERUS_DRIVER_ARGS__") {
+        assert!(
+            !common_args.contains("--verify-module=bar"),
+            "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__, got: {common_args}"
+        );
+    }
 
     let hasdeps_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
@@ -255,6 +283,13 @@ fn workspace_default_for_build_is_all() {
 
     assert!(status.success());
 
+    if let Some(common_args) = data.env.get(" __VERUS_DRIVER_ARGS__") {
+        assert!(
+            !common_args.contains("--verify-module=bar"),
+            "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__, got: {common_args}"
+        );
+    }
+
     let hasdeps_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
     assert!(hasdeps_args.contains(&"--verify-module=bar"));
@@ -308,6 +343,13 @@ fn workspace_default_for_check_is_all() {
 
     assert!(status.success());
 
+    if let Some(common_args) = data.env.get(" __VERUS_DRIVER_ARGS__") {
+        assert!(
+            !common_args.contains("--verify-module=bar"),
+            "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__, got: {common_args}"
+        );
+    }
+
     let hasdeps_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
     assert!(hasdeps_args.contains(&"--verify-module=bar"));
@@ -360,6 +402,13 @@ fn workspace_default_for_focus_is_roots() {
     });
 
     assert!(status.success());
+
+    if let Some(common_args) = data.env.get(" __VERUS_DRIVER_ARGS__") {
+        assert!(
+            !common_args.contains("--verify-module=bar"),
+            "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__, got: {common_args}"
+        );
+    }
 
     let hasdeps_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
