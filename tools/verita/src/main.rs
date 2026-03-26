@@ -165,8 +165,8 @@ fn process_target(
 
         log_command(
             cmd!(sh, "{cargo_verus_binary_path} verus focus")
-                .args(&cargo_target_args)
                 .args(project.extra_cargo_args.iter().flatten())
+                .args(&cargo_target_args)
                 .args(["--", "--output-json", "--time"])
                 .args(ctx.run_configuration.verus_extra_args.iter().flatten())
                 .args(project.extra_verus_args.iter().flatten())
