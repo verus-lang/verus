@@ -143,7 +143,7 @@ These attributes attach a string note to a `requires`/`ensures` clause or `assum
 - The outer attribute `#[verifier::proof_note]` must attach to an `assume`/`assert` statement.
 - The inner attribute `#![verifier::proof_note]` (note the `!`) must attach to a `requires`/`ensures` clause.
 
-The note is included in errors for failed proof obligations, as well as in the JSON output under the key `func-details`.
+When a proof obligation (`requires`/`ensures`/`assert`) fails, then the `"text"` of the note is included in the error message, as well as in the JSON output under the key `func-details`. An `assume` statement flagged by the `--no-cheating` mode is treated similarly. This can be useful for connecting informal spec requirements (say from a text description of desired properties) to obligations in the verified code.
 
 ## `#[verifier::rlimit(n)]` and `#[verifier::rlimit(infinity)]`
 
