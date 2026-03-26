@@ -73,6 +73,23 @@ jobs:
         working-directory: ./tools/vargo
         run: cargo clippy -- -D warnings
 
+  # run integration tests for cargo-verus
+  cargo-verus-test:
+    needs: [fmt, clippy]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.94.0
+
+      - name: cargo-verus integration tests
+        working-directory: ./source
+        run: cargo test -p cargo-verus --features integration-tests
+
   # check if it builds and runs on macos, running the full test suite
   # (in release mode because it makes a huge difference)
   full-test:
@@ -289,7 +306,7 @@ jobs:
 
   # build the release artifacts
   build-release:
-    needs: [basic-test, smoke-test]
+    needs: [basic-test, cargo-verus-test, smoke-test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
 
     strategy:

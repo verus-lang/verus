@@ -20,25 +20,30 @@ and publishing for the Verus project.
    - Validates Rust code formatting with `rustfmt`
    - Validates `vstd` formatting with `verusfmt`
 
-2. **`full-test`** (macOS ARM64)
+2. **`cargo-verus-test`** (linux)
+   - Runs `cargo-verus` integration tests
+   - Runs after `fmt` passes
+
+3. **`full-test`** (macOS ARM64)
    - Runs full test suite.
 
-3. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
+4. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
    - Runs basic tests only
 
-3. **`smoke-test`** (macOs ARM64)
+5. **`smoke-test`** (macOs ARM64)
    - Checks that `verus` builds with esoteric configurations
    - Runs minimal tests relevant to the configuration
 
-4. **`build-docs`** (linux)
+6. **`build-docs`** (linux)
    - Builds the `verusdoc` artifact
    - Uploads `verusdoc` artifact for documentation deployment
 
-5. **`build-release`** (macOS ARM64, macOs x64, Windows x64, and Linux x64)
+7. **`build-release`** (macOS ARM64, macOs x64, Windows x64, and Linux x64)
    - Builds release binary artifacts for every supported platform
+   - Runs only if `basic-test`, `cargo-verus-test`, and `smoke-test` pass
    - Uploads `verus-<arch>-<os>.zip` artifacts
 
-6. **`release`** (linux)
+8. **`release`** (linux)
    - **Only runs on push to `main`** (not PRs)
    - Downloads all platform artifacts
    - Extracts version information from `version.txt`
