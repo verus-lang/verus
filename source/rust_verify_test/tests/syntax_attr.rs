@@ -1335,7 +1335,7 @@ test_verify_one_file! {
             let s = STest { u };
             s
         }
-    }
+    } => Ok(())
 }
 
 test_verify_one_file! {
