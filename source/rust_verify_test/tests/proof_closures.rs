@@ -107,7 +107,13 @@ test_verify_one_file_with_options! {
 
             f(3); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        assert_help_error_msg(
+            err,
+            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
+        );
+    }
 }
 
 test_verify_one_file_with_options! {
@@ -262,7 +268,13 @@ test_verify_one_file_with_options! {
 
             f(3, 4); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        assert_help_error_msg(
+            err,
+            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
+        );
+    }
 }
 
 test_verify_one_file_with_options! {
@@ -385,7 +397,13 @@ test_verify_one_file_with_options! {
 
             f(); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        assert_help_error_msg(
+            err,
+            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
+        );
+    }
 }
 
 test_verify_one_file_with_options! {
@@ -744,7 +762,13 @@ test_verify_one_file_with_options! {
             let tracked g = proof_fn|i: u64| requires i == 4 || i == 1 { i };
             (if b { f } else { g })(4); // FAILS
         }
-    } => Err(e) => assert_fails(e, 2)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert_help_error_msg(
+            err,
+            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
+        );
+    }
 }
 
 // Omitting callee_is_computed_expression_with_loop since proofs don't support loops
@@ -1595,7 +1619,13 @@ test_verify_one_file_with_options! {
         proof fn p3() {
             q1(proof_fn[ReqEns<S>]|x, y| { assert(x > y); x + y }); // FAILS
         }
-    } => Err(e) => assert_fails(e, 3)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 3);
+        assert_help_error_msg(
+            err,
+            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
+        );
+    }
 }
 
 test_verify_one_file_with_options! {

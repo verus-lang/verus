@@ -3497,11 +3497,11 @@ impl Visitor {
         //                          &::core::iter::IntoIterator::into_iter(e)),
         //                  )),
         let exec_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
-            #[verifier::custom_err(#exec_inv_msg)]
+            #[verifier::proof_note(#exec_inv_msg)]
             #vstd::pervasive::ForLoopGhostIterator::exec_invariant(&#x_ghost_iter, &#x_exec_iter)
         ));
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
-            #[verifier::custom_err(#ghost_inv_msg)]
+            #[verifier::proof_note(#ghost_inv_msg)]
             #vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
                 #vstd::prelude::infer_spec_for_loop_iter(
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
