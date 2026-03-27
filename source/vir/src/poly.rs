@@ -353,7 +353,15 @@ fn coerce_exps_to_agree(ctx: &Ctx, exp1: &Exp, exp2: &Exp) -> (Exp, Exp) {
     if typ_is_poly(ctx, &exp1.typ) && typ_is_poly(ctx, &exp2.typ) {
         (exp1.clone(), exp2.clone())
     } else {
-        (coerce_exp_to_native(ctx, exp1), coerce_exp_to_native(ctx, exp2))
+        match (&*exp1.typ, &*exp2.typ) {
+            (TypX::TypParam(_) | TypX::Projection { .. }, _)
+            | (_, TypX::TypParam(_) | TypX::Projection { .. }) => {
+                // See rust_verify_tests assoc_type_impls ensures_projection_poly
+                // (inherited ensures don't have projections substituted)
+                (coerce_exp_to_poly(ctx, exp1), coerce_exp_to_poly(ctx, exp2))
+            }
+            _ => (coerce_exp_to_native(ctx, exp1), coerce_exp_to_native(ctx, exp2)),
+        }
     }
 }
 

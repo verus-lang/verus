@@ -39,11 +39,11 @@ fn example3() {
 }
 ```
 
-This change is a large conceptual overhaul within Verus. Several things worked previously because of special-casing around mutable references which no longer make sense now that `&mut T` is a "first class" type in Verus. As such, and there are a couple of breaking changes that users need to be aware of, which we will detail here.
+This change is a large conceptual overhaul within Verus. Several things worked previously because of special-casing around mutable references which no longer make sense now that `&mut T` is a "first class" type in Verus. As such, there are a couple of breaking changes that users need to be aware of, which we will detail here.
 
 ## Opting into the experimental support
 
-To enable the new mutable reference support, supply the additional command line option `-V new-mut-ref` to Verus. Soon, the "new-mut-ref" support will be enabled permanently, and the command line option will be removed. Until then, it is considered experimental.
+To enable the new mutable reference support, supply the additional command line option `-V new-mut-ref` to Verus. (This doesn't require a separate build of Verus or vstd; just supply the arguments when invoking `verus`.) Soon, the "new-mut-ref" support will be enabled permanently, and the command line option will be removed. Until then, it is considered experimental.
 
 This "migration guide" should give you everything you need to know to get your existing code working in the `new-mut-ref` world. It does not cover any of the new capabilities; to learn how to use the new capabilities, see the new guide. (TODO link doc)
 

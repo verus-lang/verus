@@ -5,12 +5,12 @@ use common::*;
 
 test_verify_one_file_with_options! {
     #[test] temporary_place_in_assign ["new-mut-ref"] => verus_code! {
-        fn mut_ref_pairs<'a, 'b>(a: &'a mut u64, b: &'b mut u64) -> (ret: (&'a mut u64, &'b mut u64))
+        fn mut_ref_pairs<'a, 'b>(a: &'a mut u64, b: &'b mut u64) -> ((ret_a, ret_b): (&'a mut u64, &'b mut u64))
             ensures
-                mut_ref_current(ret.0) == mut_ref_current(a),
-                mut_ref_future(ret.0) == mut_ref_future(a),
-                mut_ref_current(ret.1) == mut_ref_current(b),
-                mut_ref_future(ret.1) == mut_ref_future(b),
+                mut_ref_current(ret_a) == mut_ref_current(a),
+                mut_ref_future(ret_a) == mut_ref_future(a),
+                mut_ref_current(ret_b) == mut_ref_current(b),
+                mut_ref_future(ret_b) == mut_ref_future(b),
         {
             (a, b)
         }
@@ -716,16 +716,17 @@ test_verify_one_file_with_options! {
             Pair { a: a, b: b }
         }
 
-        fn mut_ref_pairs2<'a, 'b, 'c, 'd>(a: &'a mut u64, b: &'b mut u64, c: &'c mut u64, d: &'d mut u64) -> (ret: (Pair<&'a mut u64, &'b mut u64>, Pair<&'c mut u64, &'d mut u64>))
+        fn mut_ref_pairs2<'a, 'b, 'c, 'd>(a: &'a mut u64, b: &'b mut u64, c: &'c mut u64, d: &'d mut u64)
+            -> ((p1, p2): (Pair<&'a mut u64, &'b mut u64>, Pair<&'c mut u64, &'d mut u64>))
             ensures
-                mut_ref_current(ret.0.a) == mut_ref_current(a),
-                mut_ref_future(ret.0.a) == mut_ref_future(a),
-                mut_ref_current(ret.0.b) == mut_ref_current(b),
-                mut_ref_future(ret.0.b) == mut_ref_future(b),
-                mut_ref_current(ret.1.a) == mut_ref_current(c),
-                mut_ref_future(ret.1.a) == mut_ref_future(c),
-                mut_ref_current(ret.1.b) == mut_ref_current(d),
-                mut_ref_future(ret.1.b) == mut_ref_future(d),
+                mut_ref_current(p1.a) == mut_ref_current(a),
+                mut_ref_future(p1.a) == mut_ref_future(a),
+                mut_ref_current(p1.b) == mut_ref_current(b),
+                mut_ref_future(p1.b) == mut_ref_future(b),
+                mut_ref_current(p2.a) == mut_ref_current(c),
+                mut_ref_future(p2.a) == mut_ref_future(c),
+                mut_ref_current(p2.b) == mut_ref_current(d),
+                mut_ref_future(p2.b) == mut_ref_future(d),
         {
             (Pair { a: a, b: b }, Pair { a: c, b: d })
         }

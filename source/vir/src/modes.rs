@@ -505,6 +505,8 @@ struct Record {
     temporary_modes: HashMap<crate::messages::AstId, Mode>,
     /// Modes of the ImplicitReborrow nodes
     infer_spec_for_implicit_reborrows: Option<HashMap<crate::messages::AstId, bool>>,
+    /// Modes inferred for the places of mutable borrows
+    mut_bor_place_modes: HashMap<crate::messages::AstId, (Mode, Option<ProofModeMutRefNote>)>,
 }
 
 #[derive(Debug)]
@@ -1131,7 +1133,8 @@ impl PlaceAccess {
     }
 }
 
-struct ProofModeMutRefNote(Place, Place);
+#[derive(Clone)]
+struct ProofModeMutRefNote(Typ, Span);
 
 fn check_place(
     ctxt: &Ctxt,
@@ -1194,8 +1197,8 @@ fn check_place(
                         },
                     );
                     if let Some(note) = note {
-                        e = e.secondary_label(&note.1.span, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
-                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0.typ)));
+                        e = e.secondary_label(&note.1, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
+                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
                     }
                     return Err(e);
                 }
@@ -1210,12 +1213,29 @@ fn check_place(
             coerced_mode
         }
         PlaceAccess::MutBorrow(None) => {
+            let found = record.mut_bor_place_modes.insert(place.span.id, (place_mode, note));
+            if found.is_some() {
+                return Err(error(
+                    &place.span,
+                    "Verus Internal Error: duplicate ast id for mut borrow",
+                ));
+            }
+
             // Don't coerce because we want to be able to take
             // mut-borrows to exec places from proof code.
             // (This is safe because we still cannot modify the exec state through the reference)
             place_mode
         }
         PlaceAccess::MutBorrow(Some(mut_ref_tracked_typ)) => {
+            let found =
+                record.mut_bor_place_modes.insert(place.span.id, (place_mode, note.clone()));
+            if found.is_some() {
+                return Err(error(
+                    &place.span,
+                    "Verus Internal Error: duplicate ast id for mut borrow",
+                ));
+            }
+
             // Same cases as for assigning in proof mode
             if place_mode == Mode::Exec {
                 if !ok_to_assign_exec_place_in_erased_code(ctxt, place, mut_ref_tracked_typ) {
@@ -1229,8 +1249,8 @@ fn check_place(
                         },
                     );
                     if let Some(note) = note {
-                        e = e.secondary_label(&note.1.span, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
-                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0.typ)));
+                        e = e.secondary_label(&note.1, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
+                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
                     }
                     return Err(e);
                 }
@@ -1361,7 +1381,7 @@ fn check_place_rec_inner(
             // even if the reference itself is only tracked.
             if mode == Mode::Proof {
                 // If this case occurs, make a note of it in case we need it for diagnostics
-                *note = Some(ProofModeMutRefNote(place.clone(), p.clone()));
+                *note = Some(ProofModeMutRefNote(place.typ.clone(), p.span.clone()));
             }
 
             let deref_mode = if mode == Mode::Spec { Mode::Spec } else { Mode::Exec };
@@ -1469,6 +1489,93 @@ fn check_place_rec_inner(
     }
 }
 
+fn check_tracked_swap(
+    ctxt: &Ctxt,
+    record: &Record,
+    expr: &Expr,
+    option_take: bool,
+) -> Result<(), VirErr> {
+    let ExprX::Call(CallTarget::Fun(_, _, typ_args, ..), args, None) = &expr.x else {
+        unreachable!()
+    };
+    if option_take {
+        // For tracked_take we also allow if the type argument is tracked-only
+        // This is only sound because tracked_take has a precondition that the argument is Some
+        // This is because if T is a proof-only type, then None is still constructible in exec
+        // mode, but Some(x) is not. Thus, Some(x) is proof that the place is tracked, whereas
+        // None is not.
+        if type_is_non_exec(ctxt, &typ_args[1]) {
+            return Ok(());
+        }
+    }
+    for arg in args.iter() {
+        let (ok, note) = ok_to_assign_to_mut_bor_in_erased_code(ctxt, record, arg);
+        if !ok {
+            let mut e = error_with_label(
+                &arg.span,
+                format!("cannot mutate exec-mode place in ghost code"),
+                if note.is_some() {
+                    format!("this place may have mode exec")
+                } else {
+                    format!("this place has mode exec")
+                },
+            );
+            if let Some(note) = note {
+                if arg.span.id == note.1.id {
+                    e = error(&arg.span, format!("cannot mutate exec-mode place in ghost code"));
+                }
+                e = e.secondary_label(&note.1, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
+                e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
+            }
+            return Err(e);
+        }
+    }
+    Ok(())
+}
+
+fn ok_to_assign_to_mut_bor_in_erased_code(
+    ctxt: &Ctxt,
+    record: &Record,
+    expr: &Expr,
+) -> (bool, Option<ProofModeMutRefNote>) {
+    match &expr.x {
+        ExprX::ImplicitReborrowOrSpecRead(p, _, _) => match &p.x {
+            PlaceX::Temporary(e) => {
+                return ok_to_assign_to_mut_bor_in_erased_code(ctxt, record, e);
+            }
+            _ => {}
+        },
+        ExprX::BorrowMut(place) | ExprX::TwoPhaseBorrowMut(place) => {
+            match record.mut_bor_place_modes.get(&place.span.id).unwrap() {
+                (Mode::Spec, _) => {
+                    // If this passed type-checking before, this shouldn't be spec
+                    panic!("Verus Internal Error: ok_to_assign_to_mut_bor_in_erased_code")
+                }
+                (Mode::Proof, _) => {
+                    return (true, None);
+                }
+                (Mode::Exec, note) => {
+                    let base_typ = match &*crate::ast_util::undecorate_typ(&expr.typ) {
+                        TypX::MutRef(t) => t.clone(),
+                        _ => panic!("Verus Internal Error: expected mutable ref"),
+                    };
+                    let ok = ok_to_assign_exec_place_in_erased_code(ctxt, place, &base_typ);
+                    return (ok, note.clone());
+                }
+            }
+        }
+        _ => {}
+    }
+
+    let base_typ = match &*crate::ast_util::undecorate_typ(&expr.typ) {
+        TypX::MutRef(t) => t.clone(),
+        _ => panic!("Verus Internal Error: expected mutable ref"),
+    };
+    let ok = type_is_ghost_assignable_zst(&base_typ) || type_is_non_exec(ctxt, &base_typ);
+    let note = ProofModeMutRefNote(base_typ.clone(), expr.span.clone());
+    (ok, Some(note))
+}
+
 /// Determine if it's okay to assign to the given place in tracked mode even if the
 /// place is determined to be Exec.
 ///
@@ -1491,14 +1598,8 @@ fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place, typ: &Typ)
         return false;
     }
 
-    match &**typ {
-        TypX::Decorate(TypDecoration::Ghost | TypDecoration::Tracked, _, _) => {
-            return true;
-        }
-        TypX::Int(crate::ast::IntRange::Int | crate::ast::IntRange::Nat) => {
-            return true;
-        }
-        _ => {}
+    if type_is_ghost_assignable_zst(typ) {
+        return true;
     }
 
     let mut place = place;
@@ -1524,6 +1625,15 @@ fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place, typ: &Typ)
     }
 
     false
+}
+
+/// Is this a special ZST that we allow assignment of in ghost code?
+fn type_is_ghost_assignable_zst(typ: &Typ) -> bool {
+    match &**typ {
+        TypX::Decorate(TypDecoration::Ghost | TypDecoration::Tracked, _, _) => true,
+        TypX::Int(crate::ast::IntRange::Int | crate::ast::IntRange::Nat) => true,
+        _ => false,
+    }
 }
 
 /// Is it impossible for this type to appear in exec mode?
@@ -1876,6 +1986,14 @@ fn check_expr_handle_mut_arg(
                     };
                     out_proph = out_proph.join(p);
                 }
+            }
+            if ctxt.new_mut_ref
+                && (function.x.attrs.tracked_swap || function.x.attrs.tracked_take_option)
+            {
+                if typing.block_ghostness == Ghost::Exec {
+                    return Err(error(&expr.span, mode_error_msg()));
+                }
+                check_tracked_swap(ctxt, record, &expr, function.x.attrs.tracked_take_option)?;
             }
             Ok((function.x.ret.x.mode, out_proph))
         }
@@ -3212,6 +3330,7 @@ fn check_expr_handle_mut_arg(
                 Expect::none(),
                 outer_proph,
             )?;
+
             match mode {
                 Mode::Exec => {}
                 Mode::Proof => {}
@@ -3420,6 +3539,7 @@ fn check_function(
         TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
     record.var_modes = HashMap::new();
     record.temporary_modes = HashMap::new();
+    record.mut_bor_place_modes = HashMap::new();
 
     let mut fun_typing = typing.push_var_scope();
 
@@ -3788,6 +3908,7 @@ pub fn check_crate(
         var_modes: HashMap::new(),
         temporary_modes: HashMap::new(),
         infer_spec_for_implicit_reborrows: None,
+        mut_bor_place_modes: HashMap::new(),
     };
     let mut state = State {
         vars: ScopeMap::new(),
