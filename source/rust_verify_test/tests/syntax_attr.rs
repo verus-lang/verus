@@ -1336,6 +1336,7 @@ test_verify_one_file! {
             s
         }
     }
+}
 
 test_verify_one_file! {
     #[test] test_verus_verify_on_const code! {
