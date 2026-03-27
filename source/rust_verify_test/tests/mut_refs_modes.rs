@@ -1070,8 +1070,8 @@ test_verify_one_file_with_options! {
         use vstd::prelude::*;
         use vstd::modes::*;
         fn test(x: &mut u32, y: &mut u32) {
-            let tracked a: u32 = 0;
-            let tracked b: u32 = 0;
+            let tracked mut a: u32 = 0;
+            let tracked mut b: u32 = 0;
             proof {
                 tracked_swap(&mut a, &mut b);
             }
@@ -1084,8 +1084,8 @@ test_verify_one_file_with_options! {
         use vstd::prelude::*;
         use vstd::modes::*;
         fn test(x: &mut u32, y: &mut u32) {
-            let a: u32 = 0;
-            let tracked b: u32 = 0;
+            let mut a: u32 = 0;
+            let tracked mut b: u32 = 0;
             proof {
                 tracked_swap(&mut a, &mut b);
             }
@@ -1098,8 +1098,8 @@ test_verify_one_file_with_options! {
         use vstd::prelude::*;
         use vstd::modes::*;
         fn test(x: &mut u32, y: &mut u32) {
-            let tracked a: u32 = 0;
-            let b: u32 = 0;
+            let tracked mut a: u32 = 0;
+            let mut b: u32 = 0;
             proof {
                 tracked_swap(&mut a, &mut b);
             }
@@ -1194,6 +1194,23 @@ test_verify_one_file_with_options! {
         struct X { a: u64 }
         // The type argument being a ZST isn't sufficient
         fn test(Tracked(x): Tracked<&mut Option<Tracked<X>>>) {
+            proof {
+                let tracked x = x.tracked_take();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in ghost code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_take_requires_non_exec_place4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        struct X { a: u64 }
+
+        #[allow(deprecated)]
+        fn test<O: OptionAdditionalFns<X>>(Tracked(x): Tracked<&mut O>)
+            requires x.is_Some()
+        {
             proof {
                 let tracked x = x.tracked_take();
             }
