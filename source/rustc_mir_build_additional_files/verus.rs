@@ -782,12 +782,23 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
     }
 }
 
+pub(crate) struct Proj<'tcx> {
+    pub ty: Ty<'tcx>,
+    pub kind: ProjKind,
+}
+
+pub(crate) enum ProjKind {
+    Deref,
+    Field(rustc_abi::VariantIdx, rustc_abi::FieldIdx),
+}
+
 pub(crate) struct LocalUse<'tcx> {
     pub local: LocalVarId,
     pub hir_id: HirId,
     pub root_hir_id: HirId,
     pub span: Span,
     pub ty: Ty<'tcx>,
+    pub projs: Vec<Proj<'tcx>>,
 }
 
 /// Get all nodes that need pattern checking (match expressions and let stmts)
@@ -889,22 +900,66 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForLocalUses<'a
                     return;
                 }
             }
-            hir::ExprKind::Path(QPath::Resolved(
-                None,
-                rustc_hir::Path { res: Res::Local(id), .. },
-            )) => {
-                self.output_local_uses.push(LocalUse {
-                    local: LocalVarId(*id),
-                    span: expr.span,
-                    ty: self.cx.typeck_results.expr_ty(expr),
-                    hir_id: expr.hir_id,
-                    root_hir_id: self.root_hir_id,
-                });
+            _ => {
+                if let Some(lu) = self.try_unadjusted(expr) {
+                    self.output_local_uses.push(lu);
+                    return;
+                }
             }
-            _ => {}
         }
 
         rustc_hir::intravisit::walk_expr(self, expr);
+    }
+}
+
+impl<'a, 'tcx> VisitTreeForLocalUses<'a, 'tcx> {
+    fn try_unadjusted(&self, expr: &'tcx hir::Expr<'tcx>) -> Option<LocalUse<'tcx>> {
+        match &expr.kind {
+            hir::ExprKind::Path(QPath::Resolved(
+                None,
+                rustc_hir::Path { res: Res::Local(id), .. },
+            )) => Some(LocalUse {
+                local: LocalVarId(*id),
+                span: expr.span,
+                ty: self.cx.typeck_results.expr_ty(expr),
+                hir_id: expr.hir_id,
+                root_hir_id: self.root_hir_id,
+                projs: vec![],
+            }),
+            hir::ExprKind::Field(inner, _f) => {
+                let mut lu = self.try_adjusted(inner)?;
+                lu.projs.push(Proj {
+                    ty: self.cx.typeck_results.expr_ty(expr),
+                    kind: ProjKind::Field(
+                        rustc_abi::FIRST_VARIANT,
+                        self.cx.typeck_results.field_index(expr.hir_id),
+                    ),
+                });
+                Some(lu)
+            }
+            hir::ExprKind::Unary(rustc_hir::UnOp::Deref, inner) => {
+                let mut lu = self.try_adjusted(inner)?;
+                lu.projs
+                    .push(Proj { ty: self.cx.typeck_results.expr_ty(expr), kind: ProjKind::Deref });
+                Some(lu)
+            }
+            _ => None,
+        }
+    }
+
+    fn try_adjusted(&self, expr: &'tcx hir::Expr<'tcx>) -> Option<LocalUse<'tcx>> {
+        let mut projs = vec![];
+        let adjustments = self.cx.typeck_results.expr_adjustments(expr);
+        for adjustment in adjustments.iter() {
+            if let rustc_middle::ty::adjustment::Adjust::Deref(None) = &adjustment.kind {
+                projs.push(Proj { ty: adjustment.target, kind: ProjKind::Deref });
+            } else {
+                return None;
+            }
+        }
+        let mut lu = self.try_unadjusted(expr)?;
+        lu.projs.extend(projs);
+        Some(lu)
     }
 }
 

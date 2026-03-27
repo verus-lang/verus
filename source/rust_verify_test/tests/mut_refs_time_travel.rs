@@ -12,11 +12,11 @@ fn assert_spec_borrowed(err: TestErr, var: &str) {
     )
 }
 
-fn assert_spec_borrowed_field(err: TestErr, var: &str, field: &str) {
+fn assert_spec_borrowed_field(err: TestErr, var: &str, star: &str, field: &str) {
     assert_rust_error_msg(
         err,
         &format!(
-            "cannot borrow `(Verus spec {var}){field}` as immutable because it is also borrowed as mutable"
+            "cannot borrow `{star}(Verus spec {var}){field}` as immutable because it is also borrowed as mutable"
         ),
     )
 }
@@ -41,7 +41,7 @@ test_verify_one_file_with_options! {
             assert(*x_ref == 0);
             *x_ref2 = 20;
         }
-    } => Err(err) => assert_spec_borrowed(err, "x_ref")
+    } => Err(err) => assert_spec_borrowed_field(err, "x_ref", "*", "")
 }
 
 test_verify_one_file_with_options! {
@@ -249,7 +249,7 @@ test_verify_one_file_with_options! {
 
             let x = *c;
         }
-    } => Err(err) => assert_spec_borrowed(err, "a_ref")
+    } => Err(err) => assert_spec_borrowed_field(err, "a_ref", "*", "")
 }
 
 test_verify_one_file_with_options! {
@@ -268,7 +268,7 @@ test_verify_one_file_with_options! {
 
             *c = 20;
         }
-    } => Err(err) => assert_spec_borrowed(err, "a_ref")
+    } => Err(err) => assert_spec_borrowed_field(err, "a_ref", "*", "")
 }
 
 test_verify_one_file_with_options! {
@@ -585,7 +585,7 @@ test_verify_one_file_with_options! {
             let mut b_ref = &mut b;
             let a_ref2 = test(f(a_ref), ({ assert(*a_ref == 0); 0 }));
         }
-    } => Err(err) => assert_spec_borrowed(err, "a_ref")
+    } => Err(err) => assert_spec_borrowed_field(err, "a_ref", "*", "")
 }
 
 test_verify_one_file_with_options! {
@@ -676,7 +676,7 @@ test_verify_one_file_with_options! {
             assert(x.0 === 0);
             *x_ref = (20, 21);
         }
-    } => Err(err) => assert_spec_borrowed(err, "x")
+    } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".0")
 }
 
 test_verify_one_file_with_options! {
@@ -687,12 +687,11 @@ test_verify_one_file_with_options! {
             assert(x.0 === 0);
             *x_ref = 20;
         }
-    } => Err(err) => assert_spec_borrowed(err, "x")
+    } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".0")
 }
 
-// TODO(new_mut_ref): fix
 test_verify_one_file_with_options! {
-    #[ignore] #[test] borrow_field_and_use_different_field ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_different_field ["new-mut-ref"] => verus_code! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x.0;
@@ -714,7 +713,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] borrow_field_and_use_different_field_with_deref ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_different_field_with_deref ["new-mut-ref"] => verus_code! {
         fn test() {
             let mut y = (0, 1);
             let mut x = &mut y;
@@ -738,7 +737,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] borrow_field_and_use_same_field_with_deref ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_same_field_with_deref ["new-mut-ref"] => verus_code! {
         fn test() {
             let mut y = (0, 1);
             let mut x = &mut y;
@@ -746,7 +745,7 @@ test_verify_one_file_with_options! {
             assert(x.1 === 1);
             *x_ref = 20;
         }
-    } => Err(err) => assert_spec_borrowed_field(err, "x", ".1")
+    } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".1")
 }
 
 test_verify_one_file_with_options! {
@@ -758,7 +757,55 @@ test_verify_one_file_with_options! {
             let ghost g = x.1;
             *x_ref = 20;
         }
-    } => Err(err) => assert_spec_borrowed_field(err, "x", ".1")
+    } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".1")
+}
+
+test_verify_one_file_with_options! {
+    #[test] borrow_field_and_use_same_field_with_explicit_deref ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut y = (0, 1);
+            let mut x = &mut y;
+            let x_ref = &mut x.1;
+            assert((*x).1 === 1);
+            *x_ref = 20;
+        }
+    } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".1")
+}
+
+test_verify_one_file_with_options! {
+    #[test] borrow_field_and_use_same_field_with_explicit_deref2 ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut y = (0, 1);
+            let mut x = &mut y;
+            let x_ref = &mut x.1;
+            let ghost g = (*x).1;
+            *x_ref = 20;
+        }
+    } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".1")
+}
+
+test_verify_one_file_with_options! {
+    #[test] borrow_field_and_use_different_field_with_explicit_deref ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut y = (0, 1);
+            let mut x = &mut y;
+            let x_ref = &mut x.0;
+            assert((*x).1 === 1);
+            *x_ref = 20;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] borrow_field_and_use_different_field_with_explicit_deref2 ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut y = (0, 1);
+            let mut x = &mut y;
+            let x_ref = &mut x.0;
+            let ghost g = (*x).1;
+            *x_ref = 20;
+        }
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {

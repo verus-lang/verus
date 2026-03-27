@@ -1322,12 +1322,24 @@ pub(crate) fn shadow_var_uses<'tcx>(
         }
 
         let kind = ExprKind::VarRef { id: shadow_local_var_id(local_use.local) };
-        let e = expr_id_from_kind(cx, kind, local_use.root_hir_id, local_use.span, local_use.ty);
+        let mut ty = local_use.ty;
+        let mut e = expr_id_from_kind(cx, kind, local_use.root_hir_id, local_use.span, ty);
+
+        for proj in local_use.projs.iter() {
+            let kind = match proj.kind {
+                crate::verus::ProjKind::Deref => ExprKind::Deref { arg: e },
+                crate::verus::ProjKind::Field(variant_index, name) => {
+                    ExprKind::Field { lhs: e, variant_index, name }
+                }
+            };
+            ty = proj.ty;
+            e = expr_id_from_kind(cx, kind, local_use.root_hir_id, local_use.span, ty);
+        }
 
         let kind = ExprKind::Borrow { borrow_kind: BorrowKind::Shared, arg: e };
         let ref_ty = cx.tcx.mk_ty_from_kind(TyKind::Ref(
             Region::new_from_kind(cx.tcx, RegionKind::ReErased),
-            local_use.ty,
+            ty,
             Mutability::Not,
         ));
         let e = expr_id_from_kind(cx, kind, local_use.root_hir_id, local_use.span, ref_ty);
