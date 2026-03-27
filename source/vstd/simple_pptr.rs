@@ -291,14 +291,23 @@ impl<V> PointsTo<V> {
         self.points_to.leak_contents();
     }
 
-    /// Guarantees that two distinct `PointsTo<V>` objects point to disjoint ranges of memory.
-    /// If both S and V are non-zero-sized, then this also implies the pointers
+    /// Guarantees that two distinct, non-ZST `PointsTo<V>` objects point to disjoint ranges of memory.
+    /// Since both S and V are non-zero-sized, this also implies the pointers
     /// have distinct addresses.
+    ///
+    /// Note: If either S or T is zero-sized, we get disjointness "for free" without having to call this proof,
+    /// since the empty memory range corresponding to a ZST cannot possibly intersect with any other memory.
+    /// However, note that if one type is a ZST and the other is a non-ZST,
+    /// the disjointness definition as stated here here does not hold,
+    /// since the ZST pointer could be in the middle of the non-ZST's range.
     pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
+        requires
+            size_of::<V>() != 0,
+            size_of::<S>() != 0,
         ensures
             *old(self) == *self,
-            (size_of::<V>() != 0 && size_of::<S>() != 0) ==> (self.addr() + size_of::<V>()
-                <= other.addr() || other.addr() + size_of::<S>() <= self.addr()),
+            self.addr() + size_of::<V>() <= other.addr() || other.addr() + size_of::<S>()
+                <= self.addr(),
     {
         use_type_invariant(&*self);
         self.points_to.is_disjoint(&other.points_to);
