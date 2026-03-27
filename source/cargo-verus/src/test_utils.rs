@@ -11,6 +11,7 @@ pub struct MockPackage {
     version: String,
     has_lib: bool,
     bin_names: Vec<String>,
+    example_names: Vec<String>,
     deps: Vec<(DepKind, Option<String>, MockDep)>,
     verus_verify: Option<bool>,
 }
@@ -118,6 +119,7 @@ impl MockPackage {
             version: "0.1.0".to_owned(),
             has_lib: false,
             bin_names: vec![],
+            example_names: vec![],
             deps: vec![],
             verus_verify: None,
         }
@@ -135,6 +137,11 @@ impl MockPackage {
 
     pub fn bin(mut self, name: &str) -> Self {
         self.bin_names.push(name.to_owned());
+        self
+    }
+
+    pub fn example(mut self, name: &str) -> Self {
+        self.example_names.push(name.to_owned());
         self
     }
 
@@ -264,6 +271,16 @@ impl MockPackage {
             for name in self.bin_names {
                 let bin = src.join(format!("{name}.rs"));
                 std::fs::write(&bin, "").expect(&format!("write {bin:?}"));
+            }
+        }
+
+        if !self.example_names.is_empty() {
+            let examples = root.join("examples");
+            fs::create_dir(&examples).expect("create dir {examples}");
+
+            for name in self.example_names {
+                let example = examples.join(format!("{name}.rs"));
+                std::fs::write(&example, "fn main() {}").expect(&format!("write {example:?}"));
             }
         }
     }

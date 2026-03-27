@@ -138,7 +138,6 @@ pub(crate) enum ExprItem {
     F64ToBits,
     StrSliceLen,
     StrSliceGetChar,
-    StrSliceIsAscii,
     ArchWordBits,
     ClosureToFnSpec,
     ClosureToFnProof,
@@ -218,12 +217,44 @@ pub(crate) enum SpecBitwiseItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum IeeeFloatUnaryItem {
+    Cast,
+    Neg,
+    Floor,
+    Ceil,
+    Round,
+    RoundTiesEven,
+    Trunc,
+    IsNormal,
+    IsSubnormal,
+    IsZero,
+    IsInfinite,
+    IsNaN,
+    IsNegative,
+    IsPositive,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum IeeeFloatBinaryItem {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Eq,
+    Le,
+    Ge,
+    Lt,
+    Gt,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum BinaryOpItem {
     Arith(ArithItem),
     Equality(EqualityItem),
     SpecOrd(SpecOrdItem),
     SpecArith(SpecArithItem),
     SpecBitwise(SpecBitwiseItem),
+    IeeeFloat(IeeeFloatBinaryItem),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -271,8 +302,10 @@ pub(crate) enum UnaryOpItem {
     SpecNeg,
     SpecCastInteger,
     SpecCastReal,
+    SpecCastFloat,
     RealFloor,
     SpecGhostTracked(SpecGhostTrackedItem),
+    IeeeFloat(IeeeFloatUnaryItem),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -324,6 +357,7 @@ pub(crate) enum VstdItem {
     CastSlicePtrToStrPtr,
     CastStrPtrToSlicePtr,
     CastPtrToUsize,
+    FloatCast,
     RefMutArrayUnsizingCoercion,
     VecIndex,
     VecIndexMut,
@@ -409,6 +443,7 @@ pub(crate) enum VerusItem {
     ErasedGhostValue,
     MutableReferenceTie,
     DummyCapture(DummyCaptureItem),
+    MutRefTracked,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -463,7 +498,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::f64_to_bits",             VerusItem::Expr(ExprItem::F64ToBits)),
         ("verus::verus_builtin::strslice_len",            VerusItem::Expr(ExprItem::StrSliceLen)),
         ("verus::verus_builtin::strslice_get_char",       VerusItem::Expr(ExprItem::StrSliceGetChar)),
-        ("verus::verus_builtin::strslice_is_ascii",       VerusItem::Expr(ExprItem::StrSliceIsAscii)),
         ("verus::verus_builtin::arch_word_bits",          VerusItem::Expr(ExprItem::ArchWordBits)),
         ("verus::verus_builtin::closure_to_fn_spec",      VerusItem::Expr(ExprItem::ClosureToFnSpec)),
         ("verus::verus_builtin::closure_to_fn_proof",     VerusItem::Expr(ExprItem::ClosureToFnProof)),
@@ -518,6 +552,16 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::SpecShl::spec_shl",       VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::Shl))),
         ("verus::verus_builtin::SpecShr::spec_shr",       VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::Shr))),
 
+        ("verus::verus_builtin::IeeeFloat::ieee_add",     VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Add))),
+        ("verus::verus_builtin::IeeeFloat::ieee_sub",     VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Sub))),
+        ("verus::verus_builtin::IeeeFloat::ieee_mul",     VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Mul))),
+        ("verus::verus_builtin::IeeeFloat::ieee_div",     VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Div))),
+        ("verus::verus_builtin::IeeeFloat::ieee_eq",      VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Eq))),
+        ("verus::verus_builtin::IeeeFloat::ieee_le",      VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Le))),
+        ("verus::verus_builtin::IeeeFloat::ieee_ge",      VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Ge))),
+        ("verus::verus_builtin::IeeeFloat::ieee_lt",      VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Lt))),
+        ("verus::verus_builtin::IeeeFloat::ieee_gt",      VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Gt))),
+
         ("verus::verus_builtin::spec_chained_value",      VerusItem::Chained(ChainedItem::Value)),
         ("verus::verus_builtin::spec_chained_le",         VerusItem::Chained(ChainedItem::Le)),
         ("verus::verus_builtin::spec_chained_lt",         VerusItem::Chained(ChainedItem::Lt)),
@@ -544,13 +588,30 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::spec_literal_decimal",    VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Decimal))),
         ("verus::verus_builtin::SpecNeg::spec_neg",       VerusItem::UnaryOp(UnaryOpItem::SpecNeg)),
         ("verus::verus_builtin::spec_cast_integer",       VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger)),
-        ("verus::verus_builtin::spec_cast_real"   ,       VerusItem::UnaryOp(UnaryOpItem::SpecCastReal)),
+        ("verus::verus_builtin::spec_cast_real",          VerusItem::UnaryOp(UnaryOpItem::SpecCastReal)),
+        ("verus::verus_builtin::spec_cast_float",         VerusItem::UnaryOp(UnaryOpItem::SpecCastFloat)),
         ("verus::verus_builtin::real::floor",             VerusItem::UnaryOp(UnaryOpItem::RealFloor)),
         ("verus::verus_builtin::Ghost::view",             VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostView))),
         ("verus::verus_builtin::Ghost::borrow",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrow))),
         ("verus::verus_builtin::Ghost::borrow_mut",       VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))),
         ("verus::verus_builtin::Tracked::view",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::TrackedView))),
 
+        ("verus::verus_builtin::IeeeFloat::ieee_neg",     VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Neg))),
+        ("verus::verus_builtin::IeeeFloat::ieee_floor",   VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Floor))),
+        ("verus::verus_builtin::IeeeFloat::ieee_ceil",    VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Ceil))),
+        ("verus::verus_builtin::IeeeFloat::ieee_round",   VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Round))),
+        ("verus::verus_builtin::IeeeFloat::ieee_round_ties_even", VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::RoundTiesEven))),
+        ("verus::verus_builtin::IeeeFloat::ieee_trunc",           VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Trunc))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_normal",    VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsNormal))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_subnormal", VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsSubnormal))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_zero",      VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsZero))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_infinite",  VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsInfinite))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_nan",       VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsNaN))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_negative",  VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsNegative))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_positive",  VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsPositive))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_positive",  VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsPositive))),
+        ("verus::verus_builtin::IeeeFloatCast::ieee_cast",     VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Cast))),
+        
         ("verus::verus_builtin::erased_ghost_value",      VerusItem::ErasedGhostValue),
         ("verus::verus_builtin::mutable_reference_tie",   VerusItem::MutableReferenceTie),
         ("verus::verus_builtin::DummyCapture",            VerusItem::DummyCapture(DummyCaptureItem::Struct)),
@@ -607,6 +668,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::raw_ptr::cast_str_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastStrPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_str_ptr_to_slice_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
         ("verus::vstd::raw_ptr::SharedReference", VerusItem::Vstd(VstdItem::SharedReference, Some(Arc::new("raw_ptr::SharedReference".to_owned())))),
+        ("verus::vstd::float::float_cast", VerusItem::Vstd(VstdItem::FloatCast, Some(Arc::new("float::float_cast".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
         ("verus::verus_builtin::Structural",              VerusItem::Marker(MarkerItem::Structural)),
@@ -643,6 +705,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::mut_ref_future",   VerusItem::MutRefFuture),
         ("verus::verus_builtin::final_",           VerusItem::Final),
         ("verus::verus_builtin::after_borrow",     VerusItem::AfterBorrow),
+        ("verus::verus_builtin::mut_ref_tracked",  VerusItem::MutRefTracked),
     ]
 }
 

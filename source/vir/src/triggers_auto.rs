@@ -411,11 +411,12 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::Length(_) => 0,
                 UnaryOp::HeightTrigger => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
-                UnaryOp::FloatToBits => 1,
                 UnaryOp::IntToReal => 1,
                 UnaryOp::RealToInt => 1,
+                UnaryOp::FloatToBits => 1,
+                UnaryOp::IeeeFloat(_) => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
-                UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
+                UnaryOp::StrLen => fail_on_strop(),
                 UnaryOp::MutRefFinal(_) => 1,
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
             };
@@ -468,7 +469,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let depth = match op {
                 And | Or | Xor | Implies | Eq(_) => 0,
                 HeightCompare { .. } => 1,
-                Ne | Inequality(_) | Arith(..) | RealArith(..) => 1,
+                Ne | Inequality(_) | Arith(..) | RealArith(..) | IeeeFloat(..) => 1,
                 Bitwise(..) => 1,
                 StrGetChar => fail_on_strop(),
                 Index(..) => 1,

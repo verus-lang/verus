@@ -1787,3 +1787,203 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
 }
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked1 ["new-mut-ref"] => verus_code! {
+        proof fn upd(tracked t: &mut Tracked<u64>)
+            ensures **final(t) == 20
+        {
+            **t = 20;
+        }
+
+        fn test1() {
+            let tracked mut u: u64 = 0;
+            proof {
+                upd(mut_ref_tracked(&mut u));
+            }
+            assert(u == 20);
+        }
+
+        fn fail1() {
+            let tracked mut u: u64 = 0;
+            proof {
+                upd(mut_ref_tracked(&mut u));
+            }
+            assert(u == 20);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked2 ["new-mut-ref"] => verus_code! {
+        proof fn upd(tracked t: &mut Tracked<u64>)
+            ensures **final(t) == 20
+        {
+            **t = 20;
+        }
+
+        fn test1(tracked u: &mut u64) {
+            proof {
+                upd(mut_ref_tracked(u));
+            }
+            assert(*u == 20);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked3 ["new-mut-ref"] => verus_code! {
+        proof fn upd(tracked t: &mut Tracked<u64>)
+            ensures **final(t) == 20
+        {
+            **t = 20;
+        }
+
+        fn test1(tracked u: &mut u64) {
+            let mut u: u64 = 0;
+            let z = mut_ref_tracked(&mut u);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`mut_ref_tracked` must be in a 'proof' block")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked4 ["new-mut-ref"] => verus_code! {
+        proof fn upd(tracked t: &mut Tracked<u64>)
+            ensures **final(t) == 20
+        {
+            **t = 20;
+        }
+
+        fn test1() {
+            let mut u: u64 = 0;
+            proof {
+                upd(mut_ref_tracked(&mut u));
+            }
+            assert(u == 20);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked5 ["new-mut-ref"] => verus_code! {
+        proof fn upd(tracked t: &mut X)
+            ensures final(t).u == 20
+        {
+            t.u = 20;
+        }
+
+        tracked struct X { u: u64 }
+
+        fn test1(tracked u: &mut X) {
+            proof {
+                upd(mut_ref_tracked(u));
+            }
+            assert(u.u == 20);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked6 ["new-mut-ref"] => verus_code! {
+        proof fn upd(tracked t: &mut X)
+            ensures final(t).u == 20
+        {
+            t.u = 20;
+        }
+
+        struct X { u: u64 }
+
+        fn test1(tracked u: &mut X) {
+            proof {
+                upd(mut_ref_tracked(u));
+            }
+            assert(u.u == 20);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked7 ["new-mut-ref"] => verus_code! {
+        proof fn upd(tracked t: &mut Tracked<X>)
+            ensures final(t).u == 20
+        {
+            t.u = 20;
+        }
+
+        struct X { u: u64 }
+
+        fn test1(tracked u: &mut Tracked<X>) {
+            proof {
+                upd(mut_ref_tracked(u));
+            }
+            assert(u.u == 20);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked8 ["new-mut-ref"] => verus_code! {
+        proof fn upd(tracked t: &mut Tracked<u64>)
+            ensures **final(t) == 20
+        {
+            **t = 20;
+        }
+
+        fn test1(tracked u: &mut u64) {
+            proof {
+                upd(mut_ref_tracked(&mut *u));
+            }
+            assert(*u == 20);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked9_proph ["new-mut-ref"] => verus_code! {
+        proof fn upd(tracked t: &mut Tracked<u64>)
+            ensures **final(t) == 20
+        {
+            **t = 20;
+        }
+
+        #[verifier::prophetic]
+        uninterp spec fn cond() -> bool;
+
+        fn test1() {
+            let tracked mut u: u64 = 0;
+            proof {
+                if cond() {
+                    **mut_ref_tracked(&mut u) = 19u64;
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "mutable borrow cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked10_proph ["new-mut-ref"] => verus_code! {
+        proof fn upd(tracked t: &mut Tracked<u64>)
+            ensures **final(t) == 20
+        {
+            **t = 20;
+        }
+
+        fn test1() {
+            let tracked mut u: u64 = 0;
+            proof {
+                **mut_ref_tracked(&mut u) = 19u64;
+            }
+            assert(u == 19);
+        }
+
+        fn test1_fails() {
+            let tracked mut u: u64 = 0;
+            proof {
+                **mut_ref_tracked(&mut u) = 19u64;
+            }
+            assert(u == 19);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

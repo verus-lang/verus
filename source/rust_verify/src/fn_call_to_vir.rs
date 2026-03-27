@@ -933,21 +933,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ),
                 }
             }
-            ExprItem::StrSliceIsAscii => {
-                record_spec_fn(bctx, expr);
-                match &expr.kind {
-                    ExprKind::Call(_, args) => {
-                        assert!(args.len() == 1);
-                        let arg0 = args.first().unwrap();
-                        let arg0 = expr_to_vir_consume(bctx, arg0, ExprModifier::REGULAR)
-                            .expect("internal compiler error");
-                        mk_expr(ExprX::Unary(UnaryOp::StrIsAscii, arg0))
-                    }
-                    _ => panic!(
-                        "Expected a call for verus_builtin::strslice_is_ascii with one argument but did not receive it"
-                    ),
-                }
-            }
             ExprItem::ArchWordBits => {
                 record_spec_fn(bctx, expr);
                 assert!(args.len() == 0);
@@ -1377,7 +1362,11 @@ fn verus_item_to_vir<'tcx, 'a>(
             let source_ty = undecorate_typ(&source_vir.typ);
             match &*source_ty {
                 TypX::Int(_) => mk_expr(ExprX::Unary(UnaryOp::IntToReal, source_vir)),
-                _ => err_span(expr.span, "Only integer types can be cast to real"),
+                TypX::Float(_) => mk_expr(ExprX::Unary(
+                    UnaryOp::IeeeFloat(vir::ast::IeeeFloatUnaryOp::Cast),
+                    source_vir,
+                )),
+                _ => err_span(expr.span, "Only integer and float types can be cast to real"),
             }
         }
         VerusItem::UnaryOp(UnaryOpItem::RealFloor) => {
@@ -1388,6 +1377,23 @@ fn verus_item_to_vir<'tcx, 'a>(
             let source_ty = undecorate_typ(&source_vir.typ);
             assert!(matches!(&*source_ty, TypX::Real));
             mk_expr(ExprX::Unary(UnaryOp::RealToInt, source_vir))
+        }
+        VerusItem::UnaryOp(UnaryOpItem::SpecCastFloat) => {
+            record_spec_fn(bctx, expr);
+            unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
+            let source_vir0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
+            let source_ty = undecorate_typ(&source_vir.typ);
+            match &*source_ty {
+                TypX::Int(IntRange::I(_) | IntRange::U(_)) | TypX::Real | TypX::Float(_) => {
+                    let op = UnaryOp::IeeeFloat(vir::ast::IeeeFloatUnaryOp::Cast);
+                    mk_expr(ExprX::Unary(op, source_vir))
+                }
+                _ => err_span(
+                    expr.span,
+                    "Only i8...u128, real, and float types can be cast to float",
+                ),
+            }
         }
         VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger) => {
             record_spec_fn(bctx, expr);
@@ -1458,13 +1464,20 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(bctx, &to_ty, &cast_to, expr_vattrs.truncate))
                 }
+                ((TypX::Float(_), _), TypX::Int(IntRange::U(_) | IntRange::I(_))) => {
+                    let op = UnaryOp::IeeeFloat(vir::ast::IeeeFloatUnaryOp::Cast);
+                    mk_expr(ExprX::Unary(op, source_vir))
+                }
+                ((TypX::Float(_), _), TypX::Int(_)) => {
+                    err_span(expr.span, "for floats, only casts to i8..u128 are supported")
+                }
                 ((TypX::Real, _), TypX::Int(_)) => err_span(
                     expr.span,
                     "cannot cast real to int directly; use .floor() instead (e.g., x.floor() or x.floor() as u64)",
                 ),
                 _ => err_span(
                     expr.span,
-                    "Verus currently only supports casts from integer types, bool, enum (unit-only or field-less), `char`, and pointer types to integer types",
+                    "Verus currently only supports casts from integer types, floats, bool, enum (unit-only or field-less), `char`, and pointer types to integer types",
                 ),
             }
         }
@@ -1494,8 +1507,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                         varg,
                     ))
                 }
+                TypX::Float(_) => {
+                    mk_expr(ExprX::Unary(UnaryOp::IeeeFloat(vir::ast::IeeeFloatUnaryOp::Neg), varg))
+                }
                 _ => {
-                    return err_span(expr.span, "spec_neg expected int or real type");
+                    return err_span(expr.span, "spec_neg expected int or real or float type");
                 }
             }
         }
@@ -1506,9 +1522,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 ChainedItem::Value => {
                     unsupported_err_unless!(args_len == 1, expr.span, "spec_chained_value", &args);
                     unsupported_err_unless!(
-                        matches!(*undecorate_typ(&vir_args[0].typ), TypX::Int(_) | TypX::Real),
+                        matches!(
+                            *undecorate_typ(&vir_args[0].typ),
+                            TypX::Int(_) | TypX::Real | TypX::Float(_),
+                        ),
                         expr.span,
-                        "chained inequalities require integer or real types",
+                        "chained inequalities require integer or real or float types",
                         &args
                     );
                     let exprx = ExprX::Multi(
@@ -1534,9 +1553,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                         &args
                     );
                     unsupported_err_unless!(
-                        matches!(*undecorate_typ(&vir_args[1].typ), TypX::Int(_) | TypX::Real),
+                        matches!(
+                            *undecorate_typ(&vir_args[1].typ),
+                            TypX::Int(_) | TypX::Real | TypX::Float(_),
+                        ),
                         expr.span,
-                        "chained inequalities require integer or real types",
+                        "chained inequalities require integer or real or float types",
                         &args
                     );
                     if let ExprX::Multi(MultiOp::Chained(_), es) = &vir_args[0].x {
@@ -1546,12 +1568,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                             let types_match = match (&*first_typ, &*new_typ) {
                                 (TypX::Int(_), TypX::Int(_)) => true,
                                 (TypX::Real, TypX::Real) => true,
+                                (TypX::Float(f1), TypX::Float(f2)) => f1 == f2,
                                 _ => false,
                             };
                             unsupported_err_unless!(
                                 types_match,
                                 expr.span,
-                                "chained inequalities require all elements to have the same type (all integers or all reals)"
+                                "chained inequalities require all elements to have the same type (all integers or all reals or all floats)"
                             );
                         }
                     }
@@ -1804,15 +1827,74 @@ fn verus_item_to_vir<'tcx, 'a>(
             let vop = BinaryOp::Implies;
             mk_expr(ExprX::Binary(vop, lhs, rhs))
         }
+        VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(fop)) => {
+            use crate::verus_items::IeeeFloatUnaryItem;
+            use vir::ast::IeeeFloatUnaryOp;
+            record_spec_fn(bctx, expr);
+            let varg = mk_one_vir_arg(bctx, expr.span, &args)?;
+            let vop = match fop {
+                IeeeFloatUnaryItem::Cast => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Cast),
+                IeeeFloatUnaryItem::Neg => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Neg),
+                IeeeFloatUnaryItem::Floor => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Floor),
+                IeeeFloatUnaryItem::Ceil => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Ceil),
+                IeeeFloatUnaryItem::Round => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Round),
+                IeeeFloatUnaryItem::RoundTiesEven => {
+                    UnaryOp::IeeeFloat(IeeeFloatUnaryOp::RoundTiesEven)
+                }
+                IeeeFloatUnaryItem::Trunc => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Trunc),
+                IeeeFloatUnaryItem::IsNormal => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsNormal),
+                IeeeFloatUnaryItem::IsSubnormal => {
+                    UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsSubnormal)
+                }
+                IeeeFloatUnaryItem::IsZero => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsZero),
+                IeeeFloatUnaryItem::IsInfinite => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsInfinite),
+                IeeeFloatUnaryItem::IsNaN => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsNaN),
+                IeeeFloatUnaryItem::IsNegative => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsNegative),
+                IeeeFloatUnaryItem::IsPositive => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::IsPositive),
+            };
+            mk_expr(ExprX::Unary(vop, varg))
+        }
+        VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(fop)) => {
+            use crate::verus_items::IeeeFloatBinaryItem;
+            use vir::ast::IeeeFloatBinaryOp;
+            record_spec_fn(bctx, expr);
+            let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
+            let vop = match fop {
+                IeeeFloatBinaryItem::Add => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Add),
+                IeeeFloatBinaryItem::Sub => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Sub),
+                IeeeFloatBinaryItem::Mul => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Mul),
+                IeeeFloatBinaryItem::Div => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Div),
+                IeeeFloatBinaryItem::Eq => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Eq),
+                IeeeFloatBinaryItem::Le => {
+                    BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Le))
+                }
+                IeeeFloatBinaryItem::Ge => {
+                    BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Ge))
+                }
+                IeeeFloatBinaryItem::Lt => {
+                    BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Lt))
+                }
+                IeeeFloatBinaryItem::Gt => {
+                    BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Gt))
+                }
+            };
+            mk_expr(ExprX::Binary(vop, lhs, rhs))
+        }
         VerusItem::BinaryOp(
             BinaryOpItem::Arith(_)
             | BinaryOpItem::SpecArith(_)
             | BinaryOpItem::SpecBitwise(_)
             | BinaryOpItem::SpecOrd(_),
         ) => {
+            use crate::rust_to_vir_base::is_float_arith;
+
             record_spec_fn(bctx, expr);
 
-            if !is_smt_arith(bctx, args[0].span, args[1].span, &args[0].hir_id, &args[1].hir_id)? {
+            let is_smt =
+                is_smt_arith(bctx, args[0].span, args[1].span, &args[0].hir_id, &args[1].hir_id)?;
+            let is_float =
+                is_float_arith(bctx, args[0].span, args[1].span, &args[0].hir_id, &args[1].hir_id)?;
+            if !is_smt && !is_float {
                 let t1 = bctx.types.expr_ty_adjusted(&args[0]);
                 let t2 = bctx.types.expr_ty_adjusted(&args[1]);
                 return err_span(
@@ -1827,6 +1909,25 @@ fn verus_item_to_vir<'tcx, 'a>(
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
 
             let vop = match verus_item {
+                VerusItem::BinaryOp(BinaryOpItem::SpecOrd(spec_ord_item))
+                    if matches!(&*undecorate_typ(&lhs.typ), TypX::Float(_)) =>
+                {
+                    use vir::ast::IeeeFloatBinaryOp;
+                    match spec_ord_item {
+                        SpecOrdItem::Le => {
+                            BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Le))
+                        }
+                        SpecOrdItem::Ge => {
+                            BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Ge))
+                        }
+                        SpecOrdItem::Lt => {
+                            BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Lt))
+                        }
+                        SpecOrdItem::Gt => {
+                            BinaryOp::IeeeFloat(IeeeFloatBinaryOp::InEq(InequalityOp::Gt))
+                        }
+                    }
+                }
                 VerusItem::BinaryOp(BinaryOpItem::SpecOrd(spec_ord_item)) => match spec_ord_item {
                     SpecOrdItem::Le => BinaryOp::Inequality(InequalityOp::Le),
                     SpecOrdItem::Ge => BinaryOp::Inequality(InequalityOp::Ge),
@@ -1857,6 +1958,22 @@ fn verus_item_to_vir<'tcx, 'a>(
                         SpecArithItem::EuclideanOrRealDiv => BinaryOp::RealArith(RealArithOp::Div),
                         SpecArithItem::EuclideanMod => {
                             unreachable!("spec mod operation cannot have type real")
+                        }
+                    }
+                }
+                VerusItem::BinaryOp(BinaryOpItem::SpecArith(spec_arith_item))
+                    if matches!(&*undecorate_typ(&expr_typ()?), TypX::Float(_)) =>
+                {
+                    use vir::ast::IeeeFloatBinaryOp;
+                    match spec_arith_item {
+                        SpecArithItem::Add => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Add),
+                        SpecArithItem::Sub => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Sub),
+                        SpecArithItem::Mul => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Mul),
+                        SpecArithItem::EuclideanOrRealDiv => {
+                            BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Div)
+                        }
+                        SpecArithItem::EuclideanMod => {
+                            unreachable!("spec mod operation cannot have floating point type")
                         }
                     }
                 }
@@ -2050,6 +2167,19 @@ fn verus_item_to_vir<'tcx, 'a>(
                 id: bctx.ctxt.unique_read_kind_id(),
             };
             mk_expr(ExprX::ReadPlace(p, rk))
+        }
+        VerusItem::MutRefTracked => {
+            record_compilable_operator(bctx, expr, CompilableOperator::MutRefTracked);
+            if !bctx.new_mut_ref {
+                unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
+            }
+            if !bctx.in_ghost {
+                return err_span(expr.span, "`mut_ref_tracked` must be in a 'proof' block");
+            }
+            let p = expr_to_vir_place(&bctx, &args[0], ExprModifier::REGULAR)?;
+            let p =
+                crate::rust_to_vir_expr::deref_mut_allow_cancelling_two_phase(bctx, expr.span, &p)?;
+            mk_expr(ExprX::BorrowMutTracked(p))
         }
         VerusItem::BuiltinDeref(d) => {
             // This would be easy to support (similar to handling borrow_mut etc.) but their usage

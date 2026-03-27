@@ -2686,6 +2686,8 @@ impl Visitor {
             let ty = cast.ty;
             if is_probably_real_type(&ty) {
                 *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_real(#src));
+            } else if is_probably_float_type(&ty) {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_float::<_, #ty>(#src));
             } else {
                 *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_integer::<_, #ty>(#src));
             }
@@ -5406,6 +5408,16 @@ fn is_probably_real_type(typ: &Type) -> bool {
         Type::Path(TypePath { qself: None, path }) => match path.get_ident() {
             None => false,
             Some(ident) => ident == "real",
+        },
+        _ => false,
+    }
+}
+
+fn is_probably_float_type(typ: &Type) -> bool {
+    match typ {
+        Type::Path(TypePath { qself: None, path }) => match path.get_ident() {
+            None => false,
+            Some(ident) => matches!(ident.to_string().as_str(), "f16" | "f32" | "f64" | "f128"),
         },
         _ => false,
     }

@@ -2813,6 +2813,26 @@ impl Verifier {
         let vir_crate =
             vir::traits::merge_external_traits(vir_crate).map_err(map_err_diagnostics)?;
 
+        if self.args.log_all || self.args.log_args.log_impl_names {
+            let mut file = self
+                .create_log_file(None, crate::config::IMPL_NAMES_SUFFIX)
+                .map_err(map_err_diagnostics)?;
+            for imp in &vir_crate.trait_impls {
+                let ts: Vec<String> =
+                    imp.x.trait_typ_args.iter().map(vir::ast_util::typ_to_diagnostic_str).collect();
+                writeln!(
+                    &mut file,
+                    "{}   ###   {}   ###   {}   ###   {}",
+                    vir::ast_util::path_as_friendly_rust_name(&imp.x.impl_path),
+                    vir::ast_util::path_as_friendly_rust_name(&imp.x.trait_path),
+                    &ts.join(", "),
+                    &imp.span.as_string,
+                )
+                .map_err(|e| io_vir_err("log_impl_names".to_string(), e))
+                .map_err(map_err_diagnostics)?;
+            }
+        }
+
         Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
 
         crate::import_export::export_crate(
@@ -3097,7 +3117,7 @@ pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
 > = std::sync::RwLock::new(None);
 
 fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
-    let mut crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.hir_crate)(tcx, ());
+    let mut crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_crate)(tcx, ());
     crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(&mut crate_, tcx);
     crate_
 }
@@ -3132,31 +3152,32 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
         if self.verifier.args.no_lifetime {
             config.override_queries = Some(|_session, providers| {
-                providers.hir_crate = hir_crate;
-                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-                providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
-                providers.check_mod_deathness = |_, _| {};
+                providers.queries.hir_crate = hir_crate;
+                providers.queries.mir_const_qualif =
+                    |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.queries.lint_mod = |_, _| {};
+                providers.queries.check_liveness = |_, _| DenseBitSet::new_empty(0);
+                providers.queries.check_mod_deathness = |_, _| {};
 
-                providers.mir_borrowck =
+                providers.queries.mir_borrowck =
                     |tcx, _local_def_id| Ok(tcx.arena.alloc(Default::default()));
             });
         } else {
             config.override_queries = Some(|_session, providers| {
-                providers.hir_crate = hir_crate;
-                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-                providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
-                providers.check_mod_deathness = |_, _| {};
+                providers.queries.hir_crate = hir_crate;
+                providers.queries.mir_const_qualif =
+                    |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.queries.lint_mod = |_, _| {};
+                providers.queries.check_liveness = |_, _| DenseBitSet::new_empty(0);
+                providers.queries.check_mod_deathness = |_, _| {};
 
                 rustc_mir_build_verus::verus_provide(providers);
-
-                providers.mir_built = |tcx, def| {
+                providers.queries.mir_built = |tcx, def| {
                     // We need to override this to call our verus of build_mir.
                     // mir_built is defined in the crate rustc_mir_transform, which I prefer
                     // not to fork. The actual implementation of mir_built is more complicated
                     // than this, but this seems to be the essential functionality.
-                    let body = rustc_mir_build_verus::builder::build_mir(tcx, def);
+                    let body = rustc_mir_build_verus::builder::build_mir_inner_impl(tcx, def);
                     //let pass = rustc_mir_transform::simplify::SimplifyCfg::Initial;
                     //pass.run_pass(tcx, &mut body);
                     tcx.alloc_steal_mir(body)
@@ -3165,13 +3186,15 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 // check_well_formed when called on an OpaqueTy will trigger mir_borrowck to run.
                 // This happens earlier than we'd like, so we disable it.
                 // TODO: when we support opaque types we should run this check later
-                providers.check_well_formed =
+                providers.queries.check_well_formed =
                     |tcx: TyCtxt<'_>, def_id: rustc_hir::def_id::LocalDefId| {
                         let node = tcx.hir_node_by_def_id(def_id);
                         if matches!(node, rustc_hir::Node::OpaqueTy(_)) {
                             return Ok(());
                         }
-                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.check_well_formed)(tcx, def_id)
+                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.check_well_formed)(
+                            tcx, def_id,
+                        )
                     };
             });
         }

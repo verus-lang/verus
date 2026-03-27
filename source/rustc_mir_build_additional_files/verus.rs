@@ -1,5 +1,6 @@
 use crate::rustc_index::Idx;
 use crate::thir::cx::ThirBuildCx;
+// use crate::thir::pattern::pat_from_hir;
 use hir::HirId;
 use itertools::Itertools;
 use rustc_hir as hir;
@@ -9,7 +10,6 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::hir::place::{Place, Projection, ProjectionKind};
 use rustc_middle::middle::region;
 use rustc_middle::mir::FakeReadCause;
-use rustc_middle::thir;
 use rustc_middle::thir::{
     AdtExprBase, Arm, ArmId, Block, BlockId, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, Pat,
     PatKind, Stmt, StmtId, StmtKind,
@@ -307,9 +307,9 @@ pub(crate) fn erase_tree<'tcx>(
         ty: expr.ty,
         span: hir_expr.span,
         kind: ExprKind::Scope {
+            hir_id: hir_expr.hir_id,
             region_scope: expr_scope,
             value: cx.thir.exprs.push(expr),
-            lint_level: rustc_middle::thir::LintLevel::Explicit(hir_expr.hir_id),
         },
     };
     cx.thir.exprs.push(expr)
@@ -478,16 +478,16 @@ fn erased_ghost_value_remove_type_if_possible<'tcx>(
             }
             _ => None,
         },
-        ExprKind::Scope { region_scope, lint_level, value } => {
+        ExprKind::Scope { region_scope, value, hir_id } => {
             let region_scope = *region_scope;
-            let lint_level = *lint_level;
+            let hir_id = *hir_id;
             let value = *value;
             let value =
                 erased_ghost_value_remove_type_if_possible(cx, erasure_ctxt, value, hir_id, span);
             match value {
                 Some(v) => {
                     let mut expr = cx.thir.exprs[e].clone();
-                    expr.kind = ExprKind::Scope { region_scope, lint_level, value: v };
+                    expr.kind = ExprKind::Scope { region_scope, value: v, hir_id };
                     expr.ty = cx.thir.exprs[v].ty;
                     Some(cx.thir.exprs.push(expr))
                 }
@@ -509,7 +509,7 @@ pub(crate) fn is_erased<'tcx>(
             TyKind::FnDef(fn_def_id, _) => *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id,
             _ => false,
         },
-        ExprKind::Scope { region_scope: _, lint_level: _, value } => {
+        ExprKind::Scope { region_scope: _, value, hir_id: _ } => {
             is_erased(cx, erasure_ctxt, &cx.thir.exprs[*value].kind)
         }
         _ => false,
@@ -661,9 +661,6 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
     match &mut p.kind {
         PatKind::Missing => {}
         PatKind::Wild => {}
-        PatKind::AscribeUserType { ascription: _, subpattern } => {
-            erase_pat_rec(emode, subpattern);
-        }
         PatKind::Binding {
             name: _,
             mode: _,
@@ -711,9 +708,6 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
             erase_pat_rec(emode, subpattern);
         }
         PatKind::Constant { value: _ } => {}
-        PatKind::ExpandedConstant { def_id: _, subpattern } => {
-            erase_pat_rec(emode, subpattern);
-        }
         PatKind::Range(_pat_range) => {}
         PatKind::Slice { prefix, slice, suffix } | PatKind::Array { prefix, slice, suffix } => {
             for p in prefix.iter_mut() {
@@ -925,12 +919,7 @@ fn erase_let_for_pattern_checking<'tcx>(
         panic!("erase_let_for_pattern_checking: let-else statement not expected in erased code");
     }
 
-    let pattern = erase_pat_all_binders(crate::thir::pattern::pat_from_hir(
-        cx.tcx,
-        cx.typing_env,
-        cx.typeck_results,
-        pat,
-    ));
+    let pattern = erase_pat_all_binders(cx.pattern_from_hir(pat));
 
     let init_ty = cx.typeck_results.node_type(pat.hir_id);
     let init =
@@ -942,12 +931,12 @@ fn erase_let_for_pattern_checking<'tcx>(
     };
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id: *hir_id,
             remainder_scope,
             init_scope: region::Scope { local_id: hir_id.local_id, data: region::ScopeData::Node },
             pattern,
             initializer: init,
             else_block: None,
-            lint_level: rustc_middle::thir::LintLevel::Explicit(local.hir_id),
             span: *span,
         },
     };
@@ -987,12 +976,7 @@ fn erase_arm_for_pattern_checking<'tcx>(
     arm: &'tcx hir::Arm<'tcx>,
     match_ty: Ty<'tcx>,
 ) -> ArmId {
-    let pattern = erase_pat_all_binders(crate::thir::pattern::pat_from_hir(
-        cx.tcx,
-        cx.typing_env,
-        cx.typeck_results,
-        &arm.pat,
-    ));
+    let pattern = erase_pat_all_binders(cx.pattern_from_hir(&arm.pat));
     let guard = arm.guard.map(|guard| {
         let bool_ty = cx.tcx.mk_ty_from_kind(TyKind::Bool);
         erased_ghost_value(cx, erasure_ctxt, root_hir_id, guard.span, bool_ty)
@@ -1001,10 +985,10 @@ fn erase_arm_for_pattern_checking<'tcx>(
     let body = erased_ghost_value(cx, erasure_ctxt, root_hir_id, arm.body.span, match_ty);
 
     let arm = Arm {
+        hir_id: arm.hir_id,
         pattern,
         guard,
         body,
-        lint_level: rustc_middle::thir::LintLevel::Explicit(arm.hir_id),
         scope: region::Scope { local_id: arm.hir_id.local_id, data: region::ScopeData::Node },
         span: arm.span,
     };
@@ -1798,6 +1782,7 @@ pub(crate) fn make_let<'tcx>(
             is_primary: true,
             is_shorthand: false,
         },
+        extra: None,
     });
 
     let remainder_scope = region::Scope {
@@ -1806,6 +1791,7 @@ pub(crate) fn make_let<'tcx>(
     };
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id: let_stmt.hir_id,
             remainder_scope,
             init_scope: region::Scope {
                 local_id: stmt.hir_id.local_id,
@@ -1814,7 +1800,6 @@ pub(crate) fn make_let<'tcx>(
             pattern,
             initializer: Some(e),
             else_block: None,
-            lint_level: thir::LintLevel::Explicit(let_stmt.hir_id),
             span: stmt.span,
         },
     };

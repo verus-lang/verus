@@ -64,6 +64,7 @@ fn typ_name(typ: &Typ) -> String {
         TypX::Fun => "Fun".to_string(),
         TypX::Named(x) => x.to_string(),
         TypX::BitVec(n) => format!("BitVec{}", n),
+        TypX::Float { exp_bits, sig_bits } => format!("Float{exp_bits}_{sig_bits}"),
     }
 }
 
@@ -86,6 +87,15 @@ fn check_typ(typing: &Typing, typ: &Typ) -> Result<(), TypeError> {
             _ => Err(format!("use of undeclared type {}", x)),
         },
         TypX::BitVec(_) => Ok(()),
+        TypX::Float { exp_bits, sig_bits } => {
+            if *exp_bits <= 1 || *sig_bits <= 1 {
+                Err(format!(
+                    "unsupported floating point type (_ FloatingPoint {exp_bits} {sig_bits})"
+                ))
+            } else {
+                Ok(())
+            }
+        }
     }
 }
 
@@ -235,6 +245,71 @@ fn check_bv_exprs(
     }
 }
 
+fn check_float_unary_exprs(
+    typing: &mut Typing,
+    op: UnaryOp,
+    f_name: &str,
+    expr: &Expr,
+) -> Result<Typ, TypeError> {
+    let t0 = check_expr(typing, expr)?;
+    // See https://smt-lib.org/theories-FloatingPoint.shtml for types of each operation
+    match &*t0 {
+        TypX::Float { .. } => match op {
+            UnaryOp::FloatNeg => Ok(t0.clone()),
+            UnaryOp::FloatRoundToInt(_) => Ok(t0.clone()),
+            UnaryOp::FloatIsNormal
+            | UnaryOp::FloatIsSubnormal
+            | UnaryOp::FloatIsZero
+            | UnaryOp::FloatIsInfinite
+            | UnaryOp::FloatIsNaN
+            | UnaryOp::FloatIsNegative
+            | UnaryOp::FloatIsPositive => Ok(bt()),
+            UnaryOp::FloatToBitVec { bits, .. } => Ok(Arc::new(TypX::BitVec(bits))),
+            UnaryOp::FloatToReal => Ok(rt()),
+            _ => unreachable!(),
+        },
+        _ => Err(format!(
+            "in call to {}, expected a floating point argument, but got {}",
+            f_name,
+            typ_name(&t0),
+        )),
+    }
+}
+
+fn check_float_exprs(
+    typing: &mut Typing,
+    bop: BinaryOp,
+    f_name: &str,
+    exprs: &[Expr],
+) -> Result<Typ, TypeError> {
+    let t0 = check_expr(typing, &exprs[0])?;
+    let t1 = check_expr(typing, &exprs[1])?;
+    // See https://smt-lib.org/theories-FloatingPoint.shtml for types of each operation
+    match (&*t0, &*t1) {
+        (
+            TypX::Float { exp_bits: exp_bits0, sig_bits: sig_bits0 },
+            TypX::Float { exp_bits: exp_bits1, sig_bits: sig_bits1 },
+        ) if exp_bits0 == exp_bits1 && sig_bits0 == sig_bits1 => match bop {
+            BinaryOp::FloatEq
+            | BinaryOp::FloatLt
+            | BinaryOp::FloatGt
+            | BinaryOp::FloatLe
+            | BinaryOp::FloatGe => Ok(bt()),
+            BinaryOp::FloatAdd(_)
+            | BinaryOp::FloatSub(_)
+            | BinaryOp::FloatMul(_)
+            | BinaryOp::FloatDiv(_) => Ok(t0.clone()),
+            _ => unreachable!(),
+        },
+        _ => Err(format!(
+            "in call to {}, expected both arguments to have the same floating point type, but got {} and {}",
+            f_name,
+            typ_name(&t0),
+            typ_name(&t1)
+        )),
+    }
+}
+
 fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
     let result = match &**expr {
         ExprX::Const(Constant::Bool(_)) => Ok(Arc::new(TypX::Bool)),
@@ -285,6 +360,65 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         }
         ExprX::Unary(UnaryOp::BitSignExtend(n), e1) => {
             check_bv_unary_exprs(typing, UnaryOp::BitSignExtend(*n), "sign_extend", &e1.clone())
+        }
+        ExprX::Unary(op @ UnaryOp::FloatNeg, e1) => {
+            check_float_unary_exprs(typing, op.clone(), "float_neg", &e1.clone())
+        }
+        ExprX::Unary(op @ UnaryOp::FloatRoundToInt(_), e1) => {
+            check_float_unary_exprs(typing, op.clone(), "float_round_to_int", &e1.clone())
+        }
+        ExprX::Unary(op @ UnaryOp::FloatIsNormal, e1) => {
+            check_float_unary_exprs(typing, op.clone(), "float_is_normal", &e1.clone())
+        }
+        ExprX::Unary(op @ UnaryOp::FloatIsSubnormal, e1) => {
+            check_float_unary_exprs(typing, op.clone(), "float_is_subnormal", &e1.clone())
+        }
+        ExprX::Unary(op @ UnaryOp::FloatIsZero, e1) => {
+            check_float_unary_exprs(typing, op.clone(), "float_is_zero", &e1.clone())
+        }
+        ExprX::Unary(op @ UnaryOp::FloatIsInfinite, e1) => {
+            check_float_unary_exprs(typing, op.clone(), "float_is_infinite", &e1.clone())
+        }
+        ExprX::Unary(op @ UnaryOp::FloatIsNaN, e1) => {
+            check_float_unary_exprs(typing, op.clone(), "float_is_nan", &e1.clone())
+        }
+        ExprX::Unary(op @ UnaryOp::FloatIsNegative, e1) => {
+            check_float_unary_exprs(typing, op.clone(), "float_is_negative", &e1.clone())
+        }
+        ExprX::Unary(op @ UnaryOp::FloatIsPositive, e1) => {
+            check_float_unary_exprs(typing, op.clone(), "float_is_positive", &e1.clone())
+        }
+        ExprX::Unary(UnaryOp::FloatFromIeeeBits { exp_bits, sig_bits }, e1) => {
+            let t1 = check_expr(typing, e1)?;
+            match &*t1 {
+                TypX::BitVec(n) if *n == exp_bits + sig_bits => {
+                    Ok(Arc::new(TypX::Float { exp_bits: *exp_bits, sig_bits: *sig_bits }))
+                }
+                _ => Err(format!(
+                    "in float_from_ieee_bits, expected argument of type (_ BitVec {}) but found {}",
+                    exp_bits + sig_bits,
+                    typ_name(&t1)
+                )),
+            }
+        }
+        ExprX::Unary(UnaryOp::FloatFrom { exp_bits, sig_bits, signed, round: _ }, e1) => {
+            let t1 = check_expr(typing, e1)?;
+            let tf = Arc::new(TypX::Float { exp_bits: *exp_bits, sig_bits: *sig_bits });
+            match (&*t1, signed) {
+                (TypX::Real, true) => Ok(tf),
+                (TypX::Float { .. }, true) => Ok(tf),
+                (TypX::BitVec(_), _) => Ok(tf),
+                _ => Err(format!(
+                    "in float_from, expected argument of type Real or BitVec but found {}",
+                    typ_name(&t1)
+                )),
+            }
+        }
+        ExprX::Unary(op @ UnaryOp::FloatToBitVec { .. }, e1) => {
+            check_float_unary_exprs(typing, op.clone(), "float_to_bitvec", &e1.clone())
+        }
+        ExprX::Unary(UnaryOp::FloatToReal, e1) => {
+            check_float_unary_exprs(typing, UnaryOp::FloatToReal, "float_to_real", &e1.clone())
         }
         ExprX::Unary(UnaryOp::ToReal, e1) => {
             check_exprs(typing, "to_real", &[it()], &rt(), std::slice::from_ref(e1))
@@ -435,7 +569,58 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::BitConcat, e1, e2) => {
             check_bv_exprs(typing, BinaryOp::BitConcat, "concat", &[e1.clone(), e2.clone()])
         }
-
+        ExprX::Binary(op @ BinaryOp::FloatAdd(_), e1, e2) => {
+            check_float_exprs(typing, op.clone(), "float_add", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(op @ BinaryOp::FloatSub(_), e1, e2) => {
+            check_float_exprs(typing, op.clone(), "float_sub", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(op @ BinaryOp::FloatMul(_), e1, e2) => {
+            check_float_exprs(typing, op.clone(), "float_mul", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(op @ BinaryOp::FloatDiv(_), e1, e2) => {
+            check_float_exprs(typing, op.clone(), "float_div", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::FloatEq, e1, e2) => {
+            check_float_exprs(typing, BinaryOp::FloatEq, "float_eq", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::FloatLt, e1, e2) => {
+            check_float_exprs(typing, BinaryOp::FloatLt, "float_lt", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::FloatLe, e1, e2) => {
+            check_float_exprs(typing, BinaryOp::FloatLe, "float_le", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::FloatGt, e1, e2) => {
+            check_float_exprs(typing, BinaryOp::FloatGt, "float_gt", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::FloatGe, e1, e2) => {
+            check_float_exprs(typing, BinaryOp::FloatGe, "float_ge", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Multi(MultiOp::Float, exprs) => {
+            if exprs.len() != 3 {
+                Err(format!(
+                    "floating point constructor expects 3 arguments, found {}",
+                    exprs.len(),
+                ))
+            } else {
+                let sign = check_expr(typing, &exprs[0])?;
+                let exp = check_expr(typing, &exprs[1])?;
+                let sig = check_expr(typing, &exprs[2])?;
+                match (&*sign, &*exp, &*sig) {
+                    (TypX::BitVec(1), TypX::BitVec(exp_bits), TypX::BitVec(sig1_bits))
+                        if *exp_bits > 1 && *sig1_bits > 0 =>
+                    {
+                        Ok(Arc::new(TypX::Float { exp_bits: *exp_bits, sig_bits: *sig1_bits + 1 }))
+                    }
+                    _ => Err(format!(
+                        "in floating point constructor, expected arguments of type (BitVec 1), (BitVec exp_bits), (BitVec sig1_bits) with exp_bits > 1 and sig1_bits > 0, but found {}, {}, {}",
+                        typ_name(&sign),
+                        typ_name(&exp),
+                        typ_name(&sig)
+                    )),
+                }
+            }
+        }
         ExprX::Multi(op, exprs) => {
             let (x, t) = match op {
                 MultiOp::And => ("and", bt()),
@@ -445,6 +630,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 MultiOp::Sub => ("-", it()),
                 MultiOp::Mul => ("*", it()),
                 MultiOp::Distinct => ("distinct", it()),
+                MultiOp::Float => unreachable!(),
             };
             match op {
                 MultiOp::Distinct => {

@@ -1571,3 +1571,15 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] no_verus_attribute_warning_issue2211 code! {
+        #[verifier::loop_isolation(false)]
+        mod m {
+            use vstd::prelude::*;
+            verus!{
+                proof fn stuff() { }
+            }
+        }
+    } => Ok(())
+}

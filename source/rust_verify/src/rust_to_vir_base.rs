@@ -902,7 +902,8 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
                 Some(RustItem::Box | RustItem::Rc | RustItem::Arc) => true,
                 _ => false,
             };
-            is_verus_type || is_rust_type || external_info.has_type_id(ctxt, adt_def_data.did)
+            let is_declared_to_verus = external_info.has_type_id(ctxt, adt_def_data.did).is_some();
+            is_verus_type || is_rust_type || is_declared_to_verus
         }
         TyKind::Alias(
             rustc_middle::ty::AliasTyKind::Projection | rustc_middle::ty::AliasTyKind::Inherent,
@@ -1676,6 +1677,23 @@ pub(crate) fn is_smt_arith<'tcx>(
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
         (TypX::Real, TypX::Real) => Ok(true),
+        _ => Ok(false),
+    }
+}
+
+pub(crate) fn is_float_arith<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span1: Span,
+    span2: Span,
+    id1: &HirId,
+    id2: &HirId,
+) -> Result<bool, VirErr> {
+    let (t1, t2) = (
+        typ_of_expr_adjusted(bctx, span1, id1, false)?,
+        typ_of_expr_adjusted(bctx, span2, id2, false)?,
+    );
+    match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
+        (TypX::Float(_), TypX::Float(_)) => Ok(true),
         _ => Ok(false),
     }
 }

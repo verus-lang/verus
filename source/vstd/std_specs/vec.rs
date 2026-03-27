@@ -533,12 +533,17 @@ pub broadcast axiom fn axiom_vec_has_resolved<T>(vec: Vec<T>, i: int)
         ),
 ;
 
+pub broadcast axiom fn axiom_vec_decreases_to_view<T>(v: Vec<T>)
+    ensures
+        #[trigger] (decreases_to!(v => v@));
+
 pub broadcast group group_vec_axioms {
     axiom_spec_len,
     axiom_vec_index_decreases,
     vec_clone_deep_view_proof,
     axiom_spec_into_iter,
     axiom_vec_has_resolved,
+    axiom_vec_decreases_to_view,
 }
 
 } // verus!

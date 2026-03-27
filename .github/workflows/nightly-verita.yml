@@ -1,0 +1,113 @@
+name: nightly-verita
+
+on:
+  schedule:
+    # 1 AM EST = 5 AM UTC
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verita:
+    if: github.repository == 'verus-lang/verus'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      - name: checkout verus
+        uses: actions/checkout@v4
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.94.0
+
+      - name: setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: get z3
+        working-directory: ./source
+        run: |
+          ./tools/get-z3.sh
+          echo "z3 version: $(./z3 --version)"
+
+      - name: install singular
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y singular
+          echo "Singular version: $(Singular --version || true)"
+
+      - name: build verus with singular support
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          vargo clean
+          VERUS_SINGULAR_PATH="$(which Singular)" VERUS_Z3_PATH="$(pwd)/z3" vargo build --release --features singular
+
+      - name: build verita
+        working-directory: ./tools/verita
+        run: |
+          cargo build --release
+
+      - name: try to download previous results
+        id: previous
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: nightly-verita.yml
+          name: verita-results
+          path: ${{ github.workspace }}/tools/verita/previous-results
+          search_artifacts: true
+          if_no_artifact_found: warn
+
+      - name: run verita
+        working-directory: ./tools/verita
+        run: |
+          ./target/release/verita \
+            --verus-repo "$GITHUB_WORKSPACE" \
+            --label nightly \
+            --singular "$(which Singular)" \
+            --fail-on-error \
+            run_configuration_all.toml
+
+      - name: find output directory
+        if: always()
+        id: output
+        working-directory: ./tools/verita
+        run: |
+          # verita creates output/<timestamp>-<label>/ — find the most recent one
+          OUTPUT_DIR=$(ls -td output/*-nightly | head -1)
+          echo "dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+          echo "Output directory: $OUTPUT_DIR"
+
+      - name: summarize results
+        if: always()
+        working-directory: ./tools/verita
+        run: |
+          OUTPUT_DIR="${{ steps.output.outputs.dir }}"
+
+          ARTIFACTS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts"
+
+          {
+            echo '## Verita Nightly Results'
+            echo ''
+            echo ":package: [Download full results (verita-results artifact)]($ARTIFACTS_URL)"
+            echo ''
+            if [ -d previous-results ] && ls previous-results/*.json >/dev/null 2>&1; then
+              python scripts/summarize.py --markdown previous-results "$OUTPUT_DIR"
+            else
+              python scripts/summarize.py --markdown "$OUTPUT_DIR"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verita-results
+          path: ${{ github.workspace }}/tools/verita/${{ steps.output.outputs.dir }}
+          retention-days: 90

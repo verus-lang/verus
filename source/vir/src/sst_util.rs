@@ -1,7 +1,8 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, Ident,
-    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Quant, SpannedTyped,
-    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders,
+    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, GenericBound,
+    GenericBoundX, GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth,
+    IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
@@ -64,6 +65,30 @@ pub(crate) fn subst_pre_local_decl(
     }
 }
 
+pub fn free_vars_typ_insert(typ: &Typ, vars: &mut HashSet<Ident>) {
+    let _ = crate::ast_visitor::typ_visitor_dfs(typ, &mut |t: &Typ| match &**t {
+        TypX::TypParam(x) => {
+            vars.insert(x.clone());
+            crate::visitor::VisitorControlFlow::Recurse::<()>
+        }
+        _ => crate::visitor::VisitorControlFlow::Recurse::<()>,
+    });
+}
+
+pub fn free_vars_typ(typ: &Typ) -> HashSet<Ident> {
+    let mut vars: HashSet<Ident> = HashSet::new();
+    free_vars_typ_insert(typ, &mut vars);
+    vars
+}
+
+pub fn free_vars_typs(typs: &Typs) -> HashSet<Ident> {
+    let mut vars: HashSet<Ident> = HashSet::new();
+    for typ in typs.iter() {
+        free_vars_typ_insert(typ, &mut vars);
+    }
+    vars
+}
+
 pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
     crate::ast_visitor::map_typ_visitor(typ, &|t: &Typ| match &**t {
         TypX::TypParam(x) => match typ_substs.get(x) {
@@ -73,6 +98,33 @@ pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
         _ => Ok(t.clone()),
     })
     .expect("subst_typ")
+}
+
+pub fn subst_typ_in_bound(typ_substs: &HashMap<Ident, Typ>, bound: &GenericBound) -> GenericBound {
+    let gbx = match &**bound {
+        GenericBoundX::Trait(path, typs) => {
+            let typs = typs.iter().map(|typ| subst_typ(&typ_substs, typ)).collect();
+            GenericBoundX::Trait(path.clone(), Arc::new(typs))
+        }
+        GenericBoundX::TypEquality(path, typs, name, typ) => {
+            let typs = typs.iter().map(|typ| subst_typ(&typ_substs, typ)).collect();
+            let typ = subst_typ(&typ_substs, typ);
+            GenericBoundX::TypEquality(path.clone(), Arc::new(typs), name.clone(), typ)
+        }
+        GenericBoundX::ConstTyp(t1, t2) => {
+            let t1 = subst_typ(&typ_substs, t1);
+            let t2 = subst_typ(&typ_substs, t2);
+            GenericBoundX::ConstTyp(t1, t2)
+        }
+    };
+    Arc::new(gbx)
+}
+
+pub fn subst_typ_in_bounds(
+    typ_substs: &HashMap<Ident, Typ>,
+    bounds: &GenericBounds,
+) -> GenericBounds {
+    Arc::new(bounds.iter().map(|bound| subst_typ_in_bound(typ_substs, bound)).collect())
 }
 
 pub fn subst_typ_for_datatype(
@@ -353,6 +405,7 @@ impl BinaryOp {
                 BitOr => (20, 20, 21),
                 Shr(..) | Shl(..) => (26, 26, 27),
             },
+            IeeeFloat(_) => (5, 90, 90),
             StrGetChar => (90, 90, 90),
             Index(_, _) => (90, 90, 90),
         }
@@ -446,22 +499,22 @@ impl ExpX {
                     ),
                     99,
                 ),
-                UnaryOp::FloatToBits => {
-                    (format!("float_to_bits({})", exp.x.to_user_string(global)), 99)
-                }
                 UnaryOp::IntToReal => {
                     (format!("int_to_real({})", exp.x.to_user_string(global)), 99)
                 }
                 UnaryOp::RealToInt => {
                     (format!("real_to_int({})", exp.x.to_user_string(global)), 99)
                 }
+                UnaryOp::FloatToBits => {
+                    (format!("float_to_bits({})", exp.x.to_user_string(global)), 99)
+                }
+                UnaryOp::IeeeFloat(_) => {
+                    (format!("ieee_float({})", exp.x.to_user_string(global)), 99)
+                }
                 UnaryOp::HeightTrigger => {
                     (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
                 }
                 UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(global, 99)), 90),
-                UnaryOp::StrIsAscii => {
-                    (format!("{}.is_ascii()", exp.x.to_string_prec(global, 99)), 90)
-                }
                 UnaryOp::Trigger(..)
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
@@ -565,6 +618,7 @@ impl ExpX {
                         Shr(..) => ">>",
                         Shl(..) => "<<",
                     },
+                    IeeeFloat(_) => "ieee_float",
                     StrGetChar => "ignored", // This is a non-infix BinaryOp, so it needs special handling below
                     Index(..) => "ignored", // This is a non-infix BinaryOp, so it needs special handling below
                 };

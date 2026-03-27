@@ -60,7 +60,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-03-08-0103"
+vstd = "=0.0.0-2026-03-22-0106"
 
 [package.metadata.verus]
 verify = true
@@ -356,6 +356,18 @@ fn make_cargo_command(
                         "--VIA-CARGO".to_owned(),
                         format!("import-dep-if-present={}", dep.name),
                     ]);
+                }
+            }
+
+            // If the package has a lib target *and* a non-lib target, like a test or example,
+            // add the lib as a dependency so the auxiliary target can see it. This adds the lib
+            // as a dep to itself, but it will not be present in the externs, so will be ignored.
+            if let Some(lib_target) = package.targets.iter().find(|t| t.is_lib()) {
+                if package.targets.iter().any(|t| !t.is_lib()) {
+                    verus_driver_args_for_package.extend_from_slice(&[
+                        "--VIA-CARGO".to_owned(),
+                        format!("import-dep-if-present={}", lib_target.name),
+                    ])
                 }
             }
 
