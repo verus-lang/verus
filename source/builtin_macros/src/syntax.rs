@@ -536,7 +536,7 @@ impl Visitor {
         // some closures also use this function to handle
         is_closure: bool,
         // function name
-        ident: &Ident,
+        fn_ident: &Ident,
         generics: Option<impl ToTokens>,
         inputs: (Option<impl ToTokens>, impl ToTokens), // optional self and args
     ) -> Vec<Stmt> {
@@ -553,11 +553,17 @@ impl Visitor {
 
         // Either the single identifier in the return pattern, or a fresh identifier.
         let ret_val_ident: &Ident = match ret_pat {
-            Some(Pat::Ident(pat)) if &pat.ident != ident => &pat.ident,
+            Some(Pat::Ident(pat)) if pat.ident != *fn_ident => &pat.ident,
             _ => &Ident::new("_VERUS_ret_ident", Span::call_site()),
         };
 
         fn wrap_with_ret_binding_pat(expr: &mut Expr, ret_val_ident: &Ident, ret_pat: &Pat) {
+            if let Pat::Ident(pat) = ret_pat {
+                if pat.ident == *ret_val_ident {
+                    // The binding would be unnecessary.
+                    return;
+                }
+            }
             let expr_span = expr.span();
             let attrs = expr.replace_attrs(Vec::new());
             let inner = take_expr(expr);
@@ -711,7 +717,7 @@ impl Visitor {
                                         }
                                     }
                                 };
-                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #receiver_token#ident#generics_token(#args)))
+                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #receiver_token#fn_ident#generics_token(#args)))
                             };
                             let contrain_typ_expr = Expr::Verbatim(constrain_type);
                             spec_stmts.push(Stmt::Expr(
