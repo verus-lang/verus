@@ -1294,18 +1294,46 @@ test_verify_one_file! {
             pub p: Tracked<PointsToRaw>,
         }
 
+        // Test with trailing comma in struct literal
         #[verus_spec(result =>
             with
                 Tracked(p): Tracked<PointsToRaw>,
             ensures
                 result.u == u,
         )]
-        pub fn make_s_test(u: u32) -> STest
+        pub fn make_s_test_trailing(u: u32) -> STest
         {
             proof_with!{ p: Tracked(p) }
             STest {
                 u,
             }
+        }
+
+        // Test without trailing comma in struct literal
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_no_trailing(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            STest { u }
+        }
+
+        // Test with let binding
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_let(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            let s = STest { u };
+            s
         }
     } => Ok(())
 }

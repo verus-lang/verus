@@ -196,6 +196,38 @@ struct ExecReplacer {
     erase: EraseGhost,
 }
 
+impl ExecReplacer {
+    /// For struct constructors, parse proof_with! tokens as field-value pairs
+    /// and append them to the struct expression. Field value expressions are run
+    /// through the verus expression rewriter to handle verus syntax like
+    /// Tracked(p) and Ghost(g).
+    fn append_proof_with_struct_fields(
+        erase: &EraseGhost,
+        with_args: &TokenStream,
+        expr_struct: &mut syn::ExprStruct,
+    ) {
+        // Skip the leading `with` token to get the raw field tokens.
+        let raw_tokens: TokenStream = with_args.clone().into_iter().skip(1).collect();
+        let extra_fields: syn::punctuated::Punctuated<syn::FieldValue, syn::Token![,]> =
+            syn::parse::Parser::parse2(
+                syn::punctuated::Punctuated::parse_terminated,
+                raw_tokens.clone(),
+            )
+            .unwrap_or_else(|e| {
+                panic!("Failed to parse proof_with struct fields {:?}: {:?}", raw_tokens, e)
+            });
+        for mut field in extra_fields {
+            let rewritten = syntax::rewrite_expr(
+                erase.clone(),
+                false,
+                field.expr.to_token_stream().into(),
+            );
+            field.expr = syn::Expr::Verbatim(rewritten.into());
+            expr_struct.fields.push(field);
+        }
+    }
+}
+
 impl VisitMut for ExecReplacer {
     // Enable the hack only when needed
     #[cfg(feature = "vpanic")]
@@ -259,6 +291,19 @@ impl VisitMut for ExecReplacer {
                     verus_syn::Token![with](mac.span()).to_tokens(&mut with_args);
                     mac.tokens.to_tokens(&mut with_args);
                 }
+                syn::Stmt::Local(syn::Local { init: Some(syn::LocalInit { expr, .. }), .. })
+                    if !with_args.is_empty()
+                        && matches!(expr.as_ref(), syn::Expr::Struct(_)) =>
+                {
+                    if let syn::Expr::Struct(expr_struct) = expr.as_mut() {
+                        Self::append_proof_with_struct_fields(
+                            &self.erase,
+                            &with_args,
+                            expr_struct,
+                        );
+                    }
+                    with_args = TokenStream::new();
+                }
                 syn::Stmt::Local(syn::Local { attrs, init: Some(_), .. })
                     if !with_args.is_empty() =>
                 {
@@ -271,35 +316,11 @@ impl VisitMut for ExecReplacer {
                 }
                 syn::Stmt::Expr(expr, _) if !with_args.is_empty() => {
                     if let syn::Expr::Struct(expr_struct) = expr {
-                        // For struct constructors, parse proof_with! tokens as
-                        // field-value pairs and append them to the struct expression.
-                        // Field value expressions are run through the verus expression
-                        // rewriter to handle verus syntax like Tracked(p) and Ghost(g).
-                        // Skip the leading `with` token to get the raw field tokens.
-                        let raw_tokens: TokenStream =
-                            with_args.clone().into_iter().skip(1).collect();
-                        let extra_fields: syn::punctuated::Punctuated<
-                            syn::FieldValue,
-                            syn::Token![,],
-                        > = syn::parse::Parser::parse2(
-                            syn::punctuated::Punctuated::parse_terminated,
-                            raw_tokens.clone(),
-                        )
-                        .unwrap_or_else(|e| {
-                            panic!(
-                                "Failed to parse proof_with struct fields {:?}: {:?}",
-                                raw_tokens, e
-                            )
-                        });
-                        for mut field in extra_fields {
-                            let rewritten = syntax::rewrite_expr(
-                                self.erase.clone(),
-                                false,
-                                field.expr.to_token_stream().into(),
-                            );
-                            field.expr = syn::Expr::Verbatim(rewritten.into());
-                            expr_struct.fields.push(field);
-                        }
+                        Self::append_proof_with_struct_fields(
+                            &self.erase,
+                            &with_args,
+                            expr_struct,
+                        );
                     } else {
                         let call_with_spec =
                             verus_syn::parse2(with_args.clone()).unwrap_or_else(|e| {
