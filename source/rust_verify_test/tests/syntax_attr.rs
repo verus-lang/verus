@@ -1283,6 +1283,62 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_proof_with_struct code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::PointsToRaw;
+
+        #[verus_verify]
+        pub struct STest {
+            pub u: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub p: Tracked<PointsToRaw>,
+        }
+
+        // Test with trailing comma in struct literal
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_trailing(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            STest {
+                u,
+            }
+        }
+
+        // Test without trailing comma in struct literal
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_no_trailing(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            STest { u }
+        }
+
+        // Test with let binding
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_let(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            let s = STest { u };
+            s
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_verus_verify_on_const code! {
         #[verus_verify]
         const MY_CONST1: u64 = 1u64;
