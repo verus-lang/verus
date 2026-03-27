@@ -531,9 +531,12 @@ impl Visitor {
         ret_pat: Option<&Pat>,
         ret_ty: Option<&TType>,
         _span: Span,
-        is_impl_fn: bool,     // is the function a ImplItemFn or TraitImplFn
-        is_closure: bool,     // some closures also use this function to handle
-        ident: impl ToTokens, // function name.
+        // is the function a ImplItemFn or TraitImplFn
+        is_impl_fn: bool,
+        // some closures also use this function to handle
+        is_closure: bool,
+        // function name
+        ident: &Ident,
         generics: Option<impl ToTokens>,
         inputs: (Option<impl ToTokens>, impl ToTokens), // optional self and args
     ) -> Vec<Stmt> {
@@ -548,7 +551,11 @@ impl Visitor {
 
         let (self_token_op, args) = inputs;
 
-        let ret_val_ident: Ident = Ident::new("_VERUS_ret_ident", Span::call_site());
+        // Either the single identifier in the return pattern, or a fresh identifier.
+        let ret_val_ident: &Ident = match ret_pat {
+            Some(Pat::Ident(pat)) if &pat.ident != ident => &pat.ident,
+            _ => &Ident::new("_VERUS_ret_ident", Span::call_site()),
+        };
 
         fn wrap_with_ret_binding_pat(expr: &mut Expr, ret_val_ident: &Ident, ret_pat: &Pat) {
             let expr_span = expr.span();
@@ -563,7 +570,7 @@ impl Visitor {
         let ensures = ensures.map(|mut ensures| {
             if let Some(ret_pat) = ret_pat {
                 for expr in &mut ensures.exprs.exprs {
-                    wrap_with_ret_binding_pat(expr, &ret_val_ident, ret_pat);
+                    wrap_with_ret_binding_pat(expr, ret_val_ident, ret_pat);
                 }
             }
             ensures
@@ -576,7 +583,7 @@ impl Visitor {
                 for expr in exprs.exprs.iter_mut() {
                     let span = expr.span();
                     if let Some(ret_pat) = ret_pat {
-                        wrap_with_ret_binding_pat(expr, &ret_val_ident, ret_pat);
+                        wrap_with_ret_binding_pat(expr, ret_val_ident, ret_pat);
                     }
                     *expr = parse_quote_spanned_builtin!(verus_builtin, span => #verus_builtin::default_ensures(#expr));
                 }
@@ -1043,7 +1050,7 @@ impl Visitor {
             sig_span,
             is_impl_fn,
             false,
-            sig.ident.clone(),
+            &sig.ident,
             verus_generic_to_tokens(&sig.generics),
             verus_inputs_to_tokens(&sig.inputs),
         );
@@ -5042,7 +5049,7 @@ pub(crate) fn sig_specs_attr(
         sig_span,
         is_impl_fn,
         is_closure,
-        sig.ident.clone(),
+        &sig.ident,
         generic_to_tokens(&sig.generics),
         inputs_to_tokens(&sig.inputs),
     ));
