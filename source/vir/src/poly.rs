@@ -726,11 +726,8 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 state.types.push_scope(true);
                 let mut new_bs: Vec<VarBinder<Exp>> = Vec::new();
                 for b in bs.iter() {
-                    let a = if typ_is_poly(ctx, &b.a.typ) {
-                        visit_exp_poly(ctx, state, &b.a)
-                    } else {
-                        visit_exp_native(ctx, state, &b.a)
-                    };
+                    // TODO: this might be better as just visit_exp:
+                    let a = visit_exp_native(ctx, state, &b.a);
                     let _ = state.types.insert(b.name.clone(), a.typ.clone());
                     let bx = VarBinderX { name: b.name.clone(), a };
                     new_bs.push(Arc::new(bx));
