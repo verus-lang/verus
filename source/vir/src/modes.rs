@@ -1227,7 +1227,8 @@ fn check_place(
             place_mode
         }
         PlaceAccess::MutBorrow(Some(mut_ref_tracked_typ)) => {
-            let found = record.mut_bor_place_modes.insert(place.span.id, (place_mode, note));
+            let found =
+                record.mut_bor_place_modes.insert(place.span.id, (place_mode, note.clone()));
             if found.is_some() {
                 return Err(error(
                     &place.span,
@@ -1248,8 +1249,8 @@ fn check_place(
                         },
                     );
                     if let Some(note) = note {
-                        e = e.secondary_label(&note.1.span, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
-                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0.typ)));
+                        e = e.secondary_label(&note.1, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
+                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
                     }
                     return Err(e);
                 }
