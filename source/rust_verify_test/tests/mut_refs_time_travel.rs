@@ -12,6 +12,15 @@ fn assert_spec_borrowed(err: TestErr, var: &str) {
     )
 }
 
+fn assert_spec_borrowed_field(err: TestErr, var: &str, field: &str) {
+    assert_rust_error_msg(
+        err,
+        &format!(
+            "cannot borrow `(Verus spec {var}){field}` as immutable because it is also borrowed as mutable"
+        ),
+    )
+}
+
 test_verify_one_file_with_options! {
     #[test] test_basic_fails ["new-mut-ref"] => verus_code! {
         fn test() {
@@ -694,7 +703,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] borrow_field_and_use_different_field2 ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_different_field2 ["new-mut-ref"] => verus_code! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x.0;
@@ -702,6 +711,54 @@ test_verify_one_file_with_options! {
             *x_ref = 20;
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] borrow_field_and_use_different_field_with_deref ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut y = (0, 1);
+            let mut x = &mut y;
+            let x_ref = &mut x.0;
+            assert(x.1 === 1);
+            *x_ref = 20;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] borrow_field_and_use_different_field_with_deref2 ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut y = (0, 1);
+            let mut x = &mut y;
+            let x_ref = &mut x.0;
+            let ghost g = x.1;
+            *x_ref = 20;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] borrow_field_and_use_same_field_with_deref ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut y = (0, 1);
+            let mut x = &mut y;
+            let x_ref = &mut x.1;
+            assert(x.1 === 1);
+            *x_ref = 20;
+        }
+    } => Err(err) => assert_spec_borrowed_field(err, "x", ".1")
+}
+
+test_verify_one_file_with_options! {
+    #[test] borrow_field_and_use_same_field_with_deref2 ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut y = (0, 1);
+            let mut x = &mut y;
+            let x_ref = &mut x.1;
+            let ghost g = x.1;
+            *x_ref = 20;
+        }
+    } => Err(err) => assert_spec_borrowed_field(err, "x", ".1")
 }
 
 test_verify_one_file_with_options! {

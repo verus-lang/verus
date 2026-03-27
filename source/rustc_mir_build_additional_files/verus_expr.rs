@@ -2,8 +2,9 @@ use crate::thir::cx::ThirBuildCx;
 use crate::verus::CallErasure;
 use crate::verus::{
     erase_node, erase_node_unadjusted, erase_tree_kind, erased_ghost_value, handle_call,
-    is_node_with_single_arg_erased,
+    is_node_with_single_arg_erased_or_shadow,
 };
+use crate::verus_time_travel_prevention::try_move_head_into_shadow;
 use rustc_hir::{Expr, ExprKind, UnOp};
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow};
 
@@ -38,6 +39,14 @@ pub(crate) fn apply_adjustment_post<'tcx>(
         return kind;
     };
 
+    // This has to go first because:
+    //  try_move_head_into_shadow handles fields/dereferences for shadow values
+    //  erase_node handles a variety of ops for ghost values AND shadow values
+    // If try_move_head_ito_shadow applies, it needs to take priority.
+    if let Some(kind) = try_move_head_into_shadow(cx, expr, adjustment.target, &kind) {
+        return kind;
+    }
+
     let kind = match adjustment.kind {
         Adjust::Deref(None | Some(_)) | Adjust::Borrow(AutoBorrow::Ref(_)) | Adjust::NeverToAny => {
             // Adjust::Deref(None) -> implicit *
@@ -46,7 +55,7 @@ pub(crate) fn apply_adjustment_post<'tcx>(
             //   In spec code that would usually be an error, except for some cases
             //   like Arc or Rc where we ignore the deref in spec code.
             //   In all those cases we also want to erase.
-            if is_node_with_single_arg_erased(cx, &erasure_ctxt, &kind) {
+            if is_node_with_single_arg_erased_or_shadow(cx, &erasure_ctxt, &kind) {
                 erase_node(cx, expr, adjustment.target, kind)
             } else {
                 kind
@@ -84,20 +93,25 @@ pub(crate) fn mirror_expr_post<'tcx>(
         return kind;
     };
 
+    let ty = cx.typeck_results.expr_ty(expr);
+    if let Some(kind) = try_move_head_into_shadow(cx, expr, ty, &kind) {
+        return kind;
+    }
+
     let kind = match expr.kind {
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
             let call_erasure = handle_call(&cx.verus_ctxt, expr);
             if call_erasure.should_erase() { erase_node_unadjusted(cx, expr, kind) } else { kind }
         }
         ExprKind::Field(..) | ExprKind::AddrOf(..) => {
-            if is_node_with_single_arg_erased(cx, &erasure_ctxt, &kind) {
+            if is_node_with_single_arg_erased_or_shadow(cx, &erasure_ctxt, &kind) {
                 erase_node_unadjusted(cx, expr, kind)
             } else {
                 kind
             }
         }
         ExprKind::Unary(UnOp::Deref, _) if !cx.typeck_results.is_method_call(expr) => {
-            if is_node_with_single_arg_erased(cx, &erasure_ctxt, &kind) {
+            if is_node_with_single_arg_erased_or_shadow(cx, &erasure_ctxt, &kind) {
                 erase_node_unadjusted(cx, expr, kind)
             } else {
                 kind
@@ -106,6 +120,5 @@ pub(crate) fn mirror_expr_post<'tcx>(
         _ => kind,
     };
 
-    let ty = cx.typeck_results.expr_ty(expr);
     crate::verus_time_travel_prevention::expr_post(cx, expr, ty, kind)
 }

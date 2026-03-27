@@ -340,6 +340,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             .name_to_id
             .get(&VerusItem::ErasedGhostValue)
             .unwrap(),
+        shadow_ghost_value_fn_def_id: *verus_items
+            .name_to_id
+            .get(&VerusItem::ShadowGhostValue)
+            .unwrap(),
         dummy_capture_struct_def_id: *verus_items
             .name_to_id
             .get(&VerusItem::DummyCapture(DummyCaptureItem::Struct))

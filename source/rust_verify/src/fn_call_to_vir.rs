@@ -2076,6 +2076,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             ));
         }
         VerusItem::ErasedGhostValue
+        | VerusItem::ShadowGhostValue
         | VerusItem::DummyCapture(_)
         | VerusItem::MutableReferenceTie => {
             return err_span(

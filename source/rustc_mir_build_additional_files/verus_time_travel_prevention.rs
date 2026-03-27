@@ -163,7 +163,7 @@ use crate::thir::cx::ThirBuildCx;
 use crate::verus::{LocalUse, expr_id_from_kind};
 use crate::verus::{
     VarErasure, VerusErasureCtxt, erased_ghost_value, erased_ghost_value_kind_with_args,
-    make_fake_call_kind_with_original_fn,
+    make_fake_call_kind_with_original_fn, shadow_ghost_value_kind_with_args,
 };
 use rustc_hir as hir;
 use rustc_hir::{BindingMode, ByRef, HirId, Mutability, Pinnedness};
@@ -1361,7 +1361,116 @@ pub(crate) fn shadow_var_use<'tcx>(
     ));
     let e = expr_id_from_kind(cx, kind, expr.hir_id, expr.span, ref_ty);
 
-    erased_ghost_value_kind_with_args(cx, erasure_ctxt, expr.hir_id, expr.span, ty, vec![e])
+    shadow_ghost_value_kind_with_args(cx, erasure_ctxt, expr.hir_id, expr.span, ty, vec![e])
+}
+
+/// Transform `shadow_ghost_value(&place).field` to `shadow_ghost_value(&place.field)`
+/// or:
+/// `*shadow_ghost_value(&place)` to `shadow_ghost_value(&*place)`
+pub(crate) fn try_move_head_into_shadow<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    hir_expr: &'tcx hir::Expr<'tcx>,
+    ty: Ty<'tcx>,
+    kind: &rustc_middle::thir::ExprKind<'tcx>,
+) -> Option<ExprKind<'tcx>> {
+    match *kind {
+        ExprKind::Field { lhs: arg, variant_index: _, name: _ } | ExprKind::Deref { arg } => {
+            let erasure_ctxt = cx.verus_ctxt.ctxt.clone().unwrap();
+            if is_shadow_value(cx, &erasure_ctxt, &cx.thir.exprs[arg].kind) {
+                Some(shadow_apply_projection(
+                    cx,
+                    &erasure_ctxt,
+                    hir_expr,
+                    arg,
+                    ApplyProjection { ty, kind: kind.clone() },
+                ))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn is_shadow_value<'tcx>(
+    cx: &ThirBuildCx<'tcx>,
+    erasure_ctxt: &VerusErasureCtxt,
+    expr_kind: &rustc_middle::thir::ExprKind<'tcx>,
+) -> bool {
+    match expr_kind {
+        ExprKind::Call { fun, args: _, .. } => match cx.thir.exprs[*fun].ty.kind() {
+            TyKind::FnDef(fn_def_id, _) => *fn_def_id == erasure_ctxt.shadow_ghost_value_fn_def_id,
+            _ => false,
+        },
+        ExprKind::Scope { region_scope: _, value, hir_id: _ } => {
+            is_shadow_value(cx, erasure_ctxt, &cx.thir.exprs[*value].kind)
+        }
+        _ => false,
+    }
+}
+
+struct ApplyProjection<'tcx> {
+    ty: Ty<'tcx>,
+    kind: rustc_middle::thir::ExprKind<'tcx>,
+}
+
+fn shadow_apply_projection<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    erasure_ctxt: &VerusErasureCtxt,
+    hir_expr: &hir::Expr<'tcx>,
+    expr_id: ExprId,
+    p: ApplyProjection<'tcx>,
+) -> ExprKind<'tcx> {
+    match &cx.thir.exprs[expr_id].kind {
+        ExprKind::Call { args, .. } => {
+            let arg = args[0];
+            let arg = match &cx.thir.exprs[arg].kind {
+                ExprKind::Tuple { fields } => fields[0],
+                _ => unreachable!(),
+            };
+
+            let ty = p.ty;
+            let new_arg = shadow_apply_projection_inner(cx, erasure_ctxt, hir_expr, arg, p);
+            shadow_ghost_value_kind_with_args(
+                cx,
+                erasure_ctxt,
+                hir_expr.hir_id,
+                hir_expr.span,
+                ty,
+                vec![new_arg],
+            )
+        }
+        ExprKind::Scope { region_scope: _, value, hir_id: _ } => {
+            shadow_apply_projection(cx, erasure_ctxt, hir_expr, *value, p)
+        }
+        _ => panic!("shadow_apply_projection failed"),
+    }
+}
+
+fn shadow_apply_projection_inner<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    _erasure_ctxt: &VerusErasureCtxt,
+    hir_expr: &hir::Expr<'tcx>,
+    expr_id: ExprId,
+    p: ApplyProjection<'tcx>,
+) -> ExprId {
+    let ExprKind::Borrow { borrow_kind, arg } = cx.thir.exprs[expr_id].kind else { unreachable!() };
+    let projected_arg_kind = match &p.kind {
+        ExprKind::Field { lhs: _, variant_index, name } => {
+            ExprKind::Field { lhs: arg, variant_index: *variant_index, name: *name }
+        }
+        ExprKind::Deref { .. } => ExprKind::Deref { arg },
+        _ => panic!("shadow_apply_projection_inner unexpected kind"),
+    };
+    let projected_arg =
+        expr_id_from_kind(cx, projected_arg_kind, hir_expr.hir_id, hir_expr.span, p.ty);
+    let borrow_kind = ExprKind::Borrow { borrow_kind, arg: projected_arg };
+    let ref_ty = cx.tcx.mk_ty_from_kind(TyKind::Ref(
+        Region::new_from_kind(cx.tcx, RegionKind::ReErased),
+        p.ty,
+        Mutability::Not,
+    ));
+    expr_id_from_kind(cx, borrow_kind, hir_expr.hir_id, hir_expr.span, ref_ty)
 }
 
 /// Get a shadow use as a statement.

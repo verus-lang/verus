@@ -2305,6 +2305,12 @@ pub fn erased_ghost_value<S, T>(_: S) -> T {
 }
 
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::shadow_ghost_value"]
+pub fn shadow_ghost_value<S, T>(_: S) -> T {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::DummyCapture"]
 #[derive(Clone, Copy)]
 pub struct DummyCapture<'a> {

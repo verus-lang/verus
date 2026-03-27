@@ -3251,7 +3251,7 @@ test_verify_one_file_with_options! {
             assert(x == 1);
             assert(false);
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `(Verus spec x_ref)` as immutable because it is also borrowed as mutable")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `*(Verus spec x_ref)` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file_with_options! {
