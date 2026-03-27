@@ -50,6 +50,7 @@ pub trait OptionAdditionalFns<T>: Sized {
     ;
 
     #[allow(deprecated)]
+    #[verifier::tracked_take_option_primitive]
     proof fn tracked_take(tracked &mut self) -> (tracked t: T)
         requires
             old(self).is_Some(),
@@ -107,11 +108,8 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     }
 
     /// Similar to `Option::take`
-    proof fn tracked_take(tracked &mut self) -> (tracked t: T) {
-        let tracked mut x = None::<T>;
-        super::super::modes::tracked_swap(self, &mut x);
-        x.tracked_unwrap()
-    }
+    #[verifier::tracked_take_option_primitive]
+    axiom fn tracked_take(tracked &mut self) -> (tracked t: T);
 }
 
 ////// Specs for std methods

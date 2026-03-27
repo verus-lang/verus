@@ -1335,5 +1335,41 @@ test_verify_one_file! {
             let s = STest { u };
             s
         }
+    }
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_const code! {
+        #[verus_verify]
+        const MY_CONST1: u64 = 1u64;
+
+        #[verus_verify(external_body)]
+        #[verus_spec(
+            ensures MY_CONST2 == 1
+        )]
+        const MY_CONST2: u64 = 0;
+
+        #[verus_verify]
+        #[verus_spec]
+        const MY_CONST3: u64 = 0;
+
+        #[verus_verify]
+        #[cfg_attr(not(customized_cfg), verus_spec(
+            ensures MY_CONST4 == 0
+        ))]
+        const MY_CONST4: u64 = 0;
+
+        #[verus_spec]
+        fn test_use_const() {
+            let x = MY_CONST1;
+            let y = MY_CONST2;
+            let z = MY_CONST3;
+            let w = MY_CONST4;
+            proof!{
+                assert(x == 1);
+                assert(y == 1);
+                assert(z == 0);
+                assert(w == 0);
+            }
+        }
     } => Ok(())
 }

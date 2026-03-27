@@ -98,6 +98,34 @@ struct RunContext<'a> {
     cvc5_version: &'a str,
 }
 
+/// Compute the output-file suffix for a given crate-root target.
+///
+/// For targets like `"capybaraKV/capybarakv"` the suffix is the parent
+/// directory path with `/` replaced by `-` (e.g. `"capybaraKV"`).  For
+/// targets without a parent directory (e.g. `"pmemlog"`), we fall back to
+/// the target name itself so that each multi-target project gets a unique
+/// output filename.
+fn target_output_suffix(target: &str) -> String {
+    let dir: String = Path::new(target)
+        .parent()
+        .map(|p| {
+            p.components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("-")
+        })
+        .unwrap_or_default();
+    if dir.is_empty() {
+        // Bare name like "pmemlog" – use the file/dir stem itself.
+        Path::new(target)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    } else {
+        dir
+    }
+}
+
 /// Process a single crate root target within a project.
 /// Returns (summary, verus_failed, warnings) or an error.
 fn process_target(
@@ -165,8 +193,8 @@ fn process_target(
 
         log_command(
             cmd!(sh, "{cargo_verus_binary_path} verus focus")
-                .args(&cargo_target_args)
                 .args(project.extra_cargo_args.iter().flatten())
+                .args(&cargo_target_args)
                 .args(["--", "--output-json", "--time"])
                 .args(ctx.run_configuration.verus_extra_args.iter().flatten())
                 .args(project.extra_verus_args.iter().flatten())
@@ -204,19 +232,11 @@ fn process_target(
     let output_name = if total_targets == 1 {
         project.name.clone()
     } else {
-        let dir = Path::new(target)
-            .parent()
-            .map(|p| {
-                p.components()
-                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                    .collect::<Vec<_>>()
-                    .join("-")
-            })
-            .unwrap_or_default();
-        if dir.is_empty() {
+        let suffix = target_output_suffix(target);
+        if suffix.is_empty() {
             project.name.clone()
         } else {
-            format!("{}-{}", project.name, dir)
+            format!("{}-{}", project.name, suffix)
         }
     };
     let project_output_path_json = ctx.output_path.join(&output_name).with_extension("json");
@@ -395,7 +415,7 @@ fn process_project(
         let status = if cfg!(windows) {
             log_command(cmd!(ctx.sh, "powershell -Command {prepare_script}").into()).status()
         } else {
-            log_command(cmd!(ctx.sh, "sh -c {prepare_script}").into()).status()
+            log_command(cmd!(ctx.sh, "bash -c {prepare_script}").into()).status()
         };
         let exit_status = status
             .map_err(|e| anyhow!("cannot execute prepare script for {}: {}", &project.name, e))?;
@@ -438,19 +458,11 @@ fn process_project(
                 let output_name = if project.crate_roots.len() == 1 {
                     project.name.clone()
                 } else {
-                    let dir = Path::new(target)
-                        .parent()
-                        .map(|p| {
-                            p.components()
-                                .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                                .collect::<Vec<_>>()
-                                .join("-")
-                        })
-                        .unwrap_or_default();
-                    if dir.is_empty() {
+                    let suffix = target_output_suffix(target);
+                    if suffix.is_empty() {
                         project.name.clone()
                     } else {
-                        format!("{}-{}", project.name, dir)
+                        format!("{}-{}", project.name, suffix)
                     }
                 };
                 let error_json = serde_json::json!({

@@ -3,6 +3,7 @@
 import argparse
 import json
 import glob
+import re
 from pathlib import Path
 
 
@@ -31,29 +32,38 @@ def load_results(directory):
 
         # Determine which specific crate root this JSON represents.
         # When a project has multiple crate roots, main.rs names each output file
-        # "<project-name>-<parent-dir-with-slashes-as-dashes>.json".  We reverse
-        # that to recover the original crate root path.
+        # "<project-name>-<suffix>.json" where suffix is the parent directory
+        # (slashes → dashes) or, for bare names like "pmemlog", the target name
+        # itself.  We reverse that to recover the original crate root path.
         crate_roots = run_config.get("crate_roots", [])
         proj_name = run_config.get("name", stem)
         crate_root = None
         if len(crate_roots) > 1:
             if stem != proj_name and stem.startswith(proj_name + "-"):
-                suffix = stem[len(proj_name) + 1:]  # e.g. "src" or "foo-bar"
+                suffix = stem[len(proj_name) + 1:]  # e.g. "capybaraKV" or "pmemlog"
                 for cr in crate_roots:
                     parent = str(Path(cr).parent).replace("/", "-")
                     if parent == suffix:
                         crate_root = cr
                         break
                 if crate_root is None:
+                    # Try matching against the target name/stem itself
+                    # (for bare targets like "pmemlog" with no parent dir)
+                    for cr in crate_roots:
+                        if Path(cr).stem == suffix or cr == suffix:
+                            crate_root = cr
+                            break
+                if crate_root is None:
                     crate_root = suffix  # fallback: show the raw suffix
             else:
-                # Stem matched the project name exactly (parent dir was empty)
-                crate_root = crate_roots[0]
+                # Stem matched the project name exactly
+                crate_root = crate_roots[0] if len(crate_roots) == 1 else stem
 
         results[stem] = {
             "name": proj_name,
             "crate_root": crate_root,
             "success": runner.get("success"),
+            "stderr": runner.get("stderr", ""),
             "verified": vr.get("verified") if vr else None,
             "errors": vr.get("errors") if vr else None,
             "total_ms": times.get("total"),
@@ -129,7 +139,10 @@ def print_top5_single(results):
     print()
 
     for _, r in entries:
-        print(f"--- {r['name']} ---")
+        label = r['name']
+        if r['crate_root']:
+            label += f" ({r['crate_root']})"
+        print(f"--- {label} ---")
         fns = r["functions"]
         if not fns:
             print("  (no timing data available)")
@@ -176,7 +189,10 @@ def print_top5_single_md(results):
     print()
 
     for _, r in entries:
-        print(f"**{r['name']}**")
+        label = r['name']
+        if r['crate_root']:
+            label += f" ({r['crate_root']})"
+        print(f"**{label}**")
         print()
         fns = r["functions"]
         if not fns:
@@ -190,6 +206,51 @@ def print_top5_single_md(results):
             t = fn["time_ms"]
             tstr = f"{t} ms" if t is not None else "N/A"
             print(f"| {i} | {tstr} | `{fn['name']}` |")
+        print()
+
+
+# ── Error summary (Markdown only) ─────────────────────────────────────────────
+
+def _project_label(r):
+    """Return a display label for a result entry (project name + crate root)."""
+    label = r["name"]
+    if r["crate_root"]:
+        label += f" ({r['crate_root']})"
+    return label
+
+
+_ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def _strip_ansi(text):
+    """Remove ANSI escape sequences from text."""
+    return _ANSI_ESCAPE_RE.sub('', text)
+
+
+def print_error_summary_md(results):
+    """Print a foldable error summary for any failed projects (Markdown mode)."""
+    entries = sorted_entries(results)
+    failed = [(stem, r) for stem, r in entries if r["success"] is not True]
+    if not failed:
+        return
+
+    print("### Error Summary")
+    print()
+
+    for _, r in failed:
+        label = _project_label(r)
+        stderr = _strip_ansi((r.get("stderr") or "")).strip()
+        if not stderr:
+            stderr = "_(no stderr captured)_"
+
+        print(f"<details>")
+        print(f"<summary>{label}</summary>")
+        print()
+        print("```")
+        print(stderr)
+        print("```")
+        print()
+        print("</details>")
         print()
 
 
@@ -317,8 +378,12 @@ def print_top5_comparison(old_results, new_results):
     for stem in all_stems:
         old = old_results.get(stem)
         new = new_results.get(stem)
-        name = (old or new)["name"]
-        print(f"--- {name} ---")
+        r = old or new
+        name = r["name"]
+        label = name
+        if r["crate_root"]:
+            label += f" ({r['crate_root']})"
+        print(f"--- {label} ---")
 
         # Collect all functions from each side
         old_fns_map = {fn["name"]: fn for fn in old["functions"]} if old else {}
@@ -441,8 +506,12 @@ def print_top5_comparison_md(old_results, new_results):
     for stem in all_stems:
         old = old_results.get(stem)
         new = new_results.get(stem)
-        name = (old or new)["name"]
-        print(f"**{name}**")
+        r = old or new
+        name = r["name"]
+        label = name
+        if r["crate_root"]:
+            label += f" ({r['crate_root']})"
+        print(f"**{label}**")
         print()
 
         old_fns_map = {fn["name"]: fn for fn in old["functions"]} if old else {}
@@ -531,6 +600,7 @@ def main():
         if md:
             print_single_summary_md(results)
             print_top5_single_md(results)
+            print_error_summary_md(results)
         else:
             print_single_summary(results)
             print_top5_single(results)
@@ -543,6 +613,7 @@ def main():
         if md:
             print_comparison_summary_md(old_results, new_results)
             print_top5_comparison_md(old_results, new_results)
+            print_error_summary_md(new_results)
         else:
             print_comparison_summary(old_results, new_results)
             print_top5_comparison(old_results, new_results)
