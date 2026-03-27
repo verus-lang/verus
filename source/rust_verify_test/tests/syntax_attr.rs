@@ -1282,6 +1282,20 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// test forloop without verus_spec invariant, which should be allowed with exec_allows_no_decreases_clause
+test_verify_one_file! {
+    #[test] test_for_loop_without_loop_spec code!{
+        use vstd::prelude::*;
+        #[verus_spec]
+        fn test_for_loop()
+        {
+            for i in 0..10
+            {
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] test_proof_with_struct code!{
         use vstd::prelude::*;

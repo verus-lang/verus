@@ -328,6 +328,25 @@ impl VisitMut for ExecReplacer {
             };
         }
     }
+
+    fn visit_expr_for_loop_mut(&mut self, for_loop: &mut syn::ExprForLoop) {
+        syn::visit_mut::visit_expr_for_loop_mut(self, for_loop);
+
+        if !self.erase.keep() {
+            return;
+        }
+
+        // In verification mode, even without verus spec on the loop, we still
+        // need to desugar the for loop.
+        // So, if there's no `verus_spec` attribute, we need to add an empty one.
+        if get_verus_spec(&for_loop.attrs).is_none() {
+            for_loop.attrs.push(crate::syntax::mk_rust_attr_syn(
+                for_loop.span(),
+                VERUS_SPEC,
+                TokenStream::new(),
+            ));
+        }
+    }
 }
 
 struct VerusVerifyVisitor {
