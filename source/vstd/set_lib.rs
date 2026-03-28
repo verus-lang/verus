@@ -958,6 +958,28 @@ pub proof fn lemma_sets_eq_iff_injective_map_eq<T, S>(s1: Set<T>, s2: Set<T>, f:
     }
 }
 
+/// Two sets are equal iff applying an injective (in the union of the sets) function `f` to each set produces equal sets.
+pub proof fn lemma_sets_eq_iff_injective_map_on_eq<T, S>(s1: Set<T>, s2: Set<T>, f: spec_fn(T) -> S)
+    requires
+        super::relations::injective_on(f, s1 + s2),
+    ensures
+        (s1 == s2) <==> (s1.map(f) == s2.map(f)),
+{
+    broadcast use group_set_axioms;
+
+    if (s1.map(f) == s2.map(f)) {
+        assert(s1.map(f).len() == s2.map(f).len());
+        if !s1.subset_of(s2) {
+            let x = choose|x: T| s1.contains(x) && !s2.contains(x);
+            assert(s1.map(f).contains(f(x)));
+        } else if !s2.subset_of(s1) {
+            let x = choose|x: T| s2.contains(x) && !s1.contains(x);
+            assert(s2.map(f).contains(f(x)));
+        }
+        assert(s1 =~= s2);
+    }
+}
+
 /// The result of inserting an element `a` into a set `s` is finite iff `s` is finite.
 pub broadcast proof fn lemma_set_insert_finite_iff<A>(s: Set<A>, a: A)
     ensures

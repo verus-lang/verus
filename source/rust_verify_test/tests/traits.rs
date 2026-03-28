@@ -4609,3 +4609,77 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
 }
+
+test_verify_one_file! {
+    #[test] trait_assoc_const1_default verus_code! {
+        trait U {}
+
+        trait T<A, B> {
+            const C: usize = 10;
+            const S: &str = "no";
+            const E: usize = 20;
+        }
+
+        impl U for u16 {}
+
+        const Q: u8 = 10;
+
+        impl<Z: U> T<u8, Z> for bool {
+            const C: usize = 13 - Q as usize;
+            const S: &str = "ha";
+
+            #[verifier::external_body]
+            const E: usize = 4;
+        }
+
+        impl<Z: U> T<u16, Z> for bool {
+        }
+
+        fn test1() {
+            assert(<bool as T<u8, u16>>::C == 3);
+            assert(<bool as T<u16, u16>>::C == 10);
+            let c = <bool as T<u8, u16>>::C;
+            assert(c == 3);
+            let c2 = <bool as T<u16, u16>>::C;
+            assert(c2 == 3); // FAILS
+        }
+
+        fn test2<A: T<u8, u16>>() {
+            assert(A::C == 3); // FAILS
+        }
+
+        fn test3<A: T<u8, u16>>() {
+            assert(A::C == 10); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const2_default verus_code! {
+        const fn f() -> u8 { 3 }
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8 = f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const3_default verus_code! {
+        spec const Q: u8 = 3;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8 = Q;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected mode")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const4_default verus_code! {
+        exec const Q: u8 = 3;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8 = Q;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
+}

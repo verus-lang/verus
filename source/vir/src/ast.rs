@@ -1163,6 +1163,8 @@ pub enum ExprX {
     ///
     /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
+    /// Borrow from a tracked place to get &mut Tracked<T>
+    BorrowMutTracked(Place),
     /// In exec/tracked code ExprX::BorrowMut(PlaceX::DerefMut(place))
     /// (with bool true = TwoPhaseBorrowMut)
     /// In spec code, it's just a spec snapshot of the place without a borrow
@@ -1474,6 +1476,10 @@ pub struct FunctionAttrsX {
     pub exec_allows_no_decreases_clause: bool,
     /// Is this only for the new_mut_ref experiment
     pub ignore_outside_new_mut_ref: bool,
+    /// Is this function `tracked_swap`, which requires special handling
+    pub tracked_swap: bool,
+    /// Is this function `Option::tracked_take`, which requires special handling
+    pub tracked_take_option: bool,
 }
 
 /// Function specification of its invariant mask

@@ -1025,3 +1025,19 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] ensures_projection_poly verus_code! {
+        trait T {
+            type X;
+            spec fn f(&self) -> Self::X;
+            fn g(&self, z: &Self::X) ensures ({let x = z; x == self.f()}); // FAILS
+        }
+
+        impl T for bool {
+            type X = u8;
+            spec fn f(&self) -> Self::X { 0 }
+            fn g(&self, z: &Self::X) {}
+        }
+    } => Err(err) => assert_one_fails(err)
+}

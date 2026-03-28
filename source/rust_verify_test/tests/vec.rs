@@ -49,3 +49,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_vec_dec verus_code! {
+        use vstd::prelude::*;
+        struct Tree {
+            children: Vec<Tree>,
+        }
+
+        fn recurse(tree: &Tree)
+            decreases *tree
+        {
+            if tree.children.len() > 0 {
+                recurse(&tree.children[0]);
+            }
+        }
+    } => Ok(())
+}

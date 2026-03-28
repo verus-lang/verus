@@ -1281,3 +1281,110 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// test forloop without verus_spec invariant, which should be allowed with exec_allows_no_decreases_clause
+test_verify_one_file! {
+    #[test] test_for_loop_without_loop_spec code!{
+        use vstd::prelude::*;
+        #[verus_spec]
+        fn test_for_loop()
+        {
+            for i in 0..10
+            {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_struct code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::PointsToRaw;
+
+        #[verus_verify]
+        pub struct STest {
+            pub u: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub p: Tracked<PointsToRaw>,
+        }
+
+        // Test with trailing comma in struct literal
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_trailing(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            STest {
+                u,
+            }
+        }
+
+        // Test without trailing comma in struct literal
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_no_trailing(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            STest { u }
+        }
+
+        // Test with let binding
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_let(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            let s = STest { u };
+            s
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_const code! {
+        #[verus_verify]
+        const MY_CONST1: u64 = 1u64;
+
+        #[verus_verify(external_body)]
+        #[verus_spec(
+            ensures MY_CONST2 == 1
+        )]
+        const MY_CONST2: u64 = 0;
+
+        #[verus_verify]
+        #[verus_spec]
+        const MY_CONST3: u64 = 0;
+
+        #[verus_verify]
+        #[cfg_attr(not(customized_cfg), verus_spec(
+            ensures MY_CONST4 == 0
+        ))]
+        const MY_CONST4: u64 = 0;
+
+        #[verus_spec]
+        fn test_use_const() {
+            let x = MY_CONST1;
+            let y = MY_CONST2;
+            let z = MY_CONST3;
+            let w = MY_CONST4;
+            proof!{
+                assert(x == 1);
+                assert(y == 1);
+                assert(z == 0);
+                assert(w == 0);
+            }
+        }
+    } => Ok(())
+}
