@@ -1222,7 +1222,15 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
 
             let ret = t_rec(&sig.output().skip_binder())?.0;
             let id = def.as_local().unwrap().local_def_index.index();
-            (Arc::new(TypX::AnonymousClosure(args, ret, id)), false)
+
+            let kind = substs.as_closure().kind();
+            let kind = match kind {
+                rustc_middle::ty::ClosureKind::Fn => vir::ast::ClosureKind::Fn,
+                rustc_middle::ty::ClosureKind::FnOnce => vir::ast::ClosureKind::FnOnce,
+                rustc_middle::ty::ClosureKind::FnMut => vir::ast::ClosureKind::FnMut,
+            };
+
+            (Arc::new(TypX::AnonymousClosure(args, ret, kind, id)), false)
         }
         TyKind::Alias(
             rustc_middle::ty::AliasTyKind::Projection | rustc_middle::ty::AliasTyKind::Inherent,

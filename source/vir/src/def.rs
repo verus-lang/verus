@@ -1,4 +1,4 @@
-use crate::ast::{Dt, Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
+use crate::ast::{ClosureKind, Dt, Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
 use crate::ast_util::air_unique_var;
 use crate::messages::Span;
 use crate::util::vec_map;
@@ -66,6 +66,7 @@ const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 pub(crate) const PREFIX_IMPL_TUPLE: &str = "impl_tuple&%";
+pub(crate) const PREFIX_IMPL_CLOSURE: &str = "impl_closure&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 pub(crate) const PREFIX_DEFAULT_TYP_PARAM: &str = "def_typ_param%";
@@ -562,6 +563,10 @@ pub fn impl_ident(disambiguator: u32) -> Ident {
 
 pub(crate) fn impl_tuple(trait_suffix: &str, arity: usize) -> Ident {
     Arc::new(format!("{}{}{}", PREFIX_IMPL_TUPLE, trait_suffix, arity))
+}
+
+pub(crate) fn impl_closure(kind: ClosureKind, id: usize) -> Ident {
+    Arc::new(format!("{}{}{}", PREFIX_IMPL_CLOSURE, kind, id))
 }
 
 pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {

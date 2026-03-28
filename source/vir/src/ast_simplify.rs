@@ -8,11 +8,11 @@ use crate::ast::VarBinders;
 use crate::ast::VarIdent;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BoundsCheck, BuiltinSpecFun, ByRef, CallTarget,
-    ChainedOp, Constant, CtorPrintStyle, CtorUpdateTail, Datatype, DatatypeTransparency, DatatypeX,
-    Dt, Expr, ExprX, Exprs, Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp,
-    IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternBinding, PatternX,
-    Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant,
-    VariantCheck, VirErr, Visibility,
+    ChainedOp, ClosureKind, Constant, CtorPrintStyle, CtorUpdateTail, Datatype,
+    DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, Field, FieldOpr, Fun, Function,
+    FunctionKind, Ident, InequalityOp, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ,
+    TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_spec_expr, typ_args_for_datatype_typ,
@@ -43,8 +43,8 @@ struct State {
     rename_vars_reverse: HashMap<VarIdent, VarIdent>,
     // Name of a datatype to represent each tuple arity
     tuple_typs: HashSet<usize>,
-    // Name of a datatype to represent each tuple arity
-    closure_typs: HashMap<usize, Path>,
+    // Name of a datatype to represent each closure
+    closure_typs: HashMap<usize, (Typs, Typ, ClosureKind, Path)>,
     // Functions for which the corresponding FnDef type is used
     fndef_typs: HashSet<Fun>,
 }
@@ -76,8 +76,12 @@ impl State {
         Dt::Tuple(arity)
     }
 
-    fn closure_type_name(&mut self, id: usize) -> Path {
-        self.closure_typs.entry(id).or_insert(crate::def::prefix_closure_type(id)).clone()
+    fn closure_type_name(&mut self, typs: Typs, typ: Typ, kind: ClosureKind, id: usize) -> Path {
+        self.closure_typs
+            .entry(id)
+            .or_insert((typs, typ, kind, crate::def::prefix_closure_type(id)))
+            .3
+            .clone()
     }
 }
 
@@ -862,8 +866,8 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
             state.tuple_type_name(*i);
             Ok(typ.clone())
         }
-        TypX::AnonymousClosure(_typs, _typ, id) => {
-            let path = Dt::Path(state.closure_type_name(*id));
+        TypX::AnonymousClosure(typs, typ, kind, id) => {
+            let path = Dt::Path(state.closure_type_name(typs.clone(), typ.clone(), *kind, *id));
             Ok(Arc::new(TypX::Datatype(path, Arc::new(vec![]), Arc::new(vec![]))))
         }
         TypX::FnDef(fun, _typs, resolved) => {
@@ -1540,7 +1544,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
 
     let mut closures: Vec<_> = state.closure_typs.into_iter().collect();
     closures.sort_by_key(|kv| kv.0);
-    for (_id, path) in closures {
+    for (id, (arg_typs, _output_typ, kind, path)) in closures {
         // Right now, we translate the closure type into an a global datatype.
         //
         // However, I'm pretty sure an anonymous closure can't actually be referenced
@@ -1575,7 +1579,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let variants = Arc::new(vec![]);
 
         let datatypex = DatatypeX {
-            name: Dt::Path(path),
+            name: Dt::Path(path.clone()),
             proxy: None,
             visibility,
             owning_module: None,
@@ -1590,6 +1594,28 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             destructor: false,
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
+
+        // Add a trait bound, `ClosureType: {Fn, FnMut, FnOnce}`
+        // TODO: include Output associated type
+        let self_typ = Arc::new(TypX::Datatype(Dt::Path(path), Arc::new(vec![]), Arc::new(vec![])));
+        let args_tuple_typ =
+            Arc::new(TypX::Datatype(Dt::Tuple(arg_typs.len()), arg_typs, Arc::new(vec![])));
+        let impl_path = Arc::new(crate::ast::PathX {
+            krate: None,
+            segments: Arc::new(vec![crate::def::impl_closure(kind, id)]),
+        });
+        let trait_implx = crate::ast::TraitImplX {
+            impl_path,
+            typ_params: Arc::new(vec![]),
+            typ_bounds: Arc::new(vec![]),
+            trait_path: kind.trait_path(),
+            trait_typ_args: Arc::new(vec![self_typ, args_tuple_typ]),
+            trait_typ_arg_impls: Spanned::new(ctx.no_span.clone(), Arc::new(vec![])),
+            owning_module: None,
+            auto_imported: true,
+            external_trait_blanket: false,
+        };
+        trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
     }
 
     let traits = traits.clone();

@@ -2142,7 +2142,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let tup = vir::ast_util::mk_tuple(&span, &Arc::new(vir_args));
                         let helper_fun =
                             vir::def::nonstatic_call_fun(&bctx.ctxt.vstd_crate_name, is_proof_fun);
-                        let ret_typ = expr_typ.clone();
 
                         // Anything that goes in `typ_args` needs to have the correct
                         // decoration, so call mid_ty_to_vir for these
@@ -2211,7 +2210,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             expr.span,
                         )?;
 
-                        let typ_args = Arc::new(vec![tup_typ, ret_typ, fun_typ]);
+                        let typ_args = Arc::new(vec![tup_typ, fun_typ]);
                         (
                             CallTarget::Fun(
                                 kind,
