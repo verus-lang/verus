@@ -39,40 +39,6 @@ pub fn is_verifying_entire_crate(verifier: &Verifier) -> bool {
 }
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
-pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>, do_lifetime: bool) {
-    rustc_hir_analysis::check_crate(tcx);
-    if tcx.dcx().err_count() != 0 {
-        return;
-    }
-    if !do_lifetime {
-        return;
-    }
-    let krate = tcx.hir_crate(());
-    for owner in &krate.owners {
-        if let MaybeOwner::Owner(owner) = owner {
-            match owner.node() {
-                OwnerNode::Item(item) => match &item.kind {
-                    rustc_hir::ItemKind::Fn { .. } => {
-                        tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
-                    }
-                    ItemKind::Impl(impll) => {
-                        for item_id in impll.items {
-                            let item = tcx.hir_impl_item(*item_id);
-                            match item.kind {
-                                ImplItemKind::Fn { .. } => {
-                                    tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    _ => (),
-                },
-                _ => {}
-            }
-        }
-    }
-}
 
 pub(crate) struct TCCallbacks {
     pub(crate) code: String,
@@ -92,7 +58,7 @@ impl rustc_driver::Callbacks for TCCallbacks {
         queries: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         // REVIEW: is this call needed for trait-conflict checking?
-        check(queries, false);
+        rustc_hir_analysis::check_crate(queries);
         rustc_driver::Compilation::Stop
     }
 }
@@ -149,7 +115,6 @@ This would avoid the complex interleaving above and avoid needing to use lifetim
 for all functions (it would only be needed for functions with tracked data in proof code).
 */
 struct CompilerCallbacksEraseMacro {
-    pub do_compile: bool,
     pub override_stability: bool,
 }
 
@@ -172,18 +137,6 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         }
     }
 
-    fn after_expansion<'tcx>(
-        &mut self,
-        _compiler: &rustc_interface::interface::Compiler,
-        tcx: rustc_middle::ty::TyCtxt<'tcx>,
-    ) -> rustc_driver::Compilation {
-        if !self.do_compile {
-            check(tcx, true);
-            rustc_driver::Compilation::Stop
-        } else {
-            rustc_driver::Compilation::Continue
-        }
-    }
 }
 
 /// Captures the verification and compilation time
@@ -201,11 +154,9 @@ pub struct Stats {
 
 pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
-    compile: bool,
     vstd: Vstd,
 ) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro {
-        do_compile: compile,
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
     };
     rustc_args.extend(["--cfg", "verus_only", "--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
@@ -368,7 +319,7 @@ pub fn run(
         if !verifier.compile && (verifier.args.no_erasure_check || verifier.args.no_lifetime) {
             Ok(())
         } else {
-            run_with_erase_macro_compile(rustc_args, verifier.compile, verifier.args.vstd)
+            run_with_erase_macro_compile(rustc_args, verifier.args.vstd)
         };
 
     let time2 = Instant::now();
