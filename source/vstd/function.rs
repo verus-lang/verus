@@ -132,9 +132,35 @@ pub axiom fn proof_fn_as_req_ens<
             f.ensures(args, output) ==> #[trigger] R::ens(args, output),
 ;
 
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub broadcast axiom fn axiom_fn_mut_call_requires<Args: core::marker::Tuple, F: FnMut<Args>>(
+    f: &mut F,
+    args: Args,
+)
+    requires
+        call_requires::<Args, F>(mut_ref_current(f), args),
+    ensures
+        #[trigger] call_requires::<Args, &mut F>(f, args),
+;
+
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub broadcast axiom fn axiom_fn_mut_call_ensures<Args: core::marker::Tuple, F: FnMut<Args>>(
+    f: &mut F,
+    args: Args,
+    output: F::Output,
+)
+    requires
+        #[trigger] call_ensures::<Args, &mut F>(f, args, output),
+    ensures
+        call_ensures::<Args, F>(mut_ref_current(f), args, output),
+        mut_ref_current(f) == mut_ref_future(f),
+;
+
 pub broadcast group group_function_axioms {
     axiom_proof_fn_requires,
     axiom_proof_fn_ensures,
+    axiom_fn_mut_call_requires,
+    axiom_fn_mut_call_ensures,
 }
 
 } // verus!
