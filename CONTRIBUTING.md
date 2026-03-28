@@ -117,6 +117,21 @@ vargo test -p rust_verify_test --test <test file> <test name>
 
 See the cargo help for more info on the test flags.
 
+### Controlling test parallelism
+
+By default, `vargo test` runs tests with maximum parallelism, which can overwhelm
+your system. To limit parallel test execution:
+
+```bash
+# Limit to 4 parallel test threads
+RUST_TEST_THREADS=4 vargo test -p rust_verify_test
+```
+
+The full test suite (123 test files) takes approximately **12 minutes** with 4 threads.
+
+Note: `vargo` does not forward the `-j` flag to cargo. Use `RUST_TEST_THREADS`
+to control test parallelism.
+
 If you need to pass additional command-line arguments to the verifier in tests, for example to print the
 erased rust ast, you can use the `VERUS_EXTRA_ARGS` environment variable, like this:
 
