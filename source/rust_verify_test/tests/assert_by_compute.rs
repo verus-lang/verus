@@ -12,29 +12,29 @@ test_verify_one_file! {
             if amt == 0 { x } else { shifter(x << 1, (amt - 1) as usize) }
         }
 
-        const one32: u32 = 1;
-        const two32: u32 = 2;
-        const two_to_31: u32 = 0x8000_0000;
-        const one64: u64 = 1;
-        const two64: u64 = 2;
+        const ONE32: u32 = 1;
+        const TWO32: u32 = 2;
+        const TWO_TO_31: u32 = 0x8000_0000;
+        const ONE64: u64 = 1;
+        const TWO64: u64 = 2;
         fn test(x: u64) {
             assert(!sub(0i32,1) == 0) by (compute_only);
             assert(!sub(0i32,2) == 1) by (compute_only);
-            assert(!one32 == 0xFFFF_FFFE) by (compute_only);
-            assert(!two32 == 0xFFFF_FFFD) by (compute_only);
-            assert(!one64 == 0xFFFF_FFFF_FFFF_FFFE) by (compute_only);
-            assert(!two64 == 0xFFFF_FFFF_FFFF_FFFD) by (compute_only);
-            assert(one32 ^ two32 == 3) by (compute_only);
-            assert(two32 ^ one32 == 3) by (compute_only);
-            assert(one32 & two32 == 0) by (compute_only);
-            assert(one32 | two32 == 3) by (compute_only);
-            assert(one32 << 3 == 8) by (compute_only);
-            assert(two32 << 3 == 16) by (compute_only);
-            assert(one32 >> 1 == 0) by (compute_only);
-            assert(two32 >> 1 == 1) by (compute_only);
-            assert(two32 >> 2 == 0) by (compute_only);
-            assert(two_to_31 >> 1 == 0x4000_0000) by (compute_only);
-            assert(two_to_31 << 1 == 0) by (compute_only);
+            assert(!ONE32 == 0xFFFF_FFFE) by (compute_only);
+            assert(!TWO32 == 0xFFFF_FFFD) by (compute_only);
+            assert(!ONE64 == 0xFFFF_FFFF_FFFF_FFFE) by (compute_only);
+            assert(!TWO64 == 0xFFFF_FFFF_FFFF_FFFD) by (compute_only);
+            assert(ONE32 ^ TWO32 == 3) by (compute_only);
+            assert(TWO32 ^ ONE32 == 3) by (compute_only);
+            assert(ONE32 & TWO32 == 0) by (compute_only);
+            assert(ONE32 | TWO32 == 3) by (compute_only);
+            assert(ONE32 << 3 == 8) by (compute_only);
+            assert(TWO32 << 3 == 16) by (compute_only);
+            assert(ONE32 >> 1 == 0) by (compute_only);
+            assert(TWO32 >> 1 == 1) by (compute_only);
+            assert(TWO32 >> 2 == 0) by (compute_only);
+            assert(TWO_TO_31 >> 1 == 0x4000_0000) by (compute_only);
+            assert(TWO_TO_31 << 1 == 0) by (compute_only);
             assert(sub(0i32,1) << 3 == -8) by (compute_only);
             assert(x ^ x == 0) by (compute_only);
             assert(x & x == x) by (compute_only);
@@ -560,13 +560,13 @@ test_verify_one_file! {
     #[test] array_literals verus_code! {
         use vstd::prelude::*;
 
-        const MyArray: [u32; 3] = [31, 32, 33];
+        const MY_ARRAY: [u32; 3] = [31, 32, 33];
 
         proof fn mytest() {
             assert([41u32, 42][1] == 42) by (compute_only);
-            assert(MyArray[1] == 32) by (compute_only);
+            assert(MY_ARRAY[1] == 32) by (compute_only);
             let x = 0;
-            assert(MyArray[x] == 31) by (compute);
+            assert(MY_ARRAY[x] == 31) by (compute);
         }
     } => Ok(())
 }
@@ -575,11 +575,11 @@ test_verify_one_file! {
     #[test] array_incompletely_resolved verus_code! {
         use vstd::prelude::*;
 
-        const MyArray: [u32; 3] = [1, 2, 3];
+        const MY_ARRAY: [u32; 3] = [1, 2, 3];
 
         proof fn test() {
             let x:int = 0;
-            assert(MyArray[x] == 2) by (compute_only);     // FAILS
+            assert(MY_ARRAY[x] == 2) by (compute_only);     // FAILS
         }
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }

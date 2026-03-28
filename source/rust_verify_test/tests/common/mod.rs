@@ -373,6 +373,9 @@ pub fn run_verus(
             // suppress Rust's generation of long-type files
             "-Z".to_string(),
             "write_long_types_to_disk=no".to_string(),
+            "--out-dir".to_string(),
+            test_dir.to_str().expect("test dir to string").to_string(),
+            "--emit=metadata".to_string(),
         ]
         .into_iter(),
     );
