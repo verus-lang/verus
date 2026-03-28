@@ -3330,6 +3330,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         // because the error messages are likely to be better.
                         let compile_status = crate::driver::run_with_erase_macro_compile(
                             self.rustc_args.clone(),
+                            false,
                             self.verifier.args.vstd,
                         );
                         if compile_status.is_err() {
