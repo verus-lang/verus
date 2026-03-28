@@ -1,4 +1,5 @@
 // rust_verify/tests/example.rs
+#![allow(non_snake_case)]
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 // #![allow(unused_imports, unused_macros, non_camel_case_types)] #![feature(fmt_internals)]
 use vstd::prelude::verus;

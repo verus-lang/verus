@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+#![allow(non_snake_case)]
 
 use verus_builtin::*;
 use vstd::prelude::*;

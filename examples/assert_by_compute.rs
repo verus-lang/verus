@@ -1,4 +1,5 @@
 // rust_verify/tests/example.rs no-report-long-running --- Don't report long-running tests
+#![allow(non_snake_case)]
 #![recursion_limit = "512"]
 #[allow(unused_imports)]
 use verus_builtin::*;
