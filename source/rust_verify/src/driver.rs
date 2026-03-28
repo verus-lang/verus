@@ -136,7 +136,6 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
             });
         }
     }
-
 }
 
 /// Captures the verification and compilation time
