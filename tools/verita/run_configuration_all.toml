@@ -78,7 +78,7 @@ name = "human-eval"
 #git_url = "https://github.com/secure-foundations/human-eval-verus.git"
 #refspec = "main"
 git_url = "https://github.com/Chris-Hawblitzel/human-eval-verus.git"
-refspec = "rlimit"
+refspec = "origin/rlimit"
 crate_roots = ["tasks/lib.rs"]
 extra_verus_args = ["--crate-type=lib"]
 
