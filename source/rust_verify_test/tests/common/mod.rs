@@ -380,7 +380,8 @@ pub fn run_verus(
     if compile {
         verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
     } else {
-        verus_args.push(test_dir.join("libtest_crate.rmeta").to_str().expect("valid path").to_owned());
+        verus_args
+            .push(test_dir.join("libtest_crate.rmeta").to_str().expect("valid path").to_owned());
         verus_args.push("--emit=metadata".to_string());
     }
 
