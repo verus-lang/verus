@@ -27,7 +27,7 @@ fn crate_optin_manifest() {
     assert_eq!(
         data.args,
         vec![
-            "build",
+            "check",
             "--manifest-path",
             manifest_path.to_str().expect("manifest path to string"),
             "--target-dir",
@@ -80,7 +80,7 @@ fn workspace_manifest() {
     assert_eq!(
         data.args,
         vec![
-            "build",
+            "check",
             "--manifest-path",
             manifest_path.to_str().expect("manifest path to string"),
             "--target-dir",
@@ -146,7 +146,7 @@ fn workspace_package_hasdeps() {
     assert_eq!(
         data.args,
         vec![
-            "build",
+            "check",
             "--target-dir",
             target_dir.to_str().expect("target dir to string"),
             "--package",

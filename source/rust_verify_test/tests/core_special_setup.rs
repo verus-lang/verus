@@ -15,9 +15,12 @@ test_verify_one_file_with_options! {
         #![cfg_attr(verus_keep_ghost, feature(allocator_api))]
         #![cfg_attr(verus_keep_ghost, feature(step_trait))]
         #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
-        #![cfg_attr(verus_keep_ghost, feature(strict_provenance_atomic_ptr))]
-        #![cfg_attr(verus_keep_ghost, feature(derive_clone_copy))]
+
+        #![cfg_attr(verus_keep_ghost, feature(derive_clone_copy_internals))]
         #![cfg_attr(verus_keep_ghost, feature(freeze))]
+        #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
+        #![cfg_attr(verus_keep_ghost, feature(const_destruct))]
+        #![cfg_attr(verus_keep_ghost, feature(derive_eq_internals))]
         #![cfg_attr(
             verus_keep_ghost,
             feature(fn_traits),

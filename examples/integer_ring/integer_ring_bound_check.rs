@@ -4,6 +4,7 @@
 //
 // With references from:
 // https://github.com/secure-foundations/libraries/blob/master/src/NonlinearArithmetic/Mul.dfy
+#![allow(non_snake_case)]
 #[allow(unused_imports)]
 use verus_builtin::*;
 #[allow(unused_imports)]

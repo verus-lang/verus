@@ -1,4 +1,5 @@
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+#![allow(non_snake_case)]
 #[allow(unused_imports)]
 use verus_builtin::*;
 use verus_builtin_macros::*;

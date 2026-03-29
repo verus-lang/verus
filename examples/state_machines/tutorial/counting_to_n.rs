@@ -1,5 +1,6 @@
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 #![allow(unused_imports)]
+#![allow(non_snake_case)]
 
 // ANCHOR: full
 use verus_state_machines_macros::tokenized_state_machine;
