@@ -15,6 +15,11 @@ pub struct ExControlFlow<B, C>(ControlFlow<B, C>);
 #[verifier::external_body]
 pub struct ExInfallible(Infallible);
 
+pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
+    requires
+        false,
+;
+
 pub assume_specification<T, E>[ Result::<T, E>::branch ](result: Result<T, E>) -> (cf: ControlFlow<
     <Result<T, E> as Try>::Residual,
     <Result<T, E> as Try>::Output,
