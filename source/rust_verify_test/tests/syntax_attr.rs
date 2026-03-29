@@ -1434,6 +1434,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // Test that `|` in a struct field expression inside proof_with! doesn't
+    // get confused with `|=` follow syntax. Uses bitwise OR on integers.
+    #[test] test_proof_with_struct_field_with_bitor code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        pub struct TestInt {
+            pub x: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub g: Ghost<u32>,
+        }
+
+        #[verus_spec(s =>
+            requires
+                x < u32::MAX,
+            ensures
+                s.x == x + 1,
+                s.g == (x | 1u32),
+        )]
+        fn make_with_bitor(x: u32) -> TestInt
+        {
+            proof_with! { g: Ghost(x | 1u32) }
+            TestInt {
+                x: x + 1,
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_verus_verify_on_const code! {
         #[verus_verify]
         const MY_CONST1: u64 = 1u64;
