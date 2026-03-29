@@ -195,32 +195,68 @@ struct ExecReplacer {
     erase: EraseGhost,
 }
 
+/// Wrap an expression with a `|=` follow clause, producing a tuple `(expr, follow)`.
+/// Used by both struct-constructor and function-call proof_with! handling.
+fn apply_follows(erase: &EraseGhost, expr: &mut Expr, follow_tokens: TokenStream) {
+    let follow: TokenStream =
+        syntax::rewrite_expr(erase.clone(), false, follow_tokens.into()).into();
+    *expr = Expr::Verbatim(quote_spanned!(expr.span() => (#expr, #follow)));
+}
+
+/// Split a token stream at the top-level `|=` token.
+/// Returns (tokens_before, Some(tokens_after)) if `|=` is found,
+/// or (original_tokens, None) if not.
+fn split_at_follows(tokens: &TokenStream) -> (TokenStream, Option<TokenStream>) {
+    let mut before = Vec::new();
+    let mut iter = tokens.clone().into_iter().peekable();
+    while let Some(tt) = iter.peek() {
+        if let proc_macro2::TokenTree::Punct(p) = tt {
+            if p.as_char() == '|' && p.spacing() == proc_macro2::Spacing::Joint {
+                iter.next(); // consume `|`
+                if let Some(proc_macro2::TokenTree::Punct(eq)) = iter.next() {
+                    if eq.as_char() == '=' {
+                        return (before.into_iter().collect(), Some(iter.collect()));
+                    }
+                }
+                panic!("Expected `=` after `|` in proof_with! follow clause");
+            }
+        }
+        before.push(iter.next().unwrap());
+    }
+    (before.into_iter().collect(), None)
+}
+
 impl ExecReplacer {
     /// For struct constructors, parse proof_with! tokens as field-value pairs
     /// and append them to the struct expression. Field value expressions are run
     /// through the verus expression rewriter to handle verus syntax like
     /// Tracked(p) and Ghost(g).
+    /// Returns any `|=` follow tokens that should be used to wrap the expression.
     fn append_proof_with_struct_fields(
         erase: &EraseGhost,
         with_args: &TokenStream,
         expr_struct: &mut syn::ExprStruct,
-    ) {
+    ) -> Option<TokenStream> {
         // Skip the leading `with` token to get the raw field tokens.
         let raw_tokens: TokenStream = with_args.clone().into_iter().skip(1).collect();
-        let extra_fields: syn::punctuated::Punctuated<syn::FieldValue, syn::Token![,]> =
-            syn::parse::Parser::parse2(
-                syn::punctuated::Punctuated::parse_terminated,
-                raw_tokens.clone(),
-            )
-            .unwrap_or_else(|e| {
-                panic!("Failed to parse proof_with struct fields {:?}: {:?}", raw_tokens, e)
-            });
-        for mut field in extra_fields {
-            let rewritten =
-                syntax::rewrite_expr(erase.clone(), false, field.expr.to_token_stream().into());
-            field.expr = syn::Expr::Verbatim(rewritten.into());
-            expr_struct.fields.push(field);
+        let (field_tokens, follow_tokens) = split_at_follows(&raw_tokens);
+        if !field_tokens.is_empty() {
+            let extra_fields: syn::punctuated::Punctuated<syn::FieldValue, syn::Token![,]> =
+                syn::parse::Parser::parse2(
+                    syn::punctuated::Punctuated::parse_terminated,
+                    field_tokens.clone(),
+                )
+                .unwrap_or_else(|e| {
+                    panic!("Failed to parse proof_with struct fields {:?}: {:?}", field_tokens, e)
+                });
+            for mut field in extra_fields {
+                let rewritten =
+                    syntax::rewrite_expr(erase.clone(), false, field.expr.to_token_stream().into());
+                field.expr = syn::Expr::Verbatim(rewritten.into());
+                expr_struct.fields.push(field);
+            }
         }
+        follow_tokens
     }
 }
 
@@ -291,7 +327,14 @@ impl VisitMut for ExecReplacer {
                     init: Some(syn::LocalInit { expr, .. }), ..
                 }) if !with_args.is_empty() && matches!(expr.as_ref(), syn::Expr::Struct(_)) => {
                     if let syn::Expr::Struct(expr_struct) = expr.as_mut() {
-                        Self::append_proof_with_struct_fields(&self.erase, &with_args, expr_struct);
+                        let follow_tokens = Self::append_proof_with_struct_fields(
+                            &self.erase,
+                            &with_args,
+                            expr_struct,
+                        );
+                        if let Some(follow_tokens) = follow_tokens {
+                            apply_follows(&self.erase, expr, follow_tokens);
+                        }
                     }
                     with_args = TokenStream::new();
                 }
@@ -307,7 +350,14 @@ impl VisitMut for ExecReplacer {
                 }
                 syn::Stmt::Expr(expr, _) if !with_args.is_empty() => {
                     if let syn::Expr::Struct(expr_struct) = expr {
-                        Self::append_proof_with_struct_fields(&self.erase, &with_args, expr_struct);
+                        let follow_tokens = Self::append_proof_with_struct_fields(
+                            &self.erase,
+                            &with_args,
+                            expr_struct,
+                        );
+                        if let Some(follow_tokens) = follow_tokens {
+                            apply_follows(&self.erase, expr, follow_tokens);
+                        }
                     } else {
                         let call_with_spec =
                             verus_syn::parse2(with_args.clone()).unwrap_or_else(|e| {
@@ -850,9 +900,7 @@ fn rewrite_with_expr(
         vec![]
     };
     if let Some((_, follow)) = follows {
-        let follow: TokenStream =
-            syntax::rewrite_expr(erase.clone(), false, follow.into_token_stream().into()).into();
-        *expr = Expr::Verbatim(quote_spanned!(expr.span() => (#expr, #follow)));
+        apply_follows(&erase, expr, follow.into_token_stream());
     }
     x_declares
 }
