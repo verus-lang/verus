@@ -302,8 +302,6 @@ pub fn run_verus(
             verus_args.push("2".to_string());
         } else if *option == "--compile" {
             verus_args.push("--compile".to_string());
-            verus_args.push("-o".to_string());
-            verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
         } else if *option == "--no-external-by-default" {
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
@@ -373,12 +371,18 @@ pub fn run_verus(
             // suppress Rust's generation of long-type files
             "-Z".to_string(),
             "write_long_types_to_disk=no".to_string(),
-            "--out-dir".to_string(),
-            test_dir.to_str().expect("test dir to string").to_string(),
-            "--emit=metadata".to_string(),
         ]
         .into_iter(),
     );
+
+    let compile = options.contains(&"--compile");
+    verus_args.push("-o".to_string());
+    if compile {
+        verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
+    } else {
+        verus_args.push(test_dir.join("libtest_crate.rmeta").to_str().expect("valid path").to_owned());
+        verus_args.push("--emit=metadata".to_string());
+    }
 
     if json_errors {
         verus_args.push("--error-format=json".to_string());
