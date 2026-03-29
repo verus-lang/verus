@@ -262,8 +262,9 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "proof blocks inside spec code is currently supported only for")
 }
 
+// proof blocks inside proof fn are now allowed (redundant but harmless)
 test_verify_one_file! {
-    #[test] non_spec_fn_not_yet_supported verus_code! {
+    #[test] proof_block_in_proof_fn_allowed verus_code! {
         proof fn f(i: int) {
             let x: int = {
                 proof {
@@ -272,7 +273,7 @@ test_verify_one_file! {
                 3
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "proof blocks inside spec code is currently supported only for")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -288,8 +289,9 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "return is not allowed inside spec")
 }
 
+// assignment inside proof block in proof fn is now allowed
 test_verify_one_file! {
-    #[test] assign_not_allowed verus_code! {
+    #[test] assign_in_proof_block_in_proof_fn verus_code! {
         proof fn f(i: int) {
             let mut b = false;
             let x: int = {
@@ -299,7 +301,7 @@ test_verify_one_file! {
                 3
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "proof blocks inside spec code is currently supported only for")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -322,20 +324,20 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
+// tracked variables inside proof block in proof fn is now allowed
 test_verify_one_file! {
-    #[test] tracked_not_allowed2 verus_code! {
+    #[test] tracked_in_proof_block_in_proof_fn verus_code! {
         proof fn h(tracked i: int) {
         }
         proof fn f(tracked i: int) {
             let x: int = {
                 proof {
                     h(i);
-                    h(i);
                 }
                 3
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "proof blocks inside spec code is currently supported only for")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -486,4 +488,111 @@ test_verify_one_file! {
             assert(count(0) == 0);
         }
     } => Ok(())
+}
+
+// ============================================================================
+// Tests for issue #2061: proof blocks inside proof fn should be allowed
+// https://github.com/verus-lang/verus/issues/2061
+// ============================================================================
+
+// Basic case from the issue: proof { } directly in proof fn body
+test_verify_one_file! {
+    #[test] issue_2061_basic verus_code! {
+        proof fn foo() {
+            proof { }
+        }
+    } => Ok(())
+}
+
+// proof block with assertion in proof fn
+test_verify_one_file! {
+    #[test] issue_2061_with_assert verus_code! {
+        proof fn foo() {
+            proof {
+                assert(1 + 1 == 2);
+            }
+        }
+    } => Ok(())
+}
+
+// proof block with failing assertion in proof fn
+test_verify_one_file! {
+    #[test] issue_2061_with_failing_assert verus_code! {
+        proof fn foo() {
+            proof {
+                assert(false); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+// nested proof blocks in proof fn
+test_verify_one_file! {
+    #[test] issue_2061_nested verus_code! {
+        proof fn foo() {
+            proof {
+                proof {
+                    assert(true);
+                }
+            }
+        }
+    } => Ok(())
+}
+
+// proof block in proof fn with local variable
+test_verify_one_file! {
+    #[test] issue_2061_with_local verus_code! {
+        proof fn foo() {
+            let x: int = 5;
+            proof {
+                assert(x == 5);
+            }
+        }
+    } => Ok(())
+}
+
+// proof block in proof fn inside expression
+test_verify_one_file! {
+    #[test] issue_2061_in_expression verus_code! {
+        proof fn foo() -> int {
+            let result: int = {
+                proof {
+                    assert(true);
+                }
+                42
+            };
+            result
+        }
+    } => Ok(())
+}
+
+// Verify spec fn with decreases still works (regression test)
+test_verify_one_file! {
+    #[test] issue_2061_spec_fn_still_works verus_code! {
+        spec fn factorial(n: nat) -> nat
+            decreases n
+        {
+            if n == 0 {
+                1
+            } else {
+                proof {
+                    // This proof block in spec fn with decreases should still work
+                    assert(n > 0);
+                }
+                n * factorial((n - 1) as nat)
+            }
+        }
+    } => Ok(())
+}
+
+// Ensure proof blocks in spec fn WITHOUT decreases still error
+test_verify_one_file! {
+    #[test] issue_2061_spec_fn_no_decreases_still_errors verus_code! {
+        spec fn f(i: int) -> int {
+            proof {
+                assert(true);
+            }
+            3
+        }
+    } => Err(err) => assert_vir_error_msg(err, "proof blocks inside spec code is currently supported only for")
 }
