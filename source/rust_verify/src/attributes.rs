@@ -296,6 +296,8 @@ pub(crate) enum Attr {
     Memoize,
     // Override default rlimit
     RLimit(f32),
+    // suppress warning
+    Allow(String),
     // Suppress the recommends check for narrowing casts that may truncate
     Truncate,
     // In order to apply a specification to a method externally
@@ -619,6 +621,9 @@ pub(crate) fn parse_attrs(
                     let number = get_rlimit_arg(*span, attrs)?;
                     v.push(Attr::RLimit(number));
                 }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, s, None)])) if arg == "allow" => {
+                    v.push(Attr::Allow(s.clone()))
+                }
                 AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
                 AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
                     v.push(Attr::ExternalFnSpecification)
@@ -879,6 +884,60 @@ pub(crate) fn parse_attrs_walk_parents<'tcx>(
     }
 }
 
+fn is_allow_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+    allow: &str,
+) -> bool {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::Allow(s) = attr {
+            if s == allow {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+struct WarningDefId<'tcx>(rustc_middle::ty::TyCtxt<'tcx>, rustc_span::def_id::DefId);
+
+impl<'tcx> vir::messages::CheckAllowForWarning for WarningDefId<'tcx> {
+    fn allowed(&self, s: &str) -> bool {
+        let WarningDefId(tcx, def_id) = *self;
+        is_allow_walk_parents(tcx, def_id, s)
+    }
+}
+
+pub(crate) fn warning_maybe<'tcx, S: Into<String>>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+    span: Span,
+    allow: &str,
+    note: impl FnOnce() -> S,
+    emit: impl FnOnce(vir::messages::Message) -> (),
+) {
+    vir::messages::warning_maybe(
+        &WarningDefId(tcx, def_id),
+        &crate::spans::err_air_span(span),
+        allow,
+        note,
+        emit,
+    );
+}
+
+pub(crate) fn warning_config_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> vir::context::WarningConfig {
+    let mut allows = Vec::new();
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::Allow(s) = attr {
+            allows.push(s.clone());
+        }
+    }
+    vir::context::WarningConfig(allows)
+}
+
 pub(crate) fn get_loop_isolation_walk_parents<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     def_id: rustc_span::def_id::DefId,
@@ -1092,6 +1151,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) allow_complex_invariants: bool,
     pub(crate) memoize: bool,
     pub(crate) rlimit: Option<f32>,
+    pub(crate) allow_list: Vec<String>,
     pub(crate) truncate: bool,
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
@@ -1267,6 +1327,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         allow_complex_invariants: false,
         memoize: false,
         rlimit: None,
+        allow_list: vec![],
         truncate: false,
         external_fn_specification: false,
         external_type_specification: false,
@@ -1351,6 +1412,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::Memoize => vs.memoize = true,
             Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),
             Attr::Truncate => vs.truncate = true,
+            Attr::Allow(name) => vs.allow_list.push(name.clone()),
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
             Attr::Mode(_) => vs.sets_mode = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,

@@ -35,6 +35,23 @@ pub struct ChosenTriggers {
     pub manual: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct WarningConfig(pub Vec<String>);
+
+impl crate::messages::CheckAllowForWarning for WarningConfig {
+    fn allowed(&self, allow: &str) -> bool {
+        self.0.iter().any(|s| s == allow)
+    }
+}
+
+#[derive(Debug)]
+pub struct WarningCtx {
+    // Map names of FunctionX in this crate (not imported from other crates)
+    // to Some CheckAllowForWarning to be used to check that fun,
+    // map names from other crates to None
+    pub fun_warn_configs: HashMap<Fun, Option<WarningConfig>>,
+}
+
 /// Context for across all modules
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
@@ -50,6 +67,7 @@ pub struct GlobalCtx {
     pub trait_impl_to_extensions: HashMap<Path, Vec<Path>>,
     /// Map TSpec to T
     pub(crate) extension_to_trait: HashMap<Path, Path>,
+    pub(crate) warning_ctx: Arc<WarningCtx>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
@@ -148,6 +166,23 @@ impl Ctx {
             Some(FunctionCtx { checking_spec_preconditions: true, .. }) => true,
             Some(FunctionCtx { checking_spec_decreases: true, .. }) => true,
             _ => false,
+        }
+    }
+
+    pub(crate) fn warning_maybe_if_in_local_crate<S: Into<String>>(
+        &self,
+        span: &Span,
+        allow: &str,
+        note: impl FnOnce() -> S,
+        emit: impl FnOnce(crate::messages::Message) -> (),
+    ) {
+        if let Some(function_ctx) = &self.fun {
+            let check_allow = &self.global.warning_ctx.fun_warn_configs[&function_ctx.current_fun];
+            crate::messages::warning_maybe_if_in_local_crate(check_allow, span, allow, note, emit);
+        } else {
+            // TODO: if we ever support verifier::allow on expressions,
+            // we can make this warning configurable:
+            emit(crate::messages::warning(span, note()));
         }
     }
 }
@@ -281,6 +316,7 @@ impl GlobalCtx {
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
+        warning_ctx: Arc<WarningCtx>,
         solver: SmtSolver,
         after_simplify: bool,
         check_api_safety: bool,
@@ -691,6 +727,7 @@ impl GlobalCtx {
             datatype_graph_span_infos: span_infos,
             extension_to_trait,
             trait_impl_to_extensions,
+            warning_ctx,
             qid_map,
             rlimit,
             interpreter_log,
@@ -724,6 +761,7 @@ impl GlobalCtx {
             func_call_sccs: self.func_call_sccs.clone(),
             extension_to_trait: self.extension_to_trait.clone(),
             trait_impl_to_extensions: self.trait_impl_to_extensions.clone(),
+            warning_ctx: self.warning_ctx.clone(),
             qid_map,
             rlimit: self.rlimit,
             interpreter_log,

@@ -32,6 +32,10 @@ impl std::fmt::Debug for Span {
     }
 }
 
+pub trait CheckAllowForWarning {
+    fn allowed(&self, allow: &str) -> bool;
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode)]
 pub struct MessageLabel {
     pub span: Span,
@@ -295,6 +299,42 @@ pub fn warning_bare<S: Into<String>>(note: S) -> Message {
 /// Basic warning, with a message and a single span to be highlighted with ^^^^^^
 pub fn warning<S: Into<String>>(span: &Span, note: S) -> Message {
     message(MessageLevel::Warning, note, span)
+}
+
+/// Basic warning, possibly suppressed by verifier::allow
+pub fn warning_maybe<S: Into<String>>(
+    check_allow: &(impl CheckAllowForWarning + ?Sized),
+    span: &Span,
+    allow: &str,
+    note: impl FnOnce() -> S,
+    emit: impl FnOnce(Message) -> (),
+) {
+    if !check_allow.allowed(allow) {
+        let msg = warning(span, note());
+        let msg = msg.help(
+            format!(
+                "to suppress this warning, use `#[verifier::allow({allow})]` on the surrounding function, datatype, or module or `#![verifier::allow({allow})]` in the module or crate"
+            ));
+        emit(msg);
+    }
+}
+
+/// Basic warning, possibly suppressed by verifier::allow,
+/// and possibly also suppressed by check_allow = None (which means a check for another crate's item)
+/// REVIEW: at some point, we should probably just stop checking imported items
+pub fn warning_maybe_if_in_local_crate<S: Into<String>>(
+    check_allow: &Option<crate::context::WarningConfig>,
+    span: &Span,
+    allow: &str,
+    note: impl FnOnce() -> S,
+    emit: impl FnOnce(Message) -> (),
+) {
+    if let Some(check_allow) = check_allow {
+        // The item being checked is local to our crate, so continue with warning:
+        warning_maybe(check_allow, span, allow, note, emit);
+    }
+    // Otherwise, don't warn (it's an item from another crate,
+    // and the warning was already displayed when that crate was checked)
 }
 
 /// Bare error without any spans; use the builders below to add spans and labels

@@ -9,6 +9,7 @@ use crate::ast_util::{
     is_body_visible_to, is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr,
     typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
+use crate::context::WarningConfig;
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use crate::internal_err;
@@ -418,6 +419,7 @@ fn check_one_expr<Emit: EmitError>(
     disallow_private_access: Option<(&Visibility, &str)>,
     area: Area,
     emit: &mut Emit,
+    warn_config: &Option<WarningConfig>,
 ) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::Var(x) => {
@@ -603,10 +605,16 @@ fn check_one_expr<Emit: EmitError>(
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
             ExprX::Binary(crate::ast::BinaryOp::Implies, _, _) => {
                 if !vars.is_empty() {
-                    emit.emit(None, VirErrAs::Warning(
-                        error(&expr.span, "using ==> in `assert forall` does not currently assume the antecedent in the body; consider using `implies` instead of `==>`")
-                            .help("If you didn't mean to assume the antecedent, we're very curious to hear why! To tell us, please open an issue on the Verus issue tracker on github with the title `Don't always make assert forall assume the antecedent`. If no one opens such an issue, we'll soon change the behavior of Verus to always assume the antecedent of the outermost implication")
-                    ));
+                    crate::messages::warning_maybe_if_in_local_crate(
+                        warn_config,
+                        &expr.span,
+                        "assert_forall_implication",
+                        || "using ==> in `assert forall` does not currently assume the antecedent in the body; consider using `implies` instead of `==>`",
+                        |msg| {
+                            let msg = msg.help("If you didn't mean to assume the antecedent, we're very curious to hear why! To tell us, please open an issue on the Verus issue tracker on github with the title `Don't always make assert forall assume the antecedent`. If no one opens such an issue, we'll soon change the behavior of Verus to always assume the antecedent of the outermost implication");
+                            emit.emit(None, VirErrAs::Warning(msg));
+                        },
+                    );
                 }
             }
             _ => {}
@@ -871,12 +879,13 @@ fn check_expr<Emit: EmitError>(
     disallow_private_access: Option<(&Visibility, &str)>,
     area: Area,
     emit: &mut Emit,
+    warn_config: &Option<WarningConfig>,
 ) -> Result<(), VirErr> {
     let check_result = crate::ast_visitor::ast_visitor_check(
         expr,
         emit,
         &mut |emit, _scope_map, expr: &Arc<crate::ast::SpannedTyped<ExprX>>| {
-            check_one_expr(ctxt, function, expr, disallow_private_access, area, emit)
+            check_one_expr(ctxt, function, expr, disallow_private_access, area, emit, warn_config)
         },
         &mut |_emit, _scope_map, stmt| check_one_stmt(ctxt, stmt),
         &mut |emit, _scope_map, pattern: &Arc<crate::ast::SpannedTyped<PatternX>>| {
@@ -895,6 +904,7 @@ fn check_function<Emit: EmitError>(
     ctxt: &Ctxt,
     function: &Function,
     emit: &mut Emit,
+    warn_config: &Option<WarningConfig>,
     _no_verify: bool,
 ) -> Result<(), VirErr> {
     if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
@@ -1269,12 +1279,28 @@ fn check_function<Emit: EmitError>(
     for req in function.x.require.iter() {
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
-        check_expr(ctxt, function, req, disallow_private_access, Area::PreState("requires"), emit)?;
+        check_expr(
+            ctxt,
+            function,
+            req,
+            disallow_private_access,
+            Area::PreState("requires"),
+            emit,
+            warn_config,
+        )?;
     }
     for ens in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
-        check_expr(ctxt, function, ens, disallow_private_access, Area::PostState, emit)?;
+        check_expr(
+            ctxt,
+            function,
+            ens,
+            disallow_private_access,
+            Area::PostState,
+            emit,
+            warn_config,
+        )?;
     }
     if let Some(r) = &function.x.returns {
         if matches!(*function.x.ret.x.typ, TypX::Opaque { .. }) {
@@ -1305,7 +1331,15 @@ fn check_function<Emit: EmitError>(
 
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
-        check_expr(ctxt, function, r, disallow_private_access, Area::PreState("returns"), emit)?;
+        check_expr(
+            ctxt,
+            function,
+            r,
+            disallow_private_access,
+            Area::PreState("returns"),
+            emit,
+            warn_config,
+        )?;
     }
     match &function.x.mask_spec {
         None => {}
@@ -1320,6 +1354,7 @@ fn check_function<Emit: EmitError>(
                     disallow_private_access,
                     Area::PreState("opens_invariants clause"),
                     emit,
+                    warn_config,
                 )?;
             }
         }
@@ -1333,6 +1368,7 @@ fn check_function<Emit: EmitError>(
                 disallow_private_access,
                 Area::PreState("opens_invariants clause"),
                 emit,
+                warn_config,
             )?
         }
     }
@@ -1348,6 +1384,7 @@ fn check_function<Emit: EmitError>(
                 disallow_private_access,
                 Area::PreState("opens_invariants clause"),
                 emit,
+                warn_config,
             )?;
         }
     }
@@ -1361,6 +1398,7 @@ fn check_function<Emit: EmitError>(
             disallow_private_access,
             Area::PreState("decreases clause"),
             emit,
+            warn_config,
         )?;
     }
     if let Some(expr) = &function.x.decrease_when {
@@ -1385,6 +1423,7 @@ fn check_function<Emit: EmitError>(
             disallow_private_access,
             Area::PreState("when clause"),
             emit,
+            warn_config,
         )?;
     }
 
@@ -1393,12 +1432,12 @@ fn check_function<Emit: EmitError>(
         && (function.x.attrs.exec_assume_termination
             || function.x.attrs.exec_allows_no_decreases_clause)
     {
-        emit.emit(
-            None,
-            VirErrAs::Warning(error(
-                &function.span,
-                "if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops",
-            )),
+        crate::messages::warning_maybe_if_in_local_crate(
+            warn_config,
+            &function.span,
+            "decreases_when_exec_allows_no_decreases_clause",
+            || "if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops",
+            |msg| emit.emit(None, VirErrAs::Warning(msg)),
         );
     }
 
@@ -1413,7 +1452,7 @@ fn check_function<Emit: EmitError>(
         } else {
             None
         };
-        check_expr(ctxt, function, body, disallow_private_access, Area::Body, emit)?;
+        check_expr(ctxt, function, body, disallow_private_access, Area::Body, emit, warn_config)?;
     }
 
     if function.x.attrs.is_type_invariant_fn {
@@ -1677,6 +1716,7 @@ pub fn check_crate(
     krate: &Krate,
     unpruned_krate: &Krate,
     diags: &mut Vec<VirErrAs>,
+    warning_ctx: &crate::context::WarningCtx,
     no_verify: bool,
     no_cheating: bool,
 ) -> Result<CheckDetails, VirErr> {
@@ -1722,6 +1762,9 @@ pub fn check_crate(
     // Check connections between decreases_by specs and proofs
     let mut decreases_by_proof_to_spec: HashMap<Fun, Fun> = HashMap::new();
     for function in krate.functions.iter() {
+        let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
+            panic!("missing warn_config for function {:?}", &function.x.name);
+        };
         if let Some(proof_fun) = &function.x.decrease_by {
             let proof_function = if let Some(proof_function) = funs.get(proof_fun) {
                 proof_function
@@ -1872,10 +1915,13 @@ pub fn check_crate(
                 }
             }
             if !found_trigger {
-                diags.push(VirErrAs::Warning(error(
+                crate::messages::warning_maybe_if_in_local_crate(
+                    warn_config,
                     &function.span,
-                    "broadcast functions should have explicit #[trigger] or #![trigger ...]",
-                )));
+                    "broadcast_without_trigger",
+                    || "broadcast functions should have explicit #[trigger] or #![trigger ...]",
+                    |msg| diags.push(VirErrAs::Warning(msg)),
+                );
             }
         }
     }
@@ -1933,7 +1979,10 @@ pub fn check_crate(
     let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
-        check_function(&ctxt, function, &mut emit, no_verify)?;
+        let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
+            panic!("missing warn_config for function {:?}", &function.x.name);
+        };
+        check_function(&ctxt, function, &mut emit, warn_config, no_verify)?;
     }
     for dt in krate.datatypes.iter() {
         check_datatype(&ctxt, dt, &mut emit)?;
