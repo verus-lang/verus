@@ -93,11 +93,6 @@ fn clone_add_post_condition<'tcx>(
             .borrow_mut()
             .push(VirErrAs::Warning(crate::util::err_span_bare(span, msg.to_string())));
     };
-    let warn_unexpected = || {
-        warn(
-            "autoderive Clone impl does not take the form Verus expects; continuing, but without adding a specification for the derived Clone impl",
-        )
-    };
     let warn_unsupported = || {
         warn(
             "Verus does not (yet) support autoderive Clone impl when the clone is not a copy; continuing, but without adding a specification for the derived Clone impl",
@@ -119,7 +114,11 @@ fn clone_add_post_condition<'tcx>(
                     self_var = Some(last_expr.clone());
                 }
                 _ => {
-                    warn_unexpected();
+                    warn(
+                        "autoderive Clone impl does not take the form Verus expects:
+  A `clone` impl that ends by reading some variable should end with reading from `self`\n
+continuing, but without adding a specification for the derived Clone impl",
+                    );
                     return Ok(());
                 }
             },
@@ -128,18 +127,30 @@ fn clone_add_post_condition<'tcx>(
                 self_var = None;
             }
             _ => {
-                warn_unexpected();
+                warn(
+                    "autoderive Clone impl does not take the form Verus expects:
+  A `clone` impl should either read from self or call a constructor\n
+continuing, but without adding a specification for the derived Clone impl",
+                );
                 return Ok(());
             }
         },
         _ => {
-            warn_unexpected();
+            warn(
+                "autoderive Clone impl does not take the form Verus expects:
+  The `clone` function body should return a value\n
+continuing, but without adding a specification for the derived Clone impl",
+            );
             return Ok(());
         }
     }
 
     if functionx.ensure.0.len() != 0 {
-        warn_unexpected();
+        warn(
+            "autoderive Clone impl does not take the form Verus expects:
+  The `clone` function should only have default trait ensure clauses\n
+continuing, but without adding a specification for the derived Clone impl",
+        );
         return Ok(());
     }
 
