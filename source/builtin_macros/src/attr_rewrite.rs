@@ -209,19 +209,23 @@ fn apply_follows(erase: &EraseGhost, expr: &mut Expr, follow_tokens: TokenStream
 fn split_at_follows(tokens: &TokenStream) -> (TokenStream, Option<TokenStream>) {
     let mut before = Vec::new();
     let mut iter = tokens.clone().into_iter().peekable();
-    while let Some(tt) = iter.peek() {
-        if let proc_macro2::TokenTree::Punct(p) = tt {
+    while let Some(tt) = iter.next() {
+        if let proc_macro2::TokenTree::Punct(ref p) = tt {
             if p.as_char() == '|' && p.spacing() == proc_macro2::Spacing::Joint {
-                iter.next(); // consume `|`
-                if let Some(proc_macro2::TokenTree::Punct(eq)) = iter.next() {
+                // Only treat this as a follow-clause start if the next token is `=`.
+                if let Some(proc_macro2::TokenTree::Punct(eq)) = iter.peek() {
                     if eq.as_char() == '=' {
+                        // Consume the `=` and return the rest as follow tokens.
+                        iter.next();
                         return (before.into_iter().collect(), Some(iter.collect()));
                     }
                 }
-                panic!("Expected `=` after `|` in proof_with! follow clause");
+                // Not a `|=` sequence (e.g., `||`); treat `|` as a normal token.
+                before.push(tt);
+                continue;
             }
         }
-        before.push(iter.next().unwrap());
+        before.push(tt);
     }
     (before.into_iter().collect(), None)
 }
