@@ -22,7 +22,7 @@ const STRUCTS: &str = verus_code_str! {
         Train(bool),
     }
 
-    mod m {
+    mod M {
         struct Car {
             four_doors: bool,
         }
@@ -189,7 +189,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enum_adt_mod verus_code! {
-        mod a {
+        mod A {
             use verus_builtin::*;
             pub enum E {
                 A { a: u64 },
@@ -197,8 +197,8 @@ test_verify_one_file! {
             }
         }
 
-        mod b {
-            use crate::a::*;
+        mod B {
+            use crate::A::*;
             fn test() {
                 let e = E::A { a: 12 };
                 assert(match e { E::A { a } => a == 12, _ => false });
