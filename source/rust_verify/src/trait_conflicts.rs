@@ -205,6 +205,10 @@ fn gen_generics(
     let mut generic_params: Vec<GenericParam> = Vec::new();
     let mut generic_bounds: Vec<GenericBound> = Vec::new();
     let mut const_typs: HashMap<String, Typ> = HashMap::new();
+    let tuple_trait_path = vir::ast::PathX {
+        krate: Some(Arc::new("core".to_string())),
+        segments: Arc::new(vec![Arc::new("marker".to_string()), Arc::new("Tuple".to_string())]),
+    };
     for b in typ_bounds.iter() {
         match &**b {
             GenericBoundX::Trait(TraitId::Path(path), typs) => {
@@ -212,7 +216,9 @@ fn gen_generics(
                 if is_option_clone_destruct_bound(is_impl, path) {
                     continue;
                 }
-                let bound = {
+                let bound = if &**path == &tuple_trait_path {
+                    Bound::Tuple
+                } else {
                     let args = gen_typ_slice(state, &typs[1..]);
                     let trait_path = state.trait_name(&path);
                     Bound::Trait { trait_path, args, equality: None }

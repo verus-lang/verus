@@ -969,12 +969,6 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
                 polarity: rustc_middle::ty::PredicatePolarity::Positive,
             }) => {
                 let trait_def_id = trait_ref.def_id;
-                if Some(trait_def_id) == tcx.lang_items().fn_trait()
-                    || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
-                    || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
-                {
-                    continue;
-                }
                 if !external_info.trait_id_set.contains(&trait_def_id) {
                     return false;
                 }
@@ -985,9 +979,6 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
                 }
             }
             ClauseKind::Projection(pred) => {
-                if Some(pred.projection_term.def_id) == tcx.lang_items().fn_once_output() {
-                    continue;
-                }
                 let Some(_ty) = pred.term.as_type() else {
                     return false;
                 };
@@ -1195,8 +1186,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let param_typs = match &*typ_arg_tuple {
                         TypX::Datatype(Dt::Tuple(_), typs, _) => typs.clone(),
                         _ => {
-                            // TODO proper user-facing error msg here
-                            panic!("expected first type argument of spec_fn to be a tuple");
+                            unsupported_err!(
+                                span,
+                                "expected first type argument of spec_fn to be a tuple"
+                            );
                         }
                     };
                     return Ok((Arc::new(TypX::SpecFn(param_typs, ret_typ)), false));
@@ -1768,14 +1761,11 @@ pub(crate) fn check_generic_bound<'tcx>(
     trait_def_id: DefId,
     args: &[GenericArg<'tcx>],
 ) -> Result<Option<vir::ast::GenericBound>, VirErr> {
-    if Some(trait_def_id) == tcx.lang_items().copy_trait()
-        || Some(trait_def_id) == tcx.lang_items().unpin_trait()
+    if Some(trait_def_id) == tcx.lang_items().unpin_trait()
         || Some(trait_def_id) == tcx.lang_items().sync_trait()
-        || Some(trait_def_id) == tcx.lang_items().tuple_trait()
         || Some(trait_def_id) == tcx.get_diagnostic_item(rustc_span::sym::Send)
     {
-        // Rust language marker traits are ignored in VIR
-        // TODO: these should not be ignored in VIR
+        // TODO: when we have full support for auto traits, return Some, not None here
         Ok(None)
     } else {
         let mut vir_args = vec![];
@@ -1890,14 +1880,6 @@ where
 
                 let trait_def_id = trait_ref.def_id;
 
-                if Some(trait_def_id) == tcx.lang_items().fn_trait()
-                    || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
-                    || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
-                {
-                    // Ignore Fn bounds
-                    continue;
-                }
-
                 let generic_bound = check_generic_bound(
                     tcx,
                     verus_items,
@@ -1912,19 +1894,6 @@ where
             }
             ClauseKind::Projection(pred) => {
                 let item_def_id = pred.projection_term.def_id;
-
-                if Some(item_def_id) == tcx.lang_items().fn_once_output() {
-                    // The trait bound `F: Fn(A) -> B`
-                    // is really more like a trait bound `F: Fn<A, Output=B>`
-                    // The trait bounds that use = are called projections.
-                    // When Rust sees a trait bound like this, it actually creates *two*
-                    // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
-                    //
-                    // Do nothing
-                    // (What Verus actually cares about is the verus_builtin 'FnWithSpecification'
-                    // trait which Fn/FnMut/FnOnce all get automatically.)
-                    continue;
-                }
                 let typ = if let Some(ty) = pred.term.as_type() {
                     mid_ty_to_vir(
                         tcx,
@@ -2528,11 +2497,6 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                     // Additional opaque types can be defined in projections, recurse into them.
                     ClauseKind::Projection(pred) => {
                         let item_def_id = pred.projection_term.def_id;
-
-                        if Some(item_def_id) == ctxt.tcx.lang_items().fn_once_output() {
-                            continue;
-                        }
-
                         // find the corresponding nested type in the opaque type projection, if it exists
                         let nested_assume_specification_ty = if let Some((
                             assume_specification_ty_instantiated_bounds,

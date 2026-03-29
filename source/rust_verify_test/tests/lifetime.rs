@@ -400,6 +400,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] lifetime_bounds_exec verus_code! {
+        use vstd::prelude::*;
+
         #[verifier(external_body)]
         pub fn exec_to_ref<'a, T: 'a>(t: T) -> (t2: &'a T)
             ensures t == *t2

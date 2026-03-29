@@ -1391,6 +1391,52 @@ fn mk_fun_decl(
 }
 */
 
+fn add_tuple_auto_impl(
+    ctx: &mut GlobalCtx,
+    traits: &Vec<crate::ast::Trait>,
+    trait_impls: &mut Vec<TraitImpl>,
+    arity: usize,
+    needs_bounds: bool,
+    trait_path: Path,
+) {
+    use crate::ast::{GenericBound, GenericBoundX};
+    use crate::def::impl_tuple;
+
+    if !traits.iter().any(|t| &t.x.name == &trait_path) {
+        return;
+    }
+    // Rust doesn't seem to give us the TraitImpl for tuples for the traits
+    // Tuple, Clone, Copy, Send, Sync, Unpin, so we make it ourselves:
+    let typ_params: Vec<Ident> = (0..arity).map(|i| prefix_tuple_param(i)).collect();
+    let typ_args: Vec<Typ> =
+        typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
+    let mut bounds: Vec<GenericBound> = Vec::new();
+    if needs_bounds {
+        for i in 0..arity {
+            let id = crate::ast::TraitId::Path(trait_path.clone());
+            let typs = Arc::new(vec![typ_args[i].clone()]);
+            bounds.push(Arc::new(GenericBoundX::Trait(id, typs)));
+        }
+    }
+    let self_ty = Arc::new(TypX::Datatype(Dt::Tuple(arity), Arc::new(typ_args), Arc::new(vec![])));
+    let impl_path = Arc::new(crate::ast::PathX {
+        krate: None,
+        segments: Arc::new(vec![impl_tuple(trait_path.segments.last().unwrap(), arity)]),
+    });
+    let trait_implx = crate::ast::TraitImplX {
+        impl_path,
+        typ_params: Arc::new(typ_params),
+        typ_bounds: Arc::new(bounds),
+        trait_path,
+        trait_typ_args: Arc::new(vec![self_ty]),
+        trait_typ_arg_impls: Spanned::new(ctx.no_span.clone(), Arc::new(vec![])),
+        owning_module: None,
+        auto_imported: true,
+        external_trait_blanket: false,
+    };
+    trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
+}
+
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
     let KrateX {
         functions,
@@ -1419,7 +1465,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             .collect(),
     );
     let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
-    let trait_impls = vec_map_result(&trait_impls, |t| simplify_trait_impl(&mut state, t))?;
+    let mut trait_impls = vec_map_result(&trait_impls, |t| simplify_trait_impl(&mut state, t))?;
     let assoc_type_impls =
         vec_map_result(&assoc_type_impls, |a| simplify_assoc_type_impl(&mut state, a))?;
 
@@ -1473,6 +1519,20 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             destructor: false,
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
+
+        let tuple_path = crate::path!["core" => "marker", "Tuple"];
+        let clone_path = crate::path!["core" => "clone", "Clone"];
+        let copy_path = crate::path!["core" => "marker", "Copy"];
+        //let send_path = crate::path!["core" => "marker", "Send"];
+        //let sync_path = crate::path!["core" => "marker", "Sync"];
+        //let unpin_path = crate::path!["core" => "marker", "Unpin"];
+        add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, false, tuple_path);
+        add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, true, clone_path);
+        add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, true, copy_path);
+        // TODO when when we have full support for auto traits:
+        //add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, true, send_path);
+        //add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, true, sync_path);
+        //add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, true, unpin_path);
     }
 
     let mut closures: Vec<_> = state.closure_typs.into_iter().collect();
