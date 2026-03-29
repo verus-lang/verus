@@ -535,6 +535,7 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![allow(non_camel_case_types)]
     #![allow(non_upper_case_globals)]
     #![allow(unused_comparisons)]
+    #![allow(noop_method_call)]
     #![feature(allocator_api)]
     #![feature(proc_macro_hygiene)]
     #![feature(never_type)]
