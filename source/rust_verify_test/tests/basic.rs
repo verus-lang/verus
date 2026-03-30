@@ -222,6 +222,19 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file! {
+    #[test] test_proof_note_as_error_on_assert verus_code! {
+        fn caller() {
+            #[verifier::proof_note("Custom error message", error)]
+            assert(1 > 2); // assertion fails
+        }
+    } => Err(err) => {
+        assert!(err.errors.iter().any(|x| x.message.contains("assertion failed")));
+        assert!(err.errors.iter().any(|x| x.message.contains("Custom error message")));
+        assert!(err.errors.iter().all(|x| !x.rendered.contains("note: Custom error message")));
+    }
+}
+
+test_verify_one_file! {
     #[test] test_ret2 TEST_RET.to_string() + verus_code_str! {
         proof fn test_ret2(a: int, b: int) -> (ret: int)
             requires
