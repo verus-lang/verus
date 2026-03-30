@@ -3,12 +3,12 @@ use crate::automatic_derive::AutomaticDeriveAction;
 use crate::config::Vstd;
 use crate::context::{BodyCtxt, Context, ContextX, HeaderSetting};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
+use crate::rust_to_vir::State;
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
     check_fn_opaque_ty, check_generics_bounds_no_polarity, def_id_to_vir_path, no_body_param_to_var,
 };
 use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir_consume, pat_to_mut_var};
-use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
@@ -747,6 +747,7 @@ fn compare_external_sig<'tcx>(
 
 fn handle_external_fn<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     id: DefId,
     kind: FunctionKind,
     visibility: vir::ast::Visibility,
@@ -758,7 +759,6 @@ fn handle_external_fn<'tcx>(
     vattrs: &VerifierAttrs,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     external_fn_specification_via_external_trait: Option<DefId>,
-    external_info: &mut ExternalInfo,
     // This function is the proxy, and we need to look up the actual path.
 ) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool, Safety, bool, DefId), VirErr>
 {
@@ -967,7 +967,10 @@ fn handle_external_fn<'tcx>(
     let has_self_parameter = has_self_parameter(ctxt, external_id);
 
     if matches!(kind, FunctionKind::ForeignTraitMethodImpl { .. }) {
-        external_info.external_fn_specification_trait_method_impls.push((external_id, sig.span));
+        state
+            .external_info
+            .external_fn_specification_trait_method_impls
+            .push((external_id, sig.span));
     }
 
     let safety = ctxt.tcx.fn_sig(external_id).skip_binder().safety();
@@ -1354,6 +1357,7 @@ impl Drop for NewMutRefFixGlobal {
 
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     functions: &mut Vec<vir::ast::Function>,
     reveal_groups: Option<&mut Vec<vir::ast::RevealGroup>>,
     id: DefId,
@@ -1369,7 +1373,6 @@ pub(crate) fn check_item_fn<'tcx>(
     // (target ExternalTraitSpecificationFor name, target external_trait_extension spec trait name)
     external_trait: Option<(DefId, Option<String>)>,
     external_fn_specification_via_external_trait: Option<DefId>,
-    external_info: &mut ExternalInfo,
     autoderive_action: Option<&AutomaticDeriveAction>,
     opaque_types: &mut OpaqueTypes,
 ) -> Result<Option<Fun>, VirErr> {
@@ -1420,6 +1423,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
         let fun = check_item_const_or_static(
             ctxt,
+            state,
             functions,
             sig.span,
             id,
@@ -1473,6 +1477,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 external_id,
             ) = handle_external_fn(
                 ctxt,
+                state,
                 id,
                 kind,
                 visibility,
@@ -1483,7 +1488,6 @@ pub(crate) fn check_item_fn<'tcx>(
                 &vattrs,
                 &external_trait_from_to,
                 external_fn_specification_via_external_trait,
-                external_info,
             )?;
 
             let proxy = Some((*ctxt.spanned_new(sig.span, this_path.clone())).clone());
@@ -2030,6 +2034,8 @@ pub(crate) fn check_item_fn<'tcx>(
         if let Some(body_hir_id) = body_hir_id {
             crate::automatic_derive::modify_derived_item(
                 ctxt,
+                id,
+                &inputs,
                 sig.span,
                 body_hir_id,
                 action,
@@ -2051,9 +2057,11 @@ pub(crate) fn check_item_fn<'tcx>(
             autospec.redirect_to.clone();
     }
 
+    state.insert_fun_warn_config(ctxt, &function.x.name, id);
     functions.push(function);
 
     if let Some(f) = &autospec.new_func {
+        state.insert_fun_warn_config(ctxt, &f.x.name, id);
         functions.push(f.clone());
     }
 
@@ -2579,6 +2587,7 @@ fn get_external_def_id<'tcx>(
 
 pub(crate) fn check_item_const_or_static<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     functions: &mut Vec<vir::ast::Function>,
     span: Span,
     id: DefId,
@@ -2738,9 +2747,11 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     }
 
     let function = ctxt.spanned_new(span, functionx);
+    state.insert_fun_warn_config(ctxt, &function.x.name, id);
     functions.push(function);
 
     if let Some(f) = &autospec.new_func {
+        state.insert_fun_warn_config(ctxt, &f.x.name, id);
         functions.push(f.clone());
     }
 
@@ -2749,6 +2760,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
 
 pub(crate) fn check_foreign_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     vir: &mut KrateX,
     id: DefId,
     span: Span,
@@ -2859,6 +2871,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         extra_dependencies: vec![],
     };
     let function = ctxt.spanned_new(span, func);
+    state.insert_fun_warn_config(ctxt, &function.x.name, id);
     vir.functions.push(function);
     Ok(())
 }

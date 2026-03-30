@@ -329,6 +329,7 @@ pub struct Verifier {
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     crate_items: Option<Arc<crate::external::CrateItems>>,
+    warning_ctx: Option<Arc<vir::context::WarningCtx>>,
     buckets: HashMap<BucketId, Bucket>,
 
     // proof debugging purposes
@@ -508,6 +509,7 @@ impl Verifier {
             air_no_span: None,
             current_crate_modules: None,
             crate_items: None,
+            warning_ctx: None,
             buckets: HashMap::new(),
 
             expand_flag: false,
@@ -557,6 +559,7 @@ impl Verifier {
             air_no_span: self.air_no_span.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
             crate_items: self.crate_items.clone(),
+            warning_ctx: self.warning_ctx.clone(),
             buckets: self.buckets.clone(),
 
             expand_flag: self.expand_flag,
@@ -2069,6 +2072,7 @@ impl Verifier {
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(call_graph_log)),
+            self.warning_ctx.clone().expect("warning_ctx"),
             self.args.solver,
             false,
             self.args.check_api_safety,
@@ -2764,7 +2768,7 @@ impl Verifier {
                 .collect()
         };
 
-        let (ctxt, vir_crate) =
+        let (ctxt, mut warning_ctx, vir_crate) =
             crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
                 .map_err(map_errs_diagnostics)?;
 
@@ -2851,11 +2855,15 @@ impl Verifier {
         }
         let path_to_well_known_item = crate::def::path_to_well_known_item(&ctxt);
 
-        let vir_crate =
-            vir::traits::demote_external_traits(diagnostics, &path_to_well_known_item, &vir_crate)
-                .map_err(map_err_diagnostics)?;
-        let vir_crate =
-            vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
+        let vir_crate = vir::traits::demote_external_traits(
+            diagnostics,
+            &warning_ctx,
+            &path_to_well_known_item,
+            &vir_crate,
+        )
+        .map_err(map_err_diagnostics)?;
+        let vir_crate = vir::traits::inherit_default_bodies(&vir_crate, &mut warning_ctx)
+            .map_err(|e| (vec![e], Vec::new()))?;
         let vir_crate = vir::traits::fixup_ens_has_return_for_trait_method_impls(vir_crate)
             .map_err(|e| (vec![e], Vec::new()))?;
 
@@ -2868,6 +2876,7 @@ impl Verifier {
             &vir_crate,
             &unpruned_crate,
             &mut *ctxt.diagnostics.borrow_mut(),
+            &warning_ctx,
             self.args.no_verify,
             self.args.no_cheating,
         );
@@ -2942,6 +2951,7 @@ impl Verifier {
         self.vir_crate = Some(vir_crate.clone());
         self.crate_name = Some(crate_name);
         self.crate_names = Some(crate_names);
+        self.warning_ctx = Some(Arc::new(warning_ctx));
 
         let erasure_info = ctxt.erasure_info.borrow();
         let hir_vir_ids = erasure_info.hir_vir_ids.clone();

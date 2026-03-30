@@ -3529,18 +3529,28 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
                 == Some(&VerusItem::BuiltinType(verus_items::BuiltinTypeItem::Tracked))
                 && mode == Mode::Proof
             {
-                bctx.ctxt.diagnostics.borrow_mut().push(
-                    vir::ast::VirErrAs::Warning(
-                        crate::util::err_span_bare(pattern.span, format!("the right-hand side is already wrapped with `Tracked`, you likely don't need a `tracked` variable"))
-                        .help("consider `.get()` on the right-hand side, or removing `tracked` on the left-hand side")));
+                bctx.warning_maybe(
+                    pattern.span,
+                    "non_exec_ghost_tracked_wrappers",
+                    || "the right-hand side is already wrapped with `Tracked`, you likely don't need a `tracked` variable",
+                    |msg| {
+                        let msg = msg.help("consider `.get()` on the right-hand side, or removing `tracked` on the left-hand side");
+                        bctx.ctxt.diagnostics.borrow_mut().push(vir::ast::VirErrAs::Warning(msg));
+                    }
+                );
             } else if pat_typ_verus_item
                 == Some(&VerusItem::BuiltinType(verus_items::BuiltinTypeItem::Ghost))
                 && mode == Mode::Spec
             {
-                bctx.ctxt.diagnostics.borrow_mut().push(
-                    vir::ast::VirErrAs::Warning(
-                        crate::util::err_span_bare(pattern.span, format!("the right-hand side is already wrapped with `Ghost`, you likely don't need a `ghost` variable"))
-                        .help("consider `@` on the right-hand side, or removing `ghost` on the left-hand side")));
+                bctx.warning_maybe(
+                    pattern.span,
+                    "non_exec_ghost_tracked_wrappers",
+                    || "the right-hand side is already wrapped with `Ghost`, you likely don't need a `ghost` variable",
+                    |msg| {
+                        let msg = msg.help("consider `@` on the right-hand side, or removing `ghost` on the left-hand side");
+                        bctx.ctxt.diagnostics.borrow_mut().push(vir::ast::VirErrAs::Warning(msg));
+                    }
+                );
             }
         }
     }

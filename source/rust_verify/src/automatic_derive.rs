@@ -64,6 +64,8 @@ pub fn is_automatically_derived(attrs: &[rustc_hir::Attribute]) -> bool {
 
 pub fn modify_derived_item<'tcx>(
     ctxt: &Context<'tcx>,
+    id: rustc_span::def_id::DefId,
+    inputs: &Vec<rustc_middle::ty::Ty>,
     span: Span,
     hir_id: HirId,
     action: &AutomaticDeriveAction,
@@ -75,7 +77,7 @@ pub fn modify_derived_item<'tcx>(
     match special {
         SpecialTrait::Clone => {
             if &*function.name.path.last_segment() == "clone" {
-                return clone_add_post_condition(ctxt, span, hir_id, function);
+                return clone_add_post_condition(ctxt, id, inputs, span, hir_id, function);
             }
         }
     }
@@ -84,14 +86,30 @@ pub fn modify_derived_item<'tcx>(
 
 fn clone_add_post_condition<'tcx>(
     ctxt: &Context<'tcx>,
+    mut id: rustc_span::def_id::DefId,
+    inputs: &Vec<rustc_middle::ty::Ty>,
     span: Span,
     hir_id: HirId,
     functionx: &mut FunctionX,
 ) -> Result<(), VirErr> {
+    if inputs.len() >= 1 {
+        use rustc_middle::ty::{AdtDef, TyKind};
+        if let TyKind::Ref(_, t, _) = inputs[0].kind() {
+            if let TyKind::Adt(AdtDef(adt_def_data), _) = t.kind() {
+                // It's more convenient to put verifier::allow on the datatype than on the function
+                id = adt_def_data.did;
+            }
+        }
+    }
     let warn = |msg: &str| {
-        ctxt.diagnostics
-            .borrow_mut()
-            .push(VirErrAs::Warning(crate::util::err_span_bare(span, msg.to_string())));
+        crate::attributes::warning_maybe(
+            ctxt.tcx,
+            id,
+            span,
+            "autoderive_clone_without_spec",
+            || msg,
+            |msg| ctxt.diagnostics.borrow_mut().push(VirErrAs::Warning(msg)),
+        );
     };
     let warn_unexpected = || {
         warn(
