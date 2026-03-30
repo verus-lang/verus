@@ -106,6 +106,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
     }
 }
 
+#[derive(Debug)]
 enum DTypId {
     Expr(Expr),
     Primitive(crate::ast::Primitive),
@@ -136,6 +137,7 @@ fn datatype_or_fun_to_air_commands(
     add_height: bool,
     add_ext_equal: bool,
 ) {
+    dbg!(&datatyp);
     use crate::def::QID_EXT_EQUAL;
     let x = air_unique_var("x");
     let x_var = ident_var(&x.lower());
@@ -191,15 +193,20 @@ fn datatype_or_fun_to_air_commands(
     let unbox_x = ident_apply(&prefix_unbox(dpath), &vec![x_var.clone()]);
     let box_unbox_x = ident_apply(&prefix_box(dpath), &vec![unbox_x.clone()]);
     let unbox_box_x = ident_apply(&prefix_unbox(dpath), &vec![box_x.clone()]);
+    dbg!(&typ_args);
+    dbg!(&dtyp_id);
     let id = match dtyp_id {
         Some(DTypId::Expr(e)) => e,
         Some(DTypId::Primitive(p)) => crate::sst_to_air::primitive_id(ctx, &p, &typ_args),
         None => datatype_id(ctx, dpath, &typ_args),
     };
+    dbg!(&id);
     let has = expr_has_type(&x_var, &id);
+    dbg!(&has);
     let has_box = expr_has_type(&box_x, &id);
     let vpolytyp = Arc::new(TypX::Boxed(datatyp.clone()));
 
+    dbg!(declare_box);
     if declare_box {
         // box axiom:
         //   forall x. x == unbox(box(x))
@@ -217,6 +224,8 @@ fn datatype_or_fun_to_air_commands(
         let forall = mk_bind_expr(&bind, &mk_implies(&has, &mk_eq(&x_var, &box_unbox_x)));
         axiom_commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));
     }
+
+    dbg!(&axiom_commands);
 
     // function axiom
     let mut fun_args: Option<Arc<Vec<Expr>>> = None;
