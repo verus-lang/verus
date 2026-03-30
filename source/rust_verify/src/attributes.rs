@@ -261,7 +261,11 @@ pub(crate) enum Attr {
     // specify list of places where == is promoted to =~=
     AutoExtEqual(vir::ast::AutoExtEqual),
     /// Label for a proof obligation, i.e. the attribute `#[verifier::proof_note("label")]`
-    ProofNote { span: Span, text: String, is_error: bool },
+    ProofNote {
+        span: Span,
+        text: String,
+        is_error: bool,
+    },
     // add manual trigger to expression inside quantifier
     Trigger(Option<Vec<u64>>),
     // custom error string to report for precondition failures
@@ -438,11 +442,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
                 AttrTree::Fun(span, name, attrs) if name == "proof_note" => {
                     let (label, is_error) = get_proof_note_options(*span, attrs)?;
-                    v.push(Attr::ProofNote {
-                        span: *span,
-                        text: label,
-                        is_error,
-                    })
+                    v.push(Attr::ProofNote { span: *span, text: label, is_error })
                 }
                 AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
                 AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
