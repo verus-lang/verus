@@ -526,6 +526,7 @@ impl<T> PointsToUnaligned<T> {
             perm.mem_contents() == self.mem_contents(),
     {
         broadcast use layout_of_sized;
+
         PointsTo { inner: self }
     }
 
