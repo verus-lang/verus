@@ -593,7 +593,7 @@ fn check_one_expr<Emit: EmitError>(
             if ctxt.no_cheating && *is_assume {
                 let mut msg = error(&expr.span, "assume/admit not allowed with --no-cheating");
                 if let Some(proof_note) = ast_expr_get_proof_note(inner_expr) {
-                    let label = proof_note.label.to_string();
+                    let label = proof_note.text.to_string();
                     msg = msg.proof_note_label_with_is_error(
                         &expr.span,
                         label.clone(),

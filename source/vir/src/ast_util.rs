@@ -905,7 +905,7 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
     )
 }
 
-pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<ProofNoteAttr> {
+pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<ProofNoteLabel> {
     match &expr.x {
         // NOTE: `UnaryOpr::Box` and `Unbox` not relevant; only introduced later in `ast_to_sst`.
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => ast_expr_get_proof_note(e),

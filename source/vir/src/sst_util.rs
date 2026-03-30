@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, GenericBound,
     GenericBoundX, GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth,
-    IntegerTypeBoundKind, Mode, ProofNoteAttr, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
+    IntegerTypeBoundKind, Mode, ProofNoteLabel, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
     UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::{get_variant, unit_typ};
@@ -791,7 +791,7 @@ impl ExpX {
     }
 }
 
-pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<ProofNoteAttr> {
+pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<ProofNoteLabel> {
     match &exp.x {
         ExpX::UnaryOpr(UnaryOpr::Box(_), e) => sst_exp_get_proof_note(e),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => sst_exp_get_proof_note(e),
@@ -808,7 +808,7 @@ pub fn func_collect_requires_proof_notes(func: &FunctionSst) -> HashSet<String> 
         .reqs
         .iter()
         .filter_map(sst_exp_get_proof_note)
-        .map(|proof_note| proof_note.label.to_string())
+        .map(|proof_note| proof_note.text.to_string())
         .collect()
 }
 
@@ -849,7 +849,7 @@ impl<'a> ObligationProofNoteCollector<'a> {
         // Collect proof notes from this function's own `ensures` clauses.
         for ens in func_check.post_condition.ens_exps.iter() {
             if let Some(proof_note) = sst_exp_get_proof_note(ens) {
-                self.proof_notes.insert(proof_note.label.to_string());
+                self.proof_notes.insert(proof_note.text.to_string());
             }
         }
         for stm in func_check.post_condition.ens_spec_precondition_stms.iter() {
@@ -872,7 +872,7 @@ impl<'a> Visitor<Walk, (), NoScoper> for ObligationProofNoteCollector<'a> {
             // Collect proof note labels from `assert` statements.
             StmX::Assert(_, maybe_msg, exp) => {
                 if let Some(proof_note) = sst_exp_get_proof_note(exp) {
-                    self.proof_notes.insert(proof_note.label.to_string());
+                    self.proof_notes.insert(proof_note.text.to_string());
                 }
                 if let Some(msg) = maybe_msg {
                     // This is likely unnecessary; here for future-proofing.

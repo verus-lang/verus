@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, ArrayKind, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, GenericBoundX,
     Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path,
-    PathX, Primitive, ProofNoteAttr, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX,
+    PathX, Primitive, ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX,
     Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
@@ -52,7 +52,7 @@ pub struct PostConditionInfo {
     pub dest: Option<VarIdent>,
     /// Post-conditions (only used in non-recommends-checking mode)
     /// Each entry carries the span, the AIR expression, and an optional `proof_note` label.
-    pub ens_exprs: Vec<(Span, Expr, Option<ProofNoteAttr>)>,
+    pub ens_exprs: Vec<(Span, Expr, Option<ProofNoteLabel>)>,
     /// Recommends checks (only used in recommends-checking mode)
     pub ens_spec_precondition_stms: Stms,
     /// Extra info about PostCondition for error reporting
@@ -2179,7 +2179,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if let Some(proof_note) = sst_exp_get_proof_note(expr) {
                 error = error.proof_note_label_with_is_error(
                     &stm.span,
-                    proof_note.label.to_string(),
+                    proof_note.text.to_string(),
                     proof_note.is_error,
                 );
             }
@@ -2255,7 +2255,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                                 if let Some(proof_note) = proof_note {
                                     new_error.proof_note_label_with_is_error(
                                         span,
-                                        proof_note.label.to_string(),
+                                        proof_note.text.to_string(),
                                         proof_note.is_error,
                                     )
                                 } else {
@@ -3127,7 +3127,7 @@ pub(crate) fn body_stm_to_air(
 
     let initial_sid = Arc::new("0_entry".to_string());
 
-    let mut ens_exprs: Vec<(Span, Expr, Option<ProofNoteAttr>)> = Vec::new();
+    let mut ens_exprs: Vec<(Span, Expr, Option<ProofNoteLabel>)> = Vec::new();
     for ens in post_condition.ens_exps.iter() {
         let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
         let note = sst_exp_get_proof_note(ens);

@@ -491,7 +491,7 @@ fn req_ens_to_air(
             if let Some(proof_note) = sst_exp_get_proof_note(exp) {
                 labels.push(Arc::new(MessageLabel {
                     span: exp.span.clone(),
-                    note: proof_note.label.to_string(),
+                    note: proof_note.text.to_string(),
                     is_proof_note: true,
                     is_error: proof_note.is_error,
                 }));
