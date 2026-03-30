@@ -657,7 +657,7 @@ fn get_attributes_for_automatic_derive<'tcx>(
             general_item.id().owner_id().to_def_id(),
             span,
             "unknown_automatic_derive",
-            || "Verus doesn't known how to handle this automatically derived item; ignoring it",
+            || "Verus doesn't know how to handle this automatically derived item; ignoring it",
             |msg| ctxt.diagnostics.borrow_mut().push(VirErrAs::Warning(msg)),
         );
     };

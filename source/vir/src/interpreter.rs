@@ -2097,7 +2097,12 @@ fn eval_expr_launch(
                     ctx.warning(
                         &exp.span,
                         "assert_compute_unsimplified",
-                        || "Failed to simplify expression <<{}>> before sending to Z3",
+                        || {
+                            format!(
+                                "Failed to simplify expression <<{}>> before sending to Z3",
+                                exp.x.to_user_string(&ctx.global),
+                            )
+                        },
                         |msg| state.msgs.push(msg),
                     );
                 }
