@@ -370,7 +370,9 @@ fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
     }
 }
 
-/// Parse `#[verifier::proof_note("label")]` or `#[verifier::proof_note("label", error)]`.
+/// Parse:
+/// - `#[verifier::proof_note("label")]`
+/// - `#[verifier::proof_note("label" as error)]`
 fn get_proof_note_options(
     span: Span,
     attrs: &Option<Box<[AttrTree]>>,
@@ -381,24 +383,27 @@ fn get_proof_note_options(
     let Some(AttrTree::Lit(LitKind::Str, label)) = args.first() else {
         return err_span(span, "expected first argument to be a string literal");
     };
-    let mut is_error = false;
-    for arg in args.iter().skip(1) {
-        match arg {
-            AttrTree::Fun(_, name, None) if name == "error" => {
-                if is_error {
-                    return err_span(span, "duplicate `error` option in `proof_note`");
-                }
-                is_error = true;
+    match args.len() {
+        1 => Ok((label.clone(), false)),
+        3 => match (&args[1], &args[2]) {
+            (AttrTree::Fun(_, as_kw, None), AttrTree::Fun(_, error_kw, None))
+                if as_kw == "as" && error_kw == "error" =>
+            {
+                Ok((label.clone(), true))
             }
-            _ => {
-                return err_span(
-                    span,
-                    "expected `#[verifier::proof_note(\"label\")]` or `#[verifier::proof_note(\"label\", error)]`",
-                );
+            (AttrTree::Fun(_, as_kw, None), _) if as_kw == "as" => {
+                err_span(span, "expected `error` after `as` in `proof_note`")
             }
-        }
+            _ => err_span(
+                span,
+                "expected `#[verifier::proof_note(\"label\")]` or `#[verifier::proof_note(\"label\" as error)]`",
+            ),
+        },
+        _ => err_span(
+            span,
+            "expected `#[verifier::proof_note(\"label\")]` or `#[verifier::proof_note(\"label\" as error)]`",
+        ),
     }
-    Ok((label.clone(), is_error))
 }
 
 /// Get the `42` part out of an attribute like `#[rlimit(42)]`
