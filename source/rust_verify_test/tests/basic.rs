@@ -225,12 +225,11 @@ test_verify_one_file! {
     #[test] test_proof_note_as_error_on_assert verus_code! {
         fn caller() {
             #[verifier::proof_note("Custom error message", error)]
-            assert(1 > 2); // assertion fails
+            assert(1 > 2);
         }
     } => Err(err) => {
-        assert!(err.errors.iter().any(|x| x.message.contains("assertion failed")));
-        assert!(err.errors.iter().any(|x| x.message.contains("Custom error message")));
-        assert!(err.errors.iter().all(|x| !x.rendered.contains("note: Custom error message")));
+        assert_one_fails(err.clone());
+        assert_help_error_msg(err, "error: Custom error message");
     }
 }
 
