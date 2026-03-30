@@ -320,9 +320,9 @@ impl<T: ?Sized> PointsTo<T> {
         self.inner.ptr()
     }
 
-    /// https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-    /// https://doc.rust-lang.org/std/ptr/index.html#alignment
     /// Guarantee that the `PointsTo` points to an aligned address.
+    /// See: <https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box>
+    /// See: <https://doc.rust-lang.org/std/ptr/index.html#alignment>
     #[verifier::type_invariant]
     pub closed spec fn inv(self) -> bool {
         let v: &T = arbitrary();
@@ -376,7 +376,7 @@ impl<T> PointsTo<T> {
     /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
     ///
     /// ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    /// See https://doc.rust-lang.org/std/ptr/#safety
+    /// See <https://doc.rust-lang.org/std/ptr/#safety>
     pub proof fn is_nonnull(tracked &self)
         requires
             size_of::<T>() != 0,
@@ -488,7 +488,7 @@ impl<T> PointsToUnaligned<T> {
     /// Guarantee that the `PointsToUnaligned` for any non-zero-sized type points to a non-null address.
     ///
     /// ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    /// See https://doc.rust-lang.org/std/ptr/#safety
+    /// See <https://doc.rust-lang.org/std/ptr/#safety>
     pub axiom fn is_nonnull(tracked &self)
         requires
             size_of::<T>() != 0,
@@ -623,10 +623,10 @@ impl<T> PointsTo<[T]> {
 
     /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
     ///
-    /// Note that the size of a slice is given by the length * `size_of::<T>()`.
-    // https://doc.rust-lang.org/reference/type-layout.html#slice-layout
-    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    // See https://doc.rust-lang.org/std/ptr/#safety
+    /// Note that the size of a slice is given by the length * `size_of::<\T\>()`.
+    /// <https://doc.rust-lang.org/reference/type-layout.html#slice-layout>
+    /// ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
+    /// See <https://doc.rust-lang.org/std/ptr/#safety>
     pub proof fn is_nonnull(tracked &self)
         requires
             self.mem_contents_seq().len() * size_of::<T>() != 0,
@@ -854,10 +854,10 @@ impl<T> PointsTo<[T]> {
         self.inner.is_disjoint(&other.inner)
     }
 
-    /// Convert an aligned PointsTo<[T]> to an unaligned PointsToUnaligned<[T]>.
+    /// Convert an aligned PointsTo<[\T\]> to an unaligned PointsToUnaligned<[\T\]>.
     /// This is always safe since aligned is stricter than unaligned.
     ///
-    /// De-axiomitized: simply returns the inner `PointsToUnaligned<[T]>`.
+    /// De-axiomitized: simply returns the inner [`PointsToUnaligned<[T]>`](PointsToUnaligned).
     pub proof fn into_unaligned(tracked self) -> (tracked perm: PointsToUnaligned<[T]>)
         ensures
             perm.ptr() == self.ptr(),
@@ -866,10 +866,10 @@ impl<T> PointsTo<[T]> {
         self.inner
     }
 
-    /// Borrow an aligned PointsTo<[T]> as an unaligned PointsToUnaligned<[T]>.
+    /// Borrow an aligned PointsTo<[\T\]> as an unaligned PointsToUnaligned<[\T\]>.
     /// This is always safe since aligned is stricter than unaligned.
     ///
-    /// De-axiomitized: simply borrows the inner `PointsToUnaligned<[T]>`.
+    /// De-axiomitized: simply borrows the inner `PointsToUnaligned<[\T\]>`.
     pub proof fn as_unaligned(tracked &self) -> (tracked perm: &PointsToUnaligned<[T]>)
         ensures
             perm.ptr() == self.ptr(),
@@ -1010,7 +1010,7 @@ impl<T> PointsToUnaligned<[T]> {
                 <= self.ptr() as int,
     ;
 
-    /// Convert PointsToUnaligned<[T]> to an aligned PointsTo<[T]>.
+    /// Convert PointsToUnaligned<[\T\]> to an aligned PointsTo<[\T\]>.
     /// Requires the pointer address to be properly aligned.
     pub proof fn into_aligned(tracked self) -> (tracked perm: PointsTo<[T]>)
         requires
@@ -1028,7 +1028,7 @@ impl<T> PointsToUnaligned<[T]> {
         PointsTo { inner: self }
     }
 
-    /// Borrow an unaligned PointsToUnaligned<[T]> as an aligned PointsTo<[T]>.
+    /// Borrow an unaligned PointsToUnaligned<[\T\]> as an aligned PointsTo<[\T\]>.
     /// Requires the pointer address to be properly aligned.
     pub axiom fn as_aligned(tracked &self) -> (tracked perm: &PointsTo<[T]>)
         requires
@@ -1112,9 +1112,9 @@ impl<T> PointsToUnaligned<[T]> {
             points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
     ;
 
-    /// We can always convert a PointsToUnaligned<[T]> into a MapPointsTo<T> for the
+    /// We can always convert a PointsToUnaligned<[\T\]> into a MapPointsTo<\T\> for the
     /// same pointer, whose keys are the valid slice indices and whose values are individual
-    /// PointsTo<T> with the same memory contents. Requires the pointer address to be
+    /// PointsTo<\T\> with the same memory contents. Requires the pointer address to be
     /// properly aligned.
     pub axiom fn into_map(tracked self) -> (tracked m: MapPointsTo<T>)
         requires
@@ -1531,7 +1531,7 @@ impl<T> MapPointsTo<T> {
     /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
     ///
     /// ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    /// See https://doc.rust-lang.org/std/ptr/#safety
+    /// See <https://doc.rust-lang.org/std/ptr/#safety>
     pub proof fn is_nonnull(tracked &self)
         ensures
             self.ptr()@.addr != 0,
