@@ -5,6 +5,8 @@ use super::arithmetic::power2::*;
 use super::bits::*;
 use super::math::*;
 use super::prelude::*;
+#[cfg(not(verus_verify_core))]
+use super::string::StringSliceAdditionalSpecFns;
 use core::mem::MaybeUninit;
 
 verus! {
@@ -233,11 +235,12 @@ pub broadcast axiom fn layout_of_slices<T>(x: &[T])
 
 /// `str` has the same layout as `[u8]`, which has the same layout as `u8`.
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#str-layout)).
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn layout_of_str(x: &str)
     ensures
         #![trigger spec_align_of_val::<str>(x)]
         #![trigger spec_size_of_val::<str>(x)]
-        // todo - how to specify spec_size_of_val::<str>(x) in terms of the byte representation of x?
+        spec_size_of_val::<str>(x) == x.spec_bytes().len() * size_of::<u8>(),
         spec_align_of_val::<str>(x) == align_of::<u8>(),
 ;
 
@@ -246,6 +249,17 @@ pub broadcast axiom fn layout_of_str(x: &str)
 pub broadcast axiom fn layout_of_sized<T>(v: &T)
     ensures
         #[trigger] spec_align_of_val::<T>(v) == align_of::<T>(),
+
+/// `str` has the same layout as `[u8]`, which has the same layout as `u8`.
+/// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#str-layout)).
+#[cfg(verus_verify_core)]
+pub broadcast axiom fn layout_of_str(x: &str)
+    ensures
+        #![trigger spec_align_of_val::<str>(x)]
+        spec_align_of_val::<str>(x) == align_of::<
+            u8,
+        >(),
+// cannot specify spec_size_of_val because we cannot talk about the byte representation of a str here
 ;
 
 /// The size is a multiple of alignment and alignment is always a power of 2

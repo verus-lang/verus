@@ -79,6 +79,7 @@ pub mod tokens;
 pub mod transmute;
 #[cfg(verus_keep_ghost)]
 pub mod type_representation;
+pub mod utf8;
 pub mod view;
 pub mod wrapping;
 
@@ -113,6 +114,7 @@ pub broadcast group group_vstd_default {
     //
     slice::group_slice_axioms,
     array::group_array_axioms,
+    #[cfg(not(verus_verify_core))]
     string::group_string_axioms,
     raw_ptr::group_raw_ptr_axioms,
     layout::group_layout_axioms,

@@ -569,8 +569,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 | UnaryOp::FloatToBits
                 | UnaryOp::IeeeFloat(..)
                 | UnaryOp::BitNot(_)
-                | UnaryOp::StrLen
-                | UnaryOp::StrIsAscii => {
+                | UnaryOp::StrLen => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }

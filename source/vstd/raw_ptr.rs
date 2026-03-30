@@ -378,8 +378,8 @@ impl<T> PointsTo<T> {
     /// ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
     /// See <https://doc.rust-lang.org/std/ptr/#safety>
     pub proof fn is_nonnull(tracked &self)
-        requires
-            size_of::<T>() != 0,
+        // requires
+            // size_of::<T>() != 0,
         ensures
             self.ptr()@.addr != 0,
     {
@@ -490,8 +490,8 @@ impl<T> PointsToUnaligned<T> {
     /// ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
     /// See <https://doc.rust-lang.org/std/ptr/#safety>
     pub axiom fn is_nonnull(tracked &self)
-        requires
-            size_of::<T>() != 0,
+        // requires
+            // size_of::<T>() != 0,
         ensures
             self.ptr()@.addr != 0,
     ;

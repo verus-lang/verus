@@ -909,8 +909,12 @@ impl<B: Base> EndianNat<B> {
                     EndianNat::<BIG>::to_nat_append_least(big_rest, big_least);
                 }
                 assert(big_least.to_nat() == least.to_nat()) by {
-                    assert(big_least.least() == least.to_nat());
-                    reveal_with_fuel(EndianNat::to_nat, 2);
+                    assert(big_least.drop_least().to_nat() * BIG::base() + big_least.least()
+                        == least.to_nat()) by (nonlinear_arith)
+                        requires
+                            big_least.least() == least.to_nat(),
+                            big_least.drop_least().to_nat() == 0,
+                    ;
                 }
                 assert(n.to_nat() == (rest.to_nat() * base_upper_bound_excl::<B>(Self::exp()))
                     + least.to_nat()) by {
