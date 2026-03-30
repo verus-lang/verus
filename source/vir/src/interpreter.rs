@@ -14,7 +14,7 @@ use crate::ast::{
 use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::context::GlobalCtx;
-use crate::messages::{Message, Span, ToAny, error};
+use crate::messages::{Message, Span, ToAny, WarningAllow, error};
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent};
 use crate::sst_util::subst_exp;
 use crate::unicode::valid_unicode_scalar_bigint;
@@ -209,7 +209,7 @@ impl<'a> Ctx<'a> {
     pub(crate) fn warning<S: Into<String>>(
         &self,
         span: &Span,
-        allow: &str,
+        allow: &WarningAllow,
         note: impl FnOnce() -> S,
         emit: impl FnOnce(crate::messages::Message) -> (),
     ) {
@@ -1012,7 +1012,7 @@ fn eval_seq(
                             None => {
                                 ctx.warning(
                                     &exp.span,
-                                    "assert_compute_unsimplified",
+                                    &WarningAllow::AssertComputeUnsimplified,
                                     || "Computation tried to index into a sequence using a value that does not fit into usize",
                                     |msg| state.msgs.push(msg),
                                 );
@@ -1024,7 +1024,7 @@ fn eval_seq(
                                 } else {
                                     ctx.warning(
                                         &exp.span,
-                                        "assert_compute_unsimplified",
+                                        &WarningAllow::AssertComputeUnsimplified,
                                         || "Computation tried to index past the length of a sequence",
                                         |msg| state.msgs.push(msg),
                                     );
@@ -1095,7 +1095,7 @@ fn eval_array_index(
                 None => {
                     ctx.warning(
                         &exp.span,
-                        "assert_compute_unsimplified",
+                        &WarningAllow::AssertComputeUnsimplified,
                         || "Computation tried to index into an array using a value that does not fit into usize",
                         |msg| state.msgs.push(msg),
                     );
@@ -1107,7 +1107,7 @@ fn eval_array_index(
                     } else {
                         ctx.warning(
                             &exp.span,
-                            "assert_compute_unsimplified",
+                            &WarningAllow::AssertComputeUnsimplified,
                             || "Computation tried to index past the length of an array",
                             |msg| state.msgs.push(msg),
                         );
@@ -1246,7 +1246,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 if !in_range(lower, upper) {
                                     ctx.warning(
                                         &exp.span,
-                                        "assert_compute_unsimplified",
+                                        &WarningAllow::AssertComputeUnsimplified,
                                         || "Computation clipped an integer that was out of range",
                                         |msg| state.msgs.push(msg),
                                     );
@@ -1261,7 +1261,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 if !valid_unicode_scalar_bigint(i) {
                                     ctx.warning(
                                         &exp.span,
-                                        "assert_compute_unsimplified",
+                                        &WarningAllow::AssertComputeUnsimplified,
                                         || "Computation clipped an integer that was out of range",
                                         |msg| state.msgs.push(msg),
                                     );
@@ -1299,7 +1299,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 // may or may not be in range of 64, we must conservatively give up.
                                                 ctx.warning(
                                                     &exp.span,
-                                                    "assert_compute_unsimplified",
+                                                    &WarningAllow::AssertComputeUnsimplified,
                                                     || "Computation clipped an arch-dependent integer that was out of range",
                                                     |msg| state.msgs.push(msg),
                                                 );
@@ -1321,7 +1321,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 // may or may not be in range of 64, we must conservatively give up.
                                                 ctx.warning(
                                                     &exp.span,
-                                                    "assert_compute_unsimplified",
+                                                    &WarningAllow::AssertComputeUnsimplified,
                                                     || "Computation clipped an arch-dependent integer that was out of range",
                                                     |msg| state.msgs.push(msg),
                                                 );
@@ -2096,7 +2096,7 @@ fn eval_expr_launch(
                 if exp.definitely_eq(&res) {
                     ctx.warning(
                         &exp.span,
-                        "assert_compute_unsimplified",
+                        &WarningAllow::AssertComputeUnsimplified,
                         || {
                             format!(
                                 "Failed to simplify expression <<{}>> before sending to Z3",

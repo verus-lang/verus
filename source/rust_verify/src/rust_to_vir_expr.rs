@@ -54,6 +54,7 @@ use vir::ast_util::{
     typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use vir::def::{field_ident_from_rust, positional_field_ident};
+use vir::messages::WarningAllow;
 
 /// Enum representing either an `Expr` (value expression) or a `Place` (place expression).
 ///
@@ -3531,7 +3532,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
             {
                 bctx.warning_maybe(
                     pattern.span,
-                    "non_exec_ghost_tracked_wrappers",
+                    &WarningAllow::NonExecGhostTrackedWrappers,
                     || "the right-hand side is already wrapped with `Tracked`, you likely don't need a `tracked` variable",
                     |msg| {
                         let msg = msg.help("consider `.get()` on the right-hand side, or removing `tracked` on the left-hand side");
@@ -3544,7 +3545,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
             {
                 bctx.warning_maybe(
                     pattern.span,
-                    "non_exec_ghost_tracked_wrappers",
+                    &WarningAllow::NonExecGhostTrackedWrappers,
                     || "the right-hand side is already wrapped with `Ghost`, you likely don't need a `ghost` variable",
                     |msg| {
                         let msg = msg.help("consider `@` on the right-hand side, or removing `ghost` on the left-hand side");

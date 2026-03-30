@@ -2136,7 +2136,7 @@ fn check_generics_bounds_main<'tcx>(
                         tcx,
                         def_id,
                         *span,
-                        "old_style_accept_reject_recursive_types",
+                        &vir::messages::WarningAllow::OldStyleAcceptRejectRecursiveTypes,
                         || {
                             format!(
                                 "use the attribute style `#[{attr_name:}({name:})]` at the item level",

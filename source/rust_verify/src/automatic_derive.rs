@@ -6,6 +6,7 @@ use std::sync::Arc;
 use vir::ast::{
     BinaryOp, Expr, ExprX, FunctionX, Mode, Place, PlaceX, SpannedTyped, VirErr, VirErrAs,
 };
+use vir::messages::WarningAllow;
 
 /// Traits with special handling
 #[derive(Clone, Copy, Debug)]
@@ -106,7 +107,7 @@ fn clone_add_post_condition<'tcx>(
             ctxt.tcx,
             id,
             span,
-            "autoderive_clone_without_spec",
+            &WarningAllow::AutoderiveCloneWithoutSpec,
             || msg,
             |msg| ctxt.diagnostics.borrow_mut().push(VirErrAs::Warning(msg)),
         );

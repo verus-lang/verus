@@ -14,7 +14,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use vir::ast::{Ident, Mode, Path, Pattern, VirErr};
-use vir::messages::AstId;
+use vir::messages::{AstId, WarningAllow};
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
@@ -261,7 +261,7 @@ impl<'tcx> BodyCtxt<'tcx> {
     pub(crate) fn warning_maybe<S: Into<String>>(
         &self,
         span: rustc_span::Span,
-        allow: &str,
+        allow: &WarningAllow,
         note: impl FnOnce() -> S,
         emit: impl FnOnce(vir::messages::Message) -> (),
     ) {

@@ -49,6 +49,7 @@ use rustc_hir::{
 use rustc_span::Span;
 use std::collections::HashMap;
 use vir::ast::{Path, VirErr, VirErrAs};
+use vir::messages::WarningAllow;
 
 /// Main exported type of this module.
 /// Contains all item-things and their categorizations
@@ -656,7 +657,7 @@ fn get_attributes_for_automatic_derive<'tcx>(
             ctxt.tcx,
             general_item.id().owner_id().to_def_id(),
             span,
-            "unknown_automatic_derive",
+            &WarningAllow::UnknownAutomaticDerive,
             || "Verus doesn't know how to handle this automatically derived item; ignoring it",
             |msg| ctxt.diagnostics.borrow_mut().push(VirErrAs::Warning(msg)),
         );

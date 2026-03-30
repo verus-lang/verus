@@ -12,7 +12,7 @@ use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
 use crate::messages::{
-    Span, ToAny, error, error_with_label, error_with_secondary_label, internal_error,
+    Span, ToAny, WarningAllow, error, error_with_label, error_with_secondary_label, internal_error,
 };
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
@@ -2077,7 +2077,7 @@ pub(crate) fn expr_to_stm_opt(
             if skip {
                 ctx.warning_maybe_if_in_local_crate(
                     &expr.span,
-                    "dead_reveal",
+                    &WarningAllow::DeadReveal,
                     || "this reveal/fuel statement has no effect because no verification condition in this module depends on this function",
                     |msg| state.diagnostics.report(&msg.to_any()),
                 );

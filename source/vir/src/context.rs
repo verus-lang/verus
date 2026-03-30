@@ -6,7 +6,7 @@ use crate::ast::{
 use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
-use crate::messages::{Span, error};
+use crate::messages::{Span, WarningAllow, error};
 use crate::poly::MonoTyp;
 use crate::recursion::Node;
 use crate::scc::Graph;
@@ -36,11 +36,11 @@ pub struct ChosenTriggers {
 }
 
 #[derive(Debug, Clone)]
-pub struct WarningConfig(pub Vec<String>);
+pub struct WarningConfig(pub Vec<WarningAllow>);
 
 impl crate::messages::CheckAllowForWarning for WarningConfig {
-    fn allowed(&self, allow: &str) -> bool {
-        self.0.iter().any(|s| s == allow)
+    fn allowed(&self, allow: &WarningAllow) -> bool {
+        self.0.iter().any(|a| a == allow)
     }
 }
 
@@ -172,7 +172,7 @@ impl Ctx {
     pub(crate) fn warning_maybe_if_in_local_crate<S: Into<String>>(
         &self,
         span: &Span,
-        allow: &str,
+        allow: &WarningAllow,
         note: impl FnOnce() -> S,
         emit: impl FnOnce(crate::messages::Message) -> (),
     ) {

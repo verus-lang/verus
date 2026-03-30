@@ -163,7 +163,7 @@ pub fn demote_external_traits(
                 crate::messages::warning_maybe_if_in_local_crate(
                     warn_config,
                     &function.span,
-                    "undeclared_external_trait",
+                    &crate::messages::WarningAllow::UndeclaredExternalTrait,
                     || {
                         format!(
                             "cannot use external trait {} as a bound without declaring the trait \

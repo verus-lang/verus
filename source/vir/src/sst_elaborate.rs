@@ -4,7 +4,7 @@ use crate::ast::{
 use crate::ast_to_sst_func::SstMap;
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
-use crate::messages::{ToAny, error_with_label};
+use crate::messages::{ToAny, WarningAllow, error_with_label};
 use crate::sst::{BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{NoScoper, Rewrite, Visitor};
 use crate::triggers::build_triggers;
@@ -102,7 +102,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                         for alternatives.";
                     ctx.warning_maybe_if_in_local_crate(
                         &exp.span,
-                        "trigger_on_spec_fn",
+                        &WarningAllow::TriggerOnSpecFn,
                         || msg,
                         |msg| diagnostics.report(&msg.to_any()),
                     );

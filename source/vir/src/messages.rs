@@ -32,8 +32,66 @@ impl std::fmt::Debug for Span {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WarningAllow {
+    UndeclaredExternalTrait,
+    AssertForallImplication,
+    DecreasesWhenExecAllowsNoDecreasesClause,
+    BroadcastWithoutTrigger,
+    TriggerOnSpecFn,
+    DeadReveal,
+    AssertComputeUnsimplified,
+    OldStyleAcceptRejectRecursiveTypes,
+    UnknownAutomaticDerive,
+    AutoderiveCloneWithoutSpec,
+    NonExecGhostTrackedWrappers,
+}
+
+impl WarningAllow {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            WarningAllow::UndeclaredExternalTrait => "undeclared_external_trait",
+            WarningAllow::AssertForallImplication => "assert_forall_implication",
+            WarningAllow::DecreasesWhenExecAllowsNoDecreasesClause => {
+                "decreases_when_exec_allows_no_decreases_clause"
+            }
+            WarningAllow::BroadcastWithoutTrigger => "broadcast_without_trigger",
+            WarningAllow::TriggerOnSpecFn => "trigger_on_spec_fn",
+            WarningAllow::DeadReveal => "dead_reveal",
+            WarningAllow::AssertComputeUnsimplified => "assert_compute_unsimplified",
+            WarningAllow::OldStyleAcceptRejectRecursiveTypes => {
+                "old_style_accept_reject_recursive_types"
+            }
+            WarningAllow::UnknownAutomaticDerive => "unknown_automatic_derive",
+            WarningAllow::AutoderiveCloneWithoutSpec => "autoderive_clone_without_spec",
+            WarningAllow::NonExecGhostTrackedWrappers => "non_exec_ghost_tracked_wrappers",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<WarningAllow> {
+        match s {
+            "undeclared_external_trait" => Some(WarningAllow::UndeclaredExternalTrait),
+            "assert_forall_implication" => Some(WarningAllow::AssertForallImplication),
+            "decreases_when_exec_allows_no_decreases_clause" => {
+                Some(WarningAllow::DecreasesWhenExecAllowsNoDecreasesClause)
+            }
+            "broadcast_without_trigger" => Some(WarningAllow::BroadcastWithoutTrigger),
+            "trigger_on_spec_fn" => Some(WarningAllow::TriggerOnSpecFn),
+            "dead_reveal" => Some(WarningAllow::DeadReveal),
+            "assert_compute_unsimplified" => Some(WarningAllow::AssertComputeUnsimplified),
+            "old_style_accept_reject_recursive_types" => {
+                Some(WarningAllow::OldStyleAcceptRejectRecursiveTypes)
+            }
+            "unknown_automatic_derive" => Some(WarningAllow::UnknownAutomaticDerive),
+            "autoderive_clone_without_spec" => Some(WarningAllow::AutoderiveCloneWithoutSpec),
+            "non_exec_ghost_tracked_wrappers" => Some(WarningAllow::NonExecGhostTrackedWrappers),
+            _ => None,
+        }
+    }
+}
+
 pub trait CheckAllowForWarning {
-    fn allowed(&self, allow: &str) -> bool;
+    fn allowed(&self, allow: &WarningAllow) -> bool;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode)]
@@ -305,15 +363,16 @@ pub fn warning<S: Into<String>>(span: &Span, note: S) -> Message {
 pub fn warning_maybe<S: Into<String>>(
     check_allow: &(impl CheckAllowForWarning + ?Sized),
     span: &Span,
-    allow: &str,
+    allow: &WarningAllow,
     note: impl FnOnce() -> S,
     emit: impl FnOnce(Message) -> (),
 ) {
     if !check_allow.allowed(allow) {
+        let s = allow.to_str();
         let msg = warning(span, note());
         let msg = msg.help(
             format!(
-                "to suppress this warning, use `#[verifier::allow({allow})]` on the surrounding function, datatype, or module or `#![verifier::allow({allow})]` in the module or crate"
+                "to suppress this warning, use `#[verifier::allow({s})]` on the surrounding function, datatype, or module or `#![verifier::allow({s})]` in the module or crate"
             ));
         emit(msg);
     }
@@ -325,7 +384,7 @@ pub fn warning_maybe<S: Into<String>>(
 pub fn warning_maybe_if_in_local_crate<S: Into<String>>(
     check_allow: &Option<crate::context::WarningConfig>,
     span: &Span,
-    allow: &str,
+    allow: &WarningAllow,
     note: impl FnOnce() -> S,
     emit: impl FnOnce(Message) -> (),
 ) {

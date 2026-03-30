@@ -13,7 +13,7 @@ use crate::context::WarningConfig;
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use crate::internal_err;
-use crate::messages::{Message, Span, error, error_with_label};
+use crate::messages::{Message, Span, WarningAllow, error, error_with_label};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -608,7 +608,7 @@ fn check_one_expr<Emit: EmitError>(
                     crate::messages::warning_maybe_if_in_local_crate(
                         warn_config,
                         &expr.span,
-                        "assert_forall_implication",
+                        &WarningAllow::AssertForallImplication,
                         || "using ==> in `assert forall` does not currently assume the antecedent in the body; consider using `implies` instead of `==>`",
                         |msg| {
                             let msg = msg.help("If you didn't mean to assume the antecedent, we're very curious to hear why! To tell us, please open an issue on the Verus issue tracker on github with the title `Don't always make assert forall assume the antecedent`. If no one opens such an issue, we'll soon change the behavior of Verus to always assume the antecedent of the outermost implication");
@@ -1435,7 +1435,7 @@ fn check_function<Emit: EmitError>(
         crate::messages::warning_maybe_if_in_local_crate(
             warn_config,
             &function.span,
-            "decreases_when_exec_allows_no_decreases_clause",
+            &WarningAllow::DecreasesWhenExecAllowsNoDecreasesClause,
             || "if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops",
             |msg| emit.emit(None, VirErrAs::Warning(msg)),
         );
@@ -1918,7 +1918,7 @@ pub fn check_crate(
                 crate::messages::warning_maybe_if_in_local_crate(
                     warn_config,
                     &function.span,
-                    "broadcast_without_trigger",
+                    &WarningAllow::BroadcastWithoutTrigger,
                     || "broadcast functions should have explicit #[trigger] or #![trigger ...]",
                     |msg| diags.push(VirErrAs::Warning(msg)),
                 );
