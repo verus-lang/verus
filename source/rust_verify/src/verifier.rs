@@ -94,11 +94,13 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         let mut multispan = MultiSpan::from_spans(v);
 
-        let mut standalone_error_labels: Vec<(String, Option<Span>)> = Vec::new();
+        let mut replacement_error_note: Option<String> = None;
         for MessageLabel { note, span: sp, is_proof_note, is_error } in &msg.labels {
             let span = self.spans.from_air_span(&sp, Some(self.source_map));
             if *is_error {
-                standalone_error_labels.push((note.clone(), span));
+                if replacement_error_note.is_none() {
+                    replacement_error_note = Some(note.clone());
+                }
                 continue;
             }
 
@@ -134,20 +136,12 @@ impl air::messages::Diagnostics for Reporter<'_> {
                 &msg.help,
             ),
             MessageLevel::Error => emit_with_diagnostic_details(
-                self.compiler_diagnostics.handle().struct_err(msg.note.clone()),
+                self.compiler_diagnostics
+                    .handle()
+                    .struct_err(replacement_error_note.clone().unwrap_or_else(|| msg.note.clone())),
                 multispan,
                 &msg.help,
             ),
-        }
-
-        let no_help: Option<String> = None;
-        for (note, span) in standalone_error_labels {
-            let spans = if let Some(span) = span { vec![span] } else { vec![] };
-            emit_with_diagnostic_details(
-                self.compiler_diagnostics.handle().struct_err(note),
-                MultiSpan::from_spans(spans),
-                &no_help,
-            );
         }
 
         if let Some(fancy_note) = &msg.fancy_note {
