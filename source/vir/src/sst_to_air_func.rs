@@ -488,12 +488,12 @@ fn req_ens_to_air(
                     is_error: false,
                 }));
             }
-            if let Some(proof_note) = sst_exp_get_proof_note(exp) {
+            if let Some(label) = sst_exp_get_proof_note(exp) {
                 labels.push(Arc::new(MessageLabel {
                     span: exp.span.clone(),
-                    note: proof_note.text.to_string(),
+                    note: label.text.to_string(),
                     is_proof_note: true,
-                    is_error: proof_note.is_error,
+                    is_error: label.is_error,
                 }));
             }
             let labeled_expr = if labels.is_empty() {

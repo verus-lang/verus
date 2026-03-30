@@ -2176,11 +2176,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     "assertion failed".to_string(),
                 ),
             };
-            if let Some(proof_note) = sst_exp_get_proof_note(expr) {
+            if let Some(label) = sst_exp_get_proof_note(expr) {
                 error = error.proof_note_label_with_is_error(
                     &stm.span,
-                    proof_note.text.to_string(),
-                    proof_note.is_error,
+                    label.text.to_string(),
+                    label.is_error,
                 );
             }
             if ctx.debug {
@@ -2252,11 +2252,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             PostConditionKind::Ensures => {
                                 let new_error = base_error
                                     .primary_label(&span, crate::def::THIS_POST_FAILED.to_string());
-                                if let Some(proof_note) = proof_note {
+                                if let Some(label) = proof_note {
                                     new_error.proof_note_label_with_is_error(
                                         span,
-                                        proof_note.text.to_string(),
-                                        proof_note.is_error,
+                                        label.text.to_string(),
+                                        label.is_error,
                                     )
                                 } else {
                                     new_error

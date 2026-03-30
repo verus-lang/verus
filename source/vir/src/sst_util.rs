@@ -796,7 +796,7 @@ pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<ProofNoteLabel> {
         ExpX::UnaryOpr(UnaryOpr::Box(_), e) => sst_exp_get_proof_note(e),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => sst_exp_get_proof_note(e),
         ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e) => sst_exp_get_proof_note(e),
-        ExpX::UnaryOpr(UnaryOpr::ProofNote(proof_note), _) => Some(proof_note.clone()),
+        ExpX::UnaryOpr(UnaryOpr::ProofNote(label), _) => Some(label.clone()),
         _ => None,
     }
 }
@@ -848,8 +848,8 @@ impl<'a> ObligationProofNoteCollector<'a> {
         // NOTE: Skip `func_check.reqs` to exclude `requires` clauses.
         // Collect proof notes from this function's own `ensures` clauses.
         for ens in func_check.post_condition.ens_exps.iter() {
-            if let Some(proof_note) = sst_exp_get_proof_note(ens) {
-                self.proof_notes.insert(proof_note.text.to_string());
+            if let Some(label) = sst_exp_get_proof_note(ens) {
+                self.proof_notes.insert(label.text.to_string());
             }
         }
         for stm in func_check.post_condition.ens_spec_precondition_stms.iter() {
@@ -871,8 +871,8 @@ impl<'a> Visitor<Walk, (), NoScoper> for ObligationProofNoteCollector<'a> {
             }
             // Collect proof note labels from `assert` statements.
             StmX::Assert(_, maybe_msg, exp) => {
-                if let Some(proof_note) = sst_exp_get_proof_note(exp) {
-                    self.proof_notes.insert(proof_note.text.to_string());
+                if let Some(label) = sst_exp_get_proof_note(exp) {
+                    self.proof_notes.insert(label.text.to_string());
                 }
                 if let Some(msg) = maybe_msg {
                     // This is likely unnecessary; here for future-proofing.
