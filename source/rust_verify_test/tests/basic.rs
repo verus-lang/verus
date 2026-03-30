@@ -227,10 +227,7 @@ test_verify_one_file! {
             #[verifier::proof_note("Custom error message", error)]
             assert(1 > 2);
         }
-    } => Err(err) => {
-        assert_one_fails(err.clone());
-        assert_help_error_msg(err, "error: Custom error message");
-    }
+    } => Err(err) => assert_vir_error_msg(err, "error: Custom error message")
 }
 
 test_verify_one_file! {
