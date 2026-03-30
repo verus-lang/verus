@@ -608,7 +608,7 @@ test_verify_one_file! {
             let a = |x: i32| x + 3;
             assert(a == 5);
         }
-    } => Err(err) => assert_spec_eq_type_err(err, "nat", "AnonymousClosure(i32) -> i32")
+    } => Err(err) => assert_spec_eq_type_err(err, "nat", "AnonymousClosure(Fn)(i32) -> i32")
 }
 
 test_verify_one_file! {
