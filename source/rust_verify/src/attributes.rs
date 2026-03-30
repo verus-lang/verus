@@ -383,22 +383,16 @@ fn get_proof_note_options(
     let Some(AttrTree::Lit(LitKind::Str, label)) = args.first() else {
         return err_span(span, "expected first argument to be a string literal");
     };
-    match args.len() {
-        1 => Ok((label.clone(), false)),
-        3 => match (&args[1], &args[2]) {
-            (AttrTree::Fun(_, as_kw, None), AttrTree::Fun(_, error_kw, None))
-                if as_kw == "as" && error_kw == "error" =>
-            {
-                Ok((label.clone(), true))
-            }
-            (AttrTree::Fun(_, as_kw, None), _) if as_kw == "as" => {
-                err_span(span, "expected `error` after `as` in `proof_note`")
-            }
-            _ => err_span(
-                span,
-                "expected `#[verifier::proof_note(\"label\")]` or `#[verifier::proof_note(\"label\" as error)]`",
-            ),
-        },
+    match &args[1..] {
+        [] => Ok((label.clone(), false)),
+        [AttrTree::Fun(_, as_kw, None), AttrTree::Fun(_, error_kw, None)]
+            if as_kw == "as" && error_kw == "error" =>
+        {
+            Ok((label.clone(), true))
+        }
+        [AttrTree::Fun(_, as_kw, None), _] if as_kw == "as" => {
+            err_span(span, "expected `error` after `as` in `proof_note`")
+        }
         _ => err_span(
             span,
             "expected `#[verifier::proof_note(\"label\")]` or `#[verifier::proof_note(\"label\" as error)]`",
