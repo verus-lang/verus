@@ -94,7 +94,7 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         let mut multispan = MultiSpan::from_spans(v);
 
-        for MessageLabel { note, span: sp, is_proof_note } in &msg.labels {
+        for MessageLabel { note, span: sp, is_proof_note, .. } in &msg.labels {
             let note = if *is_proof_note { format!("note: {}", note) } else { note.clone() };
             if let Some(span) = self.spans.from_air_span(&sp, Some(self.source_map)) {
                 multispan.push_span_label(span, note);
