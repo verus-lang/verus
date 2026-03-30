@@ -1057,6 +1057,8 @@ pub(crate) fn expr_to_pure_exp_skip_checks(
     let result = if stms.len() == 0 {
         Ok(exp)
     } else {
+        dbg!(stms);
+        dbg!(exp);
         Err(error(&expr.span, "expected pure mathematical expression"))
     };
     state.only_generate_pure_exp -= 1;

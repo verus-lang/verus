@@ -1171,7 +1171,10 @@ fn check_place(
             // We also apply coerce to the "expected mode" here in order to compute the optimal
             // mode to put into var_modes (see below)
 
-            let coerced_mode = mode_join(mode_join(place_mode, context_mode), expect.0);
+            let mut coerced_mode = mode_join(place_mode, expect.0);
+            if typing.in_forall_stmt || typing.in_proof_in_spec {
+                coerced_mode = Mode::Spec;
+            }
             coerced_mode
         }
         PlaceAccess::MutAssign(typ) => {

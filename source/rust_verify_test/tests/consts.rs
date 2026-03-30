@@ -355,6 +355,24 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] arrays_reference verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: &'static [u32; 3] = &[1, 2, 3];
+
+        proof fn test() {
+            assert(MyArray[2] == 3);
+        }
+
+        fn exec_test() {
+            let x = MyArray[1];
+            assert(x == 2);
+        }
+    } => Ok(())
+}
+
+
+test_verify_one_file! {
     #[test] array_out_of_bounds verus_code! {
         use vstd::prelude::*;
 
