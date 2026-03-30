@@ -592,9 +592,13 @@ fn check_one_expr<Emit: EmitError>(
         ExprX::AssertAssume { is_assume, expr: inner_expr, .. } => {
             if ctxt.no_cheating && *is_assume {
                 let mut msg = error(&expr.span, "assume/admit not allowed with --no-cheating");
-                if let Some(label) = ast_expr_get_proof_note(inner_expr) {
-                    let label = label.to_string();
-                    msg = msg.proof_note_label(&expr.span, label.clone());
+                if let Some(proof_note) = ast_expr_get_proof_note(inner_expr) {
+                    let label = proof_note.label.to_string();
+                    msg = msg.proof_note_label_with_is_error(
+                        &expr.span,
+                        label.clone(),
+                        proof_note.is_error,
+                    );
                     emit.record_func_failed_proof_note(function.x.name.clone(), label);
                 }
                 emit.emit(None, VirErrAs::NonFatalError(msg, None));

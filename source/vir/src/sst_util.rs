@@ -1,8 +1,8 @@
 use crate::ast::{
     ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, GenericBound,
     GenericBoundX, GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth,
-    IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
-    VarBinder, VarBinderX, VarBinders,
+    IntegerTypeBoundKind, Mode, ProofNoteAttr, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
@@ -791,19 +791,25 @@ impl ExpX {
     }
 }
 
-pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<Arc<String>> {
+pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<ProofNoteAttr> {
     match &exp.x {
         ExpX::UnaryOpr(UnaryOpr::Box(_), e) => sst_exp_get_proof_note(e),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => sst_exp_get_proof_note(e),
         ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e) => sst_exp_get_proof_note(e),
-        ExpX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
+        ExpX::UnaryOpr(UnaryOpr::ProofNote(proof_note), _) => Some(proof_note.clone()),
         _ => None,
     }
 }
 
 /// Collect proof notes from a function's `requires` clauses.
 pub fn func_collect_requires_proof_notes(func: &FunctionSst) -> HashSet<String> {
-    func.x.decl.reqs.iter().filter_map(sst_exp_get_proof_note).map(|s| s.to_string()).collect()
+    func.x
+        .decl
+        .reqs
+        .iter()
+        .filter_map(sst_exp_get_proof_note)
+        .map(|proof_note| proof_note.label.to_string())
+        .collect()
 }
 
 /// Collect proof notes from a function's proof obligations.
@@ -842,8 +848,8 @@ impl<'a> ObligationProofNoteCollector<'a> {
         // NOTE: Skip `func_check.reqs` to exclude `requires` clauses.
         // Collect proof notes from this function's own `ensures` clauses.
         for ens in func_check.post_condition.ens_exps.iter() {
-            if let Some(label) = sst_exp_get_proof_note(ens) {
-                self.proof_notes.insert(label.to_string());
+            if let Some(proof_note) = sst_exp_get_proof_note(ens) {
+                self.proof_notes.insert(proof_note.label.to_string());
             }
         }
         for stm in func_check.post_condition.ens_spec_precondition_stms.iter() {
@@ -865,8 +871,8 @@ impl<'a> Visitor<Walk, (), NoScoper> for ObligationProofNoteCollector<'a> {
             }
             // Collect proof note labels from `assert` statements.
             StmX::Assert(_, maybe_msg, exp) => {
-                if let Some(label) = sst_exp_get_proof_note(exp) {
-                    self.proof_notes.insert(label.to_string());
+                if let Some(proof_note) = sst_exp_get_proof_note(exp) {
+                    self.proof_notes.insert(proof_note.label.to_string());
                 }
                 if let Some(msg) = maybe_msg {
                     // This is likely unnecessary; here for future-proofing.

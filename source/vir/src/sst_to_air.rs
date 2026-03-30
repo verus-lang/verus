@@ -1,8 +1,8 @@
 use crate::ast::{
     ArithOp, ArrayKind, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, GenericBoundX,
     Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path,
-    PathX, Primitive, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
-    UnaryOpr, UnwindSpec, VarAt, VarIdent, VariantCheck, VirErr, Visibility,
+    PathX, Primitive, ProofNoteAttr, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX,
+    Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ,
@@ -52,7 +52,7 @@ pub struct PostConditionInfo {
     pub dest: Option<VarIdent>,
     /// Post-conditions (only used in non-recommends-checking mode)
     /// Each entry carries the span, the AIR expression, and an optional `proof_note` label.
-    pub ens_exprs: Vec<(Span, Expr, Option<Arc<String>>)>,
+    pub ens_exprs: Vec<(Span, Expr, Option<ProofNoteAttr>)>,
     /// Recommends checks (only used in recommends-checking mode)
     pub ens_spec_precondition_stms: Stms,
     /// Extra info about PostCondition for error reporting
@@ -2176,8 +2176,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     "assertion failed".to_string(),
                 ),
             };
-            if let Some(label) = sst_exp_get_proof_note(expr) {
-                error = error.proof_note_label(&stm.span, label.to_string());
+            if let Some(proof_note) = sst_exp_get_proof_note(expr) {
+                error = error.proof_note_label_with_is_error(
+                    &stm.span,
+                    proof_note.label.to_string(),
+                    proof_note.is_error,
+                );
             }
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
@@ -2248,8 +2252,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             PostConditionKind::Ensures => {
                                 let new_error = base_error
                                     .primary_label(&span, crate::def::THIS_POST_FAILED.to_string());
-                                if let Some(label) = proof_note {
-                                    new_error.proof_note_label(span, label.to_string())
+                                if let Some(proof_note) = proof_note {
+                                    new_error.proof_note_label_with_is_error(
+                                        span,
+                                        proof_note.label.to_string(),
+                                        proof_note.is_error,
+                                    )
                                 } else {
                                     new_error
                                 }
@@ -3119,7 +3127,7 @@ pub(crate) fn body_stm_to_air(
 
     let initial_sid = Arc::new("0_entry".to_string());
 
-    let mut ens_exprs: Vec<(Span, Expr, Option<Arc<String>>)> = Vec::new();
+    let mut ens_exprs: Vec<(Span, Expr, Option<ProofNoteAttr>)> = Vec::new();
     for ens in post_condition.ens_exps.iter() {
         let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
         let note = sst_exp_get_proof_note(ens);

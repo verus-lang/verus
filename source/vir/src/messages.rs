@@ -400,12 +400,22 @@ impl MessageX {
 
     /// Add a `proof_note` label
     pub fn proof_note_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
+        self.proof_note_label_with_is_error(span, label, false)
+    }
+
+    /// Add a `proof_note` label, with control over whether it should be reported as an error.
+    pub fn proof_note_label_with_is_error<S: Into<String>>(
+        &self,
+        span: &Span,
+        label: S,
+        is_error: bool,
+    ) -> Message {
         let mut e = self.clone();
         e.labels.push(MessageLabel {
             span: span.clone(),
             note: label.into(),
             is_proof_note: true,
-            is_error: false,
+            is_error,
         });
         Arc::new(e)
     }

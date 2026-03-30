@@ -1043,17 +1043,19 @@ pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<Stri
     Ok(v)
 }
 
-pub(crate) fn get_proof_note_annotation(attrs: &[Attribute]) -> Result<Option<String>, VirErr> {
-    let mut label = None;
+pub(crate) fn get_proof_note_annotation(
+    attrs: &[Attribute],
+) -> Result<Option<(String, bool)>, VirErr> {
+    let mut proof_note = None;
     for attr in parse_attrs(attrs, None)? {
-        if let Attr::ProofNote { span, text, is_error: _ } = attr {
-            if label.is_some() {
+        if let Attr::ProofNote { span, text, is_error } = attr {
+            if proof_note.is_some() {
                 return err_span(span, "at most one `proof_note` attribute is allowed");
             }
-            label = Some(text);
+            proof_note = Some((text, is_error));
         }
     }
-    Ok(label)
+    Ok(proof_note)
 }
 
 #[derive(Debug, Clone)]
