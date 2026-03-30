@@ -121,6 +121,14 @@ pub trait ExStructural {
     type ExternalTraitSpecificationFor: Structural;
 }
 
+// Since this trait involves the unstable library feature `const_destruct`,
+// we only enable it when verifying core
+#[cfg(verus_verify_core)]
+#[verifier::external_trait_specification]
+trait ExDestruct: PointeeSized {
+    type ExternalTraitSpecificationFor: core::marker::Destruct;
+}
+
 #[verifier::external_trait_specification]
 pub trait ExMetaSized {
     type ExternalTraitSpecificationFor: core::marker::MetaSized;
