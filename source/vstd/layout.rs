@@ -249,6 +249,7 @@ pub broadcast axiom fn layout_of_str(x: &str)
 pub broadcast axiom fn layout_of_sized<T>(v: &T)
     ensures
         #[trigger] spec_align_of_val::<T>(v) == align_of::<T>(),
+;
 
 /// `str` has the same layout as `[u8]`, which has the same layout as `u8`.
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#str-layout)).
@@ -260,6 +261,7 @@ pub broadcast axiom fn layout_of_str(x: &str)
             u8,
         >(),
 // cannot specify spec_size_of_val because we cannot talk about the byte representation of a str here
+
 ;
 
 /// The size is a multiple of alignment and alignment is always a power of 2
