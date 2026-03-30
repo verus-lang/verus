@@ -140,7 +140,10 @@ pub(crate) fn annotate_one(
             {
                 let fun = typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
                 let Some(function) = functions.get(&fun) else {
-                    return Err(internal_error(&expr.span, "Attempted to construct datatype with a type invariant whose type invariant function is not in scope"));
+                    return Err(internal_error(
+                        &expr.span,
+                        "Attempted to construct datatype with a type invariant whose type invariant function is not in scope",
+                    ));
                 };
                 Ok(assert_and_return(&expr, function, module)?)
             } else {
@@ -156,7 +159,10 @@ pub(crate) fn annotate_one(
             }
             if let Some(fun) = typ_get_user_defined_type_invariant(datatypes, &typ) {
                 let Some(function) = functions.get(&fun) else {
-                    return Err(internal_error(&expr.span, "Attempted to assert or assume type invariant function which is not in scope"));
+                    return Err(internal_error(
+                        &expr.span,
+                        "Attempted to assert or assume type invariant function which is not in scope",
+                    ));
                 };
                 if !crate::ast_util::is_visible_to(&function.x.visibility, module) {
                     return Err(error(
