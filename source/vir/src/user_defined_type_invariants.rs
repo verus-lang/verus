@@ -90,11 +90,6 @@ pub(crate) fn annotate_user_defined_invariants(
                     }
                     if let Some(fun) = typ_get_user_defined_type_invariant(datatypes, &typ) {
                         let Some(function) = functions.get(&fun) else {
-                            dbg!(&fun.path);
-                            dbg!(functions.contains_key(&fun));
-                            for fun in functions.keys() {
-                                dbg!(&fun.path);
-                            }
                             return Err(internal_error(
                                 &expr.span,
                                 "Attempted to assert or assume type invariant function which is not in scope",
