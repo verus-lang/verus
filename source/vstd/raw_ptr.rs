@@ -373,7 +373,7 @@ impl<T> PointsTo<T> {
         self.mem_contents().value()
     }
 
-    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
+    /// Guarantee that the `PointsTo` points to a non-null address.
     ///
     /// See <https://doc.rust-lang.org/std/ptr/#safety>
     pub proof fn is_nonnull(tracked &self)
@@ -405,7 +405,7 @@ impl<T> PointsTo<T> {
     pub proof fn ptr_bounds(tracked &self)
         ensures
             self.ptr()@.addr as int >= self.ptr()@.provenance.start_addr(),
-            self.ptr()@.addr as int + size_of::<T>() as int <= self.ptr()@.provenance.start_addr()
+            self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.start_addr()
                 + self.ptr()@.provenance.alloc_len(),
     {
         self.as_unaligned().ptr_bounds()
@@ -429,7 +429,7 @@ impl<T> PointsTo<T> {
         self.inner.is_disjoint(&other.inner)
     }
 
-    /// Convert an aligned PointsTo to an unaligned PointsToUnaligned.
+    /// Convert an aligned `PointsTo` to an unaligned `PointsToUnaligned`.
     /// This is always safe since aligned is stricter than unaligned.
     ///
     /// Ensures pointer locations remain the same, and memory
@@ -442,7 +442,7 @@ impl<T> PointsTo<T> {
         self.inner
     }
 
-    /// Borrow an aligned PointsTo as an unaligned PointsToUnaligned.
+    /// Borrow an aligned `PointsTo` as an unaligned `PointsToUnaligned`.
     /// This is always safe since aligned is stricter than unaligned.
     ///
     /// Ensures pointer locations remain the same, and memory
@@ -482,7 +482,7 @@ impl<T> PointsToUnaligned<T> {
         self.mem_contents().value()
     }
 
-    /// Guarantee that the `PointsToUnaligned` for any non-zero-sized type points to a non-null address.
+    /// Guarantee that the `PointsToUnaligned` points to a non-null address.
     ///
     /// See <https://doc.rust-lang.org/std/ptr/#safety>
     pub axiom fn is_nonnull(tracked &self)
@@ -501,7 +501,7 @@ impl<T> PointsToUnaligned<T> {
     pub axiom fn ptr_bounds(tracked &self)
         ensures
             self.ptr()@.addr as int >= self.ptr()@.provenance.start_addr(),
-            self.ptr()@.addr as int + size_of::<T>() as int <= self.ptr()@.provenance.start_addr()
+            self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.start_addr()
                 + self.ptr()@.provenance.alloc_len(),
     ;
 
@@ -535,6 +535,8 @@ impl<T> PointsToUnaligned<T> {
     ///
     /// Ensures pointer locations remain the same, and memory
     /// initializations states remain the same.
+    ///
+    /// Note: Currently an axiom since we don't have support for coercing equivalent references.
     pub axiom fn as_aligned(tracked &self) -> (tracked perm: &PointsTo<T>)
         requires
             self.ptr()@.addr as int % align_of::<T>() as int == 0,
@@ -567,11 +569,13 @@ impl<T> PointsTo<[T]> {
     }
 
     /// Returns `true` if all of the permission's associated memory is initialized.
+    #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
         self.is_init_subrange(0, self.mem_contents_seq().len())
     }
 
     /// Returns `true` if all of the permission's associated memory in the given subrange is initialized.
+    #[verifier::inline]
     pub open spec fn is_init_subrange(&self, start_index: int, len: nat) -> bool
         recommends
             0 <= start_index <= start_index + len <= self.mem_contents_seq().len(),
@@ -581,11 +585,13 @@ impl<T> PointsTo<[T]> {
     }
 
     /// Returns `true` if any part of the permission's associated memory is uninitialized.
+    #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
         !self.is_init()
     }
 
     /// Returns `true` if all of the permission's associated memory is uninitialized.
+    #[verifier::inline]
     pub open spec fn is_fully_uninit(&self) -> bool {
         forall|i|
             0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_uninit()
@@ -595,6 +601,7 @@ impl<T> PointsTo<[T]> {
     /// if the permission's associated memory at that index is initialized,
     /// the corresponding index in the sequence holds that value.
     /// Otherwise, the value at that index is meaningless.
+    #[verifier::inline]
     pub open spec fn value(&self) -> Seq<T>
         recommends
             self.is_init(),
@@ -606,6 +613,7 @@ impl<T> PointsTo<[T]> {
     /// if the permission's associated memory at that index is initialized,
     /// the corresponding index in the sequence holds that value.
     /// Otherwise, the value at that index is meaningless.
+    #[verifier::inline]
     pub open spec fn value_subrange(&self, start_index: int, len: nat) -> Seq<T>
         recommends
             0 <= start_index <= start_index + len <= self.mem_contents_seq().len(),
@@ -614,15 +622,11 @@ impl<T> PointsTo<[T]> {
         Seq::new(len, |i| self.mem_contents_seq().index(start_index + i).value())
     }
 
-    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
+    /// Guarantee that the `PointsTo` points to a non-null address.
     ///
     /// Note that the size of a slice is given by the length * `size_of::<\T\>()`.
     /// <https://doc.rust-lang.org/reference/type-layout.html#slice-layout>
-    /// ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    /// See <https://doc.rust-lang.org/std/ptr/#safety>
     pub proof fn is_nonnull(tracked &self)
-        requires
-            self.mem_contents_seq().len() * size_of::<T>() != 0,
         ensures
             self.ptr()@.addr != 0,
     {
@@ -657,10 +661,12 @@ impl<T> PointsTo<[T]> {
                 start_index as int + len as int,
             ),
     {
-        broadcast use axiom_ptr_mut_from_data;
-        broadcast use crate::vstd::group_vstd_default;
-        broadcast use group_layout_axioms;
-        broadcast use alloc_bound;
+        broadcast use {
+            axiom_ptr_mut_from_data,
+            crate::vstd::group_vstd_default,
+            group_layout_axioms,
+            alloc_bound,
+        };
 
         let tracked unaligned_self_ref = self.as_unaligned();
 
@@ -701,9 +707,7 @@ impl<T> PointsTo<[T]> {
 
         use_type_invariant(&*self);
         assert((self.ptr()@.addr + start_index * size_of::<T>()) as nat % align_of::<T>() == 0) by {
-            broadcast use lemma_mul_mod_noop_right;
-            broadcast use lemma_add_mod_noop;
-            broadcast use layout_of_sized;
+            broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop, layout_of_sized};
 
         };
 
@@ -768,18 +772,10 @@ impl<T> PointsTo<[T]> {
             points_to.is_init(),
             points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
     {
-        broadcast use axiom_ptr_mut_from_data;
-        broadcast use crate::vstd::group_vstd_default;
+        broadcast use {axiom_ptr_mut_from_data, crate::vstd::group_vstd_default};
 
         let tracked ua = self.as_unaligned();
-
-        assert(ua.is_init());
-        assert(ua.value().len() * size_of::<T>() == size_of::<V>());
-
         let tracked pt_unaligned = ua.cast_points_to_unaligned::<V>();
-
-        assert(self.value() =~= ua.value());
-
         pt_unaligned.as_aligned()
     }
 
@@ -818,15 +814,7 @@ impl<T> PointsTo<[T]> {
         broadcast use crate::vstd::group_vstd_default;
 
         let tracked ua = self.as_unaligned();
-
-        assert(ua.is_init());
-        assert(ua.value().len() * size_of::<T>() == size_of::<V>());
-
-        let tracked pt = ua.cast_points_to_unaligned::<V>();
-
-        assert(self.value() =~= ua.value());
-
-        pt
+        ua.cast_points_to_unaligned::<V>()
     }
 
     /// Guarantees that the memory ranges associated with two permissions will not overlap,
@@ -847,7 +835,7 @@ impl<T> PointsTo<[T]> {
         self.inner.is_disjoint(&other.inner)
     }
 
-    /// Convert an aligned PointsTo<[\T\]> to an unaligned PointsToUnaligned<[\T\]>.
+    /// Convert an aligned `PointsTo<[\T\]>` to an unaligned `PointsToUnaligned<[\T\]>`.
     /// This is always safe since aligned is stricter than unaligned.
     ///
     /// De-axiomitized: simply returns the inner [`PointsToUnaligned<[T]>`](PointsToUnaligned).
@@ -859,7 +847,7 @@ impl<T> PointsTo<[T]> {
         self.inner
     }
 
-    /// Borrow an aligned PointsTo<[\T\]> as an unaligned PointsToUnaligned<[\T\]>.
+    /// Borrow an aligned `PointsTo<[\T\]>` as an unaligned `PointsToUnaligned<[\T\]>`.
     /// This is always safe since aligned is stricter than unaligned.
     ///
     /// De-axiomitized: simply borrows the inner `PointsToUnaligned<[\T\]>`.
@@ -931,11 +919,13 @@ impl<T> PointsToUnaligned<[T]> {
     pub uninterp spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
 
     /// Returns `true` if all of the permission's associated memory is initialized.
+    #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
         self.is_init_subrange(0, self.mem_contents_seq().len() as int)
     }
 
     /// Returns `true` if all of the permission's associated memory in the given subrange is initialized.
+    #[verifier::inline]
     pub open spec fn is_init_subrange(&self, start_index: int, len: int) -> bool
         recommends
             0 <= start_index <= start_index + len <= self.mem_contents_seq().len(),
@@ -945,11 +935,13 @@ impl<T> PointsToUnaligned<[T]> {
     }
 
     /// Returns `true` if any part of the permission's associated memory is uninitialized.
+    #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
         !self.is_init()
     }
 
     /// Returns `true` if all of the permission's associated memory is uninitialized.
+    #[verifier::inline]
     pub open spec fn is_fully_uninit(&self) -> bool {
         forall|i|
             0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_uninit()
@@ -959,6 +951,7 @@ impl<T> PointsToUnaligned<[T]> {
     /// if the permission's associated memory at that index is initialized,
     /// the corresponding index in the sequence holds that value.
     /// Otherwise, the value at that index is meaningless.
+    #[verifier::inline]
     pub open spec fn value_subrange(&self, start_index: int, len: nat) -> Seq<T>
         recommends
             0 <= start_index <= start_index + len <= self.mem_contents_seq().len(),
@@ -971,6 +964,7 @@ impl<T> PointsToUnaligned<[T]> {
     /// if the permission's associated memory at that index is initialized,
     /// the corresponding index in the sequence holds that value.
     /// Otherwise, the value at that index is meaningless.
+    #[verifier::inline]
     pub open spec fn value(&self) -> Seq<T>
         recommends
             self.is_init(),
@@ -978,10 +972,11 @@ impl<T> PointsToUnaligned<[T]> {
         self.value_subrange(0, self.mem_contents_seq().len())
     }
 
-    /// Guarantee that the `PointsToUnaligned` for any non-zero-sized slice points to a non-null address.
+    /// Guarantee that the `PointsToUnaligned` points to a non-null address.
+    ///
+    /// Note that the size of a slice is given by the length * `size_of::<\T\>()`.
+    /// <https://doc.rust-lang.org/reference/type-layout.html#slice-layout>
     pub axiom fn is_nonnull(tracked &self)
-        requires
-            self.mem_contents_seq().len() * size_of::<T>() != 0,
         ensures
             self.ptr()@.addr != 0,
     ;
@@ -1003,7 +998,7 @@ impl<T> PointsToUnaligned<[T]> {
                 <= self.ptr() as int,
     ;
 
-    /// Convert PointsToUnaligned<[\T\]> to an aligned PointsTo<[\T\]>.
+    /// Convert `PointsToUnaligned<[\T\]>` to an aligned `PointsTo<[\T\]>`.
     /// Requires the pointer address to be properly aligned.
     pub proof fn into_aligned(tracked self) -> (tracked perm: PointsTo<[T]>)
         requires
@@ -1021,8 +1016,10 @@ impl<T> PointsToUnaligned<[T]> {
         PointsTo { inner: self }
     }
 
-    /// Borrow an unaligned PointsToUnaligned<[\T\]> as an aligned PointsTo<[\T\]>.
+    /// Borrow an unaligned `PointsToUnaligned<[\T\]>` as an aligned `PointsTo<[\T\]>`.
     /// Requires the pointer address to be properly aligned.
+    ///
+    /// Note: Currently an axiom since we don't have support for coercing equivalent references.
     pub axiom fn as_aligned(tracked &self) -> (tracked perm: &PointsTo<[T]>)
         requires
             self.ptr()@.addr as int % align_of::<T>() as int == 0,
@@ -1081,7 +1078,6 @@ impl<T> PointsToUnaligned<[T]> {
             ),
     ;
 
-    /// We can always convert a `PointsToUnaligned<[T]>` into a `MapPointsTo<T>` for the same pointer,
     /// Provided that memory is initialized, the pointer's address is aligned to `V`,
     /// and `self.value().len() * size_of::<T>() == size_of::<V>()`,
     /// we can always cast a `[T]` permission to a `V` permission.
@@ -1105,9 +1101,9 @@ impl<T> PointsToUnaligned<[T]> {
             points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
     ;
 
-    /// We can always convert a PointsToUnaligned<[\T\]> into a MapPointsTo<\T\> for the
+    /// We can always convert a `PointsToUnaligned<[\T\]>` into a `MapPointsTo<\T\>` for the
     /// same pointer, whose keys are the valid slice indices and whose values are individual
-    /// PointsTo<\T\> with the same memory contents. Requires the pointer address to be
+    /// `PointsTo<\T\>` with the same memory contents. Requires the pointer address to be
     /// properly aligned.
     pub axiom fn into_map(tracked self) -> (tracked m: MapPointsTo<T>)
         requires
@@ -1123,7 +1119,7 @@ impl<T> PointsToUnaligned<[T]> {
             m.ptr() == self.ptr(),
     ;
 
-    /// Borrow a slice PointsToUnaligned as a MapPointsTo.
+    /// Borrow a slice `PointsToUnaligned` as a `MapPointsTo`.
     /// This is always safe since a slice permission is strictly more restrictive
     /// than a map permission over the same indices.
     /// Requires the pointer address to be properly aligned.
@@ -1172,13 +1168,8 @@ impl PointsTo<str> {
         self.mem_contents().value()
     }
 
-    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
-    ///
-    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    // See https://doc.rust-lang.org/std/ptr/#safety
+    /// Guarantee that the `PointsTo` points to a non-null address.
     pub axiom fn is_nonnull(tracked &self)
-        requires
-            spec_size_of_val::<str>(self.value()) != 0,
         ensures
             self.ptr()@.addr != 0,
     ;
@@ -1521,10 +1512,6 @@ impl<T> MapPointsTo<T> {
 
     /// Guarantees that the pointer address is non-null,
     /// because it falls within an allocation and the start address of an allocation is non-null.
-    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
-    ///
-    /// ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    /// See <https://doc.rust-lang.org/std/ptr/#safety>
     pub proof fn is_nonnull(tracked &self)
         ensures
             self.ptr()@.addr != 0,
