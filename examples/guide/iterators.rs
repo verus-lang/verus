@@ -126,7 +126,8 @@ fn test_basic() {
 
     for x in iter: vec_iter(&v)
         invariant
-            w@ == iter.seq().take(iter.index@).map_values(|v: &u8| *v),
+            w.len() == iter.index@,
+            forall |i| 0 <= i < w.len() ==> w@[i] == *iter.seq()[i],
     {
         w.push(*x);
     }
