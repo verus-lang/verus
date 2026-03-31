@@ -85,16 +85,21 @@ impl State {
         Dt::Tuple(arity)
     }
 
-    fn closure_type_name(&mut self, fun: Fun, typs: Typs, typ: Typ, kind: ClosureKind, id: usize) -> Path {
-        let e = self.closure_typs
-            .entry(id)
-            .or_insert(ClosureDatatype {
-                enclosing_fun: fun.clone(),
-                args: typs,
-                output: typ,
-                kind: kind,
-                path: crate::def::prefix_closure_type(id),
-             });
+    fn closure_type_name(
+        &mut self,
+        fun: Fun,
+        typs: Typs,
+        typ: Typ,
+        kind: ClosureKind,
+        id: usize,
+    ) -> Path {
+        let e = self.closure_typs.entry(id).or_insert(ClosureDatatype {
+            enclosing_fun: fun.clone(),
+            args: typs,
+            output: typ,
+            kind: kind,
+            path: crate::def::prefix_closure_type(id),
+        });
         assert!(&e.enclosing_fun == &fun);
         e.path.clone()
     }
@@ -889,10 +894,13 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
                     format!("Verus Internal Error: found AnonymousClosure type outside function"),
                 ));
             };
-            let path = Dt::Path(state.closure_type_name(fun, typs.clone(), typ.clone(), *kind, *id));
-            let typ_args: Vec<Typ> = local.typ_params.iter().map(|name| {
-                Arc::new(TypX::TypParam(name.clone()))
-            }).collect();
+            let path =
+                Dt::Path(state.closure_type_name(fun, typs.clone(), typ.clone(), *kind, *id));
+            let typ_args: Vec<Typ> = local
+                .typ_params
+                .iter()
+                .map(|name| Arc::new(TypX::TypParam(name.clone())))
+                .collect();
             Ok(Arc::new(TypX::Datatype(path, Arc::new(typ_args), Arc::new(vec![]))))
         }
         TypX::FnDef(fun, _typs, resolved) => {
@@ -1269,8 +1277,11 @@ fn simplify_function(
         }
     }
 
-    let local =
-        LocalCtxt { span: function.span.clone(), typ_params: (*functionx.typ_params).clone(), fun: Some(functionx.name.clone()) };
+    let local = LocalCtxt {
+        span: function.span.clone(),
+        typ_params: (*functionx.typ_params).clone(),
+        fun: Some(functionx.name.clone()),
+    };
 
     let is_trait_impl = matches!(functionx.kind, FunctionKind::TraitMethodImpl { .. });
 
@@ -1594,9 +1605,14 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
 
         let function = functions.iter().find(|f| f.x.name == closure.enclosing_fun).unwrap();
 
-        let typ_params: crate::ast::TypPositives = Arc::new(function.x.typ_params.iter().map(|tb| {
-            (tb.clone(), crate::ast::AcceptRecursiveType::Accept)
-        }).collect());
+        let typ_params: crate::ast::TypPositives = Arc::new(
+            function
+                .x
+                .typ_params
+                .iter()
+                .map(|tb| (tb.clone(), crate::ast::AcceptRecursiveType::Accept))
+                .collect(),
+        );
         let datatypex = DatatypeX {
             name: Dt::Path(closure.path.clone()),
             proxy: None,
@@ -1617,9 +1633,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         // Add a trait bound, `ClosureType: {Fn, FnMut, FnOnce}`
         // TODO: include Output associated type
 
-        let typ_args: Typs = Arc::new(function.x.typ_params.iter().map(|tb| {
-            Arc::new(TypX::TypParam(tb.clone()))
-        }).collect());
+        let typ_args: Typs = Arc::new(
+            function.x.typ_params.iter().map(|tb| Arc::new(TypX::TypParam(tb.clone()))).collect(),
+        );
         let self_typ = Arc::new(TypX::Datatype(Dt::Path(closure.path), typ_args, Arc::new(vec![])));
         let args_tuple_typ =
             Arc::new(TypX::Datatype(Dt::Tuple(closure.args.len()), closure.args, Arc::new(vec![])));
