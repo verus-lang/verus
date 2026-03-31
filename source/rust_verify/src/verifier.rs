@@ -962,7 +962,7 @@ impl Verifier {
                 }
                 ValidityResult::UnexpectedOutput(err) => {
                     util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
-                    panic!("unexpected output from solver: {}", err);
+                    panic!("unexpected output from solver: {} {}", &context.span.as_string, err);
                 }
             }
         }
