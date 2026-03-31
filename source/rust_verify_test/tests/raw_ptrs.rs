@@ -342,7 +342,9 @@ test_verify_one_file! {
             result == ((*p as usize) < (*q as usize)),
         ;
 
-        fn compare_pointers(p1: *const u32, p2: *mut u32) -> bool {
+        fn compare_pointers(p1: *const u32, p2: *mut u32) -> (result: bool)
+            ensures result == ((p1 as usize) < (p2 as *const u32 as usize)),
+        {
             p1 < p2
         }
     } => Ok(())
