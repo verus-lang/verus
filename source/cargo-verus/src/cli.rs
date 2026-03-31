@@ -60,11 +60,12 @@ pub struct VerifyCommand {
         long,
         value_name = "SELECTOR",
         help = "\
-Crates to receive forwarded Verus args. Defaults to `roots` in `focus`, `all` otherwise.\n",
+Crates to receive forwarded Verus args. Defaults to `all`, except in `focus` mode where it defaults to `roots`. Use `deps` to pass args ONLY to dependencies and NOT to roots.\n",
         long_help = "\
 Crates to receive forwarded Verus args.
 
-Defaults to `all`, except in `focus` mode where it defaults to `roots`."
+Defaults to `all`, except in `focus` mode where it defaults to `roots`.
+Use `deps` to pass args ONLY to dependencies and NOT to roots."
     )]
     pub fwd_verus_args_to: Option<VerusArgFwdSelector>,
 
