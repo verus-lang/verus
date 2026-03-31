@@ -1751,6 +1751,7 @@ fn check_expr_handle_mut_arg(
                 // Proof variables may be used as spec, but not as proof inside forall statements.
                 // This protects against effectively consuming a linear proof variable
                 // multiple times for different instantiations of the forall variables.
+                record.erasure_modes.var_modes.push((expr.span.clone(), (Mode::Spec, Mode::Spec)));
                 return Ok((Mode::Spec, None, proph));
             }
 
