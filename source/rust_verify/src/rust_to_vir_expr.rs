@@ -1785,7 +1785,7 @@ fn operator_overload_to_vir<'tcx>(
         };
         // When constructing the substs for trait resolution, we need to account
         // for any coercions applied to the operands (e.g., *mut T -> *const T).
-        // Apply non-Borrow adjustments to get the types used for trait resolution.
+        // Apply Pointer adjustments to get the types used for trait resolution.
         let lhs_ty = operand_type_for_trait(bctx.types, lhs);
         let rhs_ty = operand_type_for_trait(bctx.types, rhs);
         let substs = tcx.mk_args(&[lhs_ty.into(), rhs_ty.into()]);
