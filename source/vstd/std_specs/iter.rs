@@ -82,29 +82,7 @@ pub trait ExIterator {
 
     // Provided methods
 
-    // TODO: Pending a resolution of https://github.com/verus-lang/verus/issues/2236
-    // //#[verifier::when_used_as_spec(into_map_spec)]
-    // fn map<B, F>(self, f: F) -> (r: core::iter::Map<Self, F>)
-    //     where
-    //         Self: Sized,
-    //         F: FnMut(Self::Item) -> B,
-    //     requires
-    //         self.obeys_prophetic_iter_laws(),
-    //         forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
-    //         self.initial_value_inv(&self),
-    //     default_ensures
-    //     // TODO:
-    //         //r == into_map_spec::<B, I, F>(self, f),
-    //         IteratorSpec::remaining(&r).len() <= self.remaining().len(),
-    //         forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (self.remaining()[k],), IteratorSpec::remaining(&r)[k]),
-    //         IteratorSpec::completes(&r) ==> self.completes() &&
-    //             IteratorSpec::remaining(&r).len() == self.remaining().len(),
-    //         IteratorSpec::decrease(&r) is Some == self.decrease() is Some,
-    //         IteratorSpec::initial_value_inv(&r, &r),
-    //         map_iter(r) == self,
-    //         map_fun(r) == f,
-    // ;
-
+    // TODO: Once we can add when_used_as_spec to provided trait methods, this would be a simpler encoding:
     //#[verifier::when_used_as_spec(into_rev_spec)]
     fn rev(self) -> (r: Rev<Self>)
         where Self: Sized,
@@ -229,115 +207,6 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
         rev_iter(*self).peek(index)
     }
 }
-
-/********************************************************************************
- * Definitions for `map()`
- ********************************************************************************/
-
-// TODO: Pending a resolution of https://github.com/verus-lang/verus/issues/2236
-// The external type specification and IteratorSpecImpl for core::iter::Map<I, F>
-// are commented out because Verus's trait conflict checker reports that the type parameter
-// B in std's Iterator and DoubleEndedIterator impls for Map is "not constrained by the
-// impl trait, self type, or predicates". This is because those impls have an extra type
-// parameter B (from F: FnMut(I::Item) -> B) that only appears in the where clause.
-//
-// #[verifier::external_body]
-// #[verifier::external_type_specification]
-// #[verifier::reject_recursive_types(I)]
-// #[verifier::reject_recursive_types(F)]
-// pub struct ExMap<I, F>(core::iter::Map<I, F>);
-//
-// // Ghost accessor for the inner iterator
-// pub uninterp spec fn map_iter<I, F>(r: core::iter::Map<I, F>) -> I;
-//
-// // Ghost accessor for the inner function
-// pub uninterp spec fn map_fun<I, F>(r: core::iter::Map<I, F>) -> F;
-//
-// The IteratorSpecImpl for core::iter::Map<I, F> is also commented out because
-// Verus's type normalization panics when resolving <Map<I, F> as Iterator>::Item.
-// The std Iterator impl for Map has an extra type parameter B (from F: FnMut(I::Item) -> B),
-// and the normalizer introduces inference variables that trigger an assertion failure
-// in rust_to_vir_base.rs.
-//
-// impl <B, I, F> IteratorSpecImpl for core::iter::Map<I, F>
-//     where
-//         I: Iterator + IteratorSpec,
-//         F: FnMut(I::Item) -> B,
-// {
-//
-//     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-//         map_iter(*self).obeys_prophetic_iter_laws()
-//     }
-//
-//     #[verifier::prophetic]
-//     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-//
-//     #[verifier::prophetic]
-//     uninterp spec fn completes(&self) -> bool;
-//
-//     #[verifier::prophetic]
-//     open spec fn initial_value_inv(&self, init: &Self) -> bool {
-//         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-//         &&& map_iter(*self).initial_value_inv(&map_iter(*init))
-//     }
-//
-//     uninterp spec fn decrease(&self) -> Option<nat>;
-//
-//     open spec fn peek(&self, index: int) -> Option<Self::Item> {
-//         None
-//         // REVIEW: It would be nice to use a definition like the one below,
-//         //         but we don't have an output value to supply for ???
-//         //         We also can't reference `remaining` since its prophetic
-//         //         and `peek` is not
-//         // match map_iter(*self).peek(index) {
-//         //     Some(v) => Some(map_fun(*self).call_ensures((v,), ???),
-//         //     None => None,
-//         // }
-//     }
-// }
-
-// impl <B, I, F> DoubleEndedIteratorSpecImpl for MyMap<B, I, F>
-//     where I: DoubleEndedIterator + IteratorSpec,
-//           F: FnMut(I::Item) -> B,
-// {
-
-//     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
-//         None // REVIEW: See note above for `peek`
-//     }
-// }
-
-
-// // Spec version of I::map
-// pub uninterp spec fn into_map_spec<B, I, F>(i: I, f: F) -> MyMap<B, I, F>
-//     where
-//         I: Iterator + IteratorSpec,
-//         F: FnMut(I::Item) -> B,
-// ;
-
-// // Workaround issues with Verus support for default trait methods
-// #[verifier::external_body]
-// #[verifier::when_used_as_spec(into_map_spec)]
-// pub fn to_map<B, I, F>(i: I, f: F) -> (r: MyMap<B, I, F>)
-//     where
-//         I: Iterator + IteratorSpec,
-//         F: FnMut(I::Item) -> B,
-//     requires
-//         i.obeys_prophetic_iter_laws(),
-//         forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&i).len() ==> call_requires(f, (IteratorSpec::remaining(&i)[k], )),
-//         i.initial_value_inv(&i),
-//     ensures
-//         r == into_map_spec::<B, I, F>(i, f),
-//         IteratorSpec::remaining(&r).len() <= IteratorSpec::remaining(&i).len(),
-//         forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (IteratorSpec::remaining(&i)[k],), IteratorSpec::remaining(&r)[k]),
-//         IteratorSpec::completes(&r) ==> IteratorSpec::completes(&i) &&
-//             IteratorSpec::remaining(&r).len() == IteratorSpec::remaining(&i).len(),
-//         IteratorSpec::decrease(&r) is Some == IteratorSpec::decrease(&i) is Some,
-//         IteratorSpec::initial_value_inv(&r, &r),
-//         map_iter(r) == i,
-//         map_fun(r) == f,
-// {
-//     todo!()
-// }
 
 /********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
