@@ -455,7 +455,7 @@ test_verify_one_file! {
 
 const RING_ALGEBRA_MEMBERS_GENERIC: &str = verus_code_str! {
     mod ring {
-        use verus_builtin::*;
+        use vstd::prelude::*;
 
         pub struct Ring<T: Copy> {
             pub i: nat,

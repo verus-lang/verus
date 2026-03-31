@@ -1582,13 +1582,7 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
     for item in file.items.into_iter() {
         match item {
             verus_syn::Item::Macro(ref m) => {
-                if m.mac
-                    .path
-                    .segments
-                    .last()
-                    .map(|s| s.ident.to_string() == "verus")
-                    .unwrap_or(false)
-                {
+                if m.mac.path.segments.last().map(|s| s.ident == "verus").unwrap_or(false) {
                     let source_toks = &m.mac.tokens;
                     let rejoined_toks = verus_syn::rejoin_tokens(source_toks.clone());
                     let macro_content: File = verus_syn::parse2(rejoined_toks).map_err(|e| {
@@ -1860,7 +1854,7 @@ fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
                         .top('-'),
                 ),
             );
-        println!("{}", table.to_string());
+        println!("{}", table);
     } else {
         let kinds_map: HashMap<_, _> = kinds
             .iter()

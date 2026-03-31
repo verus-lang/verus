@@ -74,7 +74,10 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "no_method_body can only appear in trait method declarations",
+        "no_method_body can only appear in trait method declarations",
+    ])
 }
 
 test_verify_one_file! {

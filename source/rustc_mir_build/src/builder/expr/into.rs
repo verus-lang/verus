@@ -16,6 +16,7 @@ use tracing::{debug, instrument};
 
 use crate::builder::expr::category::{Category, RvalueFunc};
 use crate::builder::matches::{DeclareLetBindings, HasMatchGuard};
+use crate::builder::scope::LintLevel;
 use crate::builder::{BlockAnd, BlockAndExtension, BlockFrame, Builder, NeedsTemporary};
 use crate::errors::{LoopMatchArmWithGuard, LoopMatchUnsupportedType};
 
@@ -32,7 +33,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         // since we frequently have to reference `self` from within a
         // closure, where `self` would be shadowed, it's easier to
         // just use the name `this` uniformly
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
         let expr = &this.thir[expr_id];
         let expr_span = expr.span;
         let source_info = this.source_info(expr_span);
@@ -45,10 +46,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         }
 
         let block_and = match expr.kind {
-            ExprKind::Scope { region_scope, lint_level, value } => {
+            ExprKind::Scope { region_scope, hir_id, value } => {
                 let region_scope = (region_scope, source_info);
                 ensure_sufficient_stack(|| {
-                    this.in_scope(region_scope, lint_level, |this| {
+                    this.in_scope(region_scope, LintLevel::Explicit(hir_id), |this| {
                         this.expr_into_dest(destination, block, value)
                     })
                 })
@@ -390,18 +391,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         args,
                         unwind: UnwindAction::Continue,
                         destination,
-                        // The presence or absence of a return edge affects control-flow sensitive
-                        // MIR checks and ultimately whether code is accepted or not. We can only
-                        // omit the return edge if a return type is visibly uninhabited to a module
-                        // that makes the call.
-                        target: expr
-                            .ty
-                            .is_inhabited_from(
-                                this.tcx,
-                                this.parent_module,
-                                this.infcx.typing_env(this.param_env),
-                            )
-                            .then_some(success),
+                        target: Some(success),
                         call_source: if from_hir_call {
                             CallSource::Normal
                         } else {
@@ -795,7 +785,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | ExprKind::ConstParam { .. }
             | ExprKind::ThreadLocalRef(_)
             | ExprKind::StaticRef { .. }
-            | ExprKind::OffsetOf { .. }
             | ExprKind::WrapUnsafeBinder { .. } => {
                 debug_assert!(match Category::of(&expr.kind).unwrap() {
                     // should be handled above

@@ -1,7 +1,7 @@
 //! See docs in build/expr/mod.rs
 
 use rustc_abi::Size;
-use rustc_ast as ast;
+use rustc_ast::{self as ast};
 use rustc_hir::LangItem;
 use rustc_middle::mir::interpret::{CTFE_ALLOC_SALT, LitToConstInput, Scalar};
 use rustc_middle::mir::*;
@@ -19,11 +19,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     /// Compile `expr`, yielding a compile-time constant. Assumes that
     /// `expr` is a valid compile-time constant!
     pub(crate) fn as_constant(&mut self, expr: &Expr<'tcx>) -> ConstOperand<'tcx> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
         let tcx = this.tcx;
-        let Expr { ty, temp_lifetime: _, span, ref kind } = *expr;
+        let Expr { ty, temp_scope_id: _, span, ref kind } = *expr;
         match kind {
-            ExprKind::Scope { region_scope: _, lint_level: _, value } => {
+            ExprKind::Scope { region_scope: _, hir_id: _, value } => {
                 this.as_constant(&this.thir[*value])
             }
             _ => as_constant_inner(
@@ -46,7 +46,8 @@ pub(crate) fn as_constant_inner<'tcx>(
     push_cuta: impl FnMut(&Box<CanonicalUserType<'tcx>>) -> Option<UserTypeAnnotationIndex>,
     tcx: TyCtxt<'tcx>,
 ) -> ConstOperand<'tcx> {
-    let Expr { ty, temp_lifetime: _, span, ref kind } = *expr;
+    let Expr { ty, temp_scope_id: _, span, ref kind } = *expr;
+
     match *kind {
         ExprKind::Literal { lit, neg } => {
             let const_ = lit_to_mir_constant(tcx, LitToConstInput { lit: lit.node, ty, neg });
@@ -69,6 +70,13 @@ pub(crate) fn as_constant_inner<'tcx>(
         }
         ExprKind::NamedConst { def_id, args, ref user_ty } => {
             let user_ty = user_ty.as_ref().and_then(push_cuta);
+            if tcx.is_type_const(def_id) {
+                let uneval = ty::UnevaluatedConst::new(def_id, args);
+                let ct = ty::Const::new_unevaluated(tcx, uneval);
+
+                let const_ = Const::Ty(ty, ct);
+                return ConstOperand { span, user_ty, const_ };
+            }
 
             let uneval = mir::UnevaluatedConst::new(def_id, args);
             let const_ = Const::Unevaluated(uneval, ty);

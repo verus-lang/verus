@@ -76,7 +76,7 @@ test_verify_one_file! {
         requires
             *old(i) < 10,
         ensures
-            ret == old(i),
+            ret == *old(i),
             *i == *old(i) + 1,
         {
             let oldi = *i;
@@ -118,6 +118,17 @@ test_verify_one_file! {
         }
 
     } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: overloaded op-assignment operator")
+}
+
+test_verify_one_file! {
+    #[test] test_array_clone verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let a = [0u8; 16];
+            let _b = a.clone();
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

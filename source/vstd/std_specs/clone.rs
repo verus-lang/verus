@@ -10,6 +10,11 @@ pub trait ExClone: Sized {
     fn clone(&self) -> Self;
 }
 
+#[verifier::external_trait_specification]
+pub trait ExCopy: Clone {
+    type ExternalTraitSpecificationFor: core::marker::Copy;
+}
+
 /*
 #[verifier::external_fn_specification]
 pub fn ex_clone_clone_from<T: Clone>(a: &mut T, b: &T)
@@ -34,6 +39,13 @@ pub assume_specification<'b, T: core::marker::PointeeSized, 'a>[ <&'b T as Clone
 ) -> (res: &'b T)
     ensures
         res == b,
+;
+
+pub assume_specification<T: Clone, const N: usize>[ <[T; N] as Clone>::clone ](a: &[T; N]) -> (res:
+    [T; N])
+    ensures
+        forall|i| #![all_triggers] 0 <= i < N ==> cloned::<T>(a@[i], res@[i]),
+        a@ =~= res@ ==> a@ == res@,
 ;
 
 /*

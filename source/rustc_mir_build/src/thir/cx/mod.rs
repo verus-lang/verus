@@ -10,18 +10,16 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::lang_items::LangItem;
 use rustc_hir::{self as hir, HirId, find_attr};
 use rustc_middle::bug;
-use rustc_middle::middle::region;
 use rustc_middle::thir::*;
-use rustc_middle::ty::{self, RvalueScopes, TyCtxt};
-use tracing::instrument;
-
-use crate::thir::pattern::pat_from_hir;
+use rustc_middle::ty::{self, TyCtxt};
 
 /// Query implementation for [`TyCtxt::thir_body`].
 pub(crate) fn thir_body(
     tcx: TyCtxt<'_>,
     owner_def: LocalDefId,
 ) -> Result<(&Steal<Thir<'_>>, ExprId), ErrorGuaranteed> {
+    debug_assert!(!tcx.is_type_const(owner_def.to_def_id()), "thir_body queried for type_const");
+
     let body = tcx.hir_body_owned_by(owner_def);
     let mut cx = ThirBuildCx::new(tcx, owner_def);
     if let Some(reported) = cx.typeck_results.tainted_by_errors {
@@ -31,9 +29,8 @@ pub(crate) fn thir_body(
     crate::verus::check_this_query_isnt_running_early(owner_def);
 
     let expr = if crate::verus::erase_body(&mut cx, owner_def) {
-        crate::verus::erase_tree(&mut cx, body.value)
+        crate::verus::erase_tree(&mut cx, body.value, crate::verus::TreeErase::IncludeBasicChecks)
     } else {
-        cx.verus_ctxt.prep_expr(body.value, false);
         cx.mirror_expr(body.value)
     };
 
@@ -62,6 +59,9 @@ pub(crate) fn thir_body(
         }
     }
 
+    // Note: this call requires cx.thir.params to be initialized
+    let expr = crate::verus_time_travel_prevention::body_post(&mut cx, body.value, expr);
+
     Ok((tcx.alloc_steal_thir(cx.thir), expr))
 }
 
@@ -73,9 +73,7 @@ pub(crate) struct ThirBuildCx<'tcx> {
 
     pub(crate) typing_env: ty::TypingEnv<'tcx>,
 
-    pub(crate) region_scope_tree: &'tcx region::ScopeTree,
     pub(crate) typeck_results: &'tcx ty::TypeckResults<'tcx>,
-    pub(crate) rvalue_scopes: &'tcx RvalueScopes,
 
     /// False to indicate that adjustments should not be applied. Only used for `custom_mir`
     apply_adjustments: bool,
@@ -122,29 +120,32 @@ impl<'tcx> ThirBuildCx<'tcx> {
             // FIXME(#132279): We're in a body, we should use a typing
             // mode which reveals the opaque types defined by that body.
             typing_env: ty::TypingEnv::non_body_analysis(tcx, def),
-            region_scope_tree: tcx.region_scope_tree(def),
             typeck_results,
-            rvalue_scopes: &typeck_results.rvalue_scopes,
             body_owner: def.to_def_id(),
-            // <<<<<<< HEAD
-            //             apply_adjustments: tcx
-            //                 .hir_attrs(hir_id)
-            //                 .iter()
-            //                 .all(|attr| !attr.has_name(rustc_span::sym::custom_mir)),
-            //             verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
-            // =======
-            // >>>>>>> 61ea30e1 (Updating forked Rust code: from 1.88.0 (6b00bc3880198600130e1cf62b8f8a93494488cc) to beta (3b4dd9bf1410f8da6329baa36ce5e37673cbbd1f))
             apply_adjustments:
                 !find_attr!(tcx.hir_attrs(hir_id), AttributeKind::CustomMir(..) => ()).is_some(),
             verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
         }
     }
 
-    #[instrument(level = "debug", skip(self))]
-    fn pattern_from_hir(&mut self, p: &'tcx hir::Pat<'tcx>) -> Box<Pat<'tcx>> {
+    pub(crate) fn pattern_from_hir(&mut self, pat: &'tcx hir::Pat<'tcx>) -> Box<Pat<'tcx>> {
+        self.pattern_from_hir_with_annotation(pat, None)
+    }
+
+    fn pattern_from_hir_with_annotation(
+        &mut self,
+        pat: &'tcx hir::Pat<'tcx>,
+        let_stmt_type: Option<&hir::Ty<'tcx>>,
+    ) -> Box<Pat<'tcx>> {
         crate::verus::erase_pat(
             self,
-            pat_from_hir(self.tcx, self.typing_env, self.typeck_results, p),
+            crate::thir::pattern::pat_from_hir(
+                self.tcx,
+                self.typing_env,
+                self.typeck_results,
+                pat,
+                let_stmt_type,
+            ),
         )
     }
 

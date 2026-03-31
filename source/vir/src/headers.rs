@@ -1,11 +1,12 @@
 use crate::ast::{
     Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind,
-    LoopInvariants, MaskSpec, Sizedness, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent,
-    VirErr, Visibility,
+    LoopInvariants, MaskSpec, PlaceX, Sizedness, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter,
+    VarIdent, VirErr, Visibility,
 };
 use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
 use crate::messages::error;
+use crate::messages::multiple_errors;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -597,10 +598,17 @@ pub fn make_trait_decls(methods: Vec<Function>) -> Result<Vec<Function>, VirErr>
             *method = make_trait_decl(method, &spec_method)?;
         }
     }
-    for (_, extra_spec) in specs.iter() {
-        return Err(error(&extra_spec.span, "no matching method found for method specification"));
+    if specs.is_empty() {
+        Ok(decls)
+    } else {
+        Err(multiple_errors(
+            specs.values().map(|spec| &spec.span),
+            format!(
+                "no matching method found for method specification{}",
+                if specs.len() > 1 { "s" } else { "" },
+            ),
+        ))
     }
-    Ok(decls)
 }
 
 fn peel(expr: &Expr) -> &Expr {
@@ -610,12 +618,18 @@ fn peel(expr: &Expr) -> &Expr {
     }
 }
 
+/// Skip past nodes that can result from implicit adjustments
 fn peel_mut(expr: &mut Expr) -> &mut Expr {
     match &expr.x {
-        ExprX::NeverToAny(_) => match &mut Arc::make_mut(expr).x {
-            ExprX::NeverToAny(e) => e,
-            _ => unreachable!(),
-        },
+        ExprX::NeverToAny(_) => {
+            let ExprX::NeverToAny(e) = &mut Arc::make_mut(expr).x else { unreachable!() };
+            peel_mut(e)
+        }
+        ExprX::ReadPlace(place, _) if matches!(place.x, PlaceX::Temporary(_)) => {
+            let ExprX::ReadPlace(place, _) = &mut Arc::make_mut(expr).x else { unreachable!() };
+            let PlaceX::Temporary(e) = &mut Arc::make_mut(place).x else { unreachable!() };
+            peel_mut(e)
+        }
         _ => expr,
     }
 }

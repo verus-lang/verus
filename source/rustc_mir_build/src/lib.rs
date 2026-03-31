@@ -45,6 +45,9 @@ pub mod verus;
 #[path = "../../rustc_mir_build_additional_files/verus_expr.rs"]
 pub mod verus_expr;
 
+#[path = "../../rustc_mir_build_additional_files/verus_time_travel_prevention.rs"]
+pub mod verus_time_travel_prevention;
+
 #[path = "../../rustc_hir_typeck/src/expr_use_visitor.rs"]
 pub mod expr_use_visitor;
 
@@ -56,15 +59,16 @@ use rustc_middle::util::Providers;
 rustc_fluent_macro::fluent_messages! { "../messages.ftl" }
 
 pub fn verus_provide(providers: &mut Providers) {
-    providers.thir_body = thir::cx::thir_body;
+    providers.queries.thir_body = thir::cx::thir_body;
 }
 
 pub fn provide(providers: &mut Providers) {
-    providers.check_match = thir::pattern::check_match;
-    providers.lit_to_const = thir::constant::lit_to_const;
-    providers.closure_saved_names_of_captured_variables =
+    providers.queries.check_match = thir::pattern::check_match;
+    providers.queries.lit_to_const = thir::constant::lit_to_const;
+    providers.queries.closure_saved_names_of_captured_variables =
         builder::closure_saved_names_of_captured_variables;
-    providers.check_unsafety = check_unsafety::check_unsafety;
-    providers.check_tail_calls = check_tail_calls::check_tail_calls;
-    providers.thir_body = thir::cx::thir_body;
+    providers.queries.check_unsafety = check_unsafety::check_unsafety;
+    providers.queries.check_tail_calls = check_tail_calls::check_tail_calls;
+    providers.queries.thir_body = thir::cx::thir_body;
+    providers.hooks.build_mir_inner_impl = builder::build_mir_inner_impl;
 }

@@ -1,0 +1,120 @@
+verus_git_url = "https://github.com/verus-lang/verus.git"
+verus_refspec = "main"
+verus_features = ["singular"]
+verus_extra_verus_args = ["--no-report-long-running"]
+
+# Successes
+
+[[project]]
+name = "ironkv"
+git_url = "https://github.com/verus-lang/verified-ironkv.git"
+refspec = "main"
+cargo_verus = true
+crate_roots = ["ironsht"]
+
+[[project]]
+name = "node-replication"
+git_url = "https://github.com/verus-lang/verified-node-replication.git"
+refspec = "main"
+crate_roots = ["verified-node-replication/src/lib.rs"]
+extra_verus_args = ["--crate-type=dylib"]
+
+[[project]]
+name = "verified-storage"
+git_url = "https://github.com/microsoft/verified-storage.git"
+refspec = "main"
+cargo_verus = true
+extra_cargo_args = ["--no-default-features"]
+crate_roots = ["capybaraKV/capybarakv", "multilog/multilog", "pmemlog"]
+
+[[project]]
+name = "memory-allocator"
+git_url = "https://github.com/verus-lang/verified-memory-allocator.git"
+refspec = "main"
+requires_singular = true
+crate_roots = ["verus-mimalloc/lib.rs"]
+extra_verus_args = [
+    "--extern", "libc=build/liblibc.rlib",
+    "--triggers-mode", "silent",
+    "--rlimit", "240",
+]
+prepare_script = """
+pushd test_libc
+cargo clean
+cargo +1.94.0 build --release
+popd
+LIBC_RLIB_NAME=$(find ./test_libc/target/release/deps/ -name 'liblibc-*.rlib')
+mkdir -p build
+cp $LIBC_RLIB_NAME build/liblibc.rlib
+"""
+prepare_script_windows = """
+$ErrorActionPreference = 'Stop'
+Push-Location test_libc
+cargo clean
+cargo +1.94.0 build --release
+Pop-Location
+$libcRlib = Get-ChildItem -Path "./test_libc/target/release/deps/" -Filter "liblibc-*.rlib" | Select-Object -First 1
+New-Item -ItemType Directory -Path "build" -Force | Out-Null
+Copy-Item -Path $libcRlib.FullName -Destination "build/liblibc.rlib"
+"""
+
+[[project]]
+name = "vest"
+git_url = "https://github.com/secure-foundations/vest.git"
+refspec = "main"
+cargo_verus = true
+crate_roots = ["vest", "vest-examples/tls_dsl"]
+# The examples all use a build.rs file to run the Vest executable before verification can begin
+prepare_script = """
+cargo install vest
+"""
+prepare_script_windows = """
+cargo install vest
+"""
+
+[[project]]
+name = "human-eval"
+#TODO: restore original git_url, refspec:
+#git_url = "https://github.com/secure-foundations/human-eval-verus.git"
+#refspec = "main"
+git_url = "https://github.com/Chris-Hawblitzel/human-eval-verus.git"
+refspec = "origin/rlimit"
+crate_roots = ["tasks/lib.rs"]
+extra_verus_args = ["--crate-type=lib"]
+
+[[project]]
+name = "page-table"
+git_url = "https://github.com/matthias-brun/verified-nrkernel.git"
+refspec = "main"
+crate_roots = ["page-table/src/lib.rs"]
+extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"impl\""]
+
+
+# Fails 
+
+[[project]]
+name = "anvil"
+git_url = "https://github.com/anvil-verifier/anvil"
+refspec = "main"
+# Fails with "variable shadowing not yet supported" in vstd/std_specs/option.rs
+#   and with "function body check: Resource limit (rlimit) exceeded on newly_added_msg_have_different_id_from_existing_ones
+ignore= true
+crate_roots = ["src/vdeployment_admission_controller.rs"]
+extra_verus_args = ["--crate-type=lib", 
+              "-L", "dependency=src/deps_hack/target/debug/deps",
+              "--extern=deps_hack=\"src/deps_hack/target/debug/libdeps_hack.rlib\"",
+              "-A", "warnings"]
+prepare_script = """
+pushd src/deps_hack
+cargo clean
+cargo +1.94.0 build
+popd
+"""
+prepare_script_windows = """
+$ErrorActionPreference = 'Stop'
+Push-Location src/deps_hack
+cargo clean
+cargo +1.94.0 build
+Pop-Location
+"""
+

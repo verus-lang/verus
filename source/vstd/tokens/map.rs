@@ -142,7 +142,7 @@ impl<K, V> FracCarrier<K, V> {
 #[verifier::reject_recursive_types(K)]
 #[verifier::ext_equal]
 // This struct represents the underlying resource algebra for GhostMaps
-struct MapCarrier<K, V> {
+tracked struct MapCarrier<K, V> {
     auth: AuthCarrier<K, V>,
     frac: FracCarrier<K, V>,
 }
@@ -296,7 +296,7 @@ broadcast proof fn lemma_submap_of_op<K, V>(a: MapCarrier<K, V>, b: MapCarrier<K
 
 /// A resource that has the authoritative ownership on the entire map
 #[verifier::reject_recursive_types(K)]
-pub struct GhostMapAuth<K, V> {
+pub tracked struct GhostMapAuth<K, V> {
     r: Resource<MapCarrier<K, V>>,
 }
 
@@ -307,7 +307,7 @@ pub struct GhostMapAuth<K, V> {
 ///  - Those keys will remain pointing to the same values (unless the onwer of the [`GhostSubmap`] updates them using [`GhostSubmap::update`])
 ///  - All other [`GhostSubmap`]/[`GhostPointsTo`]/[`GhostPersistentSubmap`]/[`GhostPersistentPointsTo`] are disjoint subsets of the domain
 #[verifier::reject_recursive_types(K)]
-pub struct GhostSubmap<K, V> {
+pub tracked struct GhostSubmap<K, V> {
     r: Resource<MapCarrier<K, V>>,
 }
 
@@ -315,9 +315,9 @@ pub struct GhostSubmap<K, V> {
 ///
 /// The existence of a [`GhostPersistentSubmap`] implies that:
 ///  - Those keys will remain in the map, pointing to the same values, forever;
-///  - All other [`GhostSubmap`]/[`GhostPointsTo`]/[`GhostPersistentSubmap`]/[`GhostPersistentPointsTo`] are disjoint subsets of the domain
+///  - All other [`GhostSubmap`]/[`GhostPointsTo`] are disjoint subsets of the domain
 #[verifier::reject_recursive_types(K)]
-pub struct GhostPersistentSubmap<K, V> {
+pub tracked struct GhostPersistentSubmap<K, V> {
     r: Resource<MapCarrier<K, V>>,
 }
 
@@ -328,7 +328,7 @@ pub struct GhostPersistentSubmap<K, V> {
 ///  - Those key will remain pointing to the same value (unless the onwer of the [`GhostPointsTo`] updates them using [`GhostPointsTo::update`])
 ///  - All other [`GhostSubmap`]/[`GhostPointsTo`]/[`GhostPersistentSubmap`]/[`GhostPersistentPointsTo`] are disjoint subsets of the domain
 #[verifier::reject_recursive_types(K)]
-pub struct GhostPointsTo<K, V> {
+pub tracked struct GhostPointsTo<K, V> {
     submap: GhostSubmap<K, V>,
 }
 
@@ -336,9 +336,9 @@ pub struct GhostPointsTo<K, V> {
 ///
 /// The existence of a [`GhostPersistentPointsTo`] implies that:
 ///  - The key-value pair will remain in the map, forever;
-///  - All other [`GhostSubmap`]/[`GhostPointsTo`]/[`GhostPersistentSubmap`]/[`GhostPersistentPointsTo`] are disjoint subsets of the domain
+///  - All other [`GhostSubmap`]/[`GhostPointsTo`] are disjoint subsets of the domain
 #[verifier::reject_recursive_types(K)]
-pub struct GhostPersistentPointsTo<K, V> {
+pub tracked struct GhostPersistentPointsTo<K, V> {
     submap: GhostPersistentSubmap<K, V>,
 }
 
@@ -843,7 +843,7 @@ impl<K, V> GhostSubmap<K, V> {
             result.id() == self.id(),
             old(self)@ == self@.insert(result.key(), result.value()),
             result.key() == k,
-            self@.dom() =~= old(self)@.dom().remove(k),
+            self@ == old(self)@.remove(k),
     {
         use_type_invariant(&*self);
 
@@ -1231,7 +1231,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
             result.id() == self.id(),
             old(self)@ == self@.insert(result.key(), result.value()),
             result.key() == k,
-            self@.dom() =~= old(self)@.dom().remove(k),
+            self@ == old(self)@.remove(k),
     {
         use_type_invariant(&*self);
 

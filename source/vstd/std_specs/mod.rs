@@ -9,8 +9,13 @@ pub mod cmp;
 pub mod control_flow;
 pub mod convert;
 pub mod core;
+pub mod default;
+pub mod manually_drop;
+pub mod maybe_uninit;
 pub mod ops;
 
+#[cfg(all(feature = "alloc", feature = "std"))]
+pub mod btree;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash;
 

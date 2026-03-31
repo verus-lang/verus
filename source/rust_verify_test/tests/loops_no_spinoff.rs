@@ -1490,3 +1490,54 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// Basic success - invariant_except_break is allowed and verified
+test_verify_one_file_with_options! {
+    #[test] allow_complex_invariants_basic ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::loop_isolation(false)]
+        #[verifier::allow_complex_invariants]
+        fn test1() {
+            let mut i: u32 = 0;
+            while i < 10
+                invariant_except_break i <= 10
+                invariant 0 <= i <= 10
+            {
+                i = i + 1;
+            }
+            assert(i == 10);
+        }
+    } => Ok(())
+}
+
+// Error when used with loop_isolation(true)
+test_verify_one_file_with_options! {
+    #[test] allow_complex_invariants_error_requires_no_isolation ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::loop_isolation(true)]
+        #[verifier::allow_complex_invariants]
+        fn test1() {
+            let mut i: u32 = 0;
+            while i < 10
+                invariant i <= 10
+            {
+                i = i + 1;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "attribute 'allow_complex_invariants' can only be used with 'loop_isolation(false)'")
+}
+
+// Invariant violation - invariant_except_break not maintained
+test_verify_one_file_with_options! {
+    #[test] allow_complex_invariants_fail ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::loop_isolation(false)]
+        #[verifier::allow_complex_invariants]
+        fn test1() {
+            let mut i: u32 = 0;
+            while i < 100
+                invariant_except_break i < 10  // FAILS
+                invariant i <= 100
+            {
+                i = i + 1;
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}

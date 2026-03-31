@@ -30,6 +30,7 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
         crate::ast::TypX::SpecFn(_, _)
         | crate::ast::TypX::Real
         | crate::ast::TypX::AnonymousClosure(_, _, _)
+        | crate::ast::TypX::Dyn(..)
         | crate::ast::TypX::FnDef(..)
         | crate::ast::TypX::Decorate(_, _, _)
         | crate::ast::TypX::TypParam(_)

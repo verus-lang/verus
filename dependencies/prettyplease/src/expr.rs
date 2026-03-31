@@ -88,10 +88,9 @@ impl Printer {
             Expr::HasNot(expr) => self.expr_hasnot(expr),
             Expr::GetField(expr) => self.expr_get_field(expr),
             Expr::Matches(m) => self.expr_matches(m),
+            Expr::Final(e) => self.expr_final(e),
 
-            Expr::Assume(_) | Expr::Assert(_) | Expr::AssertForall(_) | Expr::RevealHide(_) => {
-                unimplemented!("unknown Expr {:?}", expr)
-            }
+            Expr::Assume(_) | Expr::Assert(_) | Expr::AssertForall(_) | Expr::RevealHide(_) => {}
         }
 
         if needs_paren {
@@ -173,6 +172,13 @@ impl Printer {
         self.expr(&expr.base, FixupContext::NONE);
         self.word("->");
         self.member(&expr.member);
+    }
+
+    pub fn expr_final(&mut self, expr: &verus_syn::ExprFinal) {
+        self.outer_attrs(&expr.attrs);
+        self.word("final(");
+        self.expr(&expr.arg, FixupContext::NONE);
+        self.word(")");
     }
 
     pub fn expr_beginning_of_line(

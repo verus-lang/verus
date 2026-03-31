@@ -2,6 +2,19 @@ use super::*;
 use crate::parse::ParseStream;
 use crate::punctuated::Punctuated;
 
+/// The parsing context, used to support context-sensitive grammars.
+///
+/// Currently used to make the `Specification` grammar context-sensitive:
+///   - In an `Expr` context, a condition in braces must also be parenthesized, i.e. `({ ... })`.
+///   - In an `Item` context, a condition in braces may appear unparenthesized, i.e. `{ ... }`.
+#[derive(Debug, Clone, Copy)]
+pub enum Context {
+    /// In an `Expr` e.g. a closure.
+    Expr,
+    /// In an `Item` e.g. a `fn` definition.
+    Item,
+}
+
 ast_enum_of_structs! {
     pub enum Publish {
         Closed(Closed),
@@ -583,6 +596,15 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    pub struct ExprFinal {
+        pub attrs: Vec<Attribute>,
+        pub final_token: Token![final],
+        pub paren_token: token::Paren,
+        pub arg: Box<Expr>,
+    }
+}
+
 #[cfg(feature = "parsing")]
 pub mod parsing {
     use super::*;
@@ -691,12 +713,76 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Specification {
+        /// Parse a `Specification` in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
+            Specification::parse_in(Context::Expr, input)
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Specification {
+        /// Parse a `Specification` in a given context.
+        pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             let mut exprs = Punctuated::new();
-            while !(input.is_empty()
+            while !input.is_empty() && Self::is_next_condition_valid(ctx, input) {
+                let inner_attrs = input.call(Attribute::parse_inner)?;
+                let mut expr = Expr::parse_without_eager_brace(input)?;
+                if !inner_attrs.is_empty() {
+                    let mut existing_attrs = expr.replace_attrs(Vec::new());
+                    let mut attrs = inner_attrs;
+                    attrs.append(&mut existing_attrs);
+                    expr.replace_attrs(attrs);
+                }
+                exprs.push(expr);
+                if !input.peek(Token![,]) {
+                    break;
+                }
+                let punct = input.parse()?;
+                exprs.push_punct(punct);
+            }
+            // Detect common syntax errors that lead to premature closure termination.
+            if input.peek(token::Brace) {
+                match ctx {
+                    Context::Expr => {
+                        if input.peek2(token::Brace) || Self::peek2_spec_keyword(input) {
+                            // Missing parentheses around block.
+                            return Err(input.error("This block looks like the closure/loop body, but it is followed immediately by another block or clause. If you meant this block to be part of a clause, try parenthesizing it."));
+                        }
+                    }
+                    Context::Item => {
+                        if !exprs.trailing_punct() && input.peek2(Token![,]) {
+                            // Missing comma before block.
+                            return Err(input.error("This block looks like it might be part of the clause. If you meant it to be part of the clause, put a comma before it."));
+                        }
+                        if input.peek2(token::Brace) || Self::peek2_spec_keyword(input) {
+                            // Missing comma after block.
+                            return Err(input.error("This block looks like it might be part of the clause. If you meant it to be part of the clause, put a comma after it."));
+                        }
+                    }
+                }
+            }
+            Ok(Specification { exprs })
+        }
+
+        fn is_next_condition_valid(ctx: Context, input: ParseStream) -> bool {
+            let allow_braces = matches!(ctx, Context::Item);
+            Self::is_next_condition_bare(input)
+                || allow_braces && Self::is_next_condition_in_braces(input)
+        }
+
+        fn is_next_condition_in_braces(input: ParseStream) -> bool {
+            input.peek(token::Brace) && input.peek2(Token![,])
+        }
+
+        fn is_next_condition_bare(input: ParseStream) -> bool {
+            !(input.peek(Token![,])
                 || input.peek(token::Brace)
                 || input.peek(Token![;])
-                || input.peek(Token![invariant_except_break])
+                || Self::peek_spec_keyword(input))
+        }
+
+        fn peek_spec_keyword(input: ParseStream) -> bool {
+            input.peek(Token![invariant_except_break])
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
@@ -706,40 +792,56 @@ pub mod parsing {
                 || input.peek(Token![via])
                 || input.peek(Token![when])
                 || input.peek(Token![no_unwind])
-                || input.peek(Token![opens_invariants]))
-            {
-                let expr = Expr::parse_without_eager_brace(input)?;
-                exprs.push(expr);
-                if !input.peek(Token![,]) {
-                    break;
+                || input.peek(Token![opens_invariants])
+        }
+
+        fn peek2_spec_keyword(input: ParseStream) -> bool {
+            input.peek2(Token![invariant_except_break])
+                || input.peek2(Token![invariant])
+                || input.peek2(Token![invariant_ensures])
+                || input.peek2(Token![ensures])
+                || input.peek2(Token![default_ensures])
+                || input.peek2(Token![returns])
+                || input.peek2(Token![decreases])
+                || input.peek2(Token![via])
+                || input.peek2(Token![when])
+                || input.peek2(Token![no_unwind])
+                || input.peek2(Token![opens_invariants])
+        }
+
+        /// Remove top-level attributes: `#![trigger ...]`, `#![all_triggers]`, and `#![auto]`.
+        ///
+        /// Those currently attach to the first clause as inner attributes,
+        /// even though semantically they apply to the entire `ensures` group.
+        fn remove_top_level_attrs(&mut self) -> Vec<Attribute> {
+            let Some(first_clause) = self.exprs.first_mut() else {
+                return Vec::new();
+            };
+
+            fn is_top_level_trigger_attr(attr: &Attribute) -> bool {
+                if !matches!(attr.style, AttrStyle::Inner(_)) {
+                    return false;
                 }
-                let punct = input.parse()?;
-                exprs.push_punct(punct);
+                if attr.path().segments.len() != 1 {
+                    return false;
+                }
+                match attr.path().segments[0].ident.to_string().as_ref() {
+                    "trigger" | "all_triggers" | "auto" => true,
+                    _ => false,
+                }
             }
-            if input.peek(token::Brace) {
-                if input.peek2(token::Brace) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by another block (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-                if input.peek2(token::Comma) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a comma (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-                if input.peek2(Token![ensures]) || input.peek2(Token![default_ensures]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-                if input.peek2(Token![opens_invariants]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'opens_invariants' (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-                if input.peek2(Token![invariant_except_break]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant_except_break' (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-                if input.peek2(Token![invariant]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant' (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-                if input.peek2(Token![decreases]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a 'decreases' (if you meant this block to be part of the specification, try parenthesizing it)"));
+
+            let mut top_level_attrs = Vec::new();
+            let mut remaining_attrs = Vec::new();
+            for attr in first_clause.replace_attrs(Vec::new()) {
+                if is_top_level_trigger_attr(&attr) {
+                    top_level_attrs.push(attr);
+                } else {
+                    remaining_attrs.push(attr);
                 }
             }
-            Ok(Specification { exprs })
+            first_clause.replace_attrs(remaining_attrs);
+            top_level_attrs
         }
     }
 
@@ -760,11 +862,37 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Requires {
+        /// Parse a `requires` clause group in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
+            Requires::parse_in(Context::Expr, input)
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<Requires> {
+        /// Parse an optional `requires` clause group in the context of an `Expr` e.g. a closure.
+        fn parse(input: ParseStream) -> Result<Self> {
+            Requires::parse_optional_in(Context::Expr, input)
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Requires {
+        /// Parse a `requires` clause group in a given context.
+        pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             Ok(Requires {
                 token: input.parse()?,
-                exprs: input.parse()?,
+                exprs: Specification::parse_in(ctx, input)?,
             })
+        }
+
+        /// Parse an optional `requires` clause group in a given context.
+        pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
+            if input.peek(Token![requires]) {
+                Self::parse_in(ctx, input).map(Some)
+            } else {
+                Ok(None)
+            }
         }
     }
 
@@ -772,7 +900,7 @@ pub mod parsing {
     impl Parse for Recommends {
         fn parse(input: ParseStream) -> Result<Self> {
             let token = input.parse()?;
-            let exprs = input.parse()?;
+            let exprs = Specification::parse_in(Context::Item, input)?;
             let via = if input.peek(Token![via]) {
                 let via_token: Token![via] = input.parse()?;
                 // let expr = input.parse()?;
@@ -787,25 +915,53 @@ pub mod parsing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Ensures {
+        /// Parse an `ensures` clause group in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
-            let mut attrs = Vec::new();
+            Ensures::parse_in(Context::Expr, input)
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<Ensures> {
+        /// Parse an optional `ensures` clause group in the context of an `Expr` e.g. a closure.
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ensures::parse_optional_in(Context::Expr, input)
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Ensures {
+        /// Parse an `ensures` clause group in a given context.
+        pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             let token = input.parse()?;
-            attr::parsing::parse_inner(input, &mut attrs)?;
+            let mut exprs = Specification::parse_in(ctx, input)?;
+            // Hoist attributes that semantically belong to the entire group.
+            let top_level_attrs = exprs.remove_top_level_attrs();
             Ok(Ensures {
-                attrs,
+                attrs: top_level_attrs,
                 token,
-                exprs: input.parse()?,
+                exprs,
             })
+        }
+
+        /// Parse an optional `ensures` clause group in a given context.
+        pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
+            if input.peek(Token![ensures]) {
+                Self::parse_in(ctx, input).map(Some)
+            } else {
+                Ok(None)
+            }
         }
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for DefaultEnsures {
+        /// Parse a `default_ensures` clause group in the context of an `Item` e.g. `fn` definition.
         fn parse(input: ParseStream) -> Result<Self> {
             let token = input.parse()?;
             Ok(DefaultEnsures {
                 token,
-                exprs: input.parse()?,
+                exprs: Specification::parse_in(Context::Item, input)?,
             })
         }
     }
@@ -816,7 +972,7 @@ pub mod parsing {
             let token = input.parse()?;
             Ok(Returns {
                 token,
-                exprs: input.parse()?,
+                exprs: Specification::parse_in(Context::Item, input)?,
             })
         }
     }
@@ -826,7 +982,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(InvariantExceptBreak {
                 token: input.parse()?,
-                exprs: input.parse()?,
+                exprs: Specification::parse_in(Context::Expr, input)?,
             })
         }
     }
@@ -836,7 +992,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(Invariant {
                 token: input.parse()?,
-                exprs: input.parse()?,
+                exprs: Specification::parse_in(Context::Expr, input)?,
             })
         }
     }
@@ -846,25 +1002,51 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(InvariantEnsures {
                 token: input.parse()?,
-                exprs: input.parse()?,
+                exprs: Specification::parse_in(Context::Expr, input)?,
             })
         }
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Decreases {
+        /// Parse a `decreases` clause group in the context of an `Expr` e.g. a closure.
         fn parse(input: ParseStream) -> Result<Self> {
+            Decreases::parse_in(Context::Expr, input)
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<Decreases> {
+        /// Parse an optional `decreases` clause group in the context of an `Expr` e.g. a closure.
+        fn parse(input: ParseStream) -> Result<Self> {
+            Decreases::parse_optional_in(Context::Expr, input)
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Decreases {
+        /// Parse a `decreases` clause group in a given context.
+        pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             Ok(Decreases {
                 token: input.parse()?,
-                exprs: input.parse()?,
+                exprs: Specification::parse_in(ctx, input)?,
             })
+        }
+
+        /// Parse an optional `decreases` clause group in a given context.
+        pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
+            if input.peek(Token![decreases]) {
+                Self::parse_in(ctx, input).map(Some)
+            } else {
+                Ok(None)
+            }
         }
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for SignatureDecreases {
         fn parse(input: ParseStream) -> Result<Self> {
-            let decreases = input.parse()?;
+            let decreases = Decreases::parse_in(Context::Item, input)?;
             let when = if input.peek(Token![when]) {
                 let when_token = input.parse()?;
                 let expr = Expr::parse_without_eager_brace(input)?;
@@ -995,31 +1177,9 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for Option<Requires> {
-        fn parse(input: ParseStream) -> Result<Self> {
-            if input.peek(Token![requires]) {
-                input.parse().map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-    }
-
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Recommends> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![recommends]) {
-                input.parse().map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-    }
-
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for Option<Ensures> {
-        fn parse(input: ParseStream) -> Result<Self> {
-            if input.peek(Token![ensures]) {
                 input.parse().map(Some)
             } else {
                 Ok(None)
@@ -1083,17 +1243,6 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for Option<Decreases> {
-        fn parse(input: ParseStream) -> Result<Self> {
-            if input.peek(Token![decreases]) {
-                input.parse().map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-    }
-
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<SignatureDecreases> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![decreases]) {
@@ -1120,9 +1269,9 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let prover: Option<Prover> = input.parse()?;
             let with: Option<WithSpecOnFn> = input.parse()?;
-            let requires: Option<Requires> = input.parse()?;
+            let requires: Option<Requires> = Requires::parse_optional_in(Context::Item, input)?;
             let recommends: Option<Recommends> = input.parse()?;
-            let ensures: Option<Ensures> = input.parse()?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
@@ -1213,7 +1362,7 @@ pub mod parsing {
                     None
                 };
                 let (requires, body) = if input.peek(Token![requires]) || input.peek(token::Brace) {
-                    let requires = input.parse()?;
+                    let requires = Requires::parse_optional_in(Context::Expr, input)?;
                     let block = if input.peek(token::Brace) {
                         Some(Box::new(input.parse()?))
                     } else {
@@ -1427,8 +1576,8 @@ pub mod parsing {
             let output: ReturnType = input.parse()?;
             generics.where_clause = input.parse()?;
 
-            let requires: Option<Requires> = input.parse()?;
-            let ensures: Option<Ensures> = input.parse()?;
+            let requires: Option<Requires> = Requires::parse_optional_in(Context::Item, input)?;
+            let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
@@ -1583,6 +1732,23 @@ pub mod parsing {
             } else {
                 Ok(None)
             }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for ExprFinal {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = Vec::new();
+            let final_token: Token![final] = input.parse()?;
+            let content;
+            let paren_token = parenthesized!(content in input);
+            let arg: Expr = content.parse()?;
+            Ok(ExprFinal {
+                attrs,
+                final_token,
+                paren_token,
+                arg: Box::new(arg),
+            })
         }
     }
 }
@@ -2159,6 +2325,17 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprFinal {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.final_token.to_tokens(tokens);
+            self.paren_token.surround(tokens, |tokens| {
+                self.arg.to_tokens(tokens);
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for AssumeSpecification {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             outer_attrs_to_tokens(&self.attrs, tokens);
@@ -2414,8 +2591,8 @@ impl parse::Parse for LoopSpec {
 
         let invariants: Option<Invariant> = input.parse()?;
         let invariant_except_breaks: Option<InvariantExceptBreak> = input.parse()?;
-        let ensures: Option<Ensures> = input.parse()?;
-        let decreases: Option<Decreases> = input.parse()?;
+        let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Expr, input)?;
+        let decreases = Decreases::parse_optional_in(Context::Expr, input)?;
         Ok(LoopSpec {
             iter_name,
             invariants,

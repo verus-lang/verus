@@ -170,6 +170,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] union_generics verus_code! {
+        use vstd::prelude::*;
+
         union U<A: Copy, B: Copy> { x: A, y: B }
 
         fn test_ok() {

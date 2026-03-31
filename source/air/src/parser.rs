@@ -1,7 +1,7 @@
 use crate::ast::{
     Axiom, BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl,
-    DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Qid, Quant, QueryX, Relation, Stmt, StmtX,
-    Stmts, Trigger, Triggers, Typ, TypX, UnaryOp,
+    DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Qid, Quant, QueryX, Relation, RoundingMode,
+    Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, UnaryOp,
 };
 use crate::def::mk_skolem_id;
 use crate::messages::ArcDynMessageLabel;
@@ -35,14 +35,27 @@ fn is_bitvec(nodes: &Vec<Node>) -> Option<u32> {
     None
 }
 
-fn underscore_atom_atom_expr(s1: &str, s2: &str) -> Option<Constant> {
-    if s1.starts_with("bv") {
-        let value = Arc::new(s1["bv".len()..].to_string());
-        if let Ok(width) = s2.parse::<u32>() {
-            return Some(Constant::BitVec(value, width));
+fn is_float_type(nodes: &Vec<Node>) -> Option<Typ> {
+    if nodes[0] == Node::Atom("_".to_string())
+        && nodes[1] == Node::Atom("FloatingPoint".to_string())
+        && nodes.len() == 4
+    {
+        if let (Node::Atom(s2), Node::Atom(s3)) = (&nodes[2], &nodes[3]) {
+            match (s2.parse::<u32>(), s3.parse::<u32>()) {
+                (Ok(exp_bits), Ok(sig_bits)) => {
+                    return Some(Arc::new(TypX::Float { exp_bits, sig_bits }));
+                }
+                _ => return None,
+            }
         }
     }
     None
+}
+
+fn underscore_atom_atom_expr(s1: &str, s2: &str) -> Option<Constant> {
+    let value = s1.strip_prefix("bv")?;
+    let width = s2.parse::<u32>().ok()?;
+    Some(Constant::BitVec(Arc::new(value.to_owned()), width))
 }
 
 fn relation_binary_op(n1: &Node, n2: &Node) -> Option<BinaryOp> {
@@ -116,13 +129,28 @@ impl Parser {
 
     pub(crate) fn node_to_typ(&self, node: &Node) -> Result<Typ, String> {
         match node {
-            Node::Atom(s) if s.to_string() == "Bool" => Ok(Arc::new(TypX::Bool)),
-            Node::Atom(s) if s.to_string() == "Int" => Ok(Arc::new(TypX::Int)),
-            Node::Atom(s) if s.to_string() == "Real" => Ok(Arc::new(TypX::Real)),
-            Node::Atom(s) if s.to_string() == "Fun" => Ok(Arc::new(TypX::Fun)),
+            Node::Atom(s) if s == "Bool" => Ok(Arc::new(TypX::Bool)),
+            Node::Atom(s) if s == "Int" => Ok(Arc::new(TypX::Int)),
+            Node::Atom(s) if s == "Real" => Ok(Arc::new(TypX::Real)),
+            Node::Atom(s) if s == "Fun" => Ok(Arc::new(TypX::Fun)),
+            Node::Atom(s) if s == "Float16" => {
+                Ok(Arc::new(TypX::Float { exp_bits: 5, sig_bits: 11 }))
+            }
+            Node::Atom(s) if s == "Float32" => {
+                Ok(Arc::new(TypX::Float { exp_bits: 8, sig_bits: 24 }))
+            }
+            Node::Atom(s) if s == "Float64" => {
+                Ok(Arc::new(TypX::Float { exp_bits: 11, sig_bits: 53 }))
+            }
+            Node::Atom(s) if s == "Float128" => {
+                Ok(Arc::new(TypX::Float { exp_bits: 15, sig_bits: 113 }))
+            }
             Node::Atom(s) if is_symbol(s) => Ok(Arc::new(TypX::Named(Arc::new(s.clone())))),
             Node::List(nodes) if is_bitvec(nodes).is_some() => {
                 Ok(Arc::new(TypX::BitVec(is_bitvec(nodes).unwrap())))
+            }
+            Node::List(nodes) if is_float_type(nodes).is_some() => {
+                Ok(is_float_type(nodes).unwrap())
             }
             _ => Err(format!("expected type, found: {}", node_to_string(node))),
         }
@@ -160,12 +188,8 @@ impl Parser {
 
     pub(crate) fn node_to_expr(&self, node: &Node) -> Result<Expr, String> {
         match node {
-            Node::Atom(s) if s.to_string() == "true" => {
-                Ok(Arc::new(ExprX::Const(Constant::Bool(true))))
-            }
-            Node::Atom(s) if s.to_string() == "false" => {
-                Ok(Arc::new(ExprX::Const(Constant::Bool(false))))
-            }
+            Node::Atom(s) if s == "true" => Ok(Arc::new(ExprX::Const(Constant::Bool(true)))),
+            Node::Atom(s) if s == "false" => Ok(Arc::new(ExprX::Const(Constant::Bool(false)))),
             Node::Atom(s) if s.len() > 0 && s.chars().all(|c| c.is_ascii_digit()) => {
                 Ok(Arc::new(ExprX::Const(Constant::Nat(Arc::new(s.clone())))))
             }
@@ -176,7 +200,7 @@ impl Parser {
             Node::List(nodes) if nodes.len() > 0 => {
                 match &nodes[..] {
                     [Node::Atom(s), Node::List(nodes), Node::List(filter), e]
-                        if s.to_string() == "location" && filter.len() <= 1 =>
+                        if s == "location" && filter.len() <= 1 =>
                     {
                         let error =
                             self.message_interface.from_labels(&self.nodes_to_labels(nodes)?);
@@ -185,7 +209,7 @@ impl Parser {
                         return Ok(Arc::new(ExprX::LabeledAssertion(None, error, filter, expr)));
                     }
                     [Node::Atom(s), Node::List(nodes), Node::List(filter), e]
-                        if s.to_string() == "axiom_location" && filter.len() <= 1 =>
+                        if s == "axiom_location" && filter.len() <= 1 =>
                     {
                         let labels = self.nodes_to_labels(nodes)?;
                         let filter = self.nodes_to_filter(filter)?;
@@ -193,35 +217,35 @@ impl Parser {
                         return Ok(Arc::new(ExprX::LabeledAxiom(labels, filter, expr)));
                     }
                     [Node::Atom(s), Node::Atom(snap), Node::Atom(x)]
-                        if s.to_string() == "old" && is_symbol(snap) && is_symbol(x) =>
+                        if s == "old" && is_symbol(snap) && is_symbol(x) =>
                     {
                         return Ok(Arc::new(ExprX::Old(
                             Arc::new(snap.clone()),
                             Arc::new(x.clone()),
                         )));
                     }
-                    [Node::Atom(s), Node::List(binders), e] if s.to_string() == "let" => {
+                    [Node::Atom(s), Node::List(binders), e] if s == "let" => {
                         return self.node_to_let_expr(binders, e);
                     }
-                    [Node::Atom(s), Node::List(binders), e] if s.to_string() == "forall" => {
+                    [Node::Atom(s), Node::List(binders), e] if s == "forall" => {
                         let quantchooselambda = QuantOrChooseOrLambda::Quant(Quant::Forall);
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e);
                     }
-                    [Node::Atom(s), Node::List(binders), e] if s.to_string() == "exists" => {
+                    [Node::Atom(s), Node::List(binders), e] if s == "exists" => {
                         let quantchooselambda = QuantOrChooseOrLambda::Quant(Quant::Exists);
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e);
                     }
-                    [Node::Atom(s), Node::List(binders), e] if s.to_string() == "lambda" => {
+                    [Node::Atom(s), Node::List(binders), e] if s == "lambda" => {
                         let quantchooselambda = QuantOrChooseOrLambda::Lambda;
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e);
                     }
-                    [Node::Atom(s), Node::List(binders), e1, e2] if s.to_string() == "choose" => {
+                    [Node::Atom(s), Node::List(binders), e1, e2] if s == "choose" => {
                         let quantchooselambda =
                             QuantOrChooseOrLambda::Choose(self.node_to_expr(e2)?);
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e1);
                     }
                     [Node::Atom(s), Node::Atom(s1), Node::Atom(s2)]
-                        if s.to_string() == "_" && underscore_atom_atom_expr(s1, s2).is_some() =>
+                        if s == "_" && underscore_atom_atom_expr(s1, s2).is_some() =>
                     {
                         return Ok(Arc::new(ExprX::Const(
                             underscore_atom_atom_expr(s1, s2).unwrap(),
@@ -230,23 +254,96 @@ impl Parser {
                     _ => {}
                 }
                 match &nodes[0] {
-                    Node::Atom(s) if s.to_string() == "apply" && nodes.len() >= 3 => {
+                    Node::Atom(s) if s == "apply" && nodes.len() >= 3 => {
                         let typ = self.node_to_typ(&nodes[1])?;
                         let f = self.node_to_expr(&nodes[2])?;
                         let args = self.nodes_to_exprs(&nodes[3..])?;
                         return Ok(Arc::new(ExprX::ApplyFun(typ, f, args)));
                     }
-                    Node::Atom(s) if s.to_string() == "array" && nodes.len() >= 1 => {
+                    Node::Atom(s) if s == "array" && nodes.len() >= 1 => {
                         let args = self.nodes_to_exprs(&nodes[1..])?;
                         return Ok(Arc::new(ExprX::Array(args)));
                     }
                     _ => {}
                 }
-                let args = self.nodes_to_exprs(&nodes[1..])?;
+                let round = |args: &mut Exprs| {
+                    Arc::make_mut(args).remove(0);
+                    match nodes.get(1) {
+                        Some(Node::Atom(s)) => match s.as_str() {
+                            "RNE" | "roundNearestTiesToEven" => Ok(RoundingMode::RNE),
+                            "RNA" | "roundNearestTiesToAway" => Ok(RoundingMode::RNA),
+                            "RTP" | "roundTowardPositive" => Ok(RoundingMode::RTP),
+                            "RTN" | "roundTowardNegative" => Ok(RoundingMode::RTN),
+                            "RTZ" | "roundTowardZero" => Ok(RoundingMode::RTZ),
+                            _ => Err("expected rounding mode in fp operation"),
+                        },
+                        _ => Err("expected rounding mode in fp operation"),
+                    }
+                };
+                let mut args = self.nodes_to_exprs(&nodes[1..])?;
                 let uop = match &nodes[0] {
-                    Node::Atom(s) if s.to_string() == "not" => Some(UnaryOp::Not),
-                    Node::Atom(s) if s.to_string() == "bvnot" => Some(UnaryOp::BitNot),
-                    Node::Atom(s) if s.to_string() == "to_real" => Some(UnaryOp::ToReal),
+                    Node::Atom(s) if s == "not" => Some(UnaryOp::Not),
+                    Node::Atom(s) if s == "bvnot" => Some(UnaryOp::BitNot),
+                    Node::Atom(s) if s == "bvneg" => Some(UnaryOp::BitNeg),
+                    Node::Atom(s) if s == "fp.neg" => Some(UnaryOp::FloatNeg),
+                    Node::Atom(s) if s == "fp.roundToIntegral" => {
+                        Some(UnaryOp::FloatRoundToInt(round(&mut args)?))
+                    }
+                    Node::Atom(s) if s == "fp.isNormal" => Some(UnaryOp::FloatIsNormal),
+                    Node::Atom(s) if s == "fp.isSubnormal" => Some(UnaryOp::FloatIsSubnormal),
+                    Node::Atom(s) if s == "fp.isZero" => Some(UnaryOp::FloatIsZero),
+                    Node::Atom(s) if s == "fp.isInfinite" => Some(UnaryOp::FloatIsInfinite),
+                    Node::Atom(s) if s == "fp.isNaN" => Some(UnaryOp::FloatIsNaN),
+                    Node::Atom(s) if s == "fp.isNegative" => Some(UnaryOp::FloatIsNegative),
+                    Node::Atom(s) if s == "fp.isPositive" => Some(UnaryOp::FloatIsPositive),
+                    Node::List(nodes)
+                        if nodes.len() == 4
+                            && nodes[0] == Node::Atom("_".to_string())
+                            && (nodes[1] == Node::Atom("to_fp".to_string())
+                                || nodes[1] == Node::Atom("to_fp_unsigned".to_string())) =>
+                    {
+                        let signed = nodes[1] == Node::Atom("to_fp".to_string());
+                        let exp_sig_bits = match (&nodes[2], &nodes[3]) {
+                            (Node::Atom(s2), Node::Atom(s3)) => {
+                                match (s2.parse::<u32>(), s3.parse::<u32>()) {
+                                    (Ok(exp_bits), Ok(sig_bits)) => Some((exp_bits, sig_bits)),
+                                    _ => None,
+                                }
+                            }
+                            _ => None,
+                        };
+                        if let Some((exp_bits, sig_bits)) = exp_sig_bits {
+                            if args.len() <= 1 && signed {
+                                Some(UnaryOp::FloatFromIeeeBits { exp_bits, sig_bits })
+                            } else if args.len() > 1 {
+                                let round = round(&mut args)?;
+                                Some(UnaryOp::FloatFrom { exp_bits, sig_bits, signed, round })
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    Node::List(nodes)
+                        if nodes.len() == 3
+                            && nodes[0] == Node::Atom("_".to_string())
+                            && (nodes[1] == Node::Atom("fp.to_ubv".to_string())
+                                || nodes[1] == Node::Atom("fp.to_sbv".to_string())) =>
+                    {
+                        let signed = nodes[1] == Node::Atom("fp.to_sbv".to_string());
+                        let round = round(&mut args)?;
+                        match &nodes[2] {
+                            Node::Atom(s2) => match s2.parse::<u32>() {
+                                Ok(bits) => Some(UnaryOp::FloatToBitVec { bits, signed, round }),
+                                _ => None,
+                            },
+                            _ => None,
+                        }
+                    }
+                    Node::Atom(s) if s == "fp.to_real" => Some(UnaryOp::FloatToReal),
+                    Node::Atom(s) if s == "to_real" => Some(UnaryOp::ToReal),
+                    Node::Atom(s) if s == "to_int" => Some(UnaryOp::RealToInt),
                     Node::List(nodes)
                         if nodes.len() == 4
                             && nodes[0] == Node::Atom("_".to_string())
@@ -285,30 +382,39 @@ impl Parser {
                     _ => None,
                 };
                 let bop = match &nodes[0] {
-                    Node::Atom(s) if s.to_string() == "=>" => Some(BinaryOp::Implies),
-                    Node::Atom(s) if s.to_string() == "=" => Some(BinaryOp::Eq),
-                    Node::Atom(s) if s.to_string() == "<=" => Some(BinaryOp::Le),
-                    Node::Atom(s) if s.to_string() == ">=" => Some(BinaryOp::Ge),
-                    Node::Atom(s) if s.to_string() == "<" => Some(BinaryOp::Lt),
-                    Node::Atom(s) if s.to_string() == ">" => Some(BinaryOp::Gt),
-                    Node::Atom(s) if s.to_string() == "div" => Some(BinaryOp::EuclideanDiv),
-                    Node::Atom(s) if s.to_string() == "mod" => Some(BinaryOp::EuclideanMod),
-                    Node::Atom(s) if s.to_string() == "/" => Some(BinaryOp::RealDiv),
-                    Node::Atom(s) if s.to_string() == "bvxor" => Some(BinaryOp::BitXor),
-                    Node::Atom(s) if s.to_string() == "bvand" => Some(BinaryOp::BitAnd),
-                    Node::Atom(s) if s.to_string() == "bvor" => Some(BinaryOp::BitOr),
-                    Node::Atom(s) if s.to_string() == "bvadd" => Some(BinaryOp::BitAdd),
-                    Node::Atom(s) if s.to_string() == "bvsub" => Some(BinaryOp::BitSub),
-                    Node::Atom(s) if s.to_string() == "bvmul" => Some(BinaryOp::BitMul),
-                    Node::Atom(s) if s.to_string() == "bvudiv" => Some(BinaryOp::BitUDiv),
-                    Node::Atom(s) if s.to_string() == "bvurem" => Some(BinaryOp::BitURem),
-                    Node::Atom(s) if s.to_string() == "bvult" => Some(BinaryOp::BitULt),
-                    Node::Atom(s) if s.to_string() == "bvugt" => Some(BinaryOp::BitUGt),
-                    Node::Atom(s) if s.to_string() == "bvule" => Some(BinaryOp::BitULe),
-                    Node::Atom(s) if s.to_string() == "bvuge" => Some(BinaryOp::BitUGe),
-                    Node::Atom(s) if s.to_string() == "bvlshr" => Some(BinaryOp::LShr),
-                    Node::Atom(s) if s.to_string() == "bvshl" => Some(BinaryOp::Shl),
-                    Node::Atom(s) if s.to_string() == "concat" => Some(BinaryOp::BitConcat),
+                    Node::Atom(s) if s == "=>" => Some(BinaryOp::Implies),
+                    Node::Atom(s) if s == "=" => Some(BinaryOp::Eq),
+                    Node::Atom(s) if s == "<=" => Some(BinaryOp::Le),
+                    Node::Atom(s) if s == ">=" => Some(BinaryOp::Ge),
+                    Node::Atom(s) if s == "<" => Some(BinaryOp::Lt),
+                    Node::Atom(s) if s == ">" => Some(BinaryOp::Gt),
+                    Node::Atom(s) if s == "div" => Some(BinaryOp::EuclideanDiv),
+                    Node::Atom(s) if s == "mod" => Some(BinaryOp::EuclideanMod),
+                    Node::Atom(s) if s == "/" => Some(BinaryOp::RealDiv),
+                    Node::Atom(s) if s == "bvxor" => Some(BinaryOp::BitXor),
+                    Node::Atom(s) if s == "bvand" => Some(BinaryOp::BitAnd),
+                    Node::Atom(s) if s == "bvor" => Some(BinaryOp::BitOr),
+                    Node::Atom(s) if s == "bvadd" => Some(BinaryOp::BitAdd),
+                    Node::Atom(s) if s == "bvsub" => Some(BinaryOp::BitSub),
+                    Node::Atom(s) if s == "bvmul" => Some(BinaryOp::BitMul),
+                    Node::Atom(s) if s == "bvudiv" => Some(BinaryOp::BitUDiv),
+                    Node::Atom(s) if s == "bvurem" => Some(BinaryOp::BitURem),
+                    Node::Atom(s) if s == "bvult" => Some(BinaryOp::BitULt),
+                    Node::Atom(s) if s == "bvugt" => Some(BinaryOp::BitUGt),
+                    Node::Atom(s) if s == "bvule" => Some(BinaryOp::BitULe),
+                    Node::Atom(s) if s == "bvuge" => Some(BinaryOp::BitUGe),
+                    Node::Atom(s) if s == "bvlshr" => Some(BinaryOp::LShr),
+                    Node::Atom(s) if s == "bvshl" => Some(BinaryOp::Shl),
+                    Node::Atom(s) if s == "concat" => Some(BinaryOp::BitConcat),
+                    Node::Atom(s) if s == "fp.add" => Some(BinaryOp::FloatAdd(round(&mut args)?)),
+                    Node::Atom(s) if s == "fp.sub" => Some(BinaryOp::FloatSub(round(&mut args)?)),
+                    Node::Atom(s) if s == "fp.mul" => Some(BinaryOp::FloatMul(round(&mut args)?)),
+                    Node::Atom(s) if s == "fp.div" => Some(BinaryOp::FloatDiv(round(&mut args)?)),
+                    Node::Atom(s) if s == "fp.eq" => Some(BinaryOp::FloatEq),
+                    Node::Atom(s) if s == "fp.lt" => Some(BinaryOp::FloatLt),
+                    Node::Atom(s) if s == "fp.gt" => Some(BinaryOp::FloatGt),
+                    Node::Atom(s) if s == "fp.leq" => Some(BinaryOp::FloatLe),
+                    Node::Atom(s) if s == "fp.geq" => Some(BinaryOp::FloatGe),
                     Node::List(nodes)
                         if nodes.len() == 3
                             && nodes[0] == Node::Atom("_".to_string())
@@ -326,17 +432,18 @@ impl Parser {
                     _ => None,
                 };
                 let lop = match &nodes[0] {
-                    Node::Atom(s) if s.to_string() == "and" => Some(MultiOp::And),
-                    Node::Atom(s) if s.to_string() == "or" => Some(MultiOp::Or),
-                    Node::Atom(s) if s.to_string() == "xor" => Some(MultiOp::Xor),
-                    Node::Atom(s) if s.to_string() == "+" => Some(MultiOp::Add),
-                    Node::Atom(s) if s.to_string() == "-" => Some(MultiOp::Sub),
-                    Node::Atom(s) if s.to_string() == "*" => Some(MultiOp::Mul),
-                    Node::Atom(s) if s.to_string() == "distinct" => Some(MultiOp::Distinct),
+                    Node::Atom(s) if s == "and" => Some(MultiOp::And),
+                    Node::Atom(s) if s == "or" => Some(MultiOp::Or),
+                    Node::Atom(s) if s == "xor" => Some(MultiOp::Xor),
+                    Node::Atom(s) if s == "+" => Some(MultiOp::Add),
+                    Node::Atom(s) if s == "-" => Some(MultiOp::Sub),
+                    Node::Atom(s) if s == "*" => Some(MultiOp::Mul),
+                    Node::Atom(s) if s == "distinct" => Some(MultiOp::Distinct),
+                    Node::Atom(s) if s == "fp" => Some(MultiOp::Float),
                     _ => None,
                 };
                 let ite = match &nodes[0] {
-                    Node::Atom(s) if s.to_string() == "ite" => true,
+                    Node::Atom(s) if s == "ite" => true,
                     _ => false,
                 };
                 let fun = match &nodes[0] {
@@ -439,13 +546,13 @@ impl Parser {
 
         for node in nodes {
             match node {
-                Node::Atom(s) if s.to_string() == ":pattern" => {
+                Node::Atom(s) if s == ":pattern" => {
                     consume_pattern = true;
                 }
-                Node::Atom(s) if s.to_string() == ":qid" => {
+                Node::Atom(s) if s == ":qid" => {
                     consume_qid = true;
                 }
-                Node::Atom(s) if s.to_string() == ":skolemid" => {
+                Node::Atom(s) if s == ":skolemid" => {
                     consume_skolemid = true;
                 }
                 Node::Atom(s) if consume_qid && qid.is_none() => {
@@ -496,7 +603,7 @@ impl Parser {
 
         for node in nodes {
             match node {
-                Node::Atom(s) if s.to_string() == ":named" => {
+                Node::Atom(s) if s == ":named" => {
                     consume_named = true;
                 }
                 Node::Atom(s) if consume_named && named.is_none() => {
@@ -521,7 +628,7 @@ impl Parser {
         let binders = self.nodes_to_binders(binder_nodes, &|n| self.node_to_typ(n))?;
         let (expr, triggers, qid) = match &expr {
             Node::List(nodes) if nodes.len() >= 2 => match &nodes[0] {
-                Node::Atom(s) if s.to_string() == "!" => {
+                Node::Atom(s) if s == "!" => {
                     let (triggers, qid) = self.nodes_to_triggers_and_qid(&nodes[2..])?;
                     (&nodes[1], triggers, qid)
                 }
@@ -545,28 +652,26 @@ impl Parser {
     pub fn node_to_stmt(&self, node: &Node) -> Result<Stmt, String> {
         match node {
             Node::List(nodes) => match &nodes[..] {
-                [Node::Atom(s), e] if s.to_string() == "assume" => {
+                [Node::Atom(s), e] if s == "assume" => {
                     let expr = self.node_to_expr(&e)?;
                     Ok(Arc::new(StmtX::Assume(expr)))
                 }
-                [Node::Atom(s), e] if s.to_string() == "assert" => {
+                [Node::Atom(s), e] if s == "assert" => {
                     let expr = self.node_to_expr(&e)?;
                     Ok(Arc::new(StmtX::Assert(None, self.message_interface.empty(), None, expr)))
                 }
-                [Node::Atom(s), Node::Atom(x)] if s.to_string() == "havoc" && is_symbol(x) => {
+                [Node::Atom(s), Node::Atom(x)] if s == "havoc" && is_symbol(x) => {
                     Ok(Arc::new(StmtX::Havoc(Arc::new(x.clone()))))
                 }
-                [Node::Atom(s), Node::Atom(x), e] if s.to_string() == "assign" && is_symbol(x) => {
+                [Node::Atom(s), Node::Atom(x), e] if s == "assign" && is_symbol(x) => {
                     let expr = self.node_to_expr(&e)?;
                     Ok(Arc::new(StmtX::Assign(Arc::new(x.clone()), expr)))
                 }
-                [Node::Atom(s), Node::Atom(snap)]
-                    if s.to_string() == "snapshot" && is_symbol(snap) =>
-                {
+                [Node::Atom(s), Node::Atom(snap)] if s == "snapshot" && is_symbol(snap) => {
                     Ok(Arc::new(StmtX::Snapshot(Arc::new(snap.clone()))))
                 }
                 [Node::Atom(s), Node::List(nodes), Node::List(filter), e]
-                    if s.to_string() == "assert" && filter.len() <= 1 =>
+                    if s == "assert" && filter.len() <= 1 =>
                 {
                     let labels = self.nodes_to_labels(nodes)?;
                     let error = self.message_interface.from_labels(&labels);
@@ -574,22 +679,22 @@ impl Parser {
                     let expr = self.node_to_expr(&e)?;
                     Ok(Arc::new(StmtX::Assert(None, error, filter, expr)))
                 }
-                [Node::Atom(s), e] if s.to_string() == "deadend" => {
+                [Node::Atom(s), e] if s == "deadend" => {
                     let stmt = self.node_to_stmt(&e)?;
                     Ok(Arc::new(StmtX::DeadEnd(stmt)))
                 }
-                [Node::Atom(s), Node::Atom(label), e] if s.to_string() == "breakable" => {
+                [Node::Atom(s), Node::Atom(label), e] if s == "breakable" => {
                     let stmt = self.node_to_stmt(&e)?;
                     Ok(Arc::new(StmtX::Breakable(Arc::new(label.clone()), stmt)))
                 }
-                [Node::Atom(s), Node::Atom(label)] if s.to_string() == "break" => {
+                [Node::Atom(s), Node::Atom(label)] if s == "break" => {
                     Ok(Arc::new(StmtX::Break(Arc::new(label.clone()))))
                 }
                 _ => match &nodes[0] {
-                    Node::Atom(s) if s.to_string() == "block" => {
+                    Node::Atom(s) if s == "block" => {
                         Ok(Arc::new(StmtX::Block(self.nodes_to_stmts(&nodes[1..])?)))
                     }
-                    Node::Atom(s) if s.to_string() == "switch" => {
+                    Node::Atom(s) if s == "switch" => {
                         Ok(Arc::new(StmtX::Switch(self.nodes_to_stmts(&nodes[1..])?)))
                     }
                     _ => Err(format!("expected statement, found: {}", node_to_string(node))),
@@ -607,12 +712,12 @@ impl Parser {
         match node {
             Node::List(nodes) => match &nodes[..] {
                 [Node::Atom(s), Node::Atom(x), Node::Atom(p)]
-                    if s.to_string() == "declare-sort" && is_symbol(x) && p == "0" =>
+                    if s == "declare-sort" && is_symbol(x) && p == "0" =>
                 {
                     Ok(Arc::new(DeclX::Sort(Arc::new(x.clone()))))
                 }
                 [Node::Atom(s), Node::List(decls), Node::List(defns)]
-                    if s.to_string() == "declare-datatypes" && decls.len() == defns.len() =>
+                    if s == "declare-datatypes" && decls.len() == defns.len() =>
                 {
                     // ((Datatype1 0) (Datatype2 0) ...)
                     let decls = decls
@@ -667,14 +772,12 @@ impl Parser {
                         .collect();
                     Ok(Arc::new(DeclX::Datatypes(Arc::new(ds))))
                 }
-                [Node::Atom(s), Node::Atom(x), t]
-                    if s.to_string() == "declare-const" && is_symbol(x) =>
-                {
+                [Node::Atom(s), Node::Atom(x), t] if s == "declare-const" && is_symbol(x) => {
                     let typ = self.node_to_typ(t)?;
                     Ok(Arc::new(DeclX::Const(Arc::new(x.clone()), typ)))
                 }
                 [Node::Atom(s), Node::Atom(x), Node::List(ts), t]
-                    if s.to_string() == "declare-fun" && is_symbol(x) =>
+                    if s == "declare-fun" && is_symbol(x) =>
                 {
                     let mut typs: Vec<Typ> = Vec::new();
                     for ta in ts {
@@ -683,16 +786,14 @@ impl Parser {
                     let typ = self.node_to_typ(t)?;
                     Ok(Arc::new(DeclX::Fun(Arc::new(x.clone()), Arc::new(typs), typ)))
                 }
-                [Node::Atom(s), Node::Atom(x), t]
-                    if s.to_string() == "declare-var" && is_symbol(x) =>
-                {
+                [Node::Atom(s), Node::Atom(x), t] if s == "declare-var" && is_symbol(x) => {
                     let typ = self.node_to_typ(t)?;
                     Ok(Arc::new(DeclX::Var(Arc::new(x.clone()), typ)))
                 }
-                [Node::Atom(s), axiom_node] if s.to_string() == "axiom" => {
+                [Node::Atom(s), axiom_node] if s == "axiom" => {
                     let (e, named) = match &axiom_node {
                         Node::List(nodes) if nodes.len() >= 2 => match &nodes[0] {
-                            Node::Atom(s) if s.to_string() == "!" => {
+                            Node::Atom(s) if s == "!" => {
                                 let named = self.nodes_to_named(&nodes[2..])?;
                                 (&nodes[1], named)
                             }
@@ -716,23 +817,17 @@ impl Parser {
     pub(crate) fn node_to_command(&self, node: &Node) -> Result<Command, String> {
         match node {
             Node::List(nodes) if nodes.len() >= 1 => match &nodes[0] {
-                Node::Atom(s) if s.to_string() == "push" && nodes.len() == 1 => {
-                    Ok(Arc::new(CommandX::Push))
-                }
-                Node::Atom(s) if s.to_string() == "pop" && nodes.len() == 1 => {
-                    Ok(Arc::new(CommandX::Pop))
-                }
-                Node::Atom(s) if s.to_string() == "set-option" && nodes.len() == 3 => {
-                    match &nodes[..] {
-                        [_, Node::Atom(option), Node::Atom(value)] if option.starts_with(":") => {
-                            let opt = Arc::new(option[1..].to_string());
-                            let val = Arc::new(value.clone());
-                            Ok(Arc::new(CommandX::SetOption(opt, val)))
-                        }
-                        _ => Err(format!("expected command, found: {}", node_to_string(node))),
+                Node::Atom(s) if s == "push" && nodes.len() == 1 => Ok(Arc::new(CommandX::Push)),
+                Node::Atom(s) if s == "pop" && nodes.len() == 1 => Ok(Arc::new(CommandX::Pop)),
+                Node::Atom(s) if s == "set-option" && nodes.len() == 3 => match &nodes[..] {
+                    [_, Node::Atom(option), Node::Atom(value)] if option.starts_with(":") => {
+                        let opt = Arc::new(option[1..].to_string());
+                        let val = Arc::new(value.clone());
+                        Ok(Arc::new(CommandX::SetOption(opt, val)))
                     }
-                }
-                Node::Atom(s) if s.to_string() == "check-valid" && nodes.len() >= 2 => {
+                    _ => Err(format!("expected command, found: {}", node_to_string(node))),
+                },
+                Node::Atom(s) if s == "check-valid" && nodes.len() >= 2 => {
                     let assertion = self.node_to_stmt(&nodes[nodes.len() - 1])?;
                     let local = self.nodes_to_decls(&nodes[1..nodes.len() - 1])?;
                     let query = Arc::new(QueryX { local, assertion });
@@ -755,7 +850,7 @@ impl Parser {
         match node {
             Node::List(nodes) => match &nodes[..] {
                 [Node::Atom(s), Node::Atom(x), Node::List(param_nodes), t, body]
-                    if s.to_string() == "define-fun" && is_symbol(x) =>
+                    if s == "define-fun" && is_symbol(x) =>
                 {
                     let name = Arc::new(x.clone());
                     let params = self.nodes_to_binders(param_nodes, &|t| self.node_to_typ(t))?;

@@ -39,6 +39,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_supported_7 verus_code! {
+        use vstd::prelude::*;
         struct S<F: Fn(bool) -> bool> {
             f: F,
         }
@@ -163,7 +164,10 @@ test_verify_one_file_with_options! {
                 no_method_body() // can't appear in implementation
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "no_method_body can only appear in trait method declarations",
+        "no_method_body can only appear in trait method declarations",
+    ])
 }
 
 test_verify_one_file! {
@@ -950,6 +954,41 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_termination_tuple_clone verus_code! {
+        use vstd::prelude::*;
+        fn f<A: Clone>() {
+        }
+        fn g() {
+            f::<(u8, u8)>();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_termination_tuple_clone_fail verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            proof fn f();
+        }
+
+        struct S<A>(A);
+        impl<A: T + Clone> Clone for S<A> {
+            fn clone(&self) -> Self {
+                S(self.0.clone())
+            }
+        }
+
+        proof fn g<A: Clone>() {}
+
+        impl T for u8 {
+            proof fn f() {
+                let _ = g::<(u8, S<u8>)>();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
 }
 
 test_verify_one_file! {
@@ -2058,6 +2097,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] issue311_overlapping_names_ensures verus_code!{
+        use vstd::prelude::*;
         trait Tr<T> {
             spec fn f(&self) -> T;
 
@@ -2083,6 +2123,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] issue311_overlapping_names_requires verus_code!{
+        use vstd::prelude::*;
         trait Tr<T> {
             spec fn f(&self) -> T;
 
@@ -2589,32 +2630,32 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_copy verus_code! {
+        use vstd::prelude::*;
         struct S;
         trait T { spec fn f() -> int; }
-        impl T for S { spec fn f() -> int { 200 } }
-        impl<A: Copy> T for A { spec fn f() -> int { 100 } }
+        impl T for S { spec fn f() -> int { 100 } }
+        impl<A: Copy> T for A { spec fn f() -> int { 200 } }
         proof fn test() {
             assert(<S as T>::f() == 100);
             assert(<S as T>::f() == 200); // FAILS
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
-    // TODO: } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_tuple verus_code! {
+        use vstd::prelude::*;
         struct S;
         trait T { spec fn f() -> int; }
-        impl T for S { spec fn f() -> int { 200 } }
-        impl<A: core::marker::Tuple> T for A { spec fn f() -> int { 100 } }
+        impl T for S { spec fn f() -> int { 100 } }
+        impl<A: core::marker::Tuple> T for A { spec fn f() -> int { 200 } }
         proof fn test() {
             assert(<S as T>::f() == 100);
             assert(<S as T>::f() == 200); // FAILS
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
-    // TODO: } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -2624,21 +2665,21 @@ test_verify_one_file! {
         impl T for S { spec fn f() -> int { 200 } }
         impl<A: Sized> T for A { spec fn f() -> int { 100 } }
         proof fn test() {
-            assert(<S as T>::f() == 100);
-            assert(<S as T>::f() == 200); // FAILS
+            assert(<S as T>::f() == 200);
+            assert(<S as T>::f() == 100); // FAILS
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
-    // TODO: } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_send verus_code! {
+        use vstd::prelude::*;
         struct S;
         impl !Send for S {}
         trait T { spec fn f() -> int; }
-        impl T for S { spec fn f() -> int { 200 } }
-        impl<A: Send> T for A { spec fn f() -> int { 100 } }
+        impl T for S { spec fn f() -> int { 100 } }
+        impl<A: Send> T for A { spec fn f() -> int { 200 } }
         proof fn test() {
             assert(<S as T>::f() == 100);
             assert(<S as T>::f() == 200); // FAILS
@@ -2650,11 +2691,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_sync verus_code! {
+        use vstd::prelude::*;
         struct S;
         impl !Sync for S {}
         trait T { spec fn f() -> int; }
-        impl T for S { spec fn f() -> int { 200 } }
-        impl<A: Sync> T for A { spec fn f() -> int { 100 } }
+        impl T for S { spec fn f() -> int { 100 } }
+        impl<A: Sync> T for A { spec fn f() -> int { 200 } }
         proof fn test() {
             assert(<S as T>::f() == 100);
             assert(<S as T>::f() == 200); // FAILS
@@ -2666,11 +2708,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_unpin verus_code! {
+        use vstd::prelude::*;
         struct S;
         impl !Unpin for S {}
         trait T { spec fn f() -> int; }
-        impl T for S { spec fn f() -> int { 200 } }
-        impl<A: Unpin> T for A { spec fn f() -> int { 100 } }
+        impl T for S { spec fn f() -> int { 100 } }
+        impl<A: Unpin> T for A { spec fn f() -> int { 200 } }
         proof fn test() {
             assert(<S as T>::f() == 100);
             assert(<S as T>::f() == 200); // FAILS
@@ -2678,6 +2721,36 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
     // TODO: } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_tuples_and_marker_traits verus_code! {
+        use vstd::prelude::*;
+
+        trait T1 { spec fn f() -> int; }
+        trait T2 { spec fn f() -> int; }
+        trait T3 { spec fn f() -> int; }
+        trait T4 { spec fn f() -> int; }
+        trait T5 { spec fn f() -> int; }
+        impl<A: Clone> T1 for A { spec fn f() -> int { 1 } }
+        impl<A: Copy> T2 for A { spec fn f() -> int { 2 } }
+        impl<A: Send> T3 for A { spec fn f() -> int { 3 } }
+        impl<A: Sync> T4 for A { spec fn f() -> int { 4 } }
+        impl<A: core::marker::Tuple> T5 for A { spec fn f() -> int { 5 } }
+
+        proof fn test() {
+            assert(1 == <bool as T1>::f());
+            assert(2 == <bool as T2>::f());
+            assert(3 == <bool as T3>::f());
+            assert(4 == <bool as T4>::f());
+            assert(1 == <(u8, u8) as T1>::f());
+            assert(2 == <(u8, u8) as T2>::f());
+            assert(3 == <(u8, u8) as T3>::f());
+            assert(4 == <(u8, u8) as T4>::f());
+            assert(5 == <(u8, u8) as T5>::f());
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 // This test should fail due to conflicting trait implementations, but currently
@@ -2713,7 +2786,10 @@ test_verify_one_file_with_options! {
             assert(false);
         }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: foreign types")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "The verifier does not yet support the following Rust feature: foreign types",
+        "The verifier does not yet support the following Rust feature: foreign types",
+    ])
 }
 
 test_verify_one_file! {
@@ -2946,8 +3022,8 @@ test_verify_one_file! {
 
         trait ATrait {
             exec fn afun(Tracked(aparam): Tracked<&mut AType>)
-                requires old(aparam) == (AType { v: 41 }),
-                ensures aparam == (AType { v: 41 });
+                requires *old(aparam) == (AType { v: 41 }),
+                ensures *aparam == (AType { v: 41 });
         }
 
         struct AnotherType {}
@@ -3610,6 +3686,40 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_default11c verus_code! {
+        trait T {
+            proof fn f<A>() ensures false { Self::g() }
+            proof fn g() ensures false;
+        }
+
+        proof fn h() ensures false {
+            <bool as T>::f::<u8>();
+        }
+
+        impl T for bool {
+            proof fn g() { h(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] test_default11d verus_code! {
+        trait T {
+            proof fn f() ensures false { Self::g::<u8>() }
+            proof fn g<A>() ensures false;
+        }
+
+        proof fn h() ensures false {
+            <bool as T>::f();
+        }
+
+        impl T for bool {
+            proof fn g<A>() { h(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
     #[test] test_default12 verus_code! {
         trait T1 {
             proof fn f() ensures false;
@@ -4145,6 +4255,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_recursion_through_sync_impl_is_checked verus_code! {
+        use vstd::std_specs::alloc::*;
         trait Tr {
             proof fn tr_g() {
             }
@@ -4193,6 +4304,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_recursion_through_send_impl_is_checked verus_code! {
+        use vstd::std_specs::alloc::*;
         trait Tr {
             proof fn tr_g() {
             }
@@ -4411,4 +4523,163 @@ test_verify_one_file! {
             type A = I;
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const1 verus_code! {
+        trait U {}
+
+        trait T<A, B> {
+            const C: usize;
+            const S: &str;
+            const E: usize;
+        }
+
+        impl U for u16 {}
+
+        const Q: u8 = 10;
+
+        impl<Z: U> T<u8, Z> for bool {
+            const C: usize = 13 - Q as usize;
+            const S: &str = "ha";
+
+            #[verifier::external_body]
+            const E: usize = 4;
+        }
+
+        fn test1() {
+            assert(<bool as T<u8, u16>>::C == 3);
+            let c = <bool as T<u8, u16>>::C;
+            assert(c == 3);
+        }
+
+        fn test2<A: T<u8, u16>>() {
+            assert(A::C == 3); // FAILS
+        }
+
+        fn test3<A: T<u8, u16>>() {
+            let e1 = <bool as T<u8, u16>>::E;
+            let e2 = <bool as T<u8, u16>>::E;
+            assert(e1 == e2);
+            assert(e1 == 4); // FAILS
+        }
+
+        fn test4<A: T<u8, u16>>() {
+            assert(<bool as T<u8, u16>>::E == 4); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const2 verus_code! {
+        const fn f() -> u8 { 3 }
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8;
+        }
+        impl T for bool {
+            // when we support general assoc consts, should be a mode violation:
+            const C: u8 = f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support const items in traits, except for")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const3 verus_code! {
+        spec const Q: u8 = 3;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8;
+        }
+        impl T for bool {
+            const C: u8 = Q;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected mode")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const4 verus_code! {
+        exec const Q: u8 = 3;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8;
+        }
+        impl T for bool {
+            const C: u8 = Q;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const1_default verus_code! {
+        trait U {}
+
+        trait T<A, B> {
+            const C: usize = 10;
+            const S: &str = "no";
+            const E: usize = 20;
+        }
+
+        impl U for u16 {}
+
+        const Q: u8 = 10;
+
+        impl<Z: U> T<u8, Z> for bool {
+            const C: usize = 13 - Q as usize;
+            const S: &str = "ha";
+
+            #[verifier::external_body]
+            const E: usize = 4;
+        }
+
+        impl<Z: U> T<u16, Z> for bool {
+        }
+
+        fn test1() {
+            assert(<bool as T<u8, u16>>::C == 3);
+            assert(<bool as T<u16, u16>>::C == 10);
+            let c = <bool as T<u8, u16>>::C;
+            assert(c == 3);
+            let c2 = <bool as T<u16, u16>>::C;
+            assert(c2 == 3); // FAILS
+        }
+
+        fn test2<A: T<u8, u16>>() {
+            assert(A::C == 3); // FAILS
+        }
+
+        fn test3<A: T<u8, u16>>() {
+            assert(A::C == 10); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const2_default verus_code! {
+        const fn f() -> u8 { 3 }
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8 = f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const3_default verus_code! {
+        spec const Q: u8 = 3;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8 = Q;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected mode")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const4_default verus_code! {
+        exec const Q: u8 = 3;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8 = Q;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
 }

@@ -18,7 +18,7 @@
 //     $ATTR_VALUE
 //     ```
 //
-// The ATTR_NAME can be requires, ensures, recommends or modes.
+// The ATTR_NAME can be requires, ensures, returns, recommends or modes.
 //
 // The reason we use a codeblock here is that so rustdoc will perform syntax highlighting
 // on the value which is applicable if it's an expression. For example, if it's a
@@ -40,15 +40,15 @@ use verus_syn::{
 };
 
 /// Check if VERUSDOC=1.
-
 #[cfg(verus_keep_ghost)]
 pub fn env_rustdoc() -> bool {
-    match proc_macro::tracked_env::var("VERUSDOC") {
+    match proc_macro::tracked::env_var("VERUSDOC") {
         Err(_) => false, // VERUSDOC key not present in environment
         Ok(s) => s == "1",
     }
 }
 
+/// Check if VERUSDOC=1.
 #[cfg(not(verus_keep_ghost))]
 pub fn env_rustdoc() -> bool {
     false
@@ -94,7 +94,6 @@ pub fn process_trait_item_method(item: &mut TraitItemFn) {
 /// Process a signature to get all the information, apply the codeblock
 /// formatting tricks, and then package it all up into a #[doc = "..."] attribute
 /// (as a verus_syn::Attribute object) that we can apply to the item.
-
 fn attr_for_sig(
     sig: &Signature,
     block: Option<&Block>,
@@ -124,6 +123,14 @@ fn attr_for_sig(
         Some(es) => {
             for expr in es.exprs.exprs.iter() {
                 v.push(encoded_expr("ensures", expr));
+            }
+        }
+        None => {}
+    }
+    match &sig.spec.returns {
+        Some(rs) => {
+            for expr in rs.exprs.exprs.iter() {
+                v.push(encoded_expr("returns", expr));
             }
         }
         None => {}
@@ -172,7 +179,6 @@ fn is_spec(sig: &Signature) -> bool {
 
 /// Do we want to show the body for the given spec function?
 /// If it's 'open', then yes
-
 fn show_body(sig: &Signature) -> bool {
     matches!(sig.publish, Publish::Open(_))
 }

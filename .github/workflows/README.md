@@ -20,25 +20,34 @@ and publishing for the Verus project.
    - Validates Rust code formatting with `rustfmt`
    - Validates `vstd` formatting with `verusfmt`
 
-2. **`full-test`** (macOS ARM64)
+2. **`change_filter`** (linux)
+   - Detects whether `source/cargo-verus/**` changed
+
+3. **`cargo-verus-test`** (linux)
+   - Only runs on changes to `source/cargo-verus/**`
+   - Runs `cargo-verus` integration tests
+   - Runs after `fmt` and `clippy` pass
+
+4. **`full-test`** (macOS ARM64)
    - Runs full test suite.
 
-3. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
+5. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
    - Runs basic tests only
 
-3. **`smoke-test`** (macOs ARM64)
+6. **`smoke-test`** (macOs ARM64)
    - Checks that `verus` builds with esoteric configurations
    - Runs minimal tests relevant to the configuration
 
-4. **`build-docs`** (linux)
+7. **`build-docs`** (linux)
    - Builds the `verusdoc` artifact
    - Uploads `verusdoc` artifact for documentation deployment
 
-5. **`build-release`** (macOS ARM64, macOs x64, Windows x64, and Linux x64)
+8. **`build-release`** (macOS ARM64, macOs x64, Windows x64, and Linux x64)
+   - Only runs if `basic-test`, `cargo-verus-test`, and `smoke-test` pass
    - Builds release binary artifacts for every supported platform
    - Uploads `verus-<arch>-<os>.zip` artifacts
 
-6. **`release`** (linux)
+9. **`release`** (linux)
    - **Only runs on push to `main`** (not PRs)
    - Downloads all platform artifacts
    - Extracts version information from `version.txt`
@@ -197,8 +206,12 @@ crate-updates.yml (weekly/manual) → Updates crate versions → Publishes to cr
 ## Platform Support
 
 All workflows build and test Verus on:
-- **Linux**: `x86_64` (ubuntu-latest)
-- **macOS**: ARM64 (macOS latest) and `x86_64` (macOS 15)
-- **Windows**: `x86_64` (latest)
+- **Linux**: `x86_64` (ubuntu-22.04)
+- **macOS**: ARM64 (macOS 14) and `x86_64` (macOS 15)
+- **Windows**: `x86_64` (2022)
 
 ARM64 macOS receives full testing; other platforms run smoke tests for efficiency.
+
+The general rule of thumb is that we lag one version behind the latest offered on Github.
+
+_Note_: when updating the OS versions used here, be sure to update the versions listed in the Support section of [INSTALL.md](../../INSTALL.md).

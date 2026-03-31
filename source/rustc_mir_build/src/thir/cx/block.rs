@@ -2,8 +2,6 @@ use rustc_hir as hir;
 use rustc_index::Idx;
 use rustc_middle::middle::region;
 use rustc_middle::thir::*;
-use rustc_middle::ty;
-use rustc_middle::ty::CanonicalUserTypeAnnotation;
 use tracing::debug;
 
 use crate::thir::cx::ThirBuildCx;
@@ -50,7 +48,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             .enumerate()
             .filter_map(|(index, stmt)| {
                 let hir_id = stmt.hir_id;
-                match stmt.kind {
+                let thir_stmt = match stmt.kind {
                     hir::StmtKind::Expr(expr) | hir::StmtKind::Semi(expr) => {
                         let stmt = Stmt {
                             kind: StmtKind::Expr {
@@ -77,28 +75,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
                         let else_block = local.els.map(|els| self.mirror_block(els));
 
-                        let mut pattern = self.pattern_from_hir(local.pat);
+                        let pattern = self.pattern_from_hir_with_annotation(local.pat, local.ty);
                         debug!(?pattern);
-
-                        if let Some(ty) = &local.ty
-                            && let Some(&user_ty) =
-                                self.typeck_results.user_provided_types().get(ty.hir_id)
-                        {
-                            debug!("mirror_stmts: user_ty={:?}", user_ty);
-                            let annotation = CanonicalUserTypeAnnotation {
-                                user_ty: Box::new(user_ty),
-                                span: ty.span,
-                                inferred_ty: self.typeck_results.node_type(ty.hir_id),
-                            };
-                            pattern = Box::new(Pat {
-                                ty: pattern.ty,
-                                span: pattern.span,
-                                kind: PatKind::AscribeUserType {
-                                    ascription: Ascription { annotation, variance: ty::Covariant },
-                                    subpattern: pattern,
-                                },
-                            });
-                        }
 
                         let span = match local.init {
                             Some(init) => local.span.with_hi(init.span.hi()),
@@ -114,14 +92,22 @@ impl<'tcx> ThirBuildCx<'tcx> {
                                 pattern,
                                 initializer: local.init.map(|init| self.mirror_expr(init)),
                                 else_block,
-                                lint_level: LintLevel::Explicit(local.hir_id),
+                                hir_id: local.hir_id,
                                 span,
                             },
                         };
                         Some(self.thir.stmts.push(stmt))
                     }
+                };
+
+                match thir_stmt {
+                    None => None,
+                    Some(thir_stmt) => Some(crate::verus_time_travel_prevention::expand_stmt(
+                        self, stmt, thir_stmt, block_id, index,
+                    )),
                 }
             })
+            .flatten()
             .collect()
     }
 }

@@ -55,6 +55,7 @@ pub mod migrate_mut_refs;
 pub mod modes;
 pub mod opaque_type_to_air;
 mod patterns;
+pub mod place_preconditions;
 pub mod poly;
 pub mod prelude;
 pub mod printer;

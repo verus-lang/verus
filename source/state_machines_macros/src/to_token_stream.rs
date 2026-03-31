@@ -67,6 +67,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
     }
 
     let final_code = quote! {
+        #[cfg_attr(verus_keep_ghost, verifier::deprecated_postcondition_mut_ref_style(true))]
         #[allow(unused_parens)]
         pub mod #sm_name {
             use super::*;
@@ -1165,7 +1166,6 @@ fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
 ///
 /// For 'readonly' transitions, there is no need to prove inductiveness.
 /// We should have already ruled out the existence of such lemmas.
-
 fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemFn) {
     let trans = get_transition(&bundle.sm.transitions, &l.purpose.transition.to_string())
         .expect("transition");

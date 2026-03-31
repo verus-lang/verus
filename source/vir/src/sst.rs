@@ -78,6 +78,11 @@ pub enum ExpX {
     /// Variable value at a specific program point (e.g., `old(x)` in postconditions)
     VarAt(UniqueIdent, VarAt),
     /// L-value derived from an expression (e.g., `(*p)` or `a[i]`)
+    /// Allowed nodes inside a Loc are:
+    ///  - `VarLoc`
+    ///  - `Field` (unary op)
+    ///  - `DerefMut` (unary op)
+    ///  - `Index` (binary op) (the index argument must be a non-mutable Var)
     Loc(Exp),
     /// Snapshot reference for generating AIR Old expressions; only used during sst_to_air
     Old(Ident, UniqueIdent),
@@ -231,7 +236,12 @@ pub enum StmX {
         /// Variables requiring type invariant assumptions
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         /// Variables potentially modified by the loop body
-        modified_vars: Arc<Vec<UniqueIdent>>,
+        modified_vars: Option<Arc<crate::sst_vars::HavocSet>>,
+        /// Params (including closure params) that may be modified _in or before_ this loop body
+        /// but *excluding* their initial assignments.
+        /// This is the same set of variables for which we need to consider different values
+        /// for the 'current' and 'pre-state' value of the variable at the beginning of the loop.
+        pre_modified_params: Option<Arc<crate::sst_vars::HavocSet>>,
     },
     /// Atomic invariant opening for concurrent verification
     OpenInvariant(Stm),
@@ -259,13 +269,12 @@ pub enum LocalDeclKind {
     QuantBinder,
     ChooseBinder,
     ClosureBinder,
-    OpenInvariantBinder,
     ExecClosureId,
-    ExecClosureParam,
+    ExecClosureParam { mutable: bool },
     ExecClosureRet,
     Nondeterministic,
+    OpenInvariantInnerTemp,
     BorrowMut,
-    MutableTemporary,
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;

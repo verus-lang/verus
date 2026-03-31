@@ -6,6 +6,28 @@ use verus as verus_;
 verus_! {
 
 #[verifier::external_trait_specification]
+pub trait ExTuple {
+    type ExternalTraitSpecificationFor: core::marker::Tuple;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExFnOnce<Args: core::marker::Tuple> {
+    type ExternalTraitSpecificationFor: core::ops::FnOnce<Args>;
+
+    type Output;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExFnMut<Args: core::marker::Tuple>: FnOnce<Args> {
+    type ExternalTraitSpecificationFor: core::ops::FnMut<Args>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExFn<Args: core::marker::Tuple>: FnMut<Args> {
+    type ExternalTraitSpecificationFor: core::ops::Fn<Args>;
+}
+
+#[verifier::external_trait_specification]
 pub trait ExDeref: PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::Deref;
 
@@ -36,6 +58,7 @@ pub trait ExSpecOrd<Rhs> {
     type ExternalTraitSpecificationFor: SpecOrd<Rhs>;
 }
 
+#[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
 pub trait ExAllocator {
     type ExternalTraitSpecificationFor: core::alloc::Allocator;
@@ -164,11 +187,6 @@ pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (r
             ret.is_none()
         },
 ;
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[verifier::reject_recursive_types_in_ground_variants(V)]
-pub struct ExManuallyDrop<V: ?Sized>(core::mem::ManuallyDrop<V>);
 
 // A private seal trait to prevent a trait from being implemented outside of vstd.
 pub(crate) trait TrustedSpecSealed {}

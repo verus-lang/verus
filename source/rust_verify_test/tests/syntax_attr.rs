@@ -676,7 +676,7 @@ test_verify_one_file! {
         #[verus_verify(dual_spec(spec_f))]
         #[verus_spec(
             requires
-                x < 100,
+                *x < 100,
                 y < 100,
             returns
                 f(x, y),
@@ -685,7 +685,7 @@ test_verify_one_file! {
             *x = *x + y;
             *x
         }
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature")
+    } => Err(e) => assert_vir_error_msg(e, "&mut parameter not allowed for spec functions")
 }
 
 test_verify_one_file! {
@@ -1189,6 +1189,79 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_verus_verify_external_type_specification code!{
+        #[verus_verify(external)]
+        struct MyExtStruct<T> { t: T }
+
+        #[verus_verify(external_type_specification)]
+        struct ExMyExtStruct<U>(MyExtStruct<U>);
+
+        verus! {
+        fn test_ext_type_spec() {
+            let s = MyExtStruct::<u64> { t: 5 };
+            assert(s.t == 5);
+        }
+        } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_ext_equal code!{
+        #[verus_verify(ext_equal)]
+        struct MyStruct {
+            x: u32,
+            y: u64
+        }
+
+        verus! {
+        fn test_ext_equal(s1: MyStruct, s2: MyStruct)
+            requires
+                s1.x == s2.x,
+                s1.y == s2.y,
+            ensures
+                s1 == s2,
+        {
+            assert(s1 =~= s2);
+        }
+        } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_reject_recursive_types code!{
+        #[verus_verify(reject_recursive_types(T))]
+        enum X<T> {
+            ZZ(T),
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_external_type_spec_with_reject_recursive code!{
+        #[verus_verify(external)]
+        struct MyExtBody<T> { t: T }
+
+        #[verus_verify(external_type_specification, external_body, reject_recursive_types(U))]
+        struct ExMyExtBody<U>(MyExtBody<U>);
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Check that a postcondition failure in #[verus_spec] points at the specific
+    // failing ensures clause, not at the `ensures` keyword.
+    #[test] test_verus_spec_ensures_span_on_failure code!{
+        #[verus_spec(ret =>
+            ensures
+                ret > 0,
+                ret < 0, // FAILS
+        )]
+        fn returns_one() -> i8 {
+            1
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_erase_unverified_code code!{
         use vstd::prelude::*;
         #[verus_spec(
@@ -1204,6 +1277,113 @@ test_verify_one_file! {
                 invariant x == (),
             ))]
             for i in 0..10 {
+            }
+        }
+    } => Ok(())
+}
+
+// test forloop without verus_spec invariant, which should be allowed with exec_allows_no_decreases_clause
+test_verify_one_file! {
+    #[test] test_for_loop_without_loop_spec code!{
+        use vstd::prelude::*;
+        #[verus_spec]
+        fn test_for_loop()
+        {
+            for i in 0..10
+            {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_struct code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::PointsToRaw;
+
+        #[verus_verify]
+        pub struct STest {
+            pub u: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub p: Tracked<PointsToRaw>,
+        }
+
+        // Test with trailing comma in struct literal
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_trailing(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            STest {
+                u,
+            }
+        }
+
+        // Test without trailing comma in struct literal
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_no_trailing(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            STest { u }
+        }
+
+        // Test with let binding
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_let(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            let s = STest { u };
+            s
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_const code! {
+        #[verus_verify]
+        const MY_CONST1: u64 = 1u64;
+
+        #[verus_verify(external_body)]
+        #[verus_spec(
+            ensures MY_CONST2 == 1
+        )]
+        const MY_CONST2: u64 = 0;
+
+        #[verus_verify]
+        #[verus_spec]
+        const MY_CONST3: u64 = 0;
+
+        #[verus_verify]
+        #[cfg_attr(not(customized_cfg), verus_spec(
+            ensures MY_CONST4 == 0
+        ))]
+        const MY_CONST4: u64 = 0;
+
+        #[verus_spec]
+        fn test_use_const() {
+            let x = MY_CONST1;
+            let y = MY_CONST2;
+            let z = MY_CONST3;
+            let w = MY_CONST4;
+            proof!{
+                assert(x == 1);
+                assert(y == 1);
+                assert(z == 0);
+                assert(w == 0);
             }
         }
     } => Ok(())

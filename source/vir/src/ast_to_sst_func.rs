@@ -4,9 +4,10 @@ use crate::ast::{
     VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
-    State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
-    expr_to_pure_exp_check, expr_to_pure_exp_skip_checks, expr_to_stm_opt, expr_to_stm_or_error,
-    stms_to_one_stm,
+    FinalState, PreLocalDeclKind, State, expr_to_bind_decls_exp_skip_checks,
+    expr_to_exp_skip_checks, expr_to_one_stm_with_post, expr_to_pure_exp_check,
+    expr_to_pure_exp_check_with_typ_substs, expr_to_pure_exp_skip_checks, expr_to_stm_opt,
+    expr_to_stm_or_error, stms_to_one_stm,
 };
 use crate::ast_util::{is_body_visible_to, unit_typ};
 use crate::ast_visitor;
@@ -19,7 +20,7 @@ use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
 };
-use crate::sst_util::{subst_exp, subst_local_decl, subst_stm};
+use crate::sst_util::subst_exp;
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -95,7 +96,7 @@ pub fn mk_fun_ctx<F: FunctionCommon>(
 
 pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
     param.map_x(|p| {
-        let ParamX { name, typ, mode, is_mut, unwrapped_info: _ } = p;
+        let ParamX { name, typ, mode, is_mut, user_mut: _, unwrapped_info: _ } = p;
         if *is_mut && !allow_is_mut {
             panic!("mut unexpected here");
         }
@@ -164,7 +165,7 @@ fn func_body_to_sst(
     // because spec precondition checking is performed as a separate query
     let body_exp = expr_to_pure_exp_skip_checks(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(ctx, &body_exp)?;
-    state.finalize();
+    state.finalize()?;
 
     // Check termination and/or recommends
     let scc_rep = ctx
@@ -188,7 +189,7 @@ fn func_body_to_sst(
         let mut reqs = crate::traits::trait_bounds_to_ast(ctx, &req.span, &function.x.typ_bounds);
         reqs.push(req.clone());
         for expr in reqs {
-            let assumex = ExprX::AssertAssume { is_assume: true, expr: expr.clone() };
+            let assumex = ExprX::AssertAssume { is_assume: true, expr: expr.clone(), msg: None };
             proof_body.push(SpannedTyped::new(&req.span, &unit_typ(), assumex));
         }
         proof_body.push(req.clone()); // check spec preconditions
@@ -222,12 +223,12 @@ fn func_body_to_sst(
     let mut proof_body_stms: Vec<Stm> = Vec::new();
     for expr in proof_body {
         let (mut stms, exp) = expr_to_stm_opt(ctx, &mut check_state, &expr)?;
-        assert!(!matches!(exp, crate::ast_to_sst::ReturnValue::Never));
+        assert!(!matches!(exp, crate::ast_to_sst::Maybe::Never));
         proof_body_stms.append(&mut stms);
     }
     let proof_body_stm = stms_to_one_stm(&body.span, proof_body_stms);
     let proof_body_stm = check_state.finalize_stm(ctx, &proof_body_stm)?;
-    check_state.finalize();
+    let FinalState { local_decls, statics: _ } = check_state.finalize()?;
 
     let is_recursive = crate::recursion::fun_is_recursive(ctx, function);
     let termination_check = if is_recursive && verifying_owning_bucket {
@@ -240,7 +241,7 @@ fn func_body_to_sst(
                 &check_body_stm,
                 false,
             )?;
-        termination_decls.splice(0..0, check_state.local_decls.into_iter());
+        termination_decls.splice(0..0, local_decls.into_iter());
 
         let termination_check = FuncCheckSst {
             post_condition: Arc::new(crate::sst::PostConditionSst {
@@ -346,7 +347,7 @@ pub fn func_decl_to_sst(
             let mut state = State::new(diagnostics);
             let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, fndef_axiom)?;
             let exp = state.finalize_exp(ctx, &exp)?;
-            state.finalize();
+            state.finalize()?;
 
             // Add forall-binders for each type param
             // The fndef_axiom should already be a 'forall' statement
@@ -586,27 +587,20 @@ where
                     // function context makes sense in the trait implementation with has different
                     // argument names and type arguments.
                     //
-                    // Right now, we: do the param renames, then do the lowering, then do type
-                    // param substitution, and fix up the local decls.
-                    // Though it seems to work fine, it does mean the lowering takes place
-                    // in a weird "half-substituted" state.
-
-                    let local_decls_init_len = state.local_decls.len();
+                    // Right now, we: do the param renames, then do the lowering,
+                    // then (inside the call `expr_to_pure_exp_check_with_substs`)
+                    // do type param substitution, and fix up the local decls.
+                    // Though it seems to work fine, it does mean that the main lowering step
+                    // (i.e., the big recursive function over Expr in ast_to_sst)
+                    // takes place in a weird "half-substituted" state.
 
                     let expr = map_expr_rename_vars(expr, &inh.param_renames)?;
-                    let (stms0, exp) = expr_to_pure_exp_check(ctx, state, &expr)?;
-
-                    let exp = subst_exp(&inh.trait_typ_substs, &HashMap::new(), &exp);
-                    let mut stms0: Vec<_> = stms0
-                        .iter()
-                        .map(|stm| subst_stm(&inh.trait_typ_substs, &HashMap::new(), &stm))
-                        .collect();
-
-                    let local_decls_new_len = state.local_decls.len();
-                    for i in local_decls_init_len..local_decls_new_len {
-                        state.local_decls[i] =
-                            subst_local_decl(&inh.trait_typ_substs, &state.local_decls[i]);
-                    }
+                    let (mut stms0, exp) = expr_to_pure_exp_check_with_typ_substs(
+                        ctx,
+                        state,
+                        &expr,
+                        &inh.trait_typ_substs,
+                    )?;
 
                     stms.append(&mut stms0);
                     Ok(exp)
@@ -709,7 +703,7 @@ pub fn func_def_to_sst(
     let dest = if function.x.ens_has_return {
         let ParamX { name, typ, .. } = &function.x.ret.x;
         ens_params.push(function.x.ret.clone());
-        state.declare_var_stm(name, typ, LocalDeclKind::Return, false);
+        state.declare_imm_var_stm(name, typ, LocalDeclKind::Return, false);
         Some(unique_local(name))
     } else {
         None
@@ -721,10 +715,44 @@ pub fn func_def_to_sst(
         state.declare_var_stm(
             &param.x.name,
             &param.x.typ,
-            LocalDeclKind::Param { mutable: param.x.is_mut },
+            if param.x.is_mut { PreLocalDeclKind::MutParam } else { PreLocalDeclKind::Param },
             false,
         );
     }
+
+    // When emitting an expression that refers to input variables, but which is embedded
+    // in the body of the function, we need to redirect to the pre-snapshot version of the variable.
+    // Specifically, we need to do this for any variable that isn't an old-style mut ref param.
+    // Collect all such vars here.
+    let mut params_to_use_pre = HashSet::<VarIdent>::new();
+    for param in function.x.params.iter() {
+        if !param.x.is_mut {
+            params_to_use_pre.insert(param.x.name.clone());
+        }
+    }
+    // We need to perform this translation on:
+    //  - Postcondition
+    //  - Unwind specs
+    //  - Mask specs
+    // Note: Requires only appear at the beginning
+    // Note: Decreases are handled by a different mechanism
+    //
+    // We also skip for bitvector, since the bitvector code doesn't handle VarAt.
+    // This is ok since bitvector functions don't have bodies so they can't have assignments.
+    let exp_pre = |exp: &Exp| {
+        if function.x.attrs.bit_vector {
+            exp.clone()
+        } else {
+            crate::sst_util::exp_with_vars_at_pre_state(exp, &params_to_use_pre)
+        }
+    };
+    let stm_pre = |stm: &Stm| {
+        if function.x.attrs.bit_vector {
+            stm.clone()
+        } else {
+            crate::sst_util::stm_with_vars_at_pre_state(stm, &params_to_use_pre)
+        }
+    };
 
     // This is used for lowering expressions from the function
     let lo_current = Lowerer::current(&function, &ens_pars, diagnostics);
@@ -761,8 +789,9 @@ pub fn func_def_to_sst(
 
     // Inv mask: take from trait method if it exists
     let mask_ast = specs_function.x.mask_spec_or_default(&specs_function.span);
-    let mask_sst = mask_ast
-        .map_to_sst(&mut |expr| lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms))?;
+    let mask_sst = mask_ast.map_to_sst(&mut |expr| {
+        Ok(exp_pre(&lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms)?))
+    })?;
     state.mask = Some(mask_sst);
 
     // Unwind spec: take from trait method if it exists
@@ -790,7 +819,7 @@ pub fn func_def_to_sst(
             )?;
             if !ctx.checking_spec_preconditions() {
                 let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
-                enss.push(exp);
+                enss.push(exp_pre(&exp));
             }
         }
     }
@@ -798,7 +827,7 @@ pub fn func_def_to_sst(
         let exp = lo_current.lower_pure(ctx, &mut state, expr, &mut ens_spec_precondition_stms)?;
         if !ctx.checking_spec_preconditions() {
             let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
-            enss.push(exp);
+            enss.push(exp_pre(&exp));
         }
     }
 
@@ -826,10 +855,12 @@ pub fn func_def_to_sst(
     }
 
     let stm = state.finalize_stm(&ctx, &stm)?;
-    let ens_spec_precondition_stms: Result<Vec<_>, _> =
-        ens_spec_precondition_stms.iter().map(|s| state.finalize_stm(&ctx, &s)).collect();
+    let ens_spec_precondition_stms: Result<Vec<_>, VirErr> = ens_spec_precondition_stms
+        .iter()
+        .map(|s| Ok(stm_pre(&state.finalize_stm(&ctx, &s)?)))
+        .collect();
     let ens_spec_precondition_stms = ens_spec_precondition_stms?;
-    let unwind_sst = unwind_sst.map(&|e| state.finalize_exp(&ctx, e))?;
+    let unwind_sst = unwind_sst.map(&|e| Ok(exp_pre(&state.finalize_exp(&ctx, e)?)))?;
 
     // Check termination
     let exec_with_no_termination_check = function.x.mode == Mode::Exec
@@ -850,13 +881,12 @@ pub fn func_def_to_sst(
             )?
         };
 
+    let FinalState { mut local_decls, statics } = state.finalize()?;
+
     // SST --> AIR
     for decl in decls {
-        state.local_decls.push(decl.clone());
+        local_decls.push(decl.clone());
     }
-
-    state.finalize();
-    let State { local_decls, statics, .. } = state;
 
     Ok(FuncCheckSst {
         reqs: Arc::new(reqs),

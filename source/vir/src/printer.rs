@@ -81,7 +81,7 @@ impl<'a> NodeWriter<'a> {
     pub fn node_to_string(&mut self, node: &Node) -> String {
         use sise::Writer;
         let indentation = " ";
-        let style = sise::SpacedStringWriterStyle { line_break: &("\n".to_string()), indentation };
+        let style = sise::SpacedStringWriterStyle { line_break: "\n", indentation };
         let mut result = String::new();
         let mut string_writer = sise::SpacedStringWriter::new(style, &mut result);
         self.write_node(&mut string_writer, &node, 120, false, false);
@@ -191,7 +191,7 @@ impl ToDebugSNode for u32 {
 impl ToDebugSNode for char {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         let a = match self.is_ascii_alphanumeric() {
-            true => format!("char<{}>", self.to_string()),
+            true => format!("char<{}>", self),
             false => format!("char<{:x}>", *self as u32),
         };
         Node::Atom(a)
@@ -236,6 +236,7 @@ impl ToDebugSNode for air::ast::TypX {
             TypX::BitVec(size) => {
                 Node::List(vec![Node::Atom("BitVec".to_string()), size.to_node(opts)])
             }
+            TypX::Float { exp_bits, sig_bits } => Node::Atom(format!("Float{exp_bits}_{sig_bits}")),
         }
     }
 }
@@ -360,6 +361,16 @@ impl<A: Clone + ToDebugSNode> ToDebugSNode for im::Vector<A> {
 }
 
 impl<K: ToDebugSNode, V: ToDebugSNode> ToDebugSNode for std::collections::HashMap<K, V> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        let mut nodes = vec![];
+        for (k, v) in self.iter() {
+            nodes.push(Node::List(vec![k.to_node(opts), v.to_node(opts)]));
+        }
+        Node::List(nodes)
+    }
+}
+
+impl<K: ToDebugSNode, V: ToDebugSNode> ToDebugSNode for indexmap::IndexMap<K, V> {
     fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         let mut nodes = vec![];
         for (k, v) in self.iter() {

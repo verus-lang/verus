@@ -1,7 +1,7 @@
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::StableCrateId;
 use rustc_span::source_map::SourceMap;
-use rustc_span::{BytePos, ExternalSource, FileName, RealFileName, Span, SpanData};
+use rustc_span::{BytePos, ExternalSource, FileName, Span, SpanData};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -93,20 +93,23 @@ impl SpanContextX {
             match *source_file.external_src.borrow() {
                 ExternalSource::Unneeded => {
                     let filename = match &source_file.name {
-                        FileName::Real(RealFileName::LocalPath(path)) => path.canonicalize().ok(),
+                        FileName::Real(real_file_name) => {
+                            real_file_name.local_path().and_then(|path| path.canonicalize().ok())
+                        }
                         _ => None,
                     };
                     let pos = FileStartEndPos {
                         filename,
                         start_pos: source_file.start_pos.0,
-                        end_pos: source_file.start_pos.0 + source_file.source_len.0,
+                        end_pos: source_file.start_pos.0 + source_file.normalized_source_len.0,
                     };
                     local_files.insert(source_file.src_hash.hash_bytes().to_vec(), pos);
                 }
                 ExternalSource::Foreign { .. } => {
                     let imported_crate = tcx.stable_crate_id(source_file.cnum).as_u64();
                     let start_pos = source_file.start_pos;
-                    let end_pos = BytePos(source_file.start_pos.0 + source_file.source_len.0);
+                    let end_pos =
+                        BytePos(source_file.start_pos.0 + source_file.normalized_source_len.0);
                     let hash = source_file.src_hash.hash_bytes().to_vec();
                     if let Some(original) =
                         original_crate_files.get(&imported_crate).and_then(|x| x.get(&hash))
@@ -114,8 +117,8 @@ impl SpanContextX {
                         remaining_crate_files.get_mut(&imported_crate).unwrap().remove(&hash);
                         let info = if let FileName::Real(real_file_name) = &source_file.name {
                             // Ideally we'd change this into Remapped, but I don't know how to do that
-                            if let (Some(path_mappings), RealFileName::LocalPath(local_file_name)) =
-                                (&path_mappings, real_file_name)
+                            if let (Some(path_mappings), Some(local_file_name)) =
+                                (&path_mappings, real_file_name.local_path())
                             {
                                 let mut found_match = None;
                                 for (name, epath) in path_mappings.iter() {
@@ -157,10 +160,12 @@ impl SpanContextX {
                             original_end_pos: BytePos(original.end_pos),
                             info: Arc::new(Mutex::new(info)),
                         };
-                        if !imported_crates.contains_key(&imported_crate) {
-                            imported_crates.insert(imported_crate, CrateInfo { files: Vec::new() });
-                        }
-                        imported_crates.get_mut(&imported_crate).unwrap().files.push(file);
+
+                        imported_crates
+                            .entry(imported_crate)
+                            .or_insert(CrateInfo { files: Vec::new() })
+                            .files
+                            .push(file);
                     }
                 }
             }
@@ -235,7 +240,8 @@ impl SpanContextX {
                 if let Ok(source_file) = source_map.load_file(&filename) {
                     if hash == source_file.src_hash.hash_bytes().to_vec() {
                         let start_pos = source_file.start_pos;
-                        let end_pos = BytePos(source_file.start_pos.0 + source_file.source_len.0);
+                        let end_pos =
+                            BytePos(source_file.start_pos.0 + source_file.normalized_source_len.0);
                         *info = ExternSourceInfo::Loaded { start_pos, end_pos };
                     }
                 }

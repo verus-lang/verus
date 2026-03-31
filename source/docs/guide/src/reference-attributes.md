@@ -2,6 +2,7 @@
 
  - `accept_recursive_types`
  - [`all_triggers`](#all_triggers)
+ - [`allow_complex_invariants`](#verifierallow_complex_invariants)
  - [`allow_in_spec`](#verifierallow_in_spec)
  - [`atomic`](#verifieratomic)
  - [`auto`](#auto)
@@ -14,6 +15,7 @@
  - [`loop_isolation`](#verifierloop_isolation)
  - [`memoize`](#verifiermemoize)
  - [`opaque`](#verifieropaque)
+ - [`proof_note`](#verifierproof_notetext-and-verifierproof_notetext)
  - `reject_recursive_types`
  - `reject_recursive_types_in_ground_variants`
  - [`rlimit`](#verifierrlimitn-and-verifierrlimitinfinity)
@@ -32,6 +34,23 @@ See [the trigger specification procedure](./trigger-annotations.md#selecting-tri
 for more information.
 
 Unlike most Verus attributes, this does not require the `verifier::` prefix.
+
+## `#[verifier::allow_complex_invariants]`
+
+By default, `invariant_except_break` and `ensures` are not supported with
+[`#[verifier::loop_isolation(false)]`](#verifierloop_isolation) because they
+aren't needed. When loop isolation is disabled, the weakest precondition
+calculation automatically tracks all paths through breaks into the code after
+the loop, making these complex invariant types unnecessary.
+
+However, in some cases (such as experimenting with toggling the loop isolation setting,
+or for our de-sugaring of for-loops), it can be useful to use these invariant types even with loop isolation disabled.
+The `allow_complex_invariants` attribute enables this by transforming the invariants:
+ * `invariant_except_break` clauses are converted to regular `invariant` clauses
+ * `ensures` clauses are ignored (since they are redundant with the weakest precondition calculation)
+
+**This attribute only applies when `loop_isolation` is false.** Using it with `loop_isolation(true)`
+(or the default) will produce an error.
 
 ## `#![verifier::allow_in_spec]`
 
@@ -116,6 +135,15 @@ should "memoize" the results of this function.
 
 Directs the solver to not automatically reveal the definition of this function.
 The definition can then be revealed locally via the [`reveal` and `reveal_with_fuel` directives](./reference-reveal-hide.md).
+
+## `#[verifier::proof_note("text")]` and `#![verifier::proof_note("text")]`
+
+These attributes attach a string note to a `requires`/`ensures` clause or `assume`/`assert` statement.
+
+- The outer attribute `#[verifier::proof_note]` must attach to an `assume`/`assert` statement.
+- The inner attribute `#![verifier::proof_note]` (note the `!`) must attach to a `requires`/`ensures` clause.
+
+When a proof obligation (`requires`/`ensures`/`assert`) fails, then the `"text"` of the note is included in the error message, as well as in the JSON output under the key `func-details`. An `assume` statement flagged by the `--no-cheating` mode is treated similarly. This can be useful for connecting informal spec requirements (say from a text description of desired properties) to obligations in the verified code.
 
 ## `#[verifier::rlimit(n)]` and `#[verifier::rlimit(infinity)]`
 

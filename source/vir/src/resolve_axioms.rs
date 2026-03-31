@@ -97,6 +97,7 @@ impl ResolvedTypeCollection {
             | TypX::SpecFn(..)
             | TypX::AnonymousClosure(..)
             | TypX::FnDef(..)
+            | TypX::Dyn(..)
             | TypX::Boxed(_)
             | TypX::TypParam(_)
             | TypX::Projection { .. }
@@ -340,7 +341,7 @@ pub fn resolve_axioms(ctx: &Ctx) -> Vec<Command> {
                 nodes.push(resolve_decoration_axiom(dec));
             }
             ResolvableType::Slice | ResolvableType::Array => {
-                // TODO(new_mut_ref)
+                // exported through vstd broadcast axioms
             }
         }
     }

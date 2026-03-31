@@ -102,87 +102,89 @@ fn check_birds_eye_rec(
                 );
             }
         }
-        TransitionStmt::Split(span, SplitKind::Let(_pat, _ty, lk, _init_e), splits) => {
-            assert!(splits.len() == 1);
-            let child = &splits[0];
-
-            let mut is_birds_eye = *lk == LetKind::BirdsEye;
-            if is_birds_eye {
-                if !concurrent {
-                    errors.push(Error::new(
-                        *span,
-                        "`birds_eye` only makes sense for tokenized state machines; did you mean to use the tokenized_state_machine! macro?"));
-                    is_birds_eye = false; // to prevent the other errors from cluttering
-                }
-                if is_init {
-                    errors.push(Error::new(
-                        *span,
-                        "`birds_eye` has no effect in an init! definition",
-                    ));
-                    is_birds_eye = false; // to prevent the other errors from cluttering
-                }
-            }
-            check_birds_eye_rec(
-                child,
-                is_init,
-                concurrent,
-                opt_or(scoped_in_birds_eye, is_birds_eye, "birds_eye"),
-                past_assert,
-                errors,
-            );
-        }
-        TransitionStmt::Split(span, SplitKind::Special(_, op, _, _), splits) => {
-            let name = op.stmt.name();
-            if op.is_guard() {
-                if let Some(m) = scoped_in_birds_eye {
-                    errors.push(Error::new(
-                        *span,
-                        format!("'{name:}' statements should not be in the scope of a `{m:}` let-binding; a guard value must be a deterministic function of the local inputs")));
-                }
-            } else if affects_precondition(op) {
-                if let Some(m) = scoped_in_birds_eye {
-                    errors.push(Error::new(
-                        *span,
-                        format!("'{name:}' statements should not be in the scope of a `{m:}` let-binding; preconditions of an exchange cannot depend on such bindings")));
-                } else if let Some(m) = *past_assert {
-                    errors.push(Error::new(
-                        *span,
-                        format!("'{name:}' statements should not be preceeded by an assert which is in the scope of a `{m:}` let-binding; preconditions of an exchange cannot depend on such bindings")));
-                }
-            }
-
-            if splits.len() > 0 {
+        TransitionStmt::Split(span, split_kind, splits) => match &**split_kind {
+            SplitKind::Let(_pat, _ty, lk, _init_e) => {
                 assert!(splits.len() == 1);
                 let child = &splits[0];
 
-                let is_withdraw = op.stmt.is_withdraw();
-
+                let mut is_birds_eye = *lk == LetKind::BirdsEye;
+                if is_birds_eye {
+                    if !concurrent {
+                        errors.push(Error::new(
+                        *span,
+                        "`birds_eye` only makes sense for tokenized state machines; did you mean to use the tokenized_state_machine! macro?"));
+                        is_birds_eye = false; // to prevent the other errors from cluttering
+                    }
+                    if is_init {
+                        errors.push(Error::new(
+                            *span,
+                            "`birds_eye` has no effect in an init! definition",
+                        ));
+                        is_birds_eye = false; // to prevent the other errors from cluttering
+                    }
+                }
                 check_birds_eye_rec(
                     child,
                     is_init,
                     concurrent,
-                    opt_or(scoped_in_birds_eye, is_withdraw, "withdraw"),
+                    opt_or(scoped_in_birds_eye, is_birds_eye, "birds_eye"),
                     past_assert,
                     errors,
                 );
             }
-        }
-        TransitionStmt::Split(_span, _split_kind, splits) => {
-            let mut new_past_assert = None;
-            for split in splits {
-                let mut past_assert1 = *past_assert;
-                check_birds_eye_rec(
-                    split,
-                    is_init,
-                    concurrent,
-                    scoped_in_birds_eye,
-                    &mut past_assert1,
-                    errors,
-                );
-                new_past_assert = new_past_assert.or(past_assert1);
+            SplitKind::Special(_, op, _, _) => {
+                let name = op.stmt.name();
+                if op.is_guard() {
+                    if let Some(m) = scoped_in_birds_eye {
+                        errors.push(Error::new(
+                        *span,
+                        format!("'{name:}' statements should not be in the scope of a `{m:}` let-binding; a guard value must be a deterministic function of the local inputs")));
+                    }
+                } else if affects_precondition(op) {
+                    if let Some(m) = scoped_in_birds_eye {
+                        errors.push(Error::new(
+                        *span,
+                        format!("'{name:}' statements should not be in the scope of a `{m:}` let-binding; preconditions of an exchange cannot depend on such bindings")));
+                    } else if let Some(m) = *past_assert {
+                        errors.push(Error::new(
+                        *span,
+                        format!("'{name:}' statements should not be preceeded by an assert which is in the scope of a `{m:}` let-binding; preconditions of an exchange cannot depend on such bindings")));
+                    }
+                }
+
+                if splits.len() > 0 {
+                    assert!(splits.len() == 1);
+                    let child = &splits[0];
+
+                    let is_withdraw = op.stmt.is_withdraw();
+
+                    check_birds_eye_rec(
+                        child,
+                        is_init,
+                        concurrent,
+                        opt_or(scoped_in_birds_eye, is_withdraw, "withdraw"),
+                        past_assert,
+                        errors,
+                    );
+                }
             }
-            *past_assert = new_past_assert;
-        }
+            _ => {
+                let mut new_past_assert = None;
+                for split in splits {
+                    let mut past_assert1 = *past_assert;
+                    check_birds_eye_rec(
+                        split,
+                        is_init,
+                        concurrent,
+                        scoped_in_birds_eye,
+                        &mut past_assert1,
+                        errors,
+                    );
+                    new_past_assert = new_past_assert.or(past_assert1);
+                }
+                *past_assert = new_past_assert;
+            }
+        },
         TransitionStmt::Assert(..) => {
             if scoped_in_birds_eye.is_some() {
                 *past_assert = scoped_in_birds_eye;

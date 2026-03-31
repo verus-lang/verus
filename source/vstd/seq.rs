@@ -180,7 +180,7 @@ impl<A> Seq<A> {
         ensures
             ret === old(self)[i],
             self.len() == old(self).len() - 1,
-            self == old(self).remove(i),
+            *self == old(self).remove(i),
     {
         unimplemented!()
     }
@@ -191,7 +191,7 @@ impl<A> Seq<A> {
             0 <= i <= old(self).len(),
         ensures
             self.len() == old(self).len() + 1,
-            self == old(self).insert(i, v),
+            *self == old(self).insert(i, v),
     {
         unimplemented!()
     }
@@ -514,6 +514,10 @@ macro_rules! seq_internal {
         $crate::vstd::seq::Seq::empty()
     };
     [$elem:expr] => {
+        $crate::vstd::seq::Seq::empty()
+            .push($elem)
+    };
+    [$elem:expr,] => {
         $crate::vstd::seq::Seq::empty()
             .push($elem)
     };

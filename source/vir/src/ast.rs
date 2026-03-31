@@ -279,6 +279,8 @@ pub enum TypX {
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
+    /// dyn T<...args...> for some trait T (given by the Path) applied to trait type arguments
+    Dyn(Path, Typs, ImplPaths),
     /// When an opaque type is defined (e.g., by a function return), Rustc creates
     /// an unique opaque type constructor for it.
     /// This opaque type is just an instantiation of the opaque type constructor with args
@@ -338,10 +340,16 @@ pub enum TriggerAnnotation {
 pub enum ModeCoercion {
     /// Mutable borrows (Ghost::borrow_mut and Tracked::borrow_mut) are treated specially by
     /// the mode checker when checking assignments.
+    /// (Only used outside new-mut-ref)
     BorrowMut,
-    /// All other cases are treated uniformly by the mode checker based on their op/from/to-mode.
-    /// (This includes Ghost::borrow, Tracked::get, etc.)
-    Other,
+    /// This operation behaves like a datatype constructor with a mode annotation
+    /// `from_mode` on its field.
+    /// (e.g., Tracked(...) is proof -> exec, Ghost(...) is spec -> exec.
+    /// Like with ordinary constructors, the input can be spec and if so, the whole thing is spec.
+    Constructor,
+    /// This behaves like a field-getter,
+    /// returning the contents of the Tracked or Ghost value.
+    Field,
 }
 
 /// Primitive 0-argument operations
@@ -357,6 +365,34 @@ pub enum NullaryOpr {
     ConstTypBound(Typ, Typ),
     /// A failed InferSpecForLoopIter subexpression
     NoInferSpecForLoopIter,
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum ArrayKind {
+    Array,
+    Slice,
+}
+
+/// IEEE floating point unary ops
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum IeeeFloatUnaryOp {
+    /// Cast to integer: rounding mode RTZ
+    /// Cast to float: rounding mode RNE
+    /// Cast to real: no rounding
+    Cast,
+    Neg,
+    Floor,
+    Ceil,
+    Round,
+    RoundTiesEven,
+    Trunc,
+    IsNormal,
+    IsSubnormal,
+    IsZero,
+    IsInfinite,
+    IsNaN,
+    IsNegative,
+    IsPositive,
 }
 
 /// Primitive unary operations
@@ -384,8 +420,12 @@ pub enum UnaryOp {
     },
     /// Convert integer type to real type (SMT to_real operation)
     IntToReal,
+    /// Convert real type to integer type (SMT to_int operation, works like floor function)
+    RealToInt,
     /// Return raw bits of a float as an int
     FloatToBits,
+    /// IEEE unary floating point ops
+    IeeeFloat(IeeeFloatUnaryOp),
     /// Operations that coerce from/to verus_builtin::Ghost or verus_builtin::Tracked
     CoerceMode {
         op_mode: Mode,
@@ -407,8 +447,6 @@ pub enum UnaryOp {
     HeightTrigger,
     /// Used only for handling verus_builtin::strslice_len
     StrLen,
-    /// Used only for handling verus_builtin::strslice_is_ascii
-    StrIsAscii,
     /// Given an exec/proof expression used to construct a loop iterator,
     /// try to infer a pure specification for the loop iterator.
     /// Evaluate to Some(spec) if successful, None otherwise.
@@ -423,14 +461,32 @@ pub enum UnaryOp {
     /// May need coercion after casting a type argument
     CastToInteger,
     MutRefCurrent,
+    MutRefFuture(MutRefFutureSourceName),
+    /// The `final` keyword.
+    /// Note: `final` on its own is unsupported.
+    /// `*final(e)` should be replaced with `mut_ref_future(e)`; other appearances are an error
+    /// boolean param = did this arise from migration?
+    MutRefFinal(bool),
+
+    /// Length of an array or slice
+    Length(ArrayKind),
+}
+
+/// Which builtin source name does this come from
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum MutRefFutureSourceName {
+    /// This comes from a direct use of the `mut_ref_future` built-in
     MutRefFuture,
+    /// Simplified from `*final(e)`
+    Final,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
 pub enum VariantCheck {
+    /// No check necessary
     None,
-    //Recommends,
-    Yes,
+    /// Check is required because the given field is from a union
+    Union,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -476,11 +532,23 @@ pub enum UnaryOpr {
     IntegerTypeBound(IntegerTypeBoundKind, Mode),
     /// Custom diagnostic message
     CustomErr(Arc<String>),
+    /// Label from a `proof_note` attribute.
+    ProofNote(Arc<String>),
     /// Predicate over any type that indicates its mutable references has resolved.
     /// For &mut T this says the prophetic value == the current value.
     /// For primitive types this is trivially true.
     /// For datatypes this is recursive in the natural way.
     HasResolved(Typ),
+    /// Coerce from concrete type to `dyn T`. Typ arg is the Self type
+    ToDyn(Typ),
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum BoundsCheck {
+    /// No bounds check necessary. This is the only value allowed in SST.
+    Allow,
+    /// Perform a bounds check.
+    Error,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -583,6 +651,17 @@ pub enum ChainedOp {
     MultiEq,
 }
 
+/// IEEE floating point binary ops (rounding mode RNE)
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum IeeeFloatBinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Eq,
+    InEq(InequalityOp),
+}
+
 /// Primitive binary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 /// Note that all integer operations are on mathematic integers (IntRange::Int),
@@ -614,10 +693,14 @@ pub enum BinaryOp {
     RealArith(RealArithOp),
     /// Bit Vector Operators
     Bitwise(BitwiseOp, BitshiftBehavior),
+    /// IEEE floating point binary ops (rounding mode RNE)
+    IeeeFloat(IeeeFloatBinaryOp),
     /// Used only for handling verus_builtin::strslice_get_char
     StrGetChar,
-    /// Used only for handling verus_builtin::array_index
-    ArrayIndex,
+    /// Index into an array or slice, no bounds-checking.
+    /// `verus_builtin::array_index` lowers to this.
+    /// In SST, this can also be used as a Loc.
+    Index(ArrayKind, BoundsCheck),
 }
 
 /// More complex binary operations (requires Clone rather than Copy)
@@ -730,7 +813,9 @@ pub struct PatternBinding {
     pub name: VarIdent,
     pub by_ref: ByRef,
     pub typ: Typ,
-    pub mutable: bool,
+    /// Marked mutable at the source level? Use None for variables introduced in lowering passes.
+    /// TODO: This field can probably be removed.
+    pub user_mut: Option<bool>,
     /// True if the type of this variable is copy.
     /// This is used by resolution analysis; it is meaningless post-simplification.
     pub copy: bool,
@@ -858,7 +943,8 @@ pub enum CallTargetKind {
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
     /// Regular function, passing some type arguments
-    Fun(CallTargetKind, Fun, Typs, ImplPaths, AutospecUsage),
+    /// If the final bool is true, represents an associated const var
+    Fun(CallTargetKind, Fun, Typs, ImplPaths, AutospecUsage, bool),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
@@ -933,6 +1019,8 @@ pub enum ExprX {
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(VarIdent, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
+    /// ConstVar is not used for associated consts; associated consts use Call directly.
+    /// REVIEW: do we still need ConstVar, or is it just a special case of Call?
     ConstVar(Fun, AutospecUsage),
     /// Use of a static variable.
     StaticVar(Fun),
@@ -959,7 +1047,8 @@ pub enum ExprX {
     Binary(BinaryOp, Expr, Expr),
     /// Special binary operation
     BinaryOpr(BinaryOpr, Expr, Expr),
-    /// Primitive multi-operand operation
+    /// Primitive multi-operand operation.
+    /// No short-circuiting: all expressions are evaluated unconditionally, and in order.
     Multi(MultiOp, Exprs),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
     Quant(Quant, VarBinders<Typ>, Expr),
@@ -988,12 +1077,23 @@ pub enum ExprX {
     /// Manually supply triggers for body of quantifier
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
-    /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
+    ///
     /// Not used when new-mut-refs is enabled.
-    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
+    Assign { lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
+    /// Assign to the given place.
+    ///
+    /// If `resolve` is set, then we also emit
+    /// `assume(has_resolved(place))` immediately before the mutation.
+    /// This flag may be set by resolution analysis.
+    ///
+    /// Note that the right-hand-side is evaluated BEFORE the left-hand-side (place).
+    /// See: [https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.assign.evaluation-order]
+    /// (Also note that this does not apply to overloaded compound assignment, which should
+    /// lower to a Call node instead.)
+    ///
     /// Used only when new-mut-refs is enabled.
-    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp> },
+    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp>, typ: Typ, resolve: bool },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
     /// Reveal a string
@@ -1003,7 +1103,7 @@ pub enum ExprX {
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
     Header(HeaderExpr),
     /// Assert or assume
-    AssertAssume { is_assume: bool, expr: Expr },
+    AssertAssume { is_assume: bool, expr: Expr, msg: Option<Message> },
     /// Assert or assume user-defined type invariant for `expr` and return `expr`
     /// These are added in user_defined_type_invariants.rs
     AssertAssumeUserDefinedTypeInvariant { is_assume: bool, expr: Expr, fun: Fun },
@@ -1020,6 +1120,7 @@ pub enum ExprX {
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
         loop_isolation: bool,
+        allow_complex_invariants: bool,
         is_for_loop: bool,
         label: Option<String>,
         cond: Option<Expr>,
@@ -1062,19 +1163,27 @@ pub enum ExprX {
     ///
     /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
-    /// Equivalent to `Assume(HasResolved(e))`. These are inserted by the resolution analysis
-    /// (resolution_inference.rs)
-    /// Used only when new-mut-refs is enabled.
-    AssumeResolved(Expr, Typ),
+    /// Borrow from a tracked place to get &mut Tracked<T>
+    BorrowMutTracked(Place),
+    /// In exec/tracked code ExprX::BorrowMut(PlaceX::DerefMut(place))
+    /// (with bool true = TwoPhaseBorrowMut)
+    /// In spec code, it's just a spec snapshot of the place without a borrow
+    ImplicitReborrowOrSpecRead(Place, bool, Span),
     /// Indicates a move or a copy from the given place.
     /// These over-approximate the actual set of copies/moves.
     /// (That is, many reads marked Move or Copy should really be marked Spec).
     /// We don't know for sure if something is a "real" move or copy until mode-checking.
     ReadPlace(Place, UnfinalizedReadKind),
     /// Evaluate both in sequence and return the left value.
-    /// The right side MUST NOT have any assigns it, this lets us avoid creating temporary
-    /// vars that would clutter everything up.
-    UseLeftWhereRightCanHaveNoAssignments(Expr, Expr),
+    /// The right side should only contain `assume(has_resolved(...))` statements
+    /// emitted by the resolution analysis.
+    EvalAndResolve(Expr, Expr),
+    /// The `old` node. (new-mut-ref only)
+    /// Note: to explicitly refer to the pre-state of a variable, the ExprX::VarAt(e, Pre)
+    /// node should be used. The 'old' node itself is used for some bookkeeping purposes
+    /// and well-formedness checks, but otherwise has no meaning. The `Old` node is
+    /// ignored after these checks are complete.
+    Old(Expr),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
@@ -1104,6 +1213,8 @@ pub enum ReadKind {
     Unused,
     /// Spec snapshot. (Not a move.)
     Spec,
+    /// Prophetic spec snapshot. (Not a move.)
+    SpecAfterBorrow,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
@@ -1121,21 +1232,63 @@ pub enum ModeWrapperMode {
 /// A `Place` represents (the computation of) a place that can be read from,
 /// moved from, or mutated. Like ordinary Exprs, the evaluation of a Place expression
 /// can have arbitrary side-effects.
+/// The evaluation order is a bit complicated; see place_preconditions.rs.
 ///
 /// A `Place` tree is always a sequence of modifiers that terminates in either a Local
 /// or a Temporary. Note that there are no modifier nodes for dereferencing a box or dereferencing
 /// a shared reference. These are implicit.
-// TODO(new_mut_ref): add ArrayIndex
+///
+/// The type of a place node should be correct, including decoration, and should NOT account
+/// for the implicit dereferences that might be applied on top.
+///
+/// Example: Suppose x is a local of type `Box<(&T, &T)>` and the expression `*(*x).0`.
+/// Conceptually, this would be:
+///
+/// ```
+/// ImmutableDeref(typ = T,
+///    Field("0", typ = &T,
+///        BoxDeref(typ = (&T, &T),
+///            Local("x", typ = Box<(&T, &T)>)
+/// )))
+/// ```
+///
+/// Since box and immutable deref are implicit, the "real" representation is:
+///
+/// ```
+/// Field("0", typ = &T,
+///     Local("x", typ = Box<(&T, &T)>)
+/// )
+/// ```
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PlaceX {
-    /// TODO(new_mut_ref): Decide: is this only for single-variant structs? What about unions?
+    /// Place of the given field. May have a precondition if VariantCheck is set to Union
     Field(FieldOpr, Place),
-    /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
+    /// Place pointed to by the given mutable reference.
+    /// (i.e., `*` operator in Rust when applied to a mutable reference).
+    /// Encoding-wise, this is conceptually like Field, if you think of mutable references
+    /// as a struct with MutRefCurrent as a field.
     DerefMut(Place),
     /// Unwrap a Ghost or a Tracked
     ModeUnwrap(Place, ModeWrapperMode),
+    /// Index into an array or slice (`place[expr]`).
+    /// May have a precondition if BoundsCheck is set.
+    ///
+    /// Note: typically, the index operator [] in Rust is lowered to an `index` or `index_mut`
+    /// call, which can handle via a Call node. However, indexing into a slice or array is
+    /// treated specially in a way which is more permissive with respect to borrow checking,
+    /// and in particular, two-phase borrows, than it otherwise would be if it were just treated
+    /// as a call. (See, for example, the `two_phase_arrays_slices` test cases in mut_refs.rs).
+    ///
+    /// Therefore, to properly handle programs with are admitted due to these special
+    /// cases, we also need to treat array indexing and slice indexing via a Place node.
+    /// That's why `PlaceX::Index` exists.
+    ///
+    /// There are also subtle differences involving evaluation order (see above);
+    /// so Array and Slice need to be handled as Place nodes, while Vec indexing
+    /// (and others) needs to be handled as method calls.
+    Index(Place, Expr, ArrayKind, BoundsCheck),
     /// Named local variable.
     Local(VarIdent),
     /// Evaluate the given expression and assign it to a fresh, unnamed temporary,
@@ -1147,6 +1300,11 @@ pub enum PlaceX {
     /// `WithExpr({ tmp = expr; }, Local(tmp))`.
     /// Without this node, such a transformation would be significantly more complicated.
     WithExpr(Expr, Place),
+    /// Establish a type obligation to restore the type invariant.
+    /// This node can appear in any Place that is used in assignment or mutable ref.
+    ///
+    /// These nodes are inserted by resolution analysis.
+    UserDefinedTypInvariantObligation(Place, Fun),
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -1160,7 +1318,21 @@ pub enum StmtX {
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
     /// (The mode is only allowed to be None for one special case; see modes.rs)
-    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Place>, els: Option<Expr> },
+    Decl {
+        pattern: Pattern,
+        mode: Option<(Mode, DeclProph)>,
+        init: Option<Place>,
+        els: Option<Expr>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq, Clone, Copy)]
+pub enum DeclProph {
+    /// Default; can be inferred as prophetic if the mode is ghost
+    Default,
+    /// Prophetic, only allowed if mode is ghost
+    Prophetic,
+    DelayedInfer,
 }
 
 /// Function parameter
@@ -1171,7 +1343,9 @@ pub struct ParamX {
     pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
-    /// An &mut parameter
+    /// Marked 'mut' at the source level?
+    pub user_mut: bool,
+    /// An &mut parameter (only used outside new-mut-ref)
     pub is_mut: bool,
     /// If the parameter uses a Ghost(x) or Tracked(x) pattern to unwrap the value, this is
     /// the mode of the resulting unwrapped x variable (Spec for Ghost(x), Proof for Tracked(x)).
@@ -1300,6 +1474,12 @@ pub struct FunctionAttrsX {
     pub exec_assume_termination: bool,
     /// Whether to allow this function to not terminate
     pub exec_allows_no_decreases_clause: bool,
+    /// Is this only for the new_mut_ref experiment
+    pub ignore_outside_new_mut_ref: bool,
+    /// Is this function `tracked_swap`, which requires special handling
+    pub tracked_swap: bool,
+    /// Is this function `Option::tracked_take`, which requires special handling
+    pub tracked_take_option: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1403,6 +1583,7 @@ pub struct FunctionX {
     pub mode: Mode,
     /// Type parameters to generic functions
     /// (for trait methods, the trait parameters come first, then the method parameters)
+    /// REVIEW: for trait methods, maybe we should separate the trait parameters (see fix_missing_trigger_params_fn)
     pub typ_params: Idents,
     /// Type bounds of generic functions
     pub typ_bounds: GenericBounds,
@@ -1550,6 +1731,21 @@ pub struct OpaqueTypeX {
 pub type OpaqueType = Arc<Spanned<OpaqueTypeX>>;
 pub type OpaqueTypes = Vec<OpaqueType>;
 
+/// Does the trait satisfy Verus's additional dyn-compatibility requirements,
+/// on top of Rust's dyn-compatibility requirements?
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum DynCompatible {
+    /// If Rust accepts trait as dyn compatible, Verus also accepts trait as dyn compatible
+    Accept,
+    /// The trait fails one of Verus's requirements for dyn compatibility
+    Reject { reason: String },
+    /// The trait satisfies Verus's requirements, but has a ?Sized blanket impl,
+    /// for which there is currently a known Rust unsoundness with dyn
+    /// (see https://github.com/rust-lang/rust/issues/57893 );
+    /// we can remove this case when the Rust issue is fixed.
+    RejectUnsizedBlanketImpl { trait_path: Path },
+}
+
 pub type Trait = Arc<Spanned<TraitX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct TraitX {
@@ -1563,6 +1759,9 @@ pub struct TraitX {
     pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
     pub is_unsafe: bool,
+    // Initially set to None during translation to VIR,
+    // then set to Some after all the Function declarations have been processed.
+    pub dyn_compatible: Option<Arc<DynCompatible>>,
     // If this trait has a verifier::external_trait_extension(TSpec via TSpecImpl),
     // Some((TSpec, TSpecImpl))
     pub external_trait_extension: Option<(Path, Path)>,

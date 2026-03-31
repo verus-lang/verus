@@ -1,7 +1,8 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, Ident,
-    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Quant, SpannedTyped,
-    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarBinders,
+    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, GenericBound,
+    GenericBoundX, GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth,
+    IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
@@ -9,11 +10,12 @@ use crate::def::{Spanned, unique_bound, user_local_name};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{
-    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX, Stm, Trig,
-    Trigs, UniqueIdent,
+    BndX, CallFun, Exp, ExpX, Exps, FuncCheckSst, FunctionSst, InternalFun, LocalDeclKind, Stm,
+    StmX, Trig, Trigs, UniqueIdent,
 };
+use crate::sst_visitor::{NoScoper, Visitor, Walk};
 use air::scope_map::ScopeMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 fn free_vars_exp_scope(
@@ -52,15 +54,39 @@ pub(crate) fn free_vars_exps(exps: &[Exp]) -> HashMap<UniqueIdent, Typ> {
     vars
 }
 
-pub(crate) fn subst_local_decl(
+pub(crate) fn subst_pre_local_decl(
     typ_substs: &HashMap<Ident, Typ>,
-    local_decl: &LocalDecl,
-) -> LocalDecl {
-    Arc::new(LocalDeclX {
-        ident: local_decl.ident.clone(),
-        typ: subst_typ(typ_substs, &local_decl.typ),
-        kind: local_decl.kind.clone(),
-    })
+    pre_local_decl: &crate::ast_to_sst::PreLocalDecl,
+) -> crate::ast_to_sst::PreLocalDecl {
+    crate::ast_to_sst::PreLocalDecl {
+        ident: pre_local_decl.ident.clone(),
+        typ: subst_typ(typ_substs, &pre_local_decl.typ),
+        kind: pre_local_decl.kind.clone(),
+    }
+}
+
+pub fn free_vars_typ_insert(typ: &Typ, vars: &mut HashSet<Ident>) {
+    let _ = crate::ast_visitor::typ_visitor_dfs(typ, &mut |t: &Typ| match &**t {
+        TypX::TypParam(x) => {
+            vars.insert(x.clone());
+            crate::visitor::VisitorControlFlow::Recurse::<()>
+        }
+        _ => crate::visitor::VisitorControlFlow::Recurse::<()>,
+    });
+}
+
+pub fn free_vars_typ(typ: &Typ) -> HashSet<Ident> {
+    let mut vars: HashSet<Ident> = HashSet::new();
+    free_vars_typ_insert(typ, &mut vars);
+    vars
+}
+
+pub fn free_vars_typs(typs: &Typs) -> HashSet<Ident> {
+    let mut vars: HashSet<Ident> = HashSet::new();
+    for typ in typs.iter() {
+        free_vars_typ_insert(typ, &mut vars);
+    }
+    vars
 }
 
 pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
@@ -72,6 +98,33 @@ pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
         _ => Ok(t.clone()),
     })
     .expect("subst_typ")
+}
+
+pub fn subst_typ_in_bound(typ_substs: &HashMap<Ident, Typ>, bound: &GenericBound) -> GenericBound {
+    let gbx = match &**bound {
+        GenericBoundX::Trait(path, typs) => {
+            let typs = typs.iter().map(|typ| subst_typ(&typ_substs, typ)).collect();
+            GenericBoundX::Trait(path.clone(), Arc::new(typs))
+        }
+        GenericBoundX::TypEquality(path, typs, name, typ) => {
+            let typs = typs.iter().map(|typ| subst_typ(&typ_substs, typ)).collect();
+            let typ = subst_typ(&typ_substs, typ);
+            GenericBoundX::TypEquality(path.clone(), Arc::new(typs), name.clone(), typ)
+        }
+        GenericBoundX::ConstTyp(t1, t2) => {
+            let t1 = subst_typ(&typ_substs, t1);
+            let t2 = subst_typ(&typ_substs, t2);
+            GenericBoundX::ConstTyp(t1, t2)
+        }
+    };
+    Arc::new(gbx)
+}
+
+pub fn subst_typ_in_bounds(
+    typ_substs: &HashMap<Ident, Typ>,
+    bounds: &GenericBounds,
+) -> GenericBounds {
+    Arc::new(bounds.iter().map(|bound| subst_typ_in_bound(typ_substs, bound)).collect())
 }
 
 pub fn subst_typ_for_datatype(
@@ -352,8 +405,9 @@ impl BinaryOp {
                 BitOr => (20, 20, 21),
                 Shr(..) | Shl(..) => (26, 26, 27),
             },
+            IeeeFloat(_) => (5, 90, 90),
             StrGetChar => (90, 90, 90),
-            ArrayIndex => (90, 90, 90),
+            Index(_, _) => (90, 90, 90),
         }
     }
 }
@@ -445,19 +499,22 @@ impl ExpX {
                     ),
                     99,
                 ),
+                UnaryOp::IntToReal => {
+                    (format!("int_to_real({})", exp.x.to_user_string(global)), 99)
+                }
+                UnaryOp::RealToInt => {
+                    (format!("real_to_int({})", exp.x.to_user_string(global)), 99)
+                }
                 UnaryOp::FloatToBits => {
                     (format!("float_to_bits({})", exp.x.to_user_string(global)), 99)
                 }
-                UnaryOp::IntToReal => {
-                    (format!("int_to_real({})", exp.x.to_user_string(global)), 99)
+                UnaryOp::IeeeFloat(_) => {
+                    (format!("ieee_float({})", exp.x.to_user_string(global)), 99)
                 }
                 UnaryOp::HeightTrigger => {
                     (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
                 }
                 UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(global, 99)), 90),
-                UnaryOp::StrIsAscii => {
-                    (format!("{}.is_ascii()", exp.x.to_string_prec(global, 99)), 90)
-                }
                 UnaryOp::Trigger(..)
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
@@ -473,14 +530,20 @@ impl ExpX {
                 UnaryOp::MutRefCurrent => {
                     (format!("mut_ref_current({})", exp.x.to_string_prec(global, 99)), 0)
                 }
-                UnaryOp::MutRefFuture => {
+                UnaryOp::MutRefFuture(_) => {
                     (format!("mut_ref_future({})", exp.x.to_string_prec(global, 99)), 0)
+                }
+                UnaryOp::MutRefFinal(_) => {
+                    (format!("final({})", exp.x.to_string_prec(global, 99)), 0)
+                }
+                UnaryOp::Length(_kind) => {
+                    (format!("length({})", exp.x.to_string_prec(global, 99)), 0)
                 }
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
                 match op {
-                    Box(_) | Unbox(_) => {
+                    Box(_) | Unbox(_) | ToDyn(_) => {
                         return exp.x.to_string_prec(global, precedence);
                     }
                     HasType(t) => {
@@ -506,6 +569,9 @@ impl ExpX {
                         (format!("{}.{}", exp.x.to_user_string(global), field.field), 99)
                     }
                     CustomErr(_msg) => {
+                        (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
+                    }
+                    ProofNote(_label) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }
                 }
@@ -552,15 +618,16 @@ impl ExpX {
                         Shr(..) => ">>",
                         Shl(..) => "<<",
                     },
-                    StrGetChar => "ignored", // This is a non-inline BinaryOp, so it needs special handling below
-                    ArrayIndex => "ignored", // This is a non-inline BinaryOp, so it needs special handling below
+                    IeeeFloat(_) => "ieee_float",
+                    StrGetChar => "ignored", // This is a non-infix BinaryOp, so it needs special handling below
+                    Index(..) => "ignored", // This is a non-infix BinaryOp, so it needs special handling below
                 };
                 if let BinaryOp::StrGetChar = op {
                     (format!("{}.get_char({})", left, e2.x.to_user_string(global)), prec_exp)
                 } else if let HeightCompare { .. } = op {
                     (format!("height_compare({left}, {right})"), prec_exp)
-                } else if let ArrayIndex = op {
-                    (format!("array_index({left}, {right})"), prec_exp)
+                } else if let Index(..) = op {
+                    (format!("index({left}, {right})"), prec_exp)
                 } else {
                     (format!("{} {} {}", left, op_str, right), prec_exp)
                 }
@@ -724,6 +791,98 @@ impl ExpX {
     }
 }
 
+pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<Arc<String>> {
+    match &exp.x {
+        ExpX::UnaryOpr(UnaryOpr::Box(_), e) => sst_exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => sst_exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e) => sst_exp_get_proof_note(e),
+        ExpX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
+        _ => None,
+    }
+}
+
+/// Collect proof notes from a function's `requires` clauses.
+pub fn func_collect_requires_proof_notes(func: &FunctionSst) -> HashSet<String> {
+    func.x.decl.reqs.iter().filter_map(sst_exp_get_proof_note).map(|s| s.to_string()).collect()
+}
+
+/// Collect proof notes from a function's proof obligations.
+///
+/// Each proof obligation is one of the following cases:
+/// - an `assert` statement
+/// - a `requires` clause of a callee (another function called by this function)
+/// - an `ensures` clause of this function
+pub fn func_collect_obligation_proof_notes(
+    func: &FunctionSst,
+    func_to_requires_proof_notes: &HashMap<Fun, HashSet<String>>,
+) -> HashSet<String> {
+    let mut collector = ObligationProofNoteCollector::new(func_to_requires_proof_notes);
+    if let Some(func_check) = func.x.exec_proof_check.as_ref() {
+        collector.collect_func_check(func_check);
+    }
+    if let Some(spec_axioms) = func.x.axioms.spec_axioms.as_ref()
+        && let Some(func_check) = spec_axioms.termination_check.as_ref()
+    {
+        collector.collect_func_check(func_check);
+    }
+    collector.proof_notes
+}
+
+struct ObligationProofNoteCollector<'a> {
+    proof_notes: HashSet<String>,
+    func_to_requires_proof_notes: &'a HashMap<Fun, HashSet<String>>,
+}
+
+impl<'a> ObligationProofNoteCollector<'a> {
+    fn new(func_to_requires_proof_notes: &'a HashMap<Fun, HashSet<String>>) -> Self {
+        Self { proof_notes: HashSet::new(), func_to_requires_proof_notes }
+    }
+
+    fn collect_func_check(&mut self, func_check: &FuncCheckSst) {
+        // NOTE: Skip `func_check.reqs` to exclude `requires` clauses.
+        // Collect proof notes from this function's own `ensures` clauses.
+        for ens in func_check.post_condition.ens_exps.iter() {
+            if let Some(label) = sst_exp_get_proof_note(ens) {
+                self.proof_notes.insert(label.to_string());
+            }
+        }
+        for stm in func_check.post_condition.ens_spec_precondition_stms.iter() {
+            self.visit_stm(stm).expect("proof-note collector should not fail");
+        }
+        self.visit_unwind(&func_check.unwind).expect("proof-note collector should not fail");
+        self.visit_stm(&func_check.body).expect("proof-note collector should not fail");
+    }
+}
+
+impl<'a> Visitor<Walk, (), NoScoper> for ObligationProofNoteCollector<'a> {
+    fn visit_stm(&mut self, stm: &Stm) -> Result<(), ()> {
+        match &stm.x {
+            // Collect proof note labels from callee `requires` clauses.
+            StmX::Call { fun, .. } => {
+                if let Some(callee_req_notes) = self.func_to_requires_proof_notes.get(fun) {
+                    self.proof_notes.extend(callee_req_notes.iter().cloned());
+                }
+            }
+            // Collect proof note labels from `assert` statements.
+            StmX::Assert(_, maybe_msg, exp) => {
+                if let Some(label) = sst_exp_get_proof_note(exp) {
+                    self.proof_notes.insert(label.to_string());
+                }
+                if let Some(msg) = maybe_msg {
+                    // This is likely unnecessary; here for future-proofing.
+                    for label in msg.labels.iter() {
+                        if label.is_proof_note {
+                            self.proof_notes.insert(label.note.clone());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        self.visit_stm_rec(stm)
+    }
+}
+
 pub fn sst_arch_word_bits(span: &Span) -> Exp {
     SpannedTyped::new(
         span,
@@ -742,7 +901,6 @@ pub fn sst_arch_word_bits(span: &Span) -> Exp {
 /// type. For example:
 ///   - If the input type is `u8`, then it returns a constant `8`
 ///   - If the input type is `usize`, then it returns the symbolic `arch_word_bits`
-
 pub fn sst_bitwidth(span: &Span, w: &IntegerTypeBitwidth, arch: &crate::ast::ArchWordBits) -> Exp {
     match w.to_exact(arch) {
         Some(w) => sst_int_literal(span, w as i128),
@@ -808,7 +966,7 @@ pub fn sst_mut_ref_future(span: &Span, e1: &Exp) -> Exp {
         TypX::MutRef(t) => t,
         _ => panic!("sst_mut_ref_future expected MutRef type"),
     };
-    let op = UnaryOp::MutRefFuture;
+    let op = UnaryOp::MutRefFuture(crate::ast::MutRefFutureSourceName::MutRefFuture);
     SpannedTyped::new(span, &t, ExpX::Unary(op, e1.clone()))
 }
 
@@ -853,23 +1011,22 @@ impl LocalDeclKind {
         match self {
             LocalDeclKind::Param { mutable } => *mutable,
             LocalDeclKind::StmtLet { mutable } => *mutable,
-            LocalDeclKind::Return => false,
-            LocalDeclKind::TempViaAssign => false,
-            LocalDeclKind::Decreases => false,
-            LocalDeclKind::StmCallArg { native: _ } => false,
-            LocalDeclKind::Assert => false,
-            LocalDeclKind::AssertByVar { native: _ } => false,
-            LocalDeclKind::LetBinder => false,
-            LocalDeclKind::QuantBinder => false,
-            LocalDeclKind::ChooseBinder => false,
-            LocalDeclKind::ClosureBinder => false,
-            LocalDeclKind::OpenInvariantBinder => true,
-            LocalDeclKind::ExecClosureId => false,
-            LocalDeclKind::ExecClosureParam => false,
-            LocalDeclKind::ExecClosureRet => false,
-            LocalDeclKind::Nondeterministic => false,
-            LocalDeclKind::BorrowMut => false,
-            LocalDeclKind::MutableTemporary => true,
+            LocalDeclKind::ExecClosureParam { mutable } => *mutable,
+            LocalDeclKind::Return
+            | LocalDeclKind::TempViaAssign
+            | LocalDeclKind::Decreases
+            | LocalDeclKind::StmCallArg { native: _ }
+            | LocalDeclKind::Assert
+            | LocalDeclKind::AssertByVar { native: _ }
+            | LocalDeclKind::LetBinder
+            | LocalDeclKind::QuantBinder
+            | LocalDeclKind::ChooseBinder
+            | LocalDeclKind::ClosureBinder
+            | LocalDeclKind::ExecClosureId
+            | LocalDeclKind::ExecClosureRet
+            | LocalDeclKind::Nondeterministic
+            | LocalDeclKind::OpenInvariantInnerTemp
+            | LocalDeclKind::BorrowMut => false,
         }
     }
 }
@@ -1002,4 +1159,18 @@ pub(crate) fn sst_call_ensures(
         Arc::new(vec![fndef_value, args_tuple, return_value]),
     );
     SpannedTyped::new(span, &Arc::new(TypX::Bool), expx)
+}
+
+pub(crate) fn exp_with_vars_at_pre_state(exp: &Exp, vars: &HashSet<UniqueIdent>) -> Exp {
+    crate::sst_visitor::map_exp_visitor(exp, &mut |e| match &e.x {
+        ExpX::Var(uid) if vars.contains(uid) => e.new_x(ExpX::VarAt(uid.clone(), VarAt::Pre)),
+        _ => e.clone(),
+    })
+}
+
+pub(crate) fn stm_with_vars_at_pre_state(stm: &Stm, vars: &HashSet<UniqueIdent>) -> Stm {
+    crate::sst_visitor::map_exps_in_stm_visitor(stm, &mut |e| match &e.x {
+        ExpX::Var(uid) if vars.contains(uid) => e.new_x(ExpX::VarAt(uid.clone(), VarAt::Pre)),
+        _ => e.clone(),
+    })
 }

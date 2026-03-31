@@ -1,10 +1,10 @@
 use crate::ast::*;
-use crate::ast_util::bool_typ;
-use crate::ast_util::{conjoin, mk_eq, mk_ineq};
+use crate::ast_util::{
+    bool_typ, conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_spec_expr,
+};
 use crate::context::GlobalCtx;
 use crate::def::Spanned;
 use crate::messages::{Span, error};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 pub fn pattern_to_exprs(
@@ -25,10 +25,10 @@ pub fn pattern_to_exprs(
             ));
         }
 
-        let ComputedPatternBinding { name, mutable, mut_ref, place } = pbd;
+        let ComputedPatternBinding { name, mut_ref, place } = pbd;
 
         let place = if mut_ref {
-            PlaceX::temporary(SpannedTyped::new(
+            PlaceX::spec_temporary(SpannedTyped::new(
                 &place.span,
                 &Arc::new(TypX::MutRef(place.typ.clone())),
                 ExprX::BorrowMut(place.clone()),
@@ -37,10 +37,9 @@ pub fn pattern_to_exprs(
             place
         };
 
-        let pattern = PatternX::simple_var(name, mutable, &place.span, &place.typ);
-        // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
-        let decl =
-            StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(place.clone()), els: None };
+        let pattern = PatternX::simple_var(name, &place.span, &place.typ);
+        // Mode doesn't matter at this stage; arbitrarily set it to None
+        let decl = StmtX::Decl { pattern, mode: None, init: Some(place.clone()), els: None };
         decls.push(Spanned::new(place.span.clone(), decl));
     }
 
@@ -49,7 +48,6 @@ pub fn pattern_to_exprs(
 
 struct ComputedPatternBinding {
     name: VarIdent,
-    mutable: bool,
     mut_ref: bool,
     place: Place,
 }
@@ -57,7 +55,6 @@ struct ComputedPatternBinding {
 fn computed(binding: &PatternBinding, place: &Place) -> Result<ComputedPatternBinding, VirErr> {
     Ok(ComputedPatternBinding {
         name: binding.name.clone(),
-        mutable: binding.mutable,
         place: place.clone(),
         mut_ref: matches!(binding.by_ref, ByRef::MutRef),
     })
@@ -146,34 +143,37 @@ fn pattern_to_exprs_rec(
 
             Ok(test)
         }
-        PatternX::Or(_pat1, _pat2) => {
-            /*
-            let mut decls1 = vec![];
-            let mut decls2 = vec![];
+        PatternX::Or(pat1, pat2) => {
+            let mut bindings1 = vec![];
+            let mut bindings2 = vec![];
 
-            let pat1_matches = pattern_to_exprs_rec(ctx, expr, pat1, &mut decls1)?;
-            let pat2_matches = pattern_to_exprs_rec(ctx, expr, pat2, &mut decls2)?;
+            let pat1_matches = pattern_to_exprs_rec(ctx, pat1, place, &mut bindings1, in_immut)?;
+            let pat2_matches = pattern_to_exprs_rec(ctx, pat2, place, &mut bindings2, in_immut)?;
 
             let matches = disjoin(&pattern.span, &vec![pat1_matches.clone(), pat2_matches]);
 
-            assert!(decls1.len() == decls2.len());
-            for d1 in decls1 {
-                let d2 = decls2
+            assert!(bindings1.len() == bindings2.len());
+            for d1 in bindings1 {
+                let d2 = bindings2
                     .iter()
-                    .find(|d| d.name == d1.name)
+                    .find(|d2| d2.name == d1.name)
                     .expect("both sides of 'or' pattern should bind the same variables");
-                assert!(d1.mutable == d2.mutable);
-                let combined_decl = PatternBoundDecl {
+                assert!(!d1.mut_ref);
+                assert!(!d2.mut_ref);
+
+                let e1 = place_to_spec_expr(&d1.place);
+                let e2 = place_to_spec_expr(&d2.place);
+                let ite = if_then_else(&pattern.span, &pat1_matches, &e1, &e2);
+
+                let combined_binding = ComputedPatternBinding {
                     name: d1.name,
-                    mutable: d1.mutable,
-                    expr: if_then_else(&pattern.span, &pat1_matches, &d1.expr, &d2.expr),
+                    mut_ref: false,
+                    place: PlaceX::spec_temporary(ite),
                 };
-                decls.push(combined_decl);
+                bindings.push(combined_binding);
             }
 
             Ok(matches)
-            */
-            todo!(); // TODO(new_mut_ref)
         }
         PatternX::Expr(e) => {
             let expr = read_place(&place);
@@ -199,54 +199,69 @@ fn pattern_to_exprs_rec(
     }
 }
 
-pub(crate) fn pattern_has_move(pattern: &Pattern, modes: &HashMap<VarIdent, Mode>) -> bool {
+pub(crate) fn pattern_find_mut_binding(pattern: &Pattern) -> Option<Span> {
     match &pattern.x {
-        PatternX::Wildcard(_) => false,
-        PatternX::Var(binding) => binding_is_move(binding, modes),
+        PatternX::Wildcard(_) => None,
+        PatternX::Var(binding) => {
+            if matches!(binding.by_ref, ByRef::MutRef) {
+                Some(pattern.span.clone())
+            } else {
+                None
+            }
+        }
         PatternX::Binding { binding, sub_pat } => {
-            binding_is_move(binding, modes) || pattern_has_move(sub_pat, modes)
+            if matches!(binding.by_ref, ByRef::MutRef) {
+                Some(pattern.span.clone())
+            } else {
+                pattern_find_mut_binding(sub_pat)
+            }
         }
         PatternX::Constructor(_path, _variant, patterns) => {
             for binder in patterns.iter() {
-                if pattern_has_move(&binder.a, modes) {
-                    return true;
+                match pattern_find_mut_binding(&binder.a) {
+                    s @ Some(_) => {
+                        return s;
+                    }
+                    None => {}
                 }
             }
-            false
+            None
         }
-        PatternX::Or(pat1, pat2) => pattern_has_move(pat1, modes) || pattern_has_move(pat2, modes),
-        PatternX::Expr(_e) => false,
-        PatternX::Range(_lower, _upper) => false,
-        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_move(p, modes),
+        PatternX::Or(pat1, pat2) => {
+            match pattern_find_mut_binding(pat1) {
+                s @ Some(_) => {
+                    return s;
+                }
+                None => {}
+            }
+            pattern_find_mut_binding(pat2)
+        }
+        PatternX::Expr(_e) => None,
+        PatternX::Range(_lower, _upper) => None,
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_find_mut_binding(p),
     }
 }
 
-fn binding_is_move(binding: &PatternBinding, modes: &HashMap<VarIdent, Mode>) -> bool {
-    !binding.copy
-        && matches!(binding.by_ref, ByRef::No)
-        && !matches!(modes[&binding.name], Mode::Spec)
+pub(crate) fn pattern_has_mut(pattern: &Pattern) -> bool {
+    pattern_find_mut_binding(pattern).is_some()
 }
 
-pub(crate) fn pattern_has_mut(pattern: &Pattern) -> bool {
-    // We don't need to account for modes here (unlike pattern_has_move)
-    // because mode-checking will rule out taking mutable references to spec-mode locations.
+pub(crate) fn pattern_has_or(pattern: &Pattern) -> bool {
     match &pattern.x {
         PatternX::Wildcard(_) => false,
-        PatternX::Var(binding) => matches!(binding.by_ref, ByRef::MutRef),
-        PatternX::Binding { binding, sub_pat } => {
-            matches!(binding.by_ref, ByRef::MutRef) || pattern_has_mut(sub_pat)
-        }
+        PatternX::Var(_binding) => false,
+        PatternX::Binding { binding: _, sub_pat } => pattern_has_or(sub_pat),
         PatternX::Constructor(_path, _variant, patterns) => {
             for binder in patterns.iter() {
-                if pattern_has_mut(&binder.a) {
+                if pattern_has_or(&binder.a) {
                     return true;
                 }
             }
             false
         }
-        PatternX::Or(pat1, pat2) => pattern_has_mut(pat1) || pattern_has_mut(pat2),
+        PatternX::Or(_pat1, _pat2) => true,
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
-        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_mut(p),
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_or(p),
     }
 }

@@ -16,6 +16,7 @@ use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParPurpose, ParX, Pars};
 use crate::sst_to_air::{
     ExprCtxt, ExprMode, exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids,
 };
+use crate::sst_util::sst_exp_get_proof_note;
 use crate::util::vec_map;
 use air::ast::{
     Axiom, BinaryOp, Bind, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant, Trigger,
@@ -89,7 +90,7 @@ fn func_def_typs_args(
     params: &Pars,
 ) -> Vec<Expr> {
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
-    let mut f_args: Vec<Expr> = typ_args.iter().map(typ_to_ids).flatten().collect();
+    let mut f_args: Vec<Expr> = typ_args.iter().flat_map(typ_to_ids).collect();
     for param in params.iter() {
         let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
             prefix_pre_var(&param.x.name.lower())
@@ -119,6 +120,8 @@ fn func_def_quant(
     typ_args: &Typs,
     params: &Pars,
     pre: &Vec<Expr>,
+    extra_trigger_terms: &Vec<Typ>,
+    extra_binder: Option<Bind>,
     body: Expr,
 ) -> Result<Expr, VirErr> {
     let (opts, trait_default_ensures) = if is_trait_default_ensures {
@@ -132,8 +135,18 @@ fn func_def_quant(
     let f_args = func_def_typs_args(ctx, trait_default_ensures, typ_args, params);
     let f_app = string_apply(name, &Arc::new(f_args));
     let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
-    let f_imply = mk_implies(&mk_and(pre), &f_eq);
-    Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, opts), &f_imply))
+    let mut f_imply = mk_implies(&mk_and(pre), &f_eq);
+    if let Some(extra_binder) = extra_binder {
+        f_imply = mk_bind_expr(&extra_binder, &f_imply);
+    }
+    let mut trigs = vec![f_app];
+    for extra_trigger_term in extra_trigger_terms.iter() {
+        trigs.push(crate::sst_to_air::typ_to_id(ctx, extra_trigger_term));
+    }
+    Ok(mk_bind_expr(
+        &func_bind_trig(ctx, name.to_string(), typ_params, params, &trigs, opts),
+        &f_imply,
+    ))
 }
 
 pub(crate) fn hide_projections_air(
@@ -225,6 +238,20 @@ fn func_body_to_air(
 ) -> Result<(), VirErr> {
     let crate::sst::FuncSpecBodySst { decrease_when, termination_check, body_exp } = func_body_sst;
     let pars = &function.x.pars;
+    let mut typ_params = function.x.typ_params.clone();
+    let mut typ_bounds = function.x.typ_bounds.clone();
+    let (substs, extra_trigger_terms) =
+        if let FunctionKind::TraitMethodImpl { impl_path, trait_typ_args, .. } = &function.x.kind {
+            crate::traits::fix_missing_trigger_params_fn(
+                ctx,
+                impl_path,
+                &mut typ_params,
+                &mut typ_bounds,
+                trait_typ_args,
+            )
+        } else {
+            (None, vec![])
+        };
 
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
     let mut def_reqs: Vec<Expr> = Vec::new();
@@ -248,7 +275,7 @@ fn func_body_to_air(
         // conditions on type arguments:
         // (*always* needed in trait dispatch to make sure different implementations of the same
         // trait don't conflict and contradict each other)
-        def_reqs.extend(crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds));
+        def_reqs.extend(crate::traits::trait_bounds_to_air(ctx, &typ_bounds));
     }
     if function.x.has.has_decrease {
         for param in pars.iter() {
@@ -269,8 +296,8 @@ fn func_body_to_air(
         let (termination_commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
             ctx,
             &function.span,
-            &function.x.typ_params,
-            &function.x.typ_bounds,
+            &typ_params,
+            &typ_bounds,
             pars,
             &termination_check,
             &vec![],
@@ -291,21 +318,21 @@ fn func_body_to_air(
     }
 
     // For trait method implementations, use trait method function name and add Self type argument
-    let mut impl_typ_params = function.x.typ_params.clone();
+    let mut impl_typ_params = typ_params.clone();
     let mut impl_def_reqs: Vec<Expr> = Vec::new();
     let (name, rec_name, typ_args) =
         if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &function.x.kind {
             let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
-            let (typ_params, eqs) = hide_projections_air(ctx, &function.x.typ_params, holes);
+            let (typ_params, eqs) = hide_projections_air(ctx, &typ_params, holes);
             impl_typ_params = typ_params;
             impl_def_reqs.extend(eqs);
             (method.clone(), function.x.name.clone(), trait_typ_args.clone())
         } else if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
-            let typ_args = vec_map(&function.x.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
+            let typ_args = vec_map(&typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
             let name = crate::def::trait_default_name(&function.x.name);
             (name.clone(), name, Arc::new(typ_args))
         } else {
-            let typ_args = vec_map(&function.x.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
+            let typ_args = vec_map(&typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
             (function.x.name.clone(), function.x.name.clone(), Arc::new(typ_args))
         };
 
@@ -329,7 +356,7 @@ fn func_body_to_air(
 
         let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&rec_name)));
         let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&rec_name));
-        let args = func_def_args(ctx, &function.x.typ_params, pars);
+        let args = func_def_args(ctx, &typ_params, pars);
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
         let mut args_succ = args.clone();
@@ -351,8 +378,8 @@ fn func_body_to_air(
         let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
         let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
         let opts = Some(FuncBindOpts { add_fuel: true, add_default_ensures: false });
-        let bind_zero = func_bind(ctx, name_zero, &function.x.typ_params, pars, &rec_f_fuel, opts);
-        let bind_body = func_bind(ctx, name_body, &function.x.typ_params, pars, &rec_f_succ, opts);
+        let bind_zero = func_bind(ctx, name_zero, &typ_params, pars, &rec_f_fuel, opts);
+        let bind_body = func_bind(ctx, name_body, &typ_params, pars, &rec_f_succ, opts);
         let implies_body = mk_implies(&mk_and(&def_reqs), &eq_body);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &implies_body);
@@ -374,6 +401,8 @@ fn func_body_to_air(
         &typ_args,
         pars,
         &def_reqs,
+        &extra_trigger_terms,
+        substs,
         def_body,
     )?;
     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
@@ -450,15 +479,27 @@ fn req_ens_to_air(
                     ));
                 }
             }
-            let loc_expr = match msg {
-                None => expr,
-                Some(msg) => {
-                    let l = MessageLabel { span: exp.span.clone(), note: msg.clone() };
-                    let ls: Vec<ArcDynMessageLabel> = vec![Arc::new(l)];
-                    Arc::new(ExprX::LabeledAxiom(ls, filter.clone(), expr))
-                }
+            let mut labels: Vec<ArcDynMessageLabel> = Vec::new();
+            if let Some(msg) = msg {
+                labels.push(Arc::new(MessageLabel {
+                    span: exp.span.clone(),
+                    note: msg.clone(),
+                    is_proof_note: false,
+                }));
+            }
+            if let Some(label) = sst_exp_get_proof_note(exp) {
+                labels.push(Arc::new(MessageLabel {
+                    span: exp.span.clone(),
+                    note: label.to_string(),
+                    is_proof_note: true,
+                }));
+            }
+            let labeled_expr = if labels.is_empty() {
+                expr
+            } else {
+                Arc::new(ExprX::LabeledAxiom(labels, filter.clone(), expr))
             };
-            exprs.push(loc_expr);
+            exprs.push(labeled_expr);
         }
         let body = mk_and(&exprs);
         let e_forall = func_def_quant(
@@ -469,6 +510,8 @@ fn req_ens_to_air(
             &typ_args,
             &params,
             &vec![],
+            &vec![],
+            None,
             body,
         )?;
         let req_ens_axiom = mk_unnamed_axiom(e_forall);
@@ -698,7 +741,12 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             }
         }
     } else {
-        assert!(!function.x.has.has_ensures); // no ensures allowed on spec functions yet
+        if function.x.has.has_ensures {
+            return Err(crate::messages::error(
+                &function.x.ret.span,
+                "ensures clause unsupported on spec function",
+            ));
+        }
     }
 
     if is_trait_method_impl {
@@ -749,7 +797,6 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
 /// (This may include the proof content of a decreases_by function.)
 /// (Note: this means that you shouldn't call func_axioms_to_air with a decreases_by function
 /// on its own.)
-
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
     function: &FunctionSst,
@@ -774,6 +821,7 @@ pub fn func_axioms_to_air(
                     )?;
                 }
                 if let FunctionKind::TraitMethodImpl {
+                    impl_path,
                     trait_typ_args,
                     inherit_body_from: Some(f_trait),
                     ..
@@ -781,10 +829,19 @@ pub fn func_axioms_to_air(
                 {
                     // Emit axiom that says our method equals the default method we inherit from
                     // (if trait bounds are satisfied)
+                    let mut typ_params = function.x.typ_params.clone();
+                    let mut typ_bounds = function.x.typ_bounds.clone();
+                    let (substs, extra_trigger_terms) =
+                        crate::traits::fix_missing_trigger_params_fn(
+                            ctx,
+                            impl_path,
+                            &mut typ_params,
+                            &mut typ_bounds,
+                            trait_typ_args,
+                        );
                     let (mut trait_typ_args, holes) =
                         crate::traits::hide_projections(trait_typ_args);
-                    let (typ_params, eqs) =
-                        hide_projections_air(ctx, &function.x.typ_params, holes);
+                    let (typ_params, eqs) = hide_projections_air(ctx, &typ_params, holes);
                     let n_inner_typ_params =
                         ctx.func_map[f_trait].x.typ_params.len() - trait_typ_args.len();
                     let inner_typ_params_lo = typ_params.len() - n_inner_typ_params;
@@ -793,15 +850,14 @@ pub fn func_axioms_to_air(
                         Arc::make_mut(&mut trait_typ_args)
                             .push(Arc::new(TypX::TypParam(x.clone())));
                     }
-                    let mut args: Vec<Expr> =
-                        trait_typ_args.iter().map(typ_to_ids).flatten().collect();
+                    let mut args: Vec<Expr> = trait_typ_args.iter().flat_map(typ_to_ids).collect();
                     for p in function.x.pars.iter() {
                         args.push(ident_var(&p.x.name.lower()));
                     }
                     let default_name = crate::def::trait_default_name(f_trait);
                     let default_name = &suffix_global_id(&fun_to_air_ident(&default_name));
                     let body = ident_apply(&default_name, &args);
-                    let mut pre = crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds);
+                    let mut pre = crate::traits::trait_bounds_to_air(ctx, &typ_bounds);
                     pre.extend(eqs);
                     let e_forall = func_def_quant(
                         ctx,
@@ -811,6 +867,8 @@ pub fn func_axioms_to_air(
                         &trait_typ_args,
                         &function.x.pars,
                         &pre,
+                        &extra_trigger_terms,
+                        substs,
                         body,
                     )?;
                     let def_axiom = mk_unnamed_axiom(e_forall);
@@ -818,7 +876,17 @@ pub fn func_axioms_to_air(
                 }
             }
 
-            if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
+            if let FunctionKind::TraitMethodImpl { trait_path, .. } = &function.x.kind {
+                let orig_trait =
+                    ctx.global.extension_to_trait.get(trait_path).unwrap_or(trait_path);
+                if ctx.reached_dyn_traits.contains(orig_trait) {
+                    crate::traits::dyn_spec_fn_axiom(
+                        ctx,
+                        &mut decl_commands,
+                        orig_trait,
+                        &function,
+                    );
+                }
                 // For a trait method implementation, we just need to supply a body axiom
                 // for the existing trait method declaration function, so we can return here.
                 return Ok((Arc::new(decl_commands), check_commands));

@@ -20,7 +20,7 @@ pub trait FloatBitsProperties {
     // Positive or negative infinity (not zero, not subnormal, not normal, not NaN)
     spec fn is_infinite_spec(&self) -> bool;
 
-    // A NaN value (not zero, not subnormal, not normal, not NaN)
+    // A NaN value (not zero, not subnormal, not normal, not infinity)
     spec fn is_nan_spec(&self) -> bool;
 }
 
@@ -90,6 +90,47 @@ impl FloatBitsProperties for f64 {
     open spec fn is_nan_spec(&self) -> bool {
         self.to_bits_abs_spec() > 0x7ff0_0000_0000_0000
     }
+}
+
+pub assume_specification[ <f32 as Clone>::clone ](f: &f32) -> (res: f32)
+    ensures
+        res == f,
+;
+
+pub assume_specification[ <f64 as Clone>::clone ](f: &f64) -> (res: f64)
+    ensures
+        res == f,
+;
+
+#[verifier::external_trait_specification]
+pub trait ExIeeeFloatCast<To> {
+    type ExternalTraitSpecificationFor: IeeeFloatCast<To>;
+}
+
+// deterministic IEEE cast
+#[verifier::inline]
+pub open spec fn ieee_float_cast<From: Copy + IeeeFloatCast<To>, To>(from: From) -> To {
+    from.ieee_cast()
+}
+
+// (possibly) non-deterministic Rust cast
+pub uninterp spec fn float_cast_spec<From, To>(from: From, to: To) -> bool;
+
+// Used only for internal Verus translation of "as" operator;
+// this is not meant to be called directly by user code,
+// and it is not actually compiled to executable code
+#[cfg(verus_keep_ghost)]
+#[doc(hidden)]
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::float::float_cast")]
+#[verifier::when_used_as_spec(ieee_float_cast)]
+pub fn float_cast<From: Copy + IeeeFloatCast<To>, To>(from: From) -> (to: To)
+    ensures
+        float_cast_spec(from, to),
+    opens_invariants none
+    no_unwind
+{
+    unimplemented!{}
 }
 
 } // verus!
