@@ -3845,6 +3845,11 @@ fn check_function(
                     &ctxt.datatypes,
                 )?;
             } else if new_mut_ref {
+                // For dual mode we _could_ probably skip entirely, but
+                // resolution_inference does some extra (soundness-related) checks
+                // besides resolution inference that would not be good to skip
+                let is_dual_mode =
+                    functionx.mode == Mode::Spec && functionx.ret.x.mode == Mode::Exec;
                 if let Some(body) = &mut functionx.body {
                     *body = crate::resolution_inference::infer_resolution(
                         &functionx.params,
@@ -3856,6 +3861,7 @@ fn check_function(
                         functionx.owning_module.as_ref().unwrap(),
                         &record.var_modes,
                         &record.temporary_modes,
+                        is_dual_mode,
                     )?;
                 }
             }
