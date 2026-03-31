@@ -360,7 +360,7 @@ test_verify_one_file_with_options! {
             x = 23;
             x
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected pure mathematical expression")
+    } => Err(err) => assert_vir_error_msg(err, "assignment is not allowed inside pure context")
 }
 
 test_verify_one_file_with_options! {
