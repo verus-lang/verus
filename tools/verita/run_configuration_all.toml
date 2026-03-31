@@ -84,7 +84,9 @@ extra_verus_args = ["--crate-type=lib"]
 
 [[project]]
 name = "page-table"
-git_url = "https://github.com/matthias-brun/verified-nrkernel.git"
+#TODO: restore original git_url:
+#git_url = "https://github.com/matthias-brun/verified-nrkernel.git"
+git_url = "https://github.com/Chris-Hawblitzel/verified-nrkernel.git"
 refspec = "main"
 crate_roots = ["page-table/src/lib.rs"]
 extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"impl\""]
