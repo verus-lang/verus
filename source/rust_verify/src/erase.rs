@@ -7,7 +7,7 @@ use vir::ast::{Datatype, Dt, Fun, Function, Krate, Mode, Path, Pattern};
 use vir::modes::ErasureModes;
 
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
-use rustc_hir::def_id::LocalDefId;
+use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_mir_build_verus::verus::{
     BodyErasure, CallErasure, NodeErase, TreeErase, VarErasure, VerusErasureCtxt,
     set_verus_aware_def_ids, set_verus_erasure_ctxt,
@@ -73,8 +73,8 @@ pub struct ErasureHints {
     pub vir_crate: Krate,
     /// Connect expression and pattern HirId to corresponding vir AstId
     pub hir_vir_ids: Vec<(HirId, AstId)>,
-    /// Details of each call in the first run's HIR
-    pub resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
+    /// Details of each call in the first run's HIR.
+    pub resolved_calls: Vec<(HirId, SpanData, ResolvedCall, DefId)>,
     /// Details of some patterns in first run's HIR
     pub resolved_pats: Vec<(SpanData, Pattern)>,
     /// Results of mode (spec/proof/exec) inference from first run's VIR
@@ -304,7 +304,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
     }
 
     let mut calls = HashMap::<HirId, CallErasure>::new();
-    for (hir_id, span_data, resolved_call) in &erasure_hints.resolved_calls {
+    for (hir_id, span_data, resolved_call, _def_id) in &erasure_hints.resolved_calls {
         let span = span_data.span();
         let ctor_mode = ctor_modes.get(hir_id).cloned();
         calls.insert(

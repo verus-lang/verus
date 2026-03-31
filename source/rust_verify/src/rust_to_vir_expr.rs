@@ -543,7 +543,12 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     );
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
-    erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call));
+    erasure_info.resolved_calls.push((
+        expr.hir_id,
+        fun_span.data(),
+        resolved_call,
+        ctor.adt_def_id,
+    ));
     let exprx = ExprX::Ctor(Dt::Path(vir_path), variant_name, vir_fields, None);
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ, exprx))
 }
@@ -2153,6 +2158,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             expr.hir_id,
                             fun.span.data(),
                             resolved_call,
+                            bctx.types.type_dependent_def(expr.hir_id).unwrap().1,
                         ));
                     }
 
@@ -2609,6 +2615,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             expr.hir_id,
                             expr.span.data(),
                             ResolvedCall::CompilableOperator(CompilableOperator::IntIntrinsic),
+                            id,
                         ));
                         return Ok(ExprOrPlace::Expr(vir_expr));
                     } else {
@@ -2968,7 +2975,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 Arc::new(vir_fields.iter().map(|f| f.name.clone()).collect::<Vec<_>>()),
                 update.is_some(),
             );
-            erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+            erasure_info.resolved_calls.push((
+                expr.hir_id,
+                expr.span.data(),
+                resolved_call,
+                ctor.adt_def_id,
+            ));
             mk_expr(ExprX::Ctor(Dt::Path(path), variant_name, vir_fields, update))
         }
         ExprKind::MethodCall(_name_and_generics, receiver, other_args, fn_span) => {
@@ -3641,7 +3653,7 @@ fn unwrap_parameter_to_vir<'tcx>(
             )),
             _ => None,
         };
-        Some((expr_x.hir_id, expr_y.hir_id, expr_get.hir_id, ident_x, ident_y, mode))
+        Some((expr_x.hir_id, expr_y.hir_id, expr_get.hir_id, ident_x, ident_y, mode, fn_def_id))
     } else {
         None
     };
@@ -3649,13 +3661,26 @@ fn unwrap_parameter_to_vir<'tcx>(
         (
             Some((hir_id1, x1)),
             Some(GhostBlockAttr::Proof),
-            Some((hir_id2, hir_id_y, hir_id_get, Some(x2), Some(y), Some((mode, resolved_call)))),
+            Some((
+                hir_id2,
+                hir_id_y,
+                hir_id_get,
+                Some(x2),
+                Some(y),
+                Some((mode, resolved_call)),
+                fn_def_id,
+            )),
         ) if x1 == x2 => {
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
             erasure_info.direct_var_modes.push((hir_id1, mode));
             erasure_info.direct_var_modes.push((hir_id2, mode));
             erasure_info.direct_var_modes.push((hir_id_y, Mode::Exec));
-            erasure_info.resolved_calls.push((hir_id_get, stmt2.span.data(), resolved_call));
+            erasure_info.resolved_calls.push((
+                hir_id_get,
+                stmt2.span.data(),
+                resolved_call,
+                fn_def_id,
+            ));
             let unwrap = vir::ast::UnwrapParameter { mode, outer_name: y, inner_name: x1 };
             let headerx = HeaderExprX::UnwrapParameter(unwrap.clone());
             let exprx = ExprX::Header(Arc::new(headerx));
@@ -3801,7 +3826,21 @@ pub(crate) fn record_ignore_dummy_capture_operation<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) {
-    crate::fn_call_to_vir::record_call(bctx, expr, ResolvedCall::MiscEraseAbsolutely);
+    let def_id = match &expr.kind {
+        ExprKind::Call(fun, _) => match &fun.kind {
+            ExprKind::Path(QPath::Resolved(
+                None,
+                rustc_hir::Path { res: Res::Def(_, fun_id), .. },
+            )) => *fun_id,
+            _ => {
+                panic!("record_ignore_dummy_capture_operation expected path");
+            }
+        },
+        _ => {
+            panic!("record_ignore_dummy_capture_operation expected call");
+        }
+    };
+    crate::fn_call_to_vir::record_call(bctx, def_id, expr, ResolvedCall::MiscEraseAbsolutely);
 }
 
 pub(crate) fn closure_to_vir<'tcx>(

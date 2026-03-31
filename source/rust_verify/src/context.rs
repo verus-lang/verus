@@ -18,7 +18,7 @@ use vir::messages::AstId;
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
-    pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
+    pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall, DefId)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
