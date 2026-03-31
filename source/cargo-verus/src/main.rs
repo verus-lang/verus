@@ -11,7 +11,6 @@ use std::env;
 use std::process::ExitCode;
 
 use anyhow::Result;
-use clap::Parser;
 
 mod cli;
 mod metadata;
@@ -25,13 +24,7 @@ use crate::{
 };
 
 pub fn main() -> Result<ExitCode> {
-    let normalized_args: Vec<_> = normalize_args(env::args()).collect();
-    let parsed_cli =
-        CargoVerusCli::parse_from(normalized_args.iter().cloned()).clap_trailing_args_hotfix();
-
-    if parsed_cli.has_inadvisable_verus_arg() {
-        return Ok(ExitCode::from(2));
-    }
+    let parsed_cli = CargoVerusCli::from_args(env::args())?;
 
     let cfg = match parsed_cli.command {
         VerusSubcommand::New(new_cmd) => {
@@ -73,8 +66,4 @@ pub fn main() -> Result<ExitCode> {
     };
 
     subcommands::run_cargo(cfg)
-}
-
-fn normalize_args(args: impl Iterator<Item = String>) -> impl Iterator<Item = String> {
-    args.enumerate().filter(|(i, arg)| *i != 1 || arg != "verus").map(|(_, arg)| arg)
 }
