@@ -187,6 +187,47 @@ fn resolved_call_to_call_erase(
     })
 }
 
+pub(crate) fn requires_uninhabited_output_patch(
+    functions: &HashMap<Fun, Function>,
+    resolved_call: &ResolvedCall,
+) -> bool {
+    match resolved_call {
+        ResolvedCall::SpecPure => true,
+        ResolvedCall::SpecAllowProofArgs => true,
+        ResolvedCall::Call(ufun, rfun, _) => {
+            let Some(f) = functions.get(ufun).or_else(|| functions.get(rfun)) else {
+                dbg!(ufun, rfun);
+                panic!("internal Verus error: could not find mode declarations for function")
+            };
+        }
+        ResolvedCall::Ctor(..) | ResolvedCall::BracesCtor(..) => false,
+        ResolvedCall::NonStaticExec => false,
+        ResolvedCall::NonStaticProof(..) => true,
+        ResolvedCall::CompilableOperator(co) => match co {
+            CompilableOperator::IntIntrinsic
+              | CompilableOperator::GhostExec
+              | CompilableOperator::Implies
+              | CompilableOperator::Implies
+              | CompilableOperator::TrackedNew
+              | CompilableOperator::TrackedExec
+              | CompilableOperator::TrackedExecBorrow
+              | CompilableOperator::TrackedGet
+              | CompilableOperator::TrackedBorrow
+              | CompilableOperator::TrackedBorrowMut
+              | CompilableOperator::GhostBorrowMut
+              | CompilableOperator::MutRefTracked
+              | CompilableOperator::ClosureToFnProof(_) => true,
+
+            CompilableOperator::RcNew
+              | CompilableOperator::ArcNew
+              | CompilableOperator::BoxNew
+              | CompilableOperator::SmartPtrClone { .. } => false,
+        }
+        ResolvedCall::MiscEraseAbsolutely(..) => true,
+        ResolvedCall::InferSpecForLoopIter(..) => true,
+    }
+}
+
 fn get_binder_hir_id<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     hir_id: HirId,
@@ -304,7 +345,8 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
     }
 
     let mut calls = HashMap::<HirId, CallErasure>::new();
-    for (hir_id, span_data, resolved_call, _def_id) in &erasure_hints.resolved_calls {
+    let mut def_ids_uninhabited_patch = HashSet::<DefId>::new();
+    for (hir_id, span_data, resolved_call, def_id) in &erasure_hints.resolved_calls {
         let span = span_data.span();
         let ctor_mode = ctor_modes.get(hir_id).cloned();
         calls.insert(
@@ -318,6 +360,9 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
                 &infer_spec_for_loop_iter_erase,
             )?,
         );
+        if requires_uninhabited_output_patch(&functions, resolved_call) {
+            def_ids_uninhabited_patch.insert(def_id);
+        }
     }
 
     let mut bodies = HashMap::<LocalDefId, BodyErasure>::new();
