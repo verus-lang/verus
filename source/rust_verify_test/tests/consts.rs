@@ -543,3 +543,14 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/2023
+    #[test] test_nested_const_in_fn verus_code!{
+        fn test() {
+            const FIELDS: u64 = 0;
+            let x = FIELDS;
+            assert(x == 0);
+        }
+    } => Ok(())
+}

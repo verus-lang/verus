@@ -405,7 +405,8 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
     // For anything else: it doesn't matter.
     //
     // Since most consts are marked external, we can just use the VerusAware set for this.
-    // We carve out exceptions for some special directives.
+    // We carve out exceptions for some special directives, as well as for const items
+    // (which may be evaluated during typechecking, e.g., nested const items in functions).
 
     let mut s = HashSet::<LocalDefId>::new();
     for item in crate_items.items.iter() {
