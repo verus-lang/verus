@@ -1556,7 +1556,9 @@ impl<'a> Builder<'a> {
         };
         let (cpt, bb) = self.build_place_typed(place, bb, tinv)?;
 
-        assert!(arms.len() != 0);
+        if arms.len() == 0 {
+            return Err(());
+        }
 
         let mut cur_bb = bb;
         let mut arm_bb_ends = vec![];

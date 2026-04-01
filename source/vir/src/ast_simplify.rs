@@ -440,7 +440,10 @@ fn simplify_one_expr(
                 _ => Ok(expr.new_x(ExprX::VarLoc(rename_var(state, scope_map, x)))),
             }
         }
-        ExprX::AssignToPlace { place, .. } => {
+        ExprX::AssignToPlace { place, .. }
+        | ExprX::BorrowMut(place)
+        | ExprX::TwoPhaseBorrowMut(place)
+        | ExprX::BorrowMutTracked(place) => {
             if !crate::ast_util::place_has_deref_mut(place)
                 && let Some(local) = crate::ast_util::place_get_local(place)
             {

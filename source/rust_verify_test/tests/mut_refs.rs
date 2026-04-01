@@ -763,6 +763,22 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] control_flow_match_on_never ["new-mut-ref"] => verus_code! {
+        #[allow(unreachable_code)]
+        fn test(x: !) {
+            let mut y = 0;
+            let y_ref = &mut y;
+
+            assert(has_resolved(y_ref));
+
+            match x { }
+
+            *y_ref = 20;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not yet implemented: zero-arm match expressions")
+}
+
+test_verify_one_file_with_options! {
     #[test] control_flow_conditional ["new-mut-ref"] => verus_code! {
         fn test(b: bool) {
             let mut x: u64 = 0;
