@@ -419,11 +419,19 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
                 AttrTree::Fun(span, name, attrs) if name == "proof_note" => {
                     let label = get_proof_note_label(*span, attrs)?;
-                    v.push(Attr::ProofNote { span: *span, text: label.clone(), is_custom_err: false })
+                    v.push(Attr::ProofNote {
+                        span: *span,
+                        text: label.clone(),
+                        is_custom_err: false,
+                    })
                 }
                 AttrTree::Fun(span, name, attrs) if name == "proof_note_custom_err" => {
                     let label = get_proof_note_label(*span, attrs)?;
-                    v.push(Attr::ProofNote { span: *span, text: label.clone(), is_custom_err: true })
+                    v.push(Attr::ProofNote {
+                        span: *span,
+                        text: label.clone(),
+                        is_custom_err: true,
+                    })
                 }
                 AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
                 AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {

@@ -140,9 +140,8 @@ fn path_matches_idents(path: &Path, expected: &[&str]) -> bool {
 }
 
 fn split_off_proof_note_attrs(attrs: Vec<Attribute>) -> (Vec<Attribute>, Vec<Attribute>) {
-    let (mut proof_note_attrs, other_attrs): (Vec<Attribute>, Vec<Attribute>) = attrs
-        .into_iter()
-        .partition(|attr| {
+    let (mut proof_note_attrs, other_attrs): (Vec<Attribute>, Vec<Attribute>) =
+        attrs.into_iter().partition(|attr| {
             path_matches_idents(&attr.path(), &["verifier", "proof_note"])
                 || path_matches_idents(&attr.path(), &["verifier", "proof_note_custom_err"])
         });
