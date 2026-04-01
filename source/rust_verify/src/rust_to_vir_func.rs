@@ -1633,6 +1633,21 @@ pub(crate) fn check_item_fn<'tcx>(
         // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
         let is_mut = is_ref_mut.is_some();
 
+        if matches!(&*typ, TypX::MutRef(_)) {
+            if vattrs.allow_in_spec {
+                return err_span(
+                    span,
+                    format!("allow_in_spec not supported for function with &mut param"),
+                );
+            }
+            if vattrs.autospec.is_some() {
+                return err_span(
+                    span,
+                    format!("when_used_as_spec not supported for function with &mut param"),
+                );
+            }
+        }
+
         let vir_param = ctxt.spanned_new(
             span,
             ParamX {
