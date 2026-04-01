@@ -222,12 +222,53 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file! {
-    #[test] test_proof_note_as_error_on_assert verus_code! {
+    #[test] test_proof_note_custom_err_on_assert verus_code! {
         fn caller() {
-            #[verifier::proof_note_custom_err("Custom error message")]
+            #[verifier::proof_note_custom_err("Custom assert error")]
             assert(1 > 2);
         }
-    } => Err(err) => assert_vir_error_msg(err, "Custom error message")
+    } => Err(err) => assert_vir_error_msg(err, "Custom assert error")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_note_custom_err_on_assume_with_no_cheating ["--no-cheating"] => verus_code! {
+        fn caller() {
+            #[verifier::proof_note_custom_err("Custom assume error")]
+            assume(1 > 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Custom assume error")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_custom_err_on_requires verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            requires
+                #![verifier::proof_note_custom_err("Custom requires error")]
+                x == y,
+        {
+            x
+        }
+
+        fn caller() {
+            let _ = example(1, 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Custom requires error")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_custom_err_on_ensures verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            ensures
+                #![verifier::proof_note_custom_err("Custom ensures error")]
+                z == x + y,
+        {
+            x
+        }
+
+        fn caller() {
+            let _ = example(1, 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Custom ensures error")
 }
 
 test_verify_one_file! {
