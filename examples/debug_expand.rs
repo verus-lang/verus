@@ -314,9 +314,9 @@ spec fn less_than(z: int, w: int) -> bool {
 }
 
 proof fn proof_test_are_equal(x: int, y: int, z: int, w: int) {
-    #[verifier::proof_note("integers fail to be equal")]
+    #[verifier::proof_note_custom_err("integers fail to be equal")]
     assert(are_equal(x, y));
-    #[verifier::proof_note("this ain't right. probably.")]
+    #[verifier::proof_note_custom_err("this ain't right. probably.")]
     assert(less_than(z, w));
 }
 

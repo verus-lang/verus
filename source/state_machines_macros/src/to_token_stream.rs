@@ -1117,7 +1117,7 @@ fn output_other_fns(
             #[verifier::proof]
             fn #lemma_msg_ident(s: #self_ty) {
                 #vstd::prelude::requires(
-                    #[verifier::proof_note(#error_msg)] /* vattr */
+                    #[verifier::proof_note_custom_err(#error_msg)] /* vattr */
                     s.#inv_ident(),
                 );
                 #vstd::prelude::ensures(s.#inv_ident());

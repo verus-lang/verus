@@ -20,7 +20,7 @@ pub proof fn assume(b: bool)
 // TODO: remove this
 pub proof fn assert(b: bool)
     requires
-        #![verifier::proof_note("assertion failure")]
+        #![verifier::proof_note_custom_err("assertion failure")]
         b,
     ensures
         b,
@@ -124,7 +124,7 @@ impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output = Output>> FnWith
 fn exec_nonstatic_call<Args: core::marker::Tuple, Output, F>(f: F, args: Args) -> (output:
     Output) where F: FnOnce<Args, Output = Output>
     requires
-        #![verifier::proof_note("Call to non-static function fails to satisfy `callee.requires(args)`")]
+        #![verifier::proof_note_custom_err("Call to non-static function fails to satisfy `callee.requires(args)`")]
         call_requires(f, args),
     ensures
         call_ensures(f, args, output),
@@ -141,7 +141,7 @@ proof fn proof_nonstatic_call<Args: core::marker::Tuple, Output, F>(
     tracked args: Args,
 ) -> (tracked output: Output) where F: FnOnce<Args, Output = Output>
     requires
-        #![verifier::proof_note("Call to non-static function fails to satisfy `callee.requires(args)`")]
+        #![verifier::proof_note_custom_err("Call to non-static function fails to satisfy `callee.requires(args)`")]
         call_requires(f, args),
     ensures
         call_ensures(f, args, output),
