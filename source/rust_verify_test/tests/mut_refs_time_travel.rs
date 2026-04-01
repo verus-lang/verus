@@ -120,7 +120,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "`after_borrow` expects a local variable, possibly with dereferences or field accesses")
 }
 
-// TODO(new_mut_ref): fix this
+// TODO(new_mut_ref): (blocking) fix this
 test_verify_one_file_with_options! {
     #[ignore] #[test] cant_cheat_prophecy_with_assign_in_has_resolved ["new-mut-ref"] => verus_code! {
         fn test() {

@@ -71,10 +71,14 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            loop {
+            loop
+                invariant
+                    after_borrow(x) == *final(x_ref),
+                    *x_ref == 20,
+            {
                 if some_bool() {
                     assert(has_resolved(x_ref));
-                    //assert(x == 20); // TODO(new_mut_ref): presently no way to specify the invariant we need
+                    assert(x == 20);
                     break;
                 }
 
@@ -441,10 +445,14 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            while some_bool() {
+            while some_bool()
+                invariant
+                    after_borrow(x) == *final(x_ref),
+                    *x_ref == 20,
+            {
                 if some_bool() {
                     assert(has_resolved(x_ref));
-                    //assert(x == 20); // TODO(new_mut_ref): presently no way to specify the invariant we need
+                    assert(x == 20);
                     break;
                 }
 
@@ -1034,10 +1042,14 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            for i in 0 .. 10 {
+            for i in 0 .. 10
+                invariant
+                    after_borrow(x) == *final(x_ref),
+                    *x_ref == 20,
+            {
                 if some_bool() {
                     assert(has_resolved(x_ref));
-                    //assert(x == 20); // TODO(new_mut_ref): presently no way to specify the invariant we need
+                    assert(x == 20);
                     break;
                 }
 

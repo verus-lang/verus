@@ -1648,23 +1648,20 @@ fn type_is_non_exec(ctxt: &Ctxt, typ: &Typ) -> bool {
             _,
             t,
         ) => type_is_non_exec(ctxt, t),
-        TypX::Datatype(dt, typ_args, _) => {
-            match dt {
-                Dt::Tuple(_) => {
-                    for t in typ_args.iter() {
-                        if type_is_non_exec(ctxt, t) {
-                            return true;
-                        }
+        TypX::Datatype(dt, typ_args, _) => match dt {
+            Dt::Tuple(_) => {
+                for t in typ_args.iter() {
+                    if type_is_non_exec(ctxt, t) {
+                        return true;
                     }
-                    false
                 }
-                Dt::Path(path) => {
-                    // TODO(new_mut_ref): should allow, e.g., Option<T> where T is non-exec
-                    let datatype = &ctxt.datatypes[path];
-                    datatype.x.mode != Mode::Exec
-                }
+                false
             }
-        }
+            Dt::Path(path) => {
+                let datatype = &ctxt.datatypes[path];
+                datatype.x.mode != Mode::Exec
+            }
+        },
         _ => false,
     }
 }
@@ -3378,7 +3375,7 @@ fn check_expr_handle_mut_arg(
             };
             record.read_kind_finals.insert(read_kind.id, final_read_kind);
 
-            // TODO(new_mut_ref) if the ReadKind is spec, we should check that it really is spec
+            // TODO(new_mut_ref) (blocking) if the ReadKind is spec, we should check that it really is spec
 
             let p = if matches!(read_kind.preliminary_kind, ReadKind::SpecAfterBorrow) {
                 Proph::Yes(ProphReason {

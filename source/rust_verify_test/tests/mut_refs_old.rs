@@ -114,7 +114,7 @@ test_verify_one_file_with_options! {
         proof fn test() {
             let x = |a: &mut u64| *old(a) == 0;
         }
-    // TODO(new_mut_ref): slightly confusing error msg here
+    // TODO(new_mut_ref): (low-pri) slightly confusing error msg here
     } => Err(err) => assert_vir_error_msg(err, "`old` for a local variable that isn't a parameter")
 }
 
@@ -349,7 +349,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): currently malformed AIR error
+    // TODO(new_mut_ref): (blocking) currently malformed AIR error
     #[ignore] #[test] test_assert_nonlinear ["new-mut-ref"] => verus_code! {
         fn nonlinear(x: &mut u64)
             requires *x == 0,
@@ -366,7 +366,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): currently malformed AIR error
+    // TODO(new_mut_ref): (blocking) currently malformed AIR error
     #[ignore] #[test] test_assert_bv ["new-mut-ref"] => verus_code! {
         fn nonlinear(x: &mut u64)
             requires *x == 0,

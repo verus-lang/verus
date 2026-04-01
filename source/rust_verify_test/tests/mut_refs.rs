@@ -292,7 +292,7 @@ test_verify_one_file_with_options! {
 
             resolve(x_ref_box);
 
-            // TODO(new_mut_ref): without this line, Verus doesn't emit the axiom for
+            // TODO(new_mut_ref): (triggers) without this line, Verus doesn't emit the axiom for
             // has_resolved::<Box<_>>
             assert(has_resolved(x_ref_box));
 
@@ -446,7 +446,7 @@ test_verify_one_file_with_options! {
                 a: (0, Box::new((&mut u, 20))),
             };
 
-            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): should be automatic
+            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
 
             assert(u == 0);
         }
@@ -501,7 +501,7 @@ test_verify_one_file_with_options! {
                 a: (0, Box::new((&mut u, 20))),
             };
 
-            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): should be automatic
+            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
 
             assert(u == 0);
             assert(false); // FAILS
@@ -569,7 +569,7 @@ test_verify_one_file_with_options! {
             let mut x = X {
                 a: (0, Box::new((&mut pair_ref_pair, 4))),
             };
-            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): should be automatic
+            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
             assert(has_resolved(pair_ref_pair.1));
             assert(pair === (0, 1));
         }
@@ -665,7 +665,7 @@ test_verify_one_file_with_options! {
             let mut x = X {
                 a: (0, Box::new((&mut pair_ref_pair, 4))),
             };
-            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): should be automatic
+            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
             assert(has_resolved(pair_ref_pair.1));
             assert(pair === (0, 1));
             assert(false); // FAILS
@@ -2332,7 +2332,7 @@ test_verify_one_file_with_options! {
             assert(j[0] == (X { a: 20, b: 0 }));
             assert(false); // FAILS
         }
-    } => Err(err) => assert_fails(err, 6) // TODO(new_mut_ref)
+    } => Err(err) => assert_fails(err, 6)
 }
 
 test_verify_one_file_with_options! {

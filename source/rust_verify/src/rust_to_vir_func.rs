@@ -1660,8 +1660,6 @@ pub(crate) fn check_item_fn<'tcx>(
             },
         );
 
-        // TODO(new_mut_ref): should probably error for mutable references in the dual exec/spec cases
-
         if is_mut_var {
             if mode == Mode::Spec {
                 return err_span(span, format!("mut argument not allowed for spec functions"));

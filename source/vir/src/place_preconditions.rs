@@ -42,7 +42,7 @@ so we wouldn't need to do any field safety check more than once.)
 Also, the order of the checks doesn't really matter to Verus, as long as both are hard
 requirements, but it might matter if we model unwinding.
 
-TODO(new_mut_ref): fix or error on these cases and then document what we actually support
+TODO(new_mut_ref): (blocking) fix or error on these cases and then document what we actually support
 */
 
 use crate::ast::*;

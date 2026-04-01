@@ -819,8 +819,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             ExprItem::Old if bctx.new_mut_ref => {
                 record_spec_fn_pure_args_only(bctx, expr);
-                // TODO(new_mut_ref): restrict to form like `old(x)` or `old(x.field)`?
-                // TODO(new_mut_ref): old type signature should accept any type
+                // TODO(new_mut_ref): (blocking) restrict to form like `old(x)` or `old(x.field)`?
+                // TODO(new_mut_ref): (fix when done) old type signature should accept any type
                 let bctx = &BodyCtxt { in_old: true, ..bctx.clone() };
                 let arg = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
                 mk_expr(ExprX::Old(arg))
