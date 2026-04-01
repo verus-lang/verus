@@ -431,9 +431,8 @@ Here, for example, we depict the state of the program at the beginning and throu
 the first two iterations:
 
 <center>
-<img src="mut-ref-cons-example-1.png" alt="">
+<img src="mut-ref-cons-example-1.png" alt="At step 1, we have list = Nil, where cur points to Nil. At step 2, we have list = Cons, which points to Nil, and cur points to Nil. At step 3, we have list = Cons, which points to Cons, which points to Nil, and cur points to Nil. And so on.">
 </center>
-(TODO alt text)
 
 Now, let's verify this program; in particular, let us prove that the list at the end
 has length equal to the input argument, `len`.
@@ -454,9 +453,8 @@ becomes more and more "concrete".
  * And so on.
 
 <center>
-<img src="mut-ref-cons-example-2.png" alt="">
+<img src="mut-ref-cons-example-2.png" alt="At step 1, we have after_borrow(list) = the unknown final(cur),. At step 2, we have list = Cons, which points to the unknown final(cur). At step 3, we have list = Cons, which points to Cons, which points to the unknown final(cur). And so on.">
 </center>
-(TODO alt text)
 
 Only when the last iteration finishes and `cur` expires for good, do we learn that the
 last node is "nil" and the list becomes fully concrete.
@@ -465,8 +463,6 @@ Now, this picture suggests that we can prove the program correct by writing an i
 which relates `final(cur)` to `final(list)`.
 Specifically, we can say that `final(list)` will always be equal to `final(cur)` with
 `i` "Cons" nodes added to the top.
-
-TODO need to update final to whatever keyword we choose for the local variable
 
 ```rust
 enum List {
