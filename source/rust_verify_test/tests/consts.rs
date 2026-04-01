@@ -554,3 +554,19 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+
+test_verify_one_file! {
+    #[test] test_nested_const_used_as_type_parameter verus_code!{
+        use vstd::prelude::*;
+
+        fn test() {
+            const NUM_ELEMENTS: usize = 4;
+            let x: [i32; NUM_ELEMENTS] = [1, 2, 4, 8];
+            assert(x.len() == x@.len() == NUM_ELEMENTS);
+            assert(x@[2] == 4);
+            assert(x[3] == 8);
+        }
+    } => Ok(())
+}
+
