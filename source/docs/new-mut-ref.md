@@ -322,12 +322,10 @@ fn main() {
 }
 ```
 
-1. This follows because x was equal to 0 before the mutable reference was taken.
-
-2. This is the relation between the final value of `x_ref` and the updated value of `x`,
+1. This is the relation between the final value of `x_ref` and the updated value of `x`,
    briefly mentioned above.
 
-3. Here we have an operator, `has_resolved`, that we haven't introduced yet.
+2. Here we have an operator, `has_resolved`, that we haven't introduced yet.
    The expression `has_resolved(x_ref)` is equivalent to `*x == *final(x)`,
    meaning `x_ref` has attained its final value, i.e., it won't be mutated subsequently.
    (These `has_resolved` predicates are inserted automatically by Verus via a reachability
