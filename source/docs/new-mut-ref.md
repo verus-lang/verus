@@ -110,7 +110,7 @@ Think for a moment about how you might write a specification for `get_mut_fst`.
 This is a little more challenging because the "final" value of `pair.0` isn't known concretely at
 the end of the function. Instead, this value can additionally be mutated by the caller who can
 manipulate the returned mutable reference, `ret`.
-Therefore, the final value of `pair` needs to be written _in terms of_ the final value of `ret`.
+Therefore, the final value of `pair` needs to be _expressed in terms of_ the final value of `ret`.
 
 Verus accepts the following specification for `get_mut_fst`, which can be used to prove `get_mut_fst_test`:
 
