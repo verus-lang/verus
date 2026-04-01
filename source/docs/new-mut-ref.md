@@ -105,45 +105,4 @@ fn test() {
 }
 ```
 
-## A closer look
 
-To understand the formal theory better, let's dissect the earlier examples and see just how
-Verus treats mutable references. We'll start with our simplest example:
-
-```rust
-fn example1() {
-    let mut a: u64 = 0;
-    let a_ref: &mut u64 = &mut a;
-
-    *a_ref = 5;
-
-    assert(a == 5);
-}
-```
-
-This looks easy at a glance, but what is Verus doing under the hood?
-
-There are a number of related concepts to cover:
-
- * How Verus represents the **borrowed-from** location (`a`)
- * How Verus represents the **mutable reference** (`a_ref: &mut u64`)
- * How Verus handles the "borrow" operation (`&mut a`)
- * How Verus assigns the updated value of `*a_ref` (here, `5`) to the borrowed-from location `a`.
-
-Let's answer the last question first. 
-As hinted by the earlier [`get_mut_fst` example](#Returning-mutable-borrows), the primary way
-Verus relates a mutable borrow to its borrowed-from location is via the "final" value of the
-mutable reference. Specifically, whenever the code initiates a mutable borrow, Verus introduces
-a symbolic value to represent this "final value". Let's call this final value `ρ`.
-The borrowed-from location is updated to equal `ρ`. This value remains symbolic until the borrow
-expires, at which point the final value of the borrow is actually known, and we learn
-the concrete value of `ρ`. This last step, where we learn the final value of `ρ`, is called
-**resolution**.
-
-|                       | a: u64 | a_ref (cur, final) | assumptions |
-|-----------------------|--------|--------------------|-------------|
-| `let mut a = 0;`      | 0      |                    |             |
-| `let a_ref = &mut a;` | ρ      | (0, ρ)             |             |
-| `*a_ref = 5;`         | ρ      | (5, ρ)             |             |
-| (borrow resolution)   | ρ      | (5, ρ)             | 5 == ρ      |
-| `assert(a == 5);`     | ρ      | (5, ρ)             |             |
