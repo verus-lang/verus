@@ -513,7 +513,7 @@ pub struct ProofNoteLabel {
     /// The text to show in error messages.
     pub text: Arc<String>,
     /// Whether this label acts as a custom error message.
-    pub is_error: bool,
+    pub is_custom_err: bool,
 }
 
 /// More complex unary operations (requires Clone rather than Copy)

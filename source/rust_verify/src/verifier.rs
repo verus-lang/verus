@@ -95,9 +95,9 @@ impl air::messages::Diagnostics for Reporter<'_> {
         let mut multispan = MultiSpan::from_spans(v);
 
         let mut replacement_error_note: Option<String> = None;
-        for MessageLabel { note, span: sp, is_proof_note, is_error } in &msg.labels {
+        for MessageLabel { note, span: sp, is_proof_note, is_custom_err } in &msg.labels {
             let span = self.spans.from_air_span(&sp, Some(self.source_map));
-            if *is_error {
+            if *is_custom_err {
                 if replacement_error_note.is_none() {
                     replacement_error_note = Some(note.clone());
                 }

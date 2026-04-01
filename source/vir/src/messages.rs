@@ -37,7 +37,7 @@ pub struct MessageLabel {
     pub span: Span,
     pub note: String,
     pub is_proof_note: bool,
-    pub is_error: bool,
+    pub is_custom_err: bool,
 }
 
 /// If you just want to build a simple message, see the builders below.
@@ -174,7 +174,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
             },
             note: note.to_owned(),
             is_proof_note: false,
-            is_error: false,
+            is_custom_err: false,
         })
     }
 
@@ -243,7 +243,7 @@ pub fn message_with_label<S: Into<String>, T: Into<String>>(
             span: span.clone(),
             note: label.into(),
             is_proof_note: false,
-            is_error: false,
+            is_custom_err: false,
         }],
         help: None,
         fancy_note: None,
@@ -264,7 +264,7 @@ pub fn message_with_secondary_label<S: Into<String>, T: Into<String>>(
             span: span.clone(),
             note: label.into(),
             is_proof_note: false,
-            is_error: false,
+            is_custom_err: false,
         }],
         help: None,
         fancy_note: None,
@@ -369,7 +369,7 @@ impl MessageX {
             span: span.clone(),
             note: label.into(),
             is_proof_note: false,
-            is_error: false,
+            is_custom_err: false,
         });
         Arc::new(e)
     }
@@ -381,7 +381,7 @@ impl MessageX {
             span: span.clone(),
             note: "".to_string(),
             is_proof_note: false,
-            is_error: false,
+            is_custom_err: false,
         });
         Arc::new(e)
     }
@@ -393,29 +393,24 @@ impl MessageX {
             span: span.clone(),
             note: label.into(),
             is_proof_note: false,
-            is_error: false,
+            is_custom_err: false,
         });
         Arc::new(e)
     }
 
     /// Add a `proof_note` label
-    pub fn proof_note_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
-        self.proof_note_label_with_is_error(span, label, false)
-    }
-
-    /// Add a `proof_note` label, with control over whether it should be reported as an error.
-    pub fn proof_note_label_with_is_error<S: Into<String>>(
+    pub fn proof_note_label<S: Into<String>>(
         &self,
         span: &Span,
         label: S,
-        is_error: bool,
+        is_custom_err: bool,
     ) -> Message {
         let mut e = self.clone();
         e.labels.push(MessageLabel {
             span: span.clone(),
             note: label.into(),
             is_proof_note: true,
-            is_error,
+            is_custom_err,
         });
         Arc::new(e)
     }

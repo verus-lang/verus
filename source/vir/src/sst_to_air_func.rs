@@ -485,7 +485,7 @@ fn req_ens_to_air(
                     span: exp.span.clone(),
                     note: msg.clone(),
                     is_proof_note: false,
-                    is_error: false,
+                    is_custom_err: false,
                 }));
             }
             if let Some(label) = sst_exp_get_proof_note(exp) {
@@ -493,7 +493,7 @@ fn req_ens_to_air(
                     span: exp.span.clone(),
                     note: label.text.to_string(),
                     is_proof_note: true,
-                    is_error: label.is_error,
+                    is_custom_err: label.is_custom_err,
                 }));
             }
             let labeled_expr = if labels.is_empty() {
