@@ -808,6 +808,7 @@ pub fn func_collect_requires_proof_notes(func: &FunctionSst) -> HashSet<String> 
         .reqs
         .iter()
         .filter_map(sst_exp_get_proof_note)
+        .filter(|proof_note| !proof_note.is_custom_err)
         .map(|proof_note| proof_note.text.to_string())
         .collect()
 }
@@ -848,7 +849,9 @@ impl<'a> ObligationProofNoteCollector<'a> {
         // NOTE: Skip `func_check.reqs` to exclude `requires` clauses.
         // Collect proof notes from this function's own `ensures` clauses.
         for ens in func_check.post_condition.ens_exps.iter() {
-            if let Some(label) = sst_exp_get_proof_note(ens) {
+            if let Some(label) = sst_exp_get_proof_note(ens)
+                && !label.is_custom_err
+            {
                 self.proof_notes.insert(label.text.to_string());
             }
         }
@@ -871,13 +874,15 @@ impl<'a> Visitor<Walk, (), NoScoper> for ObligationProofNoteCollector<'a> {
             }
             // Collect proof note labels from `assert` statements.
             StmX::Assert(_, maybe_msg, exp) => {
-                if let Some(label) = sst_exp_get_proof_note(exp) {
+                if let Some(label) = sst_exp_get_proof_note(exp)
+                    && !label.is_custom_err
+                {
                     self.proof_notes.insert(label.text.to_string());
                 }
                 if let Some(msg) = maybe_msg {
                     // This is likely unnecessary; here for future-proofing.
                     for label in msg.labels.iter() {
-                        if label.is_proof_note {
+                        if label.is_proof_note && !label.is_custom_err {
                             self.proof_notes.insert(label.note.clone());
                         }
                     }

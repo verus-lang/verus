@@ -595,10 +595,12 @@ fn check_one_expr<Emit: EmitError>(
                 if let Some(label) = ast_expr_get_proof_note(inner_expr) {
                     msg =
                         msg.proof_note_label(&expr.span, label.text.as_str(), label.is_custom_err);
-                    emit.record_func_failed_proof_note(
-                        function.x.name.clone(),
-                        label.text.to_string(),
-                    );
+                    if !label.is_custom_err {
+                        emit.record_func_failed_proof_note(
+                            function.x.name.clone(),
+                            label.text.to_string(),
+                        );
+                    }
                 }
                 emit.emit(None, VirErrAs::NonFatalError(msg, None));
             }

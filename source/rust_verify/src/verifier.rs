@@ -922,7 +922,7 @@ impl Verifier {
                     // Collect `proof_note` labels related to this failure.
                     let mut proof_notes = HashSet::new();
                     for label in &error.labels {
-                        if label.is_proof_note {
+                        if label.is_proof_note && !label.is_custom_err {
                             proof_notes.insert(label.note.clone());
                         }
                     }
