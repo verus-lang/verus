@@ -195,75 +195,6 @@ struct ExecReplacer {
     erase: EraseGhost,
 }
 
-/// Wrap an expression with a `|=` follow clause, producing a tuple `(expr, follow)`.
-/// Used by both struct-constructor and function-call proof_with! handling.
-fn apply_follows(erase: &EraseGhost, expr: &mut Expr, follow_tokens: TokenStream) {
-    let follow: TokenStream =
-        syntax::rewrite_expr(erase.clone(), false, follow_tokens.into()).into();
-    *expr = Expr::Verbatim(quote_spanned!(expr.span() => (#expr, #follow)));
-}
-
-/// Split a token stream at the top-level `|=` token.
-/// Returns (tokens_before, Some(tokens_after)) if `|=` is found,
-/// or (original_tokens, None) if not.
-fn split_at_follows(tokens: &TokenStream) -> (TokenStream, Option<TokenStream>) {
-    let mut before = Vec::new();
-    let mut iter = tokens.clone().into_iter().peekable();
-    while let Some(tt) = iter.next() {
-        if let proc_macro2::TokenTree::Punct(ref p) = tt {
-            if p.as_char() == '|' && p.spacing() == proc_macro2::Spacing::Joint {
-                // Only treat this as a follow-clause start if the next token is `=`.
-                if let Some(proc_macro2::TokenTree::Punct(eq)) = iter.peek() {
-                    if eq.as_char() == '=' {
-                        // Consume the `=` and return the rest as follow tokens.
-                        iter.next();
-                        return (before.into_iter().collect(), Some(iter.collect()));
-                    }
-                }
-                // Not a `|=` sequence (e.g., `||`); treat `|` as a normal token.
-                before.push(tt);
-                continue;
-            }
-        }
-        before.push(tt);
-    }
-    (before.into_iter().collect(), None)
-}
-
-impl ExecReplacer {
-    /// For struct constructors, parse proof_with! tokens as field-value pairs
-    /// and append them to the struct expression. Field value expressions are run
-    /// through the verus expression rewriter to handle verus syntax like
-    /// Tracked(p) and Ghost(g).
-    /// Returns any `|=` follow tokens that should be used to wrap the expression.
-    fn append_proof_with_struct_fields(
-        erase: &EraseGhost,
-        with_args: &TokenStream,
-        expr_struct: &mut syn::ExprStruct,
-    ) -> Option<TokenStream> {
-        // Skip the leading `with` token to get the raw field tokens.
-        let raw_tokens: TokenStream = with_args.clone().into_iter().skip(1).collect();
-        let (field_tokens, follow_tokens) = split_at_follows(&raw_tokens);
-        if !field_tokens.is_empty() {
-            let extra_fields: syn::punctuated::Punctuated<syn::FieldValue, syn::Token![,]> =
-                syn::parse::Parser::parse2(
-                    syn::punctuated::Punctuated::parse_terminated,
-                    field_tokens.clone(),
-                )
-                .unwrap_or_else(|e| {
-                    panic!("Failed to parse proof_with struct fields {:?}: {:?}", field_tokens, e)
-                });
-            for mut field in extra_fields {
-                let rewritten =
-                    syntax::rewrite_expr(erase.clone(), false, field.expr.to_token_stream().into());
-                field.expr = syn::Expr::Verbatim(rewritten.into());
-                expr_struct.fields.push(field);
-            }
-        }
-        follow_tokens
-    }
-}
-
 impl VisitMut for ExecReplacer {
     // Enable the hack only when needed
     #[cfg(feature = "vpanic")]
@@ -327,21 +258,6 @@ impl VisitMut for ExecReplacer {
                     verus_syn::Token![with](mac.span()).to_tokens(&mut with_args);
                     mac.tokens.to_tokens(&mut with_args);
                 }
-                syn::Stmt::Local(syn::Local {
-                    init: Some(syn::LocalInit { expr, .. }), ..
-                }) if !with_args.is_empty() && matches!(expr.as_ref(), syn::Expr::Struct(_)) => {
-                    if let syn::Expr::Struct(expr_struct) = expr.as_mut() {
-                        let follow_tokens = Self::append_proof_with_struct_fields(
-                            &self.erase,
-                            &with_args,
-                            expr_struct,
-                        );
-                        if let Some(follow_tokens) = follow_tokens {
-                            apply_follows(&self.erase, expr, follow_tokens);
-                        }
-                    }
-                    with_args = TokenStream::new();
-                }
                 syn::Stmt::Local(syn::Local { attrs, init: Some(_), .. })
                     if !with_args.is_empty() =>
                 {
@@ -353,22 +269,10 @@ impl VisitMut for ExecReplacer {
                     with_args = TokenStream::new();
                 }
                 syn::Stmt::Expr(expr, _) if !with_args.is_empty() => {
-                    if let syn::Expr::Struct(expr_struct) = expr {
-                        let follow_tokens = Self::append_proof_with_struct_fields(
-                            &self.erase,
-                            &with_args,
-                            expr_struct,
-                        );
-                        if let Some(follow_tokens) = follow_tokens {
-                            apply_follows(&self.erase, expr, follow_tokens);
-                        }
-                    } else {
-                        let call_with_spec =
-                            verus_syn::parse2(with_args.clone()).unwrap_or_else(|e| {
-                                panic!("Failed to parse proof_with {:?}: {:?}", with_args, e)
-                            });
-                        rewrite_with_expr(self.erase.clone(), expr, call_with_spec);
-                    }
+                    let call_with_spec = verus_syn::parse2(with_args.clone()).unwrap_or_else(|e| {
+                        panic!("Failed to parse proof_with {:?}: {:?}", with_args, e)
+                    });
+                    rewrite_with_expr(self.erase.clone(), expr, call_with_spec);
                     with_args = TokenStream::new();
                 }
                 _ if with_args.is_empty() => {
@@ -830,6 +734,71 @@ fn rewrite_verus_spec_on_expr_local(
     tokens.into()
 }
 
+/// Wrap an expression with a `|=` follow clause, producing a tuple `(expr, follow)`.
+/// Used by both struct-constructor and function-call proof_with! handling.
+fn apply_follows(erase: &EraseGhost, expr: &mut Expr, follow_tokens: TokenStream) {
+    let follow: TokenStream =
+        syntax::rewrite_expr(erase.clone(), false, follow_tokens.into()).into();
+    *expr = Expr::Verbatim(quote_spanned!(expr.span() => (#expr, #follow)));
+}
+
+fn is_tracked_ghost_expr(expr: &verus_syn::Expr) -> bool {
+    // check expr is of the form Tracked(...) or Ghost(...)
+    if let verus_syn::Expr::Call(verus_syn::ExprCall { func, .. }) = expr {
+        if let verus_syn::Expr::Path(path) = func.as_ref() {
+            if let Some(ident) = path.path.get_ident() {
+                return ident == "Tracked" || ident == "Ghost";
+            }
+        }
+    }
+    false
+}
+
+/// Apply ghost fields in `with` clause to a struct constructor expression.
+/// Return Err if the ghost fields are not valid.
+fn apply_ghost_fields<'a>(
+    erase: EraseGhost,
+    expr: &mut Expr,
+    ghost_fields: impl Iterator<Item = &'a verus_syn::FieldValue>,
+) -> Result<(), ()> {
+    let syn::Expr::Struct(expr_struct) = expr else {
+        // If there's no struct constructor, we cannot apply ghost fields.
+        if let Some(field) = ghost_fields.last() {
+            *expr = syn::Expr::Verbatim(quote_spanned! {field.span() =>
+                compile_error!("Ghost fields can only be applied to struct constructors.")
+            });
+            return Err(());
+        }
+        // No ghost fields, just return.
+        return Ok(());
+    };
+    for field in ghost_fields {
+        let rewritten =
+            syntax::rewrite_expr(erase.clone(), false, field.expr.to_token_stream().into());
+        let verus_syn::Member::Named(field_name) = &field.member else {
+            *expr = syn::Expr::Verbatim(quote_spanned! {field.member.span() =>
+                compile_error!("A ghost field must be a named field.")
+            });
+            return Err(());
+        };
+        if !is_tracked_ghost_expr(&field.expr) {
+            *expr = syn::Expr::Verbatim(quote_spanned! {field.expr.span() =>
+                compile_error!("A ghost field must be a tracked/ghost expression. If you want to add ghost fields to a struct constructor, you should use $ident: Tracked/Ghost($ident).")
+            });
+            return Err(());
+        }
+        assert!(field.attrs.is_empty()); // guarded by verus_syn::WithSpecOnExpr parsing
+        let extra_field = syn::FieldValue {
+            attrs: vec![],
+            member: syn::Member::Named(field_name.clone()),
+            colon_token: field.colon_token.and_then(|c| Some(syn::Token![:](c.span()))),
+            expr: syn::Expr::Verbatim(rewritten.into()),
+        };
+        expr_struct.fields.push(extra_field);
+    }
+    return Ok(());
+}
+
 // Expand `with extra_in => extra_out` on a method call expr.
 // Return some pre-statements that needs to be declared before the expr.
 fn rewrite_with_expr(
@@ -837,7 +806,8 @@ fn rewrite_with_expr(
     expr: &mut Expr,
     call_with_spec: verus_syn::WithSpecOnExpr,
 ) -> Vec<verus_syn::Stmt> {
-    let verus_syn::WithSpecOnExpr { inputs, outputs, follows, .. } = call_with_spec;
+    let verus_syn::WithSpecOnExpr { inputs, outputs, follows, ghost_fields, .. } = call_with_spec;
+
     if outputs.is_some() || inputs.len() > 0 {
         match expr {
             syn::Expr::Call(syn::ExprCall { func, .. }) => {
@@ -852,8 +822,13 @@ fn rewrite_with_expr(
                 *method = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
             }
             syn::Expr::Try(syn::ExprTry { expr, .. }) => {
-                let call_with_spec =
-                    verus_syn::WithSpecOnExpr { inputs, outputs, follows, ..call_with_spec };
+                let call_with_spec = verus_syn::WithSpecOnExpr {
+                    inputs,
+                    outputs,
+                    follows,
+                    ghost_fields,
+                    ..call_with_spec
+                };
                 return rewrite_with_expr(erase, expr, call_with_spec);
             }
             _ => {
@@ -865,6 +840,9 @@ fn rewrite_with_expr(
         }
     }
 
+    if apply_ghost_fields(erase.clone(), expr, ghost_fields.iter()).is_err() {
+        return vec![];
+    }
     match expr {
         syn::Expr::Call(syn::ExprCall { args, .. })
         | syn::Expr::MethodCall(syn::ExprMethodCall { args, .. }) => {

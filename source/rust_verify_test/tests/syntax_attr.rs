@@ -1379,7 +1379,10 @@ test_verify_one_file! {
             proof_decl! {
                 let ghost g = 3 * x;
             }
-            proof_with! { y: Ghost(2 * (x + 1)) |= Ghost(g) }
+            proof_with! {
+                y: Ghost(2 * (x + 1)),
+                |= Ghost(g)
+            }
             TestStruct{
                 x: x + 1,
             }
@@ -1401,13 +1404,36 @@ test_verify_one_file! {
             proof_decl! {
                 let ghost g = 3 * x;
             }
-            proof_with! { y: Ghost(2 * (x + 1)) |= Ghost(g) }
+            proof_with! { y: Ghost(2 * (x + 1))}
             let s = TestStruct{
                 x: x + 1,
             };
+            proof_with! { |= Ghost(g) }
             s
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_invalid_ghost_with_struct code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        pub struct TestStruct {
+            pub x: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub y: int,
+        }
+
+        #[verus_spec]
+        fn make_struct_with_follows_let(x: u32) -> TestStruct
+        {
+            proof_with! { y: 1 }
+            let s = TestStruct{
+                x: x + 1,
+            };
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "A ghost field must be a tracked/ghost expression" )
 }
 
 test_verify_one_file! {
