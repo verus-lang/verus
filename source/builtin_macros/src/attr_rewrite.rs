@@ -754,36 +754,36 @@ fn is_tracked_ghost_expr(expr: &verus_syn::Expr) -> bool {
     false
 }
 
-/// Apply ghost fields in `with` clause to a struct constructor expression.
-/// Return Err if the ghost fields are not valid.
-fn apply_ghost_fields<'a>(
+/// Apply ghost/tracked fields in `with` clause to a struct constructor expression.
+/// Return Err if the ghost/tracked fields are not valid.
+fn apply_erased_fields<'a>(
     erase: EraseGhost,
     expr: &mut Expr,
-    ghost_fields: impl Iterator<Item = &'a verus_syn::FieldValue>,
+    erased_fields: impl Iterator<Item = &'a verus_syn::FieldValue>,
 ) -> Result<(), ()> {
     let syn::Expr::Struct(expr_struct) = expr else {
-        // If there's no struct constructor, we cannot apply ghost fields.
-        if let Some(field) = ghost_fields.last() {
+        // If there's no struct constructor, we cannot apply ghost/tracked fields.
+        if let Some(field) = erased_fields.last() {
             *expr = syn::Expr::Verbatim(quote_spanned! {field.span() =>
-                compile_error!("Ghost fields can only be applied to struct constructors.")
+                compile_error!("Ghost/tracked fields can only be applied to struct constructors.")
             });
             return Err(());
         }
-        // No ghost fields, just return.
+        // No ghost/tracked fields, just return.
         return Ok(());
     };
-    for field in ghost_fields {
+    for field in erased_fields {
         let rewritten =
             syntax::rewrite_expr(erase.clone(), false, field.expr.to_token_stream().into());
         let verus_syn::Member::Named(field_name) = &field.member else {
             *expr = syn::Expr::Verbatim(quote_spanned! {field.member.span() =>
-                compile_error!("A ghost field must be a named field.")
+                compile_error!("A ghost/tracked field must be a named field.")
             });
             return Err(());
         };
         if !is_tracked_ghost_expr(&field.expr) {
             *expr = syn::Expr::Verbatim(quote_spanned! {field.expr.span() =>
-                compile_error!("A ghost field must be a tracked/ghost expression. If you want to add ghost fields to a struct constructor, you should use $ident: Tracked/Ghost($ident).")
+                compile_error!("A ghost/tracked field must be a tracked/ghost expression. If you want to add ghost/tracked fields to a struct constructor, you should use $ident: Tracked/Ghost($ident).")
             });
             return Err(());
         }
@@ -806,7 +806,7 @@ fn rewrite_with_expr(
     expr: &mut Expr,
     call_with_spec: verus_syn::WithSpecOnExpr,
 ) -> Vec<verus_syn::Stmt> {
-    let verus_syn::WithSpecOnExpr { inputs, outputs, follows, ghost_fields, .. } = call_with_spec;
+    let verus_syn::WithSpecOnExpr { inputs, outputs, follows, erased_fields, .. } = call_with_spec;
 
     if outputs.is_some() || inputs.len() > 0 {
         match expr {
@@ -826,7 +826,7 @@ fn rewrite_with_expr(
                     inputs,
                     outputs,
                     follows,
-                    ghost_fields,
+                    erased_fields,
                     ..call_with_spec
                 };
                 return rewrite_with_expr(erase, expr, call_with_spec);
@@ -840,7 +840,7 @@ fn rewrite_with_expr(
         }
     }
 
-    if apply_ghost_fields(erase.clone(), expr, ghost_fields.iter()).is_err() {
+    if apply_erased_fields(erase.clone(), expr, erased_fields.iter()).is_err() {
         return vec![];
     }
     match expr {

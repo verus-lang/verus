@@ -1433,7 +1433,7 @@ test_verify_one_file! {
                 x: x + 1,
             };
         }
-    } => Err(e) => assert_any_vir_error_msg(e, "A ghost field must be a tracked/ghost expression" )
+    } => Err(e) => assert_any_vir_error_msg(e, "A ghost/tracked field must be a tracked/ghost expression" )
 }
 
 test_verify_one_file! {
