@@ -3,7 +3,7 @@
 Verus is finally gaining extended support for mutable references, which greatly expands its capabilities.
 With this new support, you can now write functions that take mutable references outside of the call-argument position, have functions that return mutable references, instantiate generic arguments with mutable references, create containers of mutable references, and take mutable references via pattern matching.
 
-For example, you can take a mutable reference anywhere:
+For example, when the new feature is enabled, you can take a mutable reference anywhere:
 
 ```rust
 fn example1() {
