@@ -334,10 +334,8 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
 
         // Append this item to the items
 
-        let is_const_item = matches!(
-            general_item,
-            GeneralItem::Item(Item { kind: ItemKind::Const(..), .. })
-        );
+        let is_const_item =
+            matches!(general_item, GeneralItem::Item(Item { kind: ItemKind::Const(..), .. }));
 
         let verif = if state_for_this_item == VerifState::Verify {
             if let Some(module_path) = self.module_path.clone() {
