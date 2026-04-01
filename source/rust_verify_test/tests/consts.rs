@@ -555,7 +555,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-
 test_verify_one_file! {
     #[test] test_nested_const_used_as_type_parameter verus_code!{
         use vstd::prelude::*;
@@ -569,4 +568,3 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
-
