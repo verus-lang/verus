@@ -1,3 +1,11 @@
+# Feature status
+
+The content in this document applies only to Verus's **experimental** new mutable reference support,
+which can be enabled with the Verus command line option `-V new-mut-ref`.
+
+If you're familiar with the old design, see [migration-mut-ref.md](./migration-mut-ref.md)
+for more information on the transition and migration issues.
+
 # Mutable references
 
 For simple uses of mutable references—i.e., within a single function, and without involving
