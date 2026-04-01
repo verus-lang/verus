@@ -224,7 +224,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file! {
     #[test] test_proof_note_as_error_on_assert verus_code! {
         fn caller() {
-            #[verifier::proof_note("Custom error message" as error)]
+            #[verifier::proof_note_custom_err("Custom error message")]
             assert(1 > 2);
         }
     } => Err(err) => assert_vir_error_msg(err, "Custom error message")

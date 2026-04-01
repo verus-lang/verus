@@ -370,34 +370,12 @@ fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
     }
 }
 
-/// Parse:
-/// - `#[verifier::proof_note("label")]`
-/// - `#[verifier::proof_note("label" as error)]`
-fn get_proof_note_options(
-    span: Span,
-    attrs: &Option<Box<[AttrTree]>>,
-) -> Result<(String, bool), VirErr> {
-    let Some(args) = attrs.as_deref() else {
-        return err_span(span, "expected at least one argument, a string literal");
+/// Get the `"label"` part out of an attribute like `#[verifier::proof_note("label")]`
+fn get_proof_note_label(span: Span, attrs: &Option<Box<[AttrTree]>>) -> Result<&String, VirErr> {
+    let Some([AttrTree::Lit(LitKind::Str, label)]) = attrs.as_deref() else {
+        return err_span(span, "expected exactly one argument, a string literal");
     };
-    let Some(AttrTree::Lit(LitKind::Str, label)) = args.first() else {
-        return err_span(span, "expected first argument to be a string literal");
-    };
-    match &args[1..] {
-        [] => Ok((label.clone(), false)),
-        [AttrTree::Fun(_, as_kw, None), AttrTree::Fun(_, error_kw, None)]
-            if as_kw == "as" && error_kw == "error" =>
-        {
-            Ok((label.clone(), true))
-        }
-        [AttrTree::Fun(_, as_kw, None), _] if as_kw == "as" => {
-            err_span(span, "expected `error` after `as` in `proof_note`")
-        }
-        _ => err_span(
-            span,
-            "expected `#[verifier::proof_note(\"label\")]` or `#[verifier::proof_note(\"label\" as error)]`",
-        ),
-    }
+    Ok(label)
 }
 
 /// Get the `42` part out of an attribute like `#[rlimit(42)]`
@@ -440,8 +418,12 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, name, None) if name == "proof" => v.push(Attr::Mode(Mode::Proof)),
                 AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
                 AttrTree::Fun(span, name, attrs) if name == "proof_note" => {
-                    let (label, is_error) = get_proof_note_options(*span, attrs)?;
-                    v.push(Attr::ProofNote { span: *span, text: label, is_error })
+                    let label = get_proof_note_label(*span, attrs)?;
+                    v.push(Attr::ProofNote { span: *span, text: label.clone(), is_error: false })
+                }
+                AttrTree::Fun(span, name, attrs) if name == "proof_note_custom_err" => {
+                    let label = get_proof_note_label(*span, attrs)?;
+                    v.push(Attr::ProofNote { span: *span, text: label.clone(), is_error: true })
                 }
                 AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
                 AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
