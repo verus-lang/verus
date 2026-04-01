@@ -302,8 +302,6 @@ pub fn run_verus(
             verus_args.push("2".to_string());
         } else if *option == "--compile" {
             verus_args.push("--compile".to_string());
-            verus_args.push("-o".to_string());
-            verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
         } else if *option == "--no-external-by-default" {
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
@@ -376,6 +374,16 @@ pub fn run_verus(
         ]
         .into_iter(),
     );
+
+    let compile = options.contains(&"--compile");
+    verus_args.push("-o".to_string());
+    if compile {
+        verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
+    } else {
+        verus_args
+            .push(test_dir.join("libtest_crate.rmeta").to_str().expect("valid path").to_owned());
+        verus_args.push("--emit=metadata".to_string());
+    }
 
     if json_errors {
         verus_args.push("--error-format=json".to_string());
@@ -524,11 +532,18 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![allow(unused_imports)]
     #![allow(unused_macros)]
     #![allow(deprecated)]
+    #![allow(non_snake_case)]
+    #![allow(non_camel_case_types)]
+    #![allow(non_upper_case_globals)]
+    #![allow(unused_comparisons)]
+    #![allow(noop_method_call)]
     #![feature(allocator_api)]
     #![feature(proc_macro_hygiene)]
     #![feature(never_type)]
     #![feature(core_intrinsics)]
     #![feature(ptr_metadata)]
+    #![feature(sized_hierarchy)]
+    #![feature(const_destruct)]
 };
 
 #[allow(dead_code)]

@@ -36,14 +36,14 @@ pub fn main() -> Result<ExitCode> {
             return Ok(ExitCode::SUCCESS);
         }
         VerusSubcommand::Verify(options) => CargoRunConfig {
-            subcommand: "build",
+            subcommand: "check",
             options,
             compile_primary: false,
             verify_deps: true,
             warn_if_nothing_verified: true,
         },
         VerusSubcommand::Focus(options) => CargoRunConfig {
-            subcommand: "build",
+            subcommand: "check",
             options,
             compile_primary: false,
             verify_deps: false,

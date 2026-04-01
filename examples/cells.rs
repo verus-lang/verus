@@ -1,3 +1,4 @@
+// rust_verify/tests/example.rs expect-warnings
 #[allow(unused_imports)]
 use verus_builtin::*;
 use verus_builtin_macros::*;
