@@ -129,9 +129,9 @@ test_verify_one_file! {
             for x in it: sl.iter()
                 invariant
                     i == it.index@,
-                    it.seq().map_values(|v: &u32| *v) == seq![0u32, 2u32, 4u32],
+                    it.seq().unref() == seq![0u32, 2u32, 4u32],
             {
-                assert(it.seq().map_values(|v: &u32| *v).contains(*x));
+                assert(it.seq().unref().contains(*x));
                 assert(x < 5);
                 assert(x % 2 == 0);
                 i = i + 1;

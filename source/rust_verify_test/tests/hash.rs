@@ -829,7 +829,7 @@ test_verify_one_file_with_options! {
             let mut items = Vec::<u32>::new();
             for k in iter: m.keys()
                 invariant
-                    items@ == iter.seq().take(iter.index@).map_values(|v: &u32| *v),
+                    items@ == iter.seq().take(iter.index@).unref(),
             {
                 items.push(*k);
             }
@@ -865,7 +865,7 @@ test_verify_one_file_with_options! {
             let mut items = Vec::<i8>::new();
             for v in iter: m.values()
                 invariant
-                    items@ == iter.seq().take(iter.index@).map_values(|v: &i8| *v),
+                    items@ == iter.seq().take(iter.index@).unref(),
             {
                 items.push(*v);
             }
@@ -894,7 +894,7 @@ test_verify_one_file_with_options! {
             let mut idx = 0;
             for (k, v) in iter: m.iter()
                 invariant
-                    iter.seq().map_values(|v: (&u32, &i8)| (*v.0, *v.1)).to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
+                    iter.seq().unref().to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
             {
                 // OBSERVE: triggers the extensionality in the invariant
                 assert(m@.kv_pairs().contains((*k, *v)));
@@ -920,14 +920,14 @@ test_verify_one_file_with_options! {
             m.insert(3);
             m.insert(6);
             let ghost m_iter = m.iter();
-            assert(m_iter.remaining().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32]);
+            assert(m_iter.remaining().unref().to_set() =~= set![3u32, 6u32]);
 
             let mut items = Vec::<u32>::new();
 
             for k in iter: m.iter()
                 invariant
-                    iter.seq().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32],
-                    items@ == iter.seq().take(iter.index@).map_values(|v: &u32| *v),
+                    iter.seq().unref().to_set() =~= set![3u32, 6u32],
+                    items@ == iter.seq().take(iter.index@).unref(),
             {
                 items.push(*k);
             }

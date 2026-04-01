@@ -60,7 +60,7 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_elts(*self) == IteratorSpec::remaining(self).map_values(|e: Self::Item| *e)
+        &&& into_iter_elts(*self) == IteratorSpec::remaining(self).unref()
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -85,7 +85,7 @@ pub uninterp spec fn spec_slice_iter<'a, T>(s: &'a [T]) -> (iter: Iter<'a, T>);
 
 pub broadcast proof fn axiom_spec_slice_iter<'a, T>(s: &'a [T])
     ensures
-        #[trigger] spec_slice_iter(s).remaining() == s@.map_values(|v| &v),
+        #[trigger] (spec_slice_iter(s).remaining()).unref() == s@,
 {
     admit();
 }

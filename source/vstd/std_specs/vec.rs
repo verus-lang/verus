@@ -431,7 +431,7 @@ pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
 
 pub broadcast proof fn axiom_spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>)
     ensures
-        #[trigger] spec_into_iter_borrowed(v).remaining() == v@.map_values(|x| &x),
+        (#[trigger] spec_into_iter_borrowed(v).remaining()).unref() == v@,
 {
     admit();
 }

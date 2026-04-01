@@ -106,7 +106,7 @@ pub uninterp spec fn spec_array_iter<T, const N: usize>(s: &[T; N]) -> (iter: co
 
 pub broadcast proof fn axiom_spec_array_iter<T, const N: usize>(s: &[T; N])
     ensures
-        #[trigger] spec_array_iter(s).remaining() == s@.map_values(|v| &v),
+        #[trigger] spec_array_iter(s).remaining() == s@.as_ref(),
 {
     admit();
 }

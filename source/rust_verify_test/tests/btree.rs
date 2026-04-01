@@ -293,7 +293,7 @@ test_verify_one_file_with_options! {
                     g_keys.unique_seq_to_set();
                     assert(set![3u32, 6u32].len() == 2);
                 }
-                let mapped = g_keys.map_values(|v: &u32| *v);
+                let mapped = g_keys.unref();
                 assert(mapped.to_set().contains(mapped[0]));
                 assert(mapped.to_set().contains(mapped[1]));
                 assert(g_keys =~= seq![&3u32, &6u32]);
@@ -303,7 +303,7 @@ test_verify_one_file_with_options! {
             for k in iter: m.keys()
                 invariant
                     g_keys == iter.seq(),
-                    items@ == iter.seq().take(iter.index@).map_values(|v: &u32| *v),
+                    items@ == iter.seq().take(iter.index@).unref(),
             {
                 items.push(*k);
             }
@@ -372,7 +372,7 @@ test_verify_one_file_with_options! {
             for v in iter: m_values
                 invariant
                     g_values == iter.seq(),
-                    items@ == iter.seq().take(iter.index@).map_values(|v: &i8| *v),
+                    items@ == iter.seq().take(iter.index@).unref(),
             {
                 items.push(*v);
             }
@@ -402,7 +402,7 @@ test_verify_one_file_with_options! {
             let mut idx = 0;
             for (k, v) in iter: m.iter()
                 invariant
-                    iter.seq().map_values(|v: (&u32, &i8)| (*v.0, *v.1)).to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
+                    m@.kv_pairs() == set![(3u32, 4i8), (6u32, -8i8)],
             {
                 // OBSERVE: triggers the extensionality in the invariant
                 assert(m@.kv_pairs().contains((*k, *v)));
@@ -428,14 +428,14 @@ test_verify_one_file_with_options! {
             m.insert(3);
             m.insert(6);
             let ghost m_iter = m.iter();
-            assert(m_iter.remaining().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32]);
+            assert(m_iter.remaining().unref().to_set() =~= set![3u32, 6u32]);
 
             let mut items = Vec::<u32>::new();
 
             for k in iter: m.iter()
                 invariant
-                    iter.seq().map_values(|v: &u32| *v).to_set() =~= set![3u32, 6u32],
-                    items@ == iter.seq().take(iter.index@).map_values(|v: &u32| *v),
+                    iter.seq().unref().to_set() =~= set![3u32, 6u32],
+                    items@ == iter.seq().take(iter.index@).unref(),
             {
                 items.push(*k);
             }

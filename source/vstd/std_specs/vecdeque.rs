@@ -312,7 +312,7 @@ pub uninterp spec fn spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>) -> (r
 
 pub broadcast proof fn axiom_spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>)
     ensures
-        #[trigger] spec_iter(v).remaining() == v@.map_values(|v| &v),
+        (#[trigger] spec_iter(v).remaining()).unref() == v@,
 {
     admit();
 }

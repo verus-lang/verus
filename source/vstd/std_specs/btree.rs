@@ -79,7 +79,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_keys(*self) == IteratorSpec::remaining(self).map_values(|v: Self::Item| *v)
+        &&& into_iter_keys(*self) == IteratorSpec::remaining(self).unref()
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -117,7 +117,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_values(*self) == IteratorSpec::remaining(self).map_values(|v: Self::Item| *v)
+        &&& into_iter_values(*self) == IteratorSpec::remaining(self).unref()
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -157,9 +157,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for btree_map::Iter<'a, K, V> {
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter(*self) == IteratorSpec::remaining(self).map_values(
-            |i: Self::Item| (*i.0, *i.1),
-        )
+        &&& into_iter(*self) == IteratorSpec::remaining(self).unref()
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -197,7 +195,7 @@ pub broadcast axiom fn axiom_spec_btree_map_iter<'a, Key, Value, A: Allocator + 
                 #![trigger m@[*v[i].0]]
                 0 <= i < v.len() ==> m@.contains_key(*v[i].0) && m@[*v[i].0] == *v[i].1
             &&& forall|k: Key| #[trigger] m@.contains_key(k) ==> v.contains((&k, &m@[k]))
-            &&& v.map_values(|t: (&Key, &Value)| (*t.0, *t.1)).to_set() == m@.kv_pairs()
+            &&& v.unref().to_set() == m@.kv_pairs()
         }),
 ;
 
@@ -605,7 +603,7 @@ pub broadcast proof fn axiom_spec_keys_iter<'a, Key, Value, A: Allocator + Clone
     m: &'a BTreeMap<Key, Value, A>,
 )
     ensures
-        (#[trigger] spec_keys_iter(m).remaining()).map_values(|v: &Key| *v).to_set() == m@.dom(),
+        (#[trigger] spec_keys_iter(m).remaining()).unref().to_set() == m@.dom(),
         spec_keys_iter(m).remaining().no_duplicates(),
         spec_keys_iter(m).remaining().len() == m@.dom().len(),
         increasing_seq(spec_keys_iter(m).remaining()),
@@ -639,7 +637,7 @@ pub broadcast proof fn axiom_spec_values_iter<'a, Key, Value, A: Allocator + Clo
     m: &'a BTreeMap<Key, Value, A>,
 )
     ensures
-        (#[trigger] spec_values_iter(m).remaining()).map_values(|v: &Value| *v).to_set()
+        (#[trigger] spec_values_iter(m).remaining()).unref().to_set()
             == m@.values(),
         spec_values_iter(m).remaining().len() == m@.dom().len(),
 {
@@ -695,9 +693,7 @@ impl<'a, T> super::iter::IteratorSpecImpl for btree_set::Iter::<'a, T> {
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_btree_keys(*self) == IteratorSpec::remaining(self).map_values(
-            |v: Self::Item| *v,
-        )
+        &&& into_iter_btree_keys(*self) == IteratorSpec::remaining(self).unref()
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -933,7 +929,7 @@ pub broadcast proof fn axiom_spec_btree_keys_iter<'a, Key, A: Allocator + Clone>
     m: &'a BTreeSet<Key, A>,
 )
     ensures
-        (#[trigger] spec_btree_keys_iter(m).remaining()).map_values(|v: &Key| *v).to_set() == m@,
+        (#[trigger] spec_btree_keys_iter(m).remaining()).unref().to_set() == m@,
         spec_btree_keys_iter(m).remaining().no_duplicates(),
         spec_btree_keys_iter(m).remaining().len() == m@.len(),
         increasing_seq(spec_btree_keys_iter(m).remaining()),
