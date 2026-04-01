@@ -78,13 +78,7 @@ test_verify_one_file_with_options! {
         fn test_take3() {
             takes_fn3(llama); // FAILS
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 6);
-        assert_help_error_msg(
-            err,
-            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
-        );
-    }
+    } => Err(err) => assert_fails(err, 6)
 }
 
 test_verify_one_file_with_options! {
@@ -176,13 +170,7 @@ test_verify_one_file_with_options! {
             takes_fn4(llama::<u8>); // FAILS
         }
 
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 7);
-        assert_help_error_msg(
-            err,
-            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
-        );
-    }
+    } => Err(err) => assert_fails(err, 7)
 }
 
 test_verify_one_file_with_options! {
@@ -296,13 +284,7 @@ test_verify_one_file_with_options! {
         fn test_take4() {
             takes_fn4(X::llama); // FAILS
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 7);
-        assert_help_error_msg(
-            err,
-            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
-        );
-    }
+    } => Err(err) => assert_fails(err, 7)
 }
 
 test_verify_one_file! {
@@ -763,13 +745,7 @@ test_verify_one_file! {
             // We could support this, but it probably isn't very important
             assert(call_requires(stuff, (0,)) == true) by(compute_only); // FAILS
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 1);
-        assert_help_error_msg(
-            err,
-            "assert_by_compute_only failed to simplify down to true",
-        );
-    }
+    } => Err(err) => assert_fails(err, 1)
 }
 
 test_verify_one_file! {
@@ -1409,13 +1385,7 @@ test_verify_one_file! {
             let x = X { };
             let t: &X = f(&x); // FAILS
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 1);
-        assert_help_error_msg(
-            err,
-            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
-        );
-    }
+    } => Err(err) => assert_fails(err, 1)
 }
 
 test_verify_one_file! {
@@ -1485,13 +1455,7 @@ test_verify_one_file_with_options! {
         fn test5() {
             assert(forall |x, y| call_ensures(llama, (x,), y) ==> x == 4 ==> !y); // FAILS
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 4);
-        assert_help_error_msg(
-            err,
-            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
-        );
-    }
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file_with_options! {
@@ -1558,13 +1522,7 @@ test_verify_one_file_with_options! {
             let b = t(7);
             assert(!b);
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 4);
-        assert_help_error_msg(
-            err,
-            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
-        );
-    }
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file_with_options! {

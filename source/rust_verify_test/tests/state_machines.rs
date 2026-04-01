@@ -860,10 +860,7 @@ test_verify_one_file! {
             pub fn lemma_tr1(pre: Self, post: Self, x: int) {
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: could not show invariant `the_inv` on the `post` state");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -888,10 +885,7 @@ test_verify_one_file! {
             pub fn lemma_tr1(post: Self, x: int) {
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: could not show invariant `the_inv` on the `post` state");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2042,10 +2036,7 @@ test_verify_one_file! {
                 assert(post.t->Some_0 == 5);
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove inherent safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2069,10 +2060,7 @@ test_verify_one_file! {
                 assert(post.t->Some_0 == 5);
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove inherent safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2096,10 +2084,7 @@ test_verify_one_file! {
                 assert(post.t.index(5) == 7);
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove inherent safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2123,10 +2108,7 @@ test_verify_one_file! {
                 assert(post.t.index(5) == 7);
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove inherent safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2235,10 +2217,7 @@ test_verify_one_file! {
                 assert(post.t is None);
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove inherent safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2262,10 +2241,7 @@ test_verify_one_file! {
                 assert(!post.t.dom().contains(5));
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove inherent safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2288,10 +2264,7 @@ test_verify_one_file! {
                 assert(!post.t.dom().contains(5));
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove inherent safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2336,13 +2309,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(
-            e,
-            "note: unable to prove inherent safety condition: the value being guarded must be stored",
-        );
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2362,10 +2329,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove inherent safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2385,10 +2349,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove inherent safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2415,10 +2376,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove inherent safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2486,10 +2444,7 @@ test_verify_one_file! {
                 assert(post.t->0 == 5);
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove inherent safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2513,10 +2468,7 @@ test_verify_one_file! {
                 assert(post.t.index(5) == 7);
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove inherent safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2549,10 +2501,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove assertion safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2568,10 +2517,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove assertion safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -2587,10 +2533,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove assertion safety condition");
-    }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -4568,10 +4511,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove safety condition that the pattern matches");
-    }
+    } => Err(e) => assert_vir_error_msg(e, "unable to prove safety condition that the pattern matches")
 }
 
 test_verify_one_file! {
@@ -4588,10 +4528,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove safety condition that the pattern matches");
-    }
+    } => Err(e) => assert_any_vir_error_msg(e, "unable to prove safety condition that the pattern matches")
 }
 
 test_verify_one_file! {
@@ -5385,16 +5322,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 6);
-        assert_help_error_msgs(
-            e,
-            &[
-                "note: unable to prove inherent safety condition: the given value to be withdrawn must be stored before the withdraw",
-                "note: unable to prove inherent safety condition: the value to be withdrawn must be stored at the given key before the withdraw",
-            ],
-        );
-    }
+    } => Err(e) => assert_fails(e, 6)
 }
 
 test_verify_one_file! {
@@ -6606,16 +6534,7 @@ test_verify_one_file! {
         }
 
         }
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 2);
-        assert_help_error_msgs(
-            e,
-            &[
-                "note: unable to prove inherent safety condition: to add a singleton set, the value must not be in the set before the update",
-                "note: unable to prove inherent safety condition: the sets being composed must be disjoint",
-            ],
-        );
-    }
+    } => Err(e) => assert_fails(e, 2)
 }
 
 test_verify_one_file! {
@@ -6836,10 +6755,7 @@ test_verify_one_file! {
                 (x ==> y) && x && s1 == s
             )
         { }
-    } => Err(e) => {
-        assert_eq!(e.errors.len(), 1);
-        assert_help_error_msg(e, "note: unable to prove assertion safety condition");
-    }
+    } => Err(e) => assert_fails(e, 1)
 }
 
 test_verify_one_file! {

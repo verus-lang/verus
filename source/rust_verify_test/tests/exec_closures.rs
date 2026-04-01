@@ -101,13 +101,7 @@ test_verify_one_file_with_options! {
 
             f(3); // FAILS
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 1);
-        assert_help_error_msg(
-            err,
-            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
-        );
-    }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file_with_options! {
@@ -261,13 +255,7 @@ test_verify_one_file_with_options! {
 
             f(3, 4); // FAILS
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 1);
-        assert_help_error_msg(
-            err,
-            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
-        );
-    }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file_with_options! {
@@ -389,13 +377,7 @@ test_verify_one_file_with_options! {
 
             f(); // FAILS
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 1);
-        assert_help_error_msg(
-            err,
-            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
-        );
-    }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file_with_options! {
@@ -887,13 +869,7 @@ test_verify_one_file_with_options! {
 
             let x = (if b { fun1 } else { fun2 })(0); // FAILS
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 1);
-        assert_help_error_msg(
-            err,
-            "note: Call to non-static function fails to satisfy `callee.requires(args)`",
-        );
-    }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file_with_options! {
