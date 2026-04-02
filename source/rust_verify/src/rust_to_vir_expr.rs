@@ -3083,20 +3083,22 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             // For borrow checking and SMT efficiency, ((array | slice), usize) is special case
             // For SMT efficiency, (Vec, usize) is special case
             // All other cases go through general Index trait
-            let array_kind = match tgt_expr_ty.kind() {
-                TyKind::Array(..) => Some(vir::ast::ArrayKind::Array),
-                TyKind::Slice(..) => Some(vir::ast::ArrayKind::Slice),
-                _ => None,
-            };
-            if let (Some(array_kind), false, true) =
-                (array_kind, bctx.types.is_method_call(expr), idx_ty.is_usize())
-            {
+            if !bctx.types.is_method_call(expr) {
+                assert!(idx_ty.is_usize());
+                let kind = match tgt_expr_ty.kind() {
+                    TyKind::Array(..) => vir::ast::ArrayKind::Array,
+                    TyKind::Slice(..) => vir::ast::ArrayKind::Slice,
+                    _ => panic!("expected array or slice, found {tgt_expr_ty}"),
+                };
                 let tgt_vir = expr_to_vir_place(bctx, tgt_expr, modifier)?;
                 let idx_vir = expr_to_vir(bctx, idx_expr, modifier)?.consume(bctx, idx_ty);
-                let placex = PlaceX::Index(tgt_vir, idx_vir, array_kind, BoundsCheck::Error);
+                let placex = PlaceX::Index(tgt_vir, idx_vir, kind, BoundsCheck::Error);
                 let vir = bctx.spanned_typed_new(expr.span, &expr_typ()?, placex);
                 Ok(ExprOrPlace::Place(vir))
             } else {
+                let is_array_or_slice =
+                    matches!(tgt_expr_ty.kind(), TyKind::Array(..) | TyKind::Slice(..));
+                assert!(!(is_array_or_slice && idx_ty.is_usize()));
                 // Determine if this is Index or IndexMut
                 // Based on ./rustc_mir_build/src/thir/cx/expr.rs in rustc
                 // this is determined by the (adjusted) type of the receiver
