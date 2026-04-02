@@ -13,7 +13,6 @@ use crate::rust_to_vir_base::{
     typ_of_node_unadjusted_expect_mut_ref,
 };
 use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
-use crate::spans::err_air_span;
 use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
     self, CompilableOprItem, DummyCaptureItem, InvariantItem, OpenInvariantBlockItem, RustItem,
@@ -1861,6 +1860,86 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     return Ok(mk_expr(ExprX::Match(place_vir, Arc::new(vir_arms)))?);
 }
 
+fn resolve_index_call<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    tgt_ty: rustc_middle::ty::Ty<'tcx>,
+    idx_ty: rustc_middle::ty::Ty<'tcx>,
+    is_mut: bool,
+    span: Span,
+) -> Result<(vir::ast::ImplPaths, vir::ast::CallTargetKind), VirErr> {
+    use crate::resolve_traits::{ResolutionResult, ResolvedItem};
+    use crate::rustc_type_ir::Upcast;
+    use rustc_middle::ty::Binder;
+
+    // Compute impl_paths for Index/IndexMut implementation
+    let tcx = bctx.ctxt.tcx;
+    let typing_env = TypingEnv::non_body_analysis(tcx, bctx.fun_id);
+    let index_trait = if is_mut {
+        tcx.lang_items().index_mut_trait().expect("index_mut_trait")
+    } else {
+        tcx.lang_items().index_trait().expect("index_trait")
+    };
+    let arg_list = [GenericArg::from(tgt_ty), GenericArg::from(idx_ty)];
+    let args = tcx.mk_args(&arg_list);
+    let trait_ref = rustc_middle::ty::TraitRef::new(tcx, index_trait, arg_list);
+    let polarity = rustc_middle::ty::PredicatePolarity::Positive;
+    let clause: rustc_middle::ty::Clause<'tcx> =
+        Binder::dummy(ClauseKind::Trait(TraitPredicate { trait_ref, polarity })).upcast(tcx);
+    let impl_paths = get_impl_paths_for_clauses(
+        tcx,
+        &bctx.ctxt.verus_items,
+        bctx.fun_id,
+        vec![(None, clause)],
+        None,
+        span,
+    )?;
+
+    // Resolve call to Index::index or IndexMut::index_mut
+    let items = tcx.associated_items(index_trait);
+    let sym = if is_mut { rustc_span::sym::index_mut } else { rustc_span::sym::index };
+    let index_id = items.find_by_ident_and_namespace(
+        tcx,
+        rustc_span::Ident::with_dummy_span(sym),
+        rustc_hir::def::Namespace::ValueNS,
+        index_trait,
+    );
+    let index_id = index_id.expect("index/index_mut function in Index/IndexMut trait");
+    let res =
+        crate::resolve_traits::resolve_trait_item(span, tcx, typing_env, index_id.def_id, args);
+    let target_kind = match res {
+        Ok(ResolutionResult::Resolved {
+            resolved_item: ResolvedItem::FromImpl(did, args), ..
+        }) => {
+            let typs = crate::fn_call_to_vir::mk_typ_args(bctx, args, did, span)?;
+            let impl_paths = crate::rust_to_vir_base::get_impl_paths(
+                tcx,
+                &bctx.ctxt.verus_items,
+                bctx.fun_id,
+                did,
+                args,
+                None,
+                span,
+            )?;
+            let resolved = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
+            vir::ast::CallTargetKind::DynamicResolved {
+                resolved,
+                typs,
+                impl_paths,
+                is_trait_default: false,
+            }
+        }
+        Ok(ResolutionResult::Unresolved) => vir::ast::CallTargetKind::Dynamic,
+        _ => {
+            return err_span(
+                span,
+                format!("expected type that implements Index/IndexMut (found type {tgt_ty})"),
+            );
+        }
+    };
+
+    Ok((impl_paths, target_kind))
+}
+
 pub(crate) fn expr_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -3000,7 +3079,26 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 )
             }
             let tgt_expr_ty = bctx.types.expr_ty_adjusted(tgt_expr);
-            if bctx.types.is_method_call(expr) {
+            let idx_ty = bctx.types.expr_ty_adjusted(idx_expr);
+            // For borrow checking and SMT efficiency, ((array | slice), usize) is special case
+            // For SMT efficiency, (Vec, usize) is special case
+            // All other cases go through general Index trait
+            if !bctx.types.is_method_call(expr) {
+                assert!(idx_ty.is_usize());
+                let kind = match tgt_expr_ty.kind() {
+                    TyKind::Array(..) => vir::ast::ArrayKind::Array,
+                    TyKind::Slice(..) => vir::ast::ArrayKind::Slice,
+                    _ => panic!("expected array or slice, found {tgt_expr_ty}"),
+                };
+                let tgt_vir = expr_to_vir_place(bctx, tgt_expr, modifier)?;
+                let idx_vir = expr_to_vir(bctx, idx_expr, modifier)?.consume(bctx, idx_ty);
+                let placex = PlaceX::Index(tgt_vir, idx_vir, kind, BoundsCheck::Error);
+                let vir = bctx.spanned_typed_new(expr.span, &expr_typ()?, placex);
+                Ok(ExprOrPlace::Place(vir))
+            } else {
+                let is_array_or_slice =
+                    matches!(tgt_expr_ty.kind(), TyKind::Array(..) | TyKind::Slice(..));
+                assert!(!(is_array_or_slice && idx_ty.is_usize()));
                 // Determine if this is Index or IndexMut
                 // Based on ./rustc_mir_build/src/thir/cx/expr.rs in rustc
                 // this is determined by the (adjusted) type of the receiver
@@ -3015,12 +3113,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     Mutability::Mut => true,
                 };
 
-                let idx_ty = bctx.types.expr_ty_adjusted(idx_expr);
-
                 let tgt_vir = expr_to_vir_consume(bctx, tgt_expr, modifier)?;
                 let idx_vir = expr_to_vir_consume(bctx, idx_expr, ExprModifier::REGULAR)?;
 
-                let (fun, typ_args) = if ty_is_vec(bctx.ctxt.tcx, *tgt_ty) && idx_ty.is_usize() {
+                let fun_typ_args = if ty_is_vec(bctx.ctxt.tcx, *tgt_ty) && idx_ty.is_usize() {
                     let fun = if mutbl {
                         vir::fun!("vstd" => "std_specs", "vec", "vec_index_mut")
                     } else {
@@ -3044,25 +3140,47 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             "Index operator expected TypX::Datatype"
                         ),
                     };
-                    (fun, typ_args)
-                } else {
+                    Some((fun, typ_args))
+                } else if mutbl {
                     return Err(err_span_bare(
                         expr.span,
-                        format!("Index operator not supported for ({:}, {:})", tgt_ty, idx_ty),
+                        format!("IndexMut operator not supported for ({:}, {:})", tgt_ty, idx_ty),
                     )
-                    .help("At present, the index operator is only supported for (Vec<_>, usize)"));
+                    .help(
+                        "At present, the IndexMut operator is only supported for (Vec<_>, usize)",
+                    ));
+                } else {
+                    None
                 };
 
-                let call_target = CallTarget::Fun(
-                    vir::ast::CallTargetKind::Static,
-                    fun,
-                    typ_args,
-                    // arbitrary impl_path
-                    // REVIEW: why is this needed?
-                    Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_spec_fn_type(0))]),
-                    AutospecUsage::Final,
-                    false,
-                );
+                let call_target = if let Some((fun, typ_args)) = fun_typ_args {
+                    // special fast path
+                    CallTarget::Fun(
+                        vir::ast::CallTargetKind::Static,
+                        fun,
+                        typ_args,
+                        // arbitrary impl_path
+                        // REVIEW: why is this needed?
+                        Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_spec_fn_type(0))]),
+                        AutospecUsage::Final,
+                        false,
+                    )
+                } else {
+                    // general Index trait case
+                    let (impl_paths, target_kind) =
+                        resolve_index_call(bctx, *tgt_ty, idx_ty, false, expr.span)?;
+                    let typ_args =
+                        Arc::new(vec![undecorate_typ(&tgt_vir.typ), idx_vir.typ.clone()]);
+                    let fun = vir::fun!("core" => "ops", "index", "Index", "index");
+                    CallTarget::Fun(
+                        target_kind,
+                        fun,
+                        typ_args,
+                        impl_paths,
+                        AutospecUsage::Final,
+                        false,
+                    )
+                };
 
                 // tgt[idx] is equivalent to either *index(tgt, idx) or *index_mut(tgt, idx)
                 // (The * on the outside isn't part of the adjustments; we add it here)
@@ -3079,19 +3197,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     p = deref_mut(bctx, expr.span, &p)?;
                 }
                 Ok(ExprOrPlace::Place(p))
-            } else {
-                let tgt_ty = bctx.types.expr_ty_adjusted(tgt_expr);
-                let idx_ty = bctx.types.expr_ty_adjusted(idx_expr);
-                let kind = match tgt_ty.kind() {
-                    TyKind::Array(..) => vir::ast::ArrayKind::Array,
-                    TyKind::Slice(..) => vir::ast::ArrayKind::Slice,
-                    _ => unsupported_err!(expr.span, "Index operator for this type: {:}", tgt_ty),
-                };
-                let tgt_vir = expr_to_vir_place(bctx, tgt_expr, modifier)?;
-                let idx_vir = expr_to_vir(bctx, idx_expr, modifier)?.consume(bctx, idx_ty);
-                let placex = PlaceX::Index(tgt_vir, idx_vir, kind, BoundsCheck::Error);
-                let vir = bctx.spanned_typed_new(expr.span, &expr_typ()?, placex);
-                Ok(ExprOrPlace::Place(vir))
             }
         }
         ExprKind::Index(tgt_expr, idx_expr, _span) => {
@@ -3099,6 +3204,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             // Based on ./rustc_mir_build/src/thir/cx/expr.rs in rustc
             // this is determined by the (adjusted) type of the receiver
             let tgt_ty = bctx.types.expr_ty_adjusted(tgt_expr);
+            let idx_ty = bctx.types.expr_ty_adjusted(idx_expr);
             let is_index_mut = match tgt_ty.kind() {
                 TyKind::Array(_, _) => false,
                 TyKind::Slice(_) => false,
@@ -3115,57 +3221,67 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let tgt_vir = expr_to_vir_consume(bctx, tgt_expr, modifier)?;
             let idx_vir = expr_to_vir_consume(bctx, idx_expr, ExprModifier::REGULAR)?;
 
-            // We only support for the special case of (Vec, usize) arguments
             let t1 = &tgt_vir.typ;
             let t1 = match &**t1 {
                 TypX::Decorate(_, _, t) => t,
                 _ => t1,
             };
-            let (fun, typ_args) = match &**t1 {
-                TypX::Datatype(Dt::Path(p), typ_args, _impl_paths)
+            // Fast-path special cases for ((Vec | Array | Slice), usize)
+            // (other cases go through full Index trait machinery)
+            let is_usize = matches!(&*idx_vir.typ, TypX::Int(IntRange::USize));
+            let fun_typ_args = match (&**t1, is_usize) {
+                (TypX::Datatype(Dt::Path(p), typ_args, _impl_paths), true)
                     if p == &vir::path!("alloc" => "vec", "Vec") =>
                 {
                     let fun = vir::fun!("vstd" => "std_specs", "vec", "vec_index");
-                    (fun, typ_args.clone())
+                    Some((fun, typ_args.clone()))
                 }
-                TypX::Primitive(vir::ast::Primitive::Array, typ_args) => {
+                (TypX::Primitive(vir::ast::Primitive::Array, typ_args), true) => {
                     let fun = vir::fun!("vstd" => "array", "array_index_get");
-                    (fun, typ_args.clone())
+                    Some((fun, typ_args.clone()))
                 }
-                TypX::Primitive(vir::ast::Primitive::Slice, typ_args) => {
+                (TypX::Primitive(vir::ast::Primitive::Slice, typ_args), true) => {
                     let fun = vir::fun!("vstd" => "slice", "slice_index_get");
-                    (fun, typ_args.clone())
+                    Some((fun, typ_args.clone()))
                 }
-                _ => {
-                    return err_span(
-                        expr.span,
-                        "in exec code, Verus only supports the index operator for Vec, array, and slice types",
-                    );
-                }
+                _ => None,
             };
-            if !matches!(&*idx_vir.typ, TypX::Int(IntRange::USize)) {
-                return Err(err_span_bare(
-                    expr.span,
-                    "in exec code, the index operator is only supported for usize index",
-                )
-                .secondary_label(
-                    &err_air_span(idx_expr.span),
-                    format!("expected usize, found {}", typ_to_diagnostic_str(&idx_vir.typ)),
-                ));
-            }
 
-            let call_target = CallTarget::Fun(
-                vir::ast::CallTargetKind::Static,
-                fun,
-                typ_args,
-                // arbitrary impl_path
-                // REVIEW: why is this needed?
-                Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_spec_fn_type(0))]),
-                AutospecUsage::Final,
-                false,
-            );
-            let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
-            mk_expr(ExprX::Call(call_target, args, None))
+            if let Some((fun, typ_args)) = fun_typ_args {
+                // special fast path
+                let call_target = CallTarget::Fun(
+                    vir::ast::CallTargetKind::Static,
+                    fun,
+                    typ_args,
+                    // arbitrary impl_path
+                    // REVIEW: why is this needed?
+                    Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_spec_fn_type(0))]),
+                    AutospecUsage::Final,
+                    false,
+                );
+                let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
+                mk_expr(ExprX::Call(call_target, args, None))
+            } else {
+                // general Index trait case
+                let rustc_middle::ty::Ref(_, tgt_ty, _) = tgt_ty.kind() else {
+                    crate::internal_err!(expr.span, "index: receiver is not a reference");
+                };
+                let (impl_paths, target_kind) =
+                    resolve_index_call(bctx, *tgt_ty, idx_ty, false, expr.span)?;
+                let t1 = undecorate_typ(&t1);
+                let typ_args = Arc::new(vec![t1.clone(), idx_vir.typ.clone()]);
+                let fun = vir::fun!("core" => "ops", "index", "Index", "index");
+                let call_target = CallTarget::Fun(
+                    target_kind,
+                    fun,
+                    typ_args,
+                    impl_paths,
+                    AutospecUsage::Final,
+                    false,
+                );
+                let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
+                mk_expr(ExprX::Call(call_target, args, None))
+            }
         }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),

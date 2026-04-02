@@ -197,20 +197,16 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_illegal_trait_impl verus_code! {
-        #[derive(PartialEq, Eq)]
-        struct V {
-            one: nat,
+        #[verifier::external]
+        trait T {
+            fn f() -> bool;
         }
 
-        impl std::ops::Index<int> for V {
-            type Output = nat;
+        struct S;
 
-            open spec fn index(&self, idx: int) -> &nat {
-                if idx == 0 {
-                    &self.one
-                } else {
-                    vstd::pervasive::arbitrary()
-                }
+        impl T for S {
+            spec fn f() -> bool {
+                true
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "function for external trait must have mode 'exec'")

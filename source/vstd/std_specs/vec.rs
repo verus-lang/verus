@@ -1,13 +1,17 @@
 use super::super::prelude::*;
 use verus_builtin::*;
 
+use super::super::slice::SliceIndexSpec;
+use super::core::IndexSpec;
 use alloc::collections::TryReserveError;
 use alloc::vec::{IntoIter, Vec};
 use core::alloc::Allocator;
 use core::clone::Clone;
 use core::marker::PhantomData;
+use core::ops::Index;
 use core::option::Option;
 use core::option::Option::None;
+use core::slice::SliceIndex;
 
 use verus as verus_;
 verus_! {
@@ -36,16 +40,13 @@ impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
 #[verifier::external_body]
 pub struct ExTryReserveError(alloc::collections::TryReserveError);
 
-// TODO this should really be an 'assume_specification' function
-// but it's difficult to handle vec.index right now because
-// it uses more trait polymorphism than we can handle right now.
+// We still have a special case for Vec::index on usize.
+// The general Vec::index case now goes through the Index trait,
+// but this special case is still here because it's more direct and efficient in its SMT encoding,
+// and Vec::index on usize is very common.
 //
-// So this is a bit of a hack, but I'm just manually redirecting
+// So this is a bit of a hack, but we just manually redirect
 // `vec[i]` to this function here from rust_to_vir_expr.
-//
-// It's not ideal, but I think it's better than the alternative, which would
-// be to have users call some function with a nonstandard name to perform indexing.
-/// This is a specification for the indexing operator `vec[i]` when it expands to the `Index` trait
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::vec::vec_index")]
 pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
@@ -175,17 +176,19 @@ pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::exte
             },
 ;
 
-/*
-// TODO find a way to support this
-// This is difficult because of the SliceIndex trait
-use std::ops::Index;
+impl<T: Sized, I: SliceIndex<[T]>, A: Allocator> super::core::IndexSpecImpl<I> for Vec<T, A> {
+    open spec fn index_req(&self, index: &I) -> bool {
+        forall|s: &[T]| #[trigger] s@ == self@ ==> index.index_req(s)
+    }
+}
 
-pub assume_specification<T, A: Allocator>[Vec::<T,A>::index](vec: &Vec<T>, i: usize) -> (r: &T)
-    requires
-        i < vec.len(),
+pub assume_specification<T, I: SliceIndex<[T]>, A: Allocator>[Vec::<T, A>::index](
+    vec: &Vec<T, A>,
+    i: I,
+) -> (r: &<Vec<T, A> as Index<I>>::Output)
     ensures
-        *r == vec[i as int];
-*/
+        exists|s: &[T]| #[trigger] s@ == vec@ && call_ensures(<I as SliceIndex<[T]>>::index, (i, s), r),
+;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::swap_remove ](
     vec: &mut Vec<T, A>,
