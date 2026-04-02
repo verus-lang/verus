@@ -313,6 +313,29 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 }
             }
         }
+        ExpX::Unary(UnaryOp::MutRefCurrent, mref) if matches!(&mref.x, ExpX::Var(_)) => {
+            let ExpX::Var(x) = &mref.x else { unreachable!() };
+
+            // Allow the use of *x where (x: &mut T) for some bitvectorable type T
+
+            let id = suffix_local_unique_id(x);
+
+            match state.scope_map.get(x) {
+                Some(_bv_typ) => {
+                    panic!("found mutable ref var in scope map");
+                }
+                None => {
+                    // Free var
+                    let typ = crate::ast_util::undecorate_typ(&exp.typ);
+                    let bv_typ = bv_typ_for_vir_typ(state, &exp.span, &typ)?;
+
+                    // Add to free vars list (we'll de-dupe later)
+                    state.decls.push((id.clone(), bv_typ.to_air_typ()));
+
+                    Ok(BvExpr { expr: string_var(&id), bv_typ: bv_typ })
+                }
+            }
+        }
         ExpX::Unary(op, arg) => match op {
             UnaryOp::Not => {
                 let BvExpr { expr, bv_typ } = bv_exp_to_expr(ctx, state, arg)?;
@@ -440,7 +463,10 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 panic!("internal error: unexpected CastToInteger")
             }
             UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefFinal(_) => {
-                panic!("mut-ref operation not allowed in bitvector query")
+                return Err(error(
+                    &exp.span,
+                    "unsupported for bitvector: this mutable reference operator",
+                ));
             }
             UnaryOp::Length(_) => {
                 panic!("ArrayLength operation not allowed in bitvector query")
@@ -989,9 +1015,9 @@ fn bv_typ_for_vir_typ(state: &mut State, span: &Span, typ: &Typ) -> Result<BvTyp
         Err(error(
             span,
             format!(
-                "error: bit_vector prover cannot handle this type (bit_vector can only handle variables of type `bool`, fixed-width integers, or floating point)"
+                "error: bit_vector prover cannot handle type `{:}`", crate::ast_util::typ_to_diagnostic_str(typ)
             ),
-        ))
+        ).help("bit_vector can only handle variables of type `bool`, fixed-width integers, or floating point"))
     }
 }
 
