@@ -3358,6 +3358,14 @@ fn check_expr_handle_mut_arg(
             Ok((Mode::Spec, proph))
         }
         ExprX::ReadPlace(place, read_kind) => {
+            let expect =
+                if matches!(read_kind.preliminary_kind, ReadKind::SpecAfterBorrow | ReadKind::Spec)
+                {
+                    Expect(Mode::Spec)
+                } else {
+                    expect
+                };
+
             let (mode, proph) = check_place(
                 ctxt,
                 record,
@@ -3375,8 +3383,6 @@ fn check_expr_handle_mut_arg(
             };
             record.read_kind_finals.insert(read_kind.id, final_read_kind);
 
-            // TODO(new_mut_ref) (blocking) if the ReadKind is spec, we should check that it really is spec
-
             let p = if matches!(read_kind.preliminary_kind, ReadKind::SpecAfterBorrow) {
                 Proph::Yes(ProphReason {
                     span: expr.span.clone(),
@@ -3385,6 +3391,14 @@ fn check_expr_handle_mut_arg(
             } else {
                 proph
             };
+
+            let mode =
+                if matches!(read_kind.preliminary_kind, ReadKind::SpecAfterBorrow | ReadKind::Spec)
+                {
+                    Mode::Spec
+                } else {
+                    mode
+                };
 
             Ok((mode, p))
         }
