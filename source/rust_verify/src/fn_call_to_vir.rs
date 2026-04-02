@@ -2650,7 +2650,7 @@ pub(crate) fn fix_node_substs<'tcx, 'a>(
     }
 }
 
-fn mk_typ_args<'tcx>(
+pub(crate) fn mk_typ_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     _f: DefId,

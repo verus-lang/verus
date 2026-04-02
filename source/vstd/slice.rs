@@ -2,6 +2,7 @@
 use super::prelude::*;
 use super::seq::*;
 use super::view::*;
+use core::slice::SliceIndex;
 
 #[cfg(verus_keep_ghost)]
 #[cfg(feature = "alloc")]
@@ -113,23 +114,30 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
 }
 
 #[verifier::external_trait_specification]
+#[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
 pub trait ExSliceIndex<T> where T: ?Sized {
-    type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
+    type ExternalTraitSpecificationFor: SliceIndex<T>;
 
     type Output: ?Sized;
+
+    spec fn index_req(&self, slice: &T) -> bool;
+
+    fn index(self, slice: &T) -> &Self::Output
+        requires
+            self.index_req(slice),
+    ;
 }
 
 pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Option<
-    &<I as core::slice::SliceIndex<[T]>>::Output,
->) where I: core::slice::SliceIndex<[T]>
+    &<I as SliceIndex<[T]>>::Output,
+>) where I: SliceIndex<[T]>
     returns
         spec_slice_get(slice, i),
 ;
 
-pub uninterp spec fn spec_slice_get<T: ?Sized, I: core::slice::SliceIndex<T>>(
-    val: &T,
-    idx: I,
-) -> Option<&<I as core::slice::SliceIndex<T>>::Output>;
+pub uninterp spec fn spec_slice_get<T: ?Sized, I: SliceIndex<T>>(val: &T, idx: I) -> Option<
+    &<I as SliceIndex<T>>::Output,
+>;
 
 pub broadcast axiom fn axiom_slice_get_usize<T>(v: &[T], i: usize)
     ensures
