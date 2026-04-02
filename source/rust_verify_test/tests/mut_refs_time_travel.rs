@@ -851,3 +851,422 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_spec_borrowed(err, "x")
 }
+
+// Loop ordering issues
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_decreases_1 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        fn test_loop_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // ok; decreases doesn't need to evaluate at the end
+            loop
+                decreases a,
+            {
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+
+                assume(false);
+            }
+
+            *z = 20;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_decreases_2 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        fn test_while_2() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // this should be ok
+            while ({
+                z = &mut a;
+                cond()
+            })
+                decreases a,
+            {
+                *z = 20;
+                break;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_decreases_3 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        fn test_while_3() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            while ({
+                *z = 20;
+                cond()
+            })
+                decreases b, // should fail (comes between `&mut b` and `*z = 20`)
+            {
+                break;
+            }
+        }
+    } => Err(err) => assert_spec_borrowed(err, "b")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_decreases_4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn cond() -> bool { true }
+
+        fn test_for_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // should be ok
+            for i in 0 .. 10
+                decreases a,
+            {
+                assume(false);
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+            }
+
+            *z = 20;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_ensures_1 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_loop_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // not ok
+            loop
+                ensures a == 0 || true,
+            {
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+            }
+
+            *z = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "a")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_ensures_2 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_2() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // this should be ok
+            while ({
+                z = &mut a;
+                cond()
+            })
+                ensures a == 0 || true,
+            {
+                *z = 20;
+                break;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_ensures_3 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_3() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // ok
+            while ({
+                *z = 20;
+                cond()
+            })
+                ensures b == 0 || true,
+            {
+                break;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_ensures_4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_for_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // not ok
+            for i in 0 .. 10
+                ensures a == 0 || true,
+            {
+                assume(false);
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+            }
+
+            *z = 20;
+        }
+    //} => Err(err) => assert_spec_borrowed(err, "a")
+    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_except_break_1 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_loop_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            assume(false);
+
+            // ok
+            loop
+                invariant_except_break a == 0 || true,
+            {
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+
+                assume(false);
+            }
+
+            *z = 20;
+        }
+    //} => Ok(())
+    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_except_break_2 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_2() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // this should be ok
+            while ({
+                z = &mut a;
+                cond()
+            })
+                invariant_except_break a == 0 || true,
+            {
+                *z = 20;
+                break;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_except_break_3 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_3() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // not ok
+            while ({
+                *z = 20;
+                cond()
+            })
+                invariant_except_break b == 0 || true, // should fail (comes between `&mut b` and `*z = 20`)
+            {
+                break;
+            }
+        }
+    } => Err(err) => assert_spec_borrowed(err, "b")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_except_break_4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_for_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // ok
+            for i in 0 .. 10
+                invariant_except_break a == 0 || true,
+            {
+                assume(false);
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+            }
+
+            *z = 20;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_1 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_loop_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // not ok
+            loop
+                invariant a == 0 || true,
+            {
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+            }
+
+            *z = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "a")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_2 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_2() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // this should be ok
+            while ({
+                z = &mut a;
+                cond()
+            })
+                invariant a == 0 || true,
+            {
+                *z = 20;
+                break;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_3 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_3() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            while ({
+                *z = 20;
+                cond()
+            })
+                invariant b == 0 || true, // should fail (comes between `&mut b` and `*z = 20`)
+            {
+                break;
+            }
+        }
+    } => Err(err) => assert_spec_borrowed(err, "b")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_for_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            for i in 0 .. 10
+                invariant a == 0 || true,
+            {
+                assume(false);
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+            }
+
+            *z = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "a")
+}
