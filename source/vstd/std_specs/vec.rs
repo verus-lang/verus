@@ -8,10 +8,10 @@ use alloc::vec::{IntoIter, Vec};
 use core::alloc::Allocator;
 use core::clone::Clone;
 use core::marker::PhantomData;
+use core::ops::Index;
 use core::option::Option;
 use core::option::Option::None;
-use std::ops::Index;
-use std::slice::SliceIndex;
+use core::slice::SliceIndex;
 
 use verus as verus_;
 verus_! {
