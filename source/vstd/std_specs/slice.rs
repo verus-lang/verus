@@ -85,7 +85,7 @@ pub uninterp spec fn spec_slice_iter<'a, T>(s: &'a [T]) -> (iter: Iter<'a, T>);
 
 pub broadcast proof fn axiom_spec_slice_iter<'a, T>(s: &'a [T])
     ensures
-        #[trigger] (spec_slice_iter(s).remaining()).unref() == s@,
+        #[trigger] spec_slice_iter(s).remaining() == s@.as_ref(),
 {
     admit();
 }
