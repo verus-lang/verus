@@ -255,6 +255,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 /// Updates the given function body to include AssumeResolved nodes at the appropriate places.
+/// On the side, also handles some work related to user_defined_type_invariants.
 ///
 /// This relies on the AstIds of the given Expr being unique, but it also destroys this property
 /// in the transformation, returning an Expr that may have duplicate AstIds.
@@ -268,11 +269,12 @@ pub(crate) fn infer_resolution(
     module: &Path,
     var_modes: &HashMap<VarIdent, Mode>,
     temporary_modes: &HashMap<AstId, Mode>,
+    dual_mode: bool,
 ) -> Result<Expr, VirErr> {
     let (cfg, assigns_to_resolve, typ_inv_obligations) =
         new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes)?;
     //println!("{:}", pretty_cfg(&cfg));
-    let resolutions = get_resolutions(&cfg);
+    let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg) };
     apply_resolutions(
         &cfg,
         params,

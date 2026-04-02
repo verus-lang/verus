@@ -443,7 +443,7 @@ test_verify_one_file! {
         spec fn test1(x: u64) {
             x = 5;
         }
-    } => Err(e) => assert_vir_error_msg(e, "variable `x` is not marked mutable")
+    } => Err(e) => assert_vir_error_msg(e, "assignment is not allowed inside pure context")
 }
 
 test_verify_one_file! {
