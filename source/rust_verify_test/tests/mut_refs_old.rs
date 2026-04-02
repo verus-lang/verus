@@ -366,8 +366,9 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): some issue with the closure being interpreted as taking a mutable borrow
-    #[ignore] #[test] old_in_closure_referring_to_outer_param ["new-mut-ref"] => verus_code! {
+    #[test] old_in_closure_referring_to_outer_param ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
         fn test(x: &mut u64)
             requires *x == 0,
         {

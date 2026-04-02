@@ -267,7 +267,7 @@ pub enum TypX {
     /// `spec_fn` type (t1, ..., tn) -> t0.
     SpecFn(Typs, Typ),
     /// Executable function types (with a requires and ensures)
-    AnonymousClosure(Typs, Typ, usize),
+    AnonymousClosure(Typs, Typ, ClosureKind, usize),
     /// Corresponds to Rust's FnDef type
     /// Typs are generic type args
     /// If Fun is a trait function, then the Option<Fun> has the statically resolved
@@ -1002,6 +1002,13 @@ pub struct CtorUpdateTail {
     /// i.e., this is all the fields that are moved or copied out of the input struct.
     /// This information is needed by resolution analysis.
     pub taken_fields: Arc<Vec<(Ident, UnfinalizedReadKind)>>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, Hash, PartialEq, Eq)]
+pub enum ClosureKind {
+    Fn,
+    FnMut,
+    FnOnce,
 }
 
 /// Expression, similar to rustc_hir::Expr

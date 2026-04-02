@@ -628,9 +628,9 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 2)
 }
 
-// TODO(new_mut_ref): fix
 test_verify_one_file_with_options! {
-    #[ignore] #[test] spec_capture_of_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] spec_capture_of_mut_ref ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
         fn test(x: &mut u64)
             requires *x == 0,
         {
