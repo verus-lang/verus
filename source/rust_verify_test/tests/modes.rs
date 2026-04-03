@@ -360,7 +360,7 @@ test_verify_one_file_with_options! {
             x = 23;
             x
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected pure mathematical expression")
+    } => Err(err) => assert_vir_error_msg(err, "assignment is not allowed inside pure context")
 }
 
 test_verify_one_file_with_options! {
@@ -1688,4 +1688,31 @@ test_verify_one_file! {
             let g1 = Ghost::<bool>(1int);
         }
     } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+}
+
+test_verify_one_file! {
+    #[test] match_in_pure_expr verus_code! {
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        fn test1(o: Option<Option<u64>>)
+            requires (match o {
+                Some(Some(x)) => x < 5,
+                _ => true,
+            })
+        {
+        }
+
+        fn test2(o: Option<Option<u64>>) {
+            assert(match o { Some(Some(x)) => x < 5, _ => true }); // FAILS
+        }
+
+        fn test3(o: Option<Option<u64>>) {
+            let ghost z = match o {
+                Some(Some(x)) => x < 5,
+                _ => true,
+            };
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

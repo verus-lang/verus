@@ -471,3 +471,14 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] allow_in_spec_mut_ref ["new-mut-ref"] => verus_code! {
+        #[verifier::allow_in_spec]
+        fn test(x: &mut bool) -> bool
+            returns *x
+        {
+            *x
+        }
+    } => Err(err) => assert_vir_error_msg(err, "allow_in_spec not supported for function with &mut param")
+}

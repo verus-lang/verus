@@ -1520,7 +1520,7 @@ test_verify_one_file_with_options! {
         fn consume<A>(a: A) { }
 
         fn test(a: &mut [u64]) {
-            // TODO(new_mut_ref): export an axiom so this succeeds
+            // TODO(new_mut_ref): (low-pri) export an axiom so this succeeds
             // (note: this might be tricky to do in a sound way, since the AIR encoding
             // lets you assign anything to current?)
             assert(a@.len() == final(a)@.len()); // FAILS

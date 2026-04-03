@@ -1105,8 +1105,13 @@ pub(crate) fn sst_call_requires(
     for (typ_param, arg) in func.x.typ_params.iter().zip(typ_args.iter()) {
         typ_substs.insert(typ_param.clone(), arg.clone());
     }
+
+    let skip_dummy =
+        func.x.params.len() > 0 && func.x.params[0].x.name == crate::def::dummy_param_name();
+    let skip_dummy = if skip_dummy { 1 } else { 0 };
+
     let param_typs: Vec<Typ> =
-        func.x.params.iter().map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
+        func.x.params.iter().skip(skip_dummy).map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
 
     let tuple_typ = crate::ast_util::mk_tuple_typ(&Arc::new(param_typs));
     let fndef_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), resolved_fun.clone()));
@@ -1115,7 +1120,7 @@ pub(crate) fn sst_call_requires(
     let fndef_value = crate::poly::coerce_exp_to_poly(ctx, &fndef_value);
 
     let req_args: Vec<Exp> =
-        req_args.iter().map(|r| crate::poly::coerce_exp_to_poly(ctx, r)).collect();
+        req_args.iter().skip(skip_dummy).map(|r| crate::poly::coerce_exp_to_poly(ctx, r)).collect();
     let args_tuple = sst_tuple(span, &Arc::new(req_args));
     let args_tuple = crate::poly::coerce_exp_to_poly(ctx, &args_tuple);
 
@@ -1142,8 +1147,13 @@ pub(crate) fn sst_call_ensures(
     for (typ_param, arg) in func.x.typ_params.iter().zip(typ_args.iter()) {
         typ_substs.insert(typ_param.clone(), arg.clone());
     }
+
+    let skip_dummy =
+        func.x.params.len() > 0 && func.x.params[0].x.name == crate::def::dummy_param_name();
+    let skip_dummy = if skip_dummy { 1 } else { 0 };
+
     let param_typs: Vec<Typ> =
-        func.x.params.iter().map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
+        func.x.params.iter().skip(skip_dummy).map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
 
     let tuple_typ = crate::ast_util::mk_tuple_typ(&Arc::new(param_typs));
     let fndef_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), resolved_fun.clone()));
@@ -1152,7 +1162,7 @@ pub(crate) fn sst_call_ensures(
     let fndef_value = crate::poly::coerce_exp_to_poly(ctx, &fndef_value);
 
     let req_args: Vec<Exp> =
-        req_args.iter().map(|r| crate::poly::coerce_exp_to_poly(ctx, r)).collect();
+        req_args.iter().skip(skip_dummy).map(|r| crate::poly::coerce_exp_to_poly(ctx, r)).collect();
     let args_tuple = sst_tuple(span, &Arc::new(req_args));
     let args_tuple = crate::poly::coerce_exp_to_poly(ctx, &args_tuple);
 

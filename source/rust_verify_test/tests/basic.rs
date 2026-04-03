@@ -188,6 +188,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_multiple_proof_notes_on_requires verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            requires
+                #![verifier::proof_note("Property 732")]
+                #![verifier::proof_note("Property 451")]
+                x == y,
+        {
+            x + y
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
+}
+
+test_verify_one_file! {
     #[test] test_proof_note_on_ensures verus_code! {
         fn example(x: u64, y: u64) -> (z: u64)
             ensures
@@ -204,12 +217,35 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_multiple_proof_notes_on_ensures verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            ensures
+                #![verifier::proof_note("Property 732")]
+                #![verifier::proof_note("Property 451")]
+                z == x + y,
+        {
+            x
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
+}
+
+test_verify_one_file! {
     #[test] test_proof_note_on_assert verus_code! {
         fn caller() {
             #[verifier::proof_note("Statement known to be false")]
             assert(1 > 2); // assertion fails
         }
     } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
+}
+
+test_verify_one_file! {
+    #[test] test_multiple_proof_notes_on_assert verus_code! {
+        fn caller() {
+            #[verifier::proof_note("Statement known to be false")]
+            #[verifier::proof_note("This is another proof label")]
+            assert(1 > 2); // assertion fails
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
 }
 
 test_verify_one_file_with_options! {
@@ -222,12 +258,32 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file! {
+    #[test] test_multiple_proof_notes_on_assume verus_code! {
+        fn caller() {
+            #[verifier::proof_note("Statement known to be false")]
+            #[verifier::proof_note("This is another proof label")]
+            assume(1 > 2); // assumption fails
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
+}
+
+test_verify_one_file! {
     #[test] test_proof_note_custom_err_on_assert verus_code! {
         fn caller() {
             #[verifier::proof_note_custom_err("Custom assert error")]
             assert(1 > 2);
         }
     } => Err(err) => assert_vir_error_msg(err, "Custom assert error")
+}
+
+test_verify_one_file! {
+    #[test] test_multiple_proof_note_custom_errs_on_assert verus_code! {
+        fn caller() {
+            #[verifier::proof_note_custom_err("Custom assert error")]
+            #[verifier::proof_note_custom_err("Another custom error")]
+            assert(1 > 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
 }
 
 test_verify_one_file_with_options! {
@@ -493,7 +549,7 @@ test_verify_one_file! {
         spec fn test1(x: u64) {
             x = 5;
         }
-    } => Err(e) => assert_vir_error_msg(e, "variable `x` is not marked mutable")
+    } => Err(e) => assert_vir_error_msg(e, "assignment is not allowed inside pure context")
 }
 
 test_verify_one_file! {
@@ -658,7 +714,7 @@ test_verify_one_file! {
             let a = |x: i32| x + 3;
             assert(a == 5);
         }
-    } => Err(err) => assert_spec_eq_type_err(err, "nat", "AnonymousClosure(i32) -> i32")
+    } => Err(err) => assert_spec_eq_type_err(err, "nat", "AnonymousClosure(Fn)(i32) -> i32")
 }
 
 test_verify_one_file! {

@@ -3577,7 +3577,6 @@ fn exec_closure_body_stms(
     let mut param_set = HashSet::<VarIdent>::new();
 
     for param in params.iter() {
-        // TODO(new_mut_ref): can't assume closure params are immutable anymore
         let kind = PreLocalDeclKind::ExecClosureParam;
         let uid = state.declare_var_stm(&param.name, &param.a, kind, false);
         typ_inv_vars.push((uid.clone(), param.a.clone()));

@@ -133,9 +133,10 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::SpecFn(ts1, t1), TypX::SpecFn(ts2, t2)) => {
             n_types_equal(ts1, ts2) && types_equal(t1, t2)
         }
-        (TypX::AnonymousClosure(ts1, t1, id1), TypX::AnonymousClosure(ts2, t2, id2)) => {
-            n_types_equal(ts1, ts2) && types_equal(t1, t2) && id1 == id2
-        }
+        (
+            TypX::AnonymousClosure(ts1, t1, id1, kind1),
+            TypX::AnonymousClosure(ts2, t2, id2, kind2),
+        ) => n_types_equal(ts1, ts2) && types_equal(t1, t2) && id1 == id2 && kind1 == kind2,
         (TypX::Datatype(path1, ts1, _), TypX::Datatype(path2, ts2, _)) => {
             path1 == path2 && n_types_equal(ts1, ts2)
         }
@@ -193,7 +194,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Real, _) => false,
         (TypX::Float(_), _) => false,
         (TypX::SpecFn(_, _), _) => false,
-        (TypX::AnonymousClosure(_, _, _), _) => false,
+        (TypX::AnonymousClosure(_, _, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
         (TypX::Dyn(_, _, _), _) => false,
         (TypX::Primitive(_, _), _) => false,
@@ -940,8 +941,9 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)
         ),
-        TypX::AnonymousClosure(atyps, rtyp, _) => format!(
-            "AnonymousClosure({}) -> {}",
+        TypX::AnonymousClosure(atyps, rtyp, kind, _) => format!(
+            "AnonymousClosure({})({}) -> {}",
+            kind,
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)
         ),
@@ -1466,6 +1468,26 @@ impl BinaryOp {
             | BinaryOp::IeeeFloat(_)
             | BinaryOp::StrGetChar
             | BinaryOp::Index(..) => false,
+        }
+    }
+}
+
+impl fmt::Display for ClosureKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ClosureKind::Fn => write!(f, "Fn"),
+            ClosureKind::FnOnce => write!(f, "FnOnce"),
+            ClosureKind::FnMut => write!(f, "FnMut"),
+        }
+    }
+}
+
+impl ClosureKind {
+    pub(crate) fn trait_path(&self) -> Path {
+        match self {
+            ClosureKind::Fn => crate::path!["core" => "ops", "function", "Fn"],
+            ClosureKind::FnMut => crate::path!["core" => "ops", "function", "FnMut"],
+            ClosureKind::FnOnce => crate::path!["core" => "ops", "function", "FnOnce"],
         }
     }
 }

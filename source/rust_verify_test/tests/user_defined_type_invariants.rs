@@ -2386,7 +2386,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails_type_invariant_error(err, 2)
 }
 
-// TODO(new_mut_ref): this is a bad user experience
+// TODO(new_mut_ref): (low-pri) this is a bad user experience
 test_verify_one_file_with_options! {
     #[test] struct_of_vec ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;

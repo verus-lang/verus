@@ -255,6 +255,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 /// Updates the given function body to include AssumeResolved nodes at the appropriate places.
+/// On the side, also handles some work related to user_defined_type_invariants.
 ///
 /// This relies on the AstIds of the given Expr being unique, but it also destroys this property
 /// in the transformation, returning an Expr that may have duplicate AstIds.
@@ -268,11 +269,12 @@ pub(crate) fn infer_resolution(
     module: &Path,
     var_modes: &HashMap<VarIdent, Mode>,
     temporary_modes: &HashMap<AstId, Mode>,
+    dual_mode: bool,
 ) -> Result<Expr, VirErr> {
     let (cfg, assigns_to_resolve, typ_inv_obligations) =
         new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes)?;
     //println!("{:}", pretty_cfg(&cfg));
-    let resolutions = get_resolutions(&cfg);
+    let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg) };
     apply_resolutions(
         &cfg,
         params,
@@ -863,7 +865,7 @@ impl<'a> Builder<'a> {
                 Ok(join_block)
             }
             ExprX::If(cond, thn, els) => {
-                // TODO(new_mut_ref): if the condition has conditional short-circuiting,
+                // TODO(new_mut_ref): (completeness) if the condition has conditional short-circuiting,
                 // we could make a more precise CFG. Is this needed to match Rustc's analysis?
 
                 let thn_position = AstPosition::Before(thn.span.id);
@@ -1031,7 +1033,7 @@ impl<'a> Builder<'a> {
             }
 
             ExprX::OpenInvariant(arg, binder, body, _) => {
-                // TODO(new_mut_ref): test cases
+                // TODO(new_mut_ref): (blocking) test cases
                 bb = self.build(arg, bb)?;
 
                 let local = FlattenedPlaceTyped {
@@ -1422,7 +1424,7 @@ impl<'a> Builder<'a> {
     /// Get the local vars that should be dropped when returning to the beginning
     /// of the the loop.
     fn loop_drops(&mut self, loop_expr: &Expr) -> Vec<FlattenedPlace> {
-        // TODO(new_mut_ref): should get temps? Actually, is this even necessary at all?
+        // TODO(new_mut_ref): (blocking) should get temps? Actually, is this even necessary at all?
         expr_all_bound_vars_with_ownership(loop_expr, &self.locals.var_modes)
             .iter()
             .map(|bv| {
@@ -1485,7 +1487,7 @@ impl<'a> Builder<'a> {
     /// It may also induce mutations due to variables with MutRef binding mode.
     /// This function calculates all such moves and mutations.
     ///
-    /// TODO(new_mut_ref): incompleteness: when or-patterns are involved,
+    /// TODO(new_mut_ref): (completeness) when or-patterns are involved,
     /// moves may be over-approximated
     ///
     /// Note: We don't have to worry about or-patterns together with mutations, as we currently
@@ -1542,8 +1544,8 @@ impl<'a> Builder<'a> {
     //// Match
 
     fn build_match(&mut self, expr: &Expr, bb: BBIndex) -> Result<BBIndex, ()> {
-        // TODO(new_mut_ref): need more tests for guards
-        // TODO(new_mut_ref): need more tests for or-patterns
+        // TODO(new_mut_ref): (blocking) need more tests for guards
+        // TODO(new_mut_ref): (blocking) need more tests for or-patterns
 
         let ExprX::Match(place, arms) = &expr.x else {
             unreachable!();
@@ -1556,7 +1558,9 @@ impl<'a> Builder<'a> {
         };
         let (cpt, bb) = self.build_place_typed(place, bb, tinv)?;
 
-        assert!(arms.len() != 0);
+        if arms.len() == 0 {
+            return Err(());
+        }
 
         let mut cur_bb = bb;
         let mut arm_bb_ends = vec![];
@@ -2190,7 +2194,7 @@ impl<'a> LocalCollection<'a> {
                         }
                     },
                     _ => {
-                        // TODO(new_mut_ref) I think this case can actually happen since
+                        // TODO(new_mut_ref) (blocking) I think this case can actually happen since
                         // lifetime-checking hasn't run yet?
                         panic!("Verus internal internal: unexpected type from projections")
                     }
@@ -3091,7 +3095,7 @@ fn get_resolutions(cfg: &CFG) -> Vec<ResolutionToInsert> {
         //println!("{:}\n", pretty_flattened_place(&cfg.locals, &resolve_places[r_idx]));
         //println!("{:}\n", pretty_basics_blocks_with_dataflow2(&cfg, &resolve_analyses[r_idx], &initialization_analyses[i_idx]));
 
-        // TODO(new_mut_ref): filter for "interesting" types, i.e., those containing a &mut ref
+        // TODO(new_mut_ref): (blocking) filter for "interesting" types, i.e., those containing a &mut ref
 
         get_resolutions_for_place(
             cfg,

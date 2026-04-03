@@ -1063,8 +1063,6 @@ test_verify_one_file_with_options! {
             let mut o = bg;
             match o {
                 BigEnum::A(((r_pair_0, rx), ry)) => {
-                    assume(has_resolved(o->A_0.0)); // TODO(new_mut_ref): incompleteness in resolution analysis
-
                     assert(*r_pair_0 == 4);
                     assert(**rx == 0);
                     assert(*ry == 1);
@@ -1682,7 +1680,7 @@ test_verify_one_file_with_options! {
                 assert(pair === (2, 3));
                 assert(big_pair.0 === 4);
             } else {
-                assert(has_resolved(big_pair.1)); // TODO(new_mut_ref): triggers
+                assert(has_resolved(big_pair.1)); // TODO(new_mut_ref): triggering
                 assert(pair === (2, 3));
                 assert(big_pair.0 === 4);
             }
@@ -2437,7 +2435,7 @@ test_verify_one_file_with_options! {
         fn test<T>(t: &mut Tracked<T>) {
             let Tracked(r) = t;
         }
-        // TODO(new_mut_ref): needs better error msg
+        // TODO(new_mut_ref): (low-pri) needs better error msg
     } => Err(err) => assert_rust_error_msg(err, "cannot move out of a mutable reference")
 }
 
@@ -2447,7 +2445,7 @@ test_verify_one_file_with_options! {
             let Ghost(r) = t;
             assert(r == (*t));
         }
-        // TODO(new_mut_ref): is this the desired behavior?
+        // TODO(new_mut_ref): (blocking) is this the desired behavior?
     } => Ok(())
 }
 
@@ -3419,7 +3417,7 @@ test_verify_one_file_with_options! {
                     consume(t);
                 }
                 Foo::Bar(t) => {
-                    // TODO(new_mut_ref): this should pass; the resolution goes to a "MatchIntermediate" position which gets dropped
+                    // TODO(new_mut_ref): (completeness) this should pass; the resolution goes to a "MatchIntermediate" position which gets dropped
                     assert(has_resolved(b)); // FAILS
                 }
             }
@@ -3502,7 +3500,7 @@ test_verify_one_file_with_options! {
             match foo {
                 (true, x, _) | (false, _, x) => {
                     consume(x);
-                    // TODO(new_mut_ref): these ought to pass
+                    // TODO(new_mut_ref): (completeness) these ought to pass
                     assert(foo.0 ==> has_resolved(foo.2)); // FAILS
                     assert(!foo.0 ==> has_resolved(foo.1)); // FAILS
                 }
