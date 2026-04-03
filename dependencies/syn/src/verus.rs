@@ -266,6 +266,7 @@ ast_struct! {
         pub inputs: Punctuated<Expr, Token![,]>,
         pub outputs: Option<(Token![=>], Pat)>,
         pub follows: Option<(Token![|=], Pat)>,
+        pub erased_fields: Punctuated<FieldValue, Token![,]>, // only supported if applied to a struct construction expression
     }
 }
 
@@ -2680,9 +2681,22 @@ impl parse::Parse for WithSpecOnExpr {
     fn parse(input: ParseStream) -> Result<Self> {
         let with = input.parse()?;
         let mut inputs = Punctuated::new();
-        while !input.peek(Token![=>]) && !input.peek(Token![|=]) {
-            let expr = input.parse()?;
-            inputs.push(expr);
+        let mut erased_fields = Punctuated::new();
+        while !input.is_empty() && !input.peek(Token![=>]) && !input.peek(Token![|=]) {
+            if input.peek2(Token![:]) && !input.peek2(Token![::]) {
+                let field_value: FieldValue = input.parse()?;
+                if field_value.colon_token.is_none() || !field_value.member.is_named() {
+                    return Err(input.error(
+                        "ghost/tracked struct fields should be of the form `$ident: $expr`",
+                    ));
+                }
+                if !field_value.attrs.is_empty() {
+                    return Err(input.error("ghost/tracked struct fields cannot have attributes"));
+                }
+                erased_fields.push(field_value);
+            } else {
+                inputs.push(input.parse()?);
+            }
             if !input.peek(Token![,]) {
                 break;
             }
@@ -2708,11 +2722,19 @@ impl parse::Parse for WithSpecOnExpr {
         } else {
             None
         };
+        let applied_to_struct = !erased_fields.is_empty();
+        let applied_to_function = outputs.is_some() || !inputs.is_empty();
+        if applied_to_struct && applied_to_function {
+            return Err(input.error(
+                "Misuse of `with`: cannot have both ghost/tracked fields and function inputs/outputs",
+            ));
+        }
         Ok(WithSpecOnExpr {
             with,
             inputs,
             outputs,
             follows,
+            erased_fields,
         })
     }
 }
