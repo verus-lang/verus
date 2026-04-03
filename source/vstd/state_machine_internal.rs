@@ -31,7 +31,11 @@ pub struct NoCopy {
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
 pub fn assert_safety(b: bool) {
-    requires(#[verifier::proof_note_custom_err("unable to prove assertion safety condition")] /* vattr */ b);
+    requires(
+        #[verifier::proof_note_custom_err("unable to prove assertion safety condition")]
+        /* vattr */
+        b,
+    );
     ensures(b);
 }
 
@@ -39,7 +43,9 @@ pub fn assert_safety(b: bool) {
 #[verifier::proof]
 pub fn assert_let_pattern(b: bool) {
     requires(
-        #[verifier::proof_note_custom_err("unable to prove safety condition that the pattern matches")]
+        #[verifier::proof_note_custom_err(
+            "unable to prove safety condition that the pattern matches"
+        )]
         /* vattr */
         b,
     );
