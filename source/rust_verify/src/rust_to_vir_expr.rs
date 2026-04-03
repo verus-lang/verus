@@ -45,8 +45,8 @@ use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck, CallTarget,
     Constant, Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExprX, ImplPath, InequalityOp,
     IntRange, InvAtomicity, Mode, OverflowBehavior, PatternX, Place, PlaceX, Primitive,
-    SpannedTyped, StmtX, Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
-    VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    ProofNoteLabel, SpannedTyped, StmtX, Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr,
+    UnfinalizedReadKind, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     bool_typ, ident_binder, mk_tuple_field_opr, mk_tuple_typ, mk_tuple_x, str_unique_var,
@@ -442,10 +442,12 @@ pub(crate) fn expr_to_vir<'tcx>(
             .new_x(ExprX::UnaryOpr(UnaryOpr::CustomErr(Arc::new(err_msg)), vir_expr.clone()));
         vir_expr_or_place = ExprOrPlace::Expr(vir_expr);
     }
-    if let Some(label) = get_proof_note_annotation(attrs)? {
+    if let Some((label, is_custom_err)) = get_proof_note_annotation(attrs)? {
         let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
-        vir_expr =
-            vir_expr.new_x(ExprX::UnaryOpr(UnaryOpr::ProofNote(Arc::new(label)), vir_expr.clone()));
+        vir_expr = vir_expr.new_x(ExprX::UnaryOpr(
+            UnaryOpr::ProofNote(ProofNoteLabel { text: Arc::new(label), is_custom_err }),
+            vir_expr.clone(),
+        ));
         vir_expr_or_place = ExprOrPlace::Expr(vir_expr);
     }
     Ok(vir_expr_or_place)

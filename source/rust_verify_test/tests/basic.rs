@@ -188,6 +188,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_multiple_proof_notes_on_requires verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            requires
+                #![verifier::proof_note("Property 732")]
+                #![verifier::proof_note("Property 451")]
+                x == y,
+        {
+            x + y
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
+}
+
+test_verify_one_file! {
     #[test] test_proof_note_on_ensures verus_code! {
         fn example(x: u64, y: u64) -> (z: u64)
             ensures
@@ -204,12 +217,35 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_multiple_proof_notes_on_ensures verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            ensures
+                #![verifier::proof_note("Property 732")]
+                #![verifier::proof_note("Property 451")]
+                z == x + y,
+        {
+            x
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
+}
+
+test_verify_one_file! {
     #[test] test_proof_note_on_assert verus_code! {
         fn caller() {
             #[verifier::proof_note("Statement known to be false")]
             assert(1 > 2); // assertion fails
         }
     } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
+}
+
+test_verify_one_file! {
+    #[test] test_multiple_proof_notes_on_assert verus_code! {
+        fn caller() {
+            #[verifier::proof_note("Statement known to be false")]
+            #[verifier::proof_note("This is another proof label")]
+            assert(1 > 2); // assertion fails
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
 }
 
 test_verify_one_file_with_options! {
@@ -219,6 +255,76 @@ test_verify_one_file_with_options! {
             assume(1 > 2); // assumption fails
         }
     } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
+}
+
+test_verify_one_file! {
+    #[test] test_multiple_proof_notes_on_assume verus_code! {
+        fn caller() {
+            #[verifier::proof_note("Statement known to be false")]
+            #[verifier::proof_note("This is another proof label")]
+            assume(1 > 2); // assumption fails
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_custom_err_on_assert verus_code! {
+        fn caller() {
+            #[verifier::proof_note_custom_err("Custom assert error")]
+            assert(1 > 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Custom assert error")
+}
+
+test_verify_one_file! {
+    #[test] test_multiple_proof_note_custom_errs_on_assert verus_code! {
+        fn caller() {
+            #[verifier::proof_note_custom_err("Custom assert error")]
+            #[verifier::proof_note_custom_err("Another custom error")]
+            assert(1 > 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_note_custom_err_on_assume_with_no_cheating ["--no-cheating"] => verus_code! {
+        fn caller() {
+            #[verifier::proof_note_custom_err("Custom assume error")]
+            assume(1 > 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Custom assume error")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_custom_err_on_requires verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            requires
+                #![verifier::proof_note_custom_err("Custom requires error")]
+                x == y,
+        {
+            x
+        }
+
+        fn caller() {
+            let _ = example(1, 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Custom requires error")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_custom_err_on_ensures verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            ensures
+                #![verifier::proof_note_custom_err("Custom ensures error")]
+                z == x + y,
+        {
+            x
+        }
+
+        fn caller() {
+            let _ = example(1, 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Custom ensures error")
 }
 
 test_verify_one_file! {

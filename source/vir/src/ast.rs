@@ -508,6 +508,14 @@ pub enum IntegerTypeBoundKind {
     ArchWordBits,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub struct ProofNoteLabel {
+    /// The text to show in error messages.
+    pub text: Arc<String>,
+    /// Whether this label acts as a custom error message.
+    pub is_custom_err: bool,
+}
+
 /// More complex unary operations (requires Clone rather than Copy)
 /// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
@@ -533,7 +541,7 @@ pub enum UnaryOpr {
     /// Custom diagnostic message
     CustomErr(Arc<String>),
     /// Label from a `proof_note` attribute.
-    ProofNote(Arc<String>),
+    ProofNote(ProofNoteLabel),
     /// Predicate over any type that indicates its mutable references has resolved.
     /// For &mut T this says the prophetic value == the current value.
     /// For primitive types this is trivially true.
