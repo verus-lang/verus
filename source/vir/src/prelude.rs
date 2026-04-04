@@ -1082,15 +1082,17 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
                 :skolemid skolem_prelude_has_type_array_new
             ))
         )
-        (axiom (forall ((Tdcr [decoration]) (T [typ]) (Ndcr [decoration]) (N [typ]) (Fn Fun) (i Poly)) (!
+        // REVIEW: the Nd decoration on array_index is currently needed when array_index is used
+        // as a trigger, but it might be better to omit decorations from const generics entirely.
+        (axiom (forall ((Tdcr [decoration]) (T [typ]) (Nd [decoration]) (Ndcr [decoration]) (N [typ]) (Fn Fun) (i Poly)) (!
             (=>
                 (and
                     ([has_type] ([box_array] Fn) ([type_id_array] Tdcr T Ndcr N))
                     ([has_type] i [type_id_int])
                 )
-                ([has_type] ([array_index] Tdcr T $ N Fn i) T)
+                ([has_type] ([array_index] Tdcr T Nd N Fn i) T)
             )
-            :pattern (([array_index] Tdcr T $ N Fn i) ([has_type] ([box_array] Fn) ([type_id_array] Tdcr T Ndcr N)))
+            :pattern (([array_index] Tdcr T Nd N Fn i) ([has_type] ([box_array] Fn) ([type_id_array] Tdcr T Ndcr N)))
             :qid prelude_has_type_array_index
             :skolemid skolem_prelude_has_type_array_index
         )))
