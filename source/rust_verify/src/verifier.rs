@@ -282,6 +282,8 @@ pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
     pub count_errors: u64,
+    pub count_vacuity_checked: u64,
+    pub count_vacuity_errors: u64,
     /// Functions that failed to verify
     pub func_fails: HashSet<Fun>,
     pub args: Args,
@@ -476,6 +478,8 @@ impl Verifier {
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
+            count_vacuity_checked: 0,
+            count_vacuity_errors: 0,
             func_fails: HashSet::new(),
             args,
             user_filter: None,
@@ -525,6 +529,8 @@ impl Verifier {
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
+            count_vacuity_checked: 0,
+            count_vacuity_errors: 0,
             func_fails: HashSet::new(),
             args: self.args.clone(),
             user_filter: self.user_filter.clone(),
@@ -568,6 +574,8 @@ impl Verifier {
     pub fn merge(&mut self, other: Self) {
         self.count_verified += other.count_verified;
         self.count_errors += other.count_errors;
+        self.count_vacuity_checked += other.count_vacuity_checked;
+        self.count_vacuity_errors += other.count_vacuity_errors;
         self.func_fails.extend(other.func_fails);
         self.time_vir += other.time_vir;
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
@@ -825,6 +833,10 @@ impl Verifier {
                     {
                         self.count_verified += 1;
 
+                        if self.args.check_vacuity {
+                            self.count_vacuity_checked += 1;
+                        }
+
                         if let air::context::UsageInfo::UsedAxioms(axioms) = usage_info {
                             assert!(used_axioms.replace(axioms).is_none());
                         }
@@ -963,6 +975,18 @@ impl Verifier {
                 ValidityResult::UnexpectedOutput(err) => {
                     util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                     panic!("unexpected output from solver: {} {}", &context.span.as_string, err);
+                }
+                ValidityResult::Vacuous => {
+                    self.count_errors += 1;
+                    self.count_vacuity_checked += 1;
+                    self.count_vacuity_errors += 1;
+                    self.func_fails.insert(context.fun.clone());
+                    let msg = format!(
+                        "{}: vacuity check failed: the hypotheses are inconsistent (they imply false), so the proof is vacuously true",
+                        context.desc
+                    );
+                    reporter.report(&message(MessageLevel::Error, msg, &context.span).to_any());
+                    break;
                 }
             }
         }
@@ -1128,6 +1152,7 @@ impl Verifier {
             air::context::Context::new(message_interface.clone(), self.args.solver);
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debugger);
+        air_context.set_check_vacuity(self.args.check_vacuity);
         if let Some(profile_file_name) = profile_file_name {
             air_context.set_profile_with_logfile_name(
                 profile_file_name.to_str().expect("invalid prover log path").to_owned(),
@@ -3435,6 +3460,19 @@ impl VerifierCallbacksEraseMacro {
                     ""
                 }
             );
+            if self.verifier.args.check_vacuity {
+                if self.verifier.count_vacuity_errors == 0 {
+                    println!(
+                        "vacuity check successful:: {} checked, 0 errors",
+                        self.verifier.count_vacuity_checked,
+                    );
+                } else {
+                    println!(
+                        "vacuity check:: {} checked, {} errors",
+                        self.verifier.count_vacuity_checked, self.verifier.count_vacuity_errors,
+                    );
+                }
+            }
         }
     }
 }

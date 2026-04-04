@@ -190,6 +190,12 @@ pub fn main() {
             ValidityResult::UnexpectedOutput(err) => {
                 panic!("Unexpected output from solver: {}", err);
             }
+            ValidityResult::Vacuous => {
+                count_errors += 1;
+                println!(
+                    "Error: vacuity check failed: the hypotheses are inconsistent (they imply false)"
+                );
+            }
         }
         if matches!(**command, CommandX::CheckValid(..)) {
             air_context.finish_query();
