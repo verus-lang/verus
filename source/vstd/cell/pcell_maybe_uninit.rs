@@ -85,6 +85,15 @@ impl<V> PointsTo<V> {
     {
         self.mem_contents().value()
     }
+
+    /// Guarantees that two permissions can not be associated with the same `CellId`.
+    pub proof fn is_exclusive(tracked &mut self, tracked other: &PointsTo<V>)
+    ensures
+        *self == *old(self),
+        self.id() != other.id(),
+    {
+        self.0.is_exclusive(&other.0);
+    }
 }
 
 impl<V> PCell<V> {
