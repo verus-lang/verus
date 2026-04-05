@@ -8,7 +8,7 @@ use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::messages::{Span, ToAny, error, warning};
+use crate::messages::{Span, ToAny, error};
 use crate::sst_to_air::typ_to_ids;
 use air::ast::{Command, CommandX, Commands, DeclX};
 use air::ast_util::{ident_apply, ident_var, mk_bind_expr, mk_implies, mk_unnamed_axiom, str_typ};
@@ -127,6 +127,7 @@ fn demote_one_expr(
 // We consider methods for external traits to be static.
 pub fn demote_external_traits(
     diagnostics: &impl air::messages::Diagnostics,
+    warning_ctx: &crate::context::WarningCtx,
     path_to_well_known_item: &HashMap<Path, WellKnownItem>,
     krate: &Krate,
 ) -> Result<Krate, VirErr> {
@@ -156,17 +157,22 @@ pub fn demote_external_traits(
             };
             let our_trait = traits.contains(trait_path);
             if !our_trait {
-                diagnostics.report(
-                    &warning(
-                        &function.span,
+                let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
+                    panic!("missing warn_config for function {:?}", &function.x.name);
+                };
+                crate::messages::warning_maybe_if_in_local_crate(
+                    warn_config,
+                    &function.span,
+                    &crate::messages::WarningAllow::UndeclaredExternalTrait,
+                    || {
                         format!(
                             "cannot use external trait {} as a bound without declaring the trait \
                             (use #[verifier::external_trait_specification] to declare the trait); \
                             this is a warning for now but will eventually be an error",
                             path_as_friendly_rust_name(trait_path)
-                        ),
-                    )
-                    .to_any(),
+                        )
+                    },
+                    |msg| diagnostics.report(&msg.to_any()),
                 );
             }
         }
@@ -472,7 +478,10 @@ copy by fn_call_to_vir in the rust_verify crate.  For example:
     f = vir::def::trait_inherit_default_name(&f, &impl_path)
   }
 */
-pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
+pub fn inherit_default_bodies(
+    krate: &Krate,
+    warning_ctx: &mut crate::context::WarningCtx,
+) -> Result<Krate, VirErr> {
     let mut kratex = (**krate).clone();
 
     let mut trait_map: HashMap<Path, &Trait> = HashMap::new();
@@ -616,6 +625,8 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     body: None,
                     extra_dependencies: vec![],
                 };
+                let warn_config = warning_ctx.fun_warn_configs[&default_function.x.name].clone();
+                warning_ctx.fun_warn_configs.insert(inherit_functionx.name.clone(), warn_config);
                 kratex.functions.push(default_function.new_x(inherit_functionx));
             }
         }

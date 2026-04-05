@@ -14,7 +14,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use vir::ast::{Ident, Mode, Path, Pattern, VirErr};
-use vir::messages::AstId;
+use vir::messages::{AstId, WarningAllow};
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
@@ -47,7 +47,7 @@ pub struct ContextX<'tcx> {
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
     pub(crate) crate_name: Ident,
     pub(crate) vstd_crate_name: Ident,
-    pub(crate) name_def_id_map: Rc<RefCell<std::collections::HashMap<Path, DefId>>>,
+    pub(crate) name_def_id_map: Rc<RefCell<HashMap<Path, DefId>>>,
     pub(crate) next_read_kind_id: AtomicU64,
 }
 
@@ -256,5 +256,15 @@ impl<'tcx> BodyCtxt<'tcx> {
 
     pub(crate) fn set_header_setting(&self, s: HeaderSetting) -> BodyCtxt<'tcx> {
         BodyCtxt { header_setting: s, ..self.clone() }
+    }
+
+    pub(crate) fn warning_maybe<S: Into<String>>(
+        &self,
+        span: rustc_span::Span,
+        allow: &WarningAllow,
+        note: impl FnOnce() -> S,
+        emit: impl FnOnce(vir::messages::Message) -> (),
+    ) {
+        crate::attributes::warning_maybe(self.ctxt.tcx, self.fun_id, span, allow, note, emit);
     }
 }

@@ -2140,12 +2140,18 @@ fn check_generics_bounds_main<'tcx>(
                 accept_recs.insert(name.to_string(), attr);
 
                 if let Some(diagnostics) = &mut diagnostics {
-                    diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+                    crate::attributes::warning_maybe(
+                        tcx,
+                        def_id,
                         *span,
-                        format!(
-                            "use the attribute style `#[{attr_name:}({name:})]` at the item level"
-                        ),
-                    )));
+                        &vir::messages::WarningAllow::OldStyleAcceptRejectRecursiveTypes,
+                        || {
+                            format!(
+                                "use the attribute style `#[{attr_name:}({name:})]` at the item level",
+                            )
+                        },
+                        |msg| diagnostics.push(VirErrAs::Warning(msg)),
+                    );
                 }
             }
         }

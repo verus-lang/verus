@@ -28,15 +28,33 @@ use rustc_hir::{
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{FunX, FunctionKind, Krate, KrateX, Path, VirErr};
+use vir::ast::{Fun, FunX, FunctionKind, Krate, KrateX, Path, VirErr};
+use vir::context::{WarningConfig, WarningCtx};
+
+pub(crate) struct State {
+    pub(crate) external_info: ExternalInfo,
+    pub(crate) fun_warn_configs: HashMap<Fun, WarningConfig>,
+}
+
+impl State {
+    pub(crate) fn insert_fun_warn_config<'tcx>(
+        &mut self,
+        ctxt: &Context<'tcx>,
+        name: &Fun,
+        id: rustc_span::def_id::DefId,
+    ) {
+        self.fun_warn_configs
+            .insert(name.clone(), crate::attributes::warning_config_walk_parents(ctxt.tcx, id));
+    }
+}
 
 fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     vir: &mut KrateX,
     module_path: &Path,
     id: &ItemId,
     item: &'tcx Item<'tcx>,
-    external_info: &mut ExternalInfo,
     crate_items: &CrateItems,
 ) -> Result<(), Vec<VirErr>> {
     let attrs = ctxt.tcx.hir_attrs(item.hir_id());
@@ -167,6 +185,7 @@ fn check_item<'tcx>(
 
         crate::rust_to_vir_func::check_item_const_or_static(
             ctxt,
+            state,
             &mut vir.functions,
             item.span,
             item.owner_id.to_def_id(),
@@ -189,6 +208,7 @@ fn check_item<'tcx>(
             //     check_fn_opaque_ty(ctxt, &mut vir.opaque_types, &item.owner_id.to_def_id()).map_err(|e| vec![e])?;
             check_item_fn(
                 ctxt,
+                state,
                 &mut vir.functions,
                 Some(&mut vir.reveal_groups),
                 item.owner_id.to_def_id(),
@@ -202,7 +222,6 @@ fn check_item<'tcx>(
                 CheckItemFnEither::BodyId(body_id),
                 None,
                 None,
-                external_info,
                 None,
                 &mut vir.opaque_types,
             )
@@ -279,11 +298,11 @@ fn check_item<'tcx>(
         ItemKind::Impl(impll) => {
             crate::rust_to_vir_impl::translate_impl(
                 ctxt,
+                state,
                 vir,
                 item,
                 impll,
                 module_path.clone(),
-                external_info,
                 crate_items,
                 attrs,
             )?;
@@ -315,6 +334,7 @@ fn check_item<'tcx>(
             let trait_def_id = item.owner_id.to_def_id();
             crate::rust_to_vir_trait::translate_trait(
                 ctxt,
+                state,
                 vir,
                 item.span,
                 trait_def_id,
@@ -323,7 +343,6 @@ fn check_item<'tcx>(
                 trait_generics,
                 trait_items,
                 &vattrs,
-                external_info,
                 crate_items,
                 *safety,
             )
@@ -347,6 +366,7 @@ fn check_item<'tcx>(
 
 fn check_foreign_item<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     vir: &mut KrateX,
     _id: &ForeignItemId,
     item: &'tcx ForeignItem<'tcx>,
@@ -356,6 +376,7 @@ fn check_foreign_item<'tcx>(
             let idents = ident_opts.iter().flatten().collect::<Vec<_>>();
             check_foreign_item_fn(
                 ctxt,
+                state,
                 vir,
                 item.owner_id.to_def_id(),
                 item.span,
@@ -381,7 +402,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     mut ctxtx: ContextX<'tcx>,
     imported: &Vec<Krate>,
     crate_items: &CrateItems,
-) -> Result<(Context<'tcx>, Krate), Vec<VirErr>> {
+) -> Result<(Context<'tcx>, WarningCtx, Krate), Vec<VirErr>> {
     let mut vir: KrateX = KrateX {
         functions: Vec::new(),
         reveal_groups: Vec::new(),
@@ -397,19 +418,20 @@ pub fn crate_to_vir<'a, 'tcx>(
         arch: vir::ast::Arch { word_bits: vir::ast::ArchWordBits::Either32Or64 },
     };
 
-    let mut external_info = ExternalInfo::new();
-
     let tcx = ctxtx.tcx;
 
+    let mut external_info = ExternalInfo::new();
     // Sized is fundamental enough that we always want it even with no-vstd
     external_info.trait_id_set.insert(tcx.lang_items().sized_trait().expect("lang_item"));
-
     // TODO: remove the following when we have full support for auto traits:
     external_info.trait_id_set.insert(tcx.lang_items().unpin_trait().expect("lang_item"));
     external_info.trait_id_set.insert(tcx.lang_items().sync_trait().expect("lang_item"));
     external_info
         .trait_id_set
         .insert(tcx.get_diagnostic_item(rustc_span::sym::Send).expect("send"));
+
+    let fun_warn_configs = HashMap::new();
+    let mut state = State { external_info, fun_warn_configs };
 
     let mut errors = vec![];
 
@@ -491,7 +513,7 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     crate::rust_to_vir_trait::make_external_trait_extension_impl_map(
         &ctxt,
-        &mut external_info,
+        &mut state.external_info,
         imported,
         &crate_items,
     )
@@ -510,11 +532,11 @@ pub fn crate_to_vir<'a, 'tcx>(
                         let item = ctxt.tcx.hir_item(item_id);
                         if let Err(errs) = check_item(
                             &ctxt,
+                            &mut state,
                             &mut vir,
                             &module_path,
                             &item_id,
                             item,
-                            &mut external_info,
                             &crate_items,
                         ) {
                             errors.extend(errs);
@@ -522,9 +544,13 @@ pub fn crate_to_vir<'a, 'tcx>(
                     }
                     GeneralItemId::ForeignItemId(foreign_item_id) => {
                         let foreign_item = ctxt.tcx.hir_foreign_item(foreign_item_id);
-                        if let Err(err) =
-                            check_foreign_item(&ctxt, &mut vir, &foreign_item_id, foreign_item)
-                        {
+                        if let Err(err) = check_foreign_item(
+                            &ctxt,
+                            &mut state,
+                            &mut vir,
+                            &foreign_item_id,
+                            foreign_item,
+                        ) {
                             errors.push(err);
                         }
                     }
@@ -586,12 +612,23 @@ pub fn crate_to_vir<'a, 'tcx>(
         &ctxt,
         imported,
         &mut vir,
-        &mut external_info,
+        &mut state.external_info,
     )
     .map_err(|e| vec![e])?;
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir).map_err(|e| vec![e])?;
     vir::traits::set_krate_dyn_compatibility(imported, &mut vir);
 
-    Ok((ctxt, Arc::new(vir)))
+    let mut fun_warn_configs: HashMap<Fun, Option<WarningConfig>> = HashMap::new();
+    for krate in imported {
+        for function in &krate.functions {
+            fun_warn_configs.insert(function.x.name.clone(), None);
+        }
+    }
+    for (f, warn) in state.fun_warn_configs {
+        fun_warn_configs.insert(f, Some(warn));
+    }
+    let warning_ctx = WarningCtx { fun_warn_configs };
+
+    Ok((ctxt, warning_ctx, Arc::new(vir)))
 }
