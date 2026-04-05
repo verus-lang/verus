@@ -331,6 +331,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] compare_const_mut_pointers verus_code! {
+        use vstd::prelude::*;
+
+        pub assume_specification<T: core::marker::PointeeSized>[ <*const T as core::cmp::PartialOrd>::lt ] (
+            p: &*const T,
+            q: &*const T,
+        ) -> (result: bool)
+        ensures
+            result == ((*p as usize) < (*q as usize)),
+        ;
+
+        fn compare_pointers(p1: *const u32, p2: *mut u32) -> (result: bool)
+            ensures result == ((p1 as usize) < (p2 as *const u32 as usize)),
+        {
+            p1 < p2
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] not_supported_int_to_ptr_cast verus_code! {
         fn test(x: usize) {
             let y = x as *mut u8;

@@ -1632,6 +1632,24 @@ enum OpKind {
     AssignOp(rustc_hir::AssignOp),
 }
 
+/// Get the type of an operator operand after applying only pointer coercions
+/// (e.g., *mut T -> *const T), without applying other adjustments like auto-borrow.
+/// This is needed because expr_ty_adjusted applies all adjustments including
+/// auto-borrow, which would give &T instead of T for trait resolution.
+fn operand_type_for_trait<'tcx>(
+    types: &'tcx rustc_middle::ty::TypeckResults<'tcx>,
+    operand: &Expr<'tcx>,
+) -> rustc_middle::ty::Ty<'tcx> {
+    let mut ty = types.node_type(operand.hir_id);
+    for adj in types.expr_adjustments(operand) {
+        match adj.kind {
+            rustc_middle::ty::adjustment::Adjust::Pointer(_) => ty = adj.target,
+            _ => {}
+        }
+    }
+    ty
+}
+
 // Add lang_item_for_op from rust/compiler/rustc_hir_typeck/src/op.rs
 // Returns the required traits to use op
 // Note: comparison operators are defined only by PartialEq and PartialOrd
@@ -1767,8 +1785,11 @@ fn operator_overload_to_vir<'tcx>(
         let (fun_sym, Some(trait_id)) = lang_item_for_op(tcx, op, span)? else {
             crate::internal_err!(span, "operator needs an accessible trait");
         };
-        let lhs_ty = bctx.types.node_type(lhs.hir_id);
-        let rhs_ty = bctx.types.node_type(rhs.hir_id);
+        // When constructing the substs for trait resolution, we need to account
+        // for pointer coercions (e.g., *mut T -> *const T), but not other
+        // adjustments like auto-borrow (which would give &T instead of T).
+        let lhs_ty = operand_type_for_trait(bctx.types, lhs);
+        let rhs_ty = operand_type_for_trait(bctx.types, rhs);
         let substs = tcx.mk_args(&[lhs_ty.into(), rhs_ty.into()]);
 
         let args = vec![lhs, rhs];
@@ -1779,7 +1800,7 @@ fn operator_overload_to_vir<'tcx>(
         };
 
         let args = vec![arg];
-        let arg_ty = bctx.types.node_type(arg.hir_id);
+        let arg_ty = operand_type_for_trait(bctx.types, arg);
         let substs = tcx.mk_args(&[arg_ty.into()]);
         (trait_id, fun_sym, args, substs)
     } else {
