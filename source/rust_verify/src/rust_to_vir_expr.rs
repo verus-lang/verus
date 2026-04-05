@@ -3853,7 +3853,10 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 Ok(vec![bctx.spanned_new(stmt.span, StmtX::Expr(vir_expr))])
             } else {
                 let item = bctx.ctxt.tcx.hir_item(*item_id);
-                if matches!(&item.kind, ItemKind::Use(..) | ItemKind::Macro(..)) {
+                if matches!(
+                    &item.kind,
+                    ItemKind::Use(..) | ItemKind::Macro(..) | ItemKind::Const(..)
+                ) {
                     return Ok(vec![]);
                 }
                 unsupported_err!(stmt.span, "internal item statements", stmt)
