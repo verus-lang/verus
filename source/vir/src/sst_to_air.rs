@@ -5,8 +5,7 @@ use crate::ast::{
     Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ,
-    undecorate_typ,
+    LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
 };
 use crate::bitvector_to_air::bv_to_queries;
 use crate::context::Ctx;
@@ -1810,14 +1809,37 @@ fn assume_other_fields_unchanged_inner(
             let datatype = &ctx.datatype_map[dt];
             let datatype_fields = &get_variant(&datatype.x.variants, variant).fields;
             let mut box_unbox_eq: Vec<Expr> = Vec::new();
-            let exps_for_fields =
-                vec_map_result(&**datatype_fields, |field: &Binder<(Typ, Mode, Visibility)>| {
-                    let base_exp = if let TypX::Boxed(base_typ) = &*undecorate_typ(&base.typ) {
-                        // TODO this replicates logic from poly, but factoring it out is currently tricky
-                        // because we don't have a representation for a variable used as a location in VIR
-                        if crate::poly::typ_is_poly(ctx, base_typ) {
-                            base.clone()
-                        } else {
+            let exps_for_fields = vec_map_result(
+                &**datatype_fields,
+                |field: &Binder<(Typ, Mode, Visibility)>| {
+                    let typ_args = if datatype.x.typ_params.len() == 0 {
+                        Arc::new(vec![])
+                    } else {
+                        match &*undecorate_typ(&base.typ) {
+                            TypX::Datatype(base_dt, args, _) if base_dt == dt => args.clone(),
+                            TypX::Boxed(base_typ) => match &**base_typ {
+                                TypX::Datatype(base_dt, args, _) if base_dt == dt => args.clone(),
+                                _ => {
+                                    return Err(error(
+                                        stm_span,
+                                        "cannot resolve datatype type arguments for mutable field update",
+                                    ));
+                                }
+                            },
+                            _ => {
+                                return Err(error(
+                                    stm_span,
+                                    "cannot resolve datatype type arguments for mutable field update",
+                                ));
+                            }
+                        }
+                    };
+                    let datatype_typ =
+                        Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
+
+                    let base_exp = match &*undecorate_typ(&base.typ) {
+                        TypX::Datatype(base_dt, _, _) if base_dt == dt => base.clone(),
+                        TypX::Boxed(base_typ) if !crate::poly::typ_is_poly(ctx, base_typ) => {
                             let op = UnaryOpr::Unbox(base_typ.clone());
                             let exprx = ExpX::UnaryOpr(op, base.clone());
                             let unbox = SpannedTyped::new(&base.span, base_typ, exprx);
@@ -1835,12 +1857,13 @@ fn assume_other_fields_unchanged_inner(
                             }
                             unbox
                         }
-                    } else {
-                        base.clone()
+                        _ => {
+                            let op = UnaryOpr::Unbox(datatype_typ.clone());
+                            let exprx = ExpX::UnaryOpr(op, base.clone());
+                            SpannedTyped::new(&base.span, &datatype_typ, exprx)
+                        }
                     };
-
-                    let typ_args = typ_args_for_datatype_typ(&base_exp.typ);
-                    let typ = subst_typ_for_datatype(&datatype.x.typ_params, typ_args, &field.a.0);
+                    let typ = subst_typ_for_datatype(&datatype.x.typ_params, &typ_args, &field.a.0);
                     let typ = if crate::poly::typ_is_poly(ctx, &field.a.0) {
                         crate::poly::coerce_typ_to_poly(ctx, &typ)
                     } else {
@@ -1858,7 +1881,7 @@ fn assume_other_fields_unchanged_inner(
                                 get_variant: false,
                                 check: VariantCheck::None,
                             }),
-                            base_exp,
+                            base_exp.clone(),
                         ),
                     );
                     if let Some(further_updates) = updated_fields.get(&field.name) {
@@ -1871,15 +1894,25 @@ fn assume_other_fields_unchanged_inner(
                             expr_ctxt,
                         )
                     } else {
-                        let old = exp_to_expr(
-                            ctx,
-                            &snapshotted_var_locs(&field_exp, snapshot_name),
-                            expr_ctxt,
-                        )?;
-                        let new = exp_to_expr(ctx, &field_exp, expr_ctxt)?;
+                        let mk_field_expr = |base_exp: &Exp| -> Result<Expr, VirErr> {
+                            let num_variants = datatype.x.variants.len();
+                            let mut exprs: Vec<Expr> =
+                                crate::datatype_to_air::field_typ_args(num_variants, || {
+                                    typ_args.iter().flat_map(|t| typ_to_ids(ctx, t)).collect()
+                                });
+                            exprs.push(exp_to_expr(ctx, base_exp, expr_ctxt)?);
+                            Ok(Arc::new(ExprX::Apply(
+                                variant_field_ident(&encode_dt_as_path(dt), variant, &field.name),
+                                Arc::new(exprs),
+                            )))
+                        };
+                        let old_base = snapshotted_var_locs(&base_exp, snapshot_name);
+                        let old = mk_field_expr(&old_base)?;
+                        let new = mk_field_expr(&base_exp)?;
                         Ok(vec![Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, old, new))])
                     }
-                })?;
+                },
+            )?;
             Ok(exps_for_fields.into_iter().flatten().chain(box_unbox_eq.into_iter()).collect())
         }
     }
