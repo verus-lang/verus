@@ -3,7 +3,7 @@
 Verus is finally gaining extended support for mutable references, which greatly expands its capabilities.
 With this new support, you can now write functions that take mutable references outside of the call-argument position, have functions that return mutable references, instantiate generic arguments with mutable references, create containers of mutable references, and take mutable references via pattern matching.
 
-For example, you can take a mutable reference anywhere:
+For example, when the new feature is enabled, you can take a mutable reference anywhere:
 
 ```rust
 fn example1() {
@@ -45,7 +45,7 @@ This change is a large conceptual overhaul within Verus. Several things worked p
 
 To enable the new mutable reference support, supply the additional command line option `-V new-mut-ref` to Verus. (This doesn't require a separate build of Verus or vstd; just supply the arguments when invoking `verus`.) Soon, the "new-mut-ref" support will be enabled permanently, and the command line option will be removed. Until then, it is considered experimental.
 
-This "migration guide" should give you everything you need to know to get your existing code working in the `new-mut-ref` world. It does not cover any of the new capabilities; to learn how to use the new capabilities, see the new guide. (TODO link doc)
+This "migration guide" should give you everything you need to know to get your existing code working in the `new-mut-ref` world. It does not cover any of the new capabilities; to learn how to use the new capabilities, see the [new guide](./new-mut-ref.md).
 
 Below, we cover the breaking changes.
 
@@ -74,8 +74,8 @@ around mutable references and no longer makes sense.
 We aim to treat mutable references uniformly with other types, and that means that referring to
 any input parameter should always refer to its pre-state value.
 
-In the new system, mentioning a mutable variable in the precondition (e.g., `*a`) always refers to the value at entry. You can still optionally use `*old(a)`, but this is redundant.
-In the post-condition, you either use `*old(a)` to refer to the value at entry, or use the newly introduced `final` operator to refer to the updated value (`*final(a)`) of the mutable variable.
+In the new system, mentioning a mutable variable in the **pre**-condition (e.g., `*a`) always refers to the value at entry. You can still optionally use `*old(a)`, but this is redundant.
+In the **post-condition**, you either use `*old(a)` to refer to the value at entry, or use the newly introduced `final` operator to refer to the updated value (`*final(a)`) of the mutable variable.
 
 ```rust
 fn test(a: &mut u8)
@@ -197,7 +197,16 @@ tracked struct X {
 
 If you really need to work with a struct that can be used both in `exec` code and in `tracked` code, you may need to work with `&mut Tracked<A>` instead. Using `&mut Tracked<A>` is also the most reliable way to work with generic types.
 
+Verus also has a special operator to take a mutable reference to a `tracked` local variable and obtain a `&mut Tracked<_>`:
+
+```rust
+fn example() {
+    let tracked x = X { };
+    let x_ref: &mut Tracked<X> = mut_ref_tracked(&mut x);
+}
+```
+
 Finally, note that you can convert between `&mut T` and `&mut Tracked<T>`:
 
  * If `x: &mut Tracked<T>`, then you can do `&mut **x` to get `&mut T`
- * If `x: &mut T` (and Verus considers `T` to be a tracked-only type), then you can do [not implemented yet]
+ * If `x: &mut T` (and Verus considers `T` to be a tracked-only type), then you can do `mut_ref_tracked(&mut *x)`

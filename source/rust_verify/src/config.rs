@@ -434,7 +434,7 @@ pub fn parse_args_with_imports(
             EXTENDED_CHECK_API_SAFETY,
             "Check that the API is memory-safe when called from unverified, safe Rust code. Experimental.",
         ),
-        (EXTENDED_NEW_MUT_REF, "incomplete feature for developers only; do not use"),
+        (EXTENDED_NEW_MUT_REF, "experimental support for extended mutable references"),
         (
             EXTENDED_NO_BV_SIMPLIFY,
             "internal option to disable simplification of bit-vector assertions before sending to the SMT solver",
