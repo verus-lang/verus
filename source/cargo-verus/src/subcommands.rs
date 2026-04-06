@@ -61,7 +61,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-03-29-0113"
+vstd = "=0.0.0-2026-04-05-0114"
 
 [package.metadata.verus]
 verify = true
