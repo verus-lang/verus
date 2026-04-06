@@ -470,7 +470,7 @@ fn prepend_conjunct(e: &Expr, p: Option<TokenStream>, msg: &str) -> Option<Token
     };
     match p {
         None => Some(quote_spanned! { e.span() => #err_attr (#e) }),
-        Some(r) => Some(quote_spanned! { e.span() => #err_attr ((#e) && #r) }),
+        Some(r) => Some(quote_spanned! { e.span() => #err_attr (#e) && #r }),
     }
 }
 
