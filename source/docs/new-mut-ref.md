@@ -376,15 +376,18 @@ fn main() {
 ```
 
 To determine where `x_ref` is resolved,
-Verus uses a reachability analysis, considering all program points that assign to `*x_ref`.
+Verus uses a reachability analysis that considers all program points that assign to `*x_ref`.
 Usually, this works seamlessly under the hood to ensure that data from a mutable reference
 makes it way back to the borrowed-from location. In more advanced situations (especially dealing
-with containers of mutable references, like `(&mut T, &mut T)` or `Vec<&mut T>`) it helps
-to be aware of this system.
+with containers of mutable references, like `(&mut T, &mut T)` or `Vec<&mut T>`), it helps
+to be aware of this concept.
 
 With the `has_resolved` operator introduced, we can fully dissect the above program to understand
 how Verus confirms the assertion `x == 30`.
-First, we need to be be aware that `has_resolved(x_ref) ==> *x_ref == *final(x_ref)`.
+First, we need to be be aware that `has_resolved(x_ref) ==> *x_ref == *final(x_ref)`,
+i.e., "if `x_ref` will never be modified after this point, then its current value must equal its final value".
+
+With this, Verus reasons as follows:
 
 ```rust
 fn main() {
@@ -392,7 +395,7 @@ fn main() {
     let x_ref = &mut x;
 
     // When taking a mutable reference, we get:
-    // after_borrow(x) == *final(x)
+    // after_borrow(x) == *final(x_ref)
 
     *x_ref = 20; 
     *x_ref = 30;
@@ -400,10 +403,10 @@ fn main() {
     // Here we have:
     //     has_resolved(x_ref)
     // so:
-    //     *x == *final(x)
+    //     *x_ref == *final(x_ref)
     //
     // And of course, at this point, we have:
-    //     *x == 30
+    //     *x_ref == 30
 
     // Putting all these together we get `after_borrow(x) == 30`
 
@@ -415,7 +418,7 @@ fn main() {
 The `has_resolved` operator can be applied to any variable, not just mutable references.
 This is useful for containers that contain (or might contain) mutable references.
 When applied to a tuple, struct, or enum, `has_resolved` means that all _nested_ mutable
-references have been resolved. This quality is provided via axioms like the following:
+references have been resolved. Such properties are provided by axioms like the following:
 
  * `has_resolved::<(T, U)>((t, u)) ==> has_resolved::<T>(t) && has_resolved::<U>(u)`
  * `has_resolved::<Vec<T>>(vec) ==> has_resolved::<T>(vec[i])`
