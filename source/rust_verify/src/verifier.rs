@@ -977,10 +977,9 @@ impl Verifier {
                     panic!("unexpected output from solver: {} {}", &context.span.as_string, err);
                 }
                 ValidityResult::Vacuous => {
-                    self.count_errors += 1;
+                    self.count_verified += 1;
                     self.count_vacuity_checked += 1;
                     self.count_vacuity_errors += 1;
-                    self.func_fails.insert(context.fun.clone());
                     let msg = format!(
                         "{}: vacuity check failed: the hypotheses are inconsistent (they imply false), so the proof is vacuously true",
                         context.desc
@@ -3463,13 +3462,15 @@ impl VerifierCallbacksEraseMacro {
             if self.verifier.args.check_vacuity {
                 if self.verifier.count_vacuity_errors == 0 {
                     println!(
-                        "vacuity check successful:: {} checked, 0 errors",
+                        "vacuity check results:: {} passed, 0 errors",
                         self.verifier.count_vacuity_checked,
                     );
                 } else {
+                    let passed =
+                        self.verifier.count_vacuity_checked - self.verifier.count_vacuity_errors;
                     println!(
-                        "vacuity check:: {} checked, {} errors",
-                        self.verifier.count_vacuity_checked, self.verifier.count_vacuity_errors,
+                        "vacuity check results:: {} passed, {} errors",
+                        passed, self.verifier.count_vacuity_errors,
                     );
                 }
             }

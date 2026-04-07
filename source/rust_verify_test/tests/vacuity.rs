@@ -223,6 +223,28 @@ test_verify_one_file_with_options! {
     }
 }
 
+// If/else where one branch has a contradictory assume (vacuous)
+// and the other branch is a genuine proof. The vacuity check
+// detects that the else-branch assertion was proved vacuously.
+test_verify_one_file_with_options! {
+    #[test] vacuity_if_else_one_branch_vacuous ["-V check-vacuity"] => verus_code! {
+        proof fn test(x: int)
+            requires x > 0,
+        {
+            if x > 10 {
+                // x > 0 AND x > 10 — consistent, genuine proof
+                assert(x > 5);
+            } else {
+                // x > 0 AND x <= 10 — consistent, but then...
+                assume(x < 0);  // contradicts x > 0 AND x <= 10
+                assert(x == 999);  // vacuously proved
+            }
+        }
+    } => Err(err) => {
+        assert!(err.errors.iter().find(|e| e.message.contains("vacuity check failed")).is_some());
+    }
+}
+
 // Early return — no false positive
 test_verify_one_file_with_options! {
     #[test] vacuity_early_return_no_false_positive ["-V check-vacuity"] => verus_code! {
