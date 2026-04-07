@@ -5,7 +5,7 @@ new mutable reference support,
 which can be enabled with the Verus command line option `-V new-mut-ref`.
 
 If you're familiar with the old design, see [migration-mut-ref.md](./migration-mut-ref.md)
-for more information on the transition and migration issues.
+for more information on the transition and breaking changes.
 
 # Mutable references
 
@@ -14,7 +14,7 @@ loops—Verus's proof strategy can usually track mutable references precisely an
 For example:
 
 ```rust
-fn example1() {
+fn example_basic() {
     let mut a = 0;
     let a_ref = &mut a;
 
@@ -27,10 +27,10 @@ fn example1() {
 Or:
 
 ```rust
-fn example1() {
+fn example_pattern() {
     let mut a = Some(0);
 
-    match a {
+    match &mut a {
         Some(inner_ref) => {
             // Obtain a reference to the contents of the Option
             *inner_ref = 20;
@@ -38,7 +38,7 @@ fn example1() {
         None => { }
     }
 
-    assert(a == 20);
+    assert(a === Some(20));
 }
 ```
 
@@ -47,7 +47,7 @@ In the rest of the section, we'll see how to do that.
 
 ## Function specifications
 
-One of the most common ways to work with mutable references is to have a function taking
+One of the most common ways to work with mutable references is to have a function that takes
 a mutable reference as an argument. In this case, we usually need a specification that relates
 the "input" value (i.e., the value behind the reference at the beginning of the function)
 to the "output" (i.e., the value behind the reference at the end of the function).
@@ -102,13 +102,13 @@ fn get_mut_fst_test() {
     let r = get_mut_fst(&mut p);
     *r = 100;
 
-    assert(p == (100, 20));
+    assert(p === (100, 20));
 }
 ```
 
 Think for a moment about how you might write a specification for `get_mut_fst`.
 This is a little more challenging because the "final" value of `pair.0` isn't known concretely at
-the end of the function. Instead, this value can additionally be mutated by the caller who can
+the end of the function. Instead, this value can be mutated by the caller who can
 manipulate the returned mutable reference, `ret`.
 Therefore, the final value of `pair` needs to be _expressed in terms of_ the final value of `ret`.
 
@@ -133,28 +133,26 @@ To prove `get_mut_fst_test`, Verus reasons roughly as follows:
 
 ```rust
 fn get_mut_fst_test() {
-    let mut p = (10, 20);
+    let mut pair = (10, 20);
 
-    let r = get_mut_fst(&mut p);
-    //                  ^^^^^^ call this value `pair`
+    let r = get_mut_fst(&mut pair);
+    //                  ^^^^^^^^^ refer to this value as `pair_ref`, of type `&mut (u64, u64)`
     //
     // From the postcondition of `get_mut_fst` we know that:
-    //    *final(pair) == (*final(r), 20)
+    //    *final(pair_ref) == (*final(r), 20)
 
     *r = 100;
 
     // Now we we know that:
     //    *final(r) == 100
     // So:
-    //    *final(pair) == (100, 20)
+    //    *final(pair_ref) == (100, 20)
 
-    // Finally, since `pair` was borrowed from `p`, and the borrow has expired
+    // Finally, since `pair_ref` was borrowed from `pair`, and the borrow has expired
     // at this point, we can deduce that:
-    assert(p == (100, 20));
+    assert(pair == (100, 20));
 }
 ```
-
-We'll dive deeper into Verus's encoding later.
 
 ## More examples
 
@@ -327,7 +325,7 @@ fn main() {
 
 2. Here we have an operator, `has_resolved`, that we haven't introduced yet.
    The expression `has_resolved(x_ref)` is equivalent to `*x == *final(x)`,
-   meaning `x_ref` has attained its final value, i.e., it won't be mutated subsequently.
+   meaning `x_ref` has attained its final value; i.e., it won't be mutated subsequently.
    (These `has_resolved` predicates are inserted automatically by Verus via a reachability
    analysis considering all the program points that assign to `*x_ref`.)
 
@@ -375,7 +373,7 @@ fn loop_test() -> (r: u64)
     let a_ref = &mut a;
 
     loop
-        invariant after_borrow(a) == *a_ref,
+        invariant after_borrow(a) == *final(a_ref),
         decreases 0nat
     {
         *a_ref = 30;
@@ -391,6 +389,7 @@ thinking about mutable references in terms of the relationships between the "fin
 
 Specifically, we'll see how mutable references can be used to build up a cons-list
 "from the root down", and how to verify it.
+The code maintains the invariant that `cur` points at the `Nil` entry at the tail of the list, and each iteration replaces the `Nil` with a `Cons(0, Nil)`. Thus, in each iteration, the list is extended by one element from the bottom, and at the end, `list` will be a list of length `len`.
 
 ```rust
 enum List {

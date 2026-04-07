@@ -74,8 +74,8 @@ around mutable references and no longer makes sense.
 We aim to treat mutable references uniformly with other types, and that means that referring to
 any input parameter should always refer to its pre-state value.
 
-In the new system, mentioning a mutable variable in the **pre**-condition (e.g., `*a`) always refers to the value at entry. You can still optionally use `*old(a)`, but this is redundant.
-In the **post-condition**, you either use `*old(a)` to refer to the value at entry, or use the newly introduced `final` operator to refer to the updated value (`*final(a)`) of the mutable variable.
+In the new system, mentioning a mutable variable in the **pre**condition (e.g., `*a`) always refers to the value at entry. You can still optionally use `*old(a)`, but this is redundant.
+In the **post**condition, you either use `*old(a)` to refer to the value at entry, or use the newly introduced `final` operator to refer to the updated value (`*final(a)`) of the mutable variable.
 
 ```rust
 fn test(a: &mut u8)
