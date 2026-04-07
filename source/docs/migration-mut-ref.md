@@ -45,7 +45,7 @@ This change is a large conceptual overhaul within Verus. Several things worked p
 
 To enable the new mutable reference support, supply the additional command line option `-V new-mut-ref` to Verus. (This doesn't require a separate build of Verus or vstd; just supply the arguments when invoking `verus`.) Soon, the "new-mut-ref" support will be enabled permanently, and the command line option will be removed. Until then, it is considered experimental.
 
-This "migration guide" should give you everything you need to know to get your existing code working in the `new-mut-ref` world. It does not cover any of the new capabilities; to learn how to use the new capabilities, see the [new guide](./new-mut-ref.md).
+This "migration guide" should give you everything you need to know to get your existing code working in the `new-mut-ref` world. It does not cover any of the new capabilities; to learn how to use the new capabilities, see the [guide draft](./new-mut-ref.md).
 
 Below, we cover the breaking changes.
 
@@ -92,11 +92,15 @@ Observe that postconditions are maximally unambiguous: You always need to use `o
 
 To refer to the entry value or updated value of a parameter `x: &mut u64`:
 
-|                                | Old system | New system            |
-|--------------------------------|------------|-----------------------|
-| requires clause, entry value   | `*old(x)`  | `*old(x)` or `*x`     |
-| ensures clause, entry value    | `*old(x)`  | `*old(x)`             |
-| ensures clause, updated value  | `*x`       | `*final(x)`           |
+|                                | Old system(†) | New system(‡)         |
+|--------------------------------|---------------|-----------------------|
+| requires clause, entry value   | `*old(x)`     | `*old(x)` or `*x`     |
+| ensures clause, entry value    | `*old(x)`     | `*old(x)`             |
+| ensures clause, updated value  | `*x`          | `*final(x)`           |
+
+(†) Without `-V new-mut-ref`, or for any function with `deprecated_postcondition_mut_ref_style` set
+
+(‡) With `-V new-mut-ref`, whenever `deprecated_postcondition_mut_ref_style` is not set
 
 ### Delaying the transition
 
@@ -109,6 +113,25 @@ fn test(a: &mut u8)
     ensures *a == *old(a) + 1
 {
     *a = *a + 1;
+}
+```
+
+To set the attribute for an entire project:
+
+```rust
+#![verifier::deprecated_postcondition_mut_ref_style(true)]
+
+use vstd::prelude::*;
+
+verus!{
+
+fn test(a: &mut u8)
+    requires *old(a) < 255,
+    ensures *a == *old(a) + 1
+{
+    *a = *a + 1;
+}
+
 }
 ```
 

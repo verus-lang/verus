@@ -284,57 +284,6 @@ fn main() {
 }
 ```
 
-This is essential to understanding how Verus works under the hood. To be specific,
-let's dissect the following example, in particular, how Verus accepts the assert
-at the end:
-
-```rust
-fn main() {
-    let mut x = 0;
-    let x_ref = &mut x;
-    *x_ref = 20; 
-    assert(x == 20);
-}
-```
-
-Immediately after the line `let x_ref = &mut x`, there are three variables of interest:
-
- * `after_borrow(x)` - the value `x` will have after the borrow expires
- * `*x_ref` the "current" value that `x_ref` points to
- * `*final(x_ref)` the "final" value that `x_ref` will point to at the end of its life
-
-Verus makes 2 key deductions about the above program.
-
-```rust
-fn main() {
-    let mut x = 0;
-    let x_ref = &mut x;
-
-    assert(after_borrow(x) == *final(x_ref)); // (1)
-
-    *x_ref = 20; 
-
-    assert(has_resolved(x_ref));              // (2)
-
-    assert(x == 20);
-}
-```
-
-1. This is the relation between the final value of `x_ref` and the updated value of `x`,
-   briefly mentioned above.
-
-2. Here we have an operator, `has_resolved`, that we haven't introduced yet.
-   The expression `has_resolved(x_ref)` is equivalent to `*x == *final(x)`,
-   meaning `x_ref` has attained its final value; i.e., it won't be mutated subsequently.
-   (These `has_resolved` predicates are inserted automatically by Verus via a reachability
-   analysis considering all the program points that assign to `*x_ref`.)
-
-Thus at program point (2) we learn that `*final(x) == *x_ref`, and of course `*x_ref == 20` 
-at this point. Finally, combining with (1), we get `after_borrow(x) == 20`.
-
-And at the end of the program, when the borrow is done, we can access plain `x` again,
-which is definitionally `after_borrow(x)`. Thus we conclude that `x == 20`.
-
 Now, let's see how to apply this knowledge.
 
 ## Working with loops
@@ -382,7 +331,96 @@ fn loop_test() -> (r: u64)
 }
 ```
 
-## Building a list
+## The `has_resolved` operator
+
+How does Verus know when a mutable borrow is "complete"?
+As we've seen, the creation of a mutable borrow lets us immediately reason about the
+"final" value of the mutable borrow, but it doesn't become concrete until some later program
+point. What exactly is that point?
+
+For any mutable reference, we say that it is "resolved" if we have reached a program point
+from which that reference will never be modified again.
+
+```rust
+fn main() {
+    let mut x = 0;
+    let x_ref = &mut x;
+    *x_ref = 20; 
+    *x_ref = 30;
+
+    // `x_ref` is resolved at this point
+
+    assert(x == 30);
+}
+```
+
+Verus provides the `has_resolved` operator to reason about this directly.
+
+```rust
+fn main() {
+    let mut x = 0;
+    let x_ref = &mut x;
+
+    assert(has_resolved(x_ref)); // fails
+
+    *x_ref = 20; 
+
+    assert(has_resolved(x_ref)); // fails
+
+    *x_ref = 30;
+
+    assert(has_resolved(x_ref)); // ok
+
+    assert(x == 30);
+}
+```
+
+To determine where `x_ref` is resolved,
+Verus uses a reachability analysis, considering all program points that assign to `*x_ref`.
+Usually, this works seamlessly under the hood to ensure that data from a mutable reference
+makes it way back to the borrowed-from location. In more advanced situations (especially dealing
+with containers of mutable references, like `(&mut T, &mut T)` or `Vec<&mut T>`) it helps
+to be aware of this system.
+
+With the `has_resolved` operator introduced, we can fully dissect the above program to understand
+how Verus confirms the assertion `x == 30`.
+First, we need to be be aware that `has_resolved(x_ref) ==> *x_ref == *final(x_ref)`.
+
+```rust
+fn main() {
+    let mut x = 0;
+    let x_ref = &mut x;
+
+    // When taking a mutable reference, we get:
+    // after_borrow(x) == *final(x)
+
+    *x_ref = 20; 
+    *x_ref = 30;
+
+    // Here we have:
+    //     has_resolved(x_ref)
+    // so:
+    //     *x == *final(x)
+    //
+    // And of course, at this point, we have:
+    //     *x == 30
+
+    // Putting all these together we get `after_borrow(x) == 30`
+
+    // At this point, the borrow is expired, and we can refer directly to `x`:
+    assert(x == 30);
+}
+```
+
+The `has_resolved` operator can be applied to any variable, not just mutable references.
+This is useful for containers that contain (or might contain) mutable references.
+When applied to a tuple, struct, or enum, `has_resolved` means that all _nested_ mutable
+references have been resolved. This quality is provided via axioms like the following:
+
+ * `has_resolved::<(T, U)>((t, u)) ==> has_resolved::<T>(t) && has_resolved::<U>(u)`
+ * `has_resolved::<Vec<T>>(vec) ==> has_resolved::<T>(vec[i])`
+
+## Advanced application: Building a list
 
 Finally, let's do a more complex example to really get deeper into the mindset of
 thinking about mutable references in terms of the relationships between the "final values".
@@ -510,3 +548,4 @@ fn build_zero_list(len: u64) -> (list: List)
     return list;
 }
 ```
+
