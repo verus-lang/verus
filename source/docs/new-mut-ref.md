@@ -331,7 +331,7 @@ fn loop_test() -> (r: u64)
 }
 ```
 
-## The `has_resolved` operator
+## The `has_resolved` operator: When mutable references are "done"
 
 How does Verus know when a mutable borrow is "complete"?
 As we've seen, the creation of a mutable borrow lets us immediately reason about the
