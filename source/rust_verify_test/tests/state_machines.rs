@@ -112,10 +112,12 @@ test_verify_one_file! {
         proof fn assert_tr() {
             let pre = X::State { i: 0 };
             let post = X::State { i: 1 };
+            X::show::tr(pre, post);
             assert(X::State::tr(pre, post));
         }
     } => Err(err) => {
-        assert!(err.errors[0].message.contains("assertion failed"));
+        assert!(err.errors[0].message.contains("precondition not satisfied"));
+        assert!(err.errors[1].message.contains("assertion failed"));
         assert!(!err.errors.iter().any(|diag| {
             diag.message.contains("cannot prove this condition holds")
                 || diag.rendered.contains("cannot prove this condition holds")
