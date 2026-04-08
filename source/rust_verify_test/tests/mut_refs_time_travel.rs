@@ -1271,15 +1271,184 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_spec_borrowed(err, "a")
 }
 
-// TODO(new_mut_ref) (blocking): fix if-let with move test case
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_if_let_with_move ["new-mut-ref"] => verus_code! {
-        fn test_if_let_move(s: Option<String>) {
-            if let Some(a) = s {
+    #[test] test_if_let_with_move ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        fn test_if_let_move(s: Option<X>) {
+            if let Option::Some(a) = s {
                 let t1 = a;
             } else {
                 let t2 = s;
             }
         }
+
+        fn test_if_let_move2(s: Option<(X, X)>) {
+            let mut s = s;
+            if let Option::Some((a, ref mut b)) = s {
+                let t1 = a;
+            } else {
+                let t2 = s;
+            }
+        }
+
+        fn test_if_let_move2_in_closure(s: Option<(X, X)>) {
+            let clos = || {
+                let mut s = s;
+                if let Option::Some((a, ref mut b)) = s {
+                    let t1 = a;
+                } else {
+                    let t2 = s;
+                }
+            };
+        }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_if_let_with_move_conjunction ["new-mut-ref", "--edition 2024"] => verus_code! {
+        fn consume<A>(a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        fn test_if_let_move_conjunction(s: Option<(X, X)>, cond: bool) {
+            // this should be ok, but Verus doesn't support if-let chains right now
+            let mut s = s;
+            if let Option::Some((a, ref mut b)) = s && cond {
+                let t1 = a;
+            } else {
+                let t2 = s;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: let expressions")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_if_let_with_move_fail1 ["new-mut-ref", "--no-erasure-check"] => verus_code! {
+        fn consume<A>(a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        fn test_if_let_move_fail(s: Option<X>) {
+            if let Option::Some(a) = s {
+                let t1 = a;
+            } else {
+                let t2 = s;
+                consume(t2);
+                consume(t2);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t2`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_if_let_with_move_fail2 ["new-mut-ref", "--no-erasure-check"] => verus_code! {
+        fn consume<A>(a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        fn test_if_let_move2_fail(s: Option<(X, X)>) {
+            let mut s = s;
+            if let Option::Some((a, ref mut b)) = s {
+                let t1 = a;
+            } else {
+                let t2 = s;
+                consume(t2);
+                consume(t2);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t2`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_if_let_with_move_fail3 ["new-mut-ref", "--no-erasure-check"] => verus_code! {
+        fn consume<A>(a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        fn test_if_let_move2_fail_in_closure(s: Option<(X, X)>) {
+            let clos = || {
+                let mut s = s;
+                if let Option::Some((a, ref mut b)) = s {
+                    let t1 = a;
+                } else {
+                    let t2 = s;
+                    consume(t2);
+                    consume(t2);
+                }
+            };
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t2`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_mode_test_if_let_with_move ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn consume<A>(tracked a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        proof fn test_if_let_move(tracked s: Option<X>) {
+            if let Option::Some(a) = s {
+                let tracked t1 = a;
+            } else {
+                let tracked t2 = s;
+            }
+        }
+
+        proof fn test_if_let_move2_in_closure(tracked s: Option<(X, X)>) {
+            let tracked clos = proof_fn[Once]|| {
+                let tracked mut s = s;
+                if let Option::Some(a) = s {
+                    let tracked t1 = a;
+                } else {
+                    let tracked t2 = s;
+                }
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_mode_test_if_let_with_move_fail ["new-mut-ref"] => verus_code! {
+        proof fn consume<A>(tracked a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        proof fn test_if_let_move_fail(tracked s: Option<X>) {
+            if let Option::Some(a) = s {
+                let tracked t1 = a;
+            } else {
+                let tracked t2 = s;
+                consume(t2);
+                consume(t2);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t2`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_mode_test_if_let_with_move_fail2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn consume<A>(tracked a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        proof fn test_if_let_move2_fail_in_closure(tracked s: Option<(X, X)>) {
+            let tracked clos = proof_fn[Once]|| {
+                let tracked mut s = s;
+                if let Option::Some(a) = s {
+                    let tracked t1 = a;
+                } else {
+                    let tracked t2 = s;
+                    consume(t2);
+                    consume(t2);
+                }
+            };
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t2`")
 }

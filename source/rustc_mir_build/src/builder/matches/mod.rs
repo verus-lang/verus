@@ -196,6 +196,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 Some(args.variable_source_info.scope),
                 args.variable_source_info.span,
                 args.declare_let_bindings,
+                true,
             ),
             _ => {
                 let mut block = block;
@@ -2354,6 +2355,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         source_scope: Option<SourceScope>,
         scope_span: Span,
         declare_let_bindings: DeclareLetBindings,
+        verus_do_irrefut_patch: bool,
     ) -> BlockAnd<()> {
         let expr_span = self.thir[expr_id].span;
         let scrutinee = unpack!(block = self.lower_scrutinee(block, expr_id, expr_span));
@@ -2367,7 +2369,23 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         );
         let [branch] = built_tree.branches.try_into().unwrap();
 
-        self.break_for_else(built_tree.otherwise_block, self.source_info(expr_span));
+        if verus_do_irrefut_patch
+            && crate::verus_time_travel_prevention::let_expr_treat_as_irrefutable(
+                self.tcx,
+                &self.thir,
+                self.def_id,
+                pat,
+                expr_id,
+            )
+        {
+            self.cfg.terminate(
+                built_tree.otherwise_block,
+                self.source_info(expr_span),
+                TerminatorKind::Unreachable,
+            );
+        } else {
+            self.break_for_else(built_tree.otherwise_block, self.source_info(expr_span));
+        }
 
         match declare_let_bindings {
             DeclareLetBindings::Yes => {
