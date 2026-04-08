@@ -18,15 +18,11 @@ fn label_asserts<'ctx>(
 ) -> Expr {
     match &**expr {
         ExprX::Binary(op @ BinaryOp::Implies, lhs, rhs)
-        | ExprX::Binary(op @ BinaryOp::Eq, lhs, rhs) => {
-            // asserts are on rhs of =>
-            // (slight hack to also allow rhs of == for quantified function definitions)
-            Arc::new(ExprX::Binary(
-                op.clone(),
-                lhs.clone(),
-                label_asserts(context, infos, axiom_infos, rhs),
-            ))
-        }
+        | ExprX::Binary(op @ BinaryOp::Eq, lhs, rhs) => Arc::new(ExprX::Binary(
+            op.clone(),
+            lhs.clone(),
+            label_asserts(context, infos, axiom_infos, rhs),
+        )),
         ExprX::Multi(op @ MultiOp::And, exprs) | ExprX::Multi(op @ MultiOp::Or, exprs) => {
             let mut exprs_vec: Vec<Expr> = Vec::new();
             for expr in exprs.iter() {
@@ -84,7 +80,6 @@ fn label_asserts<'ctx>(
 }
 
 /// In SMT-LIB, functions applied to zero arguments are considered constants.
-/// REVIEW: maybe AIR should follow this design for consistency.
 fn elim_zero_args_expr(expr: &Expr) -> Expr {
     crate::visitor::map_expr_visitor(expr, &mut |expr| match &**expr {
         ExprX::Apply(x, es) if es.len() == 0 => Arc::new(ExprX::Var(x.clone())),
@@ -146,7 +141,6 @@ pub(crate) fn smt_check_assertion<'ctx>(
     report_long_running: Option<&mut ReportLongRunning>,
 ) -> ValidityResult {
     let disabled_expr = if only_check_earlier {
-        // disable all labels that come after the first known error
         let mut disabled: Vec<Expr> = Vec::new();
         let mut found_disabled = false;
         let mut found_enabled = false;
@@ -162,7 +156,6 @@ pub(crate) fn smt_check_assertion<'ctx>(
             }
         }
         if only_check_earlier && !found_enabled {
-            // no earlier assertions to check
             return ValidityResult::Valid(crate::context::UsageInfo::None);
         }
         Some(mk_and(&disabled))
@@ -239,7 +232,6 @@ pub(crate) fn smt_check_assertion<'ctx>(
         Unknown,
     }
 
-    // Process SMT results
     let mut unsat = None;
     for line in smt_output {
         if line == "unsat" {
@@ -294,7 +286,6 @@ pub(crate) fn smt_check_assertion<'ctx>(
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Canceled);
                 } else if line == "(:reason-unknown \"unknown\")" {
-                    // it appears this sometimes happens when rlimit is exceeded
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Unknown);
                 } else if line.starts_with(context.solver.reason_unknown_incomplete_str()) {
@@ -303,7 +294,6 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 } else if line
                     == "(:reason-unknown \"smt tactic failed to show goal to be sat/unsat (incomplete quantifiers)\")"
                 {
-                    // longer message shows up when there's no push/pop around the query
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
                 } else if context.ignore_unexpected_smt {
@@ -362,7 +352,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
 }
 
 pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, ValidityResult> {
-    assert!(matches!(context.solver, SmtSolver::Z3)); // the CVC5 output format for statistics is different
+    assert!(matches!(context.solver, SmtSolver::Z3));
 
     context.smt_log.log_get_info("all-statistics");
     let smt_data = context.smt_log.take_pipe_data();
@@ -413,7 +403,6 @@ fn smt_get_model(
     let smt_output = context.get_smt_process().send_commands(smt_data);
 
     if smt_output.iter().any(|line| line.contains("model is not available")) {
-        // when we don't use incremental solving, sometime the model is not available when the z3 result is unknown
         context.state = ContextState::FoundInvalid(infos, None);
         return ValidityResult::Invalid(None, None, None);
     };
@@ -430,7 +419,6 @@ fn smt_get_model(
                 discovered_error = Some(info.clone());
                 discovered_assert_id = Some(info.assert_id.clone());
 
-                // Disable this label in subsequent check-sat calls to get additional errors
                 info.disabled = true;
                 let disable_label = mk_not(&ident_var(&info.label));
                 context.smt_log.log_assert(&None, &disable_label);
@@ -443,7 +431,6 @@ fn smt_get_model(
     let mut axiom_infos: Vec<Arc<AxiomInfo>> =
         context.axiom_infos.map().values().cloned().collect();
     axiom_infos.sort_by_key(|info| info.label.clone());
-    // stabilize order
     for info in axiom_infos {
         if let Some(def) = model_defs.get(&info.label) {
             if *def.body == "true"
@@ -459,13 +446,6 @@ fn smt_get_model(
         println!("Z3 model: {:?}", &model);
     }
 
-    // Attach the additional info to the error
-    // For example, the error might be something like "precondition not satisfied"
-    // (an error which comes from the air assert statement)
-    // and the additional info might tell you _which_ precondition failed
-    // (a label that comes from one of the axioms associated
-    // to the function precondition)
-
     let error = discovered_error.error;
     let e = context.message_interface.append_labels(&error, &discovered_additional_info);
     context.state = ContextState::FoundInvalid(infos, Some(air_model.clone()));
@@ -478,6 +458,11 @@ pub(crate) fn smt_check_query<'ctx>(
     query: &Query,
     air_model: Model,
     report_long_running: Option<&mut ReportLongRunning>,
+    tracked_wp: Option<(
+        crate::ast::Expr,
+        Vec<crate::ast::Decl>,
+        Vec<crate::block_to_assert::TrackingVar>,
+    )>,
 ) -> ValidityResult {
     if !context.disable_incremental_solving {
         context.smt_log.log_push();
@@ -495,11 +480,29 @@ pub(crate) fn smt_check_query<'ctx>(
     };
 
     // add query-local declarations
+    // When vacuity checking is enabled, split declarations from axioms:
+    // declarations go in the outer scope (shared), axioms go in each
+    // inner scope separately (unconditional for main proof, tracked for vacuity).
+    let mut local_axioms: Vec<Decl> = Vec::new();
     for decl in query.local.iter() {
         if let Err(err) = crate::typecheck::add_decl(context, decl, false) {
             return ValidityResult::TypeError(err);
         }
-        smt_add_decl(context, decl);
+        if tracked_wp.is_some() {
+            match &**decl {
+                DeclX::Axiom(_) => {
+                    // Defer axioms — they'll be added separately in each scope
+                    local_axioms.push(decl.clone());
+                    // Still need to add to SMT for declaration collection
+                    // but we'll re-assert in each scope
+                }
+                _ => {
+                    smt_add_decl(context, decl);
+                }
+            }
+        } else {
+            smt_add_decl(context, decl);
+        }
     }
 
     // after lowering, there should be just one assertion
@@ -509,7 +512,7 @@ pub(crate) fn smt_check_query<'ctx>(
     };
     let assertion = elim_zero_args_expr(assertion);
 
-    // add labels to assertions for error reporting
+    // add labels to assertions for error reporting (always IMPLIES encoding)
     let mut infos: Vec<AssertionInfo> = Vec::new();
     let mut axiom_infos: Vec<AxiomInfo> = Vec::new();
     let labeled_assertion = label_asserts(context, &mut infos, &mut axiom_infos, &assertion);
@@ -521,7 +524,16 @@ pub(crate) fn smt_check_query<'ctx>(
         smt_add_decl(context, &info.decl);
     }
 
-    // check assertion
+    // --- Main proof (in its own push/pop if vacuity check will follow) ---
+    if tracked_wp.is_some() {
+        context.smt_log.log_push();
+        // Add axioms unconditionally for the main proof
+        for decl in &local_axioms {
+            smt_add_decl(context, decl);
+        }
+    }
+
+    // check assertion (normal verification, unchanged)
     let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, labeled_assertion));
     context.smt_log.log_assert(&None, &not_expr);
 
@@ -549,5 +561,148 @@ pub(crate) fn smt_check_query<'ctx>(
         context.rlimit_count = Some((ctx_rlimit_init + rlimit_init, ctx_rlimit_run + rlimit_run));
     }
 
+    // --- Vacuity check (separate from main proof) ---
+    if let ValidityResult::Valid(_) = &result {
+        if let Some((tracked_expr, tracked_locals, tracking_vars)) = tracked_wp {
+            // Pop the main proof's assertions so the vacuity check
+            // runs with only declarations and axioms in scope
+            context.smt_log.log_pop();
+
+            let vacuity = smt_vacuity_check(
+                context,
+                &tracked_expr,
+                &tracked_locals,
+                &tracking_vars,
+                &local_axioms,
+            );
+            if let ValidityResult::Vacuous = vacuity {
+                return vacuity;
+            }
+        }
+    } else if tracked_wp.is_some() {
+        // Main proof failed — pop the main proof scope
+        context.smt_log.log_pop();
+    }
+
+    result
+}
+
+/// Run a separate vacuity check using the Boogie-style tracked WP.
+///
+/// This is called after the main proof succeeds. It uses a push/pop scope
+/// to avoid interfering with the main query state.
+///
+/// The tracked WP has:
+///   assume H  →  (v ==> H) ==> rest   (v is a tracking variable)
+///   assert G  →  (a ∧ G) ∧ rest       (a is a tracking variable)
+///
+/// Each tracking variable is asserted as `(assert (! v :named v))`.
+/// After check-sat returns unsat, the unsat core reveals which tracking
+/// variables were needed. If any assert's tracking variable is absent,
+/// that assertion was proved vacuously (contradictory assumptions).
+fn smt_vacuity_check(
+    context: &mut Context,
+    tracked_expr: &Expr,
+    tracked_locals: &[crate::ast::Decl],
+    tracking_vars: &[crate::block_to_assert::TrackingVar],
+    local_axioms: &[Decl],
+) -> ValidityResult {
+    context.smt_log.log_push();
+
+    // Assert local axioms with tracking variables (named for unsat core)
+    let mut axiom_tracking: Vec<(Ident, bool)> = Vec::new(); // (name, is_assert)
+    let mut axiom_count: u64 = 0;
+    for decl in local_axioms {
+        if let DeclX::Axiom(Axiom { named: _, expr }) = &**decl {
+            let track_name = Arc::new(format!("%%track_axiom%%{}", axiom_count));
+            axiom_count += 1;
+            // Declare the tracking variable
+            let track_decl = Arc::new(DeclX::Const(track_name.clone(), Arc::new(TypX::Bool)));
+            context.smt_log.log_decl(&track_decl);
+            // Assert tracking variable as true with :named
+            let track_var = ident_var(&track_name);
+            let named = Arc::new(format!("vacuity${}", track_name));
+            context.smt_log.log_assert(&Some(named.clone()), &track_var);
+            // Assert: track_var ==> axiom_expr (guarded axiom)
+            let expr = elim_zero_args_expr(expr);
+            let guarded = Arc::new(ExprX::Binary(BinaryOp::Implies, track_var, expr));
+            context.smt_log.log_assert(&None, &guarded);
+            axiom_tracking.push((named, false));
+        } else {
+            // Non-axiom declarations shouldn't be here, but handle gracefully
+            smt_add_decl(context, decl);
+        }
+    }
+
+    // Declare new locals from the tracked WP (tracking variables + switch labels)
+    for decl in tracked_locals.iter() {
+        context.smt_log.log_decl(decl);
+    }
+
+    // Assert each tracking variable as true with a :named tag
+    // Use a "vacuity$" prefix to avoid conflict with the declare-const names
+    for tv in tracking_vars {
+        let var_expr = ident_var(&tv.name);
+        let named = Arc::new(format!("vacuity${}", tv.name));
+        context.smt_log.log_assert(&Some(named), &var_expr);
+    }
+
+    // Assert the negated tracked WP
+    let tracked_expr = elim_zero_args_expr(tracked_expr);
+    let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, tracked_expr));
+    context.smt_log.log_assert(&None, &not_expr);
+
+    context.smt_log.log_word("check-sat");
+    let smt_data = context.smt_log.take_pipe_data();
+    let smt_output = context.get_smt_process().send_commands(smt_data);
+
+    let mut is_unsat = false;
+    for line in &smt_output {
+        if line == "unsat" {
+            is_unsat = true;
+        }
+    }
+
+    let result = if is_unsat {
+        // Get the unsat core
+        context.smt_log.log_word("get-unsat-core");
+        let smt_data = context.smt_log.take_pipe_data();
+        let smt_output = context.get_smt_process().send_commands(smt_data);
+
+        let mut smt_output = smt_output.into_iter();
+        let unsat_core_str = smt_output.next().expect("expected one line in the unsat core output");
+
+        let core_names: std::collections::HashSet<String> = unsat_core_str
+            .strip_prefix('(')
+            .expect("invalid unsat core")
+            .strip_suffix(')')
+            .expect("invalid unsat core")
+            .split_terminator(' ')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_owned())
+            .collect();
+
+        // Check if any assert tracking variable is NOT in the unsat core
+        let mut vacuous = false;
+        for tv in tracking_vars {
+            let named = format!("vacuity${}", tv.name);
+            if tv.is_assert && !core_names.contains(&named) {
+                vacuous = true;
+                break;
+            }
+        }
+
+        if vacuous {
+            ValidityResult::Vacuous
+        } else {
+            ValidityResult::Valid(crate::context::UsageInfo::None)
+        }
+    } else {
+        // The tracked WP is sat — this shouldn't happen if the main proof
+        // succeeded, but handle gracefully
+        ValidityResult::Valid(crate::context::UsageInfo::None)
+    };
+
+    context.smt_log.log_pop();
     result
 }

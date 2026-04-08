@@ -49,6 +49,9 @@ pub enum ValidityResult {
     Canceled,
     TypeError(TypeError),
     UnexpectedOutput(String),
+    /// The hypotheses (assumptions) in the query are inconsistent,
+    /// meaning they imply `false`. Any assertion would be vacuously true.
+    Vacuous,
 }
 
 #[derive(Clone, Debug)]
@@ -114,6 +117,7 @@ pub struct Context {
     pub(crate) disable_incremental_solving: bool,
     pub(crate) usage_info_enabled: bool,
     pub(crate) check_valid_used: bool,
+    pub(crate) check_vacuity: bool,
     pub(crate) solver: SmtSolver,
 }
 
@@ -181,6 +185,7 @@ impl Context {
             disable_incremental_solving: false,
             usage_info_enabled: false,
             check_valid_used: false,
+            check_vacuity: false,
             solver,
         };
         context.axiom_infos.push_scope(false);
@@ -279,6 +284,15 @@ impl Context {
         assert!(matches!(self.state, ContextState::NotStarted));
         self.usage_info_enabled = true;
         self.set_z3_param_bool("produce-unsat-cores", true, true);
+    }
+
+    pub fn set_check_vacuity(&mut self, check: bool) {
+        self.check_vacuity = check;
+        if check {
+            // Enable produce-unsat-cores so we can check which assertions
+            // were actually needed for the proof after verification succeeds.
+            self.set_z3_param_bool("produce-unsat-cores", true, true);
+        }
     }
 
     // emit blank line into log files
@@ -471,6 +485,16 @@ impl Context {
         };
         let (query, snapshots, local_vars) = crate::var_to_const::lower_query(&query);
         self.air_middle_log.log_query(&query);
+
+        // Compute tracked WP for vacuity checking before the normal lowering.
+        // The tracked WP has Boogie-style tracking variables on both assumes
+        // and asserts, enabling unsat-core-based vacuity detection.
+        let tracked = if self.check_vacuity {
+            Some(crate::block_to_assert::lower_query_tracked(&query))
+        } else {
+            None
+        };
+
         let query = crate::block_to_assert::lower_query(message_interface, &query);
         self.air_final_log.log_query(&query);
 
@@ -481,6 +505,7 @@ impl Context {
             &query,
             model,
             query_context.report_long_running,
+            tracked,
         );
         self.check_valid_used = true;
 

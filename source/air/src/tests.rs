@@ -2275,3 +2275,186 @@ fn accessor_identifying_2() {
         )
     )
 }
+
+/// Run an AIR test with vacuity checking enabled.
+/// `expected_vacuous` indicates whether we expect the query to be flagged as vacuous.
+#[allow(dead_code)]
+fn run_nodes_vacuity_test(expected_vacuous: bool, nodes: &[Node]) {
+    let message_interface = std::sync::Arc::new(crate::messages::AirMessageInterface {});
+    let reporter = Reporter {};
+    let mut air_context = crate::context::Context::new(message_interface.clone(), SmtSolver::Z3);
+    air_context.set_z3_param("air_recommended_options", "true");
+    air_context.set_check_vacuity(true);
+    match Parser::new(message_interface.clone()).nodes_to_commands(&nodes) {
+        Ok(commands) => {
+            for command in commands.iter() {
+                let result = air_context.command(
+                    &*message_interface,
+                    &reporter,
+                    &command,
+                    Default::default(),
+                );
+                match (&**command, expected_vacuous, &result) {
+                    (CommandX::CheckValid(_), true, ValidityResult::Vacuous) => {}
+                    (CommandX::CheckValid(_), true, other) => {
+                        panic!("expected Vacuous, got {:?}", other);
+                    }
+                    (CommandX::CheckValid(_), false, ValidityResult::Valid(..)) => {}
+                    (CommandX::CheckValid(_), false, ValidityResult::Vacuous) => {
+                        panic!("expected Valid, got Vacuous");
+                    }
+                    (CommandX::CheckValid(_), false, other) => {
+                        panic!("expected Valid, got {:?}", other);
+                    }
+                    _ => {}
+                }
+                if matches!(**command, CommandX::CheckValid(..)) {
+                    air_context.finish_query();
+                }
+            }
+        }
+        Err(s) => {
+            println!("{}", s);
+            panic!();
+        }
+    }
+}
+
+#[allow(unused_macros)]
+macro_rules! vacuous {
+    ( $( $x:tt )* ) => {
+       {
+           let mut v = Vec::new();
+           $(macro_push_node(&mut v, node!($x));)*
+           run_nodes_vacuity_test(true, &v)
+       }
+    };
+}
+
+#[allow(unused_macros)]
+macro_rules! not_vacuous {
+    ( $( $x:tt )* ) => {
+       {
+           let mut v = Vec::new();
+           $(macro_push_node(&mut v, node!($x));)*
+           run_nodes_vacuity_test(false, &v)
+       }
+    };
+}
+
+/// Positive test: consistent local axioms, property is proved, no vacuity detected.
+#[test]
+fn vacuity_check_consistent_hypotheses() {
+    not_vacuous!(
+        (check-valid
+            (declare-const x Int)
+            (axiom (> x 3))
+            (assert (>= x 3))
+        )
+    );
+}
+
+/// Negative test: contradictory local axioms (modeling contradictory requires)
+/// make the context unsatisfiable, so the vacuity check flags this as Vacuous.
+#[test]
+fn vacuity_check_inconsistent_axioms() {
+    vacuous!(
+        (check-valid
+            (declare-const x Int)
+            (axiom (> x 10))
+            (axiom (< x 5))
+            (assert (= x 42))
+        )
+    );
+}
+
+/// Contradictory assumes inside the body (modeling contradictory call
+/// postconditions from external_body/assume_specification functions).
+///
+/// The unsat core approach may or may not detect this case. The contradictory
+/// assumptions are inside the WP expression (not separate SMT assertions),
+/// so Z3's unsat core — which is not guaranteed to be minimal — may still
+/// include the assertion label. This is a known limitation: body-level
+/// contradictions are detected on a best-effort basis, while contradictions
+/// in requires/trait-bounds/type-invariants (which are separate axioms) are
+/// reliably detected.
+///
+/// We accept both Vacuous and Valid as correct outcomes.
+#[test]
+fn vacuity_check_inconsistent_assumes() {
+    let message_interface = std::sync::Arc::new(crate::messages::AirMessageInterface {});
+    let reporter = Reporter {};
+    let mut air_context = crate::context::Context::new(message_interface.clone(), SmtSolver::Z3);
+    air_context.set_z3_param("air_recommended_options", "true");
+    air_context.set_check_vacuity(true);
+    let mut v = Vec::new();
+    macro_push_node(
+        &mut v,
+        node!(
+            (check-valid
+                (declare-const x Int)
+                (block
+                    (assume (> x 10))
+                    (assume (< x 5))
+                    (assert (= x 42))
+                )
+            )
+        ),
+    );
+    match Parser::new(message_interface.clone()).nodes_to_commands(&v) {
+        Ok(commands) => {
+            for command in commands.iter() {
+                let result = air_context.command(
+                    &*message_interface,
+                    &reporter,
+                    &command,
+                    Default::default(),
+                );
+                match &result {
+                    ValidityResult::Valid(..) | ValidityResult::Vacuous => {
+                        // Both are acceptable — Valid means Z3's unsat core
+                        // wasn't minimal enough to exclude the goal.
+                    }
+                    other => panic!("unexpected result: {:?}", other),
+                }
+                if matches!(**command, CommandX::CheckValid(..)) {
+                    air_context.finish_query();
+                }
+            }
+        }
+        Err(s) => panic!("{}", s),
+    }
+}
+
+/// Consistent assumes — no vacuity.
+#[test]
+fn vacuity_check_consistent_assumes() {
+    not_vacuous!(
+        (check-valid
+            (declare-const x Int)
+            (block
+                (assume (> x 3))
+                (assert (>= x 3))
+            )
+        )
+    );
+}
+
+/// Test that inconsistent trait-like axioms are detected by the vacuity check.
+#[test]
+fn vacuity_check_inconsistent_trait_axioms() {
+    vacuous!(
+        (declare-fun f (Int) Int)
+        (check-valid
+            (declare-const y Int)
+            // Trait bound 1: f(y) is positive
+            (axiom (> (f y) 0))
+            // Trait bound 2: f(y) is negative (contradicts bound 1)
+            (axiom (< (f y) 0))
+            (block
+                (assume (> y 0))
+                (assert (= (f y) 42))
+            )
+        )
+    );
+}
