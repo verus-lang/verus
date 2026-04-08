@@ -76,8 +76,8 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "`birds_eye` only makes sense for tokenized state machines")
 }
 
-test_verify_one_file! {
-    #[test] test_custom_err_on_subexpression_is_inert verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_custom_err_on_subexpression_is_inert ["--expand-errors"] => verus_code! {
         spec fn custom_requires(a: bool, b: bool) -> bool {
             (#[verifier(custom_err("Custom error on subexpression"))] a) && b
         }
@@ -94,8 +94,8 @@ test_verify_one_file! {
     }
 }
 
-test_verify_one_file! {
-    #[test] test_state_machine_req_custom_err_is_inert IMPORTS.to_string() + verus_code_str! {
+test_verify_one_file_with_options! {
+    #[test] test_state_machine_req_custom_err_is_inert ["--expand-errors"] => IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
                 pub i: int,
