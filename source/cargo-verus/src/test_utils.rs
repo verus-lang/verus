@@ -256,12 +256,11 @@ impl MockPackage {
             manifest_lines.push("".to_owned());
         }
 
-        manifest_lines.push("[features]".to_owned());
-        for feature in &self.features {
-            manifest_lines.push(feature.to_owned());
+        if !self.features.is_empty() {
+            manifest_lines.push("[features]".to_owned());
+            manifest_lines.extend(self.features);
             manifest_lines.push("".to_owned());
         }
-        manifest_lines.push("".to_owned());
 
         if let Some(verus_verify) = self.verus_verify {
             manifest_lines.push("[package.metadata.verus]".to_owned());
