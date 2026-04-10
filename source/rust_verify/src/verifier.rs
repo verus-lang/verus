@@ -3113,7 +3113,6 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) tc_start_time: Option<Instant>,
     /// end time of lifetime analysys
     pub(crate) tc_end_time: Option<Instant>,
-    pub(crate) rustc_args: Vec<String>,
     pub(crate) verus_externs: Option<VerusExterns>,
     pub(crate) spans: Option<SpanContext>,
 }
@@ -3335,17 +3334,6 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 Ok(msgs) => {
                     if msgs.len() > 0 {
                         self.verifier.encountered_vir_error = true;
-                        // We found lifetime errors.
-                        // We could print them immediately, but instead,
-                        // let's first run rustc's standard lifetime checking
-                        // because the error messages are likely to be better.
-                        let compile_status = crate::driver::run_with_erase_macro_compile(
-                            self.rustc_args.clone(),
-                            self.verifier.args.vstd,
-                        );
-                        if compile_status.is_err() {
-                            return rustc_driver::Compilation::Stop;
-                        }
                         for msg in &msgs {
                             reporter.report(&msg.clone().to_any());
                         }

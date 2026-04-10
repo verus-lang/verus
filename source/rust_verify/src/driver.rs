@@ -279,7 +279,6 @@ pub fn run(
         rust_end_time: None,
         tc_start_time: None,
         tc_end_time: None,
-        rustc_args: rustc_args.clone(),
         verus_externs,
         spans: None,
     };
