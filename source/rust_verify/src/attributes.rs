@@ -261,7 +261,11 @@ pub(crate) enum Attr {
     // specify list of places where == is promoted to =~=
     AutoExtEqual(vir::ast::AutoExtEqual),
     /// Label for a proof obligation, i.e. the attribute `#[verifier::proof_note("label")]`
-    ProofNote(Span, String),
+    ProofNote {
+        span: Span,
+        text: String,
+        is_custom_err: bool,
+    },
     // add manual trigger to expression inside quantifier
     Trigger(Option<Vec<u64>>),
     // custom error string to report for precondition failures
@@ -415,7 +419,19 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
                 AttrTree::Fun(span, name, attrs) if name == "proof_note" => {
                     let label = get_proof_note_label(*span, attrs)?;
-                    v.push(Attr::ProofNote(*span, label.clone()))
+                    v.push(Attr::ProofNote {
+                        span: *span,
+                        text: label.clone(),
+                        is_custom_err: false,
+                    })
+                }
+                AttrTree::Fun(span, name, attrs) if name == "proof_note_custom_err" => {
+                    let label = get_proof_note_label(*span, attrs)?;
+                    v.push(Attr::ProofNote {
+                        span: *span,
+                        text: label.clone(),
+                        is_custom_err: true,
+                    })
                 }
                 AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
                 AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
@@ -1016,14 +1032,16 @@ pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<Stri
     Ok(v)
 }
 
-pub(crate) fn get_proof_note_annotation(attrs: &[Attribute]) -> Result<Option<String>, VirErr> {
+pub(crate) fn get_proof_note_annotation(
+    attrs: &[Attribute],
+) -> Result<Option<(String, bool)>, VirErr> {
     let mut label = None;
     for attr in parse_attrs(attrs, None)? {
-        if let Attr::ProofNote(span, text) = attr {
+        if let Attr::ProofNote { span, text, is_custom_err } = attr {
             if label.is_some() {
                 return err_span(span, "at most one `proof_note` attribute is allowed");
             }
-            label = Some(text);
+            label = Some((text, is_custom_err));
         }
     }
     Ok(label)

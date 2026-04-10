@@ -271,3 +271,17 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "a function cannot be marked both 'when_used_as_spec' and 'allow_in_spec'")
 }
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_arg_not_supported ["new-mut-ref"] => verus_code! {
+        pub open spec fn d_spec(a: &mut bool) -> bool {
+            *a
+        }
+
+        #[verifier::when_used_as_spec(d_spec)]
+        pub fn d(a: &mut bool) -> bool
+        {
+            *a
+        }
+    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec not supported for function with &mut param")
+}

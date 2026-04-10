@@ -465,6 +465,9 @@ test_verify_one_file_with_options! {
             let mut t = t;
             let ret = t(3);
             assert(ret == 4);
+
+            let ret = t(1);
+            assert(ret == 2);
         }
 
         fn f2() {

@@ -79,8 +79,24 @@ fn workspace_workdir() {
     assert_eq!(data.args, vec!["build", "--release"]);
 
     let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
-    assert!(driver_args.contains(&"--expand-errors"));
-    assert!(driver_args.contains(&"--rlimit=100"));
+    assert!(
+        !driver_args.contains(&"--expand-errors"),
+        "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
+    );
+    assert!(
+        !driver_args.contains(&"--rlimit=100"),
+        "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
+    );
+
+    let optin_driver_args =
+        data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
+    assert!(optin_driver_args.contains(&"--expand-errors"));
+    assert!(optin_driver_args.contains(&"--rlimit=100"));
+
+    let hasdeps_driver_args = data
+        .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
+    assert!(hasdeps_driver_args.contains(&"--expand-errors"));
+    assert!(hasdeps_driver_args.contains(&"--rlimit=100"));
 
     data.assert_env_has("RUSTC_WRAPPER");
     data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");

@@ -132,12 +132,10 @@ analysis that treats enums like normal structs.
 For the most part, we ignore the concept of a scope entirely in our CFG, so we don't
 include specific instructions for 'dropping' a place at the ends of its scope.
 Our analysis will simply detect that a given place isn't modified outside the scope.
-However, we *do* need to set variables back to uninitialized when we go back to the beginning
-of a loop.
 
-When handling loops, at the beginning or end of a loop, we always insert all possible
-resolution assumptions (since the structure of our AIR queries wouldn't otherwise contain
-that information, at least not when loop_isolation=true). When inserting an assumption
+For each loop, we always insert all possible resolution assumptions
+at the beginning of each loop, since the structure of our AIR queries wouldn't otherwise contain
+that information, at least not when loop_isolation=true. When inserting an assumption
 into the expression, we always check that the local variable it refers to is actually
 in scope, so, e.g., we won't end up resolving any variables declared inside a loop from
 outside the loop. In all other cases, this check shouldn't matter.
@@ -250,11 +248,11 @@ use crate::patterns::pattern_has_mut;
 use crate::sst_util::subst_typ_for_datatype;
 use air::ast_util::str_ident;
 use air::scope_map::ScopeMap;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::rc::Rc;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 /// Updates the given function body to include AssumeResolved nodes at the appropriate places.
+/// On the side, also handles some work related to user_defined_type_invariants.
 ///
 /// This relies on the AstIds of the given Expr being unique, but it also destroys this property
 /// in the transformation, returning an Expr that may have duplicate AstIds.
@@ -268,11 +266,12 @@ pub(crate) fn infer_resolution(
     module: &Path,
     var_modes: &HashMap<VarIdent, Mode>,
     temporary_modes: &HashMap<AstId, Mode>,
+    dual_mode: bool,
 ) -> Result<Expr, VirErr> {
     let (cfg, assigns_to_resolve, typ_inv_obligations) =
         new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes)?;
     //println!("{:}", pretty_cfg(&cfg));
-    let resolutions = get_resolutions(&cfg);
+    let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg) };
     apply_resolutions(
         &cfg,
         params,
@@ -473,8 +472,6 @@ struct LoopEntry {
     break_bb: BBIndex,
     /// BB to jump to on 'continue'
     continue_bb: BBIndex,
-    /// Vars that should be dropped before returning to the beginning
-    drops: Rc<Vec<FlattenedPlace>>,
 }
 
 /// Represents the scope for either the top-level fn or for any closure inside it
@@ -493,14 +490,18 @@ enum ComputedPlaceTyped {
     Exact(FlattenedPlaceTyped),
     /// Exec-mode subplace of some local, at a granularity that we don't track
     /// The place given here is the most-specific non-spec place that we might do analysis over.
-    /// e.g. if the place is like `x.g[i].f` then we'd return Partial(x.g).
+    /// Note that we don't track indices, and we don't track fields of datatypes with Drop impls.
+    /// Examples:
+    ///  * If the place is like `x.g[i].f` then we'd return Partial(x.g).
+    ///  * if the place is like `w.f` where `w` has a Drop impl, then we'd return Partial(w).
     Partial(FlattenedPlaceTyped),
-    /// Spec-mode place. This is the most specific exec-mode place that we can provide,
-    /// or None for a local.
+    /// Spec-mode place.
+    /// The field is the most specific exec-mode place that we can track,
+    /// or None if the local itself is ghost.
     /// Examples:
     ///   * If the user writes x.foo.bar, and `x.foo` is proof-mode but `x.foo.bar`
     ///     is spec-mode, then return the place `x.foo`.
-    ///   * If the local var itself is spec-mode, then None.
+    ///   * If the user writes x.foo.bar and `x` is spec-mode, then None.
     ///   * If the user writes `x.foo[i].y` where `x.foo` is exec/proof and
     ///     `y` is a ghost place then return `x.foo`
     Ghost(Option<FlattenedPlaceTyped>),
@@ -863,7 +864,7 @@ impl<'a> Builder<'a> {
                 Ok(join_block)
             }
             ExprX::If(cond, thn, els) => {
-                // TODO(new_mut_ref): if the condition has conditional short-circuiting,
+                // TODO(new_mut_ref): (completeness) if the condition has conditional short-circuiting,
                 // we could make a more precise CFG. Is this needed to match Rustc's analysis?
 
                 let thn_position = AstPosition::Before(thn.span.id);
@@ -963,12 +964,10 @@ impl<'a> Builder<'a> {
                 let outer_body_bb = self.new_bb(outer_body_bb_pos, true);
                 let post_bb = self.new_bb(AstPosition::After(expr.span.id), true);
 
-                let drops = self.loop_drops(&expr);
                 self.loops.push(LoopEntry {
                     label: label.clone(),
                     break_bb: post_bb,
                     continue_bb: outer_body_bb,
-                    drops: Rc::new(drops),
                 });
 
                 self.basic_blocks[bb].successors.push(outer_body_bb);
@@ -1013,16 +1012,11 @@ impl<'a> Builder<'a> {
 
                 let end_bb = self.build(body, inner_body_bb);
 
-                let loop_entry = self.loops.pop().unwrap();
+                let _loop_entry = self.loops.pop().unwrap();
 
                 match end_bb {
                     Err(()) => {}
                     Ok(end_bb) => {
-                        self.push_drops(
-                            end_bb,
-                            AstPosition::After(body.span.id),
-                            &loop_entry.drops,
-                        );
                         self.basic_blocks[end_bb].successors.push(outer_body_bb);
                     }
                 }
@@ -1031,7 +1025,7 @@ impl<'a> Builder<'a> {
             }
 
             ExprX::OpenInvariant(arg, binder, body, _) => {
-                // TODO(new_mut_ref): test cases
+                // TODO(new_mut_ref): (blocking) test cases
                 bb = self.build(arg, bb)?;
 
                 let local = FlattenedPlaceTyped {
@@ -1077,7 +1071,6 @@ impl<'a> Builder<'a> {
                 if *is_break {
                     self.basic_blocks[bb].successors.push(entry.break_bb);
                 } else {
-                    self.push_drops(bb, AstPosition::Before(expr.span.id), &entry.drops);
                     self.basic_blocks[bb].successors.push(entry.continue_bb);
                 }
                 Err(())
@@ -1213,6 +1206,15 @@ impl<'a> Builder<'a> {
                 self.push_scope();
                 self.scope_insert_pattern(pattern);
 
+                // If declaring a variable without initializing it, then we "drop" it.
+                // This probably isn't really necessary, but it
+                // makes it easy to confirm that the usage of a variable in one loop
+                // can't be confused with its value in the next iteration of the loop.
+                if self.loops.len() > 0 {
+                    let fps = self.pattern_flattened_places(pattern);
+                    self.push_drops(bb, AstPosition::After(stmt.span.id), &fps);
+                }
+
                 Ok(bb)
             }
             StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
@@ -1313,9 +1315,11 @@ impl<'a> Builder<'a> {
                 }
                 match inner {
                     ComputedPlaceTyped::Exact(mut fpt) => {
-                        let mode = field_opr_to_mode(field_opr, &self.locals.datatypes);
+                        let (mode, dtor) = field_opr_to_mode(field_opr, &self.locals.datatypes);
                         if mode == Mode::Spec {
                             Ok((ComputedPlaceTyped::Ghost(Some(fpt)), bb))
+                        } else if dtor {
+                            Ok((ComputedPlaceTyped::Partial(fpt), bb))
                         } else {
                             fpt.projections.push(ProjectionTyped::StructField(
                                 FieldOpr { check: VariantCheck::None, ..field_opr.clone() },
@@ -1325,7 +1329,7 @@ impl<'a> Builder<'a> {
                         }
                     }
                     ComputedPlaceTyped::Partial(fpt) => {
-                        let mode = field_opr_to_mode(field_opr, &self.locals.datatypes);
+                        let (mode, _dtor) = field_opr_to_mode(field_opr, &self.locals.datatypes);
                         if mode == Mode::Spec {
                             Ok((ComputedPlaceTyped::Ghost(Some(fpt)), bb))
                         } else {
@@ -1419,11 +1423,9 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// Get the local vars that should be dropped when returning to the beginning
-    /// of the the loop.
-    fn loop_drops(&mut self, loop_expr: &Expr) -> Vec<FlattenedPlace> {
-        // TODO(new_mut_ref): should get temps? Actually, is this even necessary at all?
-        expr_all_bound_vars_with_ownership(loop_expr, &self.locals.var_modes)
+    /// Get the local vars from this pattern that should be dropped
+    fn pattern_flattened_places(&mut self, pat: &Pattern) -> Vec<FlattenedPlace> {
+        pattern_all_bound_vars_with_ownership(pat, &self.locals.var_modes)
             .iter()
             .map(|bv| {
                 let fpt = FlattenedPlaceTyped {
@@ -1485,7 +1487,7 @@ impl<'a> Builder<'a> {
     /// It may also induce mutations due to variables with MutRef binding mode.
     /// This function calculates all such moves and mutations.
     ///
-    /// TODO(new_mut_ref): incompleteness: when or-patterns are involved,
+    /// TODO(new_mut_ref): (completeness) when or-patterns are involved,
     /// moves may be over-approximated
     ///
     /// Note: We don't have to worry about or-patterns together with mutations, as we currently
@@ -1542,8 +1544,8 @@ impl<'a> Builder<'a> {
     //// Match
 
     fn build_match(&mut self, expr: &Expr, bb: BBIndex) -> Result<BBIndex, ()> {
-        // TODO(new_mut_ref): need more tests for guards
-        // TODO(new_mut_ref): need more tests for or-patterns
+        // TODO(new_mut_ref): (blocking) need more tests for guards
+        // TODO(new_mut_ref): (blocking) need more tests for or-patterns
 
         let ExprX::Match(place, arms) = &expr.x else {
             unreachable!();
@@ -1556,7 +1558,9 @@ impl<'a> Builder<'a> {
         };
         let (cpt, bb) = self.build_place_typed(place, bb, tinv)?;
 
-        assert!(arms.len() != 0);
+        if arms.len() == 0 {
+            return Err(());
+        }
 
         let mut cur_bb = bb;
         let mut arm_bb_ends = vec![];
@@ -1914,45 +1918,6 @@ pub struct BoundVar {
     pub typ: Typ,
 }
 
-/// Get all locals which are bound in this expression for which we care about
-/// ownership tracking (i.e., exec and proof mode).
-pub fn expr_all_bound_vars_with_ownership(
-    expr: &Expr,
-    modes: &HashMap<VarIdent, Mode>,
-) -> Vec<BoundVar> {
-    let mut out = vec![];
-    let mut names = HashSet::<VarIdent>::new();
-    crate::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
-        expr,
-        &mut (),
-        &mut |_env, _scope_map, _expr| Ok(()),
-        &mut |_env, _scope_map, _stmt| Ok(()),
-        &mut |_env, _scope_map, pattern| {
-            match &pattern.x {
-                PatternX::Var(PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ })
-                | PatternX::Binding {
-                    binding: PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ },
-                    sub_pat: _,
-                } => {
-                    let spec = matches!(&modes[name], Mode::Spec);
-                    if !spec {
-                        if !names.contains(name) {
-                            names.insert(name.clone());
-                            out.push(BoundVar { name: name.clone(), typ: typ.clone() });
-                        }
-                    }
-                }
-                _ => {}
-            }
-            Ok(())
-        },
-        &mut |_env, _scope_map, _typ, _span| Ok(()),
-        &mut |_env, _scope_map, _place| Ok(()),
-    )
-    .unwrap();
-    out
-}
-
 /// Same as above, but takes a Pattern as input
 pub fn pattern_all_bound_vars_with_ownership(
     pattern: &Pattern,
@@ -2138,9 +2103,12 @@ impl<'a> LocalCollection<'a> {
                 // head-normalized, so use that instead.
                 //
                 // We can skip over Box and Tracked modifiers.
-                // We also skip over shared reference modifiers to avoid panicking,
-                // though those shouldn't show up in well-formed code.
-                // (If there are any, they will show up in lifetime-checking.)
+                //
+                // We also skip over shared reference modifiers.
+                // These should not actually appear in well-formed code;
+                // however, this will only be caught by lifetime-checking,
+                // which hasn't run yet.
+                // Thus, we just skip over them to avoid panicking.
                 let typ = undecorate_box_trk_shr_decorations(&cur_typ);
 
                 match &**typ {
@@ -2190,9 +2158,7 @@ impl<'a> LocalCollection<'a> {
                         }
                     },
                     _ => {
-                        // TODO(new_mut_ref) I think this case can actually happen since
-                        // lifetime-checking hasn't run yet?
-                        panic!("Verus internal internal: unexpected type from projections")
+                        panic!("Verus internal error: unexpected type from projections")
                     }
                 }
             }
@@ -2371,14 +2337,18 @@ fn field_opr_to_indices(
     }
 }
 
-fn field_opr_to_mode(field_opr: &FieldOpr, datatypes: &HashMap<Path, Datatype>) -> Mode {
+/// Return:
+///  - Mode: mode of the field,
+///  - bool: does the datatype implement Drop?
+fn field_opr_to_mode(field_opr: &FieldOpr, datatypes: &HashMap<Path, Datatype>) -> (Mode, bool) {
     match &field_opr.datatype {
-        Dt::Tuple(_) => Mode::Exec,
+        Dt::Tuple(_) => (Mode::Exec, false),
         Dt::Path(path) => {
             let datatype = &datatypes[path];
             let variant = crate::ast_util::get_variant(&datatype.x.variants, &field_opr.variant);
             let field = crate::ast_util::get_field(&variant.fields, &field_opr.field);
-            field.a.1
+            let mode = field.a.1;
+            (mode, datatype.x.destructor)
         }
     }
 }
@@ -3091,7 +3061,7 @@ fn get_resolutions(cfg: &CFG) -> Vec<ResolutionToInsert> {
         //println!("{:}\n", pretty_flattened_place(&cfg.locals, &resolve_places[r_idx]));
         //println!("{:}\n", pretty_basics_blocks_with_dataflow2(&cfg, &resolve_analyses[r_idx], &initialization_analyses[i_idx]));
 
-        // TODO(new_mut_ref): filter for "interesting" types, i.e., those containing a &mut ref
+        // TODO(new_mut_ref): (blocking) filter for "interesting" types, i.e., those containing a &mut ref
 
         get_resolutions_for_place(
             cfg,

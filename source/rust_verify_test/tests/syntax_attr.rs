@@ -1282,6 +1282,213 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// test forloop without verus_spec invariant, which should be allowed with exec_allows_no_decreases_clause
+test_verify_one_file! {
+    #[test] test_for_loop_without_loop_spec code!{
+        use vstd::prelude::*;
+        #[verus_spec]
+        fn test_for_loop()
+        {
+            for i in 0..10
+            {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_struct code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::PointsToRaw;
+
+        #[verus_verify]
+        pub struct STest {
+            pub u: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub p: Tracked<PointsToRaw>,
+        }
+
+        // Test with trailing comma in struct literal
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_trailing(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            STest {
+                u,
+            }
+        }
+
+        // Test without trailing comma in struct literal
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_no_trailing(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            STest { u }
+        }
+
+        // Test with let binding
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_let(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            let s = STest { u };
+            s
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_struct_and_follows code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        pub struct TestStruct {
+            pub x: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub y: Ghost<int>,
+        }
+
+        // Test combined struct fields and |= follow output in a single proof_with!
+        #[verus_spec(s =>
+            with
+                -> g: Ghost<int>
+            requires
+                x < u32::MAX,
+            ensures
+                s.x == x + 1,
+                s.y == 2 * s.x,
+                g == 3 * x,
+        )]
+        fn make_struct_with_follows(x: u32) -> TestStruct
+        {
+            proof_decl! {
+                let ghost g = 3 * x;
+            }
+            proof_with! {
+                y: Ghost(2 * (x + 1)),
+                |= Ghost(g)
+            }
+            TestStruct{
+                x: x + 1,
+            }
+        }
+
+        // Test combined struct fields and |= follow output with let binding
+        #[verus_spec(s =>
+            with
+                -> g: Ghost<int>
+            requires
+                x < u32::MAX,
+            ensures
+                s.x == x + 1,
+                s.y == 2 * s.x,
+                g == 3 * x,
+        )]
+        fn make_struct_with_follows_let(x: u32) -> TestStruct
+        {
+            proof_decl! {
+                let ghost g = 3 * x;
+            }
+            proof_with! { y: Ghost(2 * (x + 1))}
+            let s = TestStruct{
+                x: x + 1,
+            };
+            proof_with! { |= Ghost(g) }
+            s
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_invalid_ghost_with_struct code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        pub struct TestStruct {
+            pub x: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub y: int,
+        }
+
+        #[verus_spec]
+        fn make_struct_with_follows_let(x: u32) -> TestStruct
+        {
+            proof_with! { y: 1 }
+            let s = TestStruct{
+                x: x + 1,
+            };
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "A ghost/tracked field must be a tracked/ghost expression" )
+}
+
+test_verify_one_file! {
+    // Regression test for https://github.com/verus-lang/verus/issues/2283
+    // proof_with! with only |= follow output before a struct constructor
+    // should not attempt to parse the follow as struct fields.
+    #[test] test_proof_with_follows_only_before_struct code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        pub struct S {}
+
+        #[verus_spec(
+            with
+                -> res: Ghost<int>
+            ensures
+                res == 0,
+        )]
+        pub fn f() -> S {
+            proof_with!(|= Ghost(0int));
+            S {}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Test that `|` in a struct field expression inside proof_with! doesn't
+    // get confused with `|=` follow syntax. Uses bitwise OR on integers.
+    #[test] test_proof_with_struct_field_with_bitor code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        pub struct TestInt {
+            pub x: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub g: Ghost<u32>,
+        }
+
+        #[verus_spec(s =>
+            requires
+                x < u32::MAX,
+            ensures
+                s.x == x + 1,
+                s.g == (x | 1u32),
+        )]
+        fn make_with_bitor(x: u32) -> TestInt
+        {
+            proof_with! { g: Ghost(x | 1u32) }
+            TestInt {
+                x: x + 1,
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] test_verus_verify_on_const code! {
         #[verus_verify]

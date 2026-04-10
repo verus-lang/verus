@@ -158,3 +158,11 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] return_in_closure verus_code! {
+        proof fn p(){
+            let _f = |x:int| -> int { return x; };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "return is not allowed in pure context")
+}

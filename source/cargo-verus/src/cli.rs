@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use clap::{ArgAction, Args, Parser, Subcommand};
+use anyhow::Result;
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Clone, Debug, Parser)]
 #[command(
@@ -50,6 +51,24 @@ pub struct VerifyCommand {
     #[command(flatten)]
     pub cargo_opts: CargoOptions,
 
+    /// Make cargo-verus verbose
+    #[arg(short, long)]
+    pub verbose: bool,
+
+    /// Crates to receive forwarded Verus args
+    #[arg(
+        long,
+        value_name = "SELECTOR",
+        help = "\
+Crates to receive forwarded Verus args. Defaults to `all`, except in `focus` mode where it defaults to `roots`. Use `deps` to pass args ONLY to dependencies and NOT to roots.\n",
+        long_help = "\
+Crates to receive forwarded Verus args.
+
+Defaults to `all`, except in `focus` mode where it defaults to `roots`.
+Use `deps` to pass args ONLY to dependencies and NOT to roots."
+    )]
+    pub fwd_verus_args_to: Option<VerusArgFwdSelector>,
+
     #[arg(
         value_name = "ARGS",
         last = true,
@@ -58,10 +77,13 @@ pub struct VerifyCommand {
         help = "Arguments passed to 'verus' after `--`"
     )]
     pub verus_args: Vec<String>,
+}
 
-    /// Make cargo-verus verbose
-    #[arg(short, long)]
-    pub verbose: bool,
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum VerusArgFwdSelector {
+    All,
+    Roots,
+    Deps,
 }
 
 #[derive(Clone, Debug, Args)]
@@ -153,7 +175,40 @@ fn has_late_verus_arg(opts: &CargoOptions) -> bool {
 }
 
 impl CargoVerusCli {
-    pub fn clap_trailing_args_hotfix(mut self) -> Self {
+    pub fn from_args(args: impl Iterator<Item = String>) -> Result<Self> {
+        let normalized_args = normalize_args(args);
+        let mut parsed_cli = CargoVerusCli::parse_from(normalized_args).clap_trailing_args_hotfix();
+
+        if parsed_cli.has_inadvisable_verus_arg() {
+            eprintln!("Args forwarded to Cargo must precede args forwarded to Verus");
+            // TODO: Consider replacing this with `return Err(anyhow!("message above^"))`.
+            std::process::exit(2);
+        }
+
+        parsed_cli.set_fwd_verus_args_to_default();
+
+        Ok(parsed_cli)
+    }
+
+    fn set_fwd_verus_args_to_default(&mut self) {
+        match &mut self.command {
+            VerusSubcommand::New(_) => {}
+            VerusSubcommand::Verify(cmd)
+            | VerusSubcommand::Build(cmd)
+            | VerusSubcommand::Check(cmd) => {
+                if cmd.fwd_verus_args_to.is_none() {
+                    cmd.fwd_verus_args_to = Some(VerusArgFwdSelector::All)
+                }
+            }
+            VerusSubcommand::Focus(cmd) => {
+                if cmd.fwd_verus_args_to.is_none() {
+                    cmd.fwd_verus_args_to = Some(VerusArgFwdSelector::Roots)
+                }
+            }
+        }
+    }
+
+    fn clap_trailing_args_hotfix(mut self) -> Self {
         // NOTE: For context see this issue: https://github.com/clap-rs/clap/issues/6200
         match &mut self.command {
             VerusSubcommand::Verify(cmd)
@@ -174,7 +229,7 @@ impl CargoVerusCli {
         self
     }
 
-    pub fn has_inadvisable_verus_arg(&self) -> bool {
+    fn has_inadvisable_verus_arg(&self) -> bool {
         match &self.command {
             VerusSubcommand::Verify(cmd)
             | VerusSubcommand::Focus(cmd)
@@ -185,4 +240,8 @@ impl CargoVerusCli {
             VerusSubcommand::New(_) => false,
         }
     }
+}
+
+fn normalize_args(args: impl Iterator<Item = String>) -> impl Iterator<Item = String> {
+    args.enumerate().filter(|(i, arg)| *i != 1 || arg != "verus").map(|(_, arg)| arg)
 }

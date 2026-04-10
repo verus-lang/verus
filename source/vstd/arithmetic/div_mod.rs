@@ -593,6 +593,7 @@ pub broadcast proof fn lemma_div_denominator(x: int, c: int, d: int)
     assert(c * d != 0) by {
         assert(0 < c * d);
     }
+    assert(c * d != 0);  // work around https://github.com/Z3Prover/z3/issues/8057
 }
 
 /// Proof that multiplying an integer by a fraction is equivalent to

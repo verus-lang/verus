@@ -51,7 +51,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let RMul = str_to_node(RMUL);
     #[allow(non_snake_case)]
     let RDiv = str_to_node(RDIV);
-    let check_decrease_int = str_to_node(CHECK_DECREASE_INT);
     let check_decrease_height = str_to_node(CHECK_DECREASE_HEIGHT);
     let height = str_to_node(HEIGHT);
     let height_le = nodes!(_ partial-order 0);
@@ -1016,18 +1015,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [height] ([Poly]) [Height])
         (declare-fun [height_lt] ([Height] [Height]) Bool)
         (declare-fun [height_rec_fun] ([Poly]) [Poly])
-        (declare-fun [check_decrease_int] (Int Int Bool) Bool)
-        (axiom (forall ((cur Int) (prev Int) (otherwise Bool)) (!
-            (= ([check_decrease_int] cur prev otherwise)
-                (or
-                    (and (<= 0 cur) (< cur prev))
-                    (and (= cur prev) otherwise)
-                )
-            )
-            :pattern (([check_decrease_int] cur prev otherwise))
-            :qid prelude_check_decrease_int
-            :skolemid skolem_prelude_check_decrease_int
-        )))
         (declare-fun [check_decrease_height] ([Poly] [Poly] Bool) Bool)
         (axiom (forall ((cur [Poly]) (prev [Poly]) (otherwise Bool)) (!
             (= ([check_decrease_height] cur prev otherwise)
@@ -1039,6 +1026,14 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern (([check_decrease_height] cur prev otherwise))
             :qid prelude_check_decrease_height
             :skolemid skolem_prelude_check_decrease_height
+        )))
+        (axiom (forall ((cur Int) (prev Int)) (!
+            (= ([height_lt] ([height] ([box_int] cur)) ([height] ([box_int] prev)))
+                (and (<= 0 cur) (< cur prev))
+            )
+            :pattern (([height_lt] ([height] ([box_int] cur)) ([height] ([box_int] prev))))
+            :qid prelude_check_decrease_int_height
+            :skolemid skolem_prelude_check_decrease_int_height
         )))
     );
     prelude.extend(height_axioms);
@@ -1087,15 +1082,17 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
                 :skolemid skolem_prelude_has_type_array_new
             ))
         )
-        (axiom (forall ((Tdcr [decoration]) (T [typ]) (Ndcr [decoration]) (N [typ]) (Fn Fun) (i Poly)) (!
+        // REVIEW: the Nd decoration on array_index is currently needed when array_index is used
+        // as a trigger, but it might be better to omit decorations from const generics entirely.
+        (axiom (forall ((Tdcr [decoration]) (T [typ]) (Nd [decoration]) (Ndcr [decoration]) (N [typ]) (Fn Fun) (i Poly)) (!
             (=>
                 (and
                     ([has_type] ([box_array] Fn) ([type_id_array] Tdcr T Ndcr N))
                     ([has_type] i [type_id_int])
                 )
-                ([has_type] ([array_index] Tdcr T $ N Fn i) T)
+                ([has_type] ([array_index] Tdcr T Nd N Fn i) T)
             )
-            :pattern (([array_index] Tdcr T $ N Fn i) ([has_type] ([box_array] Fn) ([type_id_array] Tdcr T Ndcr N)))
+            :pattern (([array_index] Tdcr T Nd N Fn i) ([has_type] ([box_array] Fn) ([type_id_array] Tdcr T Ndcr N)))
             :qid prelude_has_type_array_index
             :skolemid skolem_prelude_has_type_array_index
         )))

@@ -8,11 +8,11 @@ use crate::ast::VarBinders;
 use crate::ast::VarIdent;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BoundsCheck, BuiltinSpecFun, ByRef, CallTarget,
-    ChainedOp, Constant, CtorPrintStyle, CtorUpdateTail, Datatype, DatatypeTransparency, DatatypeX,
-    Dt, Expr, ExprX, Exprs, Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp,
-    IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternBinding, PatternX,
-    Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant,
-    VariantCheck, VirErr, Visibility,
+    ChainedOp, ClosureKind, Constant, CtorPrintStyle, CtorUpdateTail, Datatype,
+    DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, Field, FieldOpr, Fun, Function,
+    FunctionKind, Ident, InequalityOp, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ,
+    TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_spec_expr, typ_args_for_datatype_typ,
@@ -34,6 +34,15 @@ use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+struct ClosureDatatype {
+    enclosing_fun: Fun,
+    args: Typs,
+    #[allow(dead_code)]
+    output: Typ,
+    kind: ClosureKind,
+    path: Path,
+}
+
 struct State {
     // Counter to generate temporary variables
     next_var: u64,
@@ -43,8 +52,8 @@ struct State {
     rename_vars_reverse: HashMap<VarIdent, VarIdent>,
     // Name of a datatype to represent each tuple arity
     tuple_typs: HashSet<usize>,
-    // Name of a datatype to represent each tuple arity
-    closure_typs: HashMap<usize, Path>,
+    // Name of a datatype to represent each closure
+    closure_typs: HashMap<usize, ClosureDatatype>,
     // Functions for which the corresponding FnDef type is used
     fndef_typs: HashSet<Fun>,
 }
@@ -76,14 +85,30 @@ impl State {
         Dt::Tuple(arity)
     }
 
-    fn closure_type_name(&mut self, id: usize) -> Path {
-        self.closure_typs.entry(id).or_insert(crate::def::prefix_closure_type(id)).clone()
+    fn closure_type_name(
+        &mut self,
+        fun: Fun,
+        typs: Typs,
+        typ: Typ,
+        kind: ClosureKind,
+        id: usize,
+    ) -> Path {
+        let e = self.closure_typs.entry(id).or_insert(ClosureDatatype {
+            enclosing_fun: fun.clone(),
+            args: typs,
+            output: typ,
+            kind: kind,
+            path: crate::def::prefix_closure_type(id),
+        });
+        assert!(&e.enclosing_fun == &fun);
+        e.path.clone()
     }
 }
 
 struct LocalCtxt {
     span: Span,
     typ_params: Vec<Ident>,
+    fun: Option<Fun>,
 }
 
 /// Should only return true if this expression is guaranteed constant
@@ -440,7 +465,10 @@ fn simplify_one_expr(
                 _ => Ok(expr.new_x(ExprX::VarLoc(rename_var(state, scope_map, x)))),
             }
         }
-        ExprX::AssignToPlace { place, .. } => {
+        ExprX::AssignToPlace { place, .. }
+        | ExprX::BorrowMut(place)
+        | ExprX::TwoPhaseBorrowMut(place)
+        | ExprX::BorrowMutTracked(place) => {
             if !crate::ast_util::place_has_deref_mut(place)
                 && let Some(local) = crate::ast_util::place_get_local(place)
             {
@@ -859,9 +887,21 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
             state.tuple_type_name(*i);
             Ok(typ.clone())
         }
-        TypX::AnonymousClosure(_typs, _typ, id) => {
-            let path = Dt::Path(state.closure_type_name(*id));
-            Ok(Arc::new(TypX::Datatype(path, Arc::new(vec![]), Arc::new(vec![]))))
+        TypX::AnonymousClosure(typs, typ, kind, id) => {
+            let Some(fun) = local.fun.clone() else {
+                return Err(error(
+                    &local.span,
+                    format!("Verus Internal Error: found AnonymousClosure type outside function"),
+                ));
+            };
+            let path =
+                Dt::Path(state.closure_type_name(fun, typs.clone(), typ.clone(), *kind, *id));
+            let typ_args: Vec<Typ> = local
+                .typ_params
+                .iter()
+                .map(|name| Arc::new(TypX::TypParam(name.clone())))
+                .collect();
+            Ok(Arc::new(TypX::Datatype(path, Arc::new(typ_args), Arc::new(vec![]))))
         }
         TypX::FnDef(fun, _typs, resolved) => {
             state.fndef_typs.insert(fun.clone());
@@ -1237,8 +1277,11 @@ fn simplify_function(
         }
     }
 
-    let local =
-        LocalCtxt { span: function.span.clone(), typ_params: (*functionx.typ_params).clone() };
+    let local = LocalCtxt {
+        span: function.span.clone(),
+        typ_params: (*functionx.typ_params).clone(),
+        fun: Some(functionx.name.clone()),
+    };
 
     let is_trait_impl = matches!(functionx.kind, FunctionKind::TraitMethodImpl { .. });
 
@@ -1326,7 +1369,7 @@ fn simplify_function(
 }
 
 fn simplify_datatype(state: &mut State, datatype: &Datatype) -> Result<Datatype, VirErr> {
-    let mut local = LocalCtxt { span: datatype.span.clone(), typ_params: Vec::new() };
+    let mut local = LocalCtxt { span: datatype.span.clone(), typ_params: Vec::new(), fun: None };
     for (x, _strict_pos) in datatype.x.typ_params.iter() {
         local.typ_params.push(x.clone());
     }
@@ -1336,7 +1379,7 @@ fn simplify_datatype(state: &mut State, datatype: &Datatype) -> Result<Datatype,
 }
 
 fn simplify_trait_impl(state: &mut State, imp: &TraitImpl) -> Result<TraitImpl, VirErr> {
-    let mut local = LocalCtxt { span: imp.span.clone(), typ_params: Vec::new() };
+    let mut local = LocalCtxt { span: imp.span.clone(), typ_params: Vec::new(), fun: None };
     for x in imp.x.typ_params.iter() {
         local.typ_params.push(x.clone());
     }
@@ -1349,7 +1392,7 @@ fn simplify_assoc_type_impl(
     state: &mut State,
     assoc: &AssocTypeImpl,
 ) -> Result<AssocTypeImpl, VirErr> {
-    let mut local = LocalCtxt { span: assoc.span.clone(), typ_params: Vec::new() };
+    let mut local = LocalCtxt { span: assoc.span.clone(), typ_params: Vec::new(), fun: None };
     for x in assoc.x.typ_params.iter() {
         local.typ_params.push(x.clone());
     }
@@ -1391,6 +1434,52 @@ fn mk_fun_decl(
 }
 */
 
+fn add_tuple_auto_impl(
+    ctx: &mut GlobalCtx,
+    traits: &Vec<crate::ast::Trait>,
+    trait_impls: &mut Vec<TraitImpl>,
+    arity: usize,
+    needs_bounds: bool,
+    trait_path: Path,
+) {
+    use crate::ast::{GenericBound, GenericBoundX};
+    use crate::def::impl_tuple;
+
+    if !traits.iter().any(|t| &t.x.name == &trait_path) {
+        return;
+    }
+    // Rust doesn't seem to give us the TraitImpl for tuples for the traits
+    // Tuple, Clone, Copy, Send, Sync, Unpin, so we make it ourselves:
+    let typ_params: Vec<Ident> = (0..arity).map(|i| prefix_tuple_param(i)).collect();
+    let typ_args: Vec<Typ> =
+        typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
+    let mut bounds: Vec<GenericBound> = Vec::new();
+    if needs_bounds {
+        for i in 0..arity {
+            let id = crate::ast::TraitId::Path(trait_path.clone());
+            let typs = Arc::new(vec![typ_args[i].clone()]);
+            bounds.push(Arc::new(GenericBoundX::Trait(id, typs)));
+        }
+    }
+    let self_ty = Arc::new(TypX::Datatype(Dt::Tuple(arity), Arc::new(typ_args), Arc::new(vec![])));
+    let impl_path = Arc::new(crate::ast::PathX {
+        krate: None,
+        segments: Arc::new(vec![impl_tuple(trait_path.segments.last().unwrap(), arity)]),
+    });
+    let trait_implx = crate::ast::TraitImplX {
+        impl_path,
+        typ_params: Arc::new(typ_params),
+        typ_bounds: Arc::new(bounds),
+        trait_path,
+        trait_typ_args: Arc::new(vec![self_ty]),
+        trait_typ_arg_impls: Spanned::new(ctx.no_span.clone(), Arc::new(vec![])),
+        owning_module: None,
+        auto_imported: true,
+        external_trait_blanket: false,
+    };
+    trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
+}
+
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
     let KrateX {
         functions,
@@ -1419,7 +1508,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             .collect(),
     );
     let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
-    let trait_impls = vec_map_result(&trait_impls, |t| simplify_trait_impl(&mut state, t))?;
+    let mut trait_impls = vec_map_result(&trait_impls, |t| simplify_trait_impl(&mut state, t))?;
     let assoc_type_impls =
         vec_map_result(&assoc_type_impls, |a| simplify_assoc_type_impl(&mut state, a))?;
 
@@ -1473,11 +1562,25 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             destructor: false,
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
+
+        let tuple_path = crate::path!["core" => "marker", "Tuple"];
+        let clone_path = crate::path!["core" => "clone", "Clone"];
+        let copy_path = crate::path!["core" => "marker", "Copy"];
+        //let send_path = crate::path!["core" => "marker", "Send"];
+        //let sync_path = crate::path!["core" => "marker", "Sync"];
+        //let unpin_path = crate::path!["core" => "marker", "Unpin"];
+        add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, false, tuple_path);
+        add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, true, clone_path);
+        add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, true, copy_path);
+        // TODO when when we have full support for auto traits:
+        //add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, true, send_path);
+        //add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, true, sync_path);
+        //add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, true, unpin_path);
     }
 
     let mut closures: Vec<_> = state.closure_typs.into_iter().collect();
     closures.sort_by_key(|kv| kv.0);
-    for (_id, path) in closures {
+    for (id, closure) in closures {
         // Right now, we translate the closure type into an a global datatype.
         //
         // However, I'm pretty sure an anonymous closure can't actually be referenced
@@ -1486,16 +1589,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         // doesn't support anyway.)
         // So in principle, we could make the type private to the item and not emit any
         // global declarations for it.
-        //
-        // Also, note that the closure type doesn't take any type params, although
-        // theoretically it depends on any type params of the enclosing item.
-        // e.g., if we have
-        //      fn foo<T>(...) {
-        //          let x = |t: T| { ... };
-        //      }
-        // Then the closure type is dependent on T.
-        // But since the closure type is only referenced from the item, we can consider
-        // T to be fixed, so we don't need to define the closure type polymorphically.
 
         // Also, note that Rust already prohibits a closure type from depending on itself
         // (not even via reference types, which would be allowed for other types).
@@ -1508,17 +1601,26 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let visibility = Visibility { restricted_to: None };
         let transparency = DatatypeTransparency::Never;
 
-        let typ_params = Arc::new(vec![]);
         let variants = Arc::new(vec![]);
 
+        let function = functions.iter().find(|f| f.x.name == closure.enclosing_fun).unwrap();
+
+        let typ_params: crate::ast::TypPositives = Arc::new(
+            function
+                .x
+                .typ_params
+                .iter()
+                .map(|tb| (tb.clone(), crate::ast::AcceptRecursiveType::Accept))
+                .collect(),
+        );
         let datatypex = DatatypeX {
-            name: Dt::Path(path),
+            name: Dt::Path(closure.path.clone()),
             proxy: None,
             visibility,
             owning_module: None,
             transparency,
-            typ_params,
-            typ_bounds: Arc::new(vec![]),
+            typ_params: typ_params.clone(),
+            typ_bounds: function.x.typ_bounds.clone(),
             variants,
             mode: Mode::Exec,
             ext_equal: false,
@@ -1527,6 +1629,32 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             destructor: false,
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
+
+        // Add a trait bound, `ClosureType: {Fn, FnMut, FnOnce}`
+        // TODO: include Output associated type
+
+        let typ_args: Typs = Arc::new(
+            function.x.typ_params.iter().map(|tb| Arc::new(TypX::TypParam(tb.clone()))).collect(),
+        );
+        let self_typ = Arc::new(TypX::Datatype(Dt::Path(closure.path), typ_args, Arc::new(vec![])));
+        let args_tuple_typ =
+            Arc::new(TypX::Datatype(Dt::Tuple(closure.args.len()), closure.args, Arc::new(vec![])));
+        let impl_path = Arc::new(crate::ast::PathX {
+            krate: None,
+            segments: Arc::new(vec![crate::def::impl_closure(closure.kind, id)]),
+        });
+        let trait_implx = crate::ast::TraitImplX {
+            impl_path,
+            typ_params: function.x.typ_params.clone(),
+            typ_bounds: function.x.typ_bounds.clone(),
+            trait_path: closure.kind.trait_path(),
+            trait_typ_args: Arc::new(vec![self_typ, args_tuple_typ]),
+            trait_typ_arg_impls: Spanned::new(ctx.no_span.clone(), Arc::new(vec![])),
+            owning_module: None,
+            auto_imported: true,
+            external_trait_blanket: false,
+        };
+        trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
     }
 
     let traits = traits.clone();

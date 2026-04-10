@@ -85,6 +85,35 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
+    test_json_proof_note_custom_err_on_ensures ["--output-json"] => verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            ensures
+                #![verifier::proof_note_custom_err("Custom ensures error")]
+                z == x + y,
+        {
+            x
+        }
+
+        fn caller() {
+            let _ = example(1, 2);
+        }
+    } => Err(err) => {
+        assert_vir_error_msg(err.clone(), "Custom ensures error");
+
+        with_json_func_details(&err, "crate::example", |details| {
+            assert!(details.obligation_proof_notes.is_empty());
+            assert!(details.failed_proof_notes.is_empty());
+        });
+
+        with_json_func_details(&err, "crate::caller", |details| {
+            assert!(details.obligation_proof_notes.is_empty());
+            assert!(details.failed_proof_notes.is_empty());
+        });
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test]
     test_json_proof_note_on_assert ["--output-json"] => verus_code! {
         fn caller() {
             #[verifier::proof_note("Statement known to be false")]
@@ -100,6 +129,22 @@ test_verify_one_file_with_options! {
         with_json_func_details(&err, "crate::caller", |details| {
             assert_eq!(details.obligation_proof_notes, all_labels);
             assert_eq!(details.failed_proof_notes, all_labels);
+        });
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test]
+    test_json_proof_note_custom_err_on_assert ["--output-json"] => verus_code! {
+        fn caller() {
+            #[verifier::proof_note_custom_err("Custom assert error")]
+            assert(1 > 2);
+        }
+    } => Err(err) => {
+        assert_vir_error_msg(err.clone(), "Custom assert error");
+        with_json_func_details(&err, "crate::caller", |details| {
+            assert!(details.obligation_proof_notes.is_empty());
+            assert!(details.failed_proof_notes.is_empty());
         });
     }
 }
@@ -122,6 +167,46 @@ test_verify_one_file_with_options! {
         with_json_func_details(&err, "crate::caller", |details| {
             assert!(details.obligation_proof_notes.is_empty());
             assert_eq!(details.failed_proof_notes, all_labels);
+        });
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test]
+    test_json_proof_note_custom_err_on_assume_with_no_cheating
+        ["--output-json", "--no-cheating"] => verus_code! {
+        fn caller() {
+            #[verifier::proof_note_custom_err("Custom assume error")]
+            assume(1 > 2);
+        }
+    } => Err(err) => {
+        assert_vir_error_msg(err.clone(), "Custom assume error");
+        with_json_func_details(&err, "crate::caller", |details| {
+            assert!(details.obligation_proof_notes.is_empty());
+            assert!(details.failed_proof_notes.is_empty());
+        });
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test]
+    test_json_proof_note_custom_err_on_requires ["--output-json"] => verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            requires
+                #![verifier::proof_note_custom_err("Custom requires error")]
+                x == y,
+        {
+            x
+        }
+
+        fn caller() {
+            let _ = example(1, 2);
+        }
+    } => Err(err) => {
+        assert_vir_error_msg(err.clone(), "Custom requires error");
+        with_json_func_details(&err, "crate::caller", |details| {
+            assert!(details.obligation_proof_notes.is_empty());
+            assert!(details.failed_proof_notes.is_empty());
         });
     }
 }

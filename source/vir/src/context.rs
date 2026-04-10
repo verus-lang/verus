@@ -387,6 +387,19 @@ impl GlobalCtx {
         // For the moment, we have some legacy heuristics that used to be necessary,
         // should no longer be necessary, and may or may not make the ordering more stable.
 
+        for t in &krate.trait_impls {
+            if let Some(last) = &t.x.impl_path.segments.last() {
+                if last.starts_with(crate::def::PREFIX_IMPL_TUPLE) {
+                    // Our internally auto-generated tuple impls don't depend on any other impls,
+                    // so they can always appear first.
+                    // Furthermore, we currently lack the impl_path dependency edges that
+                    // should point to the impl, so the impl isn't ordered in the
+                    // strongly connected component graph, so we have to explicitly put them first.
+                    func_call_graph
+                        .add_node(Node::TraitImpl(ImplPath::TraitImplPath(t.x.impl_path.clone())));
+                }
+            }
+        }
         for t in &krate.traits {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
         }

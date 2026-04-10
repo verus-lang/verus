@@ -39,6 +39,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_supported_7 verus_code! {
+        use vstd::prelude::*;
         struct S<F: Fn(bool) -> bool> {
             f: F,
         }
@@ -2096,6 +2097,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] issue311_overlapping_names_ensures verus_code!{
+        use vstd::prelude::*;
         trait Tr<T> {
             spec fn f(&self) -> T;
 
@@ -2121,6 +2123,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] issue311_overlapping_names_requires verus_code!{
+        use vstd::prelude::*;
         trait Tr<T> {
             spec fn f(&self) -> T;
 
@@ -2627,32 +2630,32 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_copy verus_code! {
+        use vstd::prelude::*;
         struct S;
         trait T { spec fn f() -> int; }
-        impl T for S { spec fn f() -> int { 200 } }
-        impl<A: Copy> T for A { spec fn f() -> int { 100 } }
+        impl T for S { spec fn f() -> int { 100 } }
+        impl<A: Copy> T for A { spec fn f() -> int { 200 } }
         proof fn test() {
             assert(<S as T>::f() == 100);
             assert(<S as T>::f() == 200); // FAILS
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
-    // TODO: } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_tuple verus_code! {
+        use vstd::prelude::*;
         struct S;
         trait T { spec fn f() -> int; }
-        impl T for S { spec fn f() -> int { 200 } }
-        impl<A: core::marker::Tuple> T for A { spec fn f() -> int { 100 } }
+        impl T for S { spec fn f() -> int { 100 } }
+        impl<A: core::marker::Tuple> T for A { spec fn f() -> int { 200 } }
         proof fn test() {
             assert(<S as T>::f() == 100);
             assert(<S as T>::f() == 200); // FAILS
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
-    // TODO: } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -2671,11 +2674,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_send verus_code! {
+        use vstd::prelude::*;
         struct S;
         impl !Send for S {}
         trait T { spec fn f() -> int; }
-        impl T for S { spec fn f() -> int { 200 } }
-        impl<A: Send> T for A { spec fn f() -> int { 100 } }
+        impl T for S { spec fn f() -> int { 100 } }
+        impl<A: Send> T for A { spec fn f() -> int { 200 } }
         proof fn test() {
             assert(<S as T>::f() == 100);
             assert(<S as T>::f() == 200); // FAILS
@@ -2687,11 +2691,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_sync verus_code! {
+        use vstd::prelude::*;
         struct S;
         impl !Sync for S {}
         trait T { spec fn f() -> int; }
-        impl T for S { spec fn f() -> int { 200 } }
-        impl<A: Sync> T for A { spec fn f() -> int { 100 } }
+        impl T for S { spec fn f() -> int { 100 } }
+        impl<A: Sync> T for A { spec fn f() -> int { 200 } }
         proof fn test() {
             assert(<S as T>::f() == 100);
             assert(<S as T>::f() == 200); // FAILS
@@ -2703,11 +2708,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_unpin verus_code! {
+        use vstd::prelude::*;
         struct S;
         impl !Unpin for S {}
         trait T { spec fn f() -> int; }
-        impl T for S { spec fn f() -> int { 200 } }
-        impl<A: Unpin> T for A { spec fn f() -> int { 100 } }
+        impl T for S { spec fn f() -> int { 100 } }
+        impl<A: Unpin> T for A { spec fn f() -> int { 200 } }
         proof fn test() {
             assert(<S as T>::f() == 100);
             assert(<S as T>::f() == 200); // FAILS
@@ -2715,6 +2721,36 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
     // TODO: } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_tuples_and_marker_traits verus_code! {
+        use vstd::prelude::*;
+
+        trait T1 { spec fn f() -> int; }
+        trait T2 { spec fn f() -> int; }
+        trait T3 { spec fn f() -> int; }
+        trait T4 { spec fn f() -> int; }
+        trait T5 { spec fn f() -> int; }
+        impl<A: Clone> T1 for A { spec fn f() -> int { 1 } }
+        impl<A: Copy> T2 for A { spec fn f() -> int { 2 } }
+        impl<A: Send> T3 for A { spec fn f() -> int { 3 } }
+        impl<A: Sync> T4 for A { spec fn f() -> int { 4 } }
+        impl<A: core::marker::Tuple> T5 for A { spec fn f() -> int { 5 } }
+
+        proof fn test() {
+            assert(1 == <bool as T1>::f());
+            assert(2 == <bool as T2>::f());
+            assert(3 == <bool as T3>::f());
+            assert(4 == <bool as T4>::f());
+            assert(1 == <(u8, u8) as T1>::f());
+            assert(2 == <(u8, u8) as T2>::f());
+            assert(3 == <(u8, u8) as T3>::f());
+            assert(4 == <(u8, u8) as T4>::f());
+            assert(5 == <(u8, u8) as T5>::f());
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 // This test should fail due to conflicting trait implementations, but currently

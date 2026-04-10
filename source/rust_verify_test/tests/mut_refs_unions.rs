@@ -492,7 +492,7 @@ test_verify_one_file_with_options! {
     } => Err(e) => assert_fails(e, 5)
 }
 
-// TODO(new_mut_ref): fix (false negative)
+// TODO(new_mut_ref): (blocking) fix (false negative)
 test_verify_one_file_with_options! {
     #[ignore] #[test] eval_order_union_array_issue1 ["new-mut-ref"] => verus_code! {
         union U { a: [u64; 2], b: bool }
@@ -510,7 +510,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "some error")
 }
 
-// TODO(new_mut_ref): fix (shouldn't error)
+// TODO(new_mut_ref): (blocking) fix (shouldn't error)
 test_verify_one_file_with_options! {
     #[test] eval_order_union_array_issue2 ["new-mut-ref"] => verus_code! {
         union U { a: [u64; 2], b: bool }
@@ -547,7 +547,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
 }
 
-// TODO(new_mut_ref): wrong error message, should error about the bounds-check instead
+// TODO(new_mut_ref): (blocking) wrong error message, should error about the bounds-check instead
 test_verify_one_file_with_options! {
     #[test] eval_order_union_array_issue4 ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
@@ -564,7 +564,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
 }
 
-// TODO(new_mut_ref): fix (false negative)
+// TODO(new_mut_ref): (blocking) fix (false negative)
 test_verify_one_file_with_options! {
     #[ignore] #[test] eval_order_union_slice_issue1 ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
@@ -588,7 +588,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "some error")
 }
 
-// TODO(new_mut_ref): fix (shouldn't error)
+// TODO(new_mut_ref): (blocking) fix (shouldn't error)
 test_verify_one_file_with_options! {
     #[test] eval_order_union_slice_issue2 ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
@@ -612,7 +612,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
 }
 
-// TODO(new_mut_ref): wrong error message, should error about the union instead
+// TODO(new_mut_ref): (blocking) wrong error message, should error about the union instead
 test_verify_one_file_with_options! {
     #[test] eval_order_union_slice_issue3 ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;

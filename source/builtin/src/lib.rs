@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(verus_verify_core), no_std)]
 #![allow(internal_features)]
 #![cfg_attr(
     verus_keep_ghost,
@@ -600,6 +600,12 @@ impl<A: Copy> Clone for Tracked<A> {
 }
 
 impl<A: Copy> Copy for Tracked<A> {}
+
+/// `Ghost` structs are always `Send`, since they are spec mode.
+unsafe impl<A> Send for Ghost<A> {}
+
+/// `Ghost` structs are always `Sync`, since they are spec mode.
+unsafe impl<A> Sync for Ghost<A> {}
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::ghost_exec"]
@@ -2301,6 +2307,12 @@ pub fn array_index<T, const N: usize>(_a: [T; N], _i: int) -> T {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::erased_ghost_value"]
 pub fn erased_ghost_value<S, T>(_: S) -> T {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::shadow_ghost_value"]
+pub fn shadow_ghost_value<S, T>(_: S) -> T {
     unimplemented!()
 }
 

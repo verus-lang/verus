@@ -1157,6 +1157,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] parsing_unit_ret_type_issue937 verus_code! {
+        use vstd::prelude::*;
+
         fn stuff() -> () { }
 
         fn stuff_fn_once<F: FnOnce(u8) -> ()>() { }
@@ -1558,6 +1560,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] tuple_copy_bound_issue2211 verus_code! {
+        use vstd::prelude::*;
+
         fn requires_copy<T: Copy>(i: T) {
         }
 

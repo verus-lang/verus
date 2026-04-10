@@ -292,7 +292,7 @@ test_verify_one_file_with_options! {
 
             resolve(x_ref_box);
 
-            // TODO(new_mut_ref): without this line, Verus doesn't emit the axiom for
+            // TODO(new_mut_ref): (triggers) without this line, Verus doesn't emit the axiom for
             // has_resolved::<Box<_>>
             assert(has_resolved(x_ref_box));
 
@@ -446,7 +446,7 @@ test_verify_one_file_with_options! {
                 a: (0, Box::new((&mut u, 20))),
             };
 
-            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): should be automatic
+            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
 
             assert(u == 0);
         }
@@ -501,7 +501,7 @@ test_verify_one_file_with_options! {
                 a: (0, Box::new((&mut u, 20))),
             };
 
-            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): should be automatic
+            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
 
             assert(u == 0);
             assert(false); // FAILS
@@ -569,7 +569,7 @@ test_verify_one_file_with_options! {
             let mut x = X {
                 a: (0, Box::new((&mut pair_ref_pair, 4))),
             };
-            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): should be automatic
+            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
             assert(has_resolved(pair_ref_pair.1));
             assert(pair === (0, 1));
         }
@@ -665,7 +665,7 @@ test_verify_one_file_with_options! {
             let mut x = X {
                 a: (0, Box::new((&mut pair_ref_pair, 4))),
             };
-            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): should be automatic
+            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
             assert(has_resolved(pair_ref_pair.1));
             assert(pair === (0, 1));
             assert(false); // FAILS
@@ -760,6 +760,22 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] control_flow_match_on_never ["new-mut-ref"] => verus_code! {
+        #[allow(unreachable_code)]
+        fn test(x: !) {
+            let mut y = 0;
+            let y_ref = &mut y;
+
+            assert(has_resolved(y_ref));
+
+            match x { }
+
+            *y_ref = 20;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not yet implemented: zero-arm match expressions")
 }
 
 test_verify_one_file_with_options! {
@@ -2316,7 +2332,7 @@ test_verify_one_file_with_options! {
             assert(j[0] == (X { a: 20, b: 0 }));
             assert(false); // FAILS
         }
-    } => Err(err) => assert_fails(err, 6) // TODO(new_mut_ref)
+    } => Err(err) => assert_fails(err, 6)
 }
 
 test_verify_one_file_with_options! {
@@ -2549,6 +2565,28 @@ test_verify_one_file_with_options! {
             assert(has_resolved(y.x.b));
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] has_resolved_field_of_struct_with_drop_impl ["new-mut-ref"] => verus_code! {
+        struct X {
+            s: &'static mut u64,
+        }
+
+        impl Drop for X {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+            }
+        }
+
+        fn test(x: X, r: &'static mut u64) {
+            let mut x = x;
+            x.s = r;
+            assert(has_resolved(x.s)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }
 
 test_verify_one_file_with_options! {
@@ -3251,7 +3289,7 @@ test_verify_one_file_with_options! {
             assert(x == 1);
             assert(false);
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `(Verus spec x_ref)` as immutable because it is also borrowed as mutable")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `*(Verus spec x_ref)` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file_with_options! {
@@ -4675,4 +4713,47 @@ test_verify_one_file_with_options! {
             let r = Pair { a: X{}, .. t[0] };
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::Pair<crate::X, crate::X>; 2]`, which is non-copy")
+}
+
+test_verify_one_file_with_options! {
+    #[test] not_extensional_equ ["new-mut-ref"] => verus_code! {
+        proof fn x<T>(a: &mut T, b: &mut T) {
+            assume(mut_ref_current(a) == mut_ref_current(b));
+            assume(mut_ref_future(a) == mut_ref_future(b));
+
+            // Mut refs can't have extensional equality like this; this would make `a == b`
+            // a prophetic operation. In the VerusBelt model, every mut ref has a unique "name".
+            assert(a == b); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] final_is_not_decreases ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        struct Rec {
+            g: Option<Ghost<&'static mut Rec>>,
+        }
+
+        fn test() {
+            let mut r = Rec { g: None };
+
+            let mut r_ref = &mut r;
+            *r_ref = Rec { g: Some(Ghost(r_ref)) };
+
+            // We're allowed to create this value with a "cycle"
+            assert(r.g.is_some());
+            assert(r === *final(r.g.unwrap()@));
+
+            // This is okay because 'final' doesn't imply 'decreases_to'.
+            // In the VerusBelt model, final is only obtained by "looking up" the value
+            // in the prophecy assignment table,
+            // not by structural recursion on an inductive datatype.
+            assert(decreases_to!(r => r.g));
+            assert(decreases_to!(r.g => r.g.unwrap()));
+            let ghost bad_dec = decreases_to!(r.g.unwrap()@ => *final(r.g.unwrap()@));
+            assert(bad_dec); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

@@ -2,18 +2,18 @@
 use vstd::prelude::*;
 use vstd::atomic::*;
 use vstd::invariant::*;
-use vstd::cell;
-use vstd::cell::*;
+use vstd::cell::pcell;
+use vstd::cell::CellId;
 use vstd::atomic;
 use vstd::modes::*;
 
 verus!{
 
 struct LockInv { }
-impl<T> InvariantPredicate<(AtomicCellId, CellId), (atomic::PermissionBool, Option<cell::PointsTo<T>>)> for LockInv {
+impl<T> InvariantPredicate<(AtomicCellId, CellId), (atomic::PermissionBool, Option<pcell::PointsTo<T>>)> for LockInv {
     open spec fn inv(
         cell_ids: (AtomicCellId, CellId),
-        ghost_stuff: (atomic::PermissionBool, Option<cell::PointsTo<T>>),
+        ghost_stuff: (atomic::PermissionBool, Option<pcell::PointsTo<T>>),
     ) -> bool {
         ghost_stuff.0.id() == cell_ids.0
         && match ghost_stuff.1 {
@@ -24,7 +24,6 @@ impl<T> InvariantPredicate<(AtomicCellId, CellId), (atomic::PermissionBool, Opti
             }
             Some(points_to) => {
                 points_to.id() == cell_ids.1
-                  && points_to.is_init()
                   && ghost_stuff.0.value() == false
             }
         }
@@ -33,10 +32,10 @@ impl<T> InvariantPredicate<(AtomicCellId, CellId), (atomic::PermissionBool, Opti
 
 struct Lock<T> {
     pub atomic: PAtomicBool,
-    pub cell: PCell<T>,
+    pub cell: pcell::PCell<T>,
     pub inv: Tracked<AtomicInvariant<
         (AtomicCellId, CellId),
-        (atomic::PermissionBool, Option<cell::PointsTo<T>>),
+        (atomic::PermissionBool, Option<pcell::PointsTo<T>>),
         LockInv
     >>,
 }
@@ -50,7 +49,7 @@ impl<T> Lock<T> {
         ensures lock.wf()
     {
         let (atomic, Tracked(atomic_perm)) = PAtomicBool::new(false);
-        let (cell, Tracked(cell_perm)) = PCell::new(t);
+        let (cell, Tracked(cell_perm)) = pcell::PCell::new(t);
         let tracked inv = AtomicInvariant::new(
             (atomic.id(), cell.id()),
             (atomic_perm, Some(cell_perm)),
@@ -58,9 +57,9 @@ impl<T> Lock<T> {
         Lock { atomic, cell, inv: Tracked(inv) }
     }
 
-    fn acquire(&self) -> (points_to: Tracked<cell::PointsTo<T>>)
+    fn acquire(&self) -> (points_to: Tracked<pcell::PointsTo<T>>)
         requires self.wf(),
-        ensures points_to@.id() == self.cell.id(), points_to@.is_init()
+        ensures points_to@.id() == self.cell.id(),
     {
         loop
             invariant self.wf(),
@@ -81,10 +80,10 @@ impl<T> Lock<T> {
         }
     }
 
-    fn release(&self, points_to: Tracked<cell::PointsTo<T>>)
+    fn release(&self, points_to: Tracked<pcell::PointsTo<T>>)
         requires
             self.wf(),
-            points_to@.id() == self.cell.id(), points_to@.is_init()
+            points_to@.id() == self.cell.id(),
     {
         open_atomic_invariant!(self.inv.borrow() => ghost_stuff => {
             let tracked (mut atomic_permission, _) = ghost_stuff;

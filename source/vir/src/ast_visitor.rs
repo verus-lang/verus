@@ -879,10 +879,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let tr = self.visit_typ(tr)?;
                 R::ret(|| Arc::new(TypX::SpecFn(R::get_vec_a(ts), R::get(tr))))
             }
-            TypX::AnonymousClosure(ts, tr, id) => {
+            TypX::AnonymousClosure(ts, tr, kind, id) => {
                 let ts = self.visit_typs(ts)?;
                 let tr = self.visit_typ(tr)?;
-                R::ret(|| Arc::new(TypX::AnonymousClosure(R::get_vec_a(ts), R::get(tr), *id)))
+                R::ret(|| {
+                    Arc::new(TypX::AnonymousClosure(R::get_vec_a(ts), R::get(tr), *kind, *id))
+                })
             }
             TypX::FnDef(fun, ts, res_fun) => {
                 let ts = self.visit_typs(ts)?;

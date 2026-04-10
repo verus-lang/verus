@@ -62,6 +62,7 @@ pub(crate) enum Datatype {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Bound {
     Sized,
+    Tuple,
     Trait { trait_path: Id, args: Vec<Typ>, equality: Option<(Id, Vec<Id>, Typ)> },
 }
 
