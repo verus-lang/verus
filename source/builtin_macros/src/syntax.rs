@@ -5260,24 +5260,30 @@ pub(crate) fn proof_macro_explicit_exprs(
     proc_macro::TokenStream::from(new_stream)
 }
 
-pub(crate) fn has_external_code(attrs: &Vec<Attribute>) -> bool {
-    attrs.iter().any(|attr| {
-        // verifier::external
-        attr.path().segments.len() == 2
-            && attr.path().segments[0].ident == "verifier"
-            && (attr.path().segments[1].ident == "external"
-                || attr.path().segments[1].ident == "external_body")
-        // verifier(external)
-        || attr.path().segments.len() == 1
-            && attr.path().segments[0].ident == "verifier"
-            && match &attr.meta {
-                verus_syn::Meta::List(list) => {
-                    matches!(list.tokens.to_string().as_str(), "external" | "external_body")
-                }
-                _ => false,
-            }
-    })
+macro_rules! declare_has_external_code {
+    ($name:ident, $s:ident) => {
+        pub(crate) fn $name(attrs: &Vec<$s::Attribute>) -> bool {
+            attrs.iter().any(|attr| {
+                // verifier::external
+                attr.path().segments.len() == 2
+                    && attr.path().segments[0].ident == "verifier"
+                    && (attr.path().segments[1].ident == "external"
+                        || attr.path().segments[1].ident == "external_body")
+                // verifier(external) or verus_verify(external)
+                || attr.path().segments.len() == 1
+                    && matches!(attr.path().segments[0].ident.to_string().as_str(), "verifier" | "verus_verify")
+                    && match &attr.meta {
+                        $s::Meta::List(list) => {
+                            matches!(list.tokens.to_string().as_str(), "external" | "external_body")
+                        }
+                        _ => false,
+                    }
+            })
+        }
+    };
 }
+declare_has_external_code!(has_external_code, verus_syn);
+declare_has_external_code!(has_external_code_syn, syn);
 
 pub(crate) fn is_encoded_const(attrs: &Vec<Attribute>) -> bool {
     attrs.iter().any(|attr| match &attr.meta {

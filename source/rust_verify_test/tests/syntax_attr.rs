@@ -1297,6 +1297,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_skip_desugar_loop_with_external_body code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        struct A;
+
+        impl Iterator for A {
+            type Item = u32;
+            fn next(&mut self) -> Option<Self::Item> {
+                None
+            }
+        }
+
+        #[verus_verify(external_body)]
+        #[verus_spec(ensures false)]
+        fn test_for_loop()
+        {
+            let a = A;
+            for i in a
+            {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_proof_with_struct code!{
         use vstd::prelude::*;
         use vstd::raw_ptr::PointsToRaw;
