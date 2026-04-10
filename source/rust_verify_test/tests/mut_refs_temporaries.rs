@@ -3912,3 +3912,27 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_fails(e, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] temporary_is_never ["new-mut-ref"] => verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        fn never_return() -> (!, !) {
+            loop {}
+        }
+
+        #[allow(unreachable_code)]
+        fn test(x: !) {
+            never_return().0 = x;
+            assert(false);
+        }
+
+        #[allow(unreachable_code)]
+        fn test2(x: !) {
+            let mut y = 0;
+            let y_ref = &mut y;
+            assert(has_resolved(y_ref));
+            never_return().0 = x;
+            *y_ref = 20;
+        }
+    } => Ok(())
+}

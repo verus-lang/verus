@@ -561,6 +561,7 @@ mod typing {
             Typing { internal_state: state, internal_undo: Some(Box::new(|_| {})) }
         }
 
+        #[must_use]
         pub(super) fn push_var_scope<'a>(&'a mut self) -> Typing<'a> {
             self.internal_state.vars.push_scope(true);
             Typing {
@@ -571,6 +572,7 @@ mod typing {
             }
         }
 
+        #[must_use]
         pub(super) fn push_var_multi_scope<'a>(&'a mut self) -> Typing<'a> {
             let vars_scope_count = self.internal_state.vars.num_scopes();
             Typing {
@@ -588,6 +590,7 @@ mod typing {
             self.internal_state.vars.push_scope(true);
         }
 
+        #[must_use]
         pub(super) fn push_in_pure<'a>(&'a mut self, mut in_pure: bool) -> Typing<'a> {
             swap(&mut in_pure, &mut self.internal_state.in_pure);
             Typing {
@@ -598,6 +601,7 @@ mod typing {
             }
         }
 
+        #[must_use]
         pub(super) fn push_in_forall_stmt<'a>(
             &'a mut self,
             mut in_forall_stmt: bool,
@@ -611,6 +615,7 @@ mod typing {
             }
         }
 
+        #[must_use]
         pub(super) fn push_in_proof_in_spec<'a>(
             &'a mut self,
             mut in_proof_in_spec: bool,
@@ -624,6 +629,7 @@ mod typing {
             }
         }
 
+        #[must_use]
         pub(super) fn push_block_ghostness<'a>(
             &'a mut self,
             mut block_ghostness: Ghost,
@@ -637,6 +643,7 @@ mod typing {
             }
         }
 
+        #[must_use]
         pub(super) fn push_ret_mode<'a>(&'a mut self, mut ret_mode: Option<Mode>) -> Typing<'a> {
             swap(&mut ret_mode, &mut self.internal_state.ret_mode);
             Typing {
@@ -647,6 +654,7 @@ mod typing {
             }
         }
 
+        #[must_use]
         pub(super) fn push_atomic_insts<'a>(
             &'a mut self,
             mut atomic_insts: Option<AtomicInstCollector>,
@@ -661,6 +669,7 @@ mod typing {
         }
 
         // If we want to catch a VirErr, use this to make sure state is restored upon catching the error
+        #[must_use]
         pub(super) fn push_restore_on_error<'a>(&'a mut self) -> Typing<'a> {
             self.push_var_scope()
         }
@@ -2418,7 +2427,7 @@ fn check_expr_handle_mut_arg(
             for binder in binders.iter() {
                 typing.insert(&binder.name, Mode::Spec, Some(ProphVar::No));
             }
-            typing.push_in_pure(true);
+            let mut typing = typing.push_in_pure(true);
             let proph = check_expr_has_mode(
                 ctxt,
                 record,
@@ -2438,7 +2447,7 @@ fn check_expr_handle_mut_arg(
             for binder in params.iter() {
                 typing.insert(&binder.name, Mode::Spec, Some(ProphVar::No));
             }
-            typing.push_in_pure(true);
+            let mut typing = typing.push_in_pure(true);
             let mut typing = typing.push_atomic_insts(None);
             let p = check_expr_has_mode(
                 ctxt,
@@ -2552,7 +2561,7 @@ fn check_expr_handle_mut_arg(
             for binder in params.iter() {
                 typing.insert(&binder.name, Mode::Spec, Some(ProphVar::No));
             }
-            typing.push_in_pure(true);
+            let mut typing = typing.push_in_pure(true);
             let proph1 = check_expr_has_mode(
                 ctxt,
                 record,

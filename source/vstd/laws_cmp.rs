@@ -97,6 +97,27 @@ num_laws_cmp!(usize, usize_laws);
 
 num_laws_cmp!(isize, isize_laws);
 
+pub broadcast proof fn lemma_ref_obeys_cmp_spec<T: Ord>()
+    requires
+        obeys_cmp_spec::<T>(),
+    ensures
+        #[trigger] obeys_cmp_spec::<&T>(),
+{
+    broadcast use lemma_ref_obeys_eq_spec;
+
+    assert(obeys_eq_spec::<&T>());
+
+    assert(obeys_cmp_partial_ord::<&T>() && obeys_cmp_ord::<&T>()) by {
+        reveal(obeys_cmp_partial_ord);
+        reveal(obeys_cmp_ord);
+    }
+
+    assert(obeys_partial_cmp_spec_properties::<&T>()) by {
+        reveal(obeys_cmp_partial_ord);
+        reveal(obeys_partial_cmp_spec_properties);
+    }
+}
+
 pub broadcast proof fn lemma_option_obeys_cmp_spec<T: Ord>()
     requires
         obeys_cmp_spec::<T>(),
@@ -131,6 +152,7 @@ pub broadcast group group_laws_cmp {
     i128_laws::lemma_obeys_cmp_spec,
     usize_laws::lemma_obeys_cmp_spec,
     isize_laws::lemma_obeys_cmp_spec,
+    lemma_ref_obeys_cmp_spec,
     lemma_option_obeys_cmp_spec,
 }
 

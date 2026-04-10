@@ -4,8 +4,8 @@
 use verus_builtin::*;
 use verus_builtin_macros::*;
 use verus_state_machines_macros::tokenized_state_machine;
-use vstd::cell;
-use vstd::cell::*;
+use vstd::cell::CellId;
+use vstd::cell::pcell_maybe_uninit as cell;
 use vstd::invariant::*;
 use vstd::multiset::*;
 use vstd::pervasive::*;
@@ -66,7 +66,7 @@ tokenized_state_machine!(RefCounter<S> {
     #[invariant]
     pub fn storage_inv(&self) -> bool {
         match self.storage {
-            Some(x) => x@.pcell == self.pcell_loc && x.is_init(),
+            Some(x) => x.id() == self.pcell_loc && x.is_init(),
             None => true,
         }
     }
@@ -86,7 +86,7 @@ tokenized_state_machine!(RefCounter<S> {
 
     transition!{
         do_deposit(x: Perm<S>) {
-            require(x@.pcell == pre.pcell_loc && x.is_init());
+            require(x.id() == pre.pcell_loc && x.is_init());
             remove writer -= true;
             assert(pre.flag == BorrowFlag::MutBorrow);
             update flag = BorrowFlag::ReadBorrow(0);
@@ -106,7 +106,7 @@ tokenized_state_machine!(RefCounter<S> {
             add writer += true;
 
             withdraw storage -= Some(let x);
-            assert(x@.pcell == pre.pcell_loc && x.is_init());
+            assert(x.id() == pre.pcell_loc && x.is_init());
         }
     }
 
@@ -129,7 +129,7 @@ tokenized_state_machine!(RefCounter<S> {
 
             birds_eye let x = pre.storage->0;
             add reader += { x };
-            assert(x@.pcell == pre.pcell_loc && x.is_init());
+            assert(x.id() == pre.pcell_loc && x.is_init());
         }
     }
 
@@ -159,8 +159,8 @@ pub tracked struct GhostStuff<S> {
 }
 
 impl<S> GhostStuff<S> {
-    pub closed spec fn wf(self, inst: RefCounter::Instance<S>, rc_cell: PCell<isize>) -> bool {
-        &&& self.rc_perm@.pcell == rc_cell.id()
+    pub closed spec fn wf(self, inst: RefCounter::Instance<S>, rc_cell: cell::PCell<isize>) -> bool {
+        &&& self.rc_perm.id() == rc_cell.id()
         &&& self.flag_token.instance_id() == inst.id()
         &&& self.rc_perm.is_init()
         &&& self.rc_perm.value() as int == match self.flag_token.value() {
@@ -175,8 +175,8 @@ struct_with_invariants!{
         // 0: no reference taken
         // 1: mut reference taken
         // -n: n non-mut references taken
-        rc_cell: PCell<isize>,
-        value_cell: PCell<S>,
+        rc_cell: cell::PCell<isize>,
+        value_cell: cell::PCell<S>,
 
         inst: Tracked< RefCounter::Instance<S> >,
         inv: Tracked< Shared<LocalInvariant<_, GhostStuff<S>, _>> >,
@@ -205,7 +205,7 @@ impl<'a, S> Ref<'a, S> {
     pub closed spec fn wf(&self) -> bool {
         self.ref_cell.wf()
             && self.reader@.instance_id() == self.ref_cell.inst@.id()
-            && self.reader@.element()@.pcell == self.ref_cell.value_cell.id()
+            && self.reader@.element().id() == self.ref_cell.value_cell.id()
             && self.reader@.element().is_init()
     }
 
@@ -224,7 +224,7 @@ impl<'a, S> RefMut<'a, S> {
     pub closed spec fn wf(&self) -> bool {
         self.ref_cell.wf()
           && self.writer@.instance_id() == self.ref_cell.inst@.id()
-          && self.perm@@.pcell == self.ref_cell.value_cell.id()
+          && self.perm@.id() == self.ref_cell.value_cell.id()
           && self.perm@.is_init()
     }
 
@@ -238,8 +238,8 @@ impl<S> RefCell<S> {
         ensures
             ref_cell.wf(),
     {
-        let (rc_cell, Tracked(rc_perm)) = PCell::new(0);
-        let (value_cell, Tracked(value_perm)) = PCell::new(s);
+        let (rc_cell, Tracked(rc_perm)) = cell::PCell::new(0);
+        let (value_cell, Tracked(value_perm)) = cell::PCell::new(s);
         let tracked (Tracked(inst), Tracked(flag), _, Tracked(writer)) = RefCounter::Instance::<
             S,
         >::initialize_empty(value_cell.id(), None);

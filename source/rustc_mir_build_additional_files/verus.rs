@@ -130,7 +130,7 @@ fn get_verus_erasure_ctxt() -> Arc<VerusErasureCtxt> {
         .clone()
 }
 
-fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
+pub(crate) fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
     VERUS_ERASURE_CTXT.read().unwrap().clone()
 }
 
@@ -204,7 +204,10 @@ impl VerusThirBuildCtxt {
     }
 }
 
-fn enclosing_fn_local_def_id<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> LocalDefId {
+pub(crate) fn enclosing_fn_local_def_id<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
+) -> LocalDefId {
     if tcx.is_closure_like(local_def_id.into()) {
         let hir_id = tcx.local_def_id_to_hir_id(local_def_id);
         let parent_owner_id = tcx.hir_get_parent_item(hir_id);

@@ -76,6 +76,55 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "`birds_eye` only makes sense for tokenized state machines")
 }
 
+test_verify_one_file_with_options! {
+    #[test] test_custom_err_on_subexpression_is_inert ["--expand-errors"] => verus_code! {
+        spec fn custom_requires(a: bool, b: bool) -> bool {
+            (#[verifier(custom_err("Custom error on subexpression"))] a) && b
+        }
+
+        fn caller() {
+            assert(custom_requires(1 == 2, true));
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].message.contains("assertion failed"));
+        assert!(!err.errors.iter().any(|diag| {
+            diag.message.contains("Custom error on subexpression")
+                || diag.rendered.contains("Custom error on subexpression")
+        }));
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_state_machine_req_custom_err_is_inert ["--expand-errors"] => IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X {
+            fields {
+                pub i: int,
+            }
+
+            transition!{
+                tr() {
+                    require(pre.i > 0);
+                    update i = pre.i + 1;
+                }
+            }
+        }}
+
+        proof fn assert_tr() {
+            let pre = X::State { i: 0 };
+            let post = X::State { i: 1 };
+            X::show::tr(pre, post);
+            assert(X::State::tr(pre, post));
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].message.contains("precondition not satisfied"));
+        assert!(err.errors[1].message.contains("assertion failed"));
+        assert!(!err.errors.iter().any(|diag| {
+            diag.message.contains("cannot prove this condition holds")
+                || diag.rendered.contains("cannot prove this condition holds")
+        }));
+    }
+}
+
 test_verify_one_file! {
     #[test] test_birds_eye_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {

@@ -1,6 +1,8 @@
 use vstd::prelude::*;
 use vstd::invariant::*;
-use vstd::cell::*;
+use vstd::cell::pcell_maybe_uninit::*;
+use vstd::cell::CellId;
+use vstd::simple_pptr::MemContents;
 
 verus!{
 

@@ -166,14 +166,15 @@ use crate::verus::{
     make_fake_call_kind_with_original_fn, shadow_ghost_value_kind_with_args,
 };
 use rustc_hir as hir;
+use rustc_hir::def_id::LocalDefId;
 use rustc_hir::{BindingMode, ByRef, HirId, Mutability, Pinnedness};
 use rustc_middle::middle::region;
 use rustc_middle::mir::{BorrowKind, MutBorrowKind};
 use rustc_middle::thir::{
     Arm, ArmId, Block, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, LogicalOp, Pat, PatKind,
-    Stmt, StmtId, StmtKind,
+    Stmt, StmtId, StmtKind, Thir,
 };
-use rustc_middle::ty::{GenericArg, Region, RegionKind, Ty, TyKind};
+use rustc_middle::ty::{GenericArg, Region, RegionKind, Ty, TyCtxt, TyKind};
 use rustc_span::Span;
 use rustc_span::Symbol;
 
@@ -402,6 +403,31 @@ pub(crate) fn expand_stmt<'tcx>(
 ///   && let x_shadow = arbitrary_ghost_value();
 ///   && let y_shadow = arbitrary_ghost_value();
 /// ```
+///
+/// We need to be careful about refutability issues. Rust always adds an extra edge for
+/// the match-failure cases of a let expression. (This even includes let expressions
+/// where the pattern is actually refutable, e.g., our
+/// `let x_shadow = arbitrary_ghost_value()` line.)
+///
+/// This can cause problems in a scenario like:
+///
+/// ```rust
+/// fn test_if_let_move(s: Option<String>) {
+///     if let Some(a) = s {
+///         let t1 = a;
+///     } else {
+///         let t2 = s;
+///     }
+/// }
+/// ```
+///
+/// Here, the extra clauses added by our translation create extra CFG edges, which means
+/// that we do a move out of `s` and then reach the else-block (which wouldn't be the case
+/// if this were translated normally).
+///
+/// To deal with this, we *also* modify the THIR->MIR lowering to skip this extra edge
+/// for any Let expression that we determine to be the result of our half-pattern translation.
+/// See `let_expr_treat_as_irrefutable`.
 fn expr_let_post<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &hir::Expr<'tcx>,
@@ -464,6 +490,122 @@ fn expr_let_post<'tcx>(
     }
 
     conjoin_exprs(cx, &let_exprs, hir_expr.hir_id, hir_expr.span)
+}
+
+/// Returns true if this is one of our inserted LetExprs which should be treated
+/// as irrefutable.
+pub(crate) fn let_expr_treat_as_irrefutable<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    thir: &Thir<'tcx>,
+    local_def_id: LocalDefId,
+    pat: &Pat<'tcx>,
+    expr_id: ExprId,
+) -> bool {
+    let Some(erasure_ctxt) = crate::verus::get_verus_erasure_ctxt_option() else {
+        return false;
+    };
+
+    let enclosing_def_id = crate::verus::enclosing_fn_local_def_id(tcx, local_def_id);
+
+    // This will catch either:
+    // `let (ref mut x_half2, _) = shadow_place`
+    // or:
+    // `let x_shadow = arbitrary_ghost_value()`
+    if pat_has_shadow(enclosing_def_id, pat) {
+        return true;
+    }
+
+    // This will catch:
+    // let x = mutable_reference_tie(x_half1, x_half2)
+    match &thir.exprs[expr_id].kind {
+        ExprKind::Call { fun, args, .. } => match thir.exprs[*fun].ty.kind() {
+            TyKind::FnDef(fn_def_id, _)
+                if *fn_def_id == erasure_ctxt.mutable_reference_tie_fn_def_id =>
+            {
+                assert!(args.len() == 2);
+                match &thir.exprs[args[1]].kind {
+                    ExprKind::VarRef { id } => is_half_var_id(enclosing_def_id, *id, Half::Shadow),
+                    _ => false,
+                }
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// Does the pat contain a `x_shadow` var or `x_half2` var?
+fn pat_has_shadow<'tcx>(enclosing_def_id: LocalDefId, pat: &Pat<'tcx>) -> bool {
+    match &pat.kind {
+        PatKind::Missing => false,
+        PatKind::Wild => false,
+        PatKind::Binding {
+            name: _,
+            mode: _,
+            var,
+            ty: _,
+            subpattern,
+            is_primary: _,
+            is_shorthand: _,
+        } => {
+            if is_half_var_id(enclosing_def_id, *var, Half::Shadow) {
+                return true;
+            }
+            if is_shadow_var_id(enclosing_def_id, *var) {
+                return true;
+            }
+            if let Some(subpat) = subpattern {
+                if pat_has_shadow(enclosing_def_id, subpat) {
+                    return true;
+                }
+            }
+            false
+        }
+        PatKind::Variant { adt_def: _, args: _, variant_index: _, subpatterns }
+        | PatKind::Leaf { subpatterns } => {
+            for field_pat in subpatterns.iter() {
+                if pat_has_shadow(enclosing_def_id, &field_pat.pattern) {
+                    return true;
+                }
+            }
+            false
+        }
+
+        PatKind::Deref { subpattern } => pat_has_shadow(enclosing_def_id, subpattern),
+        PatKind::DerefPattern { subpattern, borrow: _ } => {
+            pat_has_shadow(enclosing_def_id, subpattern)
+        }
+        PatKind::Constant { value: _ } => false,
+        PatKind::Range(_pat_range) => false,
+        PatKind::Slice { prefix, slice, suffix } | PatKind::Array { prefix, slice, suffix } => {
+            for p in prefix.iter() {
+                if pat_has_shadow(enclosing_def_id, p) {
+                    return true;
+                }
+            }
+            if let Some(sl) = slice {
+                if pat_has_shadow(enclosing_def_id, sl) {
+                    return true;
+                }
+            }
+            for p in suffix.iter() {
+                if pat_has_shadow(enclosing_def_id, p) {
+                    return true;
+                }
+            }
+            false
+        }
+        PatKind::Or { pats } => {
+            for pat in pats.iter() {
+                if pat_has_shadow(enclosing_def_id, pat) {
+                    return true;
+                }
+            }
+            false
+        }
+        PatKind::Never => false,
+        PatKind::Error(_error_guaranteed) => false,
+    }
 }
 
 /// Translate the given arm with the 'half pattern' transformation. The arm's pattern is
@@ -813,7 +955,6 @@ fn make_half_decl<'tcx>(
 }
 
 /// Same as `make_half_decl`, but returns a let expression instead of let statement.
-/// For let expressions, we don't have to worry about refutability.
 fn make_half_let_expr<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     _erasure_ctxt: &VerusErasureCtxt,
@@ -1000,6 +1141,27 @@ fn half_local_var_id(v: LocalVarId, hk: Half) -> LocalVarId {
             Half::Shadow => 3,
         },
     )
+}
+
+/// Is this an `x_half1`/`x_half2` identifier?
+fn is_half_var_id(enclosing_def_id: LocalDefId, v: LocalVarId, hk: Half) -> bool {
+    let v_id = v.0.owner.def_id.local_def_index.as_usize();
+    let main_id = enclosing_def_id.local_def_index.as_usize();
+    let modifier_offset = v_id.checked_sub(main_id).unwrap();
+    assert!(modifier_offset <= 3);
+    match hk {
+        Half::Normal => modifier_offset == 2,
+        Half::Shadow => modifier_offset == 3,
+    }
+}
+
+/// Is this an `x_shadow` identifier?
+fn is_shadow_var_id(enclosing_def_id: LocalDefId, v: LocalVarId) -> bool {
+    let v_id = v.0.owner.def_id.local_def_index.as_usize();
+    let main_id = enclosing_def_id.local_def_index.as_usize();
+    let modifier_offset = v_id.checked_sub(main_id).unwrap();
+    assert!(modifier_offset <= 3);
+    modifier_offset == 1
 }
 
 /// Make a fresh LocalVarId

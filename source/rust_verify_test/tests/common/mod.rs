@@ -337,6 +337,9 @@ pub fn run_verus(
         } else if *option == "no-bv-simplify" {
             verus_args.push("-V".to_string());
             verus_args.push("no-bv-simplify".to_string());
+        } else if *option == "--edition 2024" {
+            verus_args.push("--edition".to_string());
+            verus_args.push("2024".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }

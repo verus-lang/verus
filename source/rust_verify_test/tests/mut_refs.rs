@@ -2568,6 +2568,28 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] has_resolved_field_of_struct_with_drop_impl ["new-mut-ref"] => verus_code! {
+        struct X {
+            s: &'static mut u64,
+        }
+
+        impl Drop for X {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+            }
+        }
+
+        fn test(x: X, r: &'static mut u64) {
+            let mut x = x;
+            x.s = r;
+            assert(has_resolved(x.s)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
     #[test] assign_op_to_mut_ref ["new-mut-ref"] => verus_code! {
         fn test_add_assign(i: u64)
             requires i < 1000
@@ -4691,4 +4713,47 @@ test_verify_one_file_with_options! {
             let r = Pair { a: X{}, .. t[0] };
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::Pair<crate::X, crate::X>; 2]`, which is non-copy")
+}
+
+test_verify_one_file_with_options! {
+    #[test] not_extensional_equ ["new-mut-ref"] => verus_code! {
+        proof fn x<T>(a: &mut T, b: &mut T) {
+            assume(mut_ref_current(a) == mut_ref_current(b));
+            assume(mut_ref_future(a) == mut_ref_future(b));
+
+            // Mut refs can't have extensional equality like this; this would make `a == b`
+            // a prophetic operation. In the VerusBelt model, every mut ref has a unique "name".
+            assert(a == b); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] final_is_not_decreases ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        struct Rec {
+            g: Option<Ghost<&'static mut Rec>>,
+        }
+
+        fn test() {
+            let mut r = Rec { g: None };
+
+            let mut r_ref = &mut r;
+            *r_ref = Rec { g: Some(Ghost(r_ref)) };
+
+            // We're allowed to create this value with a "cycle"
+            assert(r.g.is_some());
+            assert(r === *final(r.g.unwrap()@));
+
+            // This is okay because 'final' doesn't imply 'decreases_to'.
+            // In the VerusBelt model, final is only obtained by "looking up" the value
+            // in the prophecy assignment table,
+            // not by structural recursion on an inductive datatype.
+            assert(decreases_to!(r => r.g));
+            assert(decreases_to!(r.g => r.g.unwrap()));
+            let ghost bad_dec = decreases_to!(r.g.unwrap()@ => *final(r.g.unwrap()@));
+            assert(bad_dec); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

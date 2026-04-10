@@ -1,6 +1,7 @@
 /*!
 Reasoning about representations of non-negative numbers with endianness, including conversion between bases.
 */
+use crate::vstd::arithmetic::div_mod::*;
 use crate::vstd::arithmetic::mul::*;
 use crate::vstd::arithmetic::power::*;
 use crate::vstd::arithmetic::power2::*;
@@ -526,16 +527,16 @@ impl<B: Base> EndianNat<B> {
             let least = endian_nat.least();
             let rest = endian_nat.drop_least();
             Self::to_nat_from_nat(rest);
-            assert(least == n % B::base()) by (nonlinear_arith)
-                requires
-                    n == rest.to_nat() * B::base() + least,
-                    least < B::base(),
-            ;
-            assert(rest.to_nat() == n / B::base()) by (nonlinear_arith)
-                requires
-                    n == rest.to_nat() * B::base() + least,
-                    least < B::base(),
-            ;
+            assert(least == n % B::base() && rest.to_nat() == n / B::base()) by {
+                assert(n == rest.to_nat() * B::base() + least);
+                assert(least < B::base());
+                lemma_fundamental_div_mod_converse(
+                    n as int,
+                    B::base() as int,
+                    rest.to_nat() as int,
+                    least as int,
+                );
+            }
         }
     }
 
@@ -894,11 +895,11 @@ impl<B: Base> EndianNat<B> {
                     Self::exp() > 0,
                     n.len() > 0,
             ;
-            assert(rest.len() % Self::exp() == 0) by (nonlinear_arith)
-                requires
-                    rest.len() == n.len() - Self::exp(),
-                    n.len() % Self::exp() == 0,
-            ;
+            assert(rest.len() % Self::exp() == 0) by {
+                lemma_mod_multiples_vanish(-1 as int, n.len() as int, Self::exp() as int);
+                assert(n.len() % Self::exp() == 0);
+                assert(rest.len() == n.len() - Self::exp() == -1 * Self::exp() + n.len());
+            }
             Self::to_big_properties(rest);
             Self::to_nat_properties(least);
             let big_least = EndianNat::<BIG>::new(n.endian, seq![least.to_nat() as int]);
@@ -910,11 +911,11 @@ impl<B: Base> EndianNat<B> {
                 }
                 assert(big_least.to_nat() == least.to_nat()) by {
                     assert(big_least.drop_least().to_nat() * BIG::base() + big_least.least()
-                        == least.to_nat()) by (nonlinear_arith)
-                        requires
-                            big_least.least() == least.to_nat(),
-                            big_least.drop_least().to_nat() == 0,
-                    ;
+                        == least.to_nat()) by {
+                        assert(big_least.least() == least.to_nat());
+                        assert(big_least.drop_least().to_nat() == 0);
+                        lemma_mul_basics(BIG::base() as int);
+                    }
                 }
                 assert(n.to_nat() == (rest.to_nat() * base_upper_bound_excl::<B>(Self::exp()))
                     + least.to_nat()) by {
@@ -929,13 +930,11 @@ impl<B: Base> EndianNat<B> {
                 }
             }
             assert(Self::to_big(n).len() == n.len() / Self::exp()) by {
-                assert(Self::to_big(n).len() == n.len() / Self::exp()) by (nonlinear_arith)
-                    requires
-                        big_rest.len() == rest.len() / Self::exp(),
-                        Self::to_big(n).len() == big_rest.len() + 1,
-                        n.len() == rest.len() + Self::exp(),
-                        Self::exp() > 0,
-                ;
+                assert(big_rest.len() == rest.len() / Self::exp());
+                assert(Self::to_big(n).len() == big_rest.len() + 1);
+                assert(n.len() == rest.len() + Self::exp());
+                assert(Self::exp() > 0);
+                lemma_div_plus_one(rest.len() as int, Self::exp() as int);
             }
         }
 

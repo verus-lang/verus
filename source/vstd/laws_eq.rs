@@ -118,6 +118,46 @@ primitive_laws_eq!(usize, usize_laws);
 
 primitive_laws_eq!(isize, isize_laws);
 
+/* references */
+
+pub broadcast proof fn lemma_ref_obeys_eq_spec<T: PartialEq>()
+    requires
+        obeys_eq_spec::<T>(),
+    ensures
+        #[trigger] obeys_eq_spec::<&T>(),
+{
+    reveal(obeys_eq_spec_properties);
+}
+
+pub broadcast proof fn lemma_ref_obeys_concrete_eq<T: PartialEq>()
+    requires
+        obeys_concrete_eq::<T>(),
+    ensures
+        #[trigger] obeys_concrete_eq::<&T>(),
+{
+    reveal(obeys_concrete_eq);
+}
+
+pub broadcast proof fn lemma_ref_obeys_view_eq<T: PartialEq + View>()
+    requires
+        obeys_view_eq::<T>(),
+    ensures
+        #[trigger] obeys_view_eq::<&T>(),
+{
+    reveal(obeys_view_eq);
+}
+
+pub broadcast proof fn lemma_ref_obeys_deep_eq<T: PartialEq + DeepView>()
+    requires
+        obeys_deep_eq::<T>(),
+    ensures
+        #[trigger] obeys_deep_eq::<&T>(),
+{
+    reveal(obeys_deep_eq);
+}
+
+/* Option */
+
 pub broadcast proof fn lemma_option_obeys_eq_spec<T: PartialEq>()
     requires
         obeys_eq_spec::<T>(),
@@ -170,6 +210,10 @@ pub broadcast group group_laws_eq {
     i128_laws::group_laws_eq,
     usize_laws::group_laws_eq,
     isize_laws::group_laws_eq,
+    lemma_ref_obeys_eq_spec,
+    lemma_ref_obeys_concrete_eq,
+    lemma_ref_obeys_view_eq,
+    lemma_ref_obeys_deep_eq,
     lemma_option_obeys_eq_spec,
     lemma_option_obeys_concrete_eq,
     lemma_option_obeys_view_eq,

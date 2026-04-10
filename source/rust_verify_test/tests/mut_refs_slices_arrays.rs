@@ -1561,3 +1561,111 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] slice_index_then_field_1 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn upd(a: &mut u64, b: &mut u64)
+            requires
+                *a < 1000,
+                *b < 1000,
+            ensures
+                *final(a) == *old(a) + 100,
+                *final(b) == *old(b) + 200,
+        {
+            *a += 100;
+            *b += 200;
+        }
+
+        fn test_same_idx_diff_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[0].1);
+            assert(s[0] === (100, 201));
+            assert(s[1] === (2, 3));
+        }
+
+        fn test_diff_idx_diff_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[1].1);
+            assert(s[0] === (100, 1));
+            assert(s[1] === (2, 203));
+        }
+
+        fn fails_same_idx_diff_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[0].1);
+            assert(s[0] === (100, 201));
+            assert(s[1] === (2, 3));
+            assert(false); // FAILS
+        }
+
+        fn fails_diff_idx_diff_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[1].1);
+            assert(s[0] === (100, 1));
+            assert(s[1] === (2, 203));
+            assert(false); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] slice_index_then_field_2 ["new-mut-ref", "--no-lifetime"] => verus_code! {
+        // disallowed by borrow checker, but it could theoretically be allowed
+
+        use vstd::prelude::*;
+
+        fn upd(a: &mut u64, b: &mut u64)
+            requires
+                *a < 1000,
+                *b < 1000,
+            ensures
+                *final(a) == *old(a) + 100,
+                *final(b) == *old(b) + 200,
+        {
+            *a += 100;
+            *b += 200;
+        }
+
+        fn test_diff_idx_same_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[1].0);
+            assert(s[0] === (100, 1));
+            assert(s[1] === (202, 3));
+        }
+
+        fn fails_diff_idx_same_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[1].0);
+            assert(s[0] === (100, 1));
+            assert(s[1] === (202, 3));
+            assert(false); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] slice_index_then_field_3 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn upd(a: &mut u64, b: &mut u64) { }
+
+        fn test_same_idx_same_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[0].0);
+        }
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "cannot borrow `s[_].0` as mutable more than once at a time",
+        "cannot borrow `(Verus spec s)[_].0` as mutable more than once at a time",
+    ])
+}
