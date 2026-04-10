@@ -1,5 +1,4 @@
 // most of the codes are copied from: https://github.com/utaal/verified-nrkernel/blob/main/page-table/lib.rs
-#![allow(non_snake_case)]
 #[allow(unused_imports)]
 use verus_builtin::*;
 #[allow(unused_imports)]

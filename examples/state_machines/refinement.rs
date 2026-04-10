@@ -1,5 +1,4 @@
 // rust_verify/tests/example.rs
-#![allow(non_snake_case)]
 #[allow(unused_imports)]
 use verus_builtin::*;
 use verus_builtin_macros::*;

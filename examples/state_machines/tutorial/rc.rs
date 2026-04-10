@@ -1,6 +1,4 @@
-// rust_verify/tests/example.rs expect-warnings
 #![allow(unused_imports)]
-#![allow(non_snake_case)]
 
 // ANCHOR: full
 use verus_builtin::*;

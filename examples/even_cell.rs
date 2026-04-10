@@ -1,4 +1,3 @@
-// rust_verify/tests/example.rs expect-warnings
 use vstd::prelude::*;
 use vstd::invariant::*;
 use vstd::cell::*;

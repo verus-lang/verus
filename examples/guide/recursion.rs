@@ -1,4 +1,3 @@
-#![allow(non_snake_case)]
 #[allow(unused_imports)]
 use verus_builtin::*;
 #[allow(unused_imports)]

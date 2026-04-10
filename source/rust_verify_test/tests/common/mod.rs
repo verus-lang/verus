@@ -371,6 +371,11 @@ pub fn run_verus(
             // suppress Rust's generation of long-type files
             "-Z".to_string(),
             "write_long_types_to_disk=no".to_string(),
+            // suppress common warnings in examples and tests
+            "-A".to_string(),
+            "non_snake_case".to_string(),
+            "-A".to_string(),
+            "deprecated".to_string(),
         ]
         .into_iter(),
     );

@@ -1,5 +1,4 @@
 #![allow(unused_imports)]
-#![allow(non_snake_case)]
 
 // ANCHOR: full
 use verus_builtin::*;
