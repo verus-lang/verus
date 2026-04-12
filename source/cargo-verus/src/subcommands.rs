@@ -61,7 +61,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-04-05-0114"
+vstd = "=0.0.0-2026-04-12-0118"
 
 [package.metadata.verus]
 verify = true
@@ -246,6 +246,19 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String>
         args.push(path.to_string_lossy().into_owned());
     }
 
+    if opts.features.all_features {
+        args.push("--all-features".to_owned());
+    }
+
+    if opts.features.no_default_features {
+        args.push("--no-default-features".to_owned());
+    }
+
+    if !opts.features.features.is_empty() {
+        args.push("--features".to_owned());
+        args.push(opts.features.features.join(" "));
+    }
+
     if !for_cargo_metadata {
         if let Some(path) = &opts.target_dir {
             args.push("--target-dir".to_owned());
@@ -268,19 +281,6 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String>
         for exclude in &opts.workspace.exclude {
             args.push("--exclude".to_owned());
             args.push(exclude.clone());
-        }
-
-        if opts.features.all_features {
-            args.push("--all-features".to_owned());
-        }
-
-        if opts.features.no_default_features {
-            args.push("--no-default-features".to_owned());
-        }
-
-        if !opts.features.features.is_empty() {
-            args.push("--features".to_owned());
-            args.push(opts.features.features.join(" "));
         }
 
         args.extend(opts.cargo_args.iter().cloned());

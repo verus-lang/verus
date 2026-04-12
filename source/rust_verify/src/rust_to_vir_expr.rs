@@ -2877,6 +2877,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
             }
         }
+        // This a desugered `await` expression
+        ExprKind::Match(
+            Expr { hir_id: _, kind: ExprKind::Call(_expr, call_args), span: _ },
+            _arms,
+            rustc_hir::MatchSource::AwaitDesugar,
+        ) => {
+            let vir_expr = expr_to_vir_consume(bctx, &call_args[0], modifier)?;
+            mk_expr(ExprX::Await(vir_expr))
+        }
         ExprKind::Match(expr, arms, _match_source) => {
             let vir_place = expr_to_vir_place(bctx, expr, modifier)?;
             let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();

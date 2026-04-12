@@ -796,3 +796,32 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_impl_trait_direct_use_error verus_code! {
+        #[verifier::external]
+        trait T1 {}
+
+        #[verifier::external]
+        impl T1 for u8 {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(T1Spec via T1SpecImpl)]
+        trait ExT1 {
+            type ExternalTraitSpecificationFor: T1;
+
+            spec fn f() -> bool;
+        }
+
+        impl T1SpecImpl for u8 {
+            spec fn f() -> bool { true }
+        }
+
+        spec fn g() -> bool {
+            <u8 as T1SpecImpl>::f() // should error: cannot use T1SpecImpl directly
+        }
+    } => Err(err) => assert_vir_error_msg(
+        err,
+        "cannot use trait `crate::T1SpecImpl` directly; use `crate::T1Spec` instead"
+    )
+}

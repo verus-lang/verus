@@ -24,6 +24,7 @@ fn demote_one_expr(
     traits: &HashSet<Path>,
     internal_traits: &HashSet<Path>,
     extension_traits: &HashSet<Path>,
+    impl_to_spec_traits: &HashMap<Path, Path>,
     funs: &HashSet<Fun>,
     expr: &Expr,
 ) -> Result<Expr, VirErr> {
@@ -45,6 +46,16 @@ fn demote_one_expr(
             args,
             post_args,
         ) if !traits.contains(&get_trait(fun)) || !funs.contains(fun) => {
+            if let Some(spec_trait) = impl_to_spec_traits.get(&get_trait(fun)) {
+                return Err(error(
+                    &expr.span,
+                    format!(
+                        "cannot use trait `{}` directly; use `{}` instead",
+                        path_as_friendly_rust_name(&get_trait(fun)),
+                        path_as_friendly_rust_name(spec_trait),
+                    ),
+                ));
+            }
             let ct = CallTarget::Fun(
                 CallTargetKind::Static,
                 resolved_fun.clone(),
@@ -137,9 +148,11 @@ pub fn demote_external_traits(
         krate.traits.iter().filter(|t| t.x.proxy.is_none()).map(|t| t.x.name.clone()).collect();
     let funs: HashSet<Fun> = krate.functions.iter().map(|f| f.x.name.clone()).collect();
     let mut extension_traits: HashSet<Path> = HashSet::new();
+    let mut impl_to_spec_traits: HashMap<Path, Path> = HashMap::new();
     for t in krate.traits.iter() {
-        if let Some((extension, _)) = &t.x.external_trait_extension {
+        if let Some((extension, imp)) = &t.x.external_trait_extension {
             extension_traits.insert(extension.clone());
+            impl_to_spec_traits.insert(imp.clone(), extension.clone());
         }
     }
 
@@ -232,7 +245,14 @@ pub fn demote_external_traits(
             &mut map,
             &mut (),
             &|_state, _, expr| {
-                demote_one_expr(&traits, &internal_traits, &extension_traits, &funs, expr)
+                demote_one_expr(
+                    &traits,
+                    &internal_traits,
+                    &extension_traits,
+                    &impl_to_spec_traits,
+                    &funs,
+                    expr,
+                )
             },
             &|_state, _, stmt| Ok(vec![stmt.clone()]),
             &|_state, typ| Ok(typ.clone()),
@@ -615,6 +635,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
                     body: None,
                     extra_dependencies: vec![],
+                    async_ret: None,
                 };
                 kratex.functions.push(default_function.new_x(inherit_functionx));
             }

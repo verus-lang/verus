@@ -560,3 +560,10 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] const_with_ensures_issue2175 verus_code! {
+        #[verus_spec(ensures true)]
+        pub const C: char = 'x';
+    } => Err(err) => assert_vir_error_msg(err, "const cannot have `ensures` unless it is `exec const`")
+}

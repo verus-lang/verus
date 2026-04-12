@@ -1196,6 +1196,10 @@ impl<'a> Builder<'a> {
             ExprX::ImplicitReborrowOrSpecRead(..) => {
                 panic!("ImplicitReborrowOrSpecRead should have been removed");
             }
+            ExprX::Await(e) => {
+                bb = self.build(e, bb)?;
+                Ok(bb)
+            }
         }
     }
 
