@@ -33,7 +33,7 @@ verus! {
 /// See also [`axiom_key_obeys_cmp_spec_meaning`].
 pub uninterp spec fn key_obeys_cmp_spec<Key: ?Sized>() -> bool;
 
-/// For types that are ordered, [`key_obeys_cmp_spec`] is equivalent to [`obeys_cmp_spec`].
+/// For types that are ordered, [`key_obeys_cmp_spec`] is equivalent to [`obeys_cmp`].
 pub broadcast axiom fn axiom_key_obeys_cmp_spec_meaning<K: Ord>()
     ensures
         #[trigger] key_obeys_cmp_spec::<K>() <==> obeys_cmp::<K>(),
@@ -941,7 +941,7 @@ impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
 /// We model a `BTreeSet` as having a view of type `Set<Key>`, which reflects the current state of the set.
 ///
 /// These specifications are only meaningful if `obeys_cmp::<Key>()` hold.
-/// See [`obeys_cmp_spec`] for information on use with primitive types and custom types.
+/// See [`obeys_cmp`] for information on use with primitive types and custom types.
 ///
 /// Axioms about the behavior of BTreeSet are present in the broadcast group `vstd::std_specs::btree::group_btree_axioms`.
 #[verifier::external_type_specification]
