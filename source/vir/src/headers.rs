@@ -631,6 +631,15 @@ fn peel_mut(expr: &mut Expr) -> &mut Expr {
             let PlaceX::Temporary(e) = &mut Arc::make_mut(place).x else { unreachable!() };
             peel_mut(e)
         }
+        ExprX::ImplicitReborrowOrSpecRead(place, _, _)
+            if matches!(place.x, PlaceX::Temporary(_)) =>
+        {
+            let ExprX::ImplicitReborrowOrSpecRead(place, _, _) = &mut Arc::make_mut(expr).x else {
+                unreachable!()
+            };
+            let PlaceX::Temporary(e) = &mut Arc::make_mut(place).x else { unreachable!() };
+            peel_mut(e)
+        }
         _ => expr,
     }
 }

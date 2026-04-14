@@ -703,7 +703,7 @@ fn check_one_expr<Emit: EmitError>(
             return Err(error(
                 &expr.span,
                 format!(
-                    "This kind of statement should go at the {:}",
+                    "This verus_builtin header should go at the {:} (this is probably a Verus bug, unless you are manually writing calls to Verus builtin headers, which is unusual)",
                     header.location_for_diagnostic()
                 ),
             ));

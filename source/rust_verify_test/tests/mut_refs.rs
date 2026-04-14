@@ -4878,3 +4878,34 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] proof_fn_returns_mut_ref ["new-mut-ref"] => verus_code! {
+        pub tracked struct X { ghost g: int }
+
+        pub tracked struct S {
+            pub tracked perm: X,
+        }
+
+        proof fn test_tracked_mut_ref(tracked input: &mut S) -> (tracked output: &mut X)
+            ensures
+                *output == old(input).perm,
+                *final(output) == final(input).perm,
+        {
+            &mut input.perm
+        }
+
+        proof fn test1(tracked input: &mut S) {
+            let tracked output = test_tracked_mut_ref(input);
+            output.g = 20;
+            assert(input.perm.g == 20);
+        }
+
+        proof fn test1_fails(tracked input: &mut S) {
+            let tracked output = test_tracked_mut_ref(input);
+            output.g = 20;
+            assert(input.perm.g == 20);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
