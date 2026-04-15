@@ -1491,3 +1491,12 @@ impl ClosureKind {
         }
     }
 }
+
+impl AssertQueryMode {
+    pub(crate) fn name(&self) -> &'static str {
+        match self {
+            AssertQueryMode::NonLinear => "nonlinear_arith",
+            AssertQueryMode::BitVector => "bit_vector",
+        }
+    }
+}

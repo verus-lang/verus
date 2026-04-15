@@ -349,8 +349,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): (blocking) currently malformed AIR error
-    #[ignore] #[test] test_assert_nonlinear ["new-mut-ref"] => verus_code! {
+    #[test] test_assert_nonlinear ["new-mut-ref"] => verus_code! {
         fn nonlinear(x: &mut u64)
             requires *x == 0,
         {
@@ -362,7 +361,7 @@ test_verify_one_file_with_options! {
             assert(*x == 0 && *old(x) == 5) by(nonlinear_arith)
               requires *x == 0 && *old(x) == 5;
         }
-    } => Err(err) => assert_vir_error_msg(err, "old not allowed in assert-by-nonlinear")
+    } => Err(err) => assert_vir_error_msg(err, "`old` is not supported in `nonlinear_arith` assert")
 }
 
 test_verify_one_file_with_options! {

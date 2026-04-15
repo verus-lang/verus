@@ -1543,5 +1543,5 @@ test_verify_one_file_with_options! {
             *x = 5;
             assert(*x == 0 && *old(x) == 5) by(bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "unsupported for bitvector: this mutable reference operator")
+    } => Err(err) => assert_vir_error_msg(err, "`old` is not supported in `bit_vector` assert")
 }
