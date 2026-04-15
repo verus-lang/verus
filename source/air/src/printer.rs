@@ -4,11 +4,78 @@ use crate::ast::{
     Typs, UnaryOp,
 };
 use crate::context::SmtSolver;
-use crate::def::mk_skolem_id;
+use crate::def::{MANGLED_SYMBOL_PREFIX, mk_skolem_id};
 use crate::util::vec_map;
 use sise::{Node, Writer};
 use std::sync::Arc;
 
+fn is_smt_simple_symbol_char(c: char) -> bool {
+    c.is_ascii_alphanumeric()
+        || matches!(
+            c,
+            '~' | '!'
+                | '@'
+                | '$'
+                | '%'
+                | '^'
+                | '&'
+                | '*'
+                | '_'
+                | '-'
+                | '+'
+                | '='
+                | '<'
+                | '>'
+                | '.'
+                | '?'
+                | '/'
+        )
+}
+
+fn is_valid_smt_atom(s: &str) -> bool {
+    if let Some(rest) = s.strip_prefix(':') {
+        if !rest.is_empty() && rest.chars().all(is_smt_simple_symbol_char) {
+            return true;
+        }
+    }
+    if s.bytes().all(|b| b.is_ascii_digit()) {
+        return true;
+    }
+    if let Some((lhs, rhs)) = s.split_once('.') {
+        if !lhs.is_empty()
+            && !rhs.is_empty()
+            && lhs.bytes().all(|b| b.is_ascii_digit())
+            && rhs.bytes().all(|b| b.is_ascii_digit())
+        {
+            return true;
+        }
+    }
+    let Some(first) = s.chars().next() else {
+        return false;
+    };
+    !first.is_ascii_digit()
+        && is_smt_simple_symbol_char(first)
+        && s.chars().skip(1).all(is_smt_simple_symbol_char)
+}
+
+fn mangle_smt_atom(s: &str) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::from(MANGLED_SYMBOL_PREFIX);
+    if s.is_empty() {
+        out.push('_');
+        return out;
+    }
+    for ch in s.chars() {
+        write!(&mut out, "_{:x}", ch as u32).expect("Writing to String should not fail");
+    }
+    out
+}
+
+pub fn sanitize_ident(s: &str) -> Ident {
+    Arc::new(if is_valid_smt_atom(s) { s.to_string() } else { mangle_smt_atom(s) })
+}
+
+#[inline]
 pub fn str_to_node(s: &str) -> Node {
     Node::Atom(s.to_string())
 }
@@ -589,7 +656,9 @@ impl NodeWriter {
             sise::SpacedStringWriterNodeOptions { break_line_len: if brk { 0 } else { break_len } };
         match node {
             Node::Atom(a) => {
-                writer.write_atom(a, opts).unwrap();
+                let a = if is_valid_smt_atom(a) { a.clone() } else { mangle_smt_atom(a) };
+                assert!(sise::check_atom(&a), "invalid atom: {}", a);
+                writer.write_atom(&a, opts).unwrap();
             }
             Node::List(l) => {
                 writer.begin_list(opts).unwrap();

@@ -4,9 +4,19 @@ use crate::messages::Reporter;
 #[allow(unused_imports)]
 use crate::parser::Parser;
 #[allow(unused_imports)]
-use crate::printer::{macro_push_node, str_to_node};
+use crate::printer::{NodeWriter, macro_push_node, str_to_node};
 #[allow(unused_imports)]
 use sise::Node;
+
+#[test]
+fn node_writer_mangles_invalid_atoms() {
+    for atom in ["r#for$", "r#in$", "r#bad"] {
+        let mut nw = NodeWriter::new();
+        let s = nw.node_to_string_indent(&String::new(), &Node::Atom(atom.to_string()));
+        assert!(s.contains(crate::def::MANGLED_SYMBOL_PREFIX));
+        assert!(!s.contains('#'));
+    }
+}
 
 #[allow(dead_code)]
 fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {

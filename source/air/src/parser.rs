@@ -11,13 +11,9 @@ use sise::Node;
 use std::io::Write;
 use std::sync::Arc;
 
-// Following SMT-LIB syntax specification
-fn is_symbol_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || "~!@$%^&*_-+=<>.?/".contains(c)
-}
-
+// AIR symbols may contain Unicode or other non-SMT characters; the printer will mangle them before sending to the solver.
 fn is_symbol(s: &String) -> bool {
-    s.len() > 0 && s.chars().all(is_symbol_char)
+    s.len() > 0
 }
 
 fn is_bitvec(nodes: &Vec<Node>) -> Option<u32> {

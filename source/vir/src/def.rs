@@ -686,7 +686,12 @@ pub fn encode_dt_as_path(dt: &Dt) -> Path {
 
 pub fn variant_ident(dt: &Dt, variant: &str) -> Ident {
     let path = encode_dt_as_path(dt);
-    Arc::new(format!("{}{}{}", path_to_string(&path), VARIANT_SEPARATOR, variant))
+    air::printer::sanitize_ident(&format!(
+        "{}{}{}",
+        path_to_string(&path),
+        VARIANT_SEPARATOR,
+        variant
+    ))
 }
 
 pub fn is_variant_ident(datatype: &Dt, variant: &str) -> Ident {
@@ -699,7 +704,7 @@ pub fn variant_field_ident_internal(
     field: &Ident,
     internal: bool,
 ) -> Ident {
-    Arc::new(format!(
+    air::printer::sanitize_ident(&format!(
         "{}{}{}{}{}",
         path_to_string(path),
         VARIANT_SEPARATOR,
