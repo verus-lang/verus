@@ -154,6 +154,9 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         }
     }
 
+    // Verus attributes are `Unparsed` where get_all_attrs is acceptable per its
+    // deprecation message.
+    #[allow(deprecated)]
     let f_attrs = bctx.ctxt.tcx.get_all_attrs(f);
     if crate::attributes::is_get_field_many_variants(
         f_attrs,

@@ -333,6 +333,9 @@ pub(crate) fn translate_impl<'tcx>(
             return Ok(());
         } else {
             /* sealed, `unsafe` */
+            // Verus attributes are `Unparsed` where get_all_attrs is acceptable per its
+            // deprecation message.
+            #[allow(deprecated)]
             let trait_attrs = ctxt.tcx.get_all_attrs(trait_def_id);
             let sealed = crate::attributes::is_sealed(
                 trait_attrs,
