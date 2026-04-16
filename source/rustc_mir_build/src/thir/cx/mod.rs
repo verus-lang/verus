@@ -122,10 +122,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
             typeck_results,
             body_owner: def.to_def_id(),
             apply_adjustments:
-                !find_attr!(tcx.hir_attrs(hir_id), AttributeKind::CustomMir(..) => ()).is_some(),
+                !find_attr!(tcx.hir_attrs(hir_id), CustomMir(..) => ()).is_some(),
             verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
-            // TODO(1.95.0): remove
-            // apply_adjustments: !find_attr!(tcx.hir_attrs(hir_id), CustomMir(..) => ()).is_some(),
         }
     }
 
