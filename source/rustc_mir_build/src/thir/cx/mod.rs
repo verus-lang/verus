@@ -4,7 +4,6 @@
 
 use rustc_data_structures::steal::Steal;
 use rustc_errors::ErrorGuaranteed;
-use rustc_hir::attrs::AttributeKind;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::lang_items::LangItem;
@@ -125,6 +124,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
             apply_adjustments:
                 !find_attr!(tcx.hir_attrs(hir_id), AttributeKind::CustomMir(..) => ()).is_some(),
             verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
+            // TODO(1.95.0): remove
+            // apply_adjustments: !find_attr!(tcx.hir_attrs(hir_id), CustomMir(..) => ()).is_some(),
         }
     }
 
