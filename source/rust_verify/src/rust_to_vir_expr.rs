@@ -30,7 +30,7 @@ use rustc_hir::{
 };
 use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_middle::ty::adjustment::{
-    Adjust, Adjustment, AllowTwoPhase, AutoBorrow, AutoBorrowMutability, PatAdjust, PatAdjustment,
+    Adjust, Adjustment, AllowTwoPhase, AutoBorrow, AutoBorrowMutability, DerefAdjustKind, PatAdjust, PatAdjustment,
     PointerCoercion,
 };
 use rustc_middle::ty::{
@@ -1246,7 +1246,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             let x = ExprX::NeverToAny(e);
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ()?, x)))
         }
-        Adjust::Deref(None) => {
+        Adjust::Deref(DerefAdjustKind::Builtin) => {
             // handle same way as the UnOp::Deref case
             let new_modifier = is_expr_typ_mut_ref(get_inner_ty(), current_modifier)?;
             let inner_expr = expr_to_vir_with_adjustments(
@@ -1265,7 +1265,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 Ok(strip_vir_ref_decoration(inner_expr))
             }
         }
-        Adjust::Deref(Some(deref)) => {
+        Adjust::Deref(DerefAdjustKind::Overloaded(deref)) => {
             // note: deref has signature (&self) -> &Self::Target
             // and deref_mut has signature (&mut self) -> &mut Self::Target
             // The adjustment, though, goes from self -> Self::Target
@@ -1374,7 +1374,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 // exec/tracked contexts. So we need to handle this case specially.
                 if bctx.in_ghost
                     && adjustment_idx >= 2
-                    && matches!(&adjustments[adjustment_idx - 2].kind, Adjust::Deref(None))
+                    && matches!(&adjustments[adjustment_idx - 2].kind, Adjust::Deref(DerefAdjustKind::Builtin))
                 {
                     let inner_inner_ty = get_inner2_ty();
                     if matches!(
@@ -3359,10 +3359,9 @@ fn lit_to_vir<'tcx>(
         }
         LitKind::Float(..) => {
             if let Some(ty) = ty {
-                use rustc_middle::mir::interpret::LitToConstInput;
+                use rustc_middle::ty::LitToConstInput;
                 let lit_const = LitToConstInput { lit: lit.node, ty, neg: negated };
-                let c = bctx.ctxt.tcx.lit_to_const(lit_const);
-                if let rustc_middle::ty::ConstKind::Value(v) = c.kind() {
+                if let Some(v) = bctx.ctxt.tcx.lit_to_const(lit_const) {
                     if let Some(i) = v.valtree.try_to_leaf() {
                         match i.size().bytes() {
                             4 => {

@@ -1285,12 +1285,12 @@ fn binders_to_string<'tcx>(
         let s = match &k {
             BoundVariableKind::Ty(BoundTyKind::Anon) => "_",
             BoundVariableKind::Ty(BoundTyKind::Param(def_id)) => {
-                sym = tcx.item_name(def_id);
+                sym = tcx.item_name(*def_id);
                 sym.as_str()
             }
             BoundVariableKind::Region(BoundRegionKind::Anon | BoundRegionKind::ClosureEnv) => "'_",
             BoundVariableKind::Region(BoundRegionKind::Named(def_id)) => {
-                sym = tcx.item_name(def_id);
+                sym = tcx.item_name(*def_id);
                 sym.as_str()
             }
             BoundVariableKind::Region(BoundRegionKind::NamedAnon(sym)) => sym.as_str(),

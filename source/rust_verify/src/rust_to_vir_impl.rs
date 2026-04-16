@@ -647,7 +647,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             let is_new_trait = new_traits.contains(&path);
             let is_local_impl = impl_def_id.krate == rustc_span::def_id::LOCAL_CRATE;
             let mut has_new_types = false;
-            for arg in tcx.impl_trait_ref(&impl_def_id).skip_binder().args.iter() {
+            for arg in tcx.impl_trait_ref(impl_def_id).skip_binder().args.iter() {
                 for arg in arg.walk() {
                     if let Some(ty) = arg.as_type() {
                         use rustc_middle::ty::TyKind;
@@ -668,7 +668,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
 
     // Process only the new implementations that could be visible to Verus:
     'impls: for impl_def_id in auto_import_impls {
-        let trait_ref = tcx.impl_trait_ref(&impl_def_id);
+        let trait_ref = tcx.impl_trait_ref(impl_def_id);
         for arg in trait_ref.skip_binder().args.iter() {
             if !crate::rust_to_vir_base::mid_arg_filter_for_external_impls(
                 ctxt,
@@ -685,7 +685,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         ) {
             continue;
         }
-        let span = tcx.def_span(&impl_def_id);
+        let span = tcx.def_span(impl_def_id);
         let impl_path = ctxt.def_id_to_vir_path(impl_def_id);
         let module_path = impl_path.pop_segment();
         let t_impl_opt = trait_impl_to_vir(
@@ -776,7 +776,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     }
 
     for (impl_path, (impl_def_id, funs)) in new_trait_impls.iter() {
-        let trait_ref = tcx.impl_trait_ref(impl_def_id);
+        let trait_ref = tcx.impl_trait_ref(*impl_def_id);
         let trait_did = trait_ref.skip_binder().def_id;
         let trait_path = ctxt.def_id_to_vir_path(trait_did);
         let Some(traitt) = trait_map.get(&trait_path) else {

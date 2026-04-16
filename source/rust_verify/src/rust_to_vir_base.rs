@@ -405,7 +405,7 @@ fn instantiate_pred_clauses<'tcx>(
     }
     let mut clauses: Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)> = Vec::new();
     for def_id in ancestors.iter().rev() {
-        let preds = tcx.predicates_of(def_id);
+        let preds = tcx.predicates_of(*def_id);
         for (clause, span) in preds.predicates {
             // This is based on GenericPredicates.instantiate_into, which is close to what
             // we need but doesn't track the relation between the uninstantiated and
@@ -2371,10 +2371,10 @@ pub(crate) fn check_fn_opaque_ty<'tcx>(
     assume_specification_def_id: Option<&DefId>,
 ) -> Result<HashMap<Path, Path>, VirErr> {
     let mut assume_specification_opaque_type_map = HashMap::new();
-    if !ctxt.tcx.def_kind(fn_def_id).is_fn_like() {
+    if !ctxt.tcx.def_kind(*fn_def_id).is_fn_like() {
         return Ok(assume_specification_opaque_type_map);
     }
-    let ty = ctxt.tcx.fn_sig(fn_def_id).skip_binder().output().skip_binder();
+    let ty = ctxt.tcx.fn_sig(*fn_def_id).skip_binder().output().skip_binder();
     let assume_specification_ty =
         if let Some(assume_specification_def_id) = assume_specification_def_id {
             // if ctxt.tcx.def_kind(assume_specification_def_id).is_fn_like() {
@@ -2382,7 +2382,7 @@ pub(crate) fn check_fn_opaque_ty<'tcx>(
             // } else {
             //     None
             // }
-            Some(ctxt.tcx.fn_sig(assume_specification_def_id).skip_binder().output().skip_binder())
+            Some(ctxt.tcx.fn_sig(*assume_specification_def_id).skip_binder().output().skip_binder())
         } else {
             None
         };
