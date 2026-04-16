@@ -705,7 +705,7 @@ test_verify_one_file! {
 
         fn test<X: A>(a: (u64, nat), b: <X as A>::AT)
             requires a == b { }
-    } => Err(err) => assert_spec_eq_type_err(err, "(u64, nat)", "<X as crate::A>::AT")
+    } => Err(err) => assert_spec_eq_type_err(err, "(u64, nat)", "<X as test_crate::A>::AT")
 }
 
 test_verify_one_file! {

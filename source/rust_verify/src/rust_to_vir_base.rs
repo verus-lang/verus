@@ -17,7 +17,7 @@ use rustc_middle::ty::{
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
-use rustc_span::def_id::{DefId, LOCAL_CRATE};
+use rustc_span::def_id::DefId;
 use rustc_span::symbol::{Ident, kw};
 use rustc_trait_selection::infer::InferCtxtExt;
 use rustc_trait_selection::solve::BuiltinImplSource;
@@ -31,19 +31,8 @@ use vir::ast::{
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
-// TODO: eventually, this should just always be true
-thread_local! {
-    pub(crate) static MULTI_CRATE: std::sync::atomic::AtomicBool =
-        const { std::sync::atomic::AtomicBool::new(false) };
-}
-
 fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
-    let multi_crate = MULTI_CRATE.with(|m| m.load(std::sync::atomic::Ordering::Relaxed));
-    let krate = if def_path.krate == LOCAL_CRATE && !multi_crate {
-        None
-    } else {
-        Some(Arc::new(tcx.crate_name(def_path.krate).to_string()))
-    };
+    let krate = Some(Arc::new(tcx.crate_name(def_path.krate).to_string()));
     let mut segments: Vec<vir::ast::Ident> = Vec::new();
     for d in def_path.data.iter() {
         use rustc_hir::definitions::DefPathData;

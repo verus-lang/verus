@@ -31,13 +31,13 @@ test_verify_one_file_with_options! {
         let all_labels = HashSet::from_iter([property_732, label_451]);
 
         // Details about `example`
-        with_json_func_details(&err, "crate::example", |details| {
+        with_json_func_details(&err, "test_crate::example", |details| {
             assert!(details.obligation_proof_notes.is_empty());
             assert!(details.failed_proof_notes.is_empty());
         });
 
         // Details about `caller`
-        with_json_func_details(&err, "crate::caller", |details| {
+        with_json_func_details(&err, "test_crate::caller", |details| {
             assert_eq!(details.obligation_proof_notes, all_labels);
             assert_eq!(details.failed_proof_notes, all_labels);
         });
@@ -70,13 +70,13 @@ test_verify_one_file_with_options! {
         let all_labels = HashSet::from_iter([property_732, label_451]);
 
         // Details about `example`
-        with_json_func_details(&err, "crate::example", |details| {
+        with_json_func_details(&err, "test_crate::example", |details| {
             assert_eq!(details.obligation_proof_notes, all_labels);
             assert_eq!(details.failed_proof_notes, all_labels);
         });
 
         // Details about `caller`
-        with_json_func_details(&err, "crate::caller", |details| {
+        with_json_func_details(&err, "test_crate::caller", |details| {
             assert!(details.obligation_proof_notes.is_empty());
             assert!(details.failed_proof_notes.is_empty());
         });
@@ -100,12 +100,12 @@ test_verify_one_file_with_options! {
     } => Err(err) => {
         assert_vir_error_msg(err.clone(), "Custom ensures error");
 
-        with_json_func_details(&err, "crate::example", |details| {
+        with_json_func_details(&err, "test_crate::example", |details| {
             assert!(details.obligation_proof_notes.is_empty());
             assert!(details.failed_proof_notes.is_empty());
         });
 
-        with_json_func_details(&err, "crate::caller", |details| {
+        with_json_func_details(&err, "test_crate::caller", |details| {
             assert!(details.obligation_proof_notes.is_empty());
             assert!(details.failed_proof_notes.is_empty());
         });
@@ -126,7 +126,7 @@ test_verify_one_file_with_options! {
         let all_labels = HashSet::from_iter([label]);
 
         // Details about `caller`
-        with_json_func_details(&err, "crate::caller", |details| {
+        with_json_func_details(&err, "test_crate::caller", |details| {
             assert_eq!(details.obligation_proof_notes, all_labels);
             assert_eq!(details.failed_proof_notes, all_labels);
         });
@@ -142,7 +142,7 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => {
         assert_vir_error_msg(err.clone(), "Custom assert error");
-        with_json_func_details(&err, "crate::caller", |details| {
+        with_json_func_details(&err, "test_crate::caller", |details| {
             assert!(details.obligation_proof_notes.is_empty());
             assert!(details.failed_proof_notes.is_empty());
         });
@@ -164,7 +164,7 @@ test_verify_one_file_with_options! {
         let all_labels = HashSet::from_iter([label]);
 
         // Details about `caller`
-        with_json_func_details(&err, "crate::caller", |details| {
+        with_json_func_details(&err, "test_crate::caller", |details| {
             assert!(details.obligation_proof_notes.is_empty());
             assert_eq!(details.failed_proof_notes, all_labels);
         });
@@ -181,7 +181,7 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => {
         assert_vir_error_msg(err.clone(), "Custom assume error");
-        with_json_func_details(&err, "crate::caller", |details| {
+        with_json_func_details(&err, "test_crate::caller", |details| {
             assert!(details.obligation_proof_notes.is_empty());
             assert!(details.failed_proof_notes.is_empty());
         });
@@ -204,7 +204,7 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => {
         assert_vir_error_msg(err.clone(), "Custom requires error");
-        with_json_func_details(&err, "crate::caller", |details| {
+        with_json_func_details(&err, "test_crate::caller", |details| {
             assert!(details.obligation_proof_notes.is_empty());
             assert!(details.failed_proof_notes.is_empty());
         });
@@ -238,7 +238,7 @@ test_verify_one_file_with_options! {
         let expected_failed_notes = HashSet::from_iter([assume_label, requires_label]);
 
         // Details about `caller`
-        with_json_func_details(&err, "crate::caller", |details| {
+        with_json_func_details(&err, "test_crate::caller", |details| {
             assert_eq!(details.obligation_proof_notes, expected_obligations);
             assert_eq!(details.failed_proof_notes, expected_failed_notes);
         });

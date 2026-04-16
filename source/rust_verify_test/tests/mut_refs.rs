@@ -4687,7 +4687,7 @@ test_verify_one_file_with_options! {
         fn test_basic_move<T>(t: [X; 2]) {
             let r = id(t[0]);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::X; 2]`, which is non-copy")
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[test_crate::X; 2]`, which is non-copy")
 }
 
 test_verify_one_file_with_options! {
@@ -4712,7 +4712,7 @@ test_verify_one_file_with_options! {
         fn test_ctor_move<T>(t: [Pair<X, X>; 2]) {
             let r = Pair { a: X{}, .. t[0] };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::Pair<crate::X, crate::X>; 2]`, which is non-copy")
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[test_crate::Pair<test_crate::X, test_crate::X>; 2]`, which is non-copy")
 }
 
 test_verify_one_file_with_options! {

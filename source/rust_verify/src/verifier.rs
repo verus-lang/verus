@@ -2700,14 +2700,6 @@ impl Verifier {
         crate_names.extend(other_crate_names.into_iter());
         // TODO vec![vir::verus_builtins::verus_builtin_krate(&self.air_no_span.clone().unwrap())];
 
-        let import_len = self.args.import.len();
-        let multi_crate = self.args.export.is_some()
-            || import_len > 0
-            || self.args.use_crate_name
-            || self.via_cargo_args.is_some();
-        crate::rust_to_vir_base::MULTI_CRATE
-            .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
-
         let erasure_info = ErasureInfo {
             hir_vir_ids: vec![],
             resolved_calls: vec![],

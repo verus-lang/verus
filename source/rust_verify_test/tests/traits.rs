@@ -1996,9 +1996,9 @@ test_verify_one_file_with_options! {
             // stops us from saying f::<ty>(x) for ty that doesn't implement T.
 
             // So we manually emit the AIR that corresponds to the f::<B>(x) call.
-            inline_air_stmt("(assume (tr_bound%T. $ TYPE%B.))");
-            inline_air_stmt("(assert (= (f.? $ TYPE%B. (I i!)) (not (f.? $ TYPE%B. (I (Sub i! 0))))))");
-            inline_air_stmt("(assume (= (f.? $ TYPE%B. (I i!)) (not (f.? $ TYPE%B. (I (Sub i! 0))))))");
+            inline_air_stmt("(assume (tr_bound%test_crate!T. $ TYPE%test_crate!B.))");
+            inline_air_stmt("(assert (= (test_crate!f.? $ TYPE%test_crate!B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!B. (I (Sub i! 0))))))");
+            inline_air_stmt("(assume (= (test_crate!f.? $ TYPE%test_crate!B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!B. (I (Sub i! 0))))))");
             assert(false);
         }
     } => Ok(())
@@ -2017,8 +2017,8 @@ test_verify_one_file_with_options! {
             // stops us from saying f::<ty>(x) for ty that doesn't implement T.
 
             // So we manually emit the AIR that corresponds to the f::<B>(x) call.
-            // inline_air_stmt("(assume (tr_bound%T. $ TYPE%B.))");
-            inline_air_stmt("(assert (= (f.? $ TYPE%B. (I i!)) (not (f.? $ TYPE%B. (I (Sub i! 0))))))");
+            // inline_air_stmt("(assume (tr_bound%test_crate!T. $ TYPE%test_crate!B.))");
+            inline_air_stmt("(assert (= (test_crate!f.? $ TYPE%test_crate!B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!B. (I (Sub i! 0))))))");
         }
     } => Err(err) => { assert!(err.errors.len() == 1); }
 }
@@ -4507,7 +4507,7 @@ test_verify_one_file! {
         impl T for I {
             type A = ();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
 }
 
 test_verify_one_file! {
@@ -4522,7 +4522,7 @@ test_verify_one_file! {
         impl T for X {
             type A = I;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
 }
 
 test_verify_one_file! {

@@ -349,7 +349,7 @@ test_verify_one_file! {
             }
             f();
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot call function `crate::f` with mode exec")
+    } => Err(e) => assert_vir_error_msg(e, "cannot call function `test_crate::f` with mode exec")
 }
 
 test_verify_one_file! {
