@@ -3204,61 +3204,6 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] partial_move_out_of_enum2 ["new-mut-ref"] => verus_code! {
-        // One way to get around the error more legitimately is to use an enum where
-        // one variant is impossible.
-        // However, I am told this may be disallowed in the future as well.
-
-        enum Option<T, U> { Some(T), None(U) }
-        use crate::Option::Some;
-        use crate::Option::None;
-
-        fn test() {
-            let mut a = 0;
-            let mut b = 1;
-            let x = Some::<_, !>((&mut a, &mut b));
-
-            match x {
-                Some((a_ref, _)) => {
-                    *a_ref = 5;
-                }
-            }
-
-            match x {
-                Some((_, b_ref)) => {
-                    *b_ref = 6;
-                }
-            }
-
-            assert(a == 5);
-            assert(b == 6);
-        }
-
-        fn test2() {
-            let mut a = 0;
-            let mut b = 1;
-            let x = Some::<_, !>((&mut a, &mut b));
-
-            match x {
-                Some((a_ref, _)) => {
-                    *a_ref = 5;
-                }
-            }
-
-            match x {
-                Some((_, b_ref)) => {
-                    *b_ref = 6;
-                }
-            }
-
-            assert(a == 5);
-            assert(b == 6);
-            assert(false); // FAILS
-        }
-    } => Err(err) => assert_fails(err, 1)
-}
-
-test_verify_one_file_with_options! {
     #[test] partial_move_out_of_enum3 ["new-mut-ref"] => verus_code! {
         // Or we could just have an enum with only 1 variant
         // (though this is basically the same as a struct anyway

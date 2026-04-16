@@ -15,9 +15,10 @@ pub struct ExGlobal(alloc::alloc::Global);
 pub assume_specification<T, const N: usize>[ std::boxed::box_assume_init_into_vec_unsafe ](
     vals: std::boxed::Box<std::mem::MaybeUninit<[T; N]>>,
 ) -> (result: std::vec::Vec<T>)
+    requires
+        vals.mem_contents() is Init,
     ensures
-        result.len() == N,
-        vals.mem_contents() matches MemContents::Init(slice) && result@ == slice@,
+        vals.mem_contents() matches MemContents::Init(array) && result@ == array@,
 ;
 
 #[cfg(feature = "alloc")]
