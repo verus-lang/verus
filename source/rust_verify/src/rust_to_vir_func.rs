@@ -1293,7 +1293,7 @@ fn binders_to_string<'tcx>(
                 sym = tcx.item_name(*def_id);
                 sym.as_str()
             }
-            BoundVariableKind::Region(BoundRegionKind::NamedAnon(sym)) => sym.as_str(),
+            BoundVariableKind::Region(BoundRegionKind::NamedForPrinting(sym)) => sym.as_str(),
             BoundVariableKind::Const => "CONST",
         };
         v.push(s.to_string());
