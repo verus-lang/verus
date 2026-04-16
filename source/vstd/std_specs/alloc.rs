@@ -9,11 +9,4 @@ verus! {
 #[verifier::external_body]
 pub struct ExGlobal(alloc::alloc::Global);
 
-// #[cfg(feature = "alloc")]
-// #[feature(liballoc_internals)]
-// pub assume_specification<T>[ alloc::boxed::box_new ](x: T) -> (result: alloc::boxed::Box<T>)
-//     ensures
-//         *result == x,
-// ;
-
 } // verus!
