@@ -16,10 +16,9 @@ use rustc_middle::thir::{
 };
 use rustc_middle::ty;
 use rustc_middle::ty::{
-    adjustment::DerefAdjustKind,
     Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVarIndexKind, BoundVariableKind,
     CapturedPlace, GenericArg, Mutability, PolyFnSig, Ty, TyCtxt, TyKind, TypeSuperFoldable,
-    UpvarCapture,
+    UpvarCapture, adjustment::DerefAdjustKind,
 };
 use rustc_middle::ty::{TypeFoldable, TypeFolder, UpvarArgs};
 use rustc_span::Span;
@@ -955,7 +954,9 @@ impl<'a, 'tcx> VisitTreeForLocalUses<'a, 'tcx> {
         let mut projs = vec![];
         let adjustments = self.cx.typeck_results.expr_adjustments(expr);
         for adjustment in adjustments.iter() {
-            if let rustc_middle::ty::adjustment::Adjust::Deref(DerefAdjustKind::Builtin) = &adjustment.kind {
+            if let rustc_middle::ty::adjustment::Adjust::Deref(DerefAdjustKind::Builtin) =
+                &adjustment.kind
+            {
                 projs.push(Proj { ty: adjustment.target, kind: ProjKind::Deref });
             } else {
                 return None;

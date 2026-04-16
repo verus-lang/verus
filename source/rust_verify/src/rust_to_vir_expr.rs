@@ -30,8 +30,8 @@ use rustc_hir::{
 };
 use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_middle::ty::adjustment::{
-    Adjust, Adjustment, AllowTwoPhase, AutoBorrow, AutoBorrowMutability, DerefAdjustKind, PatAdjust, PatAdjustment,
-    PointerCoercion,
+    Adjust, Adjustment, AllowTwoPhase, AutoBorrow, AutoBorrowMutability, DerefAdjustKind,
+    PatAdjust, PatAdjustment, PointerCoercion,
 };
 use rustc_middle::ty::{
     AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv, Upcast,
@@ -1374,7 +1374,10 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 // exec/tracked contexts. So we need to handle this case specially.
                 if bctx.in_ghost
                     && adjustment_idx >= 2
-                    && matches!(&adjustments[adjustment_idx - 2].kind, Adjust::Deref(DerefAdjustKind::Builtin))
+                    && matches!(
+                        &adjustments[adjustment_idx - 2].kind,
+                        Adjust::Deref(DerefAdjustKind::Builtin)
+                    )
                 {
                     let inner_inner_ty = get_inner2_ty();
                     if matches!(

@@ -121,8 +121,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             typing_env: ty::TypingEnv::non_body_analysis(tcx, def),
             typeck_results,
             body_owner: def.to_def_id(),
-            apply_adjustments:
-                !find_attr!(tcx.hir_attrs(hir_id), CustomMir(..) => ()).is_some(),
+            apply_adjustments: !find_attr!(tcx.hir_attrs(hir_id), CustomMir(..) => ()).is_some(),
             verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
         }
     }

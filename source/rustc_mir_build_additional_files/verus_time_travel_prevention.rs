@@ -846,7 +846,7 @@ fn make_half_pat_rec<'tcx>(pat: &mut Pat<'tcx>, half_kind: Half) {
                 make_half_pat_rec(&mut field_pat.pattern, half_kind);
             }
         }
-        PatKind::Deref { subpattern , pin: _} => {
+        PatKind::Deref { subpattern, pin: _ } => {
             make_half_pat_rec(subpattern, half_kind);
         }
         PatKind::DerefPattern { subpattern, borrow: _ } => {
