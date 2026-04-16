@@ -24,7 +24,6 @@ pub struct RunConfigurationProject {
 pub struct RunConfiguration {
     pub verus_git_url: String,
     pub verus_refspec: String,
-    pub verus_features: Vec<String>,
     pub verus_extra_args: Option<Vec<String>>,
     // #[serde(default = true)]
     // verus_verify_vstd: bool,
