@@ -131,9 +131,6 @@ test_verify_one_file! {
                     i == it.index@,
                     it.seq().unref() == seq![0u32, 2u32, 4u32],
             {
-                // TODO: We shouldn't need this assertion, but it seems to help
-                //       (possibly by instantiating the existential quantifier in `contains`)
-                assert(x == vstd::std_specs::slice::into_iter_elts(it.snapshot@)[it.index@]);
                 assert(it.seq().unref().contains(*x));
                 assert(x < 5);
                 assert(x % 2 == 0);

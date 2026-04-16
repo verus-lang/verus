@@ -3419,6 +3419,8 @@ impl Visitor {
         //                     None => { break }
         //                 }
         //                 let x = VERUS_loop_next;
+        //                 // Make sure the SMT solver thinks about `peek`, even if it isn't used in the invariants
+        //                 assert(trigger_peek_implications(VERUS_OLD_y.snapshot@.peek(VERUS_OLD_y.index@));
         //                 // We only let the user-provided body access an immutable ghost version of the iterator
         //                 // We use the "old" version, so that the index lines up with the loop invariant
         //                 let ghost y = VERUS_OLD_y;
@@ -3653,6 +3655,13 @@ impl Visitor {
                 ::core::option::Option::None => break,
             };
             let #pat = VERUS_loop_next;
+            #[verifier::proof_block]
+            {
+                // This assertion helps add the results of the peek operation into Z3's context
+                #vstd::prelude::assert_(#vstd::std_specs::iter::trigger_peek_implications(
+                    #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_body_old.snapshot.view(), #x_iter_body_old.index.view())
+                ));
+            }            
             #[verus::internal(spec)]
             #[verus::internal(unwrapped_binding)]
             let #x_iter_name;

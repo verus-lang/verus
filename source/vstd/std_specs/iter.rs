@@ -322,6 +322,10 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     }
 }
 
+// Artificial function used when we desguar a for loop.
+// It helps bring the definition of `peek` into scope,
+// resulting in better automation for some proofs.
+pub open spec fn trigger_peek_implications<T>(x: T) -> bool { true }
 
 /********************************************************************************
  * Definitions for the Step trait
