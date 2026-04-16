@@ -756,7 +756,7 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
                 erase_pat_rec(emode, &mut field_pat.pattern);
             }
         }
-        PatKind::Deref { subpattern } => {
+        PatKind::Deref { subpattern, pin: _ } => {
             erase_pat_rec(emode, subpattern);
         }
         PatKind::DerefPattern { subpattern, borrow: _ } => {
@@ -1323,7 +1323,7 @@ pub(crate) fn fn_sig_with_region_vars<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> 
         TyKind::FnDef(def_id, args) => {
             let mut replacer = ReErasedReplacer::new(tcx);
             let args = args.fold_with(&mut replacer);
-            let f = tcx.fn_sig(def_id).instantiate(tcx, args);
+            let f = tcx.fn_sig(*def_id).instantiate(tcx, args);
 
             // suppose the new vars we introduced are e_1, e_2, ..., e_n
             // while our late binders are l_1, ..., l_m
