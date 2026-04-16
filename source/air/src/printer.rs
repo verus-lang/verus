@@ -589,6 +589,7 @@ impl NodeWriter {
             sise::SpacedStringWriterNodeOptions { break_line_len: if brk { 0 } else { break_len } };
         match node {
             Node::Atom(a) => {
+                assert!(sise::check_atom(a), "invalid atom: {}", a);
                 writer.write_atom(a, opts).unwrap();
             }
             Node::List(l) => {

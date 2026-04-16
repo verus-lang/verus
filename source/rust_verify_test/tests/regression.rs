@@ -1,4 +1,5 @@
 #![feature(rustc_private)]
+#![allow(mixed_script_confusables)]
 #[macro_use]
 mod common;
 use common::*;
@@ -1586,4 +1587,133 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] raw_identifiers_in_smt_2221 verus_code! {
+        // Raw identifiers (r#keyword) must be sanitized before reaching AIR/SMT-LIB,
+        // since '#' is not a valid SMT-LIB simple-symbol character.
+        // Test a representative set of Rust strict keywords as function names,
+        // parameters, local variables, struct fields, and enum variants.
+
+        struct r#struct {
+            r#type: u32,
+            r#loop: u32,
+        }
+
+        enum r#enum {
+            r#match,
+            r#impl,
+        }
+
+        fn r#match(
+            r#in: u32,
+            r#out: u32,
+            r#for: u32,
+            r#while: u32,
+            r#return: u32,
+            r#break: u32,
+            r#continue: u32,
+            r#if: u32,
+            r#else: u32,
+            r#let: u32,
+            r#mut: u32,
+            r#ref: u32,
+            r#move: u32,
+            r#const: u32,
+            r#static: u32,
+            r#unsafe: u32,
+            r#where: u32,
+            r#async: u32,
+            r#await: u32,
+            r#dyn: u32,
+            r#as: u32,
+            r#use: u32,
+            r#pub: u32,
+            r#mod: u32,
+        ) -> u32
+            requires r#in == r#out
+        {
+            let r#type = r#in;
+            let r#loop = r#for;
+            let r#match = r#while;
+            let r#impl = r#return;
+            let r#enum = r#break;
+            let r#struct = r#continue;
+            let r#trait = r#if;
+            let r#let = r#else;
+            let r#mut = r#let;
+            let r#ref = r#mut;
+            let r#move = r#ref;
+            let r#const = r#move;
+            let r#static = r#const;
+            let r#unsafe = r#static;
+            let r#where = r#unsafe;
+            let r#async = r#where;
+            let r#await = r#async;
+            let r#dyn = r#await;
+            let r#as = r#dyn;
+            let r#use = r#as;
+            let r#pub = r#use;
+            let r#mod = r#pub;
+            assert(r#type == r#out);
+            r#type
+        }
+
+        fn raw_param(r#for: u32) -> u32 { r#for }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unicode_identifiers_in_smt_2221 verus_code! {
+        // Unicode identifiers must be sanitized before reaching AIR/SMT-LIB,
+        // since non-ASCII characters are not valid in SMT-LIB simple symbols.
+        // Test unicode in types, fields, enums, traits, generics, functions,
+        // parameters, locals, constants, and spec/proof functions.
+
+        struct Wrapperα<Tβ> {
+            payloadγ: Tβ,
+            extraδ: u32,
+        }
+
+        enum Choiceε<Tζ> {
+            OptionAη,
+            OptionBθ(Tζ),
+        }
+
+        trait Traitι {
+            spec fn methodκ(&self) -> int;
+        }
+
+        impl Traitι for Wrapperα<u32> {
+            spec fn methodκ(&self) -> int { self.payloadγ as int + self.extraδ as int }
+        }
+
+        spec fn αβγ(x: u32) -> u32 { x }
+
+        const MAXλ: u32 = 42;
+
+        proof fn test_unicode<Genμ>(item: Wrapperα<u32>, choice: Choiceε<u32>)
+            requires item.payloadγ == MAXλ
+        {
+            let baseν = item.payloadγ;
+            let scaledξ = αβγ(1u32);
+            let valueο = MAXλ;
+            assert(baseν == MAXλ);
+            assert(scaledξ == 1u32);
+            assert(valueο == 42);
+            assert(item.methodκ() == MAXλ as int + item.extraδ as int);
+        }
+    } => Ok(_err) => {
+        // Verification succeeds; the only warnings are the mixed_script_confusables
+        // lint about using non-ASCII identifiers, which is a Rust lint unrelated to AIR sanitization.
+        assert!(_err.errors.is_empty(), "unexpected errors: {:?}", _err.errors);
+        for w in &_err.warnings {
+            let msg = &w.message;
+            assert!(
+                msg.contains("mixed script confusables") || msg.contains("warning emitted"),
+                "unexpected warning: {:?}", msg
+            );
+        }
+    }
 }

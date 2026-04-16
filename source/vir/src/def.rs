@@ -92,6 +92,8 @@ const BITVEC_TMP_DECL_SEPARATOR: &str = "$$$$bitvectmp";
 const USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR: &str = "$$$$userdeftypeinvpass";
 const KRATE_SEPARATOR: &str = "!";
 const PATH_SEPARATOR: &str = ".";
+// Extra ASCII symbols allowed in AIR/SMT-LIB symbols (besides alphanumeric)
+const AIR_EXTRA_SYMBOLS: &str = "~!@$%^&*_-+=<>.?/";
 const PATHS_SEPARATOR: &str = "/";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
@@ -303,9 +305,44 @@ pub const SPLIT_POST_FAILURE: &str = "split postcondition failure";
 
 pub const PERVASIVE_ASSERT: &[&str] = &["pervasive", "assert"];
 
+/// Prefix added to mangled identifiers so they are easily recognizable in AIR output.
+const MANGLE_PREFIX: &str = "$V$";
+
+/// Sanitize an identifier string for use in AIR/SMT-LIB.
+/// AIR atoms may only contain ASCII alphanumeric characters and:
+///   ~ ! @ $ % ^ & * _ - + = < > . ? /
+/// We leave '_' untouched (so normal identifiers are unchanged) and encode any
+/// other illegal character as `${hex}$`.  This is injective because `$` is not a
+/// valid character in Rust identifiers, so an encoded identifier can never collide
+/// with an unencoded one, and the hex encoding itself is unambiguous.
+///
+/// If the identifier has already been mangled (e.g. when an AIR ident is reused
+/// as part of a larger generated name like a qid), we return it unchanged.
+pub fn sanitize_to_air_ident(name: &str) -> String {
+    if name.starts_with(MANGLE_PREFIX) {
+        return name.to_string();
+    }
+    let mut res = String::with_capacity(name.len() + MANGLE_PREFIX.len());
+    let needs_encode =
+        name.chars().any(|c| !c.is_ascii_alphanumeric() && !AIR_EXTRA_SYMBOLS.contains(c));
+    if !needs_encode {
+        return name.to_string();
+    }
+    res.push_str(MANGLE_PREFIX);
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() || AIR_EXTRA_SYMBOLS.contains(c) {
+            res.push(c);
+        } else {
+            res.push('$');
+            res.push_str(&format!("{:x}", c as u32));
+            res.push('$');
+        }
+    }
+    res
+}
+
 pub fn krate_to_string(krate: &Ident) -> String {
     // rustc allows crate names to begin with digits and to contain unicode
-    // TODO: Rust identifiers can in general contain unicode; we should handle this in general
     let krate = krate.escape_default().to_string();
     let krate = krate.replace('\\', PREFIX_ESCAPE);
     let krate = krate.replace('{', PREFIX_ESCAPE);
@@ -520,19 +557,19 @@ pub fn global_type() -> Path {
 }
 
 pub fn prefix_dcr_id(ident: &Path) -> Ident {
-    Arc::new(PREFIX_DCR_ID.to_string() + &path_to_string(ident))
+    Arc::new(PREFIX_DCR_ID.to_string() + &sanitize_to_air_ident(&path_to_string(ident)))
 }
 
 pub fn prefix_type_id(ident: &Path) -> Ident {
-    Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(ident))
+    Arc::new(PREFIX_TYPE_ID.to_string() + &sanitize_to_air_ident(&path_to_string(ident)))
 }
 
 pub fn prefix_dyn_id(ident: &Path) -> Ident {
-    Arc::new(PREFIX_DYN_ID.to_string() + &path_to_string(ident))
+    Arc::new(PREFIX_DYN_ID.to_string() + &sanitize_to_air_ident(&path_to_string(ident)))
 }
 
 pub fn prefix_fndef_type_id(fun: &Fun) -> Ident {
-    Arc::new(PREFIX_FNDEF_TYPE_ID.to_string() + &fun_to_string(fun))
+    Arc::new(PREFIX_FNDEF_TYPE_ID.to_string() + &sanitize_to_air_ident(&fun_to_string(fun)))
 }
 
 pub fn prefix_tuple_type(i: usize) -> Path {
@@ -572,7 +609,13 @@ pub(crate) fn impl_closure(kind: ClosureKind, id: usize) -> Ident {
 
 pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
     let proj = if decoration { PREFIX_PROJECT_DECORATION } else { PREFIX_PROJECT };
-    Arc::new(format!("{}{}{}{}", proj, path_to_string(trait_path), PROJECT_SEPARATOR, name))
+    Arc::new(format!(
+        "{}{}{}{}",
+        proj,
+        sanitize_to_air_ident(&path_to_string(trait_path)),
+        PROJECT_SEPARATOR,
+        sanitize_to_air_ident(name)
+    ))
 }
 
 pub fn projection_pointee_metadata(decoration: bool) -> Ident {
@@ -588,11 +631,15 @@ pub fn proj_param(i: usize) -> Ident {
 }
 
 pub fn trait_bound(trait_path: &Path) -> Ident {
-    Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
+    Arc::new(format!(
+        "{}{}",
+        PREFIX_TRAIT_BOUND,
+        sanitize_to_air_ident(&path_to_string(trait_path))
+    ))
 }
 
 pub fn to_dyn(trait_path: &Path) -> Ident {
-    Arc::new(format!("{}{}", PREFIX_TO_DYN, path_to_string(trait_path)))
+    Arc::new(format!("{}{}", PREFIX_TO_DYN, sanitize_to_air_ident(&path_to_string(trait_path))))
 }
 
 pub fn sized_bound() -> Ident {
@@ -604,11 +651,11 @@ pub fn prefix_type_id_fun(i: usize) -> Ident {
 }
 
 pub fn prefix_box(ident: &Path) -> Ident {
-    Arc::new(PREFIX_BOX.to_string() + &path_to_string(ident))
+    Arc::new(PREFIX_BOX.to_string() + &sanitize_to_air_ident(&path_to_string(ident)))
 }
 
 pub fn prefix_unbox(ident: &Path) -> Ident {
-    Arc::new(PREFIX_UNBOX.to_string() + &path_to_string(ident))
+    Arc::new(PREFIX_UNBOX.to_string() + &sanitize_to_air_ident(&path_to_string(ident)))
 }
 
 pub fn prefix_fuel_id(ident: &Ident) -> Ident {
@@ -686,7 +733,12 @@ pub fn encode_dt_as_path(dt: &Dt) -> Path {
 
 pub fn variant_ident(dt: &Dt, variant: &str) -> Ident {
     let path = encode_dt_as_path(dt);
-    Arc::new(format!("{}{}{}", path_to_string(&path), VARIANT_SEPARATOR, variant))
+    Arc::new(format!(
+        "{}{}{}",
+        sanitize_to_air_ident(&path_to_string(&path)),
+        VARIANT_SEPARATOR,
+        sanitize_to_air_ident(variant)
+    ))
 }
 
 pub fn is_variant_ident(datatype: &Dt, variant: &str) -> Ident {
@@ -701,11 +753,11 @@ pub fn variant_field_ident_internal(
 ) -> Ident {
     Arc::new(format!(
         "{}{}{}{}{}",
-        path_to_string(path),
+        sanitize_to_air_ident(&path_to_string(path)),
         VARIANT_SEPARATOR,
-        variant.as_str(),
+        sanitize_to_air_ident(variant.as_str()),
         if internal { VARIANT_FIELD_INTERNAL_SEPARATOR } else { VARIANT_FIELD_SEPARATOR },
-        field.as_str()
+        sanitize_to_air_ident(field.as_str())
     ))
 }
 
@@ -786,6 +838,7 @@ pub fn new_user_qid_name(fun_name: &str, q_count: u64) -> String {
     // In SMTLIB, unquoted attribute values cannot contain colons,
     // and sise cannot handle quoting with vertical bars
     let fun_name = str::replace(&fun_name, ":", "_");
+    let fun_name = sanitize_to_air_ident(&fun_name);
     let qid = format!("{}{}_{}", air::profiler::USER_QUANT_PREFIX, fun_name, q_count);
     qid
 }
@@ -796,6 +849,7 @@ pub fn new_internal_qid(ctx: &crate::context::Ctx, name: String) -> Option<Ident
     // and sise cannot handle quoting with vertical bars
     let name = str::replace(&name, ":", "_");
     let name = str::replace(&name, "%", "__");
+    let name = sanitize_to_air_ident(&name);
     let qid = format!("{}{}_definition", air::profiler::INTERNAL_QUANT_PREFIX, name);
 
     if let Some(fun) = ctx.fun.as_ref() {
@@ -1082,7 +1136,7 @@ pub fn unique_var_name(
     uniq_id: crate::ast::VarIdentDisambiguate,
 ) -> String {
     use {crate::ast::VarIdentDisambiguate, std::fmt::Write};
-    let mut out = user_given_name;
+    let mut out = sanitize_to_air_ident(&user_given_name);
     match uniq_id {
         VarIdentDisambiguate::AirLocal => {}
         VarIdentDisambiguate::NoBodyParam => {
@@ -1174,7 +1228,7 @@ pub fn nonstatic_call_path(vstd_crate_name: &Option<Ident>, is_proof: bool) -> P
 }
 
 pub fn static_name(fun: &Fun) -> Ident {
-    Arc::new(PREFIX_STATIC.to_string() + &fun_to_string(fun))
+    Arc::new(PREFIX_STATIC.to_string() + &sanitize_to_air_ident(&fun_to_string(fun)))
 }
 
 pub fn break_label(i: u64) -> Ident {

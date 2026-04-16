@@ -18,8 +18,9 @@ use crate::def::{
     SpanKind, Spanned, U_HI, encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid,
     new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
     prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type,
-    prefix_unbox, snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id,
-    suffix_typ_param_ids, variant_field_ident, variant_field_ident_internal, variant_ident,
+    prefix_unbox, sanitize_to_air_ident, snapshot_ident, static_name, suffix_global_id,
+    suffix_local_unique_id, suffix_typ_param_ids, variant_field_ident,
+    variant_field_ident_internal, variant_ident,
 };
 use crate::messages::{Span, error, error_with_label};
 use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
@@ -61,12 +62,12 @@ pub struct PostConditionInfo {
 
 #[inline(always)]
 pub(crate) fn fun_to_air_ident(fun: &Fun) -> Ident {
-    Arc::new(fun_to_string(fun))
+    Arc::new(sanitize_to_air_ident(&fun_to_string(fun)))
 }
 
 #[inline(always)]
 pub(crate) fn path_to_air_ident(path: &Path) -> Ident {
-    Arc::new(path_to_string(path))
+    Arc::new(sanitize_to_air_ident(&path_to_string(path)))
 }
 
 #[inline(always)]
