@@ -12,9 +12,9 @@ pub struct ExGlobal(alloc::alloc::Global);
 
 #[cfg(feature = "alloc")]
 #[feature(liballoc_internals)]
-pub assume_specification<T, const N: usize>[ std::boxed::box_assume_init_into_vec_unsafe ](
-    vals: std::boxed::Box<std::mem::MaybeUninit<[T; N]>>,
-) -> (result: std::vec::Vec<T>)
+pub assume_specification<T, const N: usize>[ alloc::boxed::box_assume_init_into_vec_unsafe ](
+    vals: alloc::boxed::Box<core::mem::MaybeUninit<[T; N]>>,
+) -> (result: alloc::vec::Vec<T>)
     requires
         vals.mem_contents() is Init,
     ensures
@@ -24,17 +24,17 @@ pub assume_specification<T, const N: usize>[ std::boxed::box_assume_init_into_ve
 #[cfg(feature = "alloc")]
 #[feature(liballoc_internals)]
 pub assume_specification<T>[ alloc::intrinsics::write_box_via_move ](
-    _0: std::boxed::Box<std::mem::MaybeUninit<T>>,
+    _0: alloc::boxed::Box<core::mem::MaybeUninit<T>>,
     v: T,
-) -> (result: std::boxed::Box<std::mem::MaybeUninit<T>>)
+) -> (result: alloc::boxed::Box<core::mem::MaybeUninit<T>>)
     ensures
         result.mem_contents() == MemContents::Init(v),
 ;
 
 #[cfg(feature = "alloc")]
 #[feature(liballoc_internals)]
-pub assume_specification<T>[ std::boxed::Box::<T>::new_uninit ]() -> std::boxed::Box<
-    std::mem::MaybeUninit<T>,
+pub assume_specification<T>[ alloc::boxed::Box::<T>::new_uninit ]() -> alloc::boxed::Box<
+    core::mem::MaybeUninit<T>,
 >
 ;
 
