@@ -669,7 +669,7 @@ fn display_perf_stats(state: &State) {
 
             let mut cache_stats: Vec<(&Fun, usize)> =
                 state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
-            cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
+            cache_stats.sort_by_key(|a| std::cmp::Reverse(a.1));
             for (fun, calls) in &cache_stats {
                 state.log(format!("{:?} cached {} distinct invocations", fun.path, calls));
             }
