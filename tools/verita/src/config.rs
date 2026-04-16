@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Hash, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct RunConfigurationProject {
     pub name: String,
     pub git_url: String,
@@ -19,6 +20,7 @@ pub struct RunConfigurationProject {
 }
 
 #[derive(Debug, Serialize, Deserialize, Hash)]
+#[serde(deny_unknown_fields)]
 pub struct RunConfiguration {
     pub verus_git_url: String,
     pub verus_refspec: String,
