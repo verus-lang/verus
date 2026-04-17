@@ -1,6 +1,6 @@
 use crate::ast::{
-    Fun, FunctionKind, Ident, Idents, ItemKind, Mode, SpannedTyped, Typ, TypX, Typs, VarBinder,
-    VarBinderX, VirErr,
+    CrateId, Fun, FunctionKind, Ident, Idents, ItemKind, Mode, SpannedTyped, Typ, TypX, Typs,
+    VarBinder, VarBinderX, VirErr,
 };
 use crate::ast_util::{LowerUniqueVar, QUANT_FORALL};
 use crate::context::Ctx;
@@ -194,7 +194,7 @@ pub(crate) fn broadcast_forall_group_axioms(
     ctx: &Ctx,
     decl_commands: &mut Vec<Command>,
     group: &crate::ast::RevealGroup,
-    crate_name: &Ident,
+    crate_name: &CrateId,
 ) {
     let id_group = prefix_fuel_id(&fun_to_air_ident(&group.x.name));
     let fuel_group = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_group)]);

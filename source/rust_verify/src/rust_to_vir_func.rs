@@ -30,8 +30,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::vec;
 use vir::ast::{
-    BodyVisibility, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, ItemKind, KrateX, Mode,
-    OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX, VarIdent, VirErr, Visibility,
+    BodyVisibility, CrateId, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, ItemKind, KrateX,
+    Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX, VarIdent, VirErr,
+    Visibility,
 };
 use vir::ast_util::{air_unique_var, unit_typ};
 use vir::def::{RETURN_VALUE, Spanned, VERUS_SPEC};
@@ -897,7 +898,7 @@ fn handle_external_fn<'tcx>(
     let external_path = ctxt.def_id_to_vir_path(external_id);
     let external_item_visibility = mk_visibility(ctxt, external_id);
 
-    if external_path.krate == Some(Arc::new("verus_builtin".to_string()))
+    if external_path.krate == CrateId::Id(Arc::new("verus_builtin".to_string()))
         && &*external_path.last_segment() != "clone"
         && !is_builtin_external
     {
@@ -2099,12 +2100,12 @@ pub(crate) fn check_item_fn<'tcx>(
     // mark it non-private in order to avoid errors down the line.
     let mut visibility = visibility;
     for b in [true, false] {
-        if path == vir::def::nonstatic_call_path(&Some(ctxt.vstd_crate_name.clone()), b) {
+        if path == vir::def::nonstatic_call_path(b) {
             visibility.restricted_to = None;
         }
     }
 
-    if path == vir::def::exec_await_path(&Some(ctxt.vstd_crate_name.clone())) {
+    if path == vir::def::exec_await_path() {
         visibility.restricted_to = None;
     }
 

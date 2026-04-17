@@ -1,5 +1,6 @@
 //! VIR-AST -> VIR-AST transformation to simplify away some complicated features
 
+use crate::ast::CrateId;
 use crate::ast::Quant;
 use crate::ast::Typs;
 use crate::ast::VarBinder;
@@ -1463,7 +1464,7 @@ fn add_tuple_auto_impl(
     }
     let self_ty = Arc::new(TypX::Datatype(Dt::Tuple(arity), Arc::new(typ_args), Arc::new(vec![])));
     let impl_path = Arc::new(crate::ast::PathX {
-        krate: None,
+        krate: CrateId::Internal,
         segments: Arc::new(vec![impl_tuple(trait_path.segments.last().unwrap(), arity)]),
     });
     let trait_implx = crate::ast::TraitImplX {
@@ -1563,12 +1564,12 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
 
-        let tuple_path = crate::path!["core" => "marker", "Tuple"];
-        let clone_path = crate::path!["core" => "clone", "Clone"];
-        let copy_path = crate::path!["core" => "marker", "Copy"];
-        //let send_path = crate::path!["core" => "marker", "Send"];
-        //let sync_path = crate::path!["core" => "marker", "Sync"];
-        //let unpin_path = crate::path!["core" => "marker", "Unpin"];
+        let tuple_path = crate::path![CrateId::Core => "marker", "Tuple"];
+        let clone_path = crate::path![CrateId::Core => "clone", "Clone"];
+        let copy_path = crate::path![CrateId::Core => "marker", "Copy"];
+        //let send_path = crate::path![CrateId::Core => "marker", "Send"];
+        //let sync_path = crate::path![CrateId::Core => "marker", "Sync"];
+        //let unpin_path = crate::path![CrateId::Core => "marker", "Unpin"];
         add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, false, tuple_path);
         add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, true, clone_path);
         add_tuple_auto_impl(ctx, &traits, &mut trait_impls, arity, true, copy_path);
@@ -1640,7 +1641,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let args_tuple_typ =
             Arc::new(TypX::Datatype(Dt::Tuple(closure.args.len()), closure.args, Arc::new(vec![])));
         let impl_path = Arc::new(crate::ast::PathX {
-            krate: None,
+            krate: CrateId::Internal,
             segments: Arc::new(vec![crate::def::impl_closure(closure.kind, id)]),
         });
         let trait_implx = crate::ast::TraitImplX {

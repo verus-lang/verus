@@ -1,7 +1,7 @@
 use crate::ast::{
-    ArchWordBits, Datatype, Dt, Fun, Function, FunctionAttrs, GenericBounds, Ident, ImplPath,
-    IntRange, Krate, Mode, Module, OpaqueType, Path, Primitive, Trait, TraitImpl, TypPositives,
-    TypX, Variants, VirErr,
+    ArchWordBits, CrateId, Datatype, Dt, Fun, Function, FunctionAttrs, GenericBounds, Ident,
+    ImplPath, IntRange, Krate, Mode, Module, OpaqueType, Path, Primitive, Trait, TraitImpl,
+    TypPositives, TypX, Variants, VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -56,8 +56,7 @@ pub struct GlobalCtx {
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
     pub(crate) func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
     pub arch: crate::ast::ArchWordBits,
-    pub crate_name: Ident,
-    pub vstd_crate_name: Ident,
+    pub crate_name: CrateId,
     pub solver: SmtSolver,
     pub check_api_safety: bool,
     pub axiom_usage_info: bool,
@@ -276,7 +275,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> GraphBuilder<T> {
 impl GlobalCtx {
     pub fn new(
         krate: &Krate,
-        crate_name: Ident,
+        crate_name: CrateId,
         no_span: Span,
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
@@ -493,7 +492,7 @@ impl GlobalCtx {
         for module in &krate.modules {
             let module_reveal_node = Node::ModuleReveal(module.x.path.clone());
             func_call_graph.add_node(module_reveal_node.clone());
-            if module.x.path.krate == Some(crate_name.clone()) {
+            if module.x.path.krate == crate_name {
                 func_call_graph.add_edge(module_reveal_node.clone(), crate_node.clone());
             }
             if let Some(ref reveals) = module.x.reveals {
@@ -615,9 +614,9 @@ impl GlobalCtx {
             }
 
             fn nostd_filter(n: &Node) -> (bool, bool) {
-                fn is_not_std_crate(crate_name: &Option<Ident>) -> bool {
-                    match crate_name.as_ref().map(|x| x.as_str()) {
-                        Some("vstd") | Some("core") | Some("alloc") => false,
+                fn is_not_std_crate(crate_name: &CrateId) -> bool {
+                    match crate_name {
+                        CrateId::Vstd | CrateId::Core | CrateId::Alloc => false,
                         _ => true,
                     }
                 }
@@ -634,7 +633,7 @@ impl GlobalCtx {
                     Node::TraitReqEns(ImplPath::TraitImplPath(path), _) => is_not_std(path),
                     Node::TraitReqEns(ImplPath::FnDefImplPath(fun), _) => is_not_std(&fun.path),
                     Node::ModuleReveal(path) => is_not_std(path),
-                    Node::Crate(c) => is_not_std_crate(&Some(c.clone())),
+                    Node::Crate(c) => is_not_std_crate(c),
                     Node::SpanInfo { .. } => true,
                 };
                 (render, render && !matches!(n, Node::SpanInfo { .. }))
@@ -677,7 +676,6 @@ impl GlobalCtx {
         let qid_map = RefCell::new(HashMap::new());
 
         let datatype_graph = crate::recursive_types::build_datatype_graph(krate, &mut span_infos);
-        let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
 
         Ok(GlobalCtx {
             chosen_triggers,
@@ -696,7 +694,6 @@ impl GlobalCtx {
             interpreter_log,
             arch: krate.arch.word_bits,
             crate_name,
-            vstd_crate_name,
             func_call_graph_log,
             solver,
             check_api_safety,
@@ -729,7 +726,6 @@ impl GlobalCtx {
             interpreter_log,
             arch: self.arch,
             crate_name: self.crate_name.clone(),
-            vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
             solver: self.solver.clone(),
             check_api_safety: self.check_api_safety,

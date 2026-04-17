@@ -13,8 +13,8 @@ use rustc_span::Span;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Fun, Function, Ident, KrateX,
-    Mode, Path, TypX, Variant, VirErr,
+    CrateId, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Fun, Function, Ident,
+    KrateX, Mode, Path, TypX, Variant, VirErr,
 };
 use vir::ast_util::ident_binder;
 use vir::def::field_ident_from_rust;
@@ -627,7 +627,7 @@ pub(crate) fn check_item_external<'tcx>(
         ctxt.verus_items.id_to_name.get(&external_def_id),
         Some(crate::verus_items::VerusItem::External(_))
     );
-    if !is_builtin_external && path.krate == Some(Arc::new("verus_builtin".to_string())) {
+    if !is_builtin_external && path.krate == CrateId::Id(Arc::new("verus_builtin".to_string())) {
         return err_span(
             span,
             "cannot apply `external_type_specification` to Verus verus_builtin types",

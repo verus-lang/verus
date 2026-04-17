@@ -387,6 +387,12 @@ fn path_to_node(path: &Path) -> Node {
     ))
 }
 
+impl ToDebugSNode for CrateId {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(crate::def::krate_to_string(self))
+    }
+}
+
 impl ToDebugSNode for Path {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         path_to_node(self)

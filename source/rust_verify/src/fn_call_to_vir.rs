@@ -33,11 +33,11 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArrayKind, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
-    BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX,
-    FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
-    ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place, PlaceX, Quant, Typ,
-    TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck,
-    VirErr,
+    BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
+    Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
+    IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place,
+    PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX,
+    VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -1321,7 +1321,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             mk_expr(ExprX::AssertAssumeUserDefinedTypeInvariant {
                 is_assume: true,
                 expr: exp,
-                fun: vir::fun!("" => "use_type_invariant_fake_placeholder_fun"),
+                fun: vir::fun!(CrateId::Internal => "use_type_invariant_fake_placeholder_fun"),
             })
         }
         VerusItem::WithTriggers => {

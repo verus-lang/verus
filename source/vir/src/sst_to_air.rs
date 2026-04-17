@@ -1,8 +1,9 @@
 use crate::ast::{
-    ArithOp, ArrayKind, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, GenericBoundX,
-    Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path,
-    PathX, Primitive, ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX,
-    Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VariantCheck, VirErr, Visibility,
+    ArithOp, ArrayKind, AssertQueryMode, BinaryOp, BitwiseOp, CrateId, Dt, FieldOpr, Fun,
+    GenericBoundX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
+    IntegerTypeBoundKind, Mode, Path, PathX, Primitive, ProofNoteLabel, SpannedTyped, Typ,
+    TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent,
+    VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ,
@@ -149,7 +150,7 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
             );
         }
     };
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
+    Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![id]) })
 }
 
 pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
@@ -1142,7 +1143,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         assert!(*kind == ArrayKind::Slice);
                         assert!(typ_args.len() == 1);
                         let t = &typ_args[0];
-                        let name = crate::def::fn_slice_len(&ctx.global.vstd_crate_name);
+                        let name = crate::def::fn_slice_len();
                         let name = suffix_global_id(&fun_to_air_ident(&name));
                         let mut exprs = typ_to_ids(t);
                         exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
@@ -1355,7 +1356,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                             let rhs_expr = exp_to_expr(ctx, rhs, expr_ctxt)?;
                             args.push(lhs_expr);
                             args.push(rhs_expr);
-                            let name = crate::def::fn_slice_index(&ctx.global.vstd_crate_name);
+                            let name = crate::def::fn_slice_index();
                             let name = suffix_global_id(&fun_to_air_ident(&name));
                             ExprX::Apply(name, Arc::new(args))
                         }
@@ -2444,11 +2445,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         let (fun, typ_args) = match &**container_typ {
                             TypX::Primitive(Primitive::Slice, typ_args) => {
                                 assert!(*kind == ArrayKind::Slice);
-                                (crate::def::fn_slice_update(&ctx.global.vstd_crate_name), typ_args)
+                                (crate::def::fn_slice_update(), typ_args)
                             }
                             TypX::Primitive(Primitive::Array, typ_args) => {
                                 assert!(*kind == ArrayKind::Array);
-                                (crate::def::fn_array_update(&ctx.global.vstd_crate_name), typ_args)
+                                (crate::def::fn_array_update(), typ_args)
                             }
                             _ => {
                                 return Err(error(
@@ -3337,7 +3338,7 @@ pub(crate) fn body_stm_to_air(
 //         CallFun::Fun(
 //             Arc::new(crate::ast::FunX {
 //                 path: Arc::new(PathX {
-//                     krate: Some(Arc::new("vstd".to_string())),
+//                     krate: CrateId::Vstd,
 //                     segments: Arc::new(vec![
 //                         Arc::new("future".to_string()),
 //                         Arc::new("FutureAdditionalSpecFns".to_string()),

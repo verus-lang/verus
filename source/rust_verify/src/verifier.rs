@@ -5,6 +5,7 @@ use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
+use crate::rust_to_vir_base::mk_crate_id;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
 use crate::util::{HashMapAbsorbWith, error};
@@ -1966,7 +1967,7 @@ impl Verifier {
         }
         let (pruned_krate, prune_info) = vir::prune::prune_krate_for_module_or_krate(
             &krate,
-            &Arc::new(self.crate_name.clone().expect("crate_name")),
+            &mk_crate_id(self.crate_name.clone().expect("crate_name")),
             None,
             Some(bucket_id.module().clone()),
             bucket_id.function(),
@@ -2075,7 +2076,7 @@ impl Verifier {
 
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
-            Arc::new(self.crate_name.clone().expect("crate_name")),
+            mk_crate_id(self.crate_name.clone().expect("crate_name")),
             air_no_span.clone(),
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
@@ -2714,7 +2715,6 @@ impl Verifier {
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
 
-        let vstd_crate_name = Arc::new(vir::def::VERUSLIB.to_string());
         let ctxtx = ContextX::new(
             self.args.clone(),
             tcx,
@@ -2722,8 +2722,7 @@ impl Verifier {
             spans.clone(),
             verus_items,
             self.args.vstd == crate::config::Vstd::NoVstd,
-            Arc::new(crate_name.clone()),
-            vstd_crate_name,
+            mk_crate_id(crate_name.clone()),
         );
 
         let ctxt_diagnostics = ctxtx.diagnostics.clone();
@@ -2806,7 +2805,7 @@ impl Verifier {
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
         let (vir_crate, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
-            &Arc::new(crate_name.clone()),
+            &mk_crate_id(crate_name.clone()),
             Some(&current_vir_crate),
             None,
             None,

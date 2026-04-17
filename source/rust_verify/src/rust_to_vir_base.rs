@@ -25,14 +25,23 @@ use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use vir::ast::{
-    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaqueType,
+    CrateId, Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaqueType,
     OpaqueTypeX, OpaqueTypes, Path, PathX, Primitive, Sizedness, TraitId, Typ, TypDecorationArg,
     TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
+pub(crate) fn mk_crate_id(s: String) -> CrateId {
+    match s.as_str() {
+        "vstd" => CrateId::Vstd,
+        "core" => CrateId::Core,
+        "alloc" => CrateId::Alloc,
+        _ => CrateId::Id(Arc::new(s)),
+    }
+}
+
 fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
-    let krate = Some(Arc::new(tcx.crate_name(def_path.krate).to_string()));
+    let krate = mk_crate_id(tcx.crate_name(def_path.krate).to_string());
     let mut segments: Vec<vir::ast::Ident> = Vec::new();
     for d in def_path.data.iter() {
         use rustc_hir::definitions::DefPathData;
@@ -146,8 +155,7 @@ pub(crate) fn def_id_to_vir_path_option<'tcx>(
             // interpreter.rs and def.rs refer directly to some impl methods,
             // so make sure we use the fn_name names from `verus_items`
             let segments = fn_name.split("::").map(|x| Arc::new(x.to_string())).collect();
-            let krate = Some(Arc::new("vstd".to_string()));
-            return Some(Arc::new(PathX { krate, segments: Arc::new(segments) }));
+            return Some(Arc::new(PathX { krate: CrateId::Vstd, segments: Arc::new(segments) }));
         }
     }
     let path = def_path_to_vir_path(tcx, tcx.def_path(def_id));

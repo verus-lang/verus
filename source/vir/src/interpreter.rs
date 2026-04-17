@@ -6,10 +6,10 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArithOp, ArrayKind, BinaryOp, BitwiseOp, ComputeMode, Constant, Div0Behavior, Dt,
-    Fun, FunX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind,
-    OverflowBehavior, PathX, Primitive, SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent,
-    VarIdentDisambiguate, VirErr,
+    ArchWordBits, ArithOp, ArrayKind, BinaryOp, BitwiseOp, ComputeMode, Constant, CrateId,
+    Div0Behavior, Dt, Fun, FunX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
+    IntegerTypeBoundKind, OverflowBehavior, PathX, Primitive, SpannedTyped, Typ, TypX, UnaryOp,
+    VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
@@ -743,7 +743,7 @@ fn eval_array(
                                 ),
                             };
                             let seq_type_path = Arc::new(PathX {
-                                krate: Some(Arc::new("vstd".to_string())),
+                                krate: CrateId::Vstd,
                                 segments: strs_to_idents(vec!["seq", "Seq"]),
                             });
                             let seq_typ = Arc::new(TypX::Datatype(
@@ -822,10 +822,8 @@ pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
 /// macro definition in vstd's seq.rs.
 // TODO: More robust way of pointing to vstd's sequence functions
 fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
-    let seq_type_path = Arc::new(PathX {
-        krate: Some(Arc::new("vstd".to_string())),
-        segments: strs_to_idents(vec!["seq", "Seq"]),
-    });
+    let seq_type_path =
+        Arc::new(PathX { krate: CrateId::Vstd, segments: strs_to_idents(vec!["seq", "Seq"]) });
     let seq_typ = Arc::new(TypX::Datatype(
         Dt::Path(seq_type_path),
         Arc::new(vec![inner_typ.clone()]),
@@ -835,11 +833,11 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
     if s.len() <= 1 {
         let typs = Arc::new(vec![inner_typ.clone()]);
         let path_empty = Arc::new(PathX {
-            krate: Some(Arc::new("vstd".to_string())),
+            krate: CrateId::Vstd,
             segments: strs_to_idents(vec!["seq", "Seq", "empty"]),
         });
         let path_push = Arc::new(PathX {
-            krate: Some(Arc::new("vstd".to_string())),
+            krate: CrateId::Vstd,
             segments: strs_to_idents(vec!["seq", "Seq", "push"]),
         });
         let fun_empty = Arc::new(FunX { path: path_empty });
@@ -854,7 +852,7 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
     } else {
         // Describe the sequence in terms of a view on an array literal
         let path_view = Arc::new(PathX {
-            krate: Some(Arc::new("vstd".to_string())),
+            krate: CrateId::Vstd,
             segments: strs_to_idents(vec!["array", "array_view"]),
         });
         let fun_view = Arc::new(FunX { path: path_view });
