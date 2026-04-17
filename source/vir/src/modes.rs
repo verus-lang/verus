@@ -3074,6 +3074,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, outer_mode, body, Mode::Exec, &Proph::No)?;
             for inv in invs.iter() {
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut typing = typing.push_in_pure(true);
                 check_expr_has_mode(
                     ctxt,
                     record,
@@ -3086,6 +3087,7 @@ fn check_expr_handle_mut_arg(
             }
             for dec in decrease.iter() {
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut typing = typing.push_in_pure(true);
                 let dec_proph = check_expr_has_mode(
                     ctxt,
                     record,

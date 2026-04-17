@@ -825,3 +825,23 @@ test_verify_one_file! {
         "cannot use trait `crate::T1SpecImpl` directly; use `crate::T1Spec` instead"
     )
 }
+
+test_verify_one_file! {
+    #[test] unrecognized_assoc_type_issue1485 verus_code! {
+        use std::borrow::Cow;
+
+        #[verifier::external_trait_specification]
+        pub trait ExToOwned {
+            type ExternalTraitSpecificationFor: ToOwned;
+        }
+
+        #[verifier::external_type_specification]
+        #[verifier::reject_recursive_types(B)]
+        pub struct ExCow<'a, B: 'a + ?Sized + ToOwned>(Cow<'a, B>);
+
+        fn test() { }
+    } => Err(err) => assert_vir_error_msg(
+        err,
+        "Verus does not recognize associated type `Owned` of trait `alloc::borrow::ToOwned`"
+    )
+}

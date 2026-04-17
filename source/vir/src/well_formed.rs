@@ -115,6 +115,26 @@ fn check_one_typ<Emit: EmitError>(
             }
             Ok(())
         }
+        TypX::Projection { trait_typ_args: _, trait_path, name } => {
+            if let Some(tr) = ctxt.traits.get(trait_path) {
+                if tr.x.assoc_typs.iter().any(|n| n == name) {
+                    Ok(())
+                } else {
+                    Err(error(
+                        span,
+                        &format!("Verus does not recognize associated type `{}` of trait `{}`", name, path_as_friendly_rust_name(trait_path)),
+                    ).help("If this trait was declared to Verus via `external_trait_specification`, it may need the associated type declared"))
+                }
+            } else {
+                Err(error(
+                    span,
+                    &format!(
+                        "trait {} not declared to Verus",
+                        path_as_friendly_rust_name(trait_path)
+                    ),
+                ))
+            }
+        }
         _ => Ok(()),
     }
 }
