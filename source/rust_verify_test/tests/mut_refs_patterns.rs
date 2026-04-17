@@ -3207,9 +3207,8 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] partial_move_out_of_enum2 ["new-mut-ref"] => verus_code! {
-        // One way to get around the error more legitimately is to use an enum where
-        // one variant is impossible.
-        // However, I am told this may be disallowed in the future as well.
+        // One way to get around the error more legitimately was to use an enum where
+        // one variant is impossible, but this is no longer allowed as of 1.95.0.
 
         enum Option<T, U> { Some(T), None(U) }
         use crate::Option::Some;
