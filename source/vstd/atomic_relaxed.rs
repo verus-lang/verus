@@ -74,6 +74,11 @@ impl View {
 pub ghost struct History<T>(pub Map<nat, (T, Option<View>)>);
 
 impl<T> History<T> {
+    // #[verifier::type_invariant]
+    // pub closed spec fn inv(&self) -> bool {
+    //     self.0.dom().finite()
+    // }
+
     pub open spec fn contains_timestamp(&self, timestamp: nat) -> bool {
         self.0.dom().contains(timestamp)
     }
@@ -585,7 +590,7 @@ impl<T> AtomicPointsTo<T> {
 
     #[verifier::type_invariant]
     pub closed spec fn inv(&self) -> bool {
-        self.hist().0.len() > 0
+        self.hist().0.len() > 0 && self.hist().0.dom().finite()
     }
 
     // AT-EXCL
@@ -633,6 +638,26 @@ impl PWeakAtomicU8 {
             res.1@.hist().is_singleton(res.3@, (i, Some(res.2@.view()))),
             res.2@.view().contains_loc(res.1@.loc()),
             res.2@.view().get_timestamp(res.1@.loc()) == res.3@
+    {
+        let p = PWeakAtomicU8 { ato: AtomicU8::new(i) };
+        (p, Tracked::assume_new(), Tracked::assume_new(), Ghost::new(unreached()))
+    }
+
+    // todo - make const
+    #[inline(always)]
+    #[verifier::external_body]
+    pub /*const*/ fn new_incl(i: u8, Tracked(vs) : Tracked<ViewSeen>) -> (res: (
+        Self,
+        Tracked<AtomicPointsTo<u8>>,
+        Tracked<ViewSeen>,
+        Ghost<nat>,
+    ))
+        ensures
+            res.0.loc() == res.1@.loc(),
+            res.1@.hist().is_singleton(res.3@, (i, Some(res.2@.view()))),
+            res.2@.view().contains_loc(res.1@.loc()),
+            res.2@.view().get_timestamp(res.1@.loc()) == res.3@,
+     				res.2@.view().contains(vs.view())
     {
         let p = PWeakAtomicU8 { ato: AtomicU8::new(i) };
         (p, Tracked::assume_new(), Tracked::assume_new(), Ghost::new(unreached()))
@@ -834,6 +859,7 @@ impl PWeakAtomicU8 {
 
     #[inline(always)]
     #[verifier::external_body]
+    // TODO make this proof so that it can be used inside an atomic invariant body
     pub fn truncate_history(&mut self, Tracked(pt): Tracked<&mut AtomicPointsTo<u8>>) -> (ts: Ghost<nat>)
         requires
             old(self).loc() == old(pt).loc()
@@ -849,6 +875,7 @@ impl PWeakAtomicU8 {
     }
 
     // AT-CAS-SN-GEN -- of = relaxed, or = acquire, ow = relaxed
+    // NN: too verbose, can we factor out this such that we can reuse loading and storing specs across different operations
     #[inline(always)]
     #[verifier::external_body]
     #[verifier::atomic]
