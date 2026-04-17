@@ -83,6 +83,20 @@ impl<T> History<T> {
         self.0.dom().contains(timestamp)
     }
 
+    pub open spec fn index(&self, timestamp: nat) -> (T, Option<View>) 
+        recommends self.contains_timestamp(timestamp)
+    {
+        self.0.index(timestamp)
+    }
+
+    pub open spec fn remove(&self, timestamp: nat) -> Self {
+        History(self.0.remove(timestamp))
+    }
+
+    pub open spec fn dom(&self) -> Set<nat> {
+        self.0.dom()
+    }
+
     pub open spec fn get(&self, timestamp: nat) -> Option<(T, Option<View>)> {
         self.0.get(timestamp)
     }
@@ -103,6 +117,10 @@ impl<T> History<T> {
         &&& self.contains_timestamp(timestamp)
         &&& forall|ts| #[trigger] self.contains_timestamp(ts) ==> ts <= timestamp
     }
+
+    // pub uninterp spec fn last(&self) -> (nat, (T, Option<View>))
+    //     recommends self.0.len() > 0;
+
 }
 
 pub broadcast proof fn view_contains_refl(v: View)
@@ -193,6 +211,33 @@ pub broadcast proof fn history_get_contains_timestamp<T>(h: History<T>, t: nat)
     ensures
         h.contains_timestamp(t)
 {}
+
+pub broadcast proof fn history_singleton_dom_singleton<T>(h: History<T>, ts : nat, val : (T, Option<View>))
+    requires
+        h.0.dom().finite(),
+        #[trigger] h.is_singleton(ts, val)
+    ensures
+        h.0.dom().is_singleton(),
+{
+    assert (forall |ts1| #[trigger] h.0.dom().contains(ts1) ==>  h.contains_timestamp(ts1));
+    assert (forall |ts1| #[trigger] h.0.dom().contains(ts1) ==>  ts1 == ts);
+}
+
+// pub broadcast axiom fn history_singleton_last<T>(h: History<T>, ts : nat, val : (T, Option<View>))
+//     requires
+//         h.0.dom().finite(),
+//         #[trigger] h.is_singleton(ts, val)
+//     ensures
+//         h.last() == (ts, val);
+
+// pub broadcast axiom fn history_last_ensures<T>(h: History<T>, ts : nat, val: (T, Option<View>))
+//     requires
+//         #[trigger] h.last() == (ts, val)
+//     ensures
+//         #[trigger] h.get(ts) == Some(val),
+//         forall |ts2| #[trigger] h.contains_timestamp(ts2) ==>  ts2 <= ts,
+// ;
+
 
 pub broadcast group group_view_history {
     view_contains_refl,
@@ -1024,5 +1069,6 @@ impl<K, G, Pred> WeakAtomicU8<K, G, Pred>
         (v, Ghost(hist), Tracked(g))
     }
 }*/
+
 
 } // verus!
