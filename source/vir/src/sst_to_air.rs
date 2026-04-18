@@ -1949,9 +1949,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     e_req = mk_implies(&mk_not(&generic_req_expr), &e_req);
                 }
 
-                let description = match ctx.checking_spec_preconditions() {
-                    true => "recommendation not met".to_string(),
-                    false => crate::def::PRECONDITION_FAILURE.to_string(),
+                let description = if ctx.checking_spec_preconditions() {
+                    "recommendation not met"
+                } else {
+                    crate::def::PRECONDITION_FAILURE
                 };
 
                 let error = error(&stm.span, description);
@@ -3298,7 +3299,7 @@ pub(crate) fn body_stm_to_air(
     Ok((state.commands, state.snap_map))
 }
 
-/// At function returns, we need to tell the SMT solver that the  
+/// At function returns, we need to tell the SMT solver that the
 /// future (impl Future<Output = T>) created by the async function will return the return value of
 /// the function body if await() is called on it.
 // fn async_fn_return_to_stmts(
