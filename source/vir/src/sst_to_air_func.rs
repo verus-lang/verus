@@ -421,7 +421,7 @@ fn req_ens_to_air(
     typ_params: &Idents,
     typs: &air::ast::Typs,
     name: &Ident,
-    msg: &Option<String>,
+    msg: Option<&str>,
     is_singular: bool,
     typ: air::ast::Typ,
     is_trait_default_ensures: bool,
@@ -488,7 +488,7 @@ fn req_ens_to_air(
             {
                 labels.push(Arc::new(MessageLabel {
                     span: exp.span.clone(),
-                    note: msg.clone(),
+                    note: msg.to_owned(),
                     is_proof_note: false,
                     is_custom_err: false,
                 }));
@@ -649,8 +649,8 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
         assert!(!is_trait_method_impl);
 
         let msg = match function.x.mode {
-            Mode::Spec => Some("recommendation not met".to_string()),
-            _ => Some(THIS_PRE_FAILED.to_string()),
+            Mode::Spec => Some("recommendation not met"),
+            _ => Some(THIS_PRE_FAILED),
         };
         let _ = req_ens_to_air(
             ctx,
@@ -662,7 +662,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             &function.x.typ_params,
             &req_typs,
             &prefix_requires(&fun_to_air_ident(&function.x.name)),
-            &msg,
+            msg,
             function.x.attrs.integer_ring,
             bool_typ(),
             false,
@@ -685,7 +685,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
                 &function.x.typ_params,
                 &req_typs,
                 &prefix_open_inv(&fun_to_air_ident(&function.x.name), i),
-                &None,
+                None,
                 function.x.attrs.integer_ring,
                 typ_to_air(ctx, &e[0].typ),
                 false,
@@ -707,7 +707,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             &function.x.typ_params,
             &req_typs,
             &prefix_no_unwind_when(&fun_to_air_ident(&function.x.name)),
-            &None,
+            None,
             function.x.attrs.integer_ring,
             bool_typ(),
             false,
@@ -776,7 +776,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             &function.x.typ_params,
             &Arc::new(ens_typs),
             &prefix_ensures(&fun_to_air_ident(&function.x.name)),
-            &None,
+            None,
             function.x.attrs.integer_ring,
             bool_typ(),
             is_trait_default,
