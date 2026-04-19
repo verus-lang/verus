@@ -525,14 +525,6 @@ fn check_one_expr<Emit: EmitError>(
                 emit,
             )?;
         }
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => {
-            if !crate::ast_util::type_is_bool(&e.typ) {
-                return Err(error(
-                    &expr.span,
-                    "`custom_err` attribute only makes sense for bool expressions",
-                ));
-            }
-        }
         ExprX::UnaryOpr(
             UnaryOpr::Field(FieldOpr {
                 datatype: Dt::Path(path),

@@ -1,6 +1,6 @@
 use crate::attributes::{
-    Attr, GhostBlockAttr, get_custom_err_annotations, get_ghost_block_opt,
-    get_proof_note_annotation, get_trigger, get_var_mode, parse_attrs, parse_attrs_opt,
+    Attr, GhostBlockAttr, get_ghost_block_opt, get_proof_note_annotation, get_trigger,
+    get_var_mode, parse_attrs, parse_attrs_opt,
 };
 use crate::context::{BodyCtxt, Context, HeaderSetting};
 use crate::erase::{CompilableOperator, ResolvedCall};
@@ -434,12 +434,6 @@ pub(crate) fn expr_to_vir<'tcx>(
     for group in get_trigger(attrs)? {
         let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
         vir_expr = vir_expr.new_x(ExprX::Unary(UnaryOp::Trigger(group), vir_expr.clone()));
-        vir_expr_or_place = ExprOrPlace::Expr(vir_expr);
-    }
-    for err_msg in get_custom_err_annotations(attrs)? {
-        let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
-        vir_expr = vir_expr
-            .new_x(ExprX::UnaryOpr(UnaryOpr::CustomErr(Arc::new(err_msg)), vir_expr.clone()));
         vir_expr_or_place = ExprOrPlace::Expr(vir_expr);
     }
     if let Some((label, is_custom_err)) = get_proof_note_annotation(attrs)? {
