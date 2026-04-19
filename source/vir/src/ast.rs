@@ -33,8 +33,7 @@ pub enum CrateId {
     // Verus treats the Rust alloc crate specially
     Alloc,
     // All other crates have Rust's stable crate id and a user-friendly name
-    // TODO: include stable id: Id(u64, Ident),
-    Id(Ident),
+    Id(u64, Ident),
 }
 
 /// A fully-qualified name, such as a module name, function name, or datatype name

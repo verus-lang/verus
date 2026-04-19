@@ -4,6 +4,7 @@ use crate::messages::Span;
 use crate::util::vec_map;
 use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 
@@ -91,6 +92,7 @@ const RES_INF_TEMP_SEPARATOR: &str = "$$$$tempplace";
 const BITVEC_TMP_DECL_SEPARATOR: &str = "$$$$bitvectmp";
 const USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR: &str = "$$$$userdeftypeinvpass";
 const KRATE_SEPARATOR: &str = "!";
+const KRATE_RENAME_SEPARATOR: &str = "!!";
 const PATH_SEPARATOR: &str = ".";
 const PATHS_SEPARATOR: &str = "/";
 const VARIANT_SEPARATOR: &str = "/";
@@ -316,7 +318,36 @@ fn krate_ident_to_string(krate: &str) -> String {
     }
 }
 
-pub struct NameCtxt {}
+// Context for generating names in a single AIR file:
+// - names do not have to be consistent between different AIR files
+// - we omit the u64 id to keep the names in the AIR file stable across verifier runs,
+//   but if two crates have the same name, we have to disambiguate them
+// - for simplicity, we handle this disambiguation on demand so that we don't
+//   do any more renaming than necessary in each AIR file
+struct NameCtxtImpl {
+    duplicate_name_counter: HashMap<String, u32>,
+    stable_id_map: HashMap<u64, String>,
+}
+
+impl NameCtxtImpl {
+    fn new() -> Self {
+        Self { duplicate_name_counter: HashMap::new(), stable_id_map: HashMap::new() }
+    }
+
+    fn krate_id_to_string(&mut self, id: u64, name: &str) -> String {
+        let stable = self.stable_id_map.entry(id).or_insert_with(|| {
+            let count = self.duplicate_name_counter.entry(name.to_string()).or_insert(0);
+            *count += 1;
+            let name = krate_ident_to_string(name);
+            if *count == 1 { name } else { format!("{}{}{}", name, KRATE_RENAME_SEPARATOR, count) }
+        });
+        stable.clone()
+    }
+}
+
+pub struct NameCtxt {
+    imp: std::rc::Rc<std::cell::RefCell<NameCtxtImpl>>,
+}
 
 impl NameCtxt {
     // Warning: NameCtxt is meant to capture shared decisions about naming that should be
@@ -324,24 +355,35 @@ impl NameCtxt {
     // Therefore, code generating AIR should use the existing NameCtxt from the Ctx struct
     // for that AIR file, rather than allocating additional NameCtxt values.
     pub(crate) fn new() -> Self {
-        Self {}
+        Self { imp: std::rc::Rc::new(std::cell::RefCell::new(NameCtxtImpl::new())) }
+    }
+
+    fn krate_id_to_string(&self, id: u64, name: &str) -> String {
+        self.imp.borrow_mut().krate_id_to_string(id, name)
     }
 }
 
 // Only use this for printing diagnostics
+// Do not use this to generate AIR -- it is unsound to ignore the id
+// (However, it's always ok to use this when the krate is not CrateId::Id)
 pub(crate) fn krate_to_string_ignore_stable_id(krate: &CrateId) -> String {
     match krate {
         CrateId::Internal => "crate".to_string(),
         CrateId::Vstd => "vstd".to_string(),
         CrateId::Core => "core".to_string(),
         CrateId::Alloc => "alloc".to_string(),
-        CrateId::Id(ident) => krate_ident_to_string(ident),
+        CrateId::Id(_, ident) => krate_ident_to_string(ident),
     }
 }
 
 impl NameCtxt {
     pub fn krate_to_string(&self, krate: &CrateId) -> String {
-        krate_to_string_ignore_stable_id(krate)
+        match krate {
+            CrateId::Internal | CrateId::Vstd | CrateId::Core | CrateId::Alloc => {
+                krate_to_string_ignore_stable_id(krate)
+            }
+            CrateId::Id(id, ident) => self.krate_id_to_string(*id, ident),
+        }
     }
 
     pub fn path_to_string(&self, path: &Path) -> String {

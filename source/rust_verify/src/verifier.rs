@@ -40,7 +40,7 @@ use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
-use vir::ast::{Fun, Krate, VirErr};
+use vir::ast::{CrateId, Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::prelude::PreludeConfig;
@@ -334,8 +334,7 @@ pub struct Verifier {
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     created_solver_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     vir_crate: Option<Krate>,
-    crate_name: Option<String>,
-    crate_names: Option<Vec<String>>,
+    crate_id: Option<CrateId>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     crate_items: Option<Arc<crate::external::CrateItems>>,
@@ -513,8 +512,7 @@ impl Verifier {
             created_log_dir: Arc::new(std::sync::Mutex::new(None)),
             created_solver_log_dir: Arc::new(std::sync::Mutex::new(None)),
             vir_crate: None,
-            crate_name: None,
-            crate_names: None,
+            crate_id: None,
             air_no_span: None,
             current_crate_modules: None,
             crate_items: None,
@@ -562,8 +560,7 @@ impl Verifier {
             created_log_dir: self.created_log_dir.clone(),
             created_solver_log_dir: self.created_solver_log_dir.clone(),
             vir_crate: self.vir_crate.clone(),
-            crate_name: self.crate_name.clone(),
-            crate_names: self.crate_names.clone(),
+            crate_id: self.crate_id.clone(),
             air_no_span: self.air_no_span.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
             crate_items: self.crate_items.clone(),
@@ -1980,7 +1977,7 @@ impl Verifier {
         }
         let (pruned_krate, prune_info) = vir::prune::prune_krate_for_module_or_krate(
             &krate,
-            &mk_crate_id(self.crate_name.clone().expect("crate_name")),
+            self.crate_id.as_ref().expect("crate_id"),
             None,
             Some(bucket_id.module().clone()),
             bucket_id.function(),
@@ -2089,7 +2086,7 @@ impl Verifier {
 
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
-            mk_crate_id(self.crate_name.clone().expect("crate_name")),
+            self.crate_id.clone().expect("crate_id"),
             air_no_span.clone(),
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
@@ -2672,10 +2669,8 @@ impl Verifier {
         tcx: TyCtxt<'tcx>,
         verus_items: Arc<VerusItems>,
         spans: &SpanContext,
-        other_crate_names: Vec<String>,
         other_vir_crates: Vec<Krate>,
         diagnostics: &impl air::messages::Diagnostics,
-        crate_name: String,
     ) -> Result<bool, (Vec<VirErr>, Vec<vir::ast::VirErrAs>)> {
         if self.args.no_lifetime {
             rustc_mir_build_verus::verus::set_verus_aware_def_ids(Arc::new(HashSet::new()));
@@ -2705,14 +2700,24 @@ impl Verifier {
             })
         };
 
+        let mut crate_ids: HashSet<CrateId> = HashSet::new();
+        for c in tcx.crates(()) {
+            let id = mk_crate_id(tcx, *c);
+            if crate_ids.contains(&id) {
+                // Cannot currently handle multiple `core` or `alloc` or `vstd` crates
+                let err = vir::messages::error(
+                    &self.air_no_span.as_ref().unwrap(),
+                    format!("cannot handle more than one crate named `{}`", tcx.crate_name(*c)),
+                );
+                return Err((vec![err], vec![]));
+            }
+            crate_ids.insert(id);
+        }
+
         if !verus_items.name_to_id.contains_key(&VerusItem::ErasedGhostValue) {
             let err = crate::util::no_builtin_err(self.air_no_span.as_ref().unwrap());
             return Err((vec![err], vec![]));
         }
-
-        let mut crate_names: Vec<String> = vec![crate_name.clone()];
-        crate_names.extend(other_crate_names.into_iter());
-        // TODO vec![vir::verus_builtins::verus_builtin_krate(&self.air_no_span.clone().unwrap())];
 
         let erasure_info = ErasureInfo {
             hir_vir_ids: vec![],
@@ -2735,7 +2740,7 @@ impl Verifier {
             spans.clone(),
             verus_items,
             self.args.vstd == crate::config::Vstd::NoVstd,
-            mk_crate_id(crate_name.clone()),
+            self.crate_id.clone().expect("crate_id"),
         );
 
         let ctxt_diagnostics = ctxtx.diagnostics.clone();
@@ -2818,7 +2823,7 @@ impl Verifier {
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
         let (vir_crate, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
-            &mk_crate_id(crate_name.clone()),
+            &self.crate_id.as_ref().expect("crate_id"),
             Some(&current_vir_crate),
             None,
             None,
@@ -2955,8 +2960,6 @@ impl Verifier {
                 .map_err(|e| (vec![e], Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
-        self.crate_name = Some(crate_name);
-        self.crate_names = Some(crate_names);
 
         let erasure_info = ctxt.erasure_info.borrow();
         let hir_vir_ids = erasure_info.hir_vir_ids.clone();
@@ -3237,7 +3240,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         }
 
         rustc_interface::passes::write_dep_info(tcx);
-        let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
+        self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
 
         let time_import0 = Instant::now();
         let imported = match crate::import_export::import_crates(
@@ -3275,10 +3278,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 tcx,
                 verus_items.clone(),
                 &spans,
-                imported.crate_names,
                 imported.vir_crates,
                 &reporter,
-                crate_name.clone(),
             ) {
                 assert!(errs.len() > 0);
                 for err in errs.into_iter() {

@@ -898,14 +898,18 @@ fn handle_external_fn<'tcx>(
     let external_path = ctxt.def_id_to_vir_path(external_id);
     let external_item_visibility = mk_visibility(ctxt, external_id);
 
-    if external_path.krate == CrateId::Id(Arc::new("verus_builtin".to_string()))
-        && &*external_path.last_segment() != "clone"
-        && !is_builtin_external
-    {
-        return err_span(
-            sig.span,
-            "cannot apply `assume_specification` to Verus verus_builtin functions",
-        );
+    match &external_path.krate {
+        CrateId::Id(_, name)
+            if name.to_string().as_str() == "verus_builtin"
+                && &*external_path.last_segment() != "clone"
+                && !is_builtin_external =>
+        {
+            return err_span(
+                sig.span,
+                "cannot apply `assume_specification` to Verus verus_builtin functions",
+            );
+        }
+        _ => {}
     }
 
     let is_async = sig.asyncness().is_async();

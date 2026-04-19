@@ -17,7 +17,7 @@ use rustc_middle::ty::{
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
-use rustc_span::def_id::DefId;
+use rustc_span::def_id::{CrateNum, DefId};
 use rustc_span::symbol::{Ident, kw};
 use rustc_trait_selection::infer::InferCtxtExt;
 use rustc_trait_selection::solve::BuiltinImplSource;
@@ -31,17 +31,19 @@ use vir::ast::{
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
-pub(crate) fn mk_crate_id(s: String) -> CrateId {
+pub(crate) fn mk_crate_id<'tcx>(tcx: TyCtxt<'tcx>, krate: CrateNum) -> CrateId {
+    let stable_id = tcx.stable_crate_id(krate).as_u64();
+    let s = tcx.crate_name(krate).to_string();
     match s.as_str() {
         "vstd" => CrateId::Vstd,
         "core" => CrateId::Core,
         "alloc" => CrateId::Alloc,
-        _ => CrateId::Id(Arc::new(s)),
+        _ => CrateId::Id(stable_id, Arc::new(s)),
     }
 }
 
 fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
-    let krate = mk_crate_id(tcx.crate_name(def_path.krate).to_string());
+    let krate = mk_crate_id(tcx, def_path.krate);
     let mut segments: Vec<vir::ast::Ident> = Vec::new();
     for d in def_path.data.iter() {
         use rustc_hir::definitions::DefPathData;

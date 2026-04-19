@@ -51,7 +51,7 @@ impl PathX {
             CrateId::Vstd => false,
             CrateId::Core => true,
             CrateId::Alloc => true,
-            CrateId::Id(x) => x.as_str() == "std",
+            CrateId::Id(_, x) => x.as_str() == "std",
         }
     }
 
@@ -83,7 +83,7 @@ impl fmt::Display for CrateId {
             CrateId::Vstd => write!(f, "vstd"),
             CrateId::Core => write!(f, "core"),
             CrateId::Alloc => write!(f, "alloc"),
-            CrateId::Id(x) => write!(f, "{}", x),
+            CrateId::Id(_, x) => write!(f, "{}", x),
         }
     }
 }
