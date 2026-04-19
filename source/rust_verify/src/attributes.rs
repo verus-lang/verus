@@ -260,8 +260,7 @@ pub(crate) enum Attr {
     AllowInSpec,
     // specify list of places where == is promoted to =~=
     AutoExtEqual(vir::ast::AutoExtEqual),
-    /// Label for a proof obligation, i.e. `#[verifier::proof_note("label")]`
-    /// or `#[verifier::custom_err("label")]`.
+    /// Label for a proof obligation, i.e. `#[verifier::proof_note("label")]` or `#[verifier::custom_err("label")]`
     ProofNote {
         span: Span,
         text: String,

@@ -43,9 +43,7 @@ pub fn assert_safety(b: bool) {
 #[verifier::proof]
 pub fn assert_let_pattern(b: bool) {
     requires(
-        #[verifier::custom_err(
-            "unable to prove safety condition that the pattern matches"
-        )]
+        #[verifier::custom_err("unable to prove safety condition that the pattern matches")]
         /* vattr */
         b,
     );
