@@ -1452,3 +1452,22 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t2`")
 }
+
+test_verify_one_file_with_options! {
+    #[test] match_in_loop_invariant_issue2344 ["new-mut-ref"] => verus_code! {
+        enum Option<V> { Some(V), None }
+
+        fn minimal(n: u64) {
+            let mut found: Option<u64> = Option::None;
+            let mut i: u64 = 0;
+            while i < n
+                invariant
+                    match found { Option::Some(k) => k < 1000u64, Option::None => true }, // FAILS
+                decreases n - i,
+            {
+                found = Option::Some(i);
+                i += 1;
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

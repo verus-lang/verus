@@ -1,7 +1,6 @@
 verus_git_url = "https://github.com/verus-lang/verus.git"
 verus_refspec = "main"
-verus_features = ["singular"]
-verus_extra_verus_args = ["--no-report-long-running"]
+verus_extra_args = ["--no-report-long-running"]
 
 # Successes
 

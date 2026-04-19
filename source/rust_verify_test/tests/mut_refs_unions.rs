@@ -657,3 +657,171 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
 }
+
+// TODO(new_mut_ref): (blocking) fix (false negative)
+test_verify_one_file_with_options! {
+    #[ignore] #[test] eval_order_union_pattern_array_issue1 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union W { a: [(u64, u64); 2], b: bool }
+
+        // UB
+        fn pattern_test_union_array_issue1() {
+            unsafe {
+                let mut u = W { a: [(0,1), (2,3)] };
+                let (x, y) = u.a[{
+                  u = W { b: false };
+                  0
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "some error")
+}
+
+// TODO(new_mut_ref): (blocking) fix (shouldn't error)
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_array_issue2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union W { a: [(u64, u64); 2], b: bool }
+
+        // ok
+        fn pattern_test_union_array_issue2() {
+            unsafe {
+                let mut u = W { b: false };
+                let (x, y) = u.a[{
+                  u = W { a: [(0,1), (2,3)] };
+                  0
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_array_issue3 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union W { a: [(u64, u64); 2], b: bool }
+
+        // out-of-bounds index panics before UB happens
+        // because reading from u.a is _not_ needed to do the bounds-check
+        fn pattern_test_union_array_issue3() {
+            unsafe {
+                let mut u = W { a: [(0,1), (2,3)] };
+                let (x, y) = u.a[{
+                  u = W { b: false };
+                  3
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
+}
+
+// TODO(new_mut_ref): (blocking) wrong error message, should error about the bounds-check instead
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_array_issue4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union W { a: [(u64, u64); 2], b: bool }
+
+        // out-of-bounds index panics before UB happens
+        // because reading from u.a is _not_ needed to do the bounds-check
+        fn pattern_test_union_array_issue4() {
+            unsafe {
+                let mut u = W { b: false };
+                let (x, y) = u.a[3];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+// TODO(new_mut_ref): (blocking) fix (false negative)
+test_verify_one_file_with_options! {
+    #[ignore] #[test] eval_order_union_pattern_slice_issue1 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union Y { a: &'static [(u64, u64)], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // UB
+        fn pattern_test_union_slice_issue1() {
+            let r: &'static [(u64, u64)] = leak(Box::new([(0, 1), (2, 3)]));
+
+            unsafe {
+                let mut u = Y { a: r };
+                let (x, y) = u.a[{
+                  u = Y { b: false };
+                  1
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "some error")
+}
+
+// TODO(new_mut_ref): (blocking) fix (shouldn't error)
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_slice_issue2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union Y { a: &'static [(u64, u64)], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // ok
+        fn pattern_test_union_slice_issue2() {
+            let r: &'static [(u64, u64)] = leak(Box::new([(0, 1), (2, 3)]));
+
+            unsafe {
+                let mut u = Y { b: false };
+                let (x, y) = u.a[{
+                  u = Y { a: r };
+                  1
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+// TODO(new_mut_ref): (blocking) wrong error message, should error about the union instead
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_slice_issue3 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union Y { a: &'static [(u64, u64)], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // UB happens before bounds-check
+        // because reading from u.a is needed to do the bounds-check
+        fn pattern_test_union_slice_issue3() {
+            let r: &'static [(u64, u64)] = leak(Box::new([(0, 1), (2, 3)]));
+
+            unsafe {
+                let mut u = Y { a: r };
+                let (x, y) = u.a[{
+                  u = Y { b: false };
+                  3
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_slice_issue4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        union Y { a: &'static [(u64, u64)], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // UB happens before bounds-check
+        // because reading from u.a is needed to do the bounds-check
+        fn pattern_test_union_slice_issue4() {
+            let r: &'static [(u64, u64)] = leak(Box::new([(0, 1), (2, 3)]));
+
+            unsafe {
+                let mut u = Y { b: false };
+                let (x, y) = u.a[3];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}

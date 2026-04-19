@@ -421,7 +421,7 @@ fn req_ens_to_air(
     typ_params: &Idents,
     typs: &air::ast::Typs,
     name: &Ident,
-    msg: &Option<String>,
+    msg: Option<&str>,
     is_singular: bool,
     typ: air::ast::Typ,
     is_trait_default_ensures: bool,
@@ -480,15 +480,20 @@ fn req_ens_to_air(
                 }
             }
             let mut labels: Vec<ArcDynMessageLabel> = Vec::new();
-            if let Some(msg) = msg {
+            let proof_note = sst_exp_get_proof_note(exp);
+            let has_custom_err_label =
+                proof_note.as_ref().map_or(false, |label| label.is_custom_err);
+            if let Some(msg) = msg
+                && !has_custom_err_label
+            {
                 labels.push(Arc::new(MessageLabel {
                     span: exp.span.clone(),
-                    note: msg.clone(),
+                    note: msg.to_owned(),
                     is_proof_note: false,
                     is_custom_err: false,
                 }));
             }
-            if let Some(label) = sst_exp_get_proof_note(exp) {
+            if let Some(label) = proof_note {
                 labels.push(Arc::new(MessageLabel {
                     span: exp.span.clone(),
                     note: label.text.to_string(),
@@ -643,12 +648,9 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     if function.x.has.has_requires && !function.x.attrs.broadcast_forall_only {
         assert!(!is_trait_method_impl);
 
-        let msg = match (function.x.mode, &function.x.attrs.custom_req_err) {
-            // We don't highlight the failed precondition if the programmer supplied their own msg
-            (_, Some(_)) => None,
-            // Standard message
-            (Mode::Spec, None) => Some("recommendation not met".to_string()),
-            (_, None) => Some(THIS_PRE_FAILED.to_string()),
+        let msg = match function.x.mode {
+            Mode::Spec => Some("recommendation not met"),
+            _ => Some(THIS_PRE_FAILED),
         };
         let _ = req_ens_to_air(
             ctx,
@@ -660,7 +662,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             &function.x.typ_params,
             &req_typs,
             &prefix_requires(&fun_to_air_ident(&function.x.name)),
-            &msg,
+            msg,
             function.x.attrs.integer_ring,
             bool_typ(),
             false,
@@ -683,7 +685,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
                 &function.x.typ_params,
                 &req_typs,
                 &prefix_open_inv(&fun_to_air_ident(&function.x.name), i),
-                &None,
+                None,
                 function.x.attrs.integer_ring,
                 typ_to_air(ctx, &e[0].typ),
                 false,
@@ -705,7 +707,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             &function.x.typ_params,
             &req_typs,
             &prefix_no_unwind_when(&fun_to_air_ident(&function.x.name)),
-            &None,
+            None,
             function.x.attrs.integer_ring,
             bool_typ(),
             false,
@@ -774,7 +776,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             &function.x.typ_params,
             &Arc::new(ens_typs),
             &prefix_ensures(&fun_to_air_ident(&function.x.name)),
-            &None,
+            None,
             function.x.attrs.integer_ring,
             bool_typ(),
             is_trait_default,

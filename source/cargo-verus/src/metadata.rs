@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet as Set, VecDeque};
+use std::{
+    collections::{BTreeMap, BTreeSet as Set, VecDeque},
+    path::PathBuf,
+};
 
 use anyhow::{Context, Result};
 use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
@@ -122,9 +125,10 @@ pub fn make_package_id(
     format!("{}-{}-{}", name.as_ref(), version.as_ref(), &manifest_path_hash[..12])
 }
 
-pub fn fetch_metadata(metadata_args: &[String]) -> Result<Metadata> {
+pub fn fetch_metadata(metadata_args: Vec<String>, current_dir: PathBuf) -> Result<Metadata> {
     let mut cmd = MetadataCommand::new();
-    cmd.other_options(metadata_args.to_owned());
+    cmd.other_options(metadata_args);
+    cmd.current_dir(current_dir);
     let metadata = cmd.exec()?;
     Ok(metadata)
 }
@@ -153,7 +157,11 @@ mod tests {
         let manifest_path: String =
             workspace.path().join("Cargo.toml").to_string_lossy().to_string();
 
-        let metadata = fetch_metadata(&["--manifest-path".to_string(), manifest_path]).unwrap();
+        let metadata = fetch_metadata(
+            vec!["--manifest-path".to_string(), manifest_path],
+            workspace.path().to_path_buf(),
+        )
+        .unwrap();
 
         let _index = MetadataIndex::new(&metadata).unwrap();
     }

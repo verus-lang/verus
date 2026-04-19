@@ -3420,6 +3420,7 @@ impl VerifierCallbacksEraseMacro {
             self.verifier.encountered_vir_error = true;
         }
         if !self.verifier.args.output_json
+            && !self.verifier.args.no_verify
             && !self.verifier.encountered_error
             && !self.verifier.encountered_vir_error
         {

@@ -4757,3 +4757,155 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    // Regression: nested associated-type projection in a mutable-field path.
+    #[test] assoc_projection_nested_trait_mut_ref_regression verus_code! {
+        trait Node {
+            type Cell;
+        }
+
+        trait Wrap {
+            type Item: Node;
+        }
+
+        struct Root;
+        struct Tag;
+        struct Slot {
+            x: u64,
+            y: u64,
+        }
+
+        impl Node for Tag {
+            type Cell = Slot;
+        }
+
+        impl Wrap for Root {
+            type Item = Tag;
+        }
+
+        struct Container<T: Wrap> {
+            data: <T::Item as Node>::Cell,
+        }
+
+        #[verifier::external_body]
+        fn touch(Tracked(v): Tracked<&mut u64>) {
+            unimplemented!()
+        }
+
+        fn trigger() {
+            let tracked mut c = Container::<Root> { data: Slot { x: 3, y: 9 } };
+            touch(Tracked(&mut c.data.x));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Regression: two mutable references into distinct fields under an associated-type field.
+    #[test] assoc_projection_two_mut_fields_regression verus_code! {
+        trait Assoc {
+            type Data;
+        }
+
+        struct Root;
+        struct Data {
+            x: u64,
+            y: u64,
+            z: u64,
+        }
+
+        impl Assoc for Root {
+            type Data = Data;
+        }
+
+        struct Holder<T: Assoc> {
+            value: T::Data,
+        }
+
+        #[verifier::external_body]
+        fn touch2(Tracked(a): Tracked<&mut u64>, Tracked(b): Tracked<&mut u64>) {
+            unimplemented!()
+        }
+
+        fn trigger() {
+            let tracked mut h = Holder::<Root> { value: Data { x: 0, y: 1, z: 2 } };
+            touch2(Tracked(&mut h.value.x), Tracked(&mut h.value.y));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Regression: mutable field update through a projection type where the
+    // underlying datatype has type parameters. An earlier fix rejected this
+    // case because it tried to synthesize the datatype type from scratch.
+    #[test] assoc_projection_generic_datatype_regression verus_code! {
+        trait Node {
+            type Cell;
+        }
+
+        trait Wrap {
+            type Item: Node;
+        }
+
+        struct Root;
+        struct Tag;
+
+        struct Slot<T> {
+            x: T,
+            y: T,
+        }
+
+        impl Node for Tag {
+            type Cell = Slot<u64>;
+        }
+
+        impl Wrap for Root {
+            type Item = Tag;
+        }
+
+        struct Container<T: Wrap> {
+            data: <T::Item as Node>::Cell,
+        }
+
+        #[verifier::external_body]
+        fn touch(Tracked(v): Tracked<&mut u64>) {
+            unimplemented!()
+        }
+
+        fn trigger() {
+            let tracked mut c = Container::<Root> { data: Slot { x: 3, y: 9 } };
+            touch(Tracked(&mut c.data.x));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_fn_returns_mut_ref ["new-mut-ref"] => verus_code! {
+        pub tracked struct X { ghost g: int }
+
+        pub tracked struct S {
+            pub tracked perm: X,
+        }
+
+        proof fn test_tracked_mut_ref(tracked input: &mut S) -> (tracked output: &mut X)
+            ensures
+                *output == old(input).perm,
+                *final(output) == final(input).perm,
+        {
+            &mut input.perm
+        }
+
+        proof fn test1(tracked input: &mut S) {
+            let tracked output = test_tracked_mut_ref(input);
+            output.g = 20;
+            assert(input.perm.g == 20);
+        }
+
+        proof fn test1_fails(tracked input: &mut S) {
+            let tracked output = test_tracked_mut_ref(input);
+            output.g = 20;
+            assert(input.perm.g == 20);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

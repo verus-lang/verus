@@ -1312,7 +1312,7 @@ test_verify_one_file! {
             assume(true);
             hide(foo);
         }
-    } => Err(e) => assert_vir_error_msg(e, "This kind of statement should go at the beginning of the function body")
+    } => Err(e) => assert_vir_error_msg(e, "This verus_builtin header should go at the beginning of the function body")
 }
 
 test_verify_one_file! {

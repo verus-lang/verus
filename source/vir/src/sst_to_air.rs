@@ -761,16 +761,6 @@ pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Ex
     }
 }
 
-fn exp_get_custom_err(exp: &Exp) -> Option<Arc<String>> {
-    match &exp.x {
-        ExpX::UnaryOpr(UnaryOpr::Box(_), e) => exp_get_custom_err(e),
-        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => exp_get_custom_err(e),
-        ExpX::UnaryOpr(UnaryOpr::ProofNote(_), e) => exp_get_custom_err(e),
-        ExpX::UnaryOpr(UnaryOpr::CustomErr(s), _) => Some(s.clone()),
-        _ => None,
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum ExprMode {
     Spec,
@@ -1218,12 +1208,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     variant_field_ident(&encode_dt_as_path(datatype), variant, field),
                     Arc::new(exprs),
                 ))
-            }
-            UnaryOpr::CustomErr(_) => {
-                // CustomErr is handled by split_expression. Maybe it could
-                // be useful in the 'normal' case too, but right now, we just
-                // ignore it here.
-                return exp_to_expr(ctx, e, expr_ctxt);
             }
             UnaryOpr::ProofNote(_) => {
                 // A `proof_note` label is metadata and has no effect otherwise.
@@ -1773,7 +1757,7 @@ fn assume_other_fields_unchanged(
     snapshot_name: &str,
     stm_span: &Span,
     base: &UniqueIdent,
-    mutated_fields: &LocFieldInfo<Vec<Vec<FieldOpr>>>,
+    mutated_fields: &LocFieldInfo<Vec<Vec<(FieldOpr, Typ)>>>,
     expr_ctxt: &ExprCtxt,
 ) -> Result<Option<Stmt>, VirErr> {
     let LocFieldInfo { base_typ, base_span, a: updates } = mutated_fields;
@@ -1822,18 +1806,18 @@ fn assume_other_fields_unchanged_inner(
     snapshot_name: &str,
     stm_span: &Span,
     base: &Exp,
-    updates: &Vec<Vec<FieldOpr>>,
+    updates: &Vec<Vec<(FieldOpr, Typ)>>,
     expr_ctxt: &ExprCtxt,
 ) -> Result<Vec<Expr>, VirErr> {
     match &updates[..] {
         [f] if f.len() == 0 => Ok(vec![]),
         _ => {
             let mut updated_fields: BTreeMap<_, Vec<_>> = BTreeMap::new();
-            let FieldOpr { datatype: dt, variant, field: _, get_variant: _, check: _ } =
+            let (FieldOpr { datatype: dt, variant, field: _, get_variant: _, check: _ }, _) =
                 &updates[0][0];
             for u in updates {
-                assert!(u[0].datatype == *dt && u[0].variant == *variant);
-                updated_fields.entry(&u[0].field).or_insert(Vec::new()).push(u[1..].to_vec());
+                assert!(u[0].0.datatype == *dt && u[0].0.variant == *variant);
+                updated_fields.entry(&u[0].0.field).or_insert(Vec::new()).push(u[1..].to_vec());
             }
             let datatype = &ctx.datatype_map[dt];
             let datatype_fields = &get_variant(&datatype.x.variants, variant).fields;
@@ -1867,8 +1851,28 @@ fn assume_other_fields_unchanged_inner(
                         base.clone()
                     };
 
-                    let typ_args = typ_args_for_datatype_typ(&base_exp.typ);
-                    let typ = subst_typ_for_datatype(&datatype.x.typ_params, typ_args, &field.a.0);
+                    let typ = if let Some(first_update) =
+                        updates.iter().find(|u| u[0].0.field == field.name)
+                    {
+                        // Mutated fields need a precise type for `field_exp` because
+                        // `assume_other_fields_unchanged_inner` recurses into them.
+                        // The AST already contains the correct normalized type for this
+                        // field (typeck has resolved any projections), so we use it
+                        // directly instead of trying to reconstruct it from `base_exp.typ`.
+                        first_update[0].1.clone()
+                    } else {
+                        // Unmodified fields only need a type to emit an equality
+                        // `old == new`; they are never recursed into, so `field_exp.typ`
+                        // does not need to be fully normalized.
+                        //
+                        // `base_exp.typ` is guaranteed to be a concrete datatype here:
+                        // - at the top level it is the variable's declared type;
+                        // - inside a recursive call it is the normalized type taken from
+                        //   `updates` for the mutated parent field.
+                        // Hence `typ_args_for_datatype_typ` will not panic.
+                        let typ_args = typ_args_for_datatype_typ(&base_exp.typ);
+                        subst_typ_for_datatype(&datatype.x.typ_params, typ_args, &field.a.0)
+                    };
                     let typ = if crate::poly::typ_is_poly(ctx, &field.a.0) {
                         crate::poly::coerce_typ_to_poly(ctx, &typ)
                     } else {
@@ -1973,12 +1977,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     e_req = mk_implies(&mk_not(&generic_req_expr), &e_req);
                 }
 
-                let description =
-                    match (ctx.checking_spec_preconditions(), &func.x.attrs.custom_req_err) {
-                        (true, None) => "recommendation not met".to_string(),
-                        (_, None) => crate::def::PRECONDITION_FAILURE.to_string(),
-                        (_, Some(s)) => s.clone(),
-                    };
+                let description = if ctx.checking_spec_preconditions() {
+                    "recommendation not met"
+                } else {
+                    crate::def::PRECONDITION_FAILURE
+                };
 
                 let error = error(&stm.span, description);
                 let filter = Some(fun_to_air_ident(&func.x.name));
@@ -2072,7 +2075,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         .entry(base_var)
                         .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
                         .a
-                        .push(fields.iter().map(|o| o.opr.expect_field().clone()).collect());
+                        .push(
+                            fields
+                                .iter()
+                                .map(|o| (o.opr.expect_field().clone(), o.field_typ.clone()))
+                                .collect(),
+                        );
                     let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?);
@@ -2669,7 +2677,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     &inv.inv,
                     &mut hint_message,
                 );
-                let msg_opt = exp_get_custom_err(&inv_exp);
                 let expr = exp_to_expr(ctx, &inv_exp, expr_ctxt)?;
                 if cond.is_some() {
                     assert!(inv.at_entry);
@@ -2677,10 +2684,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 }
                 let both = inv.at_entry && inv.at_exit;
                 if inv.at_entry {
-                    invs_entry.push((inv.inv.span.clone(), expr.clone(), msg_opt.clone(), both));
+                    invs_entry.push((inv.inv.span.clone(), expr.clone(), None, both));
                 }
                 if inv.at_exit {
-                    invs_exit.push((inv.inv.span.clone(), expr.clone(), msg_opt.clone(), both));
+                    invs_exit.push((inv.inv.span.clone(), expr.clone(), None, both));
                 }
             }
             let invs_entry = Arc::new(invs_entry);
@@ -3348,7 +3355,7 @@ pub(crate) fn body_stm_to_air(
     Ok((state.commands, state.snap_map))
 }
 
-/// At function returns, we need to tell the SMT solver that the  
+/// At function returns, we need to tell the SMT solver that the
 /// future (impl Future<Output = T>) created by the async function will return the return value of
 /// the function body if await() is called on it.
 // fn async_fn_return_to_stmts(

@@ -64,8 +64,8 @@ impl ExternalInfo {
     ) -> Option<bool> {
         match self.type_id_map.get(&def_id).copied() {
             None => {
-                let path = ctxt.def_id_to_vir_path(def_id);
-                let has = self.type_paths.get(&path).copied();
+                let path = def_id_to_vir_path_option(ctxt.tcx, Some(&*ctxt.verus_items), def_id);
+                let has = path.and_then(|p| self.type_paths.get(&p).copied());
                 self.type_id_map.insert(def_id, has);
                 has
             }

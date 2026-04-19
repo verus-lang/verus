@@ -909,7 +909,6 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
 pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<ProofNoteLabel> {
     match &expr.x {
         // NOTE: `UnaryOpr::Box` and `Unbox` not relevant; only introduced later in `ast_to_sst`.
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => ast_expr_get_proof_note(e),
         ExprX::UnaryOpr(UnaryOpr::ProofNote(label), _) => Some(label.clone()),
         _ => None,
     }
@@ -1487,6 +1486,15 @@ impl ClosureKind {
             ClosureKind::Fn => crate::path!["core" => "ops", "function", "Fn"],
             ClosureKind::FnMut => crate::path!["core" => "ops", "function", "FnMut"],
             ClosureKind::FnOnce => crate::path!["core" => "ops", "function", "FnOnce"],
+        }
+    }
+}
+
+impl AssertQueryMode {
+    pub(crate) fn name(&self) -> &'static str {
+        match self {
+            AssertQueryMode::NonLinear => "nonlinear_arith",
+            AssertQueryMode::BitVector => "bit_vector",
         }
     }
 }

@@ -1,8 +1,8 @@
 use crate::ast::{
-    AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail, Datatype,
-    DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity, ItemKind,
-    Krate, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName, OverflowBehavior, Path, Pattern,
-    PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
+    AssertQueryMode, AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail,
+    Datatype, DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity,
+    ItemKind, Krate, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName, OverflowBehavior, Path,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
     TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_str};
@@ -512,6 +512,7 @@ struct State {
     pub(crate) in_pure: bool,
     pub(crate) in_forall_stmt: bool,
     pub(crate) in_proof_in_spec: bool,
+    pub(crate) in_assert_query: Option<AssertQueryMode>,
     // Are we in a syntactic ghost block?
     // If not, Ghost::Exec (corresponds to exec mode).
     // If yes (corresponding to proof/spec mode), say whether variables are tracked or not.
@@ -580,6 +581,20 @@ mod typing {
                 internal_state: self.internal_state,
                 internal_undo: Some(Box::new(move |state| {
                     state.in_pure = in_pure;
+                })),
+            }
+        }
+
+        #[must_use]
+        pub(super) fn push_in_assert_query<'a>(
+            &'a mut self,
+            mut in_assert_query: Option<AssertQueryMode>,
+        ) -> Typing<'a> {
+            swap(&mut in_assert_query, &mut self.internal_state.in_assert_query);
+            Typing {
+                internal_state: self.internal_state,
+                internal_undo: Some(Box::new(move |state| {
+                    state.in_assert_query = in_assert_query;
                 })),
             }
         }
@@ -1754,6 +1769,15 @@ fn check_expr_handle_mut_arg(
             let (x_mode, proph) = typing.get(x, &expr.span)?;
             let proph = proph.to_proph(x, &expr.span);
 
+            if matches!(&expr.x, ExprX::VarAt(..)) {
+                if let Some(prover) = typing.in_assert_query {
+                    return Err(error(
+                        &expr.span,
+                        format!("`old` is not supported in `{:}` assert", prover.name()),
+                    ));
+                }
+            }
+
             if typing.in_forall_stmt || typing.in_proof_in_spec || typing.in_pure {
                 // Proof variables may be used as spec, but not as proof inside forall statements.
                 // This protects against effectively consuming a linear proof variable
@@ -2337,11 +2361,6 @@ fn check_expr_handle_mut_arg(
                 check_expr(ctxt, record, typing, joined_mode, Expect(*min_mode), e1, outer_proph)?;
             Ok((mode_join(*min_mode, mode), proph))
         }
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => {
-            let p =
-                check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
-            Ok((Mode::Spec, p))
-        }
         ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1) => {
             let proph =
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
@@ -2830,12 +2849,13 @@ fn check_expr_handle_mut_arg(
             )?;
             Ok((Mode::Proof, Proph::No))
         }
-        ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
+        ExprX::AssertQuery { requires, ensures, proof, mode } => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use assert in exec mode"));
             }
             {
                 let mut typing0 = typing.push_in_pure(true);
+                let mut typing0 = typing0.push_in_assert_query(Some(*mode));
                 for req in requires.iter() {
                     check_expr_has_mode(
                         ctxt,
@@ -3035,6 +3055,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, outer_mode, body, Mode::Exec, &Proph::No)?;
             for inv in invs.iter() {
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut typing = typing.push_in_pure(true);
                 check_expr_has_mode(
                     ctxt,
                     record,
@@ -3047,6 +3068,7 @@ fn check_expr_handle_mut_arg(
             }
             for dec in decrease.iter() {
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut typing = typing.push_in_pure(true);
                 let dec_proph = check_expr_has_mode(
                     ctxt,
                     record,
@@ -4176,6 +4198,7 @@ pub fn check_crate(
         ret_mode: None,
         atomic_insts: None,
         in_pure: false,
+        in_assert_query: None,
     };
     let mut typing = Typing::new(&mut state);
     let mut kratex = (**krate).clone();
