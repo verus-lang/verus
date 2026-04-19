@@ -412,7 +412,7 @@ pub(crate) fn dt_as_friendly_rust_name_raw(dt: &Dt) -> String {
 }
 
 pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
-    let krate = crate::def::krate_to_string(&path.krate);
+    let krate = crate::def::krate_to_string_ignore_stable_id(&path.krate);
     let mut strings: Vec<String> = vec![krate];
     for segment in path.segments.iter() {
         strings.push(segment.to_string());

@@ -42,9 +42,7 @@ use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
 use vir::ast::{Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
-use vir::def::{
-    CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos, path_to_string,
-};
+use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND: f32 = 3000000f32;
@@ -1099,7 +1097,8 @@ impl Verifier {
         result
     }
 
-    fn log_fine_name_suffix(
+    fn log_file_name_suffix(
+        ctx: &vir::context::Ctx,
         is_rerun: bool,
         query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         expand_flag: bool,
@@ -1107,7 +1106,7 @@ impl Verifier {
     ) -> String {
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
         let count_msg = query_function_path_counter
-            .map(|(n, ref c)| format!("{}_{:02}", path_to_string(n), c))
+            .map(|(n, ref c)| format!("{}_{:02}", ctx.name_ctxt.path_to_string(n), c))
             .unwrap_or("".to_string());
         let expand_msg = if expand_flag { "_expand" } else { "" };
 
@@ -1128,6 +1127,7 @@ impl Verifier {
 
     fn new_air_context_with_prelude<'m>(
         &mut self,
+        ctx: &vir::context::Ctx,
         message_interface: Arc<dyn air::messages::MessageInterface>,
         diagnostics: &impl air::messages::Diagnostics,
         bucket_id: &BucketId,
@@ -1149,7 +1149,8 @@ impl Verifier {
         if self.args.log_all || self.args.log_args.log_air_initial {
             let file = self.create_log_file(
                 Some(bucket_id),
-                Self::log_fine_name_suffix(
+                Self::log_file_name_suffix(
+                    ctx,
                     is_rerun,
                     query_function_path_counter,
                     self.expand_flag,
@@ -1162,7 +1163,8 @@ impl Verifier {
         if self.args.log_all || self.args.log_args.log_air_final {
             let file = self.create_log_file(
                 Some(bucket_id),
-                Self::log_fine_name_suffix(
+                Self::log_file_name_suffix(
+                    ctx,
                     is_rerun,
                     query_function_path_counter,
                     self.expand_flag,
@@ -1175,7 +1177,8 @@ impl Verifier {
         if self.args.log_all || self.args.log_args.log_smt {
             let file = self.create_log_file(
                 Some(bucket_id),
-                Self::log_fine_name_suffix(
+                Self::log_file_name_suffix(
+                    ctx,
                     is_rerun,
                     query_function_path_counter,
                     self.expand_flag,
@@ -1188,7 +1191,8 @@ impl Verifier {
         if self.args.log_all || self.args.log_args.log_smt_transcript {
             let file = self.create_log_file(
                 Some(bucket_id),
-                Self::log_fine_name_suffix(
+                Self::log_file_name_suffix(
+                    ctx,
                     is_rerun,
                     query_function_path_counter,
                     self.expand_flag,
@@ -1211,7 +1215,7 @@ impl Verifier {
 
         air_context.blank_line();
         air_context.comment("Prelude");
-        for command in vir::context::Ctx::prelude(prelude_config).iter() {
+        for command in ctx.prelude(prelude_config).iter() {
             Self::check_internal_result(air_context.command(
                 &*message_interface,
                 diagnostics,
@@ -1247,6 +1251,7 @@ impl Verifier {
         spinoff_reason: &str,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
+            ctx,
             message_interface.clone(),
             diagnostics,
             bucket_id,
@@ -1348,8 +1353,14 @@ impl Verifier {
             let profile_file_name = self.log_file_name(
                 &solver_log_dir,
                 Some(bucket_id),
-                Self::log_fine_name_suffix(false, None, false, crate::config::PROFILE_FILE_SUFFIX)
-                    .as_str(),
+                Self::log_file_name_suffix(
+                    ctx,
+                    false,
+                    None,
+                    false,
+                    crate::config::PROFILE_FILE_SUFFIX,
+                )
+                .as_str(),
             );
             assert!(!profile_file_name.exists());
             Some(profile_file_name)
@@ -1357,6 +1368,7 @@ impl Verifier {
             None
         };
         let mut air_context = self.new_air_context_with_prelude(
+            ctx,
             message_interface.clone(),
             reporter,
             bucket_id,
@@ -1594,7 +1606,8 @@ impl Verifier {
                                 let profile_file_name = self.log_file_name(
                                     &solver_log_dir,
                                     Some(bucket_id),
-                                    Self::log_fine_name_suffix(
+                                    Self::log_file_name_suffix(
+                                        function_opgen.ctx(),
                                         is_recommend,
                                         Some((&(function.x.name).path, spinoff_context_counter)),
                                         self.expand_flag,

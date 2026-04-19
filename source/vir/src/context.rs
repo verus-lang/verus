@@ -5,7 +5,7 @@ use crate::ast::{
 };
 use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
-use crate::def::FUEL_ID;
+use crate::def::{FUEL_ID, NameCtxt};
 use crate::messages::{Span, error};
 use crate::poly::MonoTyp;
 use crate::recursion::Node;
@@ -108,6 +108,7 @@ pub struct Ctx {
     pub(crate) datatype_map: HashMap<Dt, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
     pub(crate) impl_map: HashMap<Path, TraitImpl>,
+    pub name_ctxt: NameCtxt,
     pub fun: Option<FunctionCtx>,
     pub global: GlobalCtx,
     // In the very unlikely case where we get sha512 collisions
@@ -767,6 +768,7 @@ impl Ctx {
         resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
         debug: bool,
     ) -> Result<Self, VirErr> {
+        let name_ctxt = NameCtxt::new();
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
             datatype_is_transparent
@@ -780,7 +782,8 @@ impl Ctx {
         let funcs_with_ensure_predicate: HashMap<Fun, bool> = HashMap::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
-            fun_ident_map.insert(fun_to_air_ident(&function.x.name), function.x.name.clone());
+            fun_ident_map
+                .insert(fun_to_air_ident(&name_ctxt, &function.x.name), function.x.name.clone());
             functions.push(function.clone());
         }
         let mut datatype_map: HashMap<Dt, Datatype> = HashMap::new();
@@ -797,7 +800,8 @@ impl Ctx {
         }
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
-        fun_ident_map.extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&g), g.clone())));
+        fun_ident_map
+            .extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&name_ctxt, &g), g.clone())));
         let quantifier_count = Cell::new(0);
         let string_hashes = RefCell::new(HashMap::new());
 
@@ -832,6 +836,7 @@ impl Ctx {
             datatype_map,
             trait_map,
             impl_map,
+            name_ctxt,
             fun: None,
             global,
             string_hashes,
@@ -845,8 +850,8 @@ impl Ctx {
         self.global
     }
 
-    pub fn prelude(prelude_config: crate::prelude::PreludeConfig) -> Commands {
-        let nodes = crate::prelude::prelude_nodes(prelude_config);
+    pub fn prelude(&self, prelude_config: crate::prelude::PreludeConfig) -> Commands {
+        let nodes = crate::prelude::prelude_nodes(&self.name_ctxt, prelude_config);
         air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
             .nodes_to_commands(&nodes)
             .expect("internal error: malformed prelude")
@@ -872,7 +877,7 @@ impl Ctx {
             names.push(group.x.name.clone());
         }
         for name in names {
-            let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&name));
+            let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&self.name_ctxt, &name));
             ids.push(air::ast_util::ident_var(&id));
             let decl = Arc::new(DeclX::Const(id, str_typ(&FUEL_ID)));
             commands.push(Arc::new(CommandX::Global(decl)));

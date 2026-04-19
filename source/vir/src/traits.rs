@@ -851,7 +851,7 @@ pub(crate) fn trait_bound_to_air(
         typ_exprs.extend(typ_to_ids(ctx, t));
     }
     match trait_id {
-        TraitId::Path(path) => Some(ident_apply(&crate::def::trait_bound(path), &typ_exprs)),
+        TraitId::Path(path) => Some(ident_apply(&ctx.name_ctxt.trait_bound(path), &typ_exprs)),
         // We treat both MetaSized and PointeeSized as unsized in AIR for now.
         // This may have to become more precise at some point in the future, but
         // collapsing the two should be sound since they don't lead to different
@@ -880,8 +880,8 @@ pub(crate) fn typ_equality_bound_to_air(
     assert!(ids.len() == 2);
     let idd = &ids[0];
     let idt = &ids[1];
-    let pd = ident_apply(&crate::def::projection(true, trait_path, name), &typ_exprs);
-    let pt = ident_apply(&crate::def::projection(false, trait_path, name), &typ_exprs);
+    let pd = ident_apply(&ctx.name_ctxt.projection(true, trait_path, name), &typ_exprs);
+    let pt = ident_apply(&ctx.name_ctxt.projection(false, trait_path, name), &typ_exprs);
     let eqd = air::ast_util::mk_eq(idd, &pd);
     let eqt = air::ast_util::mk_eq(idt, &pt);
     air::ast_util::mk_and(&vec![eqd, eqt])
@@ -941,7 +941,7 @@ pub fn trait_decls_to_air(ctx: &Ctx, krate: &crate::sst::KrateSst) -> Commands {
         dparams.push(str_typ(crate::def::POLY));
 
         let decl_trait_bound = Arc::new(DeclX::Fun(
-            crate::def::trait_bound(&tr.x.name),
+            ctx.name_ctxt.trait_bound(&tr.x.name),
             Arc::new(tparams),
             air::ast_util::bool_typ(),
         ));
@@ -949,12 +949,12 @@ pub fn trait_decls_to_air(ctx: &Ctx, krate: &crate::sst::KrateSst) -> Commands {
 
         if ctx.reached_dyn_traits.contains(&tr.x.name) {
             let decl_trait_id = Arc::new(DeclX::fun_or_const(
-                crate::def::prefix_dyn_id(&tr.x.name),
+                ctx.name_ctxt.prefix_dyn_id(&tr.x.name),
                 Arc::new(iparams),
                 str_typ(crate::def::TYPE),
             ));
             let decl_to_dyn = Arc::new(DeclX::fun_or_const(
-                crate::def::to_dyn(&tr.x.name),
+                ctx.name_ctxt.to_dyn(&tr.x.name),
                 Arc::new(dparams),
                 str_typ(crate::def::POLY),
             ));
@@ -1050,12 +1050,13 @@ pub(crate) fn dyn_spec_fn_axiom(
         if n == 0 {
             let mut to_dyn_args = typ_ids.clone();
             to_dyn_args.push(ident_var(&param.x.name.lower()));
-            lhs_args.push(ident_apply(&crate::def::to_dyn(trait_path), &to_dyn_args));
+            lhs_args.push(ident_apply(&ctx.name_ctxt.to_dyn(trait_path), &to_dyn_args));
         } else {
             lhs_args.push(ident_var(&param.x.name.lower()));
         }
     }
-    let name = crate::def::suffix_global_id(&crate::sst_to_air::fun_to_air_ident(&method));
+    let name =
+        crate::def::suffix_global_id(&crate::sst_to_air::fun_to_air_ident(&ctx.name_ctxt, &method));
     let lhs = ident_apply(&name, &Arc::new(lhs_args));
     let rhs = ident_apply(&name, &Arc::new(rhs_args));
     let f_eq = Arc::new(air::ast::ExprX::Binary(air::ast::BinaryOp::Eq, lhs.clone(), rhs));
