@@ -617,7 +617,7 @@ impl GlobalCtx {
             fn nostd_filter(n: &Node) -> (bool, bool) {
                 fn is_not_std_crate(crate_name: &CrateId) -> bool {
                     match crate_name {
-                        CrateId::Vstd | CrateId::Core | CrateId::Alloc => false,
+                        CrateId::Core | CrateId::Alloc | CrateId::Vstd => false,
                         _ => true,
                     }
                 }

@@ -899,7 +899,7 @@ fn handle_external_fn<'tcx>(
     let external_item_visibility = mk_visibility(ctxt, external_id);
 
     match &external_path.krate {
-        CrateId::Id(_, name)
+        CrateId::Id(name, _)
             if name.to_string().as_str() == "verus_builtin"
                 && &*external_path.last_segment() != "clone"
                 && !is_builtin_external =>

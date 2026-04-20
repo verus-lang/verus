@@ -48,10 +48,10 @@ impl PathX {
     pub fn is_rust_std_path(&self) -> bool {
         match &self.krate {
             CrateId::Internal => false,
-            CrateId::Vstd => false,
             CrateId::Core => true,
             CrateId::Alloc => true,
-            CrateId::Id(_, x) => x.as_str() == "std",
+            CrateId::Vstd => false,
+            CrateId::Id(x, _) => x.as_str() == "std",
         }
     }
 
@@ -80,10 +80,10 @@ impl fmt::Display for CrateId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CrateId::Internal => write!(f, "crate"),
-            CrateId::Vstd => write!(f, "vstd"),
             CrateId::Core => write!(f, "core"),
             CrateId::Alloc => write!(f, "alloc"),
-            CrateId::Id(_, x) => write!(f, "{}", x),
+            CrateId::Vstd => write!(f, "vstd"),
+            CrateId::Id(x, _) => write!(f, "{}", x),
         }
     }
 }

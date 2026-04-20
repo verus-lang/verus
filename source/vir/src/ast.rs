@@ -26,14 +26,15 @@ pub type Idents = Arc<Vec<Ident>>;
 pub enum CrateId {
     // Verus-generated internal paths with no crate
     Internal,
-    // Verus treats the vstd crate specially
-    Vstd,
     // Verus treats the Rust core crate specially
     Core,
     // Verus treats the Rust alloc crate specially
     Alloc,
+    // Verus treats the vstd crate specially
+    Vstd,
     // All other crates have Rust's stable crate id and a user-friendly name
-    Id(u64, Ident),
+    // Note: to make sorting via PartialOrd/Ord more stable, the u64 id goes after the Ident
+    Id(Ident, u64),
 }
 
 /// A fully-qualified name, such as a module name, function name, or datatype name

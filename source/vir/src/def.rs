@@ -369,20 +369,20 @@ impl NameCtxt {
 pub(crate) fn krate_to_string_ignore_stable_id(krate: &CrateId) -> String {
     match krate {
         CrateId::Internal => "crate".to_string(),
-        CrateId::Vstd => "vstd".to_string(),
         CrateId::Core => "core".to_string(),
         CrateId::Alloc => "alloc".to_string(),
-        CrateId::Id(_, ident) => krate_ident_to_string(ident),
+        CrateId::Vstd => "vstd".to_string(),
+        CrateId::Id(ident, _) => krate_ident_to_string(ident),
     }
 }
 
 impl NameCtxt {
     pub fn krate_to_string(&self, krate: &CrateId) -> String {
         match krate {
-            CrateId::Internal | CrateId::Vstd | CrateId::Core | CrateId::Alloc => {
+            CrateId::Internal | CrateId::Core | CrateId::Alloc | CrateId::Vstd => {
                 krate_to_string_ignore_stable_id(krate)
             }
-            CrateId::Id(id, ident) => self.krate_id_to_string(*id, ident),
+            CrateId::Id(ident, id) => self.krate_id_to_string(*id, ident),
         }
     }
 

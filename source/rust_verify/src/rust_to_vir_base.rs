@@ -38,7 +38,7 @@ pub(crate) fn mk_crate_id<'tcx>(tcx: TyCtxt<'tcx>, krate: CrateNum) -> CrateId {
         "vstd" => CrateId::Vstd,
         "core" => CrateId::Core,
         "alloc" => CrateId::Alloc,
-        _ => CrateId::Id(stable_id, Arc::new(s)),
+        _ => CrateId::Id(Arc::new(s), stable_id),
     }
 }
 

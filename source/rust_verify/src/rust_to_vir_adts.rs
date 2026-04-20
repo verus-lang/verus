@@ -628,7 +628,7 @@ pub(crate) fn check_item_external<'tcx>(
         Some(crate::verus_items::VerusItem::External(_))
     );
     match &path.krate {
-        CrateId::Id(_, name)
+        CrateId::Id(name, _)
             if name.to_string().as_str() == "verus_builtin" && !is_builtin_external =>
         {
             return err_span(
