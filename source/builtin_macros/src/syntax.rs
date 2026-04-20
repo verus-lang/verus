@@ -143,7 +143,7 @@ fn split_off_proof_note_attrs(attrs: Vec<Attribute>) -> (Vec<Attribute>, Vec<Att
     let (mut proof_note_attrs, other_attrs): (Vec<Attribute>, Vec<Attribute>) =
         attrs.into_iter().partition(|attr| {
             path_matches_idents(&attr.path(), &["verifier", "proof_note"])
-                || path_matches_idents(&attr.path(), &["verifier", "proof_note_custom_err"])
+                || path_matches_idents(&attr.path(), &["verifier", "custom_err"])
         });
     for attr in &mut proof_note_attrs {
         attr.style = verus_syn::AttrStyle::Outer;
@@ -3505,11 +3505,11 @@ impl Visitor {
         //                          &::core::iter::IntoIterator::into_iter(e)),
         //                  )),
         let exec_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
-            #[verifier::proof_note_custom_err(#exec_inv_msg)]
+            #[verifier::custom_err(#exec_inv_msg)]
             #vstd::pervasive::ForLoopGhostIterator::exec_invariant(&#x_ghost_iter, &#x_exec_iter)
         ));
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
-            #[verifier::proof_note_custom_err(#ghost_inv_msg)]
+            #[verifier::custom_err(#ghost_inv_msg)]
             #vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
                 #vstd::prelude::infer_spec_for_loop_iter(
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(

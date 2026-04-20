@@ -2605,10 +2605,7 @@ fn do_dataflow<D: DataflowState + Clone + Eq>(
                 in_worklist[i] = true;
             }
 
-            loop {
-                let Some(bb) = worklist.pop_front() else {
-                    break;
-                };
+            while let Some(bb) = worklist.pop_front() {
                 in_worklist[bb] = false;
 
                 let new_value = join_predecessors(&output, &cfg, bb, &empty, &entry_or_exit);

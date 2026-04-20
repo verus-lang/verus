@@ -1669,3 +1669,65 @@ test_verify_one_file_with_options! {
         "cannot borrow `(Verus spec s)[_].0` as mutable more than once at a time",
     ])
 }
+
+// TODO(new_mut_ref): (blocking) fix this issue with mutable temporaries
+test_verify_one_file_with_options! {
+    #[ignore] #[test] mut_ref_temporary_cant_be_elided ["new-mut-ref"] => verus_code! {
+        // This test demonstrates that `* &mut P -> P` is not always a valid simplification.
+        // Observe that test1/test2 have different desired behaviors than test3/test4.
+
+        fn test1() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut x = &mut a;
+
+            let z = x[ ({
+                x = &mut b;
+                0
+            }) ];
+            assert(z == 2);
+        }
+
+        fn test2() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut x = &mut a;
+
+            x[ ({
+                x = &mut b;
+                0
+            }) ] = 100;
+            assert(a[0] == 0);
+            assert(a[1] == 1);
+            assert(b[0] == 100);
+            assert(b[1] == 3);
+        }
+
+        fn test3() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut x = &mut a;
+
+            let z = (&mut *x)[ ({
+                x = &mut b;
+                0
+            }) ];
+            assert(z == 0);
+        }
+
+        fn test4() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut x = &mut a;
+
+            (&mut *x)[ ({
+                x = &mut b;
+                0
+            }) ] = 100;
+            assert(a[0] == 100);
+            assert(a[1] == 1);
+            assert(b[0] == 2);
+            assert(b[1] == 3);
+        }
+    } => Ok(())
+}

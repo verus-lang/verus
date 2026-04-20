@@ -669,7 +669,7 @@ fn display_perf_stats(state: &State) {
 
             let mut cache_stats: Vec<(&Fun, usize)> =
                 state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
-            cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
+            cache_stats.sort_by_key(|a| std::cmp::Reverse(a.1));
             for (fun, calls) in &cache_stats {
                 state.log(format!("{:?} cached {} distinct invocations", fun.path, calls));
             }
@@ -1359,7 +1359,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     }
                 }
                 ToDyn(_) => Ok(e),
-                CustomErr(_) => Ok(e),
                 ProofNote(_) => Ok(e),
                 HasResolved(_) => Ok(e),
             }

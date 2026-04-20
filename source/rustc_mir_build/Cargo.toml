@@ -13,3 +13,5 @@ tracing = "0.1"
 # rustc_mir_build is forked from other code, we don't want lints here
 # we generally avoid to change this dir directly so as not to cause merge conflicts
 all = "allow"
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(bootstrap)'] }
