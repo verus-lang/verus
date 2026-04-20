@@ -1,6 +1,60 @@
+/*!
+This file contains the conversion HIR -> VIR.
+
+To properly process the HIR tree, it's important to understand how Rust handles
+"implicit" operations (like auto-borrows, auto-deref, implicit coercions).
+All such operations are represented as "adjustments", which should be thought of
+as nodes of the tree in their own right.
+
+Example: consider a function which in source looks like `f(foo, bar)`.
+Suppose that `foo` is a mutable reference which is implicitly reborrowed,
+and `bar` implicitly gets a pointer cast, so that the actual function
+call is more like `f(&mut *foo, bar as *const T)`.
+
+The HIR tree initially looks like this:
+
+```
+          Call `f(foo, bar)`
+         /        |        \
+        /         |         \
+    Path `f`   Path `foo`   Path `bar`
+```
+
+Rust performs type-checking on a tree that looks like this. However,
+during type-checking, Rust computes the "adjustments", which are
+(conceptually) inserted into the tree:
+
+```
+          Call `f(&mut *foo, bar as *const T)`
+         /           |                      \
+        /            |                       \
+    Path `f`   Adjust `&mut *foo`        Adjust `bar as *const T`
+                     |                        |
+                     |                        |
+               Adjust `*foo`             Path `bar`
+                     |
+                     |
+                  Path `foo`
+```
+
+Adjustments can have rich and complex behaviors, so it's important
+to treat the adjustment nodes as nodes in their own right, and not
+try to skip over them. When processing an explicit HIR node,
+always use `expr_ty_adjusted` to get the type of its arguments.
+If you try to work with the unadjusted type of the child HIR node,
+you are essentially skipping over a bunch of nodes of the tree.
+This often seems to work in common cases, but this is misleading
+and generally leads to an incomplete mental model of what's going on.
+
+For any confusion about how to interpret an HIR node or Adjustment node,
+there is no substitute for simply consulting the rustc source.
+The file `rustc_mir_build/src/thir/cx/expr.rs` is particularly useful.
+(This file is checked into our repo as part of our rustc_mir_build fork).
+*/
+
 use crate::attributes::{
-    Attr, GhostBlockAttr, get_custom_err_annotations, get_ghost_block_opt,
-    get_proof_note_annotation, get_trigger, get_var_mode, parse_attrs, parse_attrs_opt,
+    Attr, GhostBlockAttr, get_ghost_block_opt, get_proof_note_annotation, get_trigger,
+    get_var_mode, parse_attrs, parse_attrs_opt,
 };
 use crate::context::{BodyCtxt, Context, HeaderSetting};
 use crate::erase::{CompilableOperator, ResolvedCall};
@@ -30,8 +84,8 @@ use rustc_hir::{
 };
 use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_middle::ty::adjustment::{
-    Adjust, Adjustment, AllowTwoPhase, AutoBorrow, AutoBorrowMutability, PatAdjust, PatAdjustment,
-    PointerCoercion,
+    Adjust, Adjustment, AllowTwoPhase, AutoBorrow, AutoBorrowMutability, DerefAdjustKind,
+    PatAdjust, PatAdjustment, PointerCoercion,
 };
 use rustc_middle::ty::{
     AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv, Upcast,
@@ -434,12 +488,6 @@ pub(crate) fn expr_to_vir<'tcx>(
     for group in get_trigger(attrs)? {
         let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
         vir_expr = vir_expr.new_x(ExprX::Unary(UnaryOp::Trigger(group), vir_expr.clone()));
-        vir_expr_or_place = ExprOrPlace::Expr(vir_expr);
-    }
-    for err_msg in get_custom_err_annotations(attrs)? {
-        let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
-        vir_expr = vir_expr
-            .new_x(ExprX::UnaryOpr(UnaryOpr::CustomErr(Arc::new(err_msg)), vir_expr.clone()));
         vir_expr_or_place = ExprOrPlace::Expr(vir_expr);
     }
     if let Some((label, is_custom_err)) = get_proof_note_annotation(attrs)? {
@@ -1246,7 +1294,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             let x = ExprX::NeverToAny(e);
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ()?, x)))
         }
-        Adjust::Deref(None) => {
+        Adjust::Deref(DerefAdjustKind::Builtin) => {
             // handle same way as the UnOp::Deref case
             let new_modifier = is_expr_typ_mut_ref(get_inner_ty(), current_modifier)?;
             let inner_expr = expr_to_vir_with_adjustments(
@@ -1265,7 +1313,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 Ok(strip_vir_ref_decoration(inner_expr))
             }
         }
-        Adjust::Deref(Some(deref)) => {
+        Adjust::Deref(DerefAdjustKind::Overloaded(deref)) => {
             // note: deref has signature (&self) -> &Self::Target
             // and deref_mut has signature (&mut self) -> &mut Self::Target
             // The adjustment, though, goes from self -> Self::Target
@@ -1374,7 +1422,10 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 // exec/tracked contexts. So we need to handle this case specially.
                 if bctx.in_ghost
                     && adjustment_idx >= 2
-                    && matches!(&adjustments[adjustment_idx - 2].kind, Adjust::Deref(None))
+                    && matches!(
+                        &adjustments[adjustment_idx - 2].kind,
+                        Adjust::Deref(DerefAdjustKind::Builtin)
+                    )
                 {
                     let inner_inner_ty = get_inner2_ty();
                     if matches!(
@@ -3356,10 +3407,9 @@ fn lit_to_vir<'tcx>(
         }
         LitKind::Float(..) => {
             if let Some(ty) = ty {
-                use rustc_middle::mir::interpret::LitToConstInput;
+                use rustc_middle::ty::LitToConstInput;
                 let lit_const = LitToConstInput { lit: lit.node, ty, neg: negated };
-                let c = bctx.ctxt.tcx.lit_to_const(lit_const);
-                if let rustc_middle::ty::ConstKind::Value(v) = c.kind() {
+                if let Some(v) = bctx.ctxt.tcx.lit_to_const(lit_const) {
                     if let Some(i) = v.valtree.try_to_leaf() {
                         match i.size().bytes() {
                             4 => {

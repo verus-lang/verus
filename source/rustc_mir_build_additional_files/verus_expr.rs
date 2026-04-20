@@ -6,7 +6,7 @@ use crate::verus::{
 };
 use crate::verus_time_travel_prevention::try_move_head_into_shadow;
 use rustc_hir::{Expr, ExprKind, UnOp};
-use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow};
+use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, DerefAdjustKind};
 
 pub(crate) fn mirror_expr_adjusted_pre<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
@@ -48,7 +48,9 @@ pub(crate) fn apply_adjustment_post<'tcx>(
     }
 
     let kind = match adjustment.kind {
-        Adjust::Deref(None | Some(_)) | Adjust::Borrow(AutoBorrow::Ref(_)) | Adjust::NeverToAny => {
+        Adjust::Deref(DerefAdjustKind::Builtin | DerefAdjustKind::Overloaded(_))
+        | Adjust::Borrow(AutoBorrow::Ref(_))
+        | Adjust::NeverToAny => {
             // Adjust::Deref(None) -> implicit *
             // Adjust::Borrow(AutoBorrow::Ref(_)) -> implicit &
             // Adjust::Deref(Some(_)) -> This case means inserting a Deref::deref function.

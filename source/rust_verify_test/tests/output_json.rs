@@ -85,10 +85,10 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_json_proof_note_custom_err_on_ensures ["--output-json"] => verus_code! {
+    test_json_custom_err_on_ensures ["--output-json"] => verus_code! {
         fn example(x: u64, y: u64) -> (z: u64)
             ensures
-                #![verifier::proof_note_custom_err("Custom ensures error")]
+                #![verifier::custom_err("Custom ensures error")]
                 z == x + y,
         {
             x
@@ -135,9 +135,9 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_json_proof_note_custom_err_on_assert ["--output-json"] => verus_code! {
+    test_json_custom_err_on_assert ["--output-json"] => verus_code! {
         fn caller() {
-            #[verifier::proof_note_custom_err("Custom assert error")]
+            #[verifier::custom_err("Custom assert error")]
             assert(1 > 2);
         }
     } => Err(err) => {
@@ -173,10 +173,10 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_json_proof_note_custom_err_on_assume_with_no_cheating
+    test_json_custom_err_on_assume_with_no_cheating
         ["--output-json", "--no-cheating"] => verus_code! {
         fn caller() {
-            #[verifier::proof_note_custom_err("Custom assume error")]
+            #[verifier::custom_err("Custom assume error")]
             assume(1 > 2);
         }
     } => Err(err) => {
@@ -190,10 +190,10 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_json_proof_note_custom_err_on_requires ["--output-json"] => verus_code! {
+    test_json_custom_err_on_requires ["--output-json"] => verus_code! {
         fn example(x: u64, y: u64) -> (z: u64)
             requires
-                #![verifier::proof_note_custom_err("Custom requires error")]
+                #![verifier::custom_err("Custom requires error")]
                 x == y,
         {
             x

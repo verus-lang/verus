@@ -2371,11 +2371,6 @@ fn check_expr_handle_mut_arg(
                 check_expr(ctxt, record, typing, joined_mode, Expect(*min_mode), e1, outer_proph)?;
             Ok((mode_join(*min_mode, mode), proph))
         }
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => {
-            let p =
-                check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
-            Ok((Mode::Spec, p))
-        }
         ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1) => {
             let proph =
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
@@ -3069,6 +3064,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, outer_mode, body, Mode::Exec, &Proph::No)?;
             for inv in invs.iter() {
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut typing = typing.push_in_pure(true);
                 check_expr_has_mode(
                     ctxt,
                     record,
@@ -3081,6 +3077,7 @@ fn check_expr_handle_mut_arg(
             }
             for dec in decrease.iter() {
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut typing = typing.push_in_pure(true);
                 let dec_proph = check_expr_has_mode(
                     ctxt,
                     record,

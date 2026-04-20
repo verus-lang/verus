@@ -248,7 +248,6 @@ fn handle_autospec<'tcx>(
                     broadcast_forall_only: false,
                     no_auto_trigger: false,
                     auto_ext_equal: functionx.attrs.auto_ext_equal.clone(),
-                    custom_req_err: None,
                     autospec: None,
                     bit_vector: false,
                     atomic: false,
@@ -1290,15 +1289,15 @@ fn binders_to_string<'tcx>(
         let s = match &k {
             BoundVariableKind::Ty(BoundTyKind::Anon) => "_",
             BoundVariableKind::Ty(BoundTyKind::Param(def_id)) => {
-                sym = tcx.item_name(def_id);
+                sym = tcx.item_name(*def_id);
                 sym.as_str()
             }
             BoundVariableKind::Region(BoundRegionKind::Anon | BoundRegionKind::ClosureEnv) => "'_",
             BoundVariableKind::Region(BoundRegionKind::Named(def_id)) => {
-                sym = tcx.item_name(def_id);
+                sym = tcx.item_name(*def_id);
                 sym.as_str()
             }
-            BoundVariableKind::Region(BoundRegionKind::NamedAnon(sym)) => sym.as_str(),
+            BoundVariableKind::Region(BoundRegionKind::NamedForPrinting(sym)) => sym.as_str(),
             BoundVariableKind::Const => "CONST",
         };
         v.push(s.to_string());
@@ -1364,7 +1363,6 @@ fn make_attributes<'tcx>(
     vattrs: &crate::attributes::VerifierAttrs,
     uses_ghost_blocks: bool,
     hidden: Arc<Vec<Fun>>,
-    custom_req_err: Option<String>,
     print_zero_args: bool,
     print_as_method: bool,
     safety: Safety,
@@ -1383,7 +1381,6 @@ fn make_attributes<'tcx>(
         uses_ghost_blocks,
         inline: vattrs.inline,
         hidden,
-        custom_req_err,
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
         broadcast_forall_only: false,
@@ -2083,7 +2080,6 @@ pub(crate) fn check_item_fn<'tcx>(
         &vattrs,
         vattrs.verus_macro && !matches!(sig.sig, FnOrConstSigEnum::ConstVar(..)),
         Arc::new(header.hidden),
-        vattrs.custom_req_err.clone(),
         n_params == 0,
         has_self_param,
         safety,
@@ -3001,7 +2997,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         &vattrs,
         false,
         Arc::new(vec![]),
-        vattrs.custom_req_err.clone(),
         false,
         false,
         Safety::Safe,

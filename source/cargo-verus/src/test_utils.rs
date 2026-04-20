@@ -2,6 +2,14 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+use crate::subcommands::CargoRunPlan;
+
+pub use crate::subcommands::{
+    CARGO_DEFAULT_LIB_METADATA, RUSTC_WRAPPER, VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR,
+    VERUS_DRIVER_ARGS_SEP, VERUS_DRIVER_IS_BUILTIN, VERUS_DRIVER_IS_BUILTIN_MACROS,
+    VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
+};
+
 pub struct MockWorkspace {
     members: Vec<MockPackage>,
 }
@@ -296,5 +304,50 @@ impl MockPackage {
                 std::fs::write(&example, "fn main() {}").expect(&format!("write {example:?}"));
             }
         }
+    }
+}
+
+impl CargoRunPlan {
+    pub fn assert_env_has(&self, key: &str) {
+        assert!(self.env.contains_key(key), "Cargo env MUST have key {}", key);
+    }
+
+    pub fn assert_env_sets(&self, key: &str, value: &str) {
+        assert_eq!(
+            self.env.get(key).map(String::as_str),
+            Some(value),
+            "Cargo env MUST have entry {} = {}",
+            key,
+            value,
+        );
+    }
+
+    pub fn assert_env_sets_key_prefix(&self, key_prefix: &str, value: &str) {
+        assert!(
+            self.env.iter().any(|(k, v)| k.starts_with(key_prefix) && v == value),
+            "Cargo env MUST have entry with key prefix {}* = {}",
+            key_prefix,
+            value,
+        );
+    }
+
+    pub fn assert_env_has_no_key_prefix(&self, key_prefix: &str) {
+        assert!(
+            !self.env.keys().any(|k| k.starts_with(key_prefix)),
+            "Cargo env MUST NOT have a key with prefix {}*",
+            key_prefix,
+        );
+    }
+
+    pub fn parse_driver_args(&self, key: &str) -> Vec<&str> {
+        let encoded_args = self.env.get(key).expect(&format!("retrieve env var `{}`", key));
+        encoded_args.split(VERUS_DRIVER_ARGS_SEP).collect()
+    }
+
+    pub fn parse_driver_args_for_key_prefix(&self, key_prefix: &str) -> Vec<&str> {
+        let Some((_, value)) = self.env.iter().find(|(k, _)| k.starts_with(key_prefix)) else {
+            return vec![];
+        };
+        value.split(VERUS_DRIVER_ARGS_SEP).collect()
     }
 }

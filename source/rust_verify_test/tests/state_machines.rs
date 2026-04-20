@@ -79,7 +79,7 @@ test_verify_one_file! {
 test_verify_one_file_with_options! {
     #[test] test_custom_err_on_subexpression_is_inert ["--expand-errors"] => verus_code! {
         spec fn custom_requires(a: bool, b: bool) -> bool {
-            (#[verifier(custom_err("Custom error on subexpression"))] a) && b
+            (#[verifier::custom_err("Custom error on subexpression")] a) && b
         }
 
         fn caller() {
