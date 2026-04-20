@@ -220,6 +220,7 @@ pub assume_specification<T, E: core::fmt::Debug>[ Result::<T, E>::expect ](
 ;
 
 // map
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, E, U, F: FnOnce(T) -> U>[ Result::<T, E>::map ](
     result: Result<T, E>,
     op: F,
@@ -236,6 +237,7 @@ pub assume_specification<T, E, U, F: FnOnce(T) -> U>[ Result::<T, E>::map ](
 
 // map_err
 #[verusfmt::skip]
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, E, F, O: FnOnce(E) -> F>[Result::<T, E>::map_err](result: Result<T, E>, op: O) -> (mapped_result: Result<T, F>)
     requires
         result.is_err() ==> op.requires((result->Err_0,)),
