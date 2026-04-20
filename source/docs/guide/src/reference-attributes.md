@@ -16,6 +16,7 @@
  - [`memoize`](#verifiermemoize)
  - [`opaque`](#verifieropaque)
  - [`proof_note`](#verifierproof_notetext-and-verifierproof_notetext)
+ - [`custom_err`](#verifiercustom_errtext-and-verifiercustom_errtext)
  - `reject_recursive_types`
  - `reject_recursive_types_in_ground_variants`
  - [`rlimit`](#verifierrlimitn-and-verifierrlimitinfinity)
@@ -144,6 +145,15 @@ These attributes attach a string note to a `requires`/`ensures` clause or `assum
 - The inner attribute `#![verifier::proof_note]` (note the `!`) must attach to a `requires`/`ensures` clause.
 
 When a proof obligation (`requires`/`ensures`/`assert`) fails, then the `"text"` of the note is included in the error message, as well as in the JSON output under the key `func-details`. An `assume` statement flagged by the `--no-cheating` mode is treated similarly. This can be useful for connecting informal spec requirements (say from a text description of desired properties) to obligations in the verified code.
+
+## `#[verifier::custom_err("text")]` and `#![verifier::custom_err("text")]`
+
+These attributes attach a custom error message to a `requires`/`ensures` clause or `assume`/`assert` statement.
+
+- The outer attribute `#[verifier::custom_err]` must attach to an `assume`/`assert` statement.
+- The inner attribute `#![verifier::custom_err]` (note the `!`) must attach to a `requires`/`ensures` clause.
+
+When the associated proof obligation fails, the `"text"` becomes the primary displayed error message. Unlike `proof_note`, `custom_err` labels are not included in JSON `func-details` proof-note sets.
 
 ## `#[verifier::rlimit(n)]` and `#[verifier::rlimit(infinity)]`
 
