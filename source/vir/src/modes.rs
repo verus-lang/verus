@@ -9,6 +9,7 @@ use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_s
 use crate::def::user_local_name;
 use crate::messages::{Span, error, internal_error};
 use crate::messages::{error_bare, error_with_label};
+use crate::resolution_types::ResolutionTypes;
 use crate::util::vec_map_result;
 use air::scope_map::ScopeMap;
 use std::cmp::min;
@@ -3660,6 +3661,7 @@ fn check_function(
     typing: &mut Typing,
     function: &mut Function,
     new_mut_ref: bool,
+    rtypes: &ResolutionTypes,
 ) -> Result<(), VirErr> {
     // Reset this, we only need it per-function
     record.type_inv_info =
@@ -3996,6 +3998,7 @@ fn check_function(
                         functionx.owning_module.as_ref().unwrap(),
                         &record.var_modes,
                         &record.temporary_modes,
+                        &rtypes,
                         dual_mode_fn,
                     )?;
                 }
@@ -4065,15 +4068,16 @@ pub fn check_crate(
     };
     let mut typing = Typing::new(&mut state);
     let mut kratex = (**krate).clone();
+    let rtypes = ResolutionTypes::new(&ctxt.datatypes);
     for function in kratex.functions.iter_mut() {
         ctxt.check_ghost_blocks = function.x.attrs.uses_ghost_blocks;
         ctxt.fun_mode = function.x.mode;
         if function.x.attrs.atomic {
             let mut typing = typing.push_atomic_insts(Some(AtomicInstCollector::new()));
-            check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref)?;
+            check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref, &rtypes)?;
             typing.atomic_insts.as_ref().expect("atomic_insts").validate(&function.span, true)?;
         } else {
-            check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref)?;
+            check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref, &rtypes)?;
         }
     }
     Ok((Arc::new(kratex), record.erasure_modes, record.read_kind_finals))

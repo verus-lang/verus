@@ -245,6 +245,7 @@ use crate::messages::error;
 use crate::messages::{AstId, Span};
 use crate::modes::ReadKindFinals;
 use crate::patterns::pattern_has_mut;
+use crate::resolution_types::ResolutionTypes;
 use crate::sst_util::subst_typ_for_datatype;
 use air::ast_util::str_ident;
 use air::scope_map::ScopeMap;
@@ -266,12 +267,13 @@ pub(crate) fn infer_resolution(
     module: &Path,
     var_modes: &HashMap<VarIdent, Mode>,
     temporary_modes: &HashMap<AstId, Mode>,
+    rtypes: &ResolutionTypes,
     dual_mode: bool,
 ) -> Result<Expr, VirErr> {
     let (cfg, assigns_to_resolve, typ_inv_obligations) =
         new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes)?;
     //println!("{:}", pretty_cfg(&cfg));
-    let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg) };
+    let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg, rtypes) };
     apply_resolutions(
         &cfg,
         params,
@@ -2211,6 +2213,30 @@ impl<'a> LocalCollection<'a> {
         output_projections
     }
 
+    fn get_typ(&self, fp: &FlattenedPlace) -> Typ {
+        let mut tree = &self.locals[fp.local].tree;
+        for projection in fp.projections.iter() {
+            match projection {
+                Projection::StructField((variant_idx, field_idx)) => {
+                    let (_dt, inner_trees) = match tree {
+                        PlaceTree::Struct(_ty, dt, trees) => (dt, trees),
+                        _ => unreachable!(),
+                    };
+                    let inner_tree = inner_trees[*variant_idx][*field_idx].as_ref().unwrap();
+                    tree = inner_tree;
+                }
+                Projection::DerefMut => {
+                    let inner_tree = match tree {
+                        PlaceTree::MutRef(_ty, tr) => tr,
+                        _ => unreachable!(),
+                    };
+                    tree = &inner_tree;
+                }
+            }
+        }
+        tree.typ().clone()
+    }
+
     /// Turn a FlattenedPlace back into a vir::ast::Place
     fn to_ast_place(&self, span: &Span, fp: &FlattenedPlace) -> Place {
         let mut ast_place = SpannedTyped::new(
@@ -3021,7 +3047,7 @@ impl ResolveSafety {
 ////// Use the results of the analysis to determine where resolutions should go
 
 /// Determine the resolutions to be inserted. Doesn't account for scopes.
-fn get_resolutions(cfg: &CFG) -> Vec<ResolutionToInsert> {
+fn get_resolutions(cfg: &CFG, rtypes: &ResolutionTypes) -> Vec<ResolutionToInsert> {
     // A place behind an initialized mutable reference can't be uninitialized,
     // so we only check places that aren't behind mutable references.
     let initialization_places = cfg.locals.places_skip_insides_of_mut_refs();
@@ -3066,15 +3092,16 @@ fn get_resolutions(cfg: &CFG) -> Vec<ResolutionToInsert> {
         //println!("{:}\n", pretty_flattened_place(&cfg.locals, &resolve_places[r_idx]));
         //println!("{:}\n", pretty_basics_blocks_with_dataflow2(&cfg, &resolve_analyses[r_idx], &initialization_analyses[i_idx]));
 
-        // TODO(new_mut_ref): (blocking) filter for "interesting" types, i.e., those containing a &mut ref
-
-        get_resolutions_for_place(
-            cfg,
-            &resolve_places[r_idx],
-            &initialization_analyses[i_idx],
-            &resolve_analyses[r_idx],
-            &mut output,
-        );
+        let typ = cfg.locals.get_typ(&resolve_places[r_idx]);
+        if rtypes.has_nontrivial_resolve(&typ) {
+            get_resolutions_for_place(
+                cfg,
+                &resolve_places[r_idx],
+                &initialization_analyses[i_idx],
+                &resolve_analyses[r_idx],
+                &mut output,
+            );
+        }
     }
 
     output
