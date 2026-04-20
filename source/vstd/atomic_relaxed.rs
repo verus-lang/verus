@@ -963,7 +963,7 @@ impl PWeakAtomicU8 {
                     // because the successful read is an acquire read (or = acq), the read and write views are both joined to the thread's current view
                     &&& v_sn.view().contains(write_view)
                     // the points-to's history is updated to contain the new write,
-                    &&& pt.hist() == old(pt).hist().insert(timestamp+1, v, Some(write_view)) }) ||
+                    &&& pt.hist() == old(pt).hist().insert(timestamp+1, vw, Some(write_view)) }) ||
                 ({
                     &&& res matches Err(_)
                     &&& vr != v
