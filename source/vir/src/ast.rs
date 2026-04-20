@@ -538,8 +538,6 @@ pub enum UnaryOpr {
     /// to hold the result.
     /// Mode is the minimum allowed mode (e.g., Spec for spec-only, Exec if allowed in exec).
     IntegerTypeBound(IntegerTypeBoundKind, Mode),
-    /// Custom diagnostic message
-    CustomErr(Arc<String>),
     /// Label from a `proof_note` attribute.
     ProofNote(ProofNoteLabel),
     /// Predicate over any type that indicates its mutable references has resolved.
@@ -1450,8 +1448,6 @@ pub struct FunctionAttrsX {
     pub no_auto_trigger: bool,
     /// Specify which places we auto-promote == to =~= when verifying this function
     pub auto_ext_equal: AutoExtEqual,
-    /// Custom error message to display when a pre-condition fails
-    pub custom_req_err: Option<String>,
     /// When used in a ghost context, redirect to a specified spec function
     pub autospec: Option<Fun>,
     /// Verify using bitvector theory

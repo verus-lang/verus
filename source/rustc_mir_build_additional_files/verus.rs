@@ -18,7 +18,7 @@ use rustc_middle::ty;
 use rustc_middle::ty::{
     Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVarIndexKind, BoundVariableKind,
     CapturedPlace, GenericArg, Mutability, PolyFnSig, Ty, TyCtxt, TyKind, TypeSuperFoldable,
-    UpvarCapture,
+    UpvarCapture, adjustment::DerefAdjustKind,
 };
 use rustc_middle::ty::{TypeFoldable, TypeFolder, UpvarArgs};
 use rustc_span::Span;
@@ -756,7 +756,7 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
                 erase_pat_rec(emode, &mut field_pat.pattern);
             }
         }
-        PatKind::Deref { subpattern } => {
+        PatKind::Deref { subpattern, pin: _ } => {
             erase_pat_rec(emode, subpattern);
         }
         PatKind::DerefPattern { subpattern, borrow: _ } => {
@@ -954,7 +954,9 @@ impl<'a, 'tcx> VisitTreeForLocalUses<'a, 'tcx> {
         let mut projs = vec![];
         let adjustments = self.cx.typeck_results.expr_adjustments(expr);
         for adjustment in adjustments.iter() {
-            if let rustc_middle::ty::adjustment::Adjust::Deref(None) = &adjustment.kind {
+            if let rustc_middle::ty::adjustment::Adjust::Deref(DerefAdjustKind::Builtin) =
+                &adjustment.kind
+            {
                 projs.push(Proj { ty: adjustment.target, kind: ProjKind::Deref });
             } else {
                 return None;
@@ -1323,7 +1325,7 @@ pub(crate) fn fn_sig_with_region_vars<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> 
         TyKind::FnDef(def_id, args) => {
             let mut replacer = ReErasedReplacer::new(tcx);
             let args = args.fold_with(&mut replacer);
-            let f = tcx.fn_sig(def_id).instantiate(tcx, args);
+            let f = tcx.fn_sig(*def_id).instantiate(tcx, args);
 
             // suppose the new vars we introduced are e_1, e_2, ..., e_n
             // while our late binders are l_1, ..., l_m

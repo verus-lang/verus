@@ -568,9 +568,6 @@ impl ExpX {
                     Field(field) => {
                         (format!("{}.{}", exp.x.to_user_string(global), field.field), 99)
                     }
-                    CustomErr(_msg) => {
-                        (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
-                    }
                     ProofNote(_label) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }
@@ -795,7 +792,6 @@ pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<ProofNoteLabel> {
     match &exp.x {
         ExpX::UnaryOpr(UnaryOpr::Box(_), e) => sst_exp_get_proof_note(e),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => sst_exp_get_proof_note(e),
-        ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e) => sst_exp_get_proof_note(e),
         ExpX::UnaryOpr(UnaryOpr::ProofNote(label), _) => Some(label.clone()),
         _ => None,
     }
