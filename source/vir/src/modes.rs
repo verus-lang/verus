@@ -1,8 +1,8 @@
 use crate::ast::{
-    AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail, Datatype,
-    DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity, ItemKind,
-    Krate, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName, OverflowBehavior, Path, Pattern,
-    PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
+    AssertQueryMode, AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail,
+    Datatype, DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity,
+    ItemKind, Krate, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName, OverflowBehavior, Path,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
     TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_str};
@@ -277,6 +277,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::BorrowMutTracked(..)
             | ExprX::TwoPhaseBorrowMut(..)
             | ExprX::Old(..)
+            | ExprX::Await(..)
         => None,
         ExprX::NonSpecClosure { .. } => Some(OuterProphReason::NonSpecClosure),
         ExprX::Loop { .. } => Some(OuterProphReason::Loop),
@@ -437,20 +438,15 @@ struct SpecialPaths {
 }
 
 impl SpecialPaths {
-    pub fn new(vstd_crate_name: Arc<String>) -> Self {
-        let create_open_invariant_credit_name = path_as_vstd_name(
-            &crate::def::create_open_invariant_credit_path(&Some(vstd_crate_name.clone())),
-        )
-        .expect("could not find path to create_open_invariant_credit");
-        let spend_open_invariant_credit_name = path_as_vstd_name(
-            &crate::def::spend_open_invariant_credit_path(&Some(vstd_crate_name.clone())),
-        )
-        .expect("could not find path to spend_open_invariant_credit");
-        let exec_nonstatic_call_name = path_as_vstd_name(&crate::def::nonstatic_call_path(
-            &Some(vstd_crate_name.clone()),
-            false,
-        ))
-        .expect("could not find path to exec_nonstatic_call");
+    pub fn new() -> Self {
+        let create_open_invariant_credit_name =
+            path_as_vstd_name(&crate::def::create_open_invariant_credit_path())
+                .expect("could not find path to create_open_invariant_credit");
+        let spend_open_invariant_credit_name =
+            path_as_vstd_name(&crate::def::spend_open_invariant_credit_path())
+                .expect("could not find path to spend_open_invariant_credit");
+        let exec_nonstatic_call_name = path_as_vstd_name(&crate::def::nonstatic_call_path(false))
+            .expect("could not find path to exec_nonstatic_call");
         Self {
             create_open_invariant_credit_name,
             spend_open_invariant_credit_name,
@@ -524,8 +520,12 @@ struct State {
     // where x2 retroactively determines the mode of x1, where no uses if x1
     // are allowed between "let x1" and "x1 = x2;"
     pub(crate) vars: ScopeMap<VarIdent, VarMode>,
+    // In a pure context (assert, require etc.) where all var reads should be spec mode,
+    // all var bindings should be spec mode, no assignments or mutations allowed
+    pub(crate) in_pure: bool,
     pub(crate) in_forall_stmt: bool,
     pub(crate) in_proof_in_spec: bool,
+    pub(crate) in_assert_query: Option<AssertQueryMode>,
     // Are we in a syntactic ghost block?
     // If not, Ghost::Exec (corresponds to exec mode).
     // If yes (corresponding to proof/spec mode), say whether variables are tracked or not.
@@ -558,6 +558,7 @@ mod typing {
             Typing { internal_state: state, internal_undo: Some(Box::new(|_| {})) }
         }
 
+        #[must_use]
         pub(super) fn push_var_scope<'a>(&'a mut self) -> Typing<'a> {
             self.internal_state.vars.push_scope(true);
             Typing {
@@ -568,6 +569,7 @@ mod typing {
             }
         }
 
+        #[must_use]
         pub(super) fn push_var_multi_scope<'a>(&'a mut self) -> Typing<'a> {
             let vars_scope_count = self.internal_state.vars.num_scopes();
             Typing {
@@ -585,6 +587,32 @@ mod typing {
             self.internal_state.vars.push_scope(true);
         }
 
+        #[must_use]
+        pub(super) fn push_in_pure<'a>(&'a mut self, mut in_pure: bool) -> Typing<'a> {
+            swap(&mut in_pure, &mut self.internal_state.in_pure);
+            Typing {
+                internal_state: self.internal_state,
+                internal_undo: Some(Box::new(move |state| {
+                    state.in_pure = in_pure;
+                })),
+            }
+        }
+
+        #[must_use]
+        pub(super) fn push_in_assert_query<'a>(
+            &'a mut self,
+            mut in_assert_query: Option<AssertQueryMode>,
+        ) -> Typing<'a> {
+            swap(&mut in_assert_query, &mut self.internal_state.in_assert_query);
+            Typing {
+                internal_state: self.internal_state,
+                internal_undo: Some(Box::new(move |state| {
+                    state.in_assert_query = in_assert_query;
+                })),
+            }
+        }
+
+        #[must_use]
         pub(super) fn push_in_forall_stmt<'a>(
             &'a mut self,
             mut in_forall_stmt: bool,
@@ -598,6 +626,7 @@ mod typing {
             }
         }
 
+        #[must_use]
         pub(super) fn push_in_proof_in_spec<'a>(
             &'a mut self,
             mut in_proof_in_spec: bool,
@@ -611,6 +640,7 @@ mod typing {
             }
         }
 
+        #[must_use]
         pub(super) fn push_block_ghostness<'a>(
             &'a mut self,
             mut block_ghostness: Ghost,
@@ -624,6 +654,7 @@ mod typing {
             }
         }
 
+        #[must_use]
         pub(super) fn push_ret_mode<'a>(&'a mut self, mut ret_mode: Option<Mode>) -> Typing<'a> {
             swap(&mut ret_mode, &mut self.internal_state.ret_mode);
             Typing {
@@ -634,6 +665,7 @@ mod typing {
             }
         }
 
+        #[must_use]
         pub(super) fn push_atomic_insts<'a>(
             &'a mut self,
             mut atomic_insts: Option<AtomicInstCollector>,
@@ -648,6 +680,7 @@ mod typing {
         }
 
         // If we want to catch a VirErr, use this to make sure state is restored upon catching the error
+        #[must_use]
         pub(super) fn push_restore_on_error<'a>(&'a mut self) -> Typing<'a> {
             self.push_var_scope()
         }
@@ -856,6 +889,8 @@ fn add_pattern_rec(
     {
         record.erasure_modes.var_modes.push((pattern.span.clone(), (mode, mode)));
     }
+
+    let mode = if typing.in_pure { Mode::Spec } else { mode };
 
     match &pattern.x {
         PatternX::Wildcard(_dd) => Ok(()),
@@ -1171,7 +1206,10 @@ fn check_place(
             // We also apply coerce to the "expected mode" here in order to compute the optimal
             // mode to put into var_modes (see below)
 
-            let coerced_mode = mode_join(mode_join(place_mode, context_mode), expect.0);
+            let mut coerced_mode = mode_join(place_mode, expect.0);
+            if typing.in_forall_stmt || typing.in_proof_in_spec || typing.in_pure {
+                coerced_mode = Mode::Spec;
+            }
             coerced_mode
         }
         PlaceAccess::MutAssign(typ) => {
@@ -1331,7 +1369,7 @@ fn check_place_rec_inner(
     outer_proph: &Proph,
 ) -> Result<(Mode, Proph), VirErr> {
     match &place.x {
-        PlaceX::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }, p) => {
+        PlaceX::Field(FieldOpr { datatype, variant, field, get_variant: _, check }, p) => {
             let (mode, proph) = check_place_rec(
                 ctxt,
                 record,
@@ -1343,6 +1381,12 @@ fn check_place_rec_inner(
                 expect,
                 outer_proph,
             )?;
+            if typing.in_pure && matches!(check, crate::ast::VariantCheck::Union) {
+                return Err(error(
+                    &place.span,
+                    "union field access is not allowed in pure context (use the Verus `get_union_field` builtin instead)",
+                ));
+            }
 
             let field_mode = match datatype {
                 Dt::Path(path) => {
@@ -1648,23 +1692,20 @@ fn type_is_non_exec(ctxt: &Ctxt, typ: &Typ) -> bool {
             _,
             t,
         ) => type_is_non_exec(ctxt, t),
-        TypX::Datatype(dt, typ_args, _) => {
-            match dt {
-                Dt::Tuple(_) => {
-                    for t in typ_args.iter() {
-                        if type_is_non_exec(ctxt, t) {
-                            return true;
-                        }
+        TypX::Datatype(dt, typ_args, _) => match dt {
+            Dt::Tuple(_) => {
+                for t in typ_args.iter() {
+                    if type_is_non_exec(ctxt, t) {
+                        return true;
                     }
-                    false
                 }
-                Dt::Path(path) => {
-                    // TODO(new_mut_ref): should allow, e.g., Option<T> where T is non-exec
-                    let datatype = &ctxt.datatypes[path];
-                    datatype.x.mode != Mode::Exec
-                }
+                false
             }
-        }
+            Dt::Path(path) => {
+                let datatype = &ctxt.datatypes[path];
+                datatype.x.mode != Mode::Exec
+            }
+        },
         _ => false,
     }
 }
@@ -1723,10 +1764,20 @@ fn check_expr_handle_mut_arg(
             let (x_mode, proph) = typing.get(x, &expr.span)?;
             let proph = proph.to_proph(x, &expr.span);
 
-            if typing.in_forall_stmt || typing.in_proof_in_spec {
+            if matches!(&expr.x, ExprX::VarAt(..)) {
+                if let Some(prover) = typing.in_assert_query {
+                    return Err(error(
+                        &expr.span,
+                        format!("`old` is not supported in `{:}` assert", prover.name()),
+                    ));
+                }
+            }
+
+            if typing.in_forall_stmt || typing.in_proof_in_spec || typing.in_pure {
                 // Proof variables may be used as spec, but not as proof inside forall statements.
                 // This protects against effectively consuming a linear proof variable
                 // multiple times for different instantiations of the forall variables.
+                record.erasure_modes.var_modes.push((expr.span.clone(), (Mode::Spec, Mode::Spec)));
                 return Ok((Mode::Spec, None, proph));
             }
 
@@ -1933,6 +1984,12 @@ fn check_expr_handle_mut_arg(
                         return Err(error(
                             &arg.span,
                             "cannot call function with &mut parameter inside spec",
+                        ));
+                    }
+                    if typing.in_pure {
+                        return Err(error(
+                            &arg.span,
+                            "cannot call function with &mut parameter inside pure context",
                         ));
                     }
                     let (arg_mode_read, arg_mode_write, proph) = check_expr_handle_mut_arg(
@@ -2314,11 +2371,6 @@ fn check_expr_handle_mut_arg(
                 check_expr(ctxt, record, typing, joined_mode, Expect(*min_mode), e1, outer_proph)?;
             Ok((mode_join(*min_mode, mode), proph))
         }
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => {
-            let p =
-                check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
-            Ok((Mode::Spec, p))
-        }
         ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1) => {
             let proph =
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
@@ -2390,6 +2442,7 @@ fn check_expr_handle_mut_arg(
             for binder in binders.iter() {
                 typing.insert(&binder.name, Mode::Spec, Some(ProphVar::No));
             }
+            let mut typing = typing.push_in_pure(true);
             let proph = check_expr_has_mode(
                 ctxt,
                 record,
@@ -2409,6 +2462,7 @@ fn check_expr_handle_mut_arg(
             for binder in params.iter() {
                 typing.insert(&binder.name, Mode::Spec, Some(ProphVar::No));
             }
+            let mut typing = typing.push_in_pure(true);
             let mut typing = typing.push_atomic_insts(None);
             let p = check_expr_has_mode(
                 ctxt,
@@ -2459,6 +2513,7 @@ fn check_expr_handle_mut_arg(
 
             {
                 let mut ghost_typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut ghost_typing = ghost_typing.push_in_pure(true);
                 for req in requires.iter() {
                     check_expr_has_mode(
                         ctxt,
@@ -2521,6 +2576,7 @@ fn check_expr_handle_mut_arg(
             for binder in params.iter() {
                 typing.insert(&binder.name, Mode::Spec, Some(ProphVar::No));
             }
+            let mut typing = typing.push_in_pure(true);
             let proph1 = check_expr_has_mode(
                 ctxt,
                 record,
@@ -2576,6 +2632,9 @@ fn check_expr_handle_mut_arg(
             }
             if typing.in_proof_in_spec {
                 return Err(error(&expr.span, "assignment is not allowed inside spec"));
+            }
+            if typing.in_pure {
+                return Err(error(&expr.span, "assignment is not allowed inside pure context"));
             }
             if let (PlaceX::Local(xl), ExprX::ReadPlace(pr, _)) = (&place.x, &rhs.x) {
                 if let PlaceX::Local(xr) = &pr.x {
@@ -2656,6 +2715,9 @@ fn check_expr_handle_mut_arg(
             }
             if typing.in_proof_in_spec {
                 return Err(error(&expr.span, "assignment is not allowed inside spec"));
+            }
+            if typing.in_pure {
+                return Err(error(&expr.span, "assignment is not allowed inside pure context"));
             }
             if let (ExprX::VarLoc(xl), ExprX::ReadPlace(pr, _)) = (&lhs.x, &rhs.x) {
                 if let PlaceX::Local(xr) = &pr.x {
@@ -2749,7 +2811,8 @@ fn check_expr_handle_mut_arg(
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use assert or assume in exec mode"));
             }
-            check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
+            let mut typing = typing.push_in_pure(true);
+            check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
             Ok((outer_mode, Proph::No))
         }
         ExprX::AssertBy { vars, require, ensure, proof } => {
@@ -2765,10 +2828,11 @@ fn check_expr_handle_mut_arg(
                 typing.insert(&var.name, Mode::Spec, Some(ProphVar::No));
             }
             {
+                let mut typing0 = typing.push_in_pure(true);
                 check_expr_has_mode(
                     ctxt,
                     record,
-                    &mut typing,
+                    &mut typing0,
                     Mode::Spec,
                     require,
                     Mode::Spec,
@@ -2777,7 +2841,7 @@ fn check_expr_handle_mut_arg(
                 check_expr_has_mode(
                     ctxt,
                     record,
-                    &mut typing,
+                    &mut typing0,
                     Mode::Spec,
                     ensure,
                     Mode::Spec,
@@ -2795,31 +2859,35 @@ fn check_expr_handle_mut_arg(
             )?;
             Ok((Mode::Proof, Proph::No))
         }
-        ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
+        ExprX::AssertQuery { requires, ensures, proof, mode } => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use assert in exec mode"));
             }
-            for req in requires.iter() {
-                check_expr_has_mode(
-                    ctxt,
-                    record,
-                    typing,
-                    Mode::Spec,
-                    req,
-                    Mode::Spec,
-                    outer_proph,
-                )?;
-            }
-            for ens in ensures.iter() {
-                check_expr_has_mode(
-                    ctxt,
-                    record,
-                    typing,
-                    Mode::Spec,
-                    ens,
-                    Mode::Spec,
-                    outer_proph,
-                )?;
+            {
+                let mut typing0 = typing.push_in_pure(true);
+                let mut typing0 = typing0.push_in_assert_query(Some(*mode));
+                for req in requires.iter() {
+                    check_expr_has_mode(
+                        ctxt,
+                        record,
+                        &mut typing0,
+                        Mode::Spec,
+                        req,
+                        Mode::Spec,
+                        outer_proph,
+                    )?;
+                }
+                for ens in ensures.iter() {
+                    check_expr_has_mode(
+                        ctxt,
+                        record,
+                        &mut typing0,
+                        Mode::Spec,
+                        ens,
+                        Mode::Spec,
+                        outer_proph,
+                    )?;
+                }
             }
             check_expr_has_mode(
                 ctxt,
@@ -2836,7 +2904,8 @@ fn check_expr_handle_mut_arg(
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use assert in exec mode"));
             }
-            check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
+            let mut typing = typing.push_in_pure(true);
+            check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
             Ok((Mode::Proof, Proph::No))
         }
         ExprX::If(e1, e2, e3) => {
@@ -2995,6 +3064,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, outer_mode, body, Mode::Exec, &Proph::No)?;
             for inv in invs.iter() {
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut typing = typing.push_in_pure(true);
                 check_expr_has_mode(
                     ctxt,
                     record,
@@ -3007,6 +3077,7 @@ fn check_expr_handle_mut_arg(
             }
             for dec in decrease.iter() {
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut typing = typing.push_in_pure(true);
                 let dec_proph = check_expr_has_mode(
                     ctxt,
                     record,
@@ -3055,6 +3126,9 @@ fn check_expr_handle_mut_arg(
             if typing.in_proof_in_spec {
                 return Err(error(&expr.span, "return is not allowed inside spec"));
             }
+            if typing.in_pure {
+                return Err(error(&expr.span, "return is not allowed in pure context"));
+            }
             match (e1, typing.ret_mode) {
                 (None, _) => {}
                 (Some(v), None) if is_unit(&v.typ) => {}
@@ -3074,7 +3148,21 @@ fn check_expr_handle_mut_arg(
             }
             Ok((Mode::Exec, Proph::No))
         }
-        ExprX::BreakOrContinue { label: _, is_break: _ } => Ok((Mode::Exec, Proph::No)),
+        ExprX::BreakOrContinue { label: _, is_break: _ } => {
+            if typing.in_forall_stmt {
+                return Err(error(
+                    &expr.span,
+                    "break/continue is not allowed in 'assert ... by' statements",
+                ));
+            }
+            if typing.in_proof_in_spec {
+                return Err(error(&expr.span, "break/continue is not allowed inside spec"));
+            }
+            if typing.in_pure {
+                return Err(error(&expr.span, "break/continue is not allowed in pure context"));
+            }
+            Ok((Mode::Exec, Proph::No))
+        }
         ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let block_ghostness = match (typing.block_ghostness, alloc_wrapper, tracked) {
                 (Ghost::Exec, false, false) => {
@@ -3266,7 +3354,7 @@ fn check_expr_handle_mut_arg(
             panic!("Nondeterministic is not created by user code right now");
         }
         ExprX::ImplicitReborrowOrSpecRead(place, _, _)
-            if expect.0 == Mode::Spec || outer_mode == Mode::Spec =>
+            if expect.0 == Mode::Spec || outer_mode == Mode::Spec || typing.in_pure =>
         {
             if let Some(m) = &mut record.infer_spec_for_implicit_reborrows {
                 let found = m.insert(expr.span.id, true);
@@ -3317,6 +3405,9 @@ fn check_expr_handle_mut_arg(
             if typing.in_proof_in_spec || outer_mode == Mode::Spec {
                 return Err(error(&expr.span, "mutable borrow is not allowed in spec context"));
             }
+            if typing.in_pure {
+                return Err(error(&expr.span, "assignment is not allowed inside pure context"));
+            }
 
             outer_proph.outer_check(&expr.span, OuterProphReason::MutBorrow)?;
 
@@ -3361,6 +3452,14 @@ fn check_expr_handle_mut_arg(
             Ok((Mode::Spec, proph))
         }
         ExprX::ReadPlace(place, read_kind) => {
+            let expect =
+                if matches!(read_kind.preliminary_kind, ReadKind::SpecAfterBorrow | ReadKind::Spec)
+                {
+                    Expect(Mode::Spec)
+                } else {
+                    expect
+                };
+
             let (mode, proph) = check_place(
                 ctxt,
                 record,
@@ -3378,8 +3477,6 @@ fn check_expr_handle_mut_arg(
             };
             record.read_kind_finals.insert(read_kind.id, final_read_kind);
 
-            // TODO(new_mut_ref) if the ReadKind is spec, we should check that it really is spec
-
             let p = if matches!(read_kind.preliminary_kind, ReadKind::SpecAfterBorrow) {
                 Proph::Yes(ProphReason {
                     span: expr.span.clone(),
@@ -3389,15 +3486,44 @@ fn check_expr_handle_mut_arg(
                 proph
             };
 
+            let mode =
+                if matches!(read_kind.preliminary_kind, ReadKind::SpecAfterBorrow | ReadKind::Spec)
+                {
+                    Mode::Spec
+                } else {
+                    mode
+                };
+
             Ok((mode, p))
         }
         ExprX::EvalAndResolve(..) => {
             panic!("EvalAndResolve shouldn't be created yet");
         }
         ExprX::Old(e) => {
-            let proph =
-                check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
+            let mut typing = typing.push_in_pure(true);
+            let proph = check_expr_has_mode(
+                ctxt,
+                record,
+                &mut typing,
+                Mode::Spec,
+                e,
+                Mode::Spec,
+                outer_proph,
+            )?;
             Ok((Mode::Spec, proph))
+        }
+        ExprX::Await(e) => {
+            match (ctxt.fun_mode, outer_mode) {
+                (Mode::Proof, _) | (Mode::Spec, _) => {
+                    return Err(error(&expr.span, "cannot await from non-exec code"));
+                }
+                (_, Mode::Proof) | (_, Mode::Spec) => {
+                    return Err(error(&expr.span, "cannot await in non-exec code"));
+                }
+                (_, _) => {}
+            }
+            let mut typing = typing.push_var_multi_scope();
+            Ok(check_expr(ctxt, record, &mut typing, outer_mode, expect, e, outer_proph)?)
         }
     };
     let (mode, proph) = mode_proph?;
@@ -3613,6 +3739,7 @@ fn check_function(
 
     for expr in function.x.require.iter() {
         let mut req_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+        let mut req_typing = req_typing.push_in_pure(true);
         check_expr_has_mode(
             ctxt,
             record,
@@ -3628,8 +3755,10 @@ fn check_function(
     if function.x.ens_has_return {
         ens_typing.insert(&function.x.ret.x.name, Mode::Spec, Some(ProphVar::No));
     }
+
     for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let mut ens_typing = ens_typing.push_block_ghostness(Ghost::Ghost);
+        let mut ens_typing = ens_typing.push_in_pure(true);
         check_expr_has_mode(
             ctxt,
             record,
@@ -3644,6 +3773,7 @@ fn check_function(
 
     if let Some(expr) = &function.x.returns {
         let mut ret_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+        let mut ret_typing = ret_typing.push_in_pure(true);
         check_expr_has_mode(
             ctxt,
             record,
@@ -3657,6 +3787,7 @@ fn check_function(
 
     for expr in function.x.decrease.iter() {
         let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+        let mut dec_typing = dec_typing.push_in_pure(true);
         let proph = check_expr_has_mode(
             ctxt,
             record,
@@ -3670,11 +3801,12 @@ fn check_function(
     }
     if let Some(mask_spec) = &function.x.mask_spec {
         for expr in mask_spec.exprs().iter() {
-            let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+            let mut mask_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+            let mut mask_typing = mask_typing.push_in_pure(true);
             check_expr_has_mode(
                 ctxt,
                 record,
-                &mut dec_typing,
+                &mut mask_typing,
                 Mode::Spec,
                 expr,
                 Mode::Spec,
@@ -3685,11 +3817,12 @@ fn check_function(
     match &function.x.unwind_spec {
         None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
         Some(UnwindSpec::NoUnwindWhen(expr)) => {
-            let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+            let mut unw_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+            let mut unw_typing = unw_typing.push_in_pure(true);
             check_expr_has_mode(
                 ctxt,
                 record,
-                &mut dec_typing,
+                &mut unw_typing,
                 Mode::Spec,
                 expr,
                 Mode::Spec,
@@ -3727,9 +3860,15 @@ fn check_function(
     } else {
         None
     };
+
+    let dual_mode_fn = function.x.mode == Mode::Spec && function.x.ret.x.mode == Mode::Exec;
+    let pure_spec_fn = function.x.mode == Mode::Spec && function.x.ret.x.mode == Mode::Spec;
+
     if let Some(body) = &function.x.body {
         let mut body_typing = fun_typing.push_ret_mode(ret_mode);
         let mut body_typing = body_typing.push_block_ghostness(Ghost::of_mode(function.x.mode));
+        let mut body_typing = body_typing.push_in_pure(pure_spec_fn);
+
         assert!(record.infer_spec_for_loop_iter_modes.is_none());
         record.infer_spec_for_loop_iter_modes = Some(Vec::new());
         record.infer_spec_for_implicit_reborrows = Some(HashMap::new());
@@ -3842,6 +3981,9 @@ fn check_function(
                     &ctxt.datatypes,
                 )?;
             } else if new_mut_ref {
+                // For dual mode we _could_ probably skip entirely, but
+                // resolution_inference does some extra (soundness-related) checks
+                // besides resolution inference that would not be good to skip
                 if let Some(body) = &mut functionx.body {
                     *body = crate::resolution_inference::infer_resolution(
                         &functionx.params,
@@ -3853,6 +3995,7 @@ fn check_function(
                         functionx.owning_module.as_ref().unwrap(),
                         &record.var_modes,
                         &record.temporary_modes,
+                        dual_mode_fn,
                     )?;
                 }
             }
@@ -3887,8 +4030,7 @@ pub fn check_crate(
         ctor_modes: vec![],
         infer_spec_for_loop_iter_erase: vec![],
     };
-    let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
-    let special_paths = SpecialPaths::new(vstd_crate_name);
+    let special_paths = SpecialPaths::new();
     let mut ctxt = Ctxt {
         funs,
         datatypes,
@@ -3917,6 +4059,8 @@ pub fn check_crate(
         block_ghostness: Ghost::Exec,
         ret_mode: None,
         atomic_insts: None,
+        in_pure: false,
+        in_assert_query: None,
     };
     let mut typing = Typing::new(&mut state);
     let mut kratex = (**krate).clone();

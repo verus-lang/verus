@@ -120,7 +120,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "`after_borrow` expects a local variable, possibly with dereferences or field accesses")
 }
 
-// TODO(new_mut_ref): fix this
+// TODO(new_mut_ref): (blocking) fix this
 test_verify_one_file_with_options! {
     #[ignore] #[test] cant_cheat_prophecy_with_assign_in_has_resolved ["new-mut-ref"] => verus_code! {
         fn test() {
@@ -850,4 +850,624 @@ test_verify_one_file_with_options! {
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed(err, "x")
+}
+
+// Loop ordering issues
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_decreases_1 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        fn test_loop_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // ok; decreases doesn't need to evaluate at the end
+            loop
+                decreases a,
+            {
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+
+                assume(false);
+            }
+
+            *z = 20;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_decreases_2 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        fn test_while_2() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // this should be ok
+            while ({
+                z = &mut a;
+                cond()
+            })
+                decreases a,
+            {
+                *z = 20;
+                break;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_decreases_3 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        fn test_while_3() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            while ({
+                *z = 20;
+                cond()
+            })
+                decreases b, // should fail (comes between `&mut b` and `*z = 20`)
+            {
+                break;
+            }
+        }
+    } => Err(err) => assert_spec_borrowed(err, "b")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_decreases_4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn cond() -> bool { true }
+
+        fn test_for_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // should be ok
+            for i in 0 .. 10
+                decreases a,
+            {
+                assume(false);
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+            }
+
+            *z = 20;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_ensures_1 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_loop_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // not ok
+            loop
+                ensures a == 0 || true,
+            {
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+            }
+
+            *z = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "a")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_ensures_2 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_2() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // this should be ok
+            while ({
+                z = &mut a;
+                cond()
+            })
+                ensures a == 0 || true,
+            {
+                *z = 20;
+                break;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_ensures_3 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_3() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // ok
+            while ({
+                *z = 20;
+                cond()
+            })
+                ensures b == 0 || true,
+            {
+                break;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_ensures_4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_for_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // not ok
+            for i in 0 .. 10
+                ensures a == 0 || true,
+            {
+                assume(false);
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+            }
+
+            *z = 20;
+        }
+    //} => Err(err) => assert_spec_borrowed(err, "a")
+    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_except_break_1 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_loop_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            assume(false);
+
+            // ok
+            loop
+                invariant_except_break a == 0 || true,
+            {
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+
+                assume(false);
+            }
+
+            *z = 20;
+        }
+    //} => Ok(())
+    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_except_break_2 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_2() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // this should be ok
+            while ({
+                z = &mut a;
+                cond()
+            })
+                invariant_except_break a == 0 || true,
+            {
+                *z = 20;
+                break;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_except_break_3 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_3() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // not ok
+            while ({
+                *z = 20;
+                cond()
+            })
+                invariant_except_break b == 0 || true, // should fail (comes between `&mut b` and `*z = 20`)
+            {
+                break;
+            }
+        }
+    } => Err(err) => assert_spec_borrowed(err, "b")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_except_break_4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_for_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // ok
+            for i in 0 .. 10
+                invariant_except_break a == 0 || true,
+            {
+                assume(false);
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+            }
+
+            *z = 20;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_1 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_loop_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // not ok
+            loop
+                invariant a == 0 || true,
+            {
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+            }
+
+            *z = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "a")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_2 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_2() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            // this should be ok
+            while ({
+                z = &mut a;
+                cond()
+            })
+                invariant a == 0 || true,
+            {
+                *z = 20;
+                break;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_3 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_3() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            while ({
+                *z = 20;
+                cond()
+            })
+                invariant b == 0 || true, // should fail (comes between `&mut b` and `*z = 20`)
+            {
+                break;
+            }
+        }
+    } => Err(err) => assert_spec_borrowed(err, "b")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test_loop_invariant_4 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_for_1() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            for i in 0 .. 10
+                invariant a == 0 || true,
+            {
+                assume(false);
+                if cond() {
+                    z = &mut a;
+                    break;
+                }
+            }
+
+            *z = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "a")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_if_let_with_move ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        fn test_if_let_move(s: Option<X>) {
+            if let Option::Some(a) = s {
+                let t1 = a;
+            } else {
+                let t2 = s;
+            }
+        }
+
+        fn test_if_let_move2(s: Option<(X, X)>) {
+            let mut s = s;
+            if let Option::Some((a, ref mut b)) = s {
+                let t1 = a;
+            } else {
+                let t2 = s;
+            }
+        }
+
+        fn test_if_let_move2_in_closure(s: Option<(X, X)>) {
+            let clos = || {
+                let mut s = s;
+                if let Option::Some((a, ref mut b)) = s {
+                    let t1 = a;
+                } else {
+                    let t2 = s;
+                }
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_if_let_with_move_conjunction ["new-mut-ref", "--edition 2024"] => verus_code! {
+        fn consume<A>(a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        fn test_if_let_move_conjunction(s: Option<(X, X)>, cond: bool) {
+            // this should be ok, but Verus doesn't support if-let chains right now
+            let mut s = s;
+            if let Option::Some((a, ref mut b)) = s && cond {
+                let t1 = a;
+            } else {
+                let t2 = s;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: let expressions")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_if_let_with_move_fail1 ["new-mut-ref", "--no-erasure-check"] => verus_code! {
+        fn consume<A>(a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        fn test_if_let_move_fail(s: Option<X>) {
+            if let Option::Some(a) = s {
+                let t1 = a;
+            } else {
+                let t2 = s;
+                consume(t2);
+                consume(t2);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t2`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_if_let_with_move_fail2 ["new-mut-ref", "--no-erasure-check"] => verus_code! {
+        fn consume<A>(a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        fn test_if_let_move2_fail(s: Option<(X, X)>) {
+            let mut s = s;
+            if let Option::Some((a, ref mut b)) = s {
+                let t1 = a;
+            } else {
+                let t2 = s;
+                consume(t2);
+                consume(t2);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t2`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_if_let_with_move_fail3 ["new-mut-ref", "--no-erasure-check"] => verus_code! {
+        fn consume<A>(a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        fn test_if_let_move2_fail_in_closure(s: Option<(X, X)>) {
+            let clos = || {
+                let mut s = s;
+                if let Option::Some((a, ref mut b)) = s {
+                    let t1 = a;
+                } else {
+                    let t2 = s;
+                    consume(t2);
+                    consume(t2);
+                }
+            };
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t2`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_mode_test_if_let_with_move ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn consume<A>(tracked a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        proof fn test_if_let_move(tracked s: Option<X>) {
+            if let Option::Some(a) = s {
+                let tracked t1 = a;
+            } else {
+                let tracked t2 = s;
+            }
+        }
+
+        proof fn test_if_let_move2_in_closure(tracked s: Option<(X, X)>) {
+            let tracked clos = proof_fn[Once]|| {
+                let tracked mut s = s;
+                if let Option::Some(a) = s {
+                    let tracked t1 = a;
+                } else {
+                    let tracked t2 = s;
+                }
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_mode_test_if_let_with_move_fail ["new-mut-ref"] => verus_code! {
+        proof fn consume<A>(tracked a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        proof fn test_if_let_move_fail(tracked s: Option<X>) {
+            if let Option::Some(a) = s {
+                let tracked t1 = a;
+            } else {
+                let tracked t2 = s;
+                consume(t2);
+                consume(t2);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t2`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_mode_test_if_let_with_move_fail2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn consume<A>(tracked a: A) { }
+        struct X { }
+        enum Option<V> { Some(V), None }
+
+        proof fn test_if_let_move2_fail_in_closure(tracked s: Option<(X, X)>) {
+            let tracked clos = proof_fn[Once]|| {
+                let tracked mut s = s;
+                if let Option::Some(a) = s {
+                    let tracked t1 = a;
+                } else {
+                    let tracked t2 = s;
+                    consume(t2);
+                    consume(t2);
+                }
+            };
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t2`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] match_in_loop_invariant_issue2344 ["new-mut-ref"] => verus_code! {
+        enum Option<V> { Some(V), None }
+
+        fn minimal(n: u64) {
+            let mut found: Option<u64> = Option::None;
+            let mut i: u64 = 0;
+            while i < n
+                invariant
+                    match found { Option::Some(k) => k < 1000u64, Option::None => true }, // FAILS
+                decreases n - i,
+            {
+                found = Option::Some(i);
+                i += 1;
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

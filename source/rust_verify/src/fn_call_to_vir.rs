@@ -33,11 +33,11 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArrayKind, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
-    BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX,
-    FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
-    ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place, PlaceX, Quant, Typ,
-    TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck,
-    VirErr,
+    BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
+    Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
+    IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place,
+    PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX,
+    VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -154,6 +154,9 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         }
     }
 
+    // Verus attributes are `Unparsed` where get_all_attrs is acceptable per its
+    // deprecation message.
+    #[allow(deprecated)]
     let f_attrs = bctx.ctxt.tcx.get_all_attrs(f);
     if crate::attributes::is_get_field_many_variants(
         f_attrs,
@@ -819,8 +822,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             ExprItem::Old if bctx.new_mut_ref => {
                 record_spec_fn_pure_args_only(bctx, expr);
-                // TODO(new_mut_ref): restrict to form like `old(x)` or `old(x.field)`?
-                // TODO(new_mut_ref): old type signature should accept any type
+                // TODO(new_mut_ref): (blocking) restrict to form like `old(x)` or `old(x.field)`?
+                // TODO(new_mut_ref): (fix when done) old type signature should accept any type
                 let bctx = &BodyCtxt { in_old: true, ..bctx.clone() };
                 let arg = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
                 mk_expr(ExprX::Old(arg))
@@ -1321,7 +1324,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             mk_expr(ExprX::AssertAssumeUserDefinedTypeInvariant {
                 is_assume: true,
                 expr: exp,
-                fun: vir::fun!("" => "use_type_invariant_fake_placeholder_fun"),
+                fun: vir::fun!(CrateId::Internal => "use_type_invariant_fake_placeholder_fun"),
             })
         }
         VerusItem::WithTriggers => {
@@ -2054,6 +2057,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     BuiltinSpecFun::ClosureEns
                 }
                 BuiltinFunctionItem::ConstrainType => unreachable!(),
+                BuiltinFunctionItem::GetFutureOutputType => unreachable!(),
             };
 
             let vir_args = args
@@ -2205,7 +2209,8 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::BuiltinTrait(_)
         | VerusItem::External(_)
         | VerusItem::Global(_)
-        | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType) => unreachable!(),
+        | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)
+        | VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType) => unreachable!(),
     }
 }
 
@@ -2650,7 +2655,7 @@ pub(crate) fn fix_node_substs<'tcx, 'a>(
     }
 }
 
-fn mk_typ_args<'tcx>(
+pub(crate) fn mk_typ_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     _f: DefId,
@@ -2913,7 +2918,10 @@ fn record_spec_fn<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
 
 /// This should only be used for calls that only accept pure spec expressions, with no
 /// possibility of side effects or proof functions.
-/// At minimum any such function should require outer_mode=Spec in modes.rs.
+///
+/// Any such function needs to set 'in_pure' in modes.rs, or some other way of guaranteeing
+/// its contents should be non-meaningful to borrow-checking.
+///
 /// This is suitable for directives like `assert`, but not suitable for most
 /// computational spec fns.
 /// When in doubt, use `record_spec_fn` instead.

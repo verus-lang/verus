@@ -828,3 +828,21 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_distinguishes_old_compute verus_code! {
+        fn test(a: &mut u64) {
+            *a = 5;
+            assert(*old(a) == *a) by(compute);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assertion failed")
+}
+
+test_verify_one_file! {
+    #[test] test_distinguishes_old_compute_only verus_code! {
+        fn test(a: &mut u64) {
+            *a = 5;
+            assert(*old(a) == *a) by(compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assert_by_compute_only failed to simplify down to true")
+}

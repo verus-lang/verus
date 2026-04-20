@@ -275,6 +275,7 @@ pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone ](opt: &Option<T
         opt.is_some() ==> res.is_some() && cloned::<T>(opt.unwrap(), res.unwrap()),
 ;
 
+// PartialEq and Eq
 impl<T: super::cmp::PartialEqSpec> super::cmp::PartialEqSpecImpl for Option<T> {
     open spec fn obeys_eq_spec() -> bool {
         T::obeys_eq_spec()
@@ -295,6 +296,7 @@ pub assume_specification<T: PartialEq>[ <Option<T> as PartialEq>::eq ](
 ) -> bool
 ;
 
+// PartialOrd and Ord
 impl<T: super::cmp::PartialOrdSpec> super::cmp::PartialOrdSpecImpl for Option<T> {
     open spec fn obeys_partial_cmp_spec() -> bool {
         T::obeys_partial_cmp_spec()

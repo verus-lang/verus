@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(verus_verify_core), no_std)]
 #![allow(internal_features)]
 #![cfg_attr(
     verus_keep_ghost,
@@ -12,6 +12,7 @@
     register_tool(verifier)
 )]
 
+use core::future::Future;
 use core::marker::PhantomData;
 
 #[cfg(verus_keep_ghost)]
@@ -244,6 +245,13 @@ pub fn with_triggers<A, B>(_triggers_tuples: A, body: B) -> B {
 #[verifier::spec]
 pub fn constrain_type<T>(_x: T, _y: T) -> bool {
     true
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::get_future_output_type"]
+#[verifier::spec]
+pub fn get_future_output_type<T>(_x: impl Future<Output = T>) -> T {
+    unimplemented!()
 }
 
 // example: forall with three triggers [f(x), g(y)], [h(x, y)], [m(y, x)]:
@@ -600,6 +608,12 @@ impl<A: Copy> Clone for Tracked<A> {
 }
 
 impl<A: Copy> Copy for Tracked<A> {}
+
+/// `Ghost` structs are always `Send`, since they are spec mode.
+unsafe impl<A> Send for Ghost<A> {}
+
+/// `Ghost` structs are always `Sync`, since they are spec mode.
+unsafe impl<A> Sync for Ghost<A> {}
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::ghost_exec"]

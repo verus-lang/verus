@@ -51,7 +51,6 @@ pub enum InternalFun {
     ClosureReq,
     ClosureEns,
     DefaultEns,
-    CheckDecreaseInt,
     CheckDecreaseHeight,
     OpenInvariantMask(Fun, usize),
 }
@@ -384,6 +383,7 @@ pub struct FunctionSstX {
     pub exec_proof_check: Option<Arc<FuncCheckSst>>,
     pub recommends_check: Option<Arc<FuncCheckSst>>,
     pub safe_api_check: Option<Arc<FuncCheckSst>>,
+    pub async_ret: Option<Par>,
 }
 
 pub type KrateSst = Arc<KrateSstX>;

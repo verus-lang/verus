@@ -89,7 +89,7 @@ test_verify_one_file! {
     #[test] test1_fails5 verus_code! {
         const fn f() -> u64 { 1 }
         const S: u64 = 1 + f();
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::f` with mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::f` with mode exec")
 }
 
 test_verify_one_file! {
@@ -354,6 +354,23 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file_with_options! {
+    #[test] arrays_reference ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: &'static [u32; 3] = &[1, 2, 3];
+
+        proof fn test() {
+            assert(MyArray[2] == 3);
+        }
+
+        fn exec_test() {
+            let x = MyArray[1];
+            assert(x == 2);
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] array_out_of_bounds verus_code! {
         use vstd::prelude::*;
@@ -542,4 +559,11 @@ test_verify_one_file! {
             if FOO == 1 {}
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] const_with_ensures_issue2175 verus_code! {
+        #[verus_spec(ensures true)]
+        pub const C: char = 'x';
+    } => Err(err) => assert_vir_error_msg(err, "const cannot have `ensures` unless it is `exec const`")
 }

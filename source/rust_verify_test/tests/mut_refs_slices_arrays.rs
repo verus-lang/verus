@@ -1520,7 +1520,7 @@ test_verify_one_file_with_options! {
         fn consume<A>(a: A) { }
 
         fn test(a: &mut [u64]) {
-            // TODO(new_mut_ref): export an axiom so this succeeds
+            // TODO(new_mut_ref): (low-pri) export an axiom so this succeeds
             // (note: this might be tricky to do in a sound way, since the AIR encoding
             // lets you assign anything to current?)
             assert(a@.len() == final(a)@.len()); // FAILS
@@ -1560,4 +1560,174 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] slice_index_then_field_1 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn upd(a: &mut u64, b: &mut u64)
+            requires
+                *a < 1000,
+                *b < 1000,
+            ensures
+                *final(a) == *old(a) + 100,
+                *final(b) == *old(b) + 200,
+        {
+            *a += 100;
+            *b += 200;
+        }
+
+        fn test_same_idx_diff_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[0].1);
+            assert(s[0] === (100, 201));
+            assert(s[1] === (2, 3));
+        }
+
+        fn test_diff_idx_diff_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[1].1);
+            assert(s[0] === (100, 1));
+            assert(s[1] === (2, 203));
+        }
+
+        fn fails_same_idx_diff_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[0].1);
+            assert(s[0] === (100, 201));
+            assert(s[1] === (2, 3));
+            assert(false); // FAILS
+        }
+
+        fn fails_diff_idx_diff_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[1].1);
+            assert(s[0] === (100, 1));
+            assert(s[1] === (2, 203));
+            assert(false); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] slice_index_then_field_2 ["new-mut-ref", "--no-lifetime"] => verus_code! {
+        // disallowed by borrow checker, but it could theoretically be allowed
+
+        use vstd::prelude::*;
+
+        fn upd(a: &mut u64, b: &mut u64)
+            requires
+                *a < 1000,
+                *b < 1000,
+            ensures
+                *final(a) == *old(a) + 100,
+                *final(b) == *old(b) + 200,
+        {
+            *a += 100;
+            *b += 200;
+        }
+
+        fn test_diff_idx_same_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[1].0);
+            assert(s[0] === (100, 1));
+            assert(s[1] === (202, 3));
+        }
+
+        fn fails_diff_idx_same_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[1].0);
+            assert(s[0] === (100, 1));
+            assert(s[1] === (202, 3));
+            assert(false); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] slice_index_then_field_3 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn upd(a: &mut u64, b: &mut u64) { }
+
+        fn test_same_idx_same_fields(s: &mut [(u64, u64)])
+            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+        {
+            upd(&mut s[0].0, &mut s[0].0);
+        }
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "cannot borrow `s[_].0` as mutable more than once at a time",
+        "cannot borrow `(Verus spec s)[_].0` as mutable more than once at a time",
+    ])
+}
+
+// TODO(new_mut_ref): (blocking) fix this issue with mutable temporaries
+test_verify_one_file_with_options! {
+    #[ignore] #[test] mut_ref_temporary_cant_be_elided ["new-mut-ref"] => verus_code! {
+        // This test demonstrates that `* &mut P -> P` is not always a valid simplification.
+        // Observe that test1/test2 have different desired behaviors than test3/test4.
+
+        fn test1() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut x = &mut a;
+
+            let z = x[ ({
+                x = &mut b;
+                0
+            }) ];
+            assert(z == 2);
+        }
+
+        fn test2() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut x = &mut a;
+
+            x[ ({
+                x = &mut b;
+                0
+            }) ] = 100;
+            assert(a[0] == 0);
+            assert(a[1] == 1);
+            assert(b[0] == 100);
+            assert(b[1] == 3);
+        }
+
+        fn test3() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut x = &mut a;
+
+            let z = (&mut *x)[ ({
+                x = &mut b;
+                0
+            }) ];
+            assert(z == 0);
+        }
+
+        fn test4() {
+            let mut a: [u64; 2] = [0, 1];
+            let mut b: [u64; 2] = [2, 3];
+            let mut x = &mut a;
+
+            (&mut *x)[ ({
+                x = &mut b;
+                0
+            }) ] = 100;
+            assert(a[0] == 100);
+            assert(a[1] == 1);
+            assert(b[0] == 2);
+            assert(b[1] == 3);
+        }
+    } => Ok(())
 }

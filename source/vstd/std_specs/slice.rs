@@ -1,8 +1,9 @@
 use super::super::prelude::*;
-use super::core::IndexSetTrustedSpec;
-use super::core::TrustedSpecSealed;
+use super::super::slice::SliceIndexSpec;
+use super::core::{IndexSetTrustedSpec, IndexSpec, TrustedSpecSealed};
 
-use core::slice::Iter;
+use core::ops::{Index, Range};
+use core::slice::{Iter, SliceIndex};
 
 use verus as verus_;
 
@@ -31,6 +32,60 @@ impl<T> IndexSetTrustedSpec<usize> for [T] {
         new_container@ == self@.update(index as int, val)
     }
 }
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for usize {
+    open spec fn index_req(&self, slice: &[T]) -> bool {
+        *self < slice@.len()
+    }
+}
+
+pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index ](i: usize, slice: &[T]) -> &T
+    returns
+        slice@[i as int],
+;
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for Range<usize> {
+    open spec fn index_req(&self, slice: &[T]) -> bool {
+        &&& self.start <= self.end
+        &&& self.end <= slice@.len()
+    }
+}
+
+pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index ](i: Range<usize>, slice: &[T]) -> (r: &[T])
+    ensures
+        r@ == slice@.subrange(i.start as int, i.end as int),
+;
+
+impl<T, I: SliceIndex<[T]>> super::core::IndexSpecImpl<I> for [T] {
+    open spec fn index_req(&self, index: &I) -> bool {
+        index.index_req(self)
+    }
+}
+
+impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
+    where [T]: Index<I>
+{
+    open spec fn index_req(&self, index: &I) -> bool {
+        <[T] as IndexSpec<I>>::index_req(self, index)
+    }
+}
+
+pub assume_specification<T, I: SliceIndex<[T]>> [<[T] as Index<I>>::index] (
+    slice: &[T],
+    index: I,
+) -> (output: &<I as core::slice::SliceIndex<[T]>>::Output)
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::index, (index, slice), output),
+;
+
+pub assume_specification<T, I, const N: usize> [<[T; N] as Index<I>>::index] (
+    array: &[T; N],
+    index: I,
+) -> (output: &<[T; N] as core::ops::Index<I>>::Output)
+    where [T]: Index<I>,
+    ensures
+        call_ensures(<[T] as Index<I>>::index, (array, index), output),
+;
 
 pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
     requires

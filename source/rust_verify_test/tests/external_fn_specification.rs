@@ -110,7 +110,7 @@ test_verify_one_file! {
         {
             negate_bool(b, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `crate::negate_bool`")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::negate_bool`")
 }
 
 test_verify_one_file! {
@@ -165,7 +165,7 @@ test_verify_one_file! {
         fn test() {
             negate_bool_requires_ensures(false, 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::negate_bool_requires_ensures` which is an artificial function for `assume_specification`; call `crate::negate_bool` instead")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::negate_bool_requires_ensures` which is an artificial function for `assume_specification`; call `test_crate::negate_bool` instead")
 }
 
 test_verify_one_file! {
@@ -176,7 +176,7 @@ test_verify_one_file! {
         fn test() {
             some_external_fn();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::some_external_fn` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::some_external_fn` which is ignored")
 }
 
 test_verify_one_file! {
@@ -189,7 +189,7 @@ test_verify_one_file! {
         fn test() {
             stuff();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::stuff` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::stuff` which is ignored")
 }
 
 // If you wrongly try to apply a mode
@@ -1011,7 +1011,7 @@ test_verify_one_file! {
             let a = exec_foo(true);
             assert(a == false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::exec_foo` which is an artificial function for `assume_specification`; call `crate::foo` instead")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::exec_foo` which is an artificial function for `assume_specification`; call `test_crate::foo` instead")
 }
 
 test_verify_one_file! {
@@ -1084,7 +1084,7 @@ test_verify_one_file! {
         {
             X::f(t)
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `crate::X::f`")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::X::f`")
 }
 
 test_verify_one_file! {
@@ -1347,7 +1347,7 @@ test_verify_one_file! {
         impl Tr for X {
             fn foo(&self) { }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::foo` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::foo` which is ignored")
 }
 
 test_verify_one_file! {

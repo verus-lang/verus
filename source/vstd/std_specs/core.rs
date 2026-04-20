@@ -37,10 +37,17 @@ pub trait ExDeref: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
+#[verifier::external_trait_extension(IndexSpec via IndexSpecImpl)]
 pub trait ExIndex<Idx> where Idx: ?Sized {
     type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
 
     type Output: ?Sized;
+
+    spec fn index_req(&self, index: &Idx) -> bool;
+
+    fn index(&self, index: Idx) -> (output: &Self::Output) where Idx: Sized
+        requires
+            self.index_req(&index);
 }
 
 #[verifier::external_trait_specification]
@@ -119,6 +126,14 @@ pub trait ExBorrow<Borrowed> where Borrowed: ?Sized {
 #[verifier::external_trait_specification]
 pub trait ExStructural {
     type ExternalTraitSpecificationFor: Structural;
+}
+
+// Since this trait involves the unstable library feature `const_destruct`,
+// we only enable it when verifying core
+#[cfg(verus_verify_core)]
+#[verifier::external_trait_specification]
+trait ExDestruct: PointeeSized {
+    type ExternalTraitSpecificationFor: core::marker::Destruct;
 }
 
 #[verifier::external_trait_specification]

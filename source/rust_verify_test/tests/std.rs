@@ -57,7 +57,7 @@ test_verify_one_file! {
         fn foo(x: &X) {
             let y = x.clone();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
 }
 
 test_verify_one_file! {
@@ -578,7 +578,7 @@ test_verify_one_file_with_options! {
         fn test(x: X) {
             let a = x.clone();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
 }
 
 test_verify_one_file_with_options! {
@@ -592,7 +592,7 @@ test_verify_one_file_with_options! {
         fn test(x: X) {
             let a = x.clone();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
 }
 
 test_verify_one_file! {

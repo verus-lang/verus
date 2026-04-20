@@ -28,7 +28,7 @@ use rustc_hir::{
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Fun, FunX, FunctionKind, Krate, KrateX, Path, VirErr};
+use vir::ast::{CrateId, Fun, FunX, FunctionKind, Krate, KrateX, Path, VirErr};
 use vir::context::{WarningConfig, WarningCtx};
 
 pub(crate) struct State {
@@ -606,7 +606,7 @@ pub fn crate_to_vir<'a, 'tcx>(
         return Err(errors);
     }
 
-    vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&ctxt.vstd_crate_name);
+    vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
 
     crate::rust_to_vir_impl::collect_external_trait_impls(
         &ctxt,

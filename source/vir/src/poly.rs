@@ -388,6 +388,7 @@ fn visit_and_insert_binders(
     Arc::new(new_bs)
 }
 
+#[derive(Debug)]
 enum InsertPars {
     Native,
     Poly,
@@ -521,13 +522,6 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 let exps = visit_exps_poly(ctx, state, exps);
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), exps))
             }
-            CallFun::InternalFun(InternalFun::CheckDecreaseInt) => {
-                assert!(exps.len() == 3);
-                let e0 = visit_exp_native(ctx, state, &exps[0]);
-                let e1 = visit_exp_native(ctx, state, &exps[1]);
-                let e2 = visit_exp_native(ctx, state, &exps[2]);
-                mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(vec![e0, e1, e2])))
-            }
             CallFun::InternalFun(InternalFun::CheckDecreaseHeight) => {
                 assert!(exps.len() == 3);
                 let e0 = visit_exp_poly(ctx, state, &exps[0]);
@@ -628,7 +622,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp(ExpX::UnaryOpr(op.clone(), e1))
                 }
-                UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) => {
+                UnaryOpr::ProofNote(_) => {
                     mk_exp_typ(&e1.typ, ExpX::UnaryOpr(op.clone(), e1.clone()))
                 }
                 UnaryOpr::ToDyn(_) => {
@@ -1220,6 +1214,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         ref exec_proof_check,
         ref recommends_check,
         ref safe_api_check,
+        ref async_ret,
     } = &function.x;
 
     if attrs.is_decrease_by {
@@ -1328,6 +1323,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        async_ret: async_ret.clone(),
     };
     Spanned::new(function.span.clone(), functionx)
 }

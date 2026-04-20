@@ -99,6 +99,7 @@ pub struct MessageLabel {
     pub span: Span,
     pub note: String,
     pub is_proof_note: bool,
+    pub is_custom_err: bool,
 }
 
 /// If you just want to build a simple message, see the builders below.
@@ -235,6 +236,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
             },
             note: note.to_owned(),
             is_proof_note: false,
+            is_custom_err: false,
         })
     }
 
@@ -299,7 +301,12 @@ pub fn message_with_label<S: Into<String>, T: Into<String>>(
         level,
         note: note.into(),
         spans: vec![span.clone()],
-        labels: vec![MessageLabel { span: span.clone(), note: label.into(), is_proof_note: false }],
+        labels: vec![MessageLabel {
+            span: span.clone(),
+            note: label.into(),
+            is_proof_note: false,
+            is_custom_err: false,
+        }],
         help: None,
         fancy_note: None,
     })
@@ -315,7 +322,12 @@ pub fn message_with_secondary_label<S: Into<String>, T: Into<String>>(
         level,
         note: note.into(),
         spans: vec![],
-        labels: vec![MessageLabel { span: span.clone(), note: label.into(), is_proof_note: false }],
+        labels: vec![MessageLabel {
+            span: span.clone(),
+            note: label.into(),
+            is_proof_note: false,
+            is_custom_err: false,
+        }],
         help: None,
         fancy_note: None,
     })
@@ -456,6 +468,7 @@ impl MessageX {
             span: span.clone(),
             note: label.into(),
             is_proof_note: false,
+            is_custom_err: false,
         });
         Arc::new(e)
     }
@@ -467,6 +480,7 @@ impl MessageX {
             span: span.clone(),
             note: "".to_string(),
             is_proof_note: false,
+            is_custom_err: false,
         });
         Arc::new(e)
     }
@@ -478,14 +492,25 @@ impl MessageX {
             span: span.clone(),
             note: label.into(),
             is_proof_note: false,
+            is_custom_err: false,
         });
         Arc::new(e)
     }
 
     /// Add a `proof_note` label
-    pub fn proof_note_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
+    pub fn proof_note_label<S: Into<String>>(
+        &self,
+        span: &Span,
+        label: S,
+        is_custom_err: bool,
+    ) -> Message {
         let mut e = self.clone();
-        e.labels.push(MessageLabel { span: span.clone(), note: label.into(), is_proof_note: true });
+        e.labels.push(MessageLabel {
+            span: span.clone(),
+            note: label.into(),
+            is_proof_note: true,
+            is_custom_err,
+        });
         Arc::new(e)
     }
 

@@ -4,7 +4,7 @@
 use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::atomic_ghost::*;
-use vstd::cell::*;
+use vstd::cell::pcell_maybe_uninit::*;
 use vstd::prelude::*;
 use vstd::*;
 use vstd::raw_ptr::MemContents;
@@ -22,9 +22,9 @@ fn increment_counter() {
 
 // Thread-safe lazy initialization
 pub tracked enum GhostState<T: 'static> {
-    Uninitialized(cell::PointsTo<Option<T>>),
+    Uninitialized(PointsTo<Option<T>>),
     Initializing,
-    Initialized(&'static cell::PointsTo<Option<T>>),
+    Initialized(&'static PointsTo<Option<T>>),
 }
 
 struct_with_invariants!{
@@ -85,7 +85,7 @@ impl<T: Initializable> Lazy<T> {
             invariant
                 self.wf(),
         {
-            let tracked mut readonly_points_to: Option<&'static cell::PointsTo<Option<T>>> = None;
+            let tracked mut readonly_points_to: Option<&'static PointsTo<Option<T>>> = None;
             let cur_state =
                 atomic_with_ghost!(&self.state => load(); ghost g => {
                 match &g {
@@ -104,7 +104,7 @@ impl<T: Initializable> Lazy<T> {
                 // Initialization is required. Try to take the lock if initialization
                 // isn't already in progress.
                 let mut do_initialization = (cur_state == 0);
-                let tracked mut points_to: Option<cell::PointsTo<Option<T>>> = None;
+                let tracked mut points_to: Option<PointsTo<Option<T>>> = None;
                 if do_initialization {
                     let res =
                         atomic_with_ghost!(&self.state => compare_exchange(0, 1);

@@ -334,6 +334,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_array_index_generic verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test<A, const N: usize>(a: [A; N], i: int)
+            requires 0 <= i < N
+        {
+            use vstd::array::array_view;
+            assert(a@[i] == array_index(a, i));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_array_repeat verus_code! {
         use vstd::prelude::*;
 

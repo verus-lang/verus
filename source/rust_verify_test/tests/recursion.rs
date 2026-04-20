@@ -1188,8 +1188,8 @@ test_verify_one_file_with_options! {
         }
 
         proof fn good() {
-            inline_air_stmt("(assert (= (f.? (I 200) (I 3)) (Add (f.? (I 200) (I 3)) 0)))");
-            inline_air_stmt("(assume (= (f.? (I 200) (I 3)) (Add (f.? (I 200) (I 3)) 0)))");
+            inline_air_stmt("(assert (= (test_crate!f.? (I 200) (I 3)) (Add (test_crate!f.? (I 200) (I 3)) 0)))");
+            inline_air_stmt("(assume (= (test_crate!f.? (I 200) (I 3)) (Add (test_crate!f.? (I 200) (I 3)) 0)))");
         }
     } => Ok(())
 }
@@ -1207,8 +1207,8 @@ test_verify_one_file_with_options! {
         proof fn bad()
             ensures false
         {
-            inline_air_stmt("(assert (= (f.? (I 300) (I 3)) (Add (f.? (I 300) (I 3)) 1)))");
-            inline_air_stmt("(assume (= (f.? (I 300) (I 3)) (Add (f.? (I 300) (I 3)) 1)))");
+            inline_air_stmt("(assert (= (test_crate!f.? (I 300) (I 3)) (Add (test_crate!f.? (I 300) (I 3)) 1)))");
+            inline_air_stmt("(assume (= (test_crate!f.? (I 300) (I 3)) (Add (test_crate!f.? (I 300) (I 3)) 1)))");
         }
     } => Err(err) => { assert!(err.errors.len() == 1); }
 }
@@ -1232,11 +1232,11 @@ test_verify_one_file_with_options! {
         }
 
         fn test1() {
-            inline_air_stmt("(assert (= (some_spec_fn.? $ (CONST_INT 256)) true))");
+            inline_air_stmt("(assert (= (test_crate!some_spec_fn.? $ (CONST_INT 256)) true))");
         }
 
         fn test2() {
-            inline_air_stmt("(assert (= (some_spec_fn.? $ (CONST_INT 255)) true))"); // ok
+            inline_air_stmt("(assert (= (test_crate!some_spec_fn.? $ (CONST_INT 255)) true))"); // ok
         }
     } => Err(err) => { assert!(err.errors.len() == 1); }
 }
@@ -2063,6 +2063,20 @@ test_verify_one_file! {
             assert(decreases_to!(t[0].y => t));
         }
     } => Err(e) => assert_fails(e, 3)
+}
+
+test_verify_one_file! {
+    #[test] lemma_decreases_poly verus_code! {
+        spec fn dec<A>(x: &A, y: &A) -> bool {
+            decreases_to!(x => y)
+        }
+
+        proof fn test(x: int, y: int) {
+            assert(dec(&20int, &10int));
+            assert(dec(&x, &y) <==> x > y >= 0);
+            assert(dec(&x, &y) <==> x > y); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
