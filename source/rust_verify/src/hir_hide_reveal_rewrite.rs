@@ -200,6 +200,7 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                                     .map(|trait_| rustc_hir::TraitCandidate {
                                                         def_id: trait_.def_id,
                                                         import_ids: trait_.import_ids.clone(),
+                                                        lint_ambiguous: false,
                                                     })
                                                     .collect(),
                                             )

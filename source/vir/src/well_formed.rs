@@ -115,6 +115,26 @@ fn check_one_typ<Emit: EmitError>(
             }
             Ok(())
         }
+        TypX::Projection { trait_typ_args: _, trait_path, name } => {
+            if let Some(tr) = ctxt.traits.get(trait_path) {
+                if tr.x.assoc_typs.iter().any(|n| n == name) {
+                    Ok(())
+                } else {
+                    Err(error(
+                        span,
+                        &format!("Verus does not recognize associated type `{}` of trait `{}`", name, path_as_friendly_rust_name(trait_path)),
+                    ).help("If this trait was declared to Verus via `external_trait_specification`, it may need the associated type declared"))
+                }
+            } else {
+                Err(error(
+                    span,
+                    &format!(
+                        "trait {} not declared to Verus",
+                        path_as_friendly_rust_name(trait_path)
+                    ),
+                ))
+            }
+        }
         _ => Ok(()),
     }
 }
@@ -504,14 +524,6 @@ fn check_one_expr<Emit: EmitError>(
                 "constructor",
                 emit,
             )?;
-        }
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => {
-            if !crate::ast_util::type_is_bool(&e.typ) {
-                return Err(error(
-                    &expr.span,
-                    "`custom_err` attribute only makes sense for bool expressions",
-                ));
-            }
         }
         ExprX::UnaryOpr(
             UnaryOpr::Field(FieldOpr {
