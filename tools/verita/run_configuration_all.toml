@@ -100,6 +100,7 @@ prepare_script = """
 git submodule init
 git submodule update
 cargo update
+rustup target add x86_64-unknown-none --toolchain 1.95.0
 """
 
 # Fails 
