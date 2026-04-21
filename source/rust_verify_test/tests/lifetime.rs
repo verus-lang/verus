@@ -115,7 +115,7 @@ test_verify_one_file! {
         proof fn h<A>(tracked a: A) {
             g(f(a), f(a))
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::f` with mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::f` with mode proof")
 }
 
 test_verify_one_file! {
@@ -1040,7 +1040,7 @@ test_verify_one_file! {
             })(5);
             consume(r);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::consume` with mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::consume` with mode proof")
 }
 
 test_verify_one_file! {

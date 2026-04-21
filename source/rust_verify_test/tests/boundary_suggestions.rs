@@ -239,7 +239,7 @@ test_verify_one_file! {
         fn stuff(y: Y) -> X {
             panic!()
         }
-    } => Err(err) => assert_help_error_msgs(err, &["cannot use type `crate::X` which is ignored", "cannot use type `crate::Y` which is ignored"])
+    } => Err(err) => assert_help_error_msgs(err, &["cannot use type `test_crate::X` which is ignored", "cannot use type `test_crate::Y` which is ignored"])
 }
 
 // These two together form a 'smoke test' that the suggestions provided are correct.

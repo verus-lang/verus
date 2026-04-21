@@ -5,6 +5,7 @@ use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
+use crate::rust_to_vir_base::mk_crate_id;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
 use crate::util::{HashMapAbsorbWith, error};
@@ -39,11 +40,9 @@ use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
-use vir::ast::{Fun, Krate, VirErr};
+use vir::ast::{CrateId, Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
-use vir::def::{
-    CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos, path_to_string,
-};
+use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND: f32 = 3000000f32;
@@ -335,8 +334,7 @@ pub struct Verifier {
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     created_solver_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     vir_crate: Option<Krate>,
-    crate_name: Option<String>,
-    crate_names: Option<Vec<String>>,
+    crate_id: Option<CrateId>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     crate_items: Option<Arc<crate::external::CrateItems>>,
@@ -514,8 +512,7 @@ impl Verifier {
             created_log_dir: Arc::new(std::sync::Mutex::new(None)),
             created_solver_log_dir: Arc::new(std::sync::Mutex::new(None)),
             vir_crate: None,
-            crate_name: None,
-            crate_names: None,
+            crate_id: None,
             air_no_span: None,
             current_crate_modules: None,
             crate_items: None,
@@ -563,8 +560,7 @@ impl Verifier {
             created_log_dir: self.created_log_dir.clone(),
             created_solver_log_dir: self.created_solver_log_dir.clone(),
             vir_crate: self.vir_crate.clone(),
-            crate_name: self.crate_name.clone(),
-            crate_names: self.crate_names.clone(),
+            crate_id: self.crate_id.clone(),
             air_no_span: self.air_no_span.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
             crate_items: self.crate_items.clone(),
@@ -1098,7 +1094,8 @@ impl Verifier {
         result
     }
 
-    fn log_fine_name_suffix(
+    fn log_file_name_suffix(
+        ctx: &vir::context::Ctx,
         is_rerun: bool,
         query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         expand_flag: bool,
@@ -1106,7 +1103,7 @@ impl Verifier {
     ) -> String {
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
         let count_msg = query_function_path_counter
-            .map(|(n, ref c)| format!("{}_{:02}", path_to_string(n), c))
+            .map(|(n, ref c)| format!("{}_{:02}", ctx.name_ctxt.path_to_string(n), c))
             .unwrap_or("".to_string());
         let expand_msg = if expand_flag { "_expand" } else { "" };
 
@@ -1127,6 +1124,7 @@ impl Verifier {
 
     fn new_air_context_with_prelude<'m>(
         &mut self,
+        ctx: &vir::context::Ctx,
         message_interface: Arc<dyn air::messages::MessageInterface>,
         diagnostics: &impl air::messages::Diagnostics,
         bucket_id: &BucketId,
@@ -1148,7 +1146,8 @@ impl Verifier {
         if self.args.log_all || self.args.log_args.log_air_initial {
             let file = self.create_log_file(
                 Some(bucket_id),
-                Self::log_fine_name_suffix(
+                Self::log_file_name_suffix(
+                    ctx,
                     is_rerun,
                     query_function_path_counter,
                     self.expand_flag,
@@ -1161,7 +1160,8 @@ impl Verifier {
         if self.args.log_all || self.args.log_args.log_air_final {
             let file = self.create_log_file(
                 Some(bucket_id),
-                Self::log_fine_name_suffix(
+                Self::log_file_name_suffix(
+                    ctx,
                     is_rerun,
                     query_function_path_counter,
                     self.expand_flag,
@@ -1174,7 +1174,8 @@ impl Verifier {
         if self.args.log_all || self.args.log_args.log_smt {
             let file = self.create_log_file(
                 Some(bucket_id),
-                Self::log_fine_name_suffix(
+                Self::log_file_name_suffix(
+                    ctx,
                     is_rerun,
                     query_function_path_counter,
                     self.expand_flag,
@@ -1187,7 +1188,8 @@ impl Verifier {
         if self.args.log_all || self.args.log_args.log_smt_transcript {
             let file = self.create_log_file(
                 Some(bucket_id),
-                Self::log_fine_name_suffix(
+                Self::log_file_name_suffix(
+                    ctx,
                     is_rerun,
                     query_function_path_counter,
                     self.expand_flag,
@@ -1210,7 +1212,7 @@ impl Verifier {
 
         air_context.blank_line();
         air_context.comment("Prelude");
-        for command in vir::context::Ctx::prelude(prelude_config).iter() {
+        for command in ctx.prelude(prelude_config).iter() {
             Self::check_internal_result(air_context.command(
                 &*message_interface,
                 diagnostics,
@@ -1246,6 +1248,7 @@ impl Verifier {
         spinoff_reason: &str,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
+            ctx,
             message_interface.clone(),
             diagnostics,
             bucket_id,
@@ -1347,8 +1350,14 @@ impl Verifier {
             let profile_file_name = self.log_file_name(
                 &solver_log_dir,
                 Some(bucket_id),
-                Self::log_fine_name_suffix(false, None, false, crate::config::PROFILE_FILE_SUFFIX)
-                    .as_str(),
+                Self::log_file_name_suffix(
+                    ctx,
+                    false,
+                    None,
+                    false,
+                    crate::config::PROFILE_FILE_SUFFIX,
+                )
+                .as_str(),
             );
             assert!(!profile_file_name.exists());
             Some(profile_file_name)
@@ -1356,6 +1365,7 @@ impl Verifier {
             None
         };
         let mut air_context = self.new_air_context_with_prelude(
+            ctx,
             message_interface.clone(),
             reporter,
             bucket_id,
@@ -1593,7 +1603,8 @@ impl Verifier {
                                 let profile_file_name = self.log_file_name(
                                     &solver_log_dir,
                                     Some(bucket_id),
-                                    Self::log_fine_name_suffix(
+                                    Self::log_file_name_suffix(
+                                        function_opgen.ctx(),
                                         is_recommend,
                                         Some((&(function.x.name).path, spinoff_context_counter)),
                                         self.expand_flag,
@@ -1966,7 +1977,7 @@ impl Verifier {
         }
         let (pruned_krate, prune_info) = vir::prune::prune_krate_for_module_or_krate(
             &krate,
-            &Arc::new(self.crate_name.clone().expect("crate_name")),
+            self.crate_id.as_ref().expect("crate_id"),
             None,
             Some(bucket_id.module().clone()),
             bucket_id.function(),
@@ -2075,7 +2086,7 @@ impl Verifier {
 
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
-            Arc::new(self.crate_name.clone().expect("crate_name")),
+            self.crate_id.clone().expect("crate_id"),
             air_no_span.clone(),
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
@@ -2658,10 +2669,8 @@ impl Verifier {
         tcx: TyCtxt<'tcx>,
         verus_items: Arc<VerusItems>,
         spans: &SpanContext,
-        other_crate_names: Vec<String>,
         other_vir_crates: Vec<Krate>,
         diagnostics: &impl air::messages::Diagnostics,
-        crate_name: String,
     ) -> Result<bool, (Vec<VirErr>, Vec<vir::ast::VirErrAs>)> {
         if self.args.no_lifetime {
             rustc_mir_build_verus::verus::set_verus_aware_def_ids(Arc::new(HashSet::new()));
@@ -2691,22 +2700,24 @@ impl Verifier {
             })
         };
 
+        let mut crate_ids: HashSet<CrateId> = HashSet::new();
+        for c in tcx.crates(()) {
+            let id = mk_crate_id(tcx, *c);
+            if crate_ids.contains(&id) {
+                // Cannot currently handle multiple `core` or `alloc` or `vstd` crates
+                let err = vir::messages::error(
+                    &self.air_no_span.as_ref().unwrap(),
+                    format!("cannot handle more than one crate named `{}`", tcx.crate_name(*c)),
+                );
+                return Err((vec![err], vec![]));
+            }
+            crate_ids.insert(id);
+        }
+
         if !verus_items.name_to_id.contains_key(&VerusItem::ErasedGhostValue) {
             let err = crate::util::no_builtin_err(self.air_no_span.as_ref().unwrap());
             return Err((vec![err], vec![]));
         }
-
-        let mut crate_names: Vec<String> = vec![crate_name.clone()];
-        crate_names.extend(other_crate_names.into_iter());
-        // TODO vec![vir::verus_builtins::verus_builtin_krate(&self.air_no_span.clone().unwrap())];
-
-        let import_len = self.args.import.len();
-        let multi_crate = self.args.export.is_some()
-            || import_len > 0
-            || self.args.use_crate_name
-            || self.via_cargo_args.is_some();
-        crate::rust_to_vir_base::MULTI_CRATE
-            .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
         let erasure_info = ErasureInfo {
             hir_vir_ids: vec![],
@@ -2722,7 +2733,6 @@ impl Verifier {
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
 
-        let vstd_crate_name = Arc::new(vir::def::VERUSLIB.to_string());
         let ctxtx = ContextX::new(
             self.args.clone(),
             tcx,
@@ -2730,8 +2740,7 @@ impl Verifier {
             spans.clone(),
             verus_items,
             self.args.vstd == crate::config::Vstd::NoVstd,
-            Arc::new(crate_name.clone()),
-            vstd_crate_name,
+            self.crate_id.clone().expect("crate_id"),
         );
 
         let ctxt_diagnostics = ctxtx.diagnostics.clone();
@@ -2814,7 +2823,7 @@ impl Verifier {
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
         let (vir_crate, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
-            &Arc::new(crate_name.clone()),
+            &self.crate_id.as_ref().expect("crate_id"),
             Some(&current_vir_crate),
             None,
             None,
@@ -2951,8 +2960,6 @@ impl Verifier {
                 .map_err(|e| (vec![e], Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
-        self.crate_name = Some(crate_name);
-        self.crate_names = Some(crate_names);
 
         let erasure_info = ctxt.erasure_info.borrow();
         let hir_vir_ids = erasure_info.hir_vir_ids.clone();
@@ -3233,7 +3240,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         }
 
         rustc_interface::passes::write_dep_info(tcx);
-        let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
+        self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
 
         let time_import0 = Instant::now();
         let imported = match crate::import_export::import_crates(
@@ -3271,10 +3278,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 tcx,
                 verus_items.clone(),
                 &spans,
-                imported.crate_names,
                 imported.vir_crates,
                 &reporter,
-                crate_name.clone(),
             ) {
                 assert!(errs.len() > 0);
                 for err in errs.into_iter() {

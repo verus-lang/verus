@@ -4687,7 +4687,7 @@ test_verify_one_file_with_options! {
         fn test_basic_move<T>(t: [X; 2]) {
             let r = id(t[0]);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::X; 2]`, which is non-copy")
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[test_crate::X; 2]`, which is non-copy")
 }
 
 test_verify_one_file_with_options! {
@@ -4712,7 +4712,7 @@ test_verify_one_file_with_options! {
         fn test_ctor_move<T>(t: [Pair<X, X>; 2]) {
             let r = Pair { a: X{}, .. t[0] };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::Pair<crate::X, crate::X>; 2]`, which is non-copy")
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[test_crate::Pair<test_crate::X, test_crate::X>; 2]`, which is non-copy")
 }
 
 test_verify_one_file_with_options! {
@@ -4906,6 +4906,38 @@ test_verify_one_file_with_options! {
             output.g = 20;
             assert(input.perm.g == 20);
             assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] async_could_get_cancelled ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        async fn callee() {
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn blah() -> &'static mut u64 {
+            loop { }
+        }
+
+        async fn test1(x: &mut &mut u64) {
+            let mr = blah();
+            let c = callee();
+
+            let j = c.await;
+            assert(has_resolved(*x));
+            *x = mr;
+        }
+
+        async fn test2(x: &mut &mut u64) {
+            let mr = blah();
+            let c = callee();
+
+            assert(has_resolved(*x)); // FAILS
+            let j = c.await;
+            *x = mr;
         }
     } => Err(err) => assert_fails(err, 1)
 }

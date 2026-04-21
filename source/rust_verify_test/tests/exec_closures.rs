@@ -1226,7 +1226,7 @@ test_verify_one_file! {
         fn stuff() {
             let f = |x: X| { };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::X` which is ignored")
 }
 
 test_verify_one_file_with_options! {
@@ -1237,7 +1237,7 @@ test_verify_one_file_with_options! {
         fn stuff() {
             let f = || -> X { loop { } };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::X` which is ignored")
 }
 
 test_verify_one_file_with_options! {

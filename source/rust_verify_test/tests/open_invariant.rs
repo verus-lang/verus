@@ -551,7 +551,7 @@ test_verify_one_file! {
             opens_invariants [ exec_int_fn() ]
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::exec_int_fn` with mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::exec_int_fn` with mode exec")
 }
 
 test_verify_one_file! {

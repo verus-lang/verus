@@ -14,7 +14,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::Sender;
-use vir::ast::{AtomicCallInfo, Ident, Mode, Path, Pattern, VirErr};
+use vir::ast::{AtomicCallInfo, CrateId, Mode, Path, Pattern, VirErr};
 use vir::messages::AstId;
 
 pub struct ErasureInfo {
@@ -46,8 +46,7 @@ pub struct ContextX<'tcx> {
     pub(crate) diagnostics: Rc<RefCell<Vec<vir::ast::VirErrAs>>>,
     pub(crate) no_vstd: bool,
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
-    pub(crate) crate_name: Ident,
-    pub(crate) vstd_crate_name: Ident,
+    pub(crate) crate_name: CrateId,
     pub(crate) name_def_id_map: Rc<RefCell<std::collections::HashMap<Path, DefId>>>,
     pub(crate) next_read_kind_id: AtomicU64,
 }
@@ -113,8 +112,7 @@ impl<'tcx> ContextX<'tcx> {
         spans: crate::spans::SpanContext,
         verus_items: Arc<VerusItems>,
         no_vstd: bool,
-        crate_name: Ident,
-        vstd_crate_name: Ident,
+        crate_name: CrateId,
     ) -> Self {
         ContextX {
             cmd_line_args,
@@ -127,7 +125,6 @@ impl<'tcx> ContextX<'tcx> {
             no_vstd,
             arch_word_bits: None,
             crate_name,
-            vstd_crate_name,
             name_def_id_map: Rc::new(RefCell::new(HashMap::new())),
             next_read_kind_id: AtomicU64::new(0),
         }

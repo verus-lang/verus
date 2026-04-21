@@ -366,6 +366,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
     for x in state.trigger_vars.iter() {
         map.insert(x.clone(), true).expect("duplicate bound variables");
     }
+    let span = &exp.span;
     crate::sst_visitor::exp_visitor_check(exp, &mut map, &mut |exp, map| {
         // this closure mutates `state`
         match &exp.x {
@@ -444,7 +445,12 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 };
                 for x in bvars {
                     if map.contains_key(&x) {
-                        return Err(error(&bnd.span, "variable shadowing not yet supported"));
+                        return Err(error(
+                            span,
+                            format!(
+                                "Verus Internal Error: get_manual_triggers: variable shadowing case unhandled ({x})"
+                            ),
+                        ));
                     }
                 }
                 if let BndX::Let(binders) = &bnd.x {

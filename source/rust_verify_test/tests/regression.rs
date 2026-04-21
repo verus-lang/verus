@@ -278,7 +278,7 @@ test_verify_one_file! {
             let lock = opt_lock.get_SomeX_0();   // This line triggers panic
             true
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::OptionX::get_SomeX_0` with mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::OptionX::get_SomeX_0` with mode spec")
 }
 
 test_verify_one_file! {
@@ -1510,7 +1510,7 @@ test_verify_one_file! {
                 _ => 0,
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::Never` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::Never` which is ignored")
 }
 
 test_verify_one_file! {

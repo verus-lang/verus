@@ -4,9 +4,9 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     ArrayKind, AssocTypeImpl, AssocTypeImplX, AutospecUsage, BinaryOp, BoundsCheck, CallTarget,
-    Datatype, Dt, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate, KrateX, Mode, Module,
-    ModuleX, OpaqueType, Path, Place, PlaceX, RevealGroup, Stmt, Trait, TraitId, TraitX, Typ, TypX,
-    UnaryOp, UnaryOpr,
+    CrateId, Datatype, Dt, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate, KrateX, Mode,
+    Module, ModuleX, OpaqueType, Path, Place, PlaceX, RevealGroup, Stmt, Trait, TraitId, TraitX,
+    Typ, TypX, UnaryOp, UnaryOpr,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
@@ -86,7 +86,6 @@ struct Ctxt {
     typ_to_trigger_broadcasts: HashMap<ReachedType, Vec<Fun>>,
     // Map each revealed broadcast function f to its ReachBroadcastFunction
     fun_revealed_broadcast_map: HashMap<Fun, ReachBroadcastFunction>,
-    vstd_crate_name: Ident,
     assert_by_compute: bool,
     assert_by_compute_seq_funs: Vec<Fun>,
 }
@@ -412,17 +411,17 @@ fn traverse_generic_bounds(
 // set operations may be invoked for checking invariant masks,
 // either when opening an invariant or invoking another function.
 fn reach_set_ops(state: &mut State, ctxt: &Ctxt) {
-    reach_function(ctxt, state, &fn_set_contains_name(&ctxt.vstd_crate_name));
-    reach_function(ctxt, state, &fn_set_empty_name(&ctxt.vstd_crate_name));
-    reach_function(ctxt, state, &fn_set_full_name(&ctxt.vstd_crate_name));
-    reach_function(ctxt, state, &fn_set_insert_name(&ctxt.vstd_crate_name));
-    reach_function(ctxt, state, &fn_set_remove_name(&ctxt.vstd_crate_name));
-    reach_function(ctxt, state, &fn_set_subset_of_name(&ctxt.vstd_crate_name));
+    reach_function(ctxt, state, &fn_set_contains_name());
+    reach_function(ctxt, state, &fn_set_empty_name());
+    reach_function(ctxt, state, &fn_set_full_name());
+    reach_function(ctxt, state, &fn_set_insert_name());
+    reach_function(ctxt, state, &fn_set_remove_name());
+    reach_function(ctxt, state, &fn_set_subset_of_name());
 }
 
 fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
     let base_path = Arc::new(crate::ast::PathX {
-        krate: Some(ctxt.vstd_crate_name.clone()),
+        krate: CrateId::Vstd,
         segments: Arc::new(vec![
             Arc::new("atomic".to_owned()),
             Arc::new("AtomicUpdate".to_owned()),
@@ -456,7 +455,7 @@ fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
         state,
         &Arc::new(crate::ast::FunX {
             path: Arc::new(crate::ast::PathX {
-                krate: Some(ctxt.vstd_crate_name.clone()),
+                krate: CrateId::Vstd,
                 segments: Arc::new(vec![
                     Arc::new("atomic".to_owned()),
                     Arc::new("branch_bool".to_owned()),
@@ -511,6 +510,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if ctxt.assert_by_compute && crate::interpreter::is_sequence_fn(&f).is_some() {
                 reach_seq_funs(ctxt, state);
             }
+
             if function.x.atomic_update.is_some() {
                 reach_atomic_update_ops(state, ctxt);
             }
@@ -540,17 +540,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
                         // references to these particular names.
-                        reach_function(
-                            ctxt,
-                            state,
-                            &fn_inv_name(&ctxt.vstd_crate_name, *atomicity),
-                        );
-                        reach_function(
-                            ctxt,
-                            state,
-                            &fn_namespace_name(&ctxt.vstd_crate_name, *atomicity),
-                        );
-                        reach_set_ops(state, &ctxt);
+                        reach_function(ctxt, state, &fn_inv_name(*atomicity));
+                        reach_function(ctxt, state, &fn_namespace_name(*atomicity));
+                        reach_set_ops(state, ctxt);
                     }
                     ExprX::TryOpenAtomicUpdate(..) | ExprX::Atomically(..) => {
                         reach_atomic_update_ops(state, &ctxt);
@@ -574,12 +566,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         }
                     }
                     ExprX::Unary(UnaryOp::Length(ArrayKind::Slice), _) => {
-                        reach_function(ctxt, state, &fn_slice_len(&ctxt.vstd_crate_name));
+                        reach_function(ctxt, state, &fn_slice_len());
                     }
                     ExprX::Binary(BinaryOp::Index(ArrayKind::Slice, bounds_check), _, _) => {
-                        reach_function(ctxt, state, &fn_slice_index(&ctxt.vstd_crate_name));
+                        reach_function(ctxt, state, &fn_slice_index());
                         if *bounds_check != BoundsCheck::Allow {
-                            reach_function(ctxt, state, &fn_slice_len(&ctxt.vstd_crate_name));
+                            reach_function(ctxt, state, &fn_slice_len());
                         }
                     }
                     ExprX::Unary(UnaryOp::IeeeFloat(_), _)
@@ -594,13 +586,13 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             let fp = |state: &mut State, _: &mut VisitorScopeMap, p: &Place| {
                 match &p.x {
                     PlaceX::Index(_, _, ArrayKind::Array, _) => {
-                        reach_function(ctxt, state, &fn_array_update(&ctxt.vstd_crate_name));
+                        reach_function(ctxt, state, &fn_array_update());
                     }
                     PlaceX::Index(_, _, ArrayKind::Slice, bounds_check) => {
-                        reach_function(ctxt, state, &fn_slice_index(&ctxt.vstd_crate_name));
-                        reach_function(ctxt, state, &fn_slice_update(&ctxt.vstd_crate_name));
+                        reach_function(ctxt, state, &fn_slice_index());
+                        reach_function(ctxt, state, &fn_slice_update());
                         if *bounds_check != BoundsCheck::Allow {
-                            reach_function(ctxt, state, &fn_slice_len(&ctxt.vstd_crate_name));
+                            reach_function(ctxt, state, &fn_slice_len());
                         }
                     }
                     _ => {}
@@ -900,7 +892,7 @@ pub struct PruneInfo {
 
 pub fn prune_krate_for_module_or_krate(
     krate: &Krate,
-    crate_name: &Ident,
+    crate_name: &CrateId,
     current_crate: Option<&Krate>,
     module: Option<Path>,
     fun: Option<&Fun>,
@@ -1071,19 +1063,19 @@ pub fn prune_krate_for_module_or_krate(
                     reach(
                         &mut state.reached_functions,
                         &mut state.worklist_functions,
-                        &crate::fun!("vstd" => "future", "FutureAdditionalSpecFns", "view"),
+                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "view"),
                     );
 
                     reach(
                         &mut state.reached_functions,
                         &mut state.worklist_functions,
-                        &crate::fun!("vstd" => "future", "FutureAdditionalSpecFns", "awaited"),
+                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "awaited"),
                     );
 
                     reach(
                         &mut state.reached_functions,
                         &mut state.worklist_functions,
-                        &crate::fun!("vstd" => "future", "exec_await"),
+                        &crate::fun!(CrateId::Vstd => "future", "exec_await"),
                     );
                 }
             }
@@ -1257,7 +1249,6 @@ pub fn prune_krate_for_module_or_krate(
         }
         assoc_type_impl_map.get_mut(&key).unwrap().push(a.clone());
     }
-    let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
     let ctxt = Ctxt {
         module: module.clone(),
         function_map,
@@ -1273,7 +1264,6 @@ pub fn prune_krate_for_module_or_krate(
         fun_to_trigger_broadcasts,
         typ_to_trigger_broadcasts,
         fun_revealed_broadcast_map,
-        vstd_crate_name,
         assert_by_compute,
         assert_by_compute_seq_funs,
     };

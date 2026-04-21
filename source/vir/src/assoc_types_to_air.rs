@@ -19,12 +19,12 @@ use air::ast::{Command, CommandX, Commands, DeclX, Expr};
 use air::ast_util::{ident_apply, mk_bind_expr, mk_eq, mk_unnamed_axiom, str_typ};
 use std::sync::Arc;
 
-pub fn assoc_type_decls_to_air(_ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
+pub fn assoc_type_decls_to_air(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
     let mut commands: Vec<Command> = Vec::new();
     for tr in traits {
         for name in tr.x.assoc_typs.iter() {
             let mut push_command = |decoration: bool, index: usize| {
-                let projector = crate::def::projection(decoration, &tr.x.name, name);
+                let projector = ctx.name_ctxt.projection(decoration, &tr.x.name, name);
                 let mut typs: Vec<air::ast::Typ> = Vec::new();
                 let n = 1 + tr.x.typ_params.len(); // self type + type arguments
                 for _ in 0..n {
@@ -78,7 +78,7 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
         let (typ_params, eqs) =
             crate::sst_to_air_func::hide_projections_air(ctx, &typ_params, holes);
         let mut push_command = |decoration: bool, index: usize| {
-            let projector = crate::def::projection(decoration, trait_path, name);
+            let projector = ctx.name_ctxt.projection(decoration, trait_path, name);
             let mut args: Vec<Expr> = Vec::new();
             for arg in trait_typ_args.iter() {
                 args.extend(typ_to_ids(ctx, arg));

@@ -1,11 +1,9 @@
 //! Construction of MIR from HIR.
 
 // tidy-alphabetical-start
-#![allow(rustc::diagnostic_outside_of_impl)]
-#![allow(rustc::untranslatable_diagnostic)]
+#![cfg_attr(bootstrap, feature(if_let_guard))]
 #![feature(assert_matches)]
 #![feature(box_patterns)]
-#![feature(if_let_guard)]
 #![feature(try_blocks)]
 #![feature(rustc_private)]
 #![feature(never_type)]
@@ -17,7 +15,6 @@ extern crate rustc_arena;
 extern crate rustc_ast;
 extern crate rustc_data_structures;
 extern crate rustc_errors;
-extern crate rustc_fluent_macro;
 extern crate rustc_hir;
 extern crate rustc_hir_typeck;
 extern crate rustc_index;
@@ -55,8 +52,6 @@ pub mod expr_use_visitor;
 pub mod upvar;
 
 use rustc_middle::util::Providers;
-
-rustc_fluent_macro::fluent_messages! { "../messages.ftl" }
 
 pub fn verus_provide(providers: &mut Providers) {
     providers.queries.thir_body = thir::cx::thir_body;

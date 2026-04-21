@@ -825,3 +825,133 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
 }
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_borrows_to_union_fields ["new-mut-ref"] => verus_code! {
+        union X {
+            a: u64,
+            b: u64,
+            c: u64,
+            d: u64,
+        }
+
+        fn upd(a: &mut u64, b: u64)
+            ensures *final(a) == b
+        {
+            *a = b;
+        }
+
+        fn test1() {
+            let mut x = X { a: 18 };
+            unsafe {
+                upd(&mut x.a, 20);
+            }
+            assert(is_variant(x, "a"));
+            assert(get_union_field::<X, u64>(x, "a") === 20);
+        }
+
+        fn test2() {
+            let mut x = X { a: 18 };
+            let x_ref = unsafe { &mut x.a };
+            upd(x_ref, *x_ref + 1);
+            assert(is_variant(x, "a"));
+            assert(get_union_field::<X, u64>(x, "a") === 19);
+        }
+
+        fn test1_fails() {
+            let mut x = X { a: 18 };
+            unsafe {
+                upd(&mut x.a, 20);
+            }
+            assert(is_variant(x, "a"));
+            assert(get_union_field::<X, u64>(x, "a") === 20);
+            assert(false); // FAILS
+        }
+
+        fn test2_fails() {
+            let mut x = X { a: 18 };
+            let x_ref = unsafe { &mut x.a };
+            upd(x_ref, *x_ref + 1);
+            assert(is_variant(x, "a"));
+            assert(get_union_field::<X, u64>(x, "a") === 19);
+            assert(false); // FAILS
+        }
+
+        fn test1_fails_access() {
+            let mut x = X { a: 18 };
+            unsafe {
+                upd(&mut x.b, 20); // FAILS
+            }
+        }
+
+        fn test2_fails_access() {
+            let mut x = X { a: 18 };
+            let x_ref = unsafe { &mut x.a }; // FAILS
+            upd(x_ref, *x_ref + 1);
+            assert(is_variant(x, "a"));
+            assert(get_union_field::<X, u64>(x, "a") === 19);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_borrows_to_union_fields2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Clone, Copy)]
+        struct Y {
+            e: u64,
+            f: u64,
+        }
+
+        union X {
+            a: u64,
+            b: u64,
+            c: u64,
+            d: u64,
+            y: Y,
+        }
+
+        impl Y {
+            fn upd(&mut self, b: u64)
+                ensures *final(self) == (Y { e: b, f: old(self).f })
+            {
+                self.e = b;
+            }
+        }
+
+        fn test1() {
+            let mut x = X { y: Y { e: 0, f: 1 } };
+            unsafe {
+                x.y.upd(x.y.e + 10);
+            }
+            assert(is_variant(x, "y"));
+            assert(get_union_field::<X, Y>(x, "y") === Y { e: 10, f: 1 });
+        }
+
+        fn test2_fails() {
+            let mut x = X { y: Y { e: 0, f: 1 } };
+            unsafe {
+                x.y.upd(x.y.e + 10);
+            }
+            assert(is_variant(x, "y"));
+            assert(get_union_field::<X, Y>(x, "y") === Y { e: 10, f: 1 });
+            assert(false); // FAILS
+        }
+
+        fn test1_fails_access() {
+            let mut x = X { a: 20 };
+            unsafe {
+                x.y.upd(x.a + 10); // FAILS
+            }
+        }
+
+        fn test1_fails_access2() {
+            let mut x = X { y: Y { e: 0, f: 1 } };
+            unsafe {
+                x.y.upd(x.a + 10); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}

@@ -1,6 +1,6 @@
 use crate::ast::{
-    Fun, FunctionKind, Ident, Idents, ItemKind, Mode, SpannedTyped, Typ, TypX, Typs, VarBinder,
-    VarBinderX, VirErr,
+    CrateId, Fun, FunctionKind, Ident, Idents, ItemKind, Mode, SpannedTyped, Typ, TypX, Typs,
+    VarBinder, VarBinderX, VirErr,
 };
 use crate::ast_util::{LowerUniqueVar, QUANT_FORALL};
 use crate::context::Ctx;
@@ -8,7 +8,7 @@ use crate::def::{
     CommandsWithContext, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, SnapPos,
     Spanned, THIS_PRE_FAILED, ZERO, new_internal_qid, prefix_ensures, prefix_fuel_id,
     prefix_fuel_nat, prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_recursive_fun,
-    prefix_requires, static_name, suffix_global_id, suffix_typ_param_ids,
+    prefix_requires, suffix_global_id, suffix_typ_param_ids,
 };
 use crate::messages::{MessageLabel, Span};
 use crate::sst::FuncCheckSst;
@@ -169,7 +169,7 @@ pub(crate) fn hide_projections_air(
 }
 
 pub(crate) fn module_reveal_axioms(
-    _ctx: &Ctx,
+    ctx: &Ctx,
     decl_commands: &mut Vec<Command>,
     module_reveals: &Option<crate::ast::ModuleReveals>,
 ) {
@@ -179,7 +179,7 @@ pub(crate) fn module_reveal_axioms(
                 .x
                 .iter()
                 .map(|member: &Fun| {
-                    let fuel_id = prefix_fuel_id(&fun_to_air_ident(member));
+                    let fuel_id = prefix_fuel_id(&fun_to_air_ident(&ctx.name_ctxt, member));
                     str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&fuel_id)])
                 })
                 .collect::<Vec<Expr>>(),
@@ -194,9 +194,9 @@ pub(crate) fn broadcast_forall_group_axioms(
     ctx: &Ctx,
     decl_commands: &mut Vec<Command>,
     group: &crate::ast::RevealGroup,
-    crate_name: &Ident,
+    crate_name: &CrateId,
 ) {
-    let id_group = prefix_fuel_id(&fun_to_air_ident(&group.x.name));
+    let id_group = prefix_fuel_id(&fun_to_air_ident(&ctx.name_ctxt, &group.x.name));
     let fuel_group = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_group)]);
     if let Some(group_crate) = &group.x.broadcast_use_by_default_when_this_crate_is_imported {
         let is_imported = crate_name != group_crate;
@@ -209,7 +209,7 @@ pub(crate) fn broadcast_forall_group_axioms(
     let mut member_fuels: Vec<Expr> = Vec::new();
     for member in group.x.members.iter() {
         if ctx.reveal_group_set.contains(member) || ctx.func_map.contains_key(member) {
-            let id_member = prefix_fuel_id(&fun_to_air_ident(member));
+            let id_member = prefix_fuel_id(&fun_to_air_ident(&ctx.name_ctxt, member));
             member_fuels.push(str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_member)]));
         }
     }
@@ -218,7 +218,7 @@ pub(crate) fn broadcast_forall_group_axioms(
         let imply = mk_implies(&fuel_group, &mk_and(&member_fuels));
         let axiom = Arc::new(DeclX::Axiom(Axiom {
             named: if ctx.global.axiom_usage_info {
-                Some(fun_to_air_ident(&group.x.name))
+                Some(fun_to_air_ident(&ctx.name_ctxt, &group.x.name))
             } else {
                 None
             },
@@ -253,7 +253,7 @@ fn func_body_to_air(
             (None, vec![])
         };
 
-    let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
+    let id_fuel = prefix_fuel_id(&fun_to_air_ident(&ctx.name_ctxt, &function.x.name));
     let mut def_reqs: Vec<Expr> = Vec::new();
     // Non-recursive function definitions are unconditional axioms that hold
     // for all type arguments and value arguments
@@ -354,8 +354,9 @@ fn func_body_to_air(
         let cycle_len = ctx.global.func_call_graph.shortest_cycle_back_to_self(&fun_node).len();
         assert!(cycle_len >= 1);
 
-        let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&rec_name)));
-        let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&rec_name));
+        let rec_f =
+            suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &prefix_recursive_fun(&rec_name)));
+        let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&ctx.name_ctxt, &rec_name));
         let args = func_def_args(ctx, &typ_params, pars);
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
@@ -375,8 +376,8 @@ fn func_body_to_air(
         let rec_f_def = ident_apply(&rec_f, &args_def);
         let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
-        let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
-        let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
+        let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&ctx.name_ctxt, &name));
+        let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&ctx.name_ctxt, &name));
         let opts = Some(FuncBindOpts { add_fuel: true, add_default_ensures: false });
         let bind_zero = func_bind(ctx, name_zero, &typ_params, pars, &rec_f_fuel, opts);
         let bind_body = func_bind(ctx, name_body, &typ_params, pars, &rec_f_succ, opts);
@@ -395,7 +396,7 @@ fn func_body_to_air(
     def_reqs.extend(impl_def_reqs);
     let e_forall = func_def_quant(
         ctx,
-        &suffix_global_id(&fun_to_air_ident(&name)),
+        &suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &name)),
         false,
         &impl_typ_params,
         &typ_args,
@@ -542,8 +543,10 @@ pub fn func_name_to_air(
         // Check whether we need to declare the recursive version too
         if function.x.has.has_body {
             if function.x.has.is_recursive {
-                let rec_f =
-                    suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
+                let rec_f = suffix_global_id(&fun_to_air_ident(
+                    &ctx.name_ctxt,
+                    &prefix_recursive_fun(&function.x.name),
+                ));
                 let mut rec_typs =
                     vec_map(&*function.x.pars, |param| typ_to_air(ctx, &param.x.typ));
                 for _ in function.x.typ_params.iter() {
@@ -582,7 +585,7 @@ pub fn func_name_to_air(
             names.push(crate::def::trait_default_name(&function.x.name));
         }
         for name in names {
-            let name = suffix_global_id(&fun_to_air_ident(&name));
+            let name = suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &name));
             let decl = Arc::new(DeclX::Fun(name, all_typs.clone(), typ.clone()));
             commands.push(Arc::new(CommandX::Global(decl)));
         }
@@ -595,7 +598,7 @@ pub fn func_name_to_air(
         // at the beginning of a program (here, `foo` is a 'static' item which we
         // represent as 0-argument function)
         commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Const(
-            static_name(&function.x.name),
+            ctx.name_ctxt.static_name(&function.x.name),
             typ_to_air(ctx, &function.x.ret.x.typ),
         )))));
     }
@@ -612,7 +615,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     let (is_trait_method_impl, inherit_fn_ens) = match &function.x.kind {
         FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {
             if ctx.funcs_with_ensure_predicate[method] {
-                let ens = prefix_ensures(&fun_to_air_ident(&method));
+                let ens = prefix_ensures(&fun_to_air_ident(&ctx.name_ctxt, &method));
                 let mut typ_args = (**trait_typ_args).clone();
                 let f_method = &ctx.func_map[method];
                 let override_default =
@@ -661,13 +664,13 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             &Arc::new(vec![]),
             &function.x.typ_params,
             &req_typs,
-            &prefix_requires(&fun_to_air_ident(&function.x.name)),
+            &prefix_requires(&fun_to_air_ident(&ctx.name_ctxt, &function.x.name)),
             msg,
             function.x.attrs.integer_ring,
             bool_typ(),
             false,
             None,
-            Some(fun_to_air_ident(&function.x.name)),
+            Some(fun_to_air_ident(&ctx.name_ctxt, &function.x.name)),
         )?;
     }
 
@@ -684,7 +687,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
                 &Arc::new(vec![]),
                 &function.x.typ_params,
                 &req_typs,
-                &prefix_open_inv(&fun_to_air_ident(&function.x.name), i),
+                &prefix_open_inv(&fun_to_air_ident(&ctx.name_ctxt, &function.x.name), i),
                 None,
                 function.x.attrs.integer_ring,
                 typ_to_air(ctx, &e[0].typ),
@@ -706,7 +709,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             &Arc::new(vec![]),
             &function.x.typ_params,
             &req_typs,
-            &prefix_no_unwind_when(&fun_to_air_ident(&function.x.name)),
+            &prefix_no_unwind_when(&fun_to_air_ident(&ctx.name_ctxt, &function.x.name)),
             None,
             function.x.attrs.integer_ring,
             bool_typ(),
@@ -775,7 +778,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             &func_decl_sst.enss.1,
             &function.x.typ_params,
             &Arc::new(ens_typs),
-            &prefix_ensures(&fun_to_air_ident(&function.x.name)),
+            &prefix_ensures(&fun_to_air_ident(&ctx.name_ctxt, &function.x.name)),
             None,
             function.x.attrs.integer_ring,
             bool_typ(),
@@ -863,13 +866,14 @@ pub fn func_axioms_to_air(
                         args.push(ident_var(&p.x.name.lower()));
                     }
                     let default_name = crate::def::trait_default_name(f_trait);
-                    let default_name = &suffix_global_id(&fun_to_air_ident(&default_name));
+                    let default_name =
+                        &suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &default_name));
                     let body = ident_apply(&default_name, &args);
                     let mut pre = crate::traits::trait_bounds_to_air(ctx, &typ_bounds);
                     pre.extend(eqs);
                     let e_forall = func_def_quant(
                         ctx,
-                        &suffix_global_id(&fun_to_air_ident(&f_trait)),
+                        &suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &f_trait)),
                         false,
                         &typ_params,
                         &trait_typ_args,
@@ -901,7 +905,7 @@ pub fn func_axioms_to_air(
             }
 
             let mk_inv = |decl_commands: &mut Vec<Command>, name: &Fun, qid: &str, is_rec: bool| {
-                let name = suffix_global_id(&fun_to_air_ident(name));
+                let name = suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, name));
 
                 // Return typing invariant
                 let mut f_args: Vec<Expr> = Vec::new();
@@ -983,14 +987,15 @@ pub fn func_axioms_to_air(
                     // special broadcast lemma for size_of global
                     expr
                 } else {
-                    let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
+                    let id_fuel =
+                        prefix_fuel_id(&fun_to_air_ident(&ctx.name_ctxt, &function.x.name));
                     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
                     mk_implies(&fuel_bool, &expr)
                 };
                 // let axiom = mk_unnamed_axiom(fuel_imply);
                 let axiom = Arc::new(DeclX::Axiom(Axiom {
                     named: if ctx.global.axiom_usage_info {
-                        Some(fun_to_air_ident(&function.x.name))
+                        Some(fun_to_air_ident(&ctx.name_ctxt, &function.x.name))
                     } else {
                         None
                     },

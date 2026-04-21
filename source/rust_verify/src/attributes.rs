@@ -260,7 +260,7 @@ pub(crate) enum Attr {
     AllowInSpec,
     // specify list of places where == is promoted to =~=
     AutoExtEqual(vir::ast::AutoExtEqual),
-    /// Label for a proof obligation, i.e. the attribute `#[verifier::proof_note("label")]`
+    /// Label for a proof obligation, i.e. `#[verifier::proof_note("label")]` or `#[verifier::custom_err("label")]`
     ProofNote {
         span: Span,
         text: String,
@@ -426,7 +426,7 @@ pub(crate) fn parse_attrs(
                         is_custom_err: false,
                     })
                 }
-                AttrTree::Fun(span, name, attrs) if name == "proof_note_custom_err" => {
+                AttrTree::Fun(span, name, attrs) if name == "custom_err" => {
                     let label = get_proof_note_label(*span, attrs)?;
                     v.push(Attr::ProofNote {
                         span: *span,

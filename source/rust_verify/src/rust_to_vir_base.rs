@@ -17,7 +17,7 @@ use rustc_middle::ty::{
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
-use rustc_span::def_id::{DefId, LOCAL_CRATE};
+use rustc_span::def_id::{CrateNum, DefId};
 use rustc_span::symbol::{Ident, kw};
 use rustc_trait_selection::infer::InferCtxtExt;
 use rustc_trait_selection::solve::BuiltinImplSource;
@@ -25,25 +25,25 @@ use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use vir::ast::{
-    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaqueType,
+    CrateId, Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaqueType,
     OpaqueTypeX, OpaqueTypes, Path, PathX, Primitive, Sizedness, TraitId, Typ, TypDecorationArg,
     TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
-// TODO: eventually, this should just always be true
-thread_local! {
-    pub(crate) static MULTI_CRATE: std::sync::atomic::AtomicBool =
-        const { std::sync::atomic::AtomicBool::new(false) };
+pub(crate) fn mk_crate_id<'tcx>(tcx: TyCtxt<'tcx>, krate: CrateNum) -> CrateId {
+    let stable_id = tcx.stable_crate_id(krate).as_u64();
+    let s = tcx.crate_name(krate).to_string();
+    match s.as_str() {
+        "vstd" => CrateId::Vstd,
+        "core" => CrateId::Core,
+        "alloc" => CrateId::Alloc,
+        _ => CrateId::Id(Arc::new(s), stable_id),
+    }
 }
 
 fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
-    let multi_crate = MULTI_CRATE.with(|m| m.load(std::sync::atomic::Ordering::Relaxed));
-    let krate = if def_path.krate == LOCAL_CRATE && !multi_crate {
-        None
-    } else {
-        Some(Arc::new(tcx.crate_name(def_path.krate).to_string()))
-    };
+    let krate = mk_crate_id(tcx, def_path.krate);
     let mut segments: Vec<vir::ast::Ident> = Vec::new();
     for d in def_path.data.iter() {
         use rustc_hir::definitions::DefPathData;
@@ -157,8 +157,7 @@ pub(crate) fn def_id_to_vir_path_option<'tcx>(
             // interpreter.rs and def.rs refer directly to some impl methods,
             // so make sure we use the fn_name names from `verus_items`
             let segments = fn_name.split("::").map(|x| Arc::new(x.to_string())).collect();
-            let krate = Some(Arc::new("vstd".to_string()));
-            return Some(Arc::new(PathX { krate, segments: Arc::new(segments) }));
+            return Some(Arc::new(PathX { krate: CrateId::Vstd, segments: Arc::new(segments) }));
         }
     }
     let path = def_path_to_vir_path(tcx, tcx.def_path(def_id));
@@ -405,7 +404,7 @@ fn instantiate_pred_clauses<'tcx>(
     }
     let mut clauses: Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)> = Vec::new();
     for def_id in ancestors.iter().rev() {
-        let preds = tcx.predicates_of(def_id);
+        let preds = tcx.predicates_of(*def_id);
         for (clause, span) in preds.predicates {
             // This is based on GenericPredicates.instantiate_into, which is close to what
             // we need but doesn't track the relation between the uninstantiated and
@@ -2371,10 +2370,10 @@ pub(crate) fn check_fn_opaque_ty<'tcx>(
     assume_specification_def_id: Option<&DefId>,
 ) -> Result<HashMap<Path, Path>, VirErr> {
     let mut assume_specification_opaque_type_map = HashMap::new();
-    if !ctxt.tcx.def_kind(fn_def_id).is_fn_like() {
+    if !ctxt.tcx.def_kind(*fn_def_id).is_fn_like() {
         return Ok(assume_specification_opaque_type_map);
     }
-    let ty = ctxt.tcx.fn_sig(fn_def_id).skip_binder().output().skip_binder();
+    let ty = ctxt.tcx.fn_sig(*fn_def_id).skip_binder().output().skip_binder();
     let assume_specification_ty =
         if let Some(assume_specification_def_id) = assume_specification_def_id {
             // if ctxt.tcx.def_kind(assume_specification_def_id).is_fn_like() {
@@ -2382,7 +2381,7 @@ pub(crate) fn check_fn_opaque_ty<'tcx>(
             // } else {
             //     None
             // }
-            Some(ctxt.tcx.fn_sig(assume_specification_def_id).skip_binder().output().skip_binder())
+            Some(ctxt.tcx.fn_sig(*assume_specification_def_id).skip_binder().output().skip_binder())
         } else {
             None
         };

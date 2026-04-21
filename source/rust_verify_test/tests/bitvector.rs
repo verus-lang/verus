@@ -234,7 +234,7 @@ test_verify_one_bv_file! {
         proof fn test_int(x: X, y: X) {
             assert(x == y) by (bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle type `crate::X`")
+    } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle type `test_crate::X`")
 }
 
 test_verify_one_bv_file! {

@@ -822,7 +822,7 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(
         err,
-        "cannot use trait `crate::T1SpecImpl` directly; use `crate::T1Spec` instead"
+        "cannot use trait `test_crate::T1SpecImpl` directly; use `test_crate::T1Spec` instead"
     )
 }
 

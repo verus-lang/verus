@@ -441,13 +441,9 @@ struct SpecialPaths {
 }
 
 impl SpecialPaths {
-    pub fn new(vstd_crate_name: Arc<String>) -> Self {
-        let exec_nonstatic_call_name = path_as_vstd_name(&crate::def::nonstatic_call_path(
-            &Some(vstd_crate_name.clone()),
-            false,
-        ))
-        .expect("could not find path to exec_nonstatic_call");
-
+    pub fn new() -> Self {
+        let exec_nonstatic_call_name = path_as_vstd_name(&crate::def::nonstatic_call_path(false))
+            .expect("could not find path to exec_nonstatic_call");
         Self { exec_nonstatic_call_name }
     }
 
@@ -4167,8 +4163,7 @@ pub fn check_crate(
         ctor_modes: vec![],
         infer_spec_for_loop_iter_erase: vec![],
     };
-    let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
-    let special_paths = SpecialPaths::new(vstd_crate_name);
+    let special_paths = SpecialPaths::new();
     let mut ctxt = Ctxt {
         funs,
         datatypes,
