@@ -1873,7 +1873,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, vir::messages::Message>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let ty = bctx.types.node_type(expr.hir_id);
+    let ty = bctx.types.expr_ty_adjusted(expr);
     assert!(ty.is_enum());
 
     /*
@@ -2387,7 +2387,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let one = one.expect_expr();
                     mk_expr(ExprX::If(source_vir_expr, one, Some(zero)))
                 }
-                (_, TypX::Int(_)) if bctx.types.node_type(source.hir_id).is_enum() => {
+                (_, TypX::Int(_)) if bctx.types.expr_ty_adjusted(source).is_enum() => {
                     let mk_expr =
                         move |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
                     let cast_to = expr_cast_enum_int_to_vir(
@@ -2529,13 +2529,21 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     } else if let ExprKind::Lit(lit @ Spanned { node: LitKind::Float(..), .. }) =
                         &arg.kind
                     {
+                        if bctx.types.expr_adjustments(arg).len() != 0 {
+                            return err_span(
+                                expr.span,
+                                "negation of literal expected no implicit adjustments",
+                            );
+                        }
+                        let arg_ty = bctx.types.expr_ty(arg);
+
                         return Ok(ExprOrPlace::Expr(lit_to_vir(
                             bctx,
                             expr.span,
                             *lit,
                             true,
                             &typ_of_expr_adjusted(bctx, expr.span, &arg.hir_id, false)?,
-                            Some(bctx.types.node_type(arg.hir_id)),
+                            Some(arg_ty),
                         )?));
                     } else {
                         expr_to_vir(bctx, arg, modifier)?
