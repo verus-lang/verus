@@ -629,15 +629,32 @@ pub struct AtomicUpdate<X, Y, Pred> {
 }
 
 impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
+    /// The predicate of the atomic update.
+    ///
+    /// See [`UpdatePredicate`] for more information.
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::pred"]
     pub uninterp spec fn pred(self) -> Pred;
 
+    /// A prophesy variable which indicates that an atomic update has been resolved.
+    ///
+    /// Initially, the value of this function is unknown, i.e. we can neither prove that it is `true` or `false`.
+    /// Once the atomic update has been committed using the [`try_open_atomic_update`] macro, we learn that `au.resolves()` is `true`.
+    ///
+    /// We must be able to prove that `au.resolves()` when the logically atomic function exits.
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::resolves"]
     pub uninterp spec fn resolves(self) -> bool;
 
+    /// A prophesy variable for the input value of the atomic update.
+    ///
+    /// When the atomic update is committed, this variable is resolved to the input value of the atomic update.
+    /// This variable is used internally in the (private) postcondition of the logically atomic function.
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::input"]
     pub uninterp spec fn input(self) -> X;
 
+    /// A prophesy variable for the output value of the atomic update.
+    ///
+    /// When the atomic update is committed, this variable is resolved to the output value of the atomic update.
+    /// This variable is used internally in the (private) postcondition of the logically atomic function.
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::output"]
     pub uninterp spec fn output(self) -> Y;
 }
@@ -669,22 +686,66 @@ impl<X, Y, Pred: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, Pred> {
 #[doc(hidden)]
 pub uninterp spec fn pred_args<Pred, Args>(pred: Pred) -> Args;
 
+/// Trait used to specify the update predicate for the [`AtomicUpdate`].
+///
+/// This trait is implemented automatically by Verus when a logicaly atomic function is defined.
+/// ```
+/// exec fn function(px: PX) -> (py: PY)
+///     atomically (atomic_update) {
+///         type PredType,
+///
+///         (ax: AX) -> (ay: AY),
+///
+///         requires atomic_pre(px, ax),
+///         ensures atomic_post(px, ax, ay),
+///
+///         outer_mask Eo,
+///         inner_mask Ei,
+///     },
+///     requires private_pre(px),
+///     ensures private_post(px, ax, ay, py),
+/// ```
+/// The above code snipped generates (roughly) the type and trait implementation below.
+/// ```
+/// struct PredType { px: Ghost<PX> }
+///
+/// impl UpdatePredicate<AX, AY> for PredType {
+///     open spec fn req(self, x: X)       -> bool { atomic_pre  }
+///     open spec fn ens(self, x: X, y: Y) -> bool { atomic_post }
+///
+///     open spec fn outer_mask(self) -> Set<int> { Eo }
+///     open spec fn inner_mask(self) -> Set<int> { Ei }
+/// }
+/// ```
 pub trait UpdatePredicate<X, Y>: Sized {
+    /// The atomic pre-condition.
     spec fn req(self, x: X) -> bool;
 
+    /// The atomic post-condition.
     spec fn ens(self, x: X, y: Y) -> bool;
 
+    /// The outer mask of the atomic update.
     open spec fn outer_mask(self) -> Set<int> {
         Set::empty()
     }
 
+    /// The inner mask of the atomic update.
     open spec fn inner_mask(self) -> Set<int> {
         Set::empty()
     }
 }
 
+/// The control flow corresponding to the atomic update output.
 pub enum UpdateControlFlow {
+    /// The update output value indicates that the atomic update has been committed.
+    ///
+    /// This means [`try_open_atomic_update`] will consume the atomic update (i.e. return `Ok(())`),
+    /// and the atomic function call has to `break`.
     Commit,
+    /// The update output value indicates that the atomic update has been aborted.
+    ///
+    /// This means [`try_open_atomic_update`] will give back the atomic update (i.e. return `Err(Tracked(au))`),
+    /// and the atomic function call has to `continue`.
     Abort,
 }
 
@@ -714,6 +775,9 @@ impl<T, E> UpdateTry for Result<T, E> {
     }
 }
 
+/// A trivial wrapper type which indicates a commit.
+///
+/// This is useful for logically atomic functions which do not require an abort case.
 #[derive(Debug)]
 pub struct I<T>(pub T);
 
