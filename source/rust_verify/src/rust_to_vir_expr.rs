@@ -2918,8 +2918,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             if expr_vattrs.auto_decreases && allow_no_decreases {
                 // Filter out auto_decreases invariants if we're not checking for termination
                 // (at present, we only add them to invariant_except_break)
-                Arc::make_mut(&mut header.invariant_except_break)
-                    .retain(|e| !matches!(&e.x, ExprX::UnaryOpr(UnaryOpr::AutoDecreases, _)));
+                Arc::make_mut(&mut header.invariant_except_break).retain(|e| {
+                    if matches!(&e.x, ExprX::UnaryOpr(UnaryOpr::AutoDecreases, _)) {
+                        crate::erase::mark_tree_for_erasure(&bctx.ctxt, e);
+                        false
+                    } else {
+                        true
+                    }
+                });
             }
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
                 *header_span,
