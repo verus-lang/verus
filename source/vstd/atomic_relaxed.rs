@@ -684,19 +684,20 @@ declare_type_is_atomic!(bool, u8, u16, u32, u64, usize, i8, i16, i32, i64);
 
 unsafe impl<T> AtomicType for *mut T {}
 
+/// On a load, the thread must read a timestamp no smaller than that in its current view
 pub open spec fn load_valid_timestamp(old_view: View, loc: CellId, timestamp: nat) -> bool {
-    // a thread must read a timestamp no smaller than that in its current view
     old_view.get_timestamp(loc) <= timestamp
 }
 
+/// After a load, the thread's current view will be updated to contain the old view and the timestamp for the write that was read
 pub open spec fn load_view_update(old_view: View, new_view: View, loc: CellId, timestamp: nat) -> bool {
-    // after a load, a thread's current view will contain the old view and the timestamp that was read
     &&& new_view.contains(old_view)
     &&& timestamp <= new_view.get_timestamp(loc)
 }
 
+/// On a load, the location's history must have included [timestamp -> (v, write_view)]
 pub open spec fn load_valid_history<T>(hist: History<T>, val: T, timestamp: nat, write_view: View) -> bool {
-    // the location's history must have included [timestamp -> (v, write_view)]
+    
     hist.get(timestamp) == Some((val, Some(write_view)))
 }
 
@@ -716,25 +717,26 @@ pub open spec fn load_relaxed<T>(pt: AtomicPointsTo<T>, old_view: ViewSeen, new_
     &&& acquire_view@.contains(write_view)
 }
 
+/// On a store, the new write's timestamp must be greater than that in the thread's old view, 
+// and the timestamp must not have been contained in this location's history
 pub open spec fn store_valid_timestamp<T>(old_view: View, old_hist: History<T>, loc: CellId, timestamp: nat) -> bool {
-    // timestamp is greater than all of the thread's observations and is unique for this location's history
     &&& old_view.get_timestamp(loc) < timestamp
     &&& !old_hist.contains_timestamp(timestamp)
 }
 
+/// On a store, the write view which cannot be contained in the thread's old view (the write view must contain the write timestamp)
 pub open spec fn store_valid_message_view(old_view: View, write_view: View) -> bool {
-    // the write view must contain the write timestamp, which cannot be in the thread's previous view
     !old_view.contains(write_view)
 }
 
+/// After a store, the thread's current view will strictly contain its old view and the timestamp of the write
 pub open spec fn store_view_update(old_view: View, new_view: View, loc: CellId, timestamp: nat) -> bool {
-    // after a store, a thread's current view will strictly contain the old view and the timestamp of the store
     &&& new_view.contains_strict(old_view)
     &&& timestamp <= new_view.get_timestamp(loc)
 }
 
+/// After a store, the locations's history is updated to contain the new write
 pub open spec fn store_points_to_update<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, val: T, timestamp: nat, write_view: View) -> bool {
-    // the points-to's history is updated to contain the new write
     &&& new_pt.loc() == old_pt.loc()
     &&& new_pt.hist() == old_pt.hist().insert(timestamp, val, Some(write_view))
 }
@@ -759,8 +761,8 @@ pub open spec fn store_relaxed<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPoint
     &&& new_view@.contains(write_view)
 }
 
+/// After a store_mut, the locations's history is updated to be a singleton with the new write
 pub open spec fn store_mut_points_to_update<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, val: T, timestamp: nat, write_view: View) -> bool {
-    // the points-to's history is now a singleton with the new write
     &&& new_pt.loc() == old_pt.loc()
     &&& new_pt.hist().is_singleton(timestamp, (v, Some(write_view)))
 }
