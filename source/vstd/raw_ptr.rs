@@ -1268,7 +1268,7 @@ impl<T> SeqPointsTo<T> {
     /// For each key `i`, the corresponding `PointsTo<T>` must have the same provenance as
     /// the `self.ptr()`, and its pointer's address is offset from `self.ptr()` by `i`.
     #[verifier::type_invariant]
-    spec fn inv(self) -> bool {
+    pub open spec fn inv(self) -> bool {
         &&& forall|i|
             #![trigger self[i].ptr()@.provenance]
             #![trigger self[i].ptr()@.addr]
