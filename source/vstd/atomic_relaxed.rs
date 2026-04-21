@@ -764,7 +764,7 @@ pub open spec fn store_relaxed<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPoint
 /// After a store_mut, the locations's history is updated to be a singleton with the new write
 pub open spec fn store_mut_points_to_update<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, val: T, timestamp: nat, write_view: View) -> bool {
     &&& new_pt.loc() == old_pt.loc()
-    &&& new_pt.hist().is_singleton(timestamp, (v, Some(write_view)))
+    &&& new_pt.hist().is_singleton(timestamp, (val, Some(write_view)))
 }
 
 pub open spec fn store_mut_release<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: ViewSeen, new_view: ViewSeen, val: T, timestamp: nat, write_view: View) -> bool {
@@ -909,7 +909,7 @@ impl PWeakAtomicU8 {
         Tracked(v_sn): Tracked<&mut ViewSeen>,
         Tracked(rel_v_sn): Tracked<ReleaseViewSeen>,
         Tracked(pt): Tracked<&mut AtomicPointsTo<u8>>,
-    ) -> (out: (Ghost<View>, Ghost<nat>))
+    ) -> (out: (Ghost<nat>, Ghost<View>))
         requires
             old(self).loc() == old(pt).loc(),
             order matches Ordering::Release || order matches Ordering::Relaxed
@@ -943,39 +943,60 @@ impl PWeakAtomicU8 {
         Ghost(unreached())
     }
 
-    // AT-CAS-SN-GEN -- of = relaxed, or = acquire, ow = relaxed
-    // NN: too verbose, can we factor out this such that we can reuse loading and storing specs across different operations
     #[inline(always)]
     #[verifier::external_body]
     #[verifier::atomic]
-    pub fn cas_rlx_acq_rlx(
+    pub fn compare_exchange(
         &self,
+        current: u8,
+        new: u8,
+        success: Ordering,
+        failure: Ordering,
         Tracked(v_sn): Tracked<&mut ViewSeen>,
         Tracked(rel_v_sn): Tracked<ReleaseViewSeen>,
         Tracked(pt): Tracked<&mut AtomicPointsTo<u8>>,
-        vr : u8,
-        vw : u8,
-    ) -> (out: (Result<u8, u8>, Tracked<AcquireViewSeen> /* todo: is this better to be an option, or just leave unspecified when not used? */, Ghost<nat>, Ghost<View>, Ghost<View>))
+    ) -> (out: (Result<u8, u8>, Tracked<AcquireViewSeen>, Ghost<nat>, Ghost<View>, Ghost<View>))
         requires
             self.loc() == old(pt).loc(),
+            success matches Ordering::AcqRel || success matches Ordering::Acquire || success matches Ordering::Release || success matches Ordering::Relaxed,
+            failure matches Ordering::Acquire || failure matches Ordering::Relaxed
         ensures
             match out.0 {
                 Ok(v) => {
-                    &&& vr == v
+                    &&& current == v
                     &&& out.4@.contains_strict(out.3@)
-                    &&& load_acquire(*old(pt), *old(v_sn), *v_sn, vr, out.2@, out.3@)
-                    &&& store_relaxed(*old(pt), *pt, *old(v_sn), *v_sn, rel_v_sn, vw, out.2@ + 1, out.4@)
+                    &&& match success {
+                        Ordering::AcqRel => {
+                            &&& load_acquire(*old(pt), *old(v_sn), *v_sn, current, out.2@, out.3@)
+                            &&& store_release(*old(pt), *pt, *old(v_sn), *v_sn, new, out.2@ + 1, out.4@)
+                        },
+                        Ordering::Acquire => {
+                            &&& load_acquire(*old(pt), *old(v_sn), *v_sn, current, out.2@, out.3@)
+                            &&& store_relaxed(*old(pt), *pt, *old(v_sn), *v_sn, rel_v_sn, new, out.2@ + 1, out.4@)
+                        },
+                        Ordering::Release => {
+                            &&& load_relaxed(*old(pt), *old(v_sn), *v_sn, out.1@, v, out.2@, out.3@)
+                            &&& store_release(*old(pt), *pt, *old(v_sn), *v_sn, new, out.2@ + 1, out.4@)
+                        },
+                        Ordering::Relaxed => {
+                            &&& load_relaxed(*old(pt), *old(v_sn), *v_sn, out.1@, v, out.2@, out.3@)
+                            &&& store_relaxed(*old(pt), *pt, *old(v_sn), *v_sn, rel_v_sn, new, out.2@ + 1, out.4@)
+                        }
+                    }
                 },
                 Err(v) => {
-                    &&& vr != v
+                    &&& current != v
                     &&& *pt == *old(pt)
-                    &&& load_relaxed(*old(pt), *old(v_sn), *v_sn, out.1@, v, out.2@, out.3@)
+                    &&& match failure {
+                        Ordering::Acquire => load_acquire(*old(pt), *old(v_sn), *v_sn, v, out.2@, out.3@),
+                        Ordering::Relaxed => load_relaxed(*old(pt), *old(v_sn), *v_sn, out.1@, v, out.2@, out.3@)
+                    }
                 }
             }
         opens_invariants none
         no_unwind
     {
-        return (self.ato.compare_exchange(vr, vw, Ordering::Acquire, Ordering::Relaxed), Tracked::assume_new(), Ghost::new(unreached()), Ghost::new(unreached()), Ghost::new(unreached()));
+        return (self.ato.compare_exchange(current, new, success, failure), Tracked::assume_new(), Ghost::new(unreached()), Ghost::new(unreached()), Ghost::new(unreached()));
     }
 }
 
