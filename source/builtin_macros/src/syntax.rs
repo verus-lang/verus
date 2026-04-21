@@ -3387,7 +3387,7 @@ impl Visitor {
         //                     #[verus::internal(auto_decreases)]
         //                     y.iter.decrease().is_Some(),
         //                  invariant
-        //                     // We track the continuitiy of the snapshot and the initial iterator-creation expression
+        //                     // We track the continuity of the snapshot and the initial iterator-creation expression
         //                     ::vstd::prelude::spec_eq(y.snapshot, VERUS_old_snap),
         //                     match verus_builtin::infer_spec_for_loop_iter(
         //                              &::core::iter::IntoIterator::into_iter(VERUS_iter_init),
