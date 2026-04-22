@@ -370,7 +370,7 @@ impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-    uninterp spec fn completes(&self) -> bool;
+    uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {

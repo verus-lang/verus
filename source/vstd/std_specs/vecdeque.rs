@@ -277,7 +277,7 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn completes(&self) -> bool;
+    uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {

@@ -466,7 +466,7 @@ impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn completes(&self) -> bool;
+    uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
@@ -514,7 +514,7 @@ pub broadcast axiom fn next_postcondition<'a>(
 // The iterator consistently obeys, completes, and decreases throughout its lifetime
 
         new_chars.obeys_prophetic_iter_laws() == old_chars.obeys_prophetic_iter_laws(),
-        new_chars.obeys_prophetic_iter_laws() ==> new_chars.completes() == old_chars.completes(),
+        new_chars.obeys_prophetic_iter_laws() ==> new_chars.will_return_none() == old_chars.will_return_none(),
         new_chars.obeys_prophetic_iter_laws() ==> (old_chars.decrease() is Some
             <==> new_chars.decrease() is Some),
         // `next` pops the head of the prophesized remaining(), or returns None
@@ -524,7 +524,7 @@ pub broadcast axiom fn next_postcondition<'a>(
                 &&& ret == Some(old_chars.remaining()[0])
             } else {
                 new_chars.remaining() === old_chars.remaining() && ret === None
-                    && new_chars.completes()
+                    && new_chars.will_return_none()
             }
         }),
         // If the iterator isn't done yet, then it successfully decreases its metric (if any)

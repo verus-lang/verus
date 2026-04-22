@@ -74,7 +74,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn completes(&self) -> bool;
+    uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
@@ -112,7 +112,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn completes(&self) -> bool;
+    uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
@@ -152,7 +152,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for btree_map::Iter<'a, K, V> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn completes(&self) -> bool;
+    uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
@@ -687,7 +687,7 @@ impl<'a, T> super::iter::IteratorSpecImpl for btree_set::Iter::<'a, T> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn completes(&self) -> bool;
+    uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_inv(&self, init: &Self) -> bool {

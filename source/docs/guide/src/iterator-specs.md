@@ -47,7 +47,7 @@ on how we define them for our custom iterator.
   and most iterator adaptors should return their inner iterator's value.
 - **`remaining`** — a prophetic spec function returning the sequence of items that the iterator will
   eventually produce. For `VecIterator`, this is the subrange `v[i..j]`.
-- **`completes`** — return `true` if the iterator will eventually return `None`.
+- **`will_return_none`** — return `true` if the iterator will eventually return `None`.
   Infinite iterators or iterators driven by a non-terminating closure may return `false`.
 - **`decrease`** — a termination metric for Verus's decreases checker.  By default,
   `for` loops expect this to return `Some(n)` where `n` decreases on every call to `next`. Here `j - i` works.

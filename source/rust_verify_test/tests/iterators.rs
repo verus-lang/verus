@@ -123,7 +123,7 @@ test_verify_one_file! {
                     IteratorSpec::remaining(&s).len() <= iter.remaining().len(),
                     forall |i| #![auto] 0 <= i < IteratorSpec::remaining(&s).len() ==>
                         call_ensures(f, (iter.remaining()[i],), IteratorSpec::remaining(&s)[i]),
-                    IteratorSpec::completes(&s) ==> iter.completes() && IteratorSpec::remaining(&s).len() == iter.remaining().len(),
+                    IteratorSpec::will_return_none(&s) ==> iter.will_return_none() && IteratorSpec::remaining(&s).len() == iter.remaining().len(),
                     s.count() == 0,
                     s.inner() == iter,
                     IteratorSpec::decrease(&s) is Some == iter.decrease() is Some,
@@ -239,8 +239,8 @@ test_verify_one_file! {
             }
 
             #[verifier::prophetic]
-            closed spec fn completes(&self) -> bool {
-                self.iter.completes()
+            closed spec fn will_return_none(&self) -> bool {
+                self.iter.will_return_none()
                   && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.remaining().len() ==> self.prophs@.proph_elem(i).is_some())
             }
 

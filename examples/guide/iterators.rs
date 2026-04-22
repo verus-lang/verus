@@ -81,7 +81,7 @@ impl<'a, T> IteratorSpecImpl for VecIterator<'a, T> {
         self.v@.subrange(self.i as int, self.j as int).map(|i, v| &v)
     }
 
-    closed spec fn completes(&self) -> bool {
+    closed spec fn will_return_none(&self) -> bool {
         true
     }
 

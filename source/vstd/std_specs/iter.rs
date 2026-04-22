@@ -37,14 +37,14 @@ pub trait ExIterator {
     /// Trivially true for most iterators but important for iterators
     /// that apply an exec closure that may not terminate.
     #[verifier::prophetic]
-    spec fn completes(&self) -> bool;
+    spec fn will_return_none(&self) -> bool;
 
     /// Advances the iterator and returns the next value.
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             self.obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            self.obeys_prophetic_iter_laws() ==> self.completes() == old(self).completes(),
+            self.obeys_prophetic_iter_laws() ==> self.will_return_none() == old(self).will_return_none(),
             self.obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
             // `next` pops the head of the prophesized remaining(), or returns None
             self.obeys_prophetic_iter_laws() ==>
@@ -53,7 +53,7 @@ pub trait ExIterator {
                     &&& self.remaining() == old(self).remaining().drop_first()
                     &&& ret == Some(old(self).remaining()[0])
                 } else {
-                    self.remaining() === old(self).remaining() && ret === None && self.completes()
+                    self.remaining() === old(self).remaining() && ret === None && self.will_return_none()
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
@@ -104,7 +104,7 @@ pub trait ExDoubleEndedIterator : Iterator {
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             (&*self).obeys_prophetic_iter_laws() == (&*old(self)).obeys_prophetic_iter_laws(),
-            (&*self).obeys_prophetic_iter_laws() ==> (&*self).completes() == (&*old(self)).completes(),
+            (&*self).obeys_prophetic_iter_laws() ==> (&*self).will_return_none() == (&*old(self)).will_return_none(),
             (&*self).obeys_prophetic_iter_laws() ==> ((&*old(self)).decrease() is Some <==> (&*self).decrease() is Some),
             // `next` pops the tail of the prophesized remaining(), or returns None
             (&*self).obeys_prophetic_iter_laws() ==>
@@ -113,7 +113,7 @@ pub trait ExDoubleEndedIterator : Iterator {
                     (&*self).remaining() == (&*old(self)).remaining().drop_last()
                         && ret == Some((&*old(self)).remaining().last())
                 } else {
-                    (&*self).remaining() === (&*old(self)).remaining() && ret === None && (&*self).completes()
+                    (&*self).remaining() === (&*old(self)).remaining() && ret === None && (&*self).will_return_none()
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
@@ -158,7 +158,7 @@ pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I)
         {
             let r = #[trigger] into_rev_spec(i);
             &&& IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse()
-            &&& IteratorSpec::completes(&r) == i.completes()
+            &&& IteratorSpec::will_return_none(&r) == i.will_return_none()
             &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
             &&& IteratorSpec::initial_value_inv(&r, &r)
         },
@@ -176,8 +176,8 @@ impl <I> IteratorSpecImpl for Rev<I>
     }
 
     #[verifier::prophetic]
-    closed spec fn completes(&self) -> bool {
-        rev_iter(*self).completes()
+    closed spec fn will_return_none(&self) -> bool {
+        rev_iter(*self).will_return_none()
     }
 
     #[verifier::prophetic]
@@ -235,7 +235,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     pub closed spec fn wf_inner(self) -> bool {
         &&& self.iter.remaining().len() == self.seq().len() - self.index@
         &&& forall |i| 0 <= i < self.iter.remaining().len() ==> #[trigger] self.iter.remaining()[i] == self.seq()[self.index@ + i]
-        &&& self.iter.completes() ==> self.snapshot@.completes()
+        &&& self.iter.will_return_none() ==> self.snapshot@.will_return_none()
     }
 
     /// These properties are needed for the client code to verify
@@ -284,7 +284,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             self.init == old(self).init,
             self.iter.obeys_prophetic_iter_laws() ==> self.wf(),
             self.iter.obeys_prophetic_iter_laws() && ret is None ==>
-                self.snapshot@.completes() && self.index@ == self.seq().len(),
+                self.snapshot@.will_return_none() && self.index@ == self.seq().len(),
             self.iter.obeys_prophetic_iter_laws() ==> (ret matches Some(r) ==>
                 r == old(self).seq()[old(self).index@]),
             // History updates always hold
@@ -293,7 +293,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             // TODO: Uncomment this line to replace everything below, once general mutable refs are supported
             // call_ensures(I::next, (&mut old(self).iter,), ret),
             self.iter.obeys_prophetic_iter_laws() == old(self).iter.obeys_prophetic_iter_laws(),
-            self.iter.obeys_prophetic_iter_laws() ==> self.iter.completes() == old(self).iter.completes(),
+            self.iter.obeys_prophetic_iter_laws() ==> self.iter.will_return_none() == old(self).iter.will_return_none(),
             self.iter.obeys_prophetic_iter_laws() ==> (old(self).iter.decrease() is Some <==> self.iter.decrease() is Some),
             self.iter.obeys_prophetic_iter_laws() ==>
             ({
@@ -301,7 +301,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
                     &&& self.iter.remaining() == old(self).iter.remaining().drop_first()
                     &&& ret == Some(old(self).iter.remaining()[0])
                 } else {
-                    self.iter.remaining() === old(self).iter.remaining() && ret === None && self.iter.completes()
+                    self.iter.remaining() === old(self).iter.remaining() && ret === None && self.iter.will_return_none()
                 }
             }),
             self.iter.obeys_prophetic_iter_laws() && old(self).iter.remaining().len() > 0 && self.iter.decrease() is Some ==>
