@@ -1,7 +1,7 @@
 use crate::ast::{
-    AutospecUsage, CallTarget, CallTargetKind, Constant, Dt, ExprX, Fun, Function, FunctionKind,
-    GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, TraitId, Typ, TypX, Typs, UnaryOpr,
-    VarBinder, VirErr,
+    AutospecUsage, CallTarget, CallTargetKind, Constant, CrateId, Dt, ExprX, Fun, Function,
+    FunctionKind, GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, TraitId, Typ, TypX, Typs,
+    UnaryOpr, VarBinder, VirErr,
 };
 use crate::ast_to_sst::PreLocalDecl;
 use crate::ast_to_sst::expr_to_exp_skip_checks;
@@ -35,7 +35,7 @@ pub enum Node {
     ModuleReveal(Path),
     // Everything in crate c depends on Crate(c)
     // Crate(c) can depend on broadcast_use_by_default_when_this_crate_is_imported from other crates
-    Crate(crate::ast::Ident),
+    Crate(CrateId),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
     SpanInfo { span_infos_index: usize, text: String },

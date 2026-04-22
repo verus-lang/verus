@@ -349,7 +349,7 @@ test_verify_one_file! {
             }
             f();
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot call function `crate::f` with mode exec")
+    } => Err(e) => assert_vir_error_msg(e, "cannot call function `test_crate::f` with mode exec")
 }
 
 test_verify_one_file! {
@@ -1290,6 +1290,32 @@ test_verify_one_file! {
         fn test_for_loop()
         {
             for i in 0..10
+            {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_skip_desugar_loop_with_external_body code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        struct A;
+
+        impl Iterator for A {
+            type Item = u32;
+            fn next(&mut self) -> Option<Self::Item> {
+                None
+            }
+        }
+
+        #[verus_verify(external_body)]
+        #[verus_spec(ensures false)]
+        fn test_for_loop()
+        {
+            let a = A;
+            for i in a
             {
             }
         }

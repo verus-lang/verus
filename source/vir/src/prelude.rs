@@ -12,7 +12,7 @@ pub struct PreludeConfig {
     pub solver: SmtSolver,
 }
 
-pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
+pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<Node> {
     #[allow(non_snake_case)]
     let FuelId = str_to_node(FUEL_ID);
     #[allow(non_snake_case)]
@@ -133,7 +133,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let const_bool = str_to_node(CONST_BOOL);
     let ext_eq = str_to_node(EXT_EQ);
 
-    let type_id_unit = str_to_node(&prefix_type_id(&encode_dt_as_path(&crate::ast::Dt::Tuple(0))));
+    let type_id_unit =
+        str_to_node(&name_ctxt.prefix_type_id(&encode_dt_as_path(&crate::ast::Dt::Tuple(0))));
 
     let bit_xor = str_to_node(BIT_XOR);
     let bit_and = str_to_node(BIT_AND);
@@ -1137,7 +1138,7 @@ pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {
     )
 }
 
-pub(crate) fn pointee_metadata_prelude() -> Vec<Node> {
+pub(crate) fn pointee_metadata_prelude(name_ctxt: &NameCtxt) -> Vec<Node> {
     let typ = str_to_node(TYPE);
     let decoration = str_to_node(DECORATION);
     let sized = str_to_node(SIZED_BOUND);
@@ -1150,7 +1151,8 @@ pub(crate) fn pointee_metadata_prelude() -> Vec<Node> {
     let project_pointee_metadata_decoration = str_to_node(PROJECT_POINTEE_METADATA_DECORATION);
 
     let type_id_usize = str_to_node(TYPE_ID_USIZE);
-    let type_id_unit = str_to_node(&prefix_type_id(&encode_dt_as_path(&crate::ast::Dt::Tuple(0))));
+    let type_id_unit =
+        str_to_node(&name_ctxt.prefix_type_id(&encode_dt_as_path(&crate::ast::Dt::Tuple(0))));
 
     nodes_vec!(
         (declare-fun [project_pointee_metadata] ([decoration]) [typ])
@@ -1270,6 +1272,7 @@ pub(crate) fn ieee_float_prelude() -> Vec<Node> {
 }
 
 fn datatype_height_axiom(
+    name_ctxt: &NameCtxt,
     typ_name1: &Path,
     typ_name2: &Option<Path>,
     is_variant_ident: &Ident,
@@ -1284,8 +1287,8 @@ fn datatype_height_axiom(
     let skolem_id = str_to_node(format!("skolem_prelude_datatype_height_{}", field).as_str());
     let field = str_to_node(field.as_str());
     let is_variant = str_to_node(is_variant_ident.as_str());
-    let typ1 = str_to_node(path_to_air_ident(typ_name1).as_str());
-    let box_t1 = str_to_node(prefix_box(typ_name1).as_str());
+    let typ1 = str_to_node(path_to_air_ident(&name_ctxt, typ_name1).as_str());
+    let box_t1 = str_to_node(name_ctxt.prefix_box(typ_name1).as_str());
     let mut forall_params: Vec<Node> = Vec::new();
     let mut field_x: Vec<Node> = Vec::new();
     field_x.push(field);
@@ -1304,7 +1307,7 @@ fn datatype_height_axiom(
     let field_x = Node::List(field_x);
     let field_of_x = match typ_name2 {
         Some(typ2) => {
-            let box_t2 = str_to_node(prefix_box(&typ2).as_str());
+            let box_t2 = str_to_node(name_ctxt.prefix_box(&typ2).as_str());
             node!(([box_t2][field_x]))
         }
         // for a field with generic type, [field]'s return type is already "Poly"
@@ -1329,6 +1332,7 @@ fn datatype_height_axiom(
 }
 
 pub(crate) fn datatype_height_axioms(
+    name_ctxt: &NameCtxt,
     typ_name1: &Path,
     typ_name2: &Option<Path>,
     is_variant_ident: &Ident,
@@ -1336,11 +1340,25 @@ pub(crate) fn datatype_height_axioms(
     field: &Ident,
     recursive_function_field: bool,
 ) -> Vec<Node> {
-    let axiom1 =
-        datatype_height_axiom(typ_name1, typ_name2, is_variant_ident, tparams, field, false);
+    let axiom1 = datatype_height_axiom(
+        name_ctxt,
+        typ_name1,
+        typ_name2,
+        is_variant_ident,
+        tparams,
+        field,
+        false,
+    );
     if recursive_function_field {
-        let axiom2 =
-            datatype_height_axiom(typ_name1, typ_name2, is_variant_ident, tparams, field, true);
+        let axiom2 = datatype_height_axiom(
+            name_ctxt,
+            typ_name1,
+            typ_name2,
+            is_variant_ident,
+            tparams,
+            field,
+            true,
+        );
         vec![axiom1, axiom2]
     } else {
         vec![axiom1]

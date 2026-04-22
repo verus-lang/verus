@@ -571,7 +571,7 @@ fn pat_has_shadow<'tcx>(enclosing_def_id: LocalDefId, pat: &Pat<'tcx>) -> bool {
             false
         }
 
-        PatKind::Deref { subpattern } => pat_has_shadow(enclosing_def_id, subpattern),
+        PatKind::Deref { subpattern, pin: _ } => pat_has_shadow(enclosing_def_id, subpattern),
         PatKind::DerefPattern { subpattern, borrow: _ } => {
             pat_has_shadow(enclosing_def_id, subpattern)
         }
@@ -756,7 +756,7 @@ fn pattern_bindings_rec<'tcx>(bindings: &mut Vec<Binding<'tcx>>, pat: &Pat<'tcx>
                 pattern_bindings_rec(bindings, &field_pat.pattern);
             }
         }
-        PatKind::Deref { subpattern } => {
+        PatKind::Deref { subpattern, pin: _ } => {
             pattern_bindings_rec(bindings, subpattern);
         }
         PatKind::DerefPattern { subpattern, borrow: _ } => {
@@ -846,7 +846,7 @@ fn make_half_pat_rec<'tcx>(pat: &mut Pat<'tcx>, half_kind: Half) {
                 make_half_pat_rec(&mut field_pat.pattern, half_kind);
             }
         }
-        PatKind::Deref { subpattern } => {
+        PatKind::Deref { subpattern, pin: _ } => {
             make_half_pat_rec(subpattern, half_kind);
         }
         PatKind::DerefPattern { subpattern, borrow: _ } => {
@@ -1253,8 +1253,7 @@ fn shadow_place_rec<'tcx>(
             ExprKind::VarRef { id: shadow_local_var_id(*var_hir_id) }
         }
 
-        ExprKind::Box { .. }
-        | ExprKind::If { .. }
+        ExprKind::If { .. }
         | ExprKind::Call { .. }
         | ExprKind::ByUse { .. }
         | ExprKind::Binary { .. }

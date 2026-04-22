@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 verus_syn = { version = "=0.0.0-2026-04-05-0114", path = "../../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
-verus_prettyplease = { version = "=0.0.0-2026-04-05-0114", path = "../../../dependencies/prettyplease" }
+verus_prettyplease = { version = "=0.0.0-2026-04-12-0118", path = "../../../dependencies/prettyplease" }
 getopts = "*"
 toml = "0.8"
 serde = { version = "1.0", features = ["std", "derive", "rc"] }

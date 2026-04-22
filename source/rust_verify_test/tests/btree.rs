@@ -110,7 +110,7 @@ test_verify_one_file! {
 
         fn test()
         {
-            assume(vstd::laws_cmp::obeys_cmp_spec::<MyStruct>());
+            assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());
 
             let mut m = BTreeMap::<MyStruct, u32>::new();
             assert(m@ == Map::<MyStruct, u32>::empty());
@@ -152,7 +152,7 @@ test_verify_one_file! {
 
         fn test()
         {
-            assume(vstd::laws_cmp::obeys_cmp_spec::<MyStruct>());
+            assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());
 
             let mut m = BTreeSet::<MyStruct>::new();
             assert(m@ == Set::<MyStruct>::empty());
@@ -204,7 +204,7 @@ test_verify_one_file! {
 
         fn test()
         {
-            // Missing `assume(vstd::laws_cmp::obeys_cmp_spec::<MyStruct>());`
+            // Missing `assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());`
 
             let mut m = BTreeMap::<MyStruct, u32>::new();
             let s1 = MyStruct{ i: 3, j: 7 };
@@ -230,7 +230,7 @@ test_verify_one_file! {
 
         fn test()
         {
-            // Missing `assume(vstd::laws_cmp::obeys_cmp_spec::<MyStruct>());`
+            // Missing `assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());`
 
             let mut m = BTreeSet::<MyStruct>::new();
             let s1 = MyStruct{ i: 3, j: 7 };

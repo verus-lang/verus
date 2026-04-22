@@ -3200,14 +3200,15 @@ test_verify_one_file_with_options! {
             assert(b == 6);
             assert(false); // FAILS
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Err(err) =>
+
+     assert_fails(err, 1)
 }
 
 test_verify_one_file_with_options! {
     #[test] partial_move_out_of_enum2 ["new-mut-ref"] => verus_code! {
-        // One way to get around the error more legitimately is to use an enum where
-        // one variant is impossible.
-        // However, I am told this may be disallowed in the future as well.
+        // One way to get around the error more legitimately was to use an enum where
+        // one variant is impossible, but this is no longer allowed as of 1.95.0.
 
         enum Option<T, U> { Some(T), None(U) }
         use crate::Option::Some;
@@ -3255,7 +3256,10 @@ test_verify_one_file_with_options! {
             assert(b == 6);
             assert(false); // FAILS
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "use of partially moved value: `x`",
+        "use of partially moved value: `x`",
+    ])
 }
 
 test_verify_one_file_with_options! {
@@ -4167,4 +4171,59 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_mut_ref_borrows_from_enum ["new-mut-ref"] => verus_code! {
+        enum Option<V> { Some(V), None }
+        fn test() {
+            let mut x = Option::Some((1, 2));
+            let a1 = match x {
+                Option::Some((ref mut a, _)) => a,
+                _ => { return; },
+            };
+            let b1 = match x {
+                Option::Some((_, ref mut b)) => b,
+                _ => { return; },
+            };
+            *a1 = 11;
+            *b1 = 12;
+            assert(x === Option::Some((11, 12)));
+        }
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot use `x` because it was mutably borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_mut_ref_borrows_from_enum_no_lifetime ["new-mut-ref", "--no-lifetime"] => verus_code! {
+        enum Option<V> { Some(V), None }
+        fn test() {
+            let mut x = Option::Some((1, 2));
+            let a1 = match x {
+                Option::Some((ref mut a, _)) => a,
+                _ => { return; },
+            };
+            let b1 = match x {
+                Option::Some((_, ref mut b)) => b,
+                _ => { return; },
+            };
+            *a1 = 11;
+            *b1 = 12;
+            assert(x === Option::Some((11, 12)));
+        }
+        fn test_fails() {
+            let mut x = Option::Some((1, 2));
+            let a1 = match x {
+                Option::Some((ref mut a, _)) => a,
+                _ => { return; },
+            };
+            let b1 = match x {
+                Option::Some((_, ref mut b)) => b,
+                _ => { return; },
+            };
+            *a1 = 11;
+            *b1 = 12;
+            assert(x === Option::Some((11, 12)));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

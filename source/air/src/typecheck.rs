@@ -14,7 +14,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 pub(crate) type Declared = Arc<DeclaredX>;
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum DeclaredX {
     Type,
     Var { typ: Typ, mutable: bool },

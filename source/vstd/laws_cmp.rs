@@ -44,11 +44,17 @@ pub open spec fn obeys_cmp_ord<T: Ord>() -> bool {
         x.partial_cmp_spec(&y) == Some(x.cmp_spec(&y))
 }
 
-pub open spec fn obeys_cmp_spec<T: Ord>() -> bool {
-    &&& obeys_eq_spec::<T>()
+pub open spec fn obeys_cmp<T: Ord>() -> bool {
+    &&& obeys_eq::<T>()
     &&& obeys_cmp_partial_ord::<T>()
     &&& obeys_cmp_ord::<T>()
     &&& obeys_partial_cmp_spec_properties::<T>()
+}
+
+#[deprecated(note = "`laws_cmp::obeys_cmp_spec` has been renamed to `laws_cmp::obeys_cmp`")]
+#[verifier::inline]
+pub open spec fn obeys_cmp_spec<T: Ord>() -> bool {
+    obeys_cmp::<T>()
 }
 
 macro_rules! num_laws_cmp {
@@ -59,14 +65,14 @@ macro_rules! num_laws_cmp {
 
             pub broadcast proof fn lemma_obeys_cmp_spec()
                 ensures
-                    #[trigger] obeys_cmp_spec::<$n>(),
+                    #[trigger] obeys_cmp::<$n>(),
             {
                 broadcast use group_laws_eq;
                 reveal(obeys_eq_spec_properties);
                 reveal(obeys_partial_cmp_spec_properties);
                 reveal(obeys_cmp_partial_ord);
                 reveal(obeys_cmp_ord);
-                assert(obeys_eq_spec::<$n>());
+                assert(obeys_eq::<$n>());
             }
         }
         }
@@ -99,13 +105,13 @@ num_laws_cmp!(isize, isize_laws);
 
 pub broadcast proof fn lemma_ref_obeys_cmp_spec<T: Ord>()
     requires
-        obeys_cmp_spec::<T>(),
+        obeys_cmp::<T>(),
     ensures
-        #[trigger] obeys_cmp_spec::<&T>(),
+        #[trigger] obeys_cmp::<&T>(),
 {
     broadcast use lemma_ref_obeys_eq_spec;
 
-    assert(obeys_eq_spec::<&T>());
+    assert(obeys_eq::<&T>());
 
     assert(obeys_cmp_partial_ord::<&T>() && obeys_cmp_ord::<&T>()) by {
         reveal(obeys_cmp_partial_ord);
@@ -120,13 +126,13 @@ pub broadcast proof fn lemma_ref_obeys_cmp_spec<T: Ord>()
 
 pub broadcast proof fn lemma_option_obeys_cmp_spec<T: Ord>()
     requires
-        obeys_cmp_spec::<T>(),
+        obeys_cmp::<T>(),
     ensures
-        #[trigger] obeys_cmp_spec::<Option<T>>(),
+        #[trigger] obeys_cmp::<Option<T>>(),
 {
     broadcast use lemma_option_obeys_eq_spec;
 
-    assert(obeys_eq_spec::<Option<T>>());
+    assert(obeys_eq::<Option<T>>());
 
     assert(obeys_cmp_partial_ord::<Option<T>>() && obeys_cmp_ord::<Option<T>>()) by {
         reveal(obeys_cmp_partial_ord);

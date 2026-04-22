@@ -325,7 +325,7 @@ test_verify_one_file! {
         spec fn test() -> bool {
             call_requires(foo, ())
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::foo` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::foo` which is ignored")
 }
 
 test_verify_one_file! {

@@ -143,7 +143,7 @@ fn split_off_proof_note_attrs(attrs: Vec<Attribute>) -> (Vec<Attribute>, Vec<Att
     let (mut proof_note_attrs, other_attrs): (Vec<Attribute>, Vec<Attribute>) =
         attrs.into_iter().partition(|attr| {
             path_matches_idents(&attr.path(), &["verifier", "proof_note"])
-                || path_matches_idents(&attr.path(), &["verifier", "proof_note_custom_err"])
+                || path_matches_idents(&attr.path(), &["verifier", "custom_err"])
         });
     for attr in &mut proof_note_attrs {
         attr.style = verus_syn::AttrStyle::Outer;
@@ -541,6 +541,7 @@ impl Visitor {
         fn_ident: &Ident,
         generics: Option<impl ToTokens>,
         inputs: (Option<impl ToTokens>, impl ToTokens), // optional self and args
+        is_async_fn: bool,                              // is the function an async function
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
         let recommends = self.take_ghost(&mut spec.recommends);
@@ -719,7 +720,11 @@ impl Visitor {
                                         }
                                     }
                                 };
-                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #receiver_token#fn_ident#generics_token(#args)))
+                                if is_async_fn {
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #verus_builtin::get_future_output_type(#receiver_token#fn_ident#generics_token(#args))))
+                                } else {
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #receiver_token#fn_ident#generics_token(#args)))
+                                }
                             };
                             let contrain_typ_expr = Expr::Verbatim(constrain_type);
                             spec_stmts.push(Stmt::Expr(
@@ -1061,6 +1066,7 @@ impl Visitor {
             &sig.ident,
             verus_generic_to_tokens(&sig.generics),
             verus_inputs_to_tokens(&sig.inputs),
+            sig.asyncness.is_some(),
         );
         if !self.erase_ghost.erase() {
             if !(self.rustdoc && sig.constness.is_some()) {
@@ -5153,6 +5159,7 @@ pub(crate) fn sig_specs_attr(
         &sig.ident,
         generic_to_tokens(&sig.generics),
         inputs_to_tokens(&sig.inputs),
+        sig.asyncness.is_some(),
     ));
     spec_stmts
 }
@@ -5362,24 +5369,30 @@ pub(crate) fn proof_macro_explicit_exprs(
     proc_macro::TokenStream::from(new_stream)
 }
 
-pub(crate) fn has_external_code(attrs: &Vec<Attribute>) -> bool {
-    attrs.iter().any(|attr| {
-        // verifier::external
-        attr.path().segments.len() == 2
-            && attr.path().segments[0].ident == "verifier"
-            && (attr.path().segments[1].ident == "external"
-                || attr.path().segments[1].ident == "external_body")
-        // verifier(external)
-        || attr.path().segments.len() == 1
-            && attr.path().segments[0].ident == "verifier"
-            && match &attr.meta {
-                verus_syn::Meta::List(list) => {
-                    matches!(list.tokens.to_string().as_str(), "external" | "external_body")
-                }
-                _ => false,
-            }
-    })
+macro_rules! declare_has_external_code {
+    ($name:ident, $s:ident) => {
+        pub(crate) fn $name(attrs: &Vec<$s::Attribute>) -> bool {
+            attrs.iter().any(|attr| {
+                // verifier::external
+                attr.path().segments.len() == 2
+                    && attr.path().segments[0].ident == "verifier"
+                    && (attr.path().segments[1].ident == "external"
+                        || attr.path().segments[1].ident == "external_body")
+                // verifier(external) or verus_verify(external)
+                || attr.path().segments.len() == 1
+                    && matches!(attr.path().segments[0].ident.to_string().as_str(), "verifier" | "verus_verify")
+                    && match &attr.meta {
+                        $s::Meta::List(list) => {
+                            matches!(list.tokens.to_string().as_str(), "external" | "external_body")
+                        }
+                        _ => false,
+                    }
+            })
+        }
+    };
 }
+declare_has_external_code!(has_external_code, verus_syn);
+declare_has_external_code!(has_external_code_syn, syn);
 
 pub(crate) fn is_encoded_const(attrs: &Vec<Attribute>) -> bool {
     attrs.iter().any(|attr| match &attr.meta {
@@ -5675,7 +5688,7 @@ fn check_return_idents(
 }
 
 /// In VIR there's the same check, but Rustc will complain first, and throw out
-/// some errors about "constrain_type", which ar confusing and the users should not see.
+/// some errors about "constrain_type", which are confusing and the users should not see.
 /// Instead we give an early error with nice error msg here.
 fn check_verus_return_idents(
     ret_pat: &Pat,

@@ -47,16 +47,16 @@ impl PathX {
 
     pub fn is_rust_std_path(&self) -> bool {
         match &self.krate {
-            Some(k) if &**k == "std" || &**k == "alloc" || &**k == "core" => true,
-            _ => false,
+            CrateId::Internal => false,
+            CrateId::Core => true,
+            CrateId::Alloc => true,
+            CrateId::Vstd => false,
+            CrateId::Id(x, _) => x.as_str() == "std",
         }
     }
 
     pub fn is_vstd_path(&self) -> bool {
-        match &self.krate {
-            Some(k) if &**k == "vstd" => true,
-            _ => false,
-        }
+        self.krate == CrateId::Vstd
     }
 }
 
@@ -76,12 +76,27 @@ pub fn parse_path_segments_from_user_str(s: &str) -> Result<Idents, crate::ast::
     Ok(Arc::new(arg_segments))
 }
 
+impl fmt::Display for CrateId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CrateId::Internal => write!(f, "crate"),
+            CrateId::Core => write!(f, "core"),
+            CrateId::Alloc => write!(f, "alloc"),
+            CrateId::Vstd => write!(f, "vstd"),
+            CrateId::Id(x, _) => write!(f, "{}", x),
+        }
+    }
+}
+
+impl fmt::Debug for CrateId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <CrateId as fmt::Display>::fmt(self, f)
+    }
+}
+
 impl fmt::Debug for PathX {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.krate {
-            None => write!(f, "Path(None, [")?,
-            Some(k) => write!(f, "Path(Some({:?}), [", k)?,
-        }
+        write!(f, "Path({:?}, [", &self.krate)?;
         for (i, s) in self.segments.iter().enumerate() {
             if i == 0 {
                 write!(f, "{:?}", s)?;
@@ -397,10 +412,7 @@ pub(crate) fn dt_as_friendly_rust_name_raw(dt: &Dt) -> String {
 }
 
 pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
-    let krate = match &path.krate {
-        None => "crate".to_string(),
-        Some(krate) => crate::def::krate_to_string(krate),
-    };
+    let krate = crate::def::krate_to_string_ignore_stable_id(&path.krate);
     let mut strings: Vec<String> = vec![krate];
     for segment in path.segments.iter() {
         strings.push(segment.to_string());
@@ -424,12 +436,12 @@ pub fn set_path_as_rust_name(path: &Path, friendly: &Path) {
     }
 }
 
-pub fn get_path_as_rust_names_for_krate(krate: &Ident) -> Vec<(Path, String)> {
+pub fn get_path_as_rust_names_for_krate(krate: &CrateId) -> Vec<(Path, String)> {
     let mut v: Vec<(Path, String)> = Vec::new();
     if let Ok(guard) = PATH_AS_RUST_NAME_MAP.lock() {
         if let Some(map) = &*guard {
             for (path, name) in map {
-                if &path.krate == &Some(krate.clone()) {
+                if &path.krate == krate {
                     v.push((path.clone(), name.clone()));
                 }
             }
@@ -909,7 +921,6 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
 pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<ProofNoteLabel> {
     match &expr.x {
         // NOTE: `UnaryOpr::Box` and `Unbox` not relevant; only introduced later in `ast_to_sst`.
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => ast_expr_get_proof_note(e),
         ExprX::UnaryOpr(UnaryOpr::ProofNote(label), _) => Some(label.clone()),
         _ => None,
     }
@@ -1224,9 +1235,9 @@ impl MaskSpec {
 
 #[macro_export]
 macro_rules! path {
-    [ $krate:literal => $( $segment:literal ),* ] => {
+    [ $krate:expr => $( $segment:literal ),* ] => {
         ::std::sync::Arc::new($crate::ast::PathX {
-            krate: ::std::option::Option::Some(::std::sync::Arc::new($krate.into())),
+            krate: $krate,
             segments: ::std::sync::Arc::new(
                 ::std::vec![
                     $(
@@ -1240,7 +1251,7 @@ macro_rules! path {
 
 #[macro_export]
 macro_rules! fun {
-    [ $krate:literal => $( $segment:literal ),* ] => {
+    [ $krate:expr => $( $segment:literal ),* ] => {
         Arc::new($crate::ast::FunX { path: $crate::path!($krate => $($segment),*) })
     };
 }
@@ -1485,9 +1496,18 @@ impl fmt::Display for ClosureKind {
 impl ClosureKind {
     pub(crate) fn trait_path(&self) -> Path {
         match self {
-            ClosureKind::Fn => crate::path!["core" => "ops", "function", "Fn"],
-            ClosureKind::FnMut => crate::path!["core" => "ops", "function", "FnMut"],
-            ClosureKind::FnOnce => crate::path!["core" => "ops", "function", "FnOnce"],
+            ClosureKind::Fn => crate::path![CrateId::Core => "ops", "function", "Fn"],
+            ClosureKind::FnMut => crate::path![CrateId::Core => "ops", "function", "FnMut"],
+            ClosureKind::FnOnce => crate::path![CrateId::Core => "ops", "function", "FnOnce"],
+        }
+    }
+}
+
+impl AssertQueryMode {
+    pub(crate) fn name(&self) -> &'static str {
+        match self {
+            AssertQueryMode::NonLinear => "nonlinear_arith",
+            AssertQueryMode::BitVector => "bit_vector",
         }
     }
 }

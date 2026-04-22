@@ -1,7 +1,6 @@
 verus_git_url = "https://github.com/verus-lang/verus.git"
 verus_refspec = "main"
-verus_features = ["singular"]
-verus_extra_verus_args = ["--no-report-long-running"]
+verus_extra_args = ["--no-report-long-running"]
 
 # Successes
 
@@ -41,7 +40,7 @@ extra_verus_args = [
 prepare_script = """
 pushd test_libc
 cargo clean
-cargo +1.94.0 build --release
+cargo +1.95.0 build --release
 popd
 LIBC_RLIB_NAME=$(find ./test_libc/target/release/deps/ -name 'liblibc-*.rlib')
 mkdir -p build
@@ -51,7 +50,7 @@ prepare_script_windows = """
 $ErrorActionPreference = 'Stop'
 Push-Location test_libc
 cargo clean
-cargo +1.94.0 build --release
+cargo +1.95.0 build --release
 Pop-Location
 $libcRlib = Get-ChildItem -Path "./test_libc/target/release/deps/" -Filter "liblibc-*.rlib" | Select-Object -First 1
 New-Item -ItemType Directory -Path "build" -Force | Out-Null
@@ -74,11 +73,8 @@ cargo install vest
 
 [[project]]
 name = "human-eval"
-#TODO: restore original git_url, refspec:
-#git_url = "https://github.com/secure-foundations/human-eval-verus.git"
-#refspec = "main"
-git_url = "https://github.com/Chris-Hawblitzel/human-eval-verus.git"
-refspec = "origin/rlimit"
+git_url = "https://github.com/secure-foundations/human-eval-verus.git"
+refspec = "main"
 crate_roots = ["tasks/lib.rs"]
 extra_verus_args = ["--crate-type=lib"]
 
@@ -91,6 +87,21 @@ refspec = "main"
 crate_roots = ["page-table/src/lib.rs"]
 extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"impl\""]
 
+[[project]]
+name = "svsm"
+git_url = "https://github.com/ziqiaozhou/svsm.git"
+refspec = "cargo-verus"
+cargo_verus = true
+extra_cargo_args = ["--features", "verus"]
+crate_roots = ["kernel"]
+
+# This project has Cargo.lock and need to do cargo update after patching verus libs.
+prepare_script = """
+git submodule init
+git submodule update
+cargo update
+rustup target add x86_64-unknown-none --toolchain 1.95.0
+"""
 
 # Fails 
 
@@ -109,14 +120,14 @@ extra_verus_args = ["--crate-type=lib",
 prepare_script = """
 pushd src/deps_hack
 cargo clean
-cargo +1.94.0 build
+cargo +1.95.0 build
 popd
 """
 prepare_script_windows = """
 $ErrorActionPreference = 'Stop'
 Push-Location src/deps_hack
 cargo clean
-cargo +1.94.0 build
+cargo +1.95.0 build
 Pop-Location
 """
 

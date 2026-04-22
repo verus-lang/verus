@@ -33,11 +33,11 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArrayKind, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
-    BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX,
-    FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
-    ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place, PlaceX, Quant, Typ,
-    TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck,
-    VirErr,
+    BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
+    Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
+    IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place,
+    PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX,
+    VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -154,6 +154,9 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         }
     }
 
+    // Verus attributes are `Unparsed` where get_all_attrs is acceptable per its
+    // deprecation message.
+    #[allow(deprecated)]
     let f_attrs = bctx.ctxt.tcx.get_all_attrs(f);
     if crate::attributes::is_get_field_many_variants(
         f_attrs,
@@ -1330,7 +1333,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             mk_expr(ExprX::AssertAssumeUserDefinedTypeInvariant {
                 is_assume: true,
                 expr: exp,
-                fun: vir::fun!("" => "use_type_invariant_fake_placeholder_fun"),
+                fun: vir::fun!(CrateId::Internal => "use_type_invariant_fake_placeholder_fun"),
             })
         }
         VerusItem::WithTriggers => {
@@ -2063,6 +2066,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     BuiltinSpecFun::ClosureEns
                 }
                 BuiltinFunctionItem::ConstrainType => unreachable!(),
+                BuiltinFunctionItem::GetFutureOutputType => unreachable!(),
             };
 
             let vir_args = args
@@ -2214,7 +2218,8 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::BuiltinTrait(_)
         | VerusItem::External(_)
         | VerusItem::Global(_)
-        | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType) => unreachable!(),
+        | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)
+        | VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType) => unreachable!(),
     }
 }
 

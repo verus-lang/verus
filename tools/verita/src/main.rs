@@ -329,7 +329,6 @@ fn process_target(
             "stderr": String::from_utf8_lossy(&output.stderr),
             "verus_git_url": ctx.run_configuration.verus_git_url,
             "verus_refspec": ctx.run_configuration.verus_refspec,
-            "verus_features": ctx.run_configuration.verus_features,
             "run_configuration": project,
             "verification_duration_ms": duration_ms_value,
             "z3_version": ctx.z3_version,

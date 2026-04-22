@@ -4,23 +4,25 @@ mod check_match;
 mod const_to_pat;
 mod migration;
 
-use std::assert_matches::assert_matches;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
 use rustc_abi::{FieldIdx, Integer};
+use rustc_ast::LitKind;
+use rustc_data_structures::assert_matches;
 use rustc_errors::codes::*;
 use rustc_hir::def::{CtorOf, DefKind, Res};
 use rustc_hir::pat_util::EnumerateAndAdjustIterator;
 use rustc_hir::{self as hir, RangeEnd};
 use rustc_index::Idx;
-use rustc_middle::mir::interpret::LitToConstInput;
 use rustc_middle::thir::{
     Ascription, DerefPatBorrowMode, FieldPat, LocalVarId, Pat, PatKind, PatRange, PatRangeBoundary,
 };
 use rustc_middle::ty::adjustment::{PatAdjust, PatAdjustment};
 use rustc_middle::ty::layout::IntegerExt;
-use rustc_middle::ty::{self, CanonicalUserTypeAnnotation, Ty, TyCtxt};
+use rustc_middle::ty::{
+    self, CanonicalUserTypeAnnotation, LitToConstInput, Ty, TyCtxt, const_lit_matches_ty,
+};
 use rustc_middle::{bug, span_bug};
 use rustc_span::ErrorGuaranteed;
 use tracing::{debug, instrument};
@@ -131,12 +133,16 @@ impl<'tcx> PatCtxt<'tcx> {
             debug!("{:?}: wrapping pattern with adjustment {:?}", thir_pat, adjust);
             let span = thir_pat.span;
             let kind = match adjust.kind {
-                PatAdjust::BuiltinDeref => PatKind::Deref { subpattern: thir_pat },
+                PatAdjust::BuiltinDeref => {
+                    PatKind::Deref { pin: hir::Pinnedness::Not, subpattern: thir_pat }
+                }
                 PatAdjust::OverloadedDeref => {
                     let borrow = self.typeck_results.deref_pat_borrow_mode(adjust.source, pat);
                     PatKind::DerefPattern { subpattern: thir_pat, borrow }
                 }
-                PatAdjust::PinDeref => PatKind::Deref { subpattern: thir_pat },
+                PatAdjust::PinDeref => {
+                    PatKind::Deref { pin: hir::Pinnedness::Pinned, subpattern: thir_pat }
+                }
             };
             Box::new(Pat { span, ty: adjust.source, kind, extra: None })
         });
@@ -192,8 +198,6 @@ impl<'tcx> PatCtxt<'tcx> {
         expr: Option<&'tcx hir::PatExpr<'tcx>>,
         ty: Ty<'tcx>,
     ) -> Result<(), ErrorGuaranteed> {
-        use rustc_ast::ast::LitKind;
-
         let Some(expr) = expr else {
             return Ok(());
         };
@@ -333,7 +337,7 @@ impl<'tcx> PatCtxt<'tcx> {
                 let borrow = self.typeck_results.deref_pat_borrow_mode(ty, subpattern);
                 PatKind::DerefPattern { subpattern: self.lower_pattern(subpattern), borrow }
             }
-            hir::PatKind::Ref(subpattern, _, _) => {
+            hir::PatKind::Ref(subpattern, pin, _) => {
                 // Track the default binding mode for the Rust 2024 migration suggestion.
                 let opt_old_mode_span =
                     self.rust_2024_migration.as_mut().and_then(|s| s.visit_explicit_deref());
@@ -341,7 +345,7 @@ impl<'tcx> PatCtxt<'tcx> {
                 if let Some(s) = &mut self.rust_2024_migration {
                     s.leave_ref(opt_old_mode_span);
                 }
-                PatKind::Deref { subpattern }
+                PatKind::Deref { pin, subpattern }
             }
             hir::PatKind::Box(subpattern) => PatKind::DerefPattern {
                 subpattern: self.lower_pattern(subpattern),
@@ -691,7 +695,17 @@ impl<'tcx> PatCtxt<'tcx> {
 
                 let pat_ty = self.typeck_results.node_type(pat.hir_id);
                 let lit_input = LitToConstInput { lit: lit.node, ty: pat_ty, neg: *negated };
-                let constant = self.tcx.at(expr.span).lit_to_const(lit_input);
+                let constant = const_lit_matches_ty(self.tcx, &lit.node, pat_ty, *negated)
+                    .then(|| self.tcx.at(expr.span).lit_to_const(lit_input))
+                    .flatten()
+                    .map(|v| ty::Const::new_value(self.tcx, v.valtree, pat_ty))
+                    .unwrap_or_else(|| {
+                        ty::Const::new_error_with_message(
+                            self.tcx,
+                            expr.span,
+                            "literal does not match expected type",
+                        )
+                    });
                 self.const_to_pat(constant, pat_ty, expr.hir_id, lit.span)
             }
         }

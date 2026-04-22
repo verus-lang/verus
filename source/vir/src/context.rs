@@ -1,11 +1,11 @@
 use crate::ast::{
-    ArchWordBits, Datatype, Dt, Fun, Function, FunctionAttrs, GenericBounds, Ident, ImplPath,
-    IntRange, Krate, Mode, Module, OpaqueType, Path, Primitive, Trait, TraitImpl, TypPositives,
-    TypX, Variants, VirErr,
+    ArchWordBits, CrateId, Datatype, Dt, Fun, Function, FunctionAttrs, GenericBounds, Ident,
+    ImplPath, IntRange, Krate, Mode, Module, OpaqueType, Path, Primitive, Trait, TraitImpl,
+    TypPositives, TypX, Variants, VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
-use crate::def::FUEL_ID;
+use crate::def::{FUEL_ID, NameCtxt};
 use crate::messages::{Span, error};
 use crate::poly::MonoTyp;
 use crate::recursion::Node;
@@ -56,8 +56,7 @@ pub struct GlobalCtx {
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
     pub(crate) func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
     pub arch: crate::ast::ArchWordBits,
-    pub crate_name: Ident,
-    pub vstd_crate_name: Ident,
+    pub crate_name: CrateId,
     pub solver: SmtSolver,
     pub check_api_safety: bool,
     pub axiom_usage_info: bool,
@@ -109,6 +108,7 @@ pub struct Ctx {
     pub(crate) datatype_map: HashMap<Dt, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
     pub(crate) impl_map: HashMap<Path, TraitImpl>,
+    pub name_ctxt: NameCtxt,
     pub fun: Option<FunctionCtx>,
     pub global: GlobalCtx,
     // In the very unlikely case where we get sha512 collisions
@@ -276,7 +276,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> GraphBuilder<T> {
 impl GlobalCtx {
     pub fn new(
         krate: &Krate,
-        crate_name: Ident,
+        crate_name: CrateId,
         no_span: Span,
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
@@ -493,7 +493,7 @@ impl GlobalCtx {
         for module in &krate.modules {
             let module_reveal_node = Node::ModuleReveal(module.x.path.clone());
             func_call_graph.add_node(module_reveal_node.clone());
-            if module.x.path.krate == Some(crate_name.clone()) {
+            if module.x.path.krate == crate_name {
                 func_call_graph.add_edge(module_reveal_node.clone(), crate_node.clone());
             }
             if let Some(ref reveals) = module.x.reveals {
@@ -615,9 +615,9 @@ impl GlobalCtx {
             }
 
             fn nostd_filter(n: &Node) -> (bool, bool) {
-                fn is_not_std_crate(crate_name: &Option<Ident>) -> bool {
-                    match crate_name.as_ref().map(|x| x.as_str()) {
-                        Some("vstd") | Some("core") | Some("alloc") => false,
+                fn is_not_std_crate(crate_name: &CrateId) -> bool {
+                    match crate_name {
+                        CrateId::Core | CrateId::Alloc | CrateId::Vstd => false,
                         _ => true,
                     }
                 }
@@ -634,7 +634,7 @@ impl GlobalCtx {
                     Node::TraitReqEns(ImplPath::TraitImplPath(path), _) => is_not_std(path),
                     Node::TraitReqEns(ImplPath::FnDefImplPath(fun), _) => is_not_std(&fun.path),
                     Node::ModuleReveal(path) => is_not_std(path),
-                    Node::Crate(c) => is_not_std_crate(&Some(c.clone())),
+                    Node::Crate(c) => is_not_std_crate(c),
                     Node::SpanInfo { .. } => true,
                 };
                 (render, render && !matches!(n, Node::SpanInfo { .. }))
@@ -677,7 +677,6 @@ impl GlobalCtx {
         let qid_map = RefCell::new(HashMap::new());
 
         let datatype_graph = crate::recursive_types::build_datatype_graph(krate, &mut span_infos);
-        let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
 
         Ok(GlobalCtx {
             chosen_triggers,
@@ -696,7 +695,6 @@ impl GlobalCtx {
             interpreter_log,
             arch: krate.arch.word_bits,
             crate_name,
-            vstd_crate_name,
             func_call_graph_log,
             solver,
             check_api_safety,
@@ -729,7 +727,6 @@ impl GlobalCtx {
             interpreter_log,
             arch: self.arch,
             crate_name: self.crate_name.clone(),
-            vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
             solver: self.solver.clone(),
             check_api_safety: self.check_api_safety,
@@ -771,6 +768,7 @@ impl Ctx {
         resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
         debug: bool,
     ) -> Result<Self, VirErr> {
+        let name_ctxt = NameCtxt::new();
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
             datatype_is_transparent
@@ -784,7 +782,8 @@ impl Ctx {
         let funcs_with_ensure_predicate: HashMap<Fun, bool> = HashMap::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
-            fun_ident_map.insert(fun_to_air_ident(&function.x.name), function.x.name.clone());
+            fun_ident_map
+                .insert(fun_to_air_ident(&name_ctxt, &function.x.name), function.x.name.clone());
             functions.push(function.clone());
         }
         let mut datatype_map: HashMap<Dt, Datatype> = HashMap::new();
@@ -801,7 +800,8 @@ impl Ctx {
         }
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
-        fun_ident_map.extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&g), g.clone())));
+        fun_ident_map
+            .extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&name_ctxt, &g), g.clone())));
         let quantifier_count = Cell::new(0);
         let string_hashes = RefCell::new(HashMap::new());
 
@@ -836,6 +836,7 @@ impl Ctx {
             datatype_map,
             trait_map,
             impl_map,
+            name_ctxt,
             fun: None,
             global,
             string_hashes,
@@ -849,8 +850,8 @@ impl Ctx {
         self.global
     }
 
-    pub fn prelude(prelude_config: crate::prelude::PreludeConfig) -> Commands {
-        let nodes = crate::prelude::prelude_nodes(prelude_config);
+    pub fn prelude(&self, prelude_config: crate::prelude::PreludeConfig) -> Commands {
+        let nodes = crate::prelude::prelude_nodes(&self.name_ctxt, prelude_config);
         air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
             .nodes_to_commands(&nodes)
             .expect("internal error: malformed prelude")
@@ -876,7 +877,7 @@ impl Ctx {
             names.push(group.x.name.clone());
         }
         for name in names {
-            let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&name));
+            let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&self.name_ctxt, &name));
             ids.push(air::ast_util::ident_var(&id));
             let decl = Arc::new(DeclX::Const(id, str_typ(&FUEL_ID)));
             commands.push(Arc::new(CommandX::Global(decl)));
