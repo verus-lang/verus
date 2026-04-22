@@ -207,5 +207,5 @@ for k in iter: m.keys()      // iterator created inline
 The old system required two types (one exec, one ghost) and multiple trait implementations
 to construct your own iterator type.
 
-The new system requires only one type to define the iterator type and an implementation
-of the `IteratorSpecImpl` trait.  See the new docs for details.
+The new system only requires defining one type, and having that type implement
+the `IteratorSpecImpl` trait.  See the [new docs for details](guide/src/iterator-specs.md).
