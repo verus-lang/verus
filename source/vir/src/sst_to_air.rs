@@ -1228,7 +1228,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     Arc::new(exprs),
                 ))
             }
-            UnaryOpr::ProofNote(_) => {
+            UnaryOpr::ProofNote(_) | UnaryOpr::CustomErr(_) => {
                 // A `proof_note` label is metadata and has no effect otherwise.
                 return exp_to_expr(ctx, e, expr_ctxt);
             }
