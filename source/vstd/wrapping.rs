@@ -11,8 +11,10 @@ macro_rules! wrapping_specs {
     ([$(($uN: ty, $iN: ty, $modname_u:ident, $modname_i:ident, $range:expr, $bits:expr),)*]) => {
         $(
             verus! {
+
             pub mod $modname_u {
                 use super::*;
+
                 pub open spec fn wrapping_add(x: $uN, y: $uN) -> $uN {
                     if x + y > <$uN>::MAX {
                         (x + y - $range) as $uN
@@ -53,6 +55,7 @@ macro_rules! wrapping_specs {
             }
             pub mod $modname_i {
                 use super::*;
+
                 pub open spec fn wrapping_add(x: $iN, y: $iN) -> $iN {
                     if x + y > <$iN>::MAX {
                         (x + y - $range) as $iN
@@ -80,6 +83,7 @@ macro_rules! wrapping_specs {
                         (x - y) as $iN
                     }
                 }
+
                 pub open spec fn signed_crop(x: int) -> $iN {
                     if (x % ($range as int)) > (<$iN>::MAX as int) {
                         ((x % ($range as int)) - $range) as $iN
@@ -101,7 +105,7 @@ macro_rules! wrapping_specs {
 
             }
         }
-            )*
+        )*
     }
 }
 wrapping_specs!([
