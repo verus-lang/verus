@@ -3922,10 +3922,24 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 Ok(vec![bctx.spanned_new(stmt.span, StmtX::Expr(vir_expr))])
             } else {
                 let item = bctx.ctxt.tcx.hir_item(*item_id);
-                if matches!(&item.kind, ItemKind::Use(..) | ItemKind::Macro(..)) {
-                    return Ok(vec![]);
+                match &item.kind {
+                    ItemKind::Use(..) | ItemKind::Macro(..) => {
+                        return Ok(vec![]);
+                    }
+                    ItemKind::Struct(..) | ItemKind::Enum(..) => {
+                        // Nested datatypes are handled elsewhere as standalone items
+                        // It doesn't matter that they also appear here as statements
+                        return Ok(vec![]);
+                    }
+                    ItemKind::Fn { .. } | ItemKind::Const(..) => {
+                        // Nested functions and constants are handled elsewhere as standalone items
+                        // It doesn't matter that they also appear here as statements
+                        return Ok(vec![]);
+                    }
+                    _ => {
+                        unsupported_err!(stmt.span, "internal item statements", stmt)
+                    }
                 }
-                unsupported_err!(stmt.span, "internal item statements", stmt)
             }
         }
         StmtKind::Let(LetStmt { pat, ty: _, init, els, .. }) => {
