@@ -212,7 +212,7 @@ test_verify_one_file! {
     TOKEN_LIB.to_owned() + verus_code_str! {
         pub fn atomic_function()
             atomically (atomic_update) {
-                (x: &Token) -> (y: I<&Token>),
+                (x: &Token) -> (y: Commit<&Token>),
                 requires x.is_valid(),
                 ensures true,
             },
@@ -222,7 +222,7 @@ test_verify_one_file! {
 
             let res = try_open_atomic_update!(atomic_update, token => {
                 proof { escape = token };
-                Tracked(I(token))
+                Tracked(Commit(token))
             });
 
             proof { escape.visit() };
@@ -506,14 +506,14 @@ test_verify_one_file! {
         pub exec fn atomic_function() -> (out: u32)
             atomically (au) {
                 type FunctionPred,
-                (x: u32) -> (y: I<u32>),
+                (x: u32) -> (y: Commit<u32>),
                 requires x == 2,
                 ensures y@ == 3,
             },
             ensures out == x + y@,
         {
             try_open_atomic_update!(au, value => {
-                Tracked(I((value + 1_u32) as u32))
+                Tracked(Commit((value + 1_u32) as u32))
             });
 
             assert(au.input() == 2);
@@ -534,7 +534,7 @@ test_verify_one_file! {
         pub exec fn atomic_function() -> (out: u32)
             atomically (au) {
                 type FunctionPred,
-                (x: u32) -> (y: I<u32>),
+                (x: u32) -> (y: Commit<u32>),
                 ensures x < y@,
             },
             ensures out == y@,
@@ -550,7 +550,7 @@ test_verify_one_file! {
             let out = atomic_function() atomically |update|
                 invariant value == 5,
             {
-                let tracked I(next) = update(value);
+                let tracked Commit(next) = update(value);
                 value = next;
                 break;
             };
@@ -566,7 +566,7 @@ test_verify_one_file! {
         pub exec fn atomic_function()
             atomically (au) {
                 type FunctionPred,
-                (x: Token) -> (y: I<Token>),
+                (x: Token) -> (y: Commit<Token>),
             },
             requires au.resolves(), // !!!
         {}
@@ -576,8 +576,8 @@ test_verify_one_file! {
             let tracked mut token = Token::new();
             atomic_function() atomically |update| -> (au) {
                 assert(au.req(token));
-                let tracked I(new_token) = update(token);
-                assert(au.ens(token, I(new_token)));
+                let tracked Commit(new_token) = update(token);
+                assert(au.ens(token, Commit(new_token)));
                 assert(au.resolves());
                 break
             };

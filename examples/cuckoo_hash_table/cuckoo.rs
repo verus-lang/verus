@@ -594,7 +594,7 @@ impl MyHashMap {
     pub fn read(&self, key: Key) -> (value: Option<Value>)
         atomically (au) {
             type ReadPred,
-            (mpt: MPointsTo) -> (new_mpt: I<MPointsTo>),
+            (mpt: MPointsTo) -> (new_mpt: Commit<MPointsTo>),
             requires
                 key == mpt.key(),
                 self.id() == mpt.instance_id(),
@@ -640,7 +640,7 @@ impl MyHashMap {
                             &mpt,
                             &handle1x.borrow().rows.tracked_borrow(h1x as nat).token);
                     }
-                    Tracked(I(mpt))
+                    Tracked(Commit(mpt))
                 });
 
                 let value = entry.unwrap().1;
@@ -670,7 +670,7 @@ impl MyHashMap {
                             &mpt,
                             &handle2x.borrow().rows.tracked_borrow(h2x as nat).token);
                     }
-                    Tracked(I(mpt))
+                    Tracked(Commit(mpt))
                 });
 
                 let value = entry.unwrap().1;
@@ -694,7 +694,7 @@ impl MyHashMap {
                         &handle1x.borrow().rows.tracked_borrow(h1x as nat).token);
                  }
             }
-            Tracked(I(mpt))
+            Tracked(Commit(mpt))
         });
 
         handle1x.release_read();
@@ -705,7 +705,7 @@ impl MyHashMap {
     pub fn delete(&self, key: Key)
         atomically (au) {
             type DeletePred,
-            (mpt: MPointsTo) -> (new_mpt: I<MPointsTo>),
+            (mpt: MPointsTo) -> (new_mpt: Commit<MPointsTo>),
             requires
                 key == mpt.key(),
                 self.id() == mpt.instance_id(),
@@ -752,7 +752,7 @@ impl MyHashMap {
                         mpt = mpt0;
                         r.token = tok0;
                     }
-                    Tracked(I(mpt))
+                    Tracked(Commit(mpt))
                 });
 
                 let mut entry = *self.matrix[h1x].borrow(Tracked(&r.pt));
@@ -793,7 +793,7 @@ impl MyHashMap {
                         mpt = mpt0;
                         r.token = tok0;
                     }
-                    Tracked(I(mpt))
+                    Tracked(Commit(mpt))
                 });
 
                 let mut entry = *self.matrix[h2x].borrow(Tracked(&r.pt));
@@ -824,7 +824,7 @@ impl MyHashMap {
                         &lock1x.rows.tracked_borrow(h1x as nat).token);
                  }
             }
-            Tracked(I(mpt))
+            Tracked(Commit(mpt))
         });
 
         handle1x.release_write(Tracked(lock1x));
@@ -836,7 +836,7 @@ impl MyHashMap {
     pub fn insert(&self, key: Key, new_val: Value) -> (success: bool)
         atomically (au) {
             type InsertPred,
-            (mpt: MPointsTo) -> (new_mpt: I<MPointsTo>),
+            (mpt: MPointsTo) -> (new_mpt: Commit<MPointsTo>),
             requires
                 key == mpt.key(),
                 self.id() == mpt.instance_id(),
@@ -887,7 +887,7 @@ impl MyHashMap {
                         mpt = mpt0;
                         r.token = tok0;
                     }
-                    Tracked(I(mpt))
+                    Tracked(Commit(mpt))
                 });
 
                 let mut entry = *self.matrix[h1x].borrow(Tracked(&r.pt));
@@ -929,7 +929,7 @@ impl MyHashMap {
                         mpt = mpt0;
                         r.token = tok0;
                     }
-                    Tracked(I(mpt))
+                    Tracked(Commit(mpt))
                 });
 
                 let mut entry = *self.matrix[h2x].borrow(Tracked(&r.pt));
@@ -974,7 +974,7 @@ impl MyHashMap {
                         mpt = mpt0;
                         r.token = tok0;
                     }
-                    Tracked(I(mpt))
+                    Tracked(Commit(mpt))
                 });
 
                 let mut entry = *self.matrix[h1x].borrow(Tracked(&r.pt));
@@ -1017,7 +1017,7 @@ impl MyHashMap {
                         mpt = mpt0;
                         r.token = tok0;
                     }
-                    Tracked(I(mpt))
+                    Tracked(Commit(mpt))
                 });
 
                 let mut entry = *self.matrix[h2x].borrow(Tracked(&r.pt));
@@ -1107,7 +1107,7 @@ impl MyHashMap {
             }
             if i == 0 {
                 main_handle.release_write(Tracked(()));
-                try_open_atomic_update!(au, mpt => { Tracked(I(mpt)) });
+                try_open_atomic_update!(au, mpt => { Tracked(Commit(mpt)) });
                 return false;
             }
             i -= 1;
@@ -1182,7 +1182,7 @@ impl MyHashMap {
                         mpt = mpt0;
                         r.token = tok0;
                     }
-                    Tracked(I(mpt))
+                    Tracked(Commit(mpt))
                 });
 
                 let mut entry = *self.matrix[h1x].borrow(Tracked(&r.pt));
@@ -1224,7 +1224,7 @@ impl MyHashMap {
                         mpt = mpt0;
                         r.token = tok0;
                     }
-                    Tracked(I(mpt))
+                    Tracked(Commit(mpt))
                 });
 
                 let mut entry = *self.matrix[h2x].borrow(Tracked(&r.pt));
@@ -1268,7 +1268,7 @@ impl MyHashMap {
                         mpt = mpt0;
                         r.token = tok0;
                     }
-                    Tracked(I(mpt))
+                    Tracked(Commit(mpt))
                 });
 
                 let mut entry = *self.matrix[h1x].borrow(Tracked(&r.pt));
@@ -1311,7 +1311,7 @@ impl MyHashMap {
                         mpt = mpt0;
                         r.token = tok0;
                     }
-                    Tracked(I(mpt))
+                    Tracked(Commit(mpt))
                 });
 
                 let mut entry = *self.matrix[h2x].borrow(Tracked(&r.pt));
@@ -1332,7 +1332,7 @@ impl MyHashMap {
         }
 
         // Again, this shouldn't happen
-        try_open_atomic_update!(au, mpt => { Tracked(I(mpt)) });
+        try_open_atomic_update!(au, mpt => { Tracked(Commit(mpt)) });
         false
     }
 
@@ -1449,9 +1449,8 @@ impl MyHashMap {
     }
 }
 
-pub type ReadAU = AtomicUpdate<MPointsTo, I<MPointsTo>, ReadPred>;
-pub type InsertAU = AtomicUpdate<MPointsTo, I<MPointsTo>, InsertPred>;
-pub type DeleteAU = AtomicUpdate<MPointsTo, I<MPointsTo>, DeletePred>;
+pub type ReadAU = AtomicUpdate<MPointsTo, Commit<MPointsTo>, ReadPred>;
+pub type InsertAU = AtomicUpdate<MPointsTo, Commit<MPointsTo>, InsertPred>;
+pub type DeleteAU = AtomicUpdate<MPointsTo, Commit<MPointsTo>, DeletePred>;
 
 }
-

@@ -668,7 +668,7 @@ verus! {
 /// To this end, we require the output type of the atomic update (named `AY` above) to implement the [`UpdateTry`] trait.
 ///
 /// The most canonical type for the output is [`Result`], where `Ok(..)` indicates the atomic update has been committed at the linearization point of the function, and `Err(..)` indicates that the atomic update has been aborted.
-/// In cases where the abort mechanism is undesirable, we provide a trivial wrapper type [`I`] which prevents the atomic update from being aborted.
+/// In cases where the abort mechanism is undesirable, we provide a trivial wrapper type [`Commit`] which prevents the atomic update from being aborted.
 ///
 /// # Opening the Atomic Update
 /// To open the atomic update, we use the [`try_open_atomic_update`] macro as follows:
@@ -865,9 +865,9 @@ impl<T, E> UpdateTry for Result<T, E> {
 ///
 /// This is useful for logically atomic functions which do not require an abort case.
 #[derive(Debug)]
-pub struct I<T>(pub T);
+pub struct Commit<T>(pub T);
 
-impl<T> I<T> {
+impl<T> Commit<T> {
     pub proof fn get(tracked self) -> (tracked out: T)
         ensures
             self@ == out,
@@ -876,7 +876,7 @@ impl<T> I<T> {
     }
 }
 
-impl<T> View for I<T> {
+impl<T> View for Commit<T> {
     type V = T;
 
     #[verifier::inline]
@@ -885,7 +885,7 @@ impl<T> View for I<T> {
     }
 }
 
-impl<T> UpdateTry for I<T> {
+impl<T> UpdateTry for Commit<T> {
     open spec fn branch(self) -> UpdateControlFlow {
         UpdateControlFlow::Commit
     }

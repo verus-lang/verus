@@ -9,8 +9,8 @@ use vstd::set::Set;
 
 verus! {
 
-type ReadAU = AtomicUpdate<FlagToken, I<FlagToken>, ReadPred>;
-type FlipAU = AtomicUpdate<FlagToken, I<FlagToken>, FlipPred>;
+type ReadAU = AtomicUpdate<FlagToken, Commit<FlagToken>, ReadPred>;
+type FlipAU = AtomicUpdate<FlagToken, Commit<FlagToken>, FlipPred>;
 
 pub enum Protocol {
     Empty(GhostVarAuth<Option<FlipAU>>),
@@ -130,7 +130,7 @@ impl Flag {
     pub fn read(&self) -> (out: bool)
         atomically (atomic_update) {
             type ReadPred,
-            (old_token: FlagToken) -> (new_token: I<FlagToken>),
+            (old_token: FlagToken) -> (new_token: Commit<FlagToken>),
             requires
                 old_token.id() == self.token_id(),
             ensures
@@ -151,7 +151,7 @@ impl Flag {
                 try_open_atomic_update!(atomic_update, token=> {
                     auth.agree(&token.value);
                     assert(value_perm.value() == token.value@);
-                    Tracked(I(token))
+                    Tracked(Commit(token))
                 });
 
                 v = (value_perm, pend_perm, auth, gv, proto);
@@ -164,7 +164,7 @@ impl Flag {
     pub fn flip(&self)
         atomically (atomic_update) {
             type FlipPred,
-            (old_token: FlagToken) -> (new_token: I<FlagToken>),
+            (old_token: FlagToken) -> (new_token: Commit<FlagToken>),
             requires
                 old_token.id() == self.token_id(),
             ensures
@@ -227,13 +227,13 @@ impl Flag {
                     try_open_atomic_update!(au, mut token => {
                         let ghost old_auth = auth@;
                         auth.update(&mut token.value, !old_auth);
-                        Tracked(I(token))
+                        Tracked(Commit(token))
                     });
 
                     try_open_atomic_update!(other_au.get(), mut token => {
                         let ghost old_auth = auth@;
                         auth.update(&mut token.value, !old_auth);
-                        Tracked(I(token))
+                        Tracked(Commit(token))
                     });
 
                     assert(gv@ is Some);
@@ -275,7 +275,7 @@ impl Flag {
                     try_open_atomic_update!(au, mut token => {
                         let ghost old_auth = auth@;
                         auth.update(&mut token.value, !old_auth);
-                        Tracked(I(token))
+                        Tracked(Commit(token))
                     });
                 }
 
@@ -298,7 +298,7 @@ impl Flag {
                     try_open_atomic_update!(au, mut token => {
                         let ghost old_auth = auth@;
                         auth.update(&mut token.value, !old_auth);
-                        Tracked(I(token))
+                        Tracked(Commit(token))
                     });
                 }
 
