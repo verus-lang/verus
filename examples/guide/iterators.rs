@@ -152,6 +152,54 @@ fn all_positive(v: &Vec<u8>) -> (b: bool)
 }
 // ANCHOR_END: usage_example
 
+// ANCHOR: build_range
+fn build_range(n: u32) -> (v: Vec<u32>)
+    ensures
+        v.len() == n,
+        forall|i: int| 0 <= i < n ==> v[i] == i,
+{
+    let mut v: Vec<u32> = Vec::new();
+    for i in r_iter: 0..n
+        invariant
+            v.len() == r_iter.index@,
+            forall|j: int| 0 <= j < v.len() ==> v[j] == r_iter.seq()[j],
+    {
+        v.push(i);
+    }
+    v
+}
+// ANCHOR_END: build_range
+
+// ANCHOR: no_binding
+fn sum_multiples_of_3() -> u64 {
+    let mut n: u64 = 0;
+    for x in 0..10
+        invariant n == x * 3,
+    {
+        n += 3;
+    }
+    assert(n == 30);
+    n
+}
+// ANCHOR_END: no_binding
+
+// ANCHOR: rev_example
+fn test_reversed(v: &Vec<u8>) -> (w: Vec<u8>)
+    ensures
+        w@ == v@.reverse(),
+{
+    let mut w: Vec<u8> = Vec::new();
+    for x in iter: v.iter().rev()
+        invariant
+            w.len() == iter.index@,
+            forall|i: int| 0 <= i < w.len() ==> w@[i] == *iter.seq()[i],
+    {
+        w.push(*x);
+    }
+    w
+}
+// ANCHOR_END: rev_example
+
 } // verus!
 
 fn main() {}
