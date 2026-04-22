@@ -1471,3 +1471,196 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_lifetime_through_closure ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn constrain<T: Fn(&mut (u64, u64)) -> &mut u64>(t: T) -> T
+            returns t
+        { t }
+
+        fn test1() {
+            let c = constrain(|pair: &mut (u64, u64)| -> (fst: &mut u64)
+                ensures
+                    *fst == old(pair).0,
+                    *final(pair) == (*final(fst), old(pair).1),
+            {
+                &mut pair.0
+            });
+
+            let mut pair = (0, 1);
+            let r = c(&mut pair);
+
+            assert(pair === (0, 1));
+
+            *r = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "pair")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_whole_shadow_field ["new-mut-ref"] => verus_code! {
+        struct Y { u: u64 }
+        struct X { a: Y, b: Y }
+
+        fn test1() {
+            let mut x = X { a: Y { u: 0 }, b: Y { u: 1 } };
+            let r = &mut x.b;
+            let clos = move || {
+                assert(x.a == Y { u: 0 });
+                let x1 = x;
+            };
+            *r = Y { u: 10 };
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `x` because it is borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_field_shadow_whole ["new-mut-ref"] => verus_code! {
+        struct Y { u: u64 }
+        struct X { a: Y, b: Y }
+
+        fn test1() {
+            let mut x = X { a: Y { u: 0 }, b: Y { u: 1 } };
+            let r = &mut x.b;
+            let clos = move || {
+                assert(x == X { a: Y { u: 0 }, b: Y { u: 1 } });
+                let x1 = x.a;
+            };
+            *r = Y { u: 10 };
+        }
+    } => Err(err) => assert_spec_borrowed(err, "x")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_field_shadow_different_field ["new-mut-ref"] => verus_code! {
+        struct Y { u: u64 }
+        struct X { a: Y, b: Y }
+
+        fn test1() {
+            let mut x = X { a: Y { u: 0 }, b: Y { u: 1 } };
+            let r = &mut x.b;
+            let clos = move || {
+                assert(x.a == Y { u: 0 });
+                let x1 = x.b;
+            };
+            *r = Y { u: 10 };
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `x.b` because it is borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_field_shadow_different_field2 ["new-mut-ref"] => verus_code! {
+        struct Y { u: u64 }
+        struct X { a: Y, b: Y }
+
+        fn test2() {
+            let mut x = X { a: Y { u: 0 }, b: Y { u: 1 } };
+            let r = &mut x.a;
+            let clos = move || {
+                assert(x.a == Y { u: 0 });
+                let x1 = x.b;
+            };
+            *r = Y { u: 10 };
+        }
+    } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".a")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_field_shadow_different_field3 ["new-mut-ref"] => verus_code! {
+        struct Y { u: u64 }
+        struct X { a: Y, b: Y, c: Y }
+
+        fn test2() {
+            let mut x = X { a: Y { u: 0 }, b: Y { u: 1 }, c: Y { u: 2 } };
+            let r = &mut x.c;
+            let clos = move || {
+                assert(x.a == Y { u: 0 });
+                let x1 = x.b;
+            };
+            *r = Y { u: 10 };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_field_shadow_same_field ["new-mut-ref"] => verus_code! {
+        struct Y { u: u64 }
+        struct X { a: Y, b: Y }
+
+        fn test1() {
+            let mut x = X { a: Y { u: 0 }, b: Y { u: 1 } };
+            let r = &mut x.a;
+            let clos = move || {
+                assert(x.a == Y { u: 0 });
+                let x1 = x.a;
+            };
+            *r = Y { u: 10 };
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `x.a` because it is borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_field_shadow_same_field2 ["new-mut-ref"] => verus_code! {
+        struct Y { u: u64 }
+        struct X { a: Y, b: Y }
+
+        fn test1() {
+            let mut x = X { a: Y { u: 0 }, b: Y { u: 1 } };
+            let r = &mut x.b;
+            let clos = move || {
+                assert(x.a == Y { u: 0 });
+                let x1 = x.a;
+            };
+            *r = Y { u: 10 };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] double_closure1 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        fn test1() {
+            let z = 0;
+            let clos1 = || {
+                let clos2 = || {
+                    assert(z == 0);
+                };
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] double_closure2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        fn test2() {
+            let mut z = 0;
+            let mut z2 = &mut z;
+            let clos1 = || {
+                let clos2 = || {
+                    assert(z == 0);
+                };
+            };
+            *z2 = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "z")
+}
+
+// TODO(new_mut_ref) (blocking) shadow use in pattern guard
+test_verify_one_file_with_options! {
+    #[ignore] #[test] shadow_use_in_pattern_guard ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let x = Some(3);
+            match x {
+                Some(y) if ({
+                    assert(y == 3);
+                    true
+                }) => {
+                }
+                _ => { }
+            }
+        }
+    } => Ok(())
+}
