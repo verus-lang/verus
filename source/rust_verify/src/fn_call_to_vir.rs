@@ -2391,11 +2391,11 @@ fn get_ensures_arg<'tcx>(
             }
         }
         let mut vir_expr = expr_to_vir_consume(bctx, expr, ExprModifier::REGULAR)?;
-        // Wrap expressions with #[verus::internal(auto_decreases)] attribute
+        // Wrap expressions with #[verus::internal(auto_loop_ensures)] attribute
         let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
-        if crate::attributes::has_auto_decreases_attr(expr_attrs) {
+        if crate::attributes::has_auto_loop_ensures_attr(expr_attrs) {
             vir_expr = vir_expr.new_x(vir::ast::ExprX::UnaryOpr(
-                vir::ast::UnaryOpr::AutoDecreases,
+                vir::ast::UnaryOpr::AutoLoopEnsures,
                 vir_expr.clone(),
             ));
         }

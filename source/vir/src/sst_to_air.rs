@@ -1229,9 +1229,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 // A `proof_note` label is metadata and has no effect otherwise.
                 return exp_to_expr(ctx, e, expr_ctxt);
             }
-            UnaryOpr::AutoDecreases => {
-                // AutoDecreases is just a marker for filtering invariants
-                // during loop construction. Unwrap and process the inner expression.
+            UnaryOpr::AutoDecreases | UnaryOpr::AutoLoopEnsures => {
+                // AutoDecreases and AutoLoopEnsures are just markers for filtering
+                // invariants and ensures during loop construction. Unwrap and process
+                // the inner expression.
                 return exp_to_expr(ctx, e, expr_ctxt);
             }
             UnaryOpr::HasResolved(t) => {

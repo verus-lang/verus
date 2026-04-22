@@ -571,7 +571,7 @@ impl ExpX {
                     CustomErr(_msg) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }
-                    AutoDecreases => {
+                    AutoDecreases | AutoLoopEnsures => {
                         return exp.x.to_string_prec(global, precedence);
                     }
                     ProofNote(_label) => {

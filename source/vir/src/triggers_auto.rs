@@ -430,7 +430,10 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
         ExpX::UnaryOpr(
-            UnaryOpr::CustomErr(_) | UnaryOpr::AutoDecreases | UnaryOpr::ProofNote(_),
+            UnaryOpr::CustomErr(_)
+            | UnaryOpr::ProofNote(_)
+            | UnaryOpr::AutoDecreases
+            | UnaryOpr::AutoLoopEnsures,
             e1,
         ) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {

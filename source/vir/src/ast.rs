@@ -543,6 +543,9 @@ pub enum UnaryOpr {
     /// Marker for expressions with #[verus::internal(auto_decreases)] attribute
     /// Used to filter out auto-generated decreases-related invariants
     AutoDecreases,
+    /// Marker for expressions with #[verus::internal(auto_loop_ensures)] attribute
+    /// Used to filter out auto-generated ensures clauses on for-loops
+    AutoLoopEnsures,
     /// Label from a `proof_note` attribute.
     ProofNote(ProofNoteLabel),
     /// Predicate over any type that indicates its mutable references has resolved.

@@ -282,6 +282,8 @@ pub(crate) enum Attr {
     ForLoop,
     // mark the syntax macro inserted a synthetic decreases into a desugared for-loop
     AutoDecreases,
+    // mark that the syntax macro inserted a synthetic ensures clause into a desugared for-loop
+    AutoLoopEnsures,
     // this proof function is a termination proof
     DecreasesBy,
     // in a spec function, check the body for violations of recommends
@@ -800,6 +802,9 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "auto_decreases" => {
                         v.push(Attr::AutoDecreases)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "auto_loop_ensures" => {
+                        v.push(Attr::AutoLoopEnsures)
+                    }
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                         if arg == "prover" =>
                     {
@@ -1041,6 +1046,15 @@ pub(crate) fn has_auto_decreases_attr(attrs: &[Attribute]) -> bool {
     false
 }
 
+pub(crate) fn has_auto_loop_ensures_attr(attrs: &[Attribute]) -> bool {
+    for attr in parse_attrs_opt(attrs, None) {
+        if let Attr::AutoLoopEnsures = attr {
+            return true;
+        }
+    }
+    false
+}
+
 pub(crate) fn get_proof_note_annotation(
     attrs: &[Attribute],
 ) -> Result<Option<(String, bool)>, VirErr> {
@@ -1109,6 +1123,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) bit_vector: bool,
     pub(crate) for_loop: bool,
     pub(crate) auto_decreases: bool,
+    pub(crate) auto_loop_ensures: bool,
     pub(crate) atomic: bool,
     pub(crate) integer_ring: bool,
     pub(crate) decreases_by: bool,
@@ -1284,6 +1299,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         bit_vector: false,
         for_loop: false,
         auto_decreases: false,
+        auto_loop_ensures: false,
         atomic: false,
         integer_ring: false,
         decreases_by: false,
@@ -1367,6 +1383,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::BitVector => vs.bit_vector = true,
             Attr::ForLoop => vs.for_loop = true,
             Attr::AutoDecreases => vs.auto_decreases = true,
+            Attr::AutoLoopEnsures => vs.auto_loop_ensures = true,
             Attr::Atomic => vs.atomic = true,
             Attr::IntegerRing => vs.integer_ring = true,
             Attr::DecreasesBy => vs.decreases_by = true,

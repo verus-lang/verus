@@ -2503,8 +2503,10 @@ pub(crate) fn expr_to_stm_opt(
                             LoopInvariantKind::InvariantExceptBreak => Some(inv.clone()),
                             LoopInvariantKind::InvariantAndEnsures => Some(inv.clone()),
                             LoopInvariantKind::Ensures => {
-                                if matches!(inv.inv.x, ExprX::UnaryOpr(UnaryOpr::AutoDecreases, _))
-                                {
+                                if matches!(
+                                    inv.inv.x,
+                                    ExprX::UnaryOpr(UnaryOpr::AutoLoopEnsures, _)
+                                ) {
                                     None
                                 } else {
                                     Some(inv.clone())

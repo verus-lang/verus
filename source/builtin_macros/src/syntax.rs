@@ -3405,7 +3405,9 @@ impl Visitor {
         //                         inv
         //                     }),
         //                  ensures
+        //                     #[verus::internal(auto_loop_ensures)]
         //                     y.snapshot.view().completes(),
+        //                     #[verus::internal(auto_loop_ensures)]
         //                     y.index.view() == y.seq().len(),
         //                  decreases
         //                     y.iter.decrease(),
@@ -3619,9 +3621,9 @@ impl Visitor {
         let ensure = if no_loop_invariant.is_none() {
             let mut auto_ensures: Ensures = parse_quote_spanned_vstd!(vstd, span =>
                 ensures
-                    #[verus::internal(auto_decreases)]
+                    #[verus::internal(auto_loop_ensures)]
                     #vstd::std_specs::iter::IteratorSpec::completes(&#x_iter_name.snapshot.view()),
-                    #[verus::internal(auto_decreases)]
+                    #[verus::internal(auto_loop_ensures)]
                     #vstd::prelude::spec_eq(#x_iter_name.index.view(), #x_iter_name.seq().len()),
                     true,
             );
@@ -3661,7 +3663,7 @@ impl Visitor {
                 #vstd::prelude::assert_(#vstd::std_specs::iter::trigger_peek_implications(
                     #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_body_old.snapshot.view(), #x_iter_body_old.index.view())
                 ));
-            }            
+            }
             #[verus::internal(spec)]
             #[verus::internal(unwrapped_binding)]
             let #x_iter_name;

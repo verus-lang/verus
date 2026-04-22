@@ -288,6 +288,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             | UnaryOpr::IntegerTypeBound(..)
             | UnaryOpr::CustomErr(..)
             | UnaryOpr::AutoDecreases
+            | UnaryOpr::AutoLoopEnsures
             | UnaryOpr::ProofNote(..) => R::ret(|| uopr.clone()),
         }
     }
