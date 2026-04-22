@@ -4941,3 +4941,84 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_local_invariant ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred;
+        impl<'a> InvariantPredicate<(), &'a mut Ghost<u64>> for Pred {
+            closed spec fn inv(k: (), v: &'a mut Ghost<u64>) -> bool {
+                5 <= (*v)@ <= 13
+            }
+        }
+
+        fn test1(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            open_local_invariant!(inv => i => {
+                assert(has_resolved(i)); // FAILS
+            });
+        }
+
+        fn test2(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            open_local_invariant!(inv => i => {
+                proof { *i = Ghost(12); }
+            });
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_local_invariant2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred;
+        impl<'a> InvariantPredicate<(), &'a mut Ghost<u64>> for Pred {
+            closed spec fn inv(k: (), v: &'a mut Ghost<u64>) -> bool {
+                5 <= (*v)@ <= 13
+            }
+        }
+
+        fn test3(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            open_local_invariant!(inv => i => {
+                proof { *i = Ghost(19); }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Cannot show invariant holds at end of block")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_local_invariant_control_flow ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred;
+        impl<'a> InvariantPredicate<(), &'a mut Ghost<u64>> for Pred {
+            closed spec fn inv(k: (), v: &'a mut Ghost<u64>) -> bool {
+                5 <= (*v)@ <= 13
+            }
+        }
+
+        fn test1(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            let mut x: Ghost<u64> = Ghost(0);
+            let x_ref = &mut x;
+            open_local_invariant!(({ *x_ref = Ghost(20u64); inv }) => i => {
+                proof { *i = Ghost(12); }
+            });
+            assert(x == 20);
+            assert(false); // FAILS
+        }
+
+        fn test2(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            let mut x: Ghost<u64> = Ghost(0);
+            let x_ref = &mut x;
+            open_local_invariant!(inv => i => {
+                *x_ref = Ghost(20u64);
+                proof { *i = Ghost(12); }
+            });
+            assert(x == 20);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

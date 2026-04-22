@@ -1025,7 +1025,6 @@ impl<'a> Builder<'a> {
             }
 
             ExprX::OpenInvariant(arg, binder, body, _) => {
-                // TODO(new_mut_ref): (blocking) test cases
                 bb = self.build(arg, bb)?;
 
                 let local = FlattenedPlaceTyped {
