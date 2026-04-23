@@ -71,10 +71,6 @@ macro_rules! atomic_types {
             #[verifier::external_body] /* vattr */
             pub uninterp spec fn view(self) -> $p_data_ident;
 
-            #[doc(hidden)]
-            #[verifier::external_body] /* vattr */
-            pub uninterp spec fn view_inverse_for_eq(data: $p_data_ident) -> Self;
-
             pub open spec fn is_for(&self, patomic: $at_ident) -> bool {
                 self.view().patomic == patomic.id()
             }
@@ -92,12 +88,6 @@ macro_rules! atomic_types {
             pub open spec fn id(&self) -> AtomicCellId {
                 self.view().patomic
             }
-
-            /// Implies that `a@ == b@ ==> a == b`.
-            pub broadcast axiom fn view_bijective(self)
-                ensures
-                    Self::view_inverse_for_eq(#[trigger] self@) == self,
-            ;
         }
 
         }
@@ -1192,28 +1182,6 @@ impl<T> PAtomicPtr<T> {
     {
         return self.ato.fetch_or(n, Ordering::SeqCst);
     }
-}
-
-pub broadcast group group_atomic_axioms {
-    PermissionBool::view_bijective,
-    //
-    // signed atomic integers
-    //
-    PermissionI8::view_bijective,
-    PermissionI16::view_bijective,
-    PermissionI32::view_bijective,
-    #[cfg(target_has_atomic = "64")]
-    PermissionI64::view_bijective,
-    PermissionIsize::view_bijective,
-    //
-    // signed atomic integers
-    //
-    PermissionU8::view_bijective,
-    PermissionU16::view_bijective,
-    PermissionU32::view_bijective,
-    #[cfg(target_has_atomic = "64")]
-    PermissionU64::view_bijective,
-    PermissionUsize::view_bijective,
 }
 
 } // verus!

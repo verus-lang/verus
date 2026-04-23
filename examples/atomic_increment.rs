@@ -47,7 +47,7 @@ pub fn increment_good(var: &PAtomicU64) -> (out: u64)
         requires
             perm@.patomic == var.id(),
         ensures match res {
-            Err((p, _)) => p == perm,
+            Err((p, _)) => p@ == perm@,
             Ok(p) => {
                 &&& p@.patomic == perm@.patomic
                 &&& p@.value == perm@.value.wrapping_add(1)
