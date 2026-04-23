@@ -8,6 +8,7 @@ use core::sync::atomic::{
 #[cfg(target_has_atomic = "64")]
 use core::sync::atomic::{AtomicI64, AtomicU64};
 
+use super::pervasive::*;
 use crate::prelude::*;
 use crate::cell::CellId;
 use crate::pcm::*;
