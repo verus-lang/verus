@@ -548,7 +548,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
             mk_exp_typ(&typ, ExpX::CallLambda(callee, args))
         }
         ExpX::Ctor(path, variant, binders) => {
-            let fields = &ctx.datatype_map[path].x.get_variant(variant).fields;
+            let Some(dt) = ctx.datatype_map.get(path) else {
+                panic!("failed to find {path:?} in datatype map");
+            };
+            let fields = &dt.x.get_variant(variant).fields;
             let mut bs: Vec<Binder<Exp>> = Vec::new();
             for binder in binders.iter() {
                 let field = crate::ast_util::get_field(fields, &binder.name);

@@ -947,7 +947,61 @@ pub fn func_def_to_sst(
     if let Some(au_expr) = &function.x.atomic_update {
         let (mut au_stms, au_ret_val) = expr_to_stm_opt(ctx, &mut state, au_expr)?;
         let au_exp: Exp = au_ret_val.expect_exp();
-        //let au_exp = state.make_tmp_var_for_exp(&mut au_stms, au_exp);
+        let span = &au_exp.span;
+
+        let param_exps = function
+            .x
+            .params
+            .iter()
+            .map(|param| {
+                let var = ExpX::Var(param.x.name.clone());
+                let exp = SpannedTyped::new(span, &param.x.typ, var);
+                exp_pre(&exp)
+            })
+            .collect::<Vec<Exp>>();
+
+        let param_tuple = match param_exps.len() {
+            1 => param_exps.into_iter().next().unwrap(),
+            _ => crate::sst_util::sst_tuple(span, &Arc::new(param_exps)),
+        };
+
+        let au_typ = crate::ast_util::undecorate_typ(&au_exp.typ);
+        let TypX::Datatype(_, au_typ_args, _) = au_typ.as_ref() else {
+            panic!("atomic update should be a datatype")
+        };
+
+        let [.., pred_typ] = au_typ_args.as_slice() else {
+            panic!("atomic update should have type arguments")
+        };
+
+        let call_pred = SpannedTyped::new(
+            span,
+            &pred_typ,
+            ExpX::Call(
+                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::pred"),
+                au_typ_args.clone(),
+                Arc::new(vec![au_exp.clone()]),
+            ),
+        );
+
+        let call_pred_args = SpannedTyped::new(
+            span,
+            &param_tuple.typ,
+            ExpX::Call(
+                ctx.fn_from_path("#vstd::atomic::pred_args"),
+                Arc::new(vec![pred_typ.clone(), param_tuple.typ.clone()]),
+                Arc::new(vec![call_pred]),
+            ),
+        );
+
+        let spec_eq = SpannedTyped::new(
+            span,
+            &Arc::new(TypX::Bool),
+            ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_pred_args, param_tuple),
+        );
+
+        au_stms.push(Spanned::new(span.clone(), StmX::Assume(spec_eq)));
+
         req_stms.append(&mut au_stms);
         state.au_var_exp_to_resolve = Some(au_exp);
     }

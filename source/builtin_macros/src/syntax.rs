@@ -656,7 +656,7 @@ impl Visitor {
         sig: &mut Signature,
         vis: Option<&Visibility>,
         stmts: &mut Vec<Stmt>,
-    ) -> (Option<(verus_syn::Ident, verus_syn::PermClause)>, Vec<Stmt>) {
+    ) -> Option<(verus_syn::Ident, verus_syn::PermClause)> {
         let Some(atomic_spec) = sig.spec.atomic_spec.take() else { return Default::default() };
         let full_span = atomic_spec.span();
 
@@ -818,7 +818,7 @@ impl Visitor {
         );
 
         // The `outer_mask` and `inner_mask` functions have a default implementation,
-        // so we can select the default behaviour by not generating anything
+        // so we can select the default behavior by not generating anything
 
         if let Some(outer_mask) = outer_mask {
             let mask_expr = self.inv_name_set_to_mask_expr(outer_mask.set);
@@ -858,43 +858,7 @@ impl Visitor {
             ));
         }
 
-        let EraseGhost::Keep = self.erase_ghost else {
-            return (Some((atomic_update, perm_clause)), Vec::new());
-        };
-
-        let mut out_stmts = vec![Stmt::Expr(
-            Expr::Verbatim(
-                quote_spanned_builtin_builtin_macros_vstd!(builtin, _builtin_macros, vstd, full_span =>
-                    #builtin::assume_(
-                        #builtin::spec_eq(
-                            #vstd::atomic::pred_args::< #pred_ident #generics , ( #args_ty_tokens ) >(
-                                #vstd::atomic::AtomicUpdate::pred( #atomic_update ),
-                            ),
-                            ( #args_use_tokens ),
-                        )
-                    )
-                ),
-            ),
-            Some(Semi { spans: [full_span] }),
-        )];
-
-        // We should always be in exec mode here so this should always run
-        if self.inside_ghost == 0 {
-            let mut stmt_tokens = TokenStream::new();
-            for stmt in out_stmts {
-                stmt.to_tokens(&mut stmt_tokens);
-            }
-
-            out_stmts = vec![Stmt::Expr(
-                Expr::Verbatim(quote_spanned!(full_span =>
-                    #[verifier::proof_block]
-                    { #stmt_tokens }
-                )),
-                Some(Semi { spans: [full_span] }),
-            )];
-        }
-
-        (Some((atomic_update, perm_clause)), out_stmts)
+        Some((atomic_update, perm_clause))
     }
 
     fn take_sig_specs<TType: ToTokens>(
@@ -1227,10 +1191,7 @@ impl Visitor {
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
         let has_body = semi_token.is_none();
-
-        // The statements generated here are appended later not to interfere
-        // with requires, ensures, etc.
-        let (atomic_perm_clause, atomic_spec_stmts) = self.handle_atomic_spec(sig, vis, &mut stmts);
+        let atomic_perm_clause = self.handle_atomic_spec(sig, vis, &mut stmts);
 
         // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
         if self.erase_ghost.keep() {
@@ -1451,7 +1412,6 @@ impl Visitor {
         // unwrap_ghost_tracked must go first so that unwrapped vars are in scope in other headers
         stmts.splice(0..0, unwrap_ghost_tracked);
         stmts.extend(unimpl);
-        stmts.extend(atomic_spec_stmts);
         stmts
     }
 

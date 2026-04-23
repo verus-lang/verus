@@ -1882,6 +1882,9 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode != Mode::Spec && header.recommend.len() > 0 {
         return err_span(sig.span, "non-spec functions cannot have recommends");
     }
+    if mode != Mode::Exec && header.atomic_update.is_some() {
+        return err_span(sig.span, "non-exec function cannot have atomic specification");
+    }
     if mode != Mode::Exec && vattrs.external_fn_specification {
         return err_span(sig.span, "assume_specification should be 'exec'");
     }
