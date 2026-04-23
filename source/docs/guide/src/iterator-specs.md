@@ -32,19 +32,27 @@ It uses the type invariant to prove that it meets the Verus specification for `n
 
 ### 3. The spec implementation
 
-To enable us to reason about the iterator, we need to implement the Verus-provided
-`IteratorSpecImpl` trait, which defines the following specification functions:
+In `vstd`, Verus provides `IteratorSpec`, an extension of the Rust
+[`Iterator`](https://doc.rust-lang.org/std/iter/trait.Iterator.html) trait that
+defines a variety of specification functions, as well as the Verus specs for
+the `next()` function.  To enable us to reason about our custom iterator, we
+need to implement the Verus-provided `IteratorSpecImpl` trait (not the
+`IteratorSpec` trait that defines the specs -- see ["External trait
+specifications"](external_trait_specifications.md) for more details).
+Here's a brief summary of the specification functions, with a focus
+on how we define them for our custom iterator.
+
 - **`obeys_prophetic_iter_laws`** — return `true` to assert that this iterator satisfies
   the Verus specification for `next`.  Most iterator implementations should return `true` here,
-  and most iterator adaptors will return their inner iterator's value.
+  and most iterator adaptors should return their inner iterator's value.
 - **`remaining`** — a prophetic spec function returning the sequence of items that the iterator will
   eventually produce. For `VecIterator`, this is the subrange `v[i..j]`.
 - **`completes`** — return `true` if the iterator will eventually return `None`.
   Infinite iterators or iterators driven by a non-terminating closure may return `false`.
 - **`decrease`** — a termination metric for Verus's decreases checker.  By default,
   `for` loops expect this to return `Some(n)` where `n` decreases on every call to `next`. Here `j - i` works.
-- **`initial_value_inv`** — a prophetic invariant relating the current iterator state to
-  the initial state when the iterator was created. This is what lets loop invariants
+- **`initial_value_inv`** — a prophetic invariant relating the iterator's initial state to
+  the exec expression used to initialize it. This is what lets loop invariants
   refer to the original collection (e.g., `iter.seq() == v@`).
 - **`peek`** — optionally returns the item at a given look-ahead index. Providing this
   helps Verus reason about the current element in the iteration.
@@ -82,10 +90,14 @@ If your iterator supports backward traversal, implement the standard Rust
 `DoubleEndedIterator` trait, which adds a `next_back` method:
 
 ```rust
-{{#include ../../../../examples/guide/iterators.rs:double_iter_spec}}
+{{#include ../../../../examples/guide/iterators.rs:double_iter_next_back}}
 ```
 
-For full verification support with `.rev()`, also implement `DoubleEndedIteratorSpecImpl`
+To allow reasoning about `.rev()`, you also need to implement `DoubleEndedIteratorSpecImpl`
 (analogous to `IteratorSpecImpl`), providing a `peek_back` function that returns the item
 at a given index from the back. Without it, Verus will not know what elements the reversed
 iterator will produce.
+
+```rust
+{{#include ../../../../examples/guide/iterators.rs:double_iter_spec}}
+```

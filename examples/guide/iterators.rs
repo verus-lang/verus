@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use vstd::prelude::*;
-use vstd::std_specs::iter::{IteratorSpec,IteratorSpecImpl};
+use vstd::std_specs::iter::{DoubleEndedIteratorSpecImpl,IteratorSpec,IteratorSpecImpl};
 
 verus! {
 
@@ -106,7 +106,7 @@ impl<'a, T> IteratorSpecImpl for VecIterator<'a, T> {
 }
 // ANCHOR_END: iter_spec
 
-// ANCHOR: double_iter_spec
+// ANCHOR: double_iter_next_back
 impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
     fn next_back(&mut self) -> (ret: Option<Self::Item>) {
         proof { use_type_invariant(&*self); }
@@ -118,7 +118,22 @@ impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
         }
     }
 }
+// ANCHOR_END: double_iter_next_back
+
+
+// ANCHOR: double_iter_spec
+impl<'a, T> DoubleEndedIteratorSpecImpl for VecIterator<'a, T> {
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        let len = self.elts().len();
+        if 0 <= index < len {
+            Some(&self.elts()[len - index - 1])
+        } else {
+            None
+        }
+    }    
+}
 // ANCHOR_END: double_iter_spec
+
 
 fn test_basic() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
