@@ -37,6 +37,29 @@ for x in iter: 0..10
 }
 ```
 
+**Before:**
+```rust
+for x in iter: 5..10
+    invariant 
+        n == 2 * iter.cur,
+{
+    assert(x == iter.cur + 5);
+    n += 2;
+}
+```
+
+**After:**
+```rust
+for x in iter: 5..10
+    invariant 
+        n == 2 * iter.index@,
+{
+    assert(x == iter.index@ + 5);
+    n += 2;
+}
+```
+
+
 The same applies to `decreases` clauses that referenced `iter.cur`.
 
 ---
