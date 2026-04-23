@@ -149,6 +149,20 @@ pub broadcast proof fn view_contains_anti_sym(v1: View, v2: View)
     }
 }
 
+pub broadcast proof fn join_symm(v1 : View, v2: View)
+        ensures #[trigger] v1.join(v2) =~= #[trigger] v2.join(v1)
+    {
+        reveal(View::join);
+    }
+
+pub proof fn join_contains(v1: View, v2 : View)
+    	  ensures v1.join(v2).contains(v1),
+    {
+        reveal(View::contains);
+        reveal(View::join);
+    }
+
+
 pub broadcast proof fn view_contains_trans(v1: View, v2: View, v3: View)
     requires
         #[trigger] v1.contains(v2),
@@ -1070,5 +1084,50 @@ impl<K, G, Pred> WeakAtomicU8<K, G, Pred>
     }
 }*/
 
+/// Excl PCM
+pub enum ExclCarrier {
+    Excl,
+    Empty,
+    Invalid,
+}
+
+impl PCM for ExclCarrier {
+    closed spec fn valid(self) -> bool {
+        match self {
+            ExclCarrier::Invalid => false,
+            ExclCarrier::Empty | ExclCarrier::Excl => true,
+        }
+    }
+
+    closed spec fn op(self, other: Self) -> Self {
+        match self {
+            ExclCarrier::Invalid => ExclCarrier::Invalid,
+            ExclCarrier::Empty => other,
+            ExclCarrier::Excl => match other {
+                ExclCarrier::Invalid | ExclCarrier::Excl => ExclCarrier::Invalid,
+                ExclCarrier::Empty => self,
+            },
+        }
+    }
+
+    closed spec fn unit() -> Self {
+        ExclCarrier::Empty
+    }
+
+    proof fn closed_under_incl(a: Self, b: Self) {
+    }
+
+    proof fn commutative(a: Self, b: Self) {
+    }
+
+    proof fn associative(a: Self, b: Self, c: Self) {
+    }
+
+    proof fn op_unit(a: Self) {
+    }
+
+    proof fn unit_valid() {
+    }
+}
 
 } // verus!
