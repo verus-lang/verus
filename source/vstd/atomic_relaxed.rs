@@ -149,20 +149,6 @@ pub broadcast proof fn view_contains_anti_sym(v1: View, v2: View)
     }
 }
 
-pub broadcast proof fn join_symm(v1 : View, v2: View)
-        ensures #[trigger] v1.join(v2) =~= #[trigger] v2.join(v1)
-    {
-        reveal(View::join);
-    }
-
-pub proof fn join_contains(v1: View, v2 : View)
-    	  ensures v1.join(v2).contains(v1),
-    {
-        reveal(View::contains);
-        reveal(View::join);
-    }
-
-
 pub broadcast proof fn view_contains_trans(v1: View, v2: View, v3: View)
     requires
         #[trigger] v1.contains(v2),
@@ -237,20 +223,6 @@ pub broadcast proof fn history_singleton_dom_singleton<T>(h: History<T>, ts : na
     assert (forall |ts1| #[trigger] h.0.dom().contains(ts1) ==>  ts1 == ts);
 }
 
-// pub broadcast axiom fn history_singleton_last<T>(h: History<T>, ts : nat, val : (T, Option<View>))
-//     requires
-//         h.0.dom().finite(),
-//         #[trigger] h.is_singleton(ts, val)
-//     ensures
-//         h.last() == (ts, val);
-
-// pub broadcast axiom fn history_last_ensures<T>(h: History<T>, ts : nat, val: (T, Option<View>))
-//     requires
-//         #[trigger] h.last() == (ts, val)
-//     ensures
-//         #[trigger] h.get(ts) == Some(val),
-//         forall |ts2| #[trigger] h.contains_timestamp(ts2) ==>  ts2 <= ts,
-// ;
 
 
 pub broadcast group group_view_history {
@@ -263,7 +235,9 @@ pub broadcast group group_view_history {
     view_join_contains,
     history_insert_contains_inserted_timestamp,
     history_insert_contains_timestamp_cases,
-    history_get_contains_timestamp
+    history_get_contains_timestamp,
+    view_join_comm,
+    view_join_contains,
 }
 
 // Fence modalities
@@ -508,7 +482,7 @@ impl<T> ViewAt<T> {
             out.1.view().contains(sn.view()),
     ;
 
-    // VA-SEP
+    // VA-BOPS for the separating conjunction case
     pub axiom fn va_join<U>(tracked v0 : ViewAt<T>, tracked v1: ViewAt<U>) -> (tracked out: ViewAt<(T, U)>)
         requires
             v0.view() == v1.view(),
@@ -518,6 +492,8 @@ impl<T> ViewAt<T> {
             out.value().1 == v1.value(),
     ;
 
+    // We can strengthen the above rule by not requiring that the views match (we can just take the join of the views).
+    // This is useful because it means we don't have to do as much view manipulation in proofs to apply this rule.
     pub proof fn va_join_strong<U>(tracked v0 : ViewAt<T>, tracked v1: ViewAt<U>) -> (tracked out: ViewAt<(T, U)>)
         ensures
             out.view() == v0.view().join(v1.view()),
@@ -528,11 +504,11 @@ impl<T> ViewAt<T> {
         let view1 = v1.view();
         let view_join = view0.join(view1);
         assert(view_join.contains(view0)) by {
-            join_contains(view0, view1);
+            view_join_contains(view0, view1);
         }
         assert(view_join.contains(view1)) by {
-            join_symm(view0, view1);
-            join_contains(view1, view0);
+            view_join_comm(view0, view1);
+            view_join_contains(view1, view0);
         }
         let tracked v0 = v0.weaken(view_join);
         let tracked v1 = v1.weaken(view_join);
@@ -571,6 +547,14 @@ impl<T> ViewAt<T> {
             out.view() == self.view(),
     ;
 
+    // I needed this function when verifying `spinlock::unlock`
+    /* Basically, I had two resourse a, b : ViewAt<PointsTo<T>>, with
+       a.value().id() == b.value().id() and I wanted to derive a contradiction.
+       I generalized this to a generic (contradictory) T:
+       The way this works is, given a function f that derives a contradiction from T,
+       `va_disjoint` will use f to create a function f' that creates an invalid resource from T,
+    		then it uses ViewAt::apply_fn to go from a ViewAt<T> to a ViewAt<Resource<ExclCarrier>>, with an invalid token,
+        then because Resource<P> is objective, it uses into_inner_objective() to go from ViewAt<T> to T, then uses validate() to derive a contradiction. */
     pub proof fn va_disjoint(
         tracked self,
         tracked f : proof_fn(tracked v : T))
@@ -593,11 +577,11 @@ impl<T> ViewAt<T> {
         let view2 = self.view();
         let view_join = view1.join(view2);
         assert(view_join.contains(view1)) by {
-            join_contains(view1, view2);
+            view_join_contains(view1, view2);
         }
         assert(view_join.contains(view2)) by {
-            join_symm(view1, view2);
-            join_contains(view2, view1);
+            view_join_comm(view1, view2);
+            view_join_contains(view2, view1);
         }
         let tracked va_f = va_f.weaken(view_join);
         let tracked va_t = self.weaken(view_join);
