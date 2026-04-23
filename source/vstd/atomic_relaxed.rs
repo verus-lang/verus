@@ -21,10 +21,10 @@ broadcast use crate::group_vstd_default;
 // Timestamp = nat
 /// Represents "simple" view
 #[verifier::ext_equal]
-pub ghost struct View(pub Map<CellId, nat>);
+pub ghost struct ThreadView(pub Map<CellId, nat>);
 
-impl View {
-    /// True when `other` is contained in this View
+impl ThreadView {
+    /// True when `other` is contained in this ThreadView
     #[verifier::opaque]
     pub open spec fn contains(self, other: Self) -> bool {
         &&& other.0.dom().subset_of(self.0.dom())
@@ -51,7 +51,7 @@ impl View {
 
     #[verifier::opaque]
     pub open spec fn join(self, other: Self) -> Self {
-        View(
+        ThreadView(
             Map::new(
                 |k: CellId| self.0.dom().contains(k) || other.0.dom().contains(k),
                 |k: CellId|
@@ -77,7 +77,7 @@ impl View {
     }
 }
 
-pub ghost struct History<T>(pub Map<nat, (T, View)>);
+pub ghost struct History<T>(pub Map<nat, (T, ThreadView)>);
 
 impl<T> History<T> {
     // #[verifier::type_invariant]
@@ -89,7 +89,7 @@ impl<T> History<T> {
         self.0.dom().contains(timestamp)
     }
 
-    pub open spec fn index(&self, timestamp: nat) -> (T, View) 
+    pub open spec fn index(&self, timestamp: nat) -> (T, ThreadView) 
         recommends self.contains_timestamp(timestamp)
     {
         self.0.index(timestamp)
@@ -103,18 +103,18 @@ impl<T> History<T> {
         self.0.dom()
     }
 
-    pub open spec fn get(&self, timestamp: nat) -> Option<(T, View)> {
+    pub open spec fn get(&self, timestamp: nat) -> Option<(T, ThreadView)> {
         self.0.get(timestamp)
     }
 
-    pub open spec fn insert(&self, timestamp: nat, val: T, view: View) -> Self 
+    pub open spec fn insert(&self, timestamp: nat, val: T, view: ThreadView) -> Self 
         recommends
             !self.contains_timestamp(timestamp)
     {
         History(self.0.insert(timestamp, (val, view)))
     }
 
-    pub open spec fn is_singleton(&self, timestamp: nat, val: (T, View)) -> bool {
+    pub open spec fn is_singleton(&self, timestamp: nat, val: (T, ThreadView)) -> bool {
         &&& self.contains_timestamp(timestamp)
         &&& forall|ts| #[trigger] self.contains_timestamp(ts) ==> ts == timestamp && self.get(ts) == Some(val)
     }
@@ -124,26 +124,26 @@ impl<T> History<T> {
         &&& forall|ts| #[trigger] self.contains_timestamp(ts) ==> ts <= timestamp
     }
 
-    // pub uninterp spec fn last(&self) -> (nat, (T, Option<View>))
+    // pub uninterp spec fn last(&self) -> (nat, (T, Option<ThreadView>))
     //     recommends self.0.len() > 0;
 
 }
 
-pub broadcast proof fn view_contains_refl(v: View)
+pub broadcast proof fn view_contains_refl(v: ThreadView)
     ensures
         #[trigger] v.contains(v)
 {
-    reveal(View::contains);
+    reveal(ThreadView::contains);
 }
 
-pub broadcast proof fn view_contains_anti_sym(v1: View, v2: View)
+pub broadcast proof fn view_contains_anti_sym(v1: ThreadView, v2: ThreadView)
     requires
         #[trigger] v1.contains(v2),
         v1 != v2
     ensures
         !(#[trigger] v2.contains(v1))
 {
-    reveal(View::contains);
+    reveal(ThreadView::contains);
     if (v1.contains(v2) && v1 != v2) {
         if (!(v1.0.dom() =~= v2.0.dom())) {
             assert forall|k| #[trigger] v2.0.dom().contains(k) implies v1.0.dom().contains(k) by {}
@@ -155,58 +155,58 @@ pub broadcast proof fn view_contains_anti_sym(v1: View, v2: View)
     }
 }
 
-pub broadcast proof fn view_contains_trans(v1: View, v2: View, v3: View)
+pub broadcast proof fn view_contains_trans(v1: ThreadView, v2: ThreadView, v3: ThreadView)
     requires
         #[trigger] v1.contains(v2),
         #[trigger] v2.contains(v3)
     ensures
         #[trigger] v1.contains(v3)
 {
-    reveal(View::contains);
+    reveal(ThreadView::contains);
 }
 
-pub broadcast proof fn view_join_assoc(v1: View, v2: View, v3: View)
+pub broadcast proof fn view_join_assoc(v1: ThreadView, v2: ThreadView, v3: ThreadView)
     ensures
         #[trigger] v1.join(v2.join(v3)) =~= #[trigger] v1.join(v2).join(v3)
 {
-    reveal(View::contains);
-    reveal(View::join);
+    reveal(ThreadView::contains);
+    reveal(ThreadView::join);
     assert(v1.join(v2.join(v3)).0 =~= v1.join(v2).join(v3).0);
 }
 
-pub broadcast proof fn view_join_comm(v1: View, v2: View)
+pub broadcast proof fn view_join_comm(v1: ThreadView, v2: ThreadView)
     ensures
         #[trigger] v1.join(v2) =~= v2.join(v1)
 {
-    reveal(View::contains);
-    reveal(View::join);
+    reveal(ThreadView::contains);
+    reveal(ThreadView::join);
     assert(v1.join(v2).0 =~= v2.join(v1).0);
 }
 
-pub broadcast proof fn view_join_idemp(v: View)
+pub broadcast proof fn view_join_idemp(v: ThreadView)
     ensures
         #[trigger] v.join(v) =~= v
 {
-    reveal(View::join);
+    reveal(ThreadView::join);
     assert(v.join(v).0 =~= v.0);
 }
 
-pub broadcast proof fn view_join_contains(v1: View, v2: View)
+pub broadcast proof fn view_join_contains(v1: ThreadView, v2: ThreadView)
     ensures
         #[trigger] v1.join(v2).contains(v1)
 {
-    reveal(View::contains);
-    reveal(View::join);
+    reveal(ThreadView::contains);
+    reveal(ThreadView::join);
 }
 
-pub broadcast proof fn history_insert_contains_timestamp_cases<T>(h: History<T>, t: nat, v: T, o: View, t2: nat)
+pub broadcast proof fn history_insert_contains_timestamp_cases<T>(h: History<T>, t: nat, v: T, o: ThreadView, t2: nat)
     requires
         #[trigger] h.insert(t, v, o).contains_timestamp(t2)
     ensures
         t == t2 || h.contains_timestamp(t2)
 {}
 
-pub broadcast proof fn history_insert_contains_inserted_timestamp<T>(h: History<T>, t: nat, v: T, o: View)
+pub broadcast proof fn history_insert_contains_inserted_timestamp<T>(h: History<T>, t: nat, v: T, o: ThreadView)
     ensures
         (#[trigger] h.insert(t, v, o)).contains_timestamp(t)
 {}
@@ -218,7 +218,7 @@ pub broadcast proof fn history_get_contains_timestamp<T>(h: History<T>, t: nat)
         h.contains_timestamp(t)
 {}
 
-pub broadcast proof fn history_singleton_dom_singleton<T>(h: History<T>, ts : nat, val : (T, View))
+pub broadcast proof fn history_singleton_dom_singleton<T>(h: History<T>, ts : nat, val : (T, ThreadView))
     requires
         h.0.dom().finite(),
         #[trigger] h.is_singleton(ts, val)
@@ -229,14 +229,14 @@ pub broadcast proof fn history_singleton_dom_singleton<T>(h: History<T>, ts : na
     assert (forall |ts1| #[trigger] h.0.dom().contains(ts1) ==>  ts1 == ts);
 }
 
-// pub broadcast axiom fn history_singleton_last<T>(h: History<T>, ts : nat, val : (T, View))
+// pub broadcast axiom fn history_singleton_last<T>(h: History<T>, ts : nat, val : (T, ThreadView))
 //     requires
 //         h.0.dom().finite(),
 //         #[trigger] h.is_singleton(ts, val)
 //     ensures
 //         h.last() == (ts, val);
 
-// pub broadcast axiom fn history_last_ensures<T>(h: History<T>, ts : nat, val: (T, View))
+// pub broadcast axiom fn history_last_ensures<T>(h: History<T>, ts : nat, val: (T, ThreadView))
 //     requires
 //         #[trigger] h.last() == (ts, val)
 //     ensures
@@ -384,43 +384,43 @@ pub axiom fn objective_from_acquire<T: Objective>(tracked a: Acquire<T>) -> (tra
 pub tracked struct ViewSeen;
 
 impl crate::view::View for ViewSeen {
-    type V = View;
+    type V = ThreadView;
 
-    open spec fn view(&self) -> View {
-        self.view()
+    open spec fn view(&self) -> ThreadView {
+        self.thread_view()
     }
 }
 
 impl ViewSeen {
-    pub uninterp spec fn view(&self) -> View;
+    pub uninterp spec fn thread_view(&self) -> ThreadView;
 
     // VS_BOT
     pub axiom fn new() -> (tracked out: ViewSeen)
         ensures
-            out.view() == View::empty(),
+            out@ == ThreadView::empty(),
     ;
 
     // VS-JOIN |-
-    pub axiom fn split(tracked self, v1: View, v2: View) -> (tracked out: (Self, Self))
+    pub axiom fn split(tracked self, v1: ThreadView, v2: ThreadView) -> (tracked out: (Self, Self))
         requires
-            self.view() == v1.join(v2),
+            self@ == v1.join(v2),
         ensures
-            out.0.view() == v1,
-            out.1.view() == v2,
+            out.0@ == v1,
+            out.1@ == v2,
     ;
 
     // VS-JOIN -|
     pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
         ensures
-            out.view() == self.view().join(other.view()),
+            out@ == self@.join(other@),
     ;
 
     // VS-MONO
-    pub axiom fn restrict(tracked self, v: View) -> (tracked out: Self)
+    pub axiom fn restrict(tracked self, v: ThreadView) -> (tracked out: Self)
         requires
-            self.view().contains(v),
+            self@.contains(v),
         ensures
-            out.view() == v,
+            out@ == v,
     ;
 }
 
@@ -434,12 +434,12 @@ unsafe impl Objective for EmptyViewSeen {
 impl EmptyViewSeen {
     pub axiom fn from_view_seen(tracked v: ViewSeen) -> (tracked out: Self)
         requires
-            v.view() == View::empty(),
+            v@ == ThreadView::empty(),
     ;
 
     pub axiom fn as_view_seen(tracked self) -> (tracked out: ViewSeen)
         ensures
-            out.view() == View::empty(),
+            out@ == ThreadView::empty(),
     ;
 }
 
@@ -448,19 +448,19 @@ impl EmptyViewSeen {
 pub tracked struct ReleaseViewSeen;
 
 impl crate::view::View for ReleaseViewSeen {
-    type V = View;
+    type V = ThreadView;
 
-    open spec fn view(&self) -> View {
-        self.view()
+    open spec fn view(&self) -> ThreadView {
+        self.thread_view()
     }
 }
 
 impl ReleaseViewSeen {
-    pub uninterp spec fn view(&self) -> View;
+    pub uninterp spec fn thread_view(&self) -> ThreadView;
 
     pub axiom fn new() -> (tracked out: Self)
         ensures
-            out.view() == View::empty();
+            out@ == ThreadView::empty();
 }
 
 #[derive(Clone, Copy)]
@@ -468,19 +468,19 @@ impl ReleaseViewSeen {
 pub tracked struct AcquireViewSeen;
 
 impl crate::view::View for AcquireViewSeen {
-    type V = View;
+    type V = ThreadView;
 
-    open spec fn view(&self) -> View {
-        self.view()
+    open spec fn view(&self) -> ThreadView {
+        self.thread_view()
     }
 }
 
 impl AcquireViewSeen {
-    pub uninterp spec fn view(&self) -> View;
+    pub uninterp spec fn thread_view(&self) -> ThreadView;
 
     pub axiom fn new() -> (tracked out: Self)
         ensures
-            out.view() == View::empty();
+            out@ == ThreadView::empty();
 }
 
 // ViewAt<T> is persistent when T is persistent
@@ -505,7 +505,7 @@ unsafe impl<T> Objective for ViewAt<T> {
 // VA-VS - I'm not sure if this is used anywhere in program proofs?
 // VA-IDEMP
 impl<T> ViewAt<T> {
-    pub uninterp spec fn view(&self) -> View;
+    pub uninterp spec fn thread_view(&self) -> ThreadView;
 
     pub uninterp spec fn value(&self) -> T;
 
@@ -513,31 +513,31 @@ impl<T> ViewAt<T> {
     pub axiom fn new(tracked t: T) -> (tracked out: (Self, ViewSeen))
         ensures
             out.0.value() == t,
-            out.0.view() == out.1.view(),
+            out.0.thread_view() == out.1@,
     ;
 
     // VA-INTRO-INCL
     pub axiom fn new_incl(tracked t: T, tracked sn: ViewSeen) -> (tracked out: (Self, ViewSeen))
         ensures
             out.0.value() == t,
-            out.0.view() == out.1.view(),
-            out.1.view().contains(sn.view()),
+            out.0.thread_view() == out.1@,
+            out.1.thread_view().contains(sn@),
     ;
 
     // VA-ELIM
     pub axiom fn into_inner(tracked self, tracked sn: ViewSeen) -> (tracked out: T)
         requires
-            sn.view().contains(self.view())
+            sn@.contains(self.thread_view())
         ensures
             out == self.value(),
     ;
 
     // this is encoding view monotonicity
-    pub axiom fn weaken(tracked self, v: View) -> (tracked out: Self)
+    pub axiom fn weaken(tracked self, v: ThreadView) -> (tracked out: Self)
         requires
-            v.contains(self.view()),
+            v.contains(self.thread_view()),
         ensures
-            out.view() == v,
+            out.thread_view() == v,
             out.value() == self.value(),
     ;
 
@@ -549,10 +549,10 @@ impl<T> ViewAt<T> {
     ) -> (tracked out: ViewAt<U>)
         requires
             f.value().requires((self.value(),)),
-            f.view() == self.view(),
+            f.thread_view() == self.thread_view(),
         ensures
             f.value().ensures((self.value(),), out.value()),
-            out.view() == self.view(),
+            out.thread_view() == self.thread_view(),
     ;
 }
 
@@ -589,16 +589,16 @@ unsafe impl<T> Objective for ViewJoin<T> {
 // I am skipping a lot of rules for now. If we don't use raw invariants, I am not sure how much we will use view joins
 // skip - VJ-JOIN, VA-VJ, VJ-VA, VJ-VA-ACC, VJ-BOPS (including wand), VJ-UNOPS
 impl<T> ViewJoin<T> {
-    pub uninterp spec fn view(&self) -> View;
+    pub uninterp spec fn thread_view(&self) -> ThreadView;
 
     pub uninterp spec fn value(&self) -> T;
 
     // this is encoding view monotonicity
-    pub axiom fn weaken(tracked self, v: View) -> (tracked out: Self)
+    pub axiom fn weaken(tracked self, v: ThreadView) -> (tracked out: Self)
         requires
-            v.contains(self.view()),
+            v.contains(self.thread_view()),
         ensures
-            out.view() == v,
+            out.thread_view() == v,
             out.value() == self.value(),
     ;
 
@@ -613,7 +613,7 @@ impl<T> ViewJoin<T> {
     pub proof fn new_incl(tracked t: T, tracked sn: ViewSeen) -> (tracked out: Self)
         ensures
             out.value() == t,
-            out.view().contains(sn.view()),
+            out.thread_view().contains(sn@),
     {
         let tracked (at, _) = ViewAt::new_incl(t, sn);
         Self::from_view_at(at)
@@ -623,7 +623,7 @@ impl<T> ViewJoin<T> {
     // this is kind of also encoding VJ-UNFOLD -|, but not exactly
     pub axiom fn into_inner(tracked self, tracked sn: ViewSeen) -> (tracked out: T)
         requires
-            self.view() == sn.view(),
+            self.thread_view() == sn@,
         ensures
             out == self.value(),
     ;
@@ -631,7 +631,7 @@ impl<T> ViewJoin<T> {
     // VA-TO-VJ
     pub axiom fn from_view_at(tracked at: ViewAt<T>) -> (tracked out: Self)
         ensures
-            out.view() == at.view(),
+            out.thread_view() == at.thread_view(),
             out.value() == at.value(),
     ;
 
@@ -641,8 +641,8 @@ impl<T> ViewJoin<T> {
         ViewAt<T>,
     ))
         ensures
-            out.0.view().contains(sn.view()),
-            out.1.view() == out.0.view().join(self.view()),
+            out.0@.contains(sn@),
+            out.1.thread_view() == out.0@.join(self.thread_view()),
             out.1.value() == self.value(),
     ;
 }
@@ -692,22 +692,22 @@ unsafe impl<T> AtomicType for *mut T {}
 
 /// On a load, the thread must read a timestamp no smaller than that in its old view.
 /// After a load, the thread's new view will contain the timestamp that was read.
-pub open spec fn load_timestamp_in_view(old_view: View, new_view: View, loc: CellId, timestamp: nat) -> bool {
+pub open spec fn load_timestamp_in_view(old_view: ThreadView, new_view: ThreadView, loc: CellId, timestamp: nat) -> bool {
     &&& old_view.get_timestamp(loc) <= timestamp
     &&& timestamp == new_view.get_timestamp(loc)
 }
 
 /// On a load, the location's history must have included [timestamp -> (val, message_view)].
-pub open spec fn load_reads_from_history<T>(hist: History<T>, val: T, timestamp: nat, message_view: View) -> bool {
+pub open spec fn load_reads_from_history<T>(hist: History<T>, val: T, timestamp: nat, message_view: ThreadView) -> bool {
     hist.get(timestamp) == Some((val, message_view))
 }
 
 /// After a load, the thread's new view will contain the old view.
-pub open spec fn load_view_nondecreasing(old_view: View, new_view: View) -> bool {
+pub open spec fn load_view_nondecreasing(old_view: ThreadView, new_view: ThreadView) -> bool {
     new_view.contains(old_view)
 }
 
-pub open spec fn load_acquire<T>(pt: AtomicPointsTo<T>, old_view: View, new_view: View, val: T, timestamp: nat, message_view: View) -> bool {
+pub open spec fn load_acquire<T>(pt: AtomicPointsTo<T>, old_view: ThreadView, new_view: ThreadView, val: T, timestamp: nat, message_view: ThreadView) -> bool {
     &&& load_timestamp_in_view(old_view, new_view, pt.loc(), timestamp)
     &&& load_reads_from_history(pt.hist(), val, timestamp, message_view)
     &&& load_view_nondecreasing(old_view, new_view)
@@ -715,7 +715,7 @@ pub open spec fn load_acquire<T>(pt: AtomicPointsTo<T>, old_view: View, new_view
     &&& new_view.contains(message_view)
 }
 
-pub open spec fn load_relaxed<T>(pt: AtomicPointsTo<T>, old_view: View, new_view: View, acquire_view: View, val: T, timestamp: nat, message_view: View) -> bool {
+pub open spec fn load_relaxed<T>(pt: AtomicPointsTo<T>, old_view: ThreadView, new_view: ThreadView, acquire_view: ThreadView, val: T, timestamp: nat, message_view: ThreadView) -> bool {
     &&& load_timestamp_in_view(old_view, new_view, pt.loc(), timestamp)
     &&& load_reads_from_history(pt.hist(), val, timestamp, message_view)
     &&& load_view_nondecreasing(old_view, new_view)
@@ -726,26 +726,26 @@ pub open spec fn load_relaxed<T>(pt: AtomicPointsTo<T>, old_view: View, new_view
 /// On a store, the store's timestamp must be greater than that in the thread's old view. 
 /// After a store, the thread's new view will contain the timestamp of the store.
 /// The message view for the store will also contain the timestamp of the store.
-pub open spec fn store_timestamp_in_view(old_view: View, new_view: View, message_view: View, loc: CellId, timestamp: nat) -> bool {
+pub open spec fn store_timestamp_in_view(old_view: ThreadView, new_view: ThreadView, message_view: ThreadView, loc: CellId, timestamp: nat) -> bool {
     &&& old_view.get_timestamp(loc) < timestamp
     &&& timestamp == new_view.get_timestamp(loc) == message_view.get_timestamp(loc)
 }
 
 /// After a store, the thread's new view will strictly contain its old view. 
 /// This is a strict containment because the new view will contain the timestamp of the store.
-pub open spec fn store_view_increasing(old_view: View, new_view: View) -> bool {
+pub open spec fn store_view_increasing(old_view: ThreadView, new_view: ThreadView) -> bool {
     &&& new_view.contains_strict(old_view)
 }
 
 /// After a store, the locations's history is updated to contain the store.
 /// The timestamp of the store must not have previously been an entry in the location's history.
-pub open spec fn store_insert_history<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, val: T, timestamp: nat, message_view: View) -> bool {
+pub open spec fn store_insert_history<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, val: T, timestamp: nat, message_view: ThreadView) -> bool {
     &&& !old_pt.hist().contains_timestamp(timestamp)
     &&& new_pt.loc() == old_pt.loc()
     &&& new_pt.hist() == old_pt.hist().insert(timestamp, val, message_view)
 }
 
-pub open spec fn store_release<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: View, new_view: View, val: T, timestamp: nat, message_view: View) -> bool {
+pub open spec fn store_release<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: ThreadView, new_view: ThreadView, val: T, timestamp: nat, message_view: ThreadView) -> bool {
     &&& store_timestamp_in_view(old_view, new_view, message_view, old_pt.loc(), timestamp)
     &&& store_view_increasing(old_view, new_view)
     &&& store_insert_history(old_pt, new_pt, val, timestamp, message_view)
@@ -753,7 +753,7 @@ pub open spec fn store_release<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPoint
     &&& message_view == new_view
 }
 
-pub open spec fn store_relaxed<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: View, new_view: View, release_view: View, val: T, timestamp: nat, message_view: View) -> bool {
+pub open spec fn store_relaxed<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: ThreadView, new_view: ThreadView, release_view: ThreadView, val: T, timestamp: nat, message_view: ThreadView) -> bool {
     &&& store_timestamp_in_view(old_view, new_view, message_view, old_pt.loc(), timestamp)
     &&& store_view_increasing(old_view, new_view)
     &&& store_insert_history(old_pt, new_pt, val, timestamp, message_view)
@@ -765,13 +765,13 @@ pub open spec fn store_relaxed<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPoint
 
 /// After a store_mut, the locations's history is updated to be a singleton containing only the new store.
 /// The timestamp of the store must not have previously been an entry in the location's history.
-pub open spec fn store_mut_truncate_history<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, val: T, timestamp: nat, message_view: View) -> bool {
+pub open spec fn store_mut_truncate_history<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, val: T, timestamp: nat, message_view: ThreadView) -> bool {
     &&& !old_pt.hist().contains_timestamp(timestamp)
     &&& new_pt.loc() == old_pt.loc()
     &&& new_pt.hist().is_singleton(timestamp, (val, message_view))
 }
 
-pub open spec fn store_mut_release<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: View, new_view: View, val: T, timestamp: nat, message_view: View) -> bool {
+pub open spec fn store_mut_release<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: ThreadView, new_view: ThreadView, val: T, timestamp: nat, message_view: ThreadView) -> bool {
     &&& store_timestamp_in_view(old_view, new_view, message_view, old_pt.loc(), timestamp)
     &&& store_view_increasing(old_view, new_view)
     &&& store_mut_truncate_history(old_pt, new_pt, val, timestamp, message_view)
@@ -779,7 +779,7 @@ pub open spec fn store_mut_release<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicP
     &&& message_view == new_view
 }
 
-pub open spec fn store_mut_relaxed<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: View, new_view: View, release_view: View, val: T, timestamp: nat, message_view: View) -> bool {
+pub open spec fn store_mut_relaxed<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: ThreadView, new_view: ThreadView, release_view: ThreadView, val: T, timestamp: nat, message_view: ThreadView) -> bool {
     &&& store_timestamp_in_view(old_view, new_view, message_view, old_pt.loc(), timestamp)
     &&& store_view_increasing(old_view, new_view)
     &&& store_mut_truncate_history(old_pt, new_pt, val, timestamp, message_view)
@@ -791,19 +791,19 @@ pub open spec fn store_mut_relaxed<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicP
 
 pub ghost struct LoadData {
     pub timestamp: nat,
-    pub message_view: View
+    pub message_view: ThreadView
 }
 
 pub ghost struct StoreData {
     pub timestamp: nat,
-    pub message_view: View
+    pub message_view: ThreadView
 }
 
 pub ghost struct UpdateData {
     pub load_timestamp: nat,
-    pub load_message_view: View,
-    pub store_message_view: View,
-    pub intermediate_thread_view: View
+    pub load_message_view: ThreadView,
+    pub store_message_view: ThreadView,
+    pub intermediate_thread_view: ThreadView
 }
 
 // todo - macro to declare all of the atomic types
