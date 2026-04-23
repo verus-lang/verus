@@ -802,7 +802,8 @@ pub ghost struct StoreData {
 pub ghost struct UpdateData {
     pub load_timestamp: nat,
     pub load_message_view: View,
-    pub store_message_view: View
+    pub store_message_view: View,
+    pub intermediate_thread_view: View
 }
 
 // todo - macro to declare all of the atomic types
@@ -985,20 +986,20 @@ impl PWeakAtomicU8 {
                     &&& out.2@.store_message_view.contains_strict(out.2@.load_message_view)
                     &&& match success {
                         Ordering::AcqRel => {
-                            &&& load_acquire(*old(pt), old(v_sn)@, v_sn@, current, out.2@.load_timestamp, out.2@.load_message_view)
-                            &&& store_release(*old(pt), *pt, old(v_sn)@, v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
+                            &&& load_acquire(*old(pt), old(v_sn)@, out.2@.intermediate_thread_view, current, out.2@.load_timestamp, out.2@.load_message_view)
+                            &&& store_release(*old(pt), *pt, out.2@.intermediate_thread_view, v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
                         },
                         Ordering::Acquire => {
-                            &&& load_acquire(*old(pt), old(v_sn)@, v_sn@, current, out.2@.load_timestamp, out.2@.load_message_view)
-                            &&& store_relaxed(*old(pt), *pt, old(v_sn)@, v_sn@, rel_v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
+                            &&& load_acquire(*old(pt), old(v_sn)@, out.2@.intermediate_thread_view, current, out.2@.load_timestamp, out.2@.load_message_view)
+                            &&& store_relaxed(*old(pt), *pt, out.2@.intermediate_thread_view, v_sn@, rel_v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
                         },
                         Ordering::Release => {
-                            &&& load_relaxed(*old(pt), old(v_sn)@, v_sn@, out.1@@, v, out.2@.load_timestamp, out.2@.load_message_view)
-                            &&& store_release(*old(pt), *pt, old(v_sn)@, v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
+                            &&& load_relaxed(*old(pt), old(v_sn)@, out.2@.intermediate_thread_view, out.1@@, v, out.2@.load_timestamp, out.2@.load_message_view)
+                            &&& store_release(*old(pt), *pt, out.2@.intermediate_thread_view, v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
                         },
                         Ordering::Relaxed => {
-                            &&& load_relaxed(*old(pt), old(v_sn)@, v_sn@, out.1@@, v, out.2@.load_timestamp, out.2@.load_message_view)
-                            &&& store_relaxed(*old(pt), *pt, old(v_sn)@, v_sn@, rel_v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
+                            &&& load_relaxed(*old(pt), old(v_sn)@, out.2@.intermediate_thread_view, out.1@@, v, out.2@.load_timestamp, out.2@.load_message_view)
+                            &&& store_relaxed(*old(pt), *pt, out.2@.intermediate_thread_view, v_sn@, rel_v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
                         }
                     }
                 },
