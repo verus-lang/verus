@@ -1,11 +1,16 @@
+#![allow(unused_imports)]
+
+use core::sync::atomic::{
+    AtomicBool, AtomicI8, AtomicI16, AtomicI32, AtomicIsize, AtomicPtr, AtomicU8, AtomicU16,
+    AtomicU32, AtomicUsize, Ordering,
+};
+
+#[cfg(target_has_atomic = "64")]
+use core::sync::atomic::{AtomicI64, AtomicU64};
+
 use crate::prelude::*;
 use crate::cell::CellId;
 use crate::pcm::*;
-use crate::invariant::*;
-use crate::atomic_ghost::AtomicInvariantPredicate;
-use core::sync::atomic::Ordering;
-use std::marker::PhantomData;
-use std::sync::atomic::*;
 
 verus! {
 
