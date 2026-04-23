@@ -71,7 +71,7 @@ impl View {
     }
 }
 
-pub ghost struct History<T>(pub Map<nat, (T, Option<View>)>);
+pub ghost struct History<T>(pub Map<nat, (T, View)>);
 
 impl<T> History<T> {
     // #[verifier::type_invariant]
@@ -83,7 +83,7 @@ impl<T> History<T> {
         self.0.dom().contains(timestamp)
     }
 
-    pub open spec fn index(&self, timestamp: nat) -> (T, Option<View>) 
+    pub open spec fn index(&self, timestamp: nat) -> (T, View) 
         recommends self.contains_timestamp(timestamp)
     {
         self.0.index(timestamp)
@@ -97,18 +97,18 @@ impl<T> History<T> {
         self.0.dom()
     }
 
-    pub open spec fn get(&self, timestamp: nat) -> Option<(T, Option<View>)> {
+    pub open spec fn get(&self, timestamp: nat) -> Option<(T, View)> {
         self.0.get(timestamp)
     }
 
-    pub open spec fn insert(&self, timestamp: nat, val: T, view: Option<View>) -> Self 
+    pub open spec fn insert(&self, timestamp: nat, val: T, view: View) -> Self 
         recommends
             !self.contains_timestamp(timestamp)
     {
         History(self.0.insert(timestamp, (val, view)))
     }
 
-    pub open spec fn is_singleton(&self, timestamp: nat, val: (T, Option<View>)) -> bool {
+    pub open spec fn is_singleton(&self, timestamp: nat, val: (T, View)) -> bool {
         &&& self.contains_timestamp(timestamp)
         &&& forall|ts| #[trigger] self.contains_timestamp(ts) ==> ts == timestamp && self.get(ts) == Some(val)
     }
@@ -193,14 +193,14 @@ pub broadcast proof fn view_join_contains(v1: View, v2: View)
     reveal(View::join);
 }
 
-pub broadcast proof fn history_insert_contains_timestamp_cases<T>(h: History<T>, t: nat, v: T, o: Option<View>, t2: nat)
+pub broadcast proof fn history_insert_contains_timestamp_cases<T>(h: History<T>, t: nat, v: T, o: View, t2: nat)
     requires
         #[trigger] h.insert(t, v, o).contains_timestamp(t2)
     ensures
         t == t2 || h.contains_timestamp(t2)
 {}
 
-pub broadcast proof fn history_insert_contains_inserted_timestamp<T>(h: History<T>, t: nat, v: T, o: Option<View>)
+pub broadcast proof fn history_insert_contains_inserted_timestamp<T>(h: History<T>, t: nat, v: T, o: View)
     ensures
         (#[trigger] h.insert(t, v, o)).contains_timestamp(t)
 {}
@@ -212,7 +212,7 @@ pub broadcast proof fn history_get_contains_timestamp<T>(h: History<T>, t: nat)
         h.contains_timestamp(t)
 {}
 
-pub broadcast proof fn history_singleton_dom_singleton<T>(h: History<T>, ts : nat, val : (T, Option<View>))
+pub broadcast proof fn history_singleton_dom_singleton<T>(h: History<T>, ts : nat, val : (T, View))
     requires
         h.0.dom().finite(),
         #[trigger] h.is_singleton(ts, val)
@@ -223,14 +223,14 @@ pub broadcast proof fn history_singleton_dom_singleton<T>(h: History<T>, ts : na
     assert (forall |ts1| #[trigger] h.0.dom().contains(ts1) ==>  ts1 == ts);
 }
 
-// pub broadcast axiom fn history_singleton_last<T>(h: History<T>, ts : nat, val : (T, Option<View>))
+// pub broadcast axiom fn history_singleton_last<T>(h: History<T>, ts : nat, val : (T, View))
 //     requires
 //         h.0.dom().finite(),
 //         #[trigger] h.is_singleton(ts, val)
 //     ensures
 //         h.last() == (ts, val);
 
-// pub broadcast axiom fn history_last_ensures<T>(h: History<T>, ts : nat, val: (T, Option<View>))
+// pub broadcast axiom fn history_last_ensures<T>(h: History<T>, ts : nat, val: (T, View))
 //     requires
 //         #[trigger] h.last() == (ts, val)
 //     ensures
@@ -684,107 +684,119 @@ declare_type_is_atomic!(bool, u8, u16, u32, u64, usize, i8, i16, i32, i64);
 
 unsafe impl<T> AtomicType for *mut T {}
 
-/// On a load, the thread must read a timestamp no smaller than that in its current view
-pub open spec fn load_valid_timestamp(old_view: View, loc: CellId, timestamp: nat) -> bool {
-    old_view.get_timestamp(loc) <= timestamp
+/// On a load, the thread must read a timestamp no smaller than that in its old view.
+/// After a load, the thread's new view will contain the timestamp that was read.
+pub open spec fn load_timestamp_in_view(old_view: View, new_view: View, loc: CellId, timestamp: nat) -> bool {
+    &&& old_view.get_timestamp(loc) <= timestamp
+    &&& timestamp == new_view.get_timestamp(loc)
 }
 
-/// After a load, the thread's current view will be updated to contain the old view and the timestamp for the write that was read
-pub open spec fn load_view_update(old_view: View, new_view: View, loc: CellId, timestamp: nat) -> bool {
-    &&& new_view.contains(old_view)
-    &&& timestamp <= new_view.get_timestamp(loc)
+/// On a load, the location's history must have included [timestamp -> (val, message_view)].
+pub open spec fn load_reads_from_history<T>(hist: History<T>, val: T, timestamp: nat, message_view: View) -> bool {
+    hist.get(timestamp) == Some((val, message_view))
 }
 
-/// On a load, the location's history must have included [timestamp -> (v, write_view)]
-pub open spec fn load_valid_history<T>(hist: History<T>, val: T, timestamp: nat, write_view: View) -> bool {
-    
-    hist.get(timestamp) == Some((val, Some(write_view)))
+/// After a load, the thread's new view will contain the old view.
+pub open spec fn load_view_nondecreasing(old_view: View, new_view: View) -> bool {
+    new_view.contains(old_view)
 }
 
-pub open spec fn load_acquire<T>(pt: AtomicPointsTo<T>, old_view: ViewSeen, new_view: ViewSeen, val: T, timestamp: nat, write_view: View) -> bool {
-    &&& load_valid_timestamp(old_view@, pt.loc(), timestamp)
-    &&& load_valid_history(pt.hist(), val, timestamp, write_view)
-    &&& load_view_update(old_view@, new_view@, pt.loc(), timestamp)
-    // because this is an acquire load, the write view is joined to the thread's current view
-    &&& new_view@.contains(write_view)
+pub open spec fn load_acquire<T>(pt: AtomicPointsTo<T>, old_view: View, new_view: View, val: T, timestamp: nat, message_view: View) -> bool {
+    &&& load_timestamp_in_view(old_view, new_view, pt.loc(), timestamp)
+    &&& load_reads_from_history(pt.hist(), val, timestamp, message_view)
+    &&& load_view_nondecreasing(old_view, new_view)
+    // because this is an acquire load, the message view is joined to the thread's current view
+    &&& new_view.contains(message_view)
 }
 
-pub open spec fn load_relaxed<T>(pt: AtomicPointsTo<T>, old_view: ViewSeen, new_view: ViewSeen, acquire_view: AcquireViewSeen, val: T, timestamp: nat, write_view: View) -> bool {
-    &&& load_valid_timestamp(old_view@, pt.loc(), timestamp)
-    &&& load_valid_history(pt.hist(), val, timestamp, write_view)
-    &&& load_view_update(old_view@, new_view@, pt.loc(), timestamp)
-    // because this is a relaxed load, the write view is joined to the thread's acquire view
-    &&& acquire_view@.contains(write_view)
+pub open spec fn load_relaxed<T>(pt: AtomicPointsTo<T>, old_view: View, new_view: View, acquire_view: View, val: T, timestamp: nat, message_view: View) -> bool {
+    &&& load_timestamp_in_view(old_view, new_view, pt.loc(), timestamp)
+    &&& load_reads_from_history(pt.hist(), val, timestamp, message_view)
+    &&& load_view_nondecreasing(old_view, new_view)
+    // because this is a relaxed load, the message view is joined to the thread's acquire view
+    &&& acquire_view.contains(message_view)
 }
 
-/// On a store, the new write's timestamp must be greater than that in the thread's old view, 
-// and the timestamp must not have been contained in this location's history
-pub open spec fn store_valid_timestamp<T>(old_view: View, old_hist: History<T>, loc: CellId, timestamp: nat) -> bool {
+/// On a store, the store's timestamp must be greater than that in the thread's old view. 
+/// After a store, the thread's new view will contain the timestamp of the store.
+/// The message view for the store will also contain the timestamp of the store.
+pub open spec fn store_timestamp_in_view(old_view: View, new_view: View, message_view: View, loc: CellId, timestamp: nat) -> bool {
     &&& old_view.get_timestamp(loc) < timestamp
-    &&& !old_hist.contains_timestamp(timestamp)
+    &&& timestamp == new_view.get_timestamp(loc) == message_view.get_timestamp(loc)
 }
 
-/// On a store, the write view which cannot be contained in the thread's old view (the write view must contain the write timestamp)
-pub open spec fn store_valid_message_view(old_view: View, write_view: View) -> bool {
-    !old_view.contains(write_view)
-}
-
-/// After a store, the thread's current view will strictly contain its old view and the timestamp of the write
-pub open spec fn store_view_update(old_view: View, new_view: View, loc: CellId, timestamp: nat) -> bool {
+/// After a store, the thread's new view will strictly contain its old view. 
+/// This is a strict containment because the new view will contain the timestamp of the store.
+pub open spec fn store_view_increasing(old_view: View, new_view: View) -> bool {
     &&& new_view.contains_strict(old_view)
-    &&& timestamp <= new_view.get_timestamp(loc)
 }
 
-/// After a store, the locations's history is updated to contain the new write
-pub open spec fn store_points_to_update<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, val: T, timestamp: nat, write_view: View) -> bool {
+/// After a store, the locations's history is updated to contain the store.
+/// The timestamp of the store must not have previously been an entry in the location's history.
+pub open spec fn store_insert_history<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, val: T, timestamp: nat, message_view: View) -> bool {
+    &&& !old_pt.hist().contains_timestamp(timestamp)
     &&& new_pt.loc() == old_pt.loc()
-    &&& new_pt.hist() == old_pt.hist().insert(timestamp, val, Some(write_view))
+    &&& new_pt.hist() == old_pt.hist().insert(timestamp, val, message_view)
 }
 
-pub open spec fn store_release<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: ViewSeen, new_view: ViewSeen, val: T, timestamp: nat, write_view: View) -> bool {
-    &&& store_valid_timestamp(old_view@, old_pt.hist(), old_pt.loc(), timestamp)
-    &&& store_valid_message_view(old_view@, write_view)
-    &&& store_view_update(old_view@, new_view@, old_pt.loc(), timestamp)
-    &&& store_points_to_update(old_pt, new_pt, val, timestamp, write_view)
-    // because this is a release store, the write view is the thread's current view
-    &&& write_view == new_view@
+pub open spec fn store_release<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: View, new_view: View, val: T, timestamp: nat, message_view: View) -> bool {
+    &&& store_timestamp_in_view(old_view, new_view, message_view, old_pt.loc(), timestamp)
+    &&& store_view_increasing(old_view, new_view)
+    &&& store_insert_history(old_pt, new_pt, val, timestamp, message_view)
+    // because this is a release store, the message view is the thread's current view
+    &&& message_view == new_view
 }
 
-pub open spec fn store_relaxed<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: ViewSeen, new_view: ViewSeen, release_view: ReleaseViewSeen, val: T, timestamp: nat, write_view: View) -> bool {
-    &&& store_valid_timestamp(old_view@, old_pt.hist(), old_pt.loc(), timestamp)
-    &&& store_valid_message_view(old_view@, write_view)
-    &&& store_view_update(old_view@, new_view@, old_pt.loc(), timestamp)
-    &&& store_points_to_update(old_pt, new_pt, val, timestamp, write_view)
-    // because this is a relaxed store, the write view contains the release view
-    &&& write_view.contains(release_view@)
-    // and the thread's current view will now contain the write view
-    &&& new_view@.contains(write_view)
+pub open spec fn store_relaxed<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: View, new_view: View, release_view: View, val: T, timestamp: nat, message_view: View) -> bool {
+    &&& store_timestamp_in_view(old_view, new_view, message_view, old_pt.loc(), timestamp)
+    &&& store_view_increasing(old_view, new_view)
+    &&& store_insert_history(old_pt, new_pt, val, timestamp, message_view)
+    // because this is a relaxed store, the message view contains the release view
+    &&& message_view.contains(release_view)
+    // and the thread's current view will now contain the message view
+    &&& new_view.contains(message_view)
 }
 
-/// After a store_mut, the locations's history is updated to be a singleton with the new write
-pub open spec fn store_mut_points_to_update<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, val: T, timestamp: nat, write_view: View) -> bool {
+/// After a store_mut, the locations's history is updated to be a singleton containing only the new store.
+/// The timestamp of the store must not have previously been an entry in the location's history.
+pub open spec fn store_mut_truncate_history<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, val: T, timestamp: nat, message_view: View) -> bool {
+    &&& !old_pt.hist().contains_timestamp(timestamp)
     &&& new_pt.loc() == old_pt.loc()
-    &&& new_pt.hist().is_singleton(timestamp, (val, Some(write_view)))
+    &&& new_pt.hist().is_singleton(timestamp, (val, message_view))
 }
 
-pub open spec fn store_mut_release<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: ViewSeen, new_view: ViewSeen, val: T, timestamp: nat, write_view: View) -> bool {
-    &&& store_valid_timestamp(old_view@, old_pt.hist(), old_pt.loc(), timestamp)
-    &&& store_valid_message_view(old_view@, write_view)
-    &&& store_view_update(old_view@, new_view@, old_pt.loc(), timestamp)
-    &&& store_mut_points_to_update(old_pt, new_pt, val, timestamp, write_view)
-    // because this is a release store, the write view is the thread's current view
-    &&& write_view == new_view@
+pub open spec fn store_mut_release<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: View, new_view: View, val: T, timestamp: nat, message_view: View) -> bool {
+    &&& store_timestamp_in_view(old_view, new_view, message_view, old_pt.loc(), timestamp)
+    &&& store_view_increasing(old_view, new_view)
+    &&& store_mut_truncate_history(old_pt, new_pt, val, timestamp, message_view)
+    // because this is a release store, the message view is the thread's current view
+    &&& message_view == new_view
 }
 
-pub open spec fn store_mut_relaxed<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: ViewSeen, new_view: ViewSeen, release_view: ReleaseViewSeen, val: T, timestamp: nat, write_view: View) -> bool {
-    &&& store_valid_timestamp(old_view@, old_pt.hist(), old_pt.loc(), timestamp)
-    &&& store_valid_message_view(old_view@, write_view)
-    &&& store_view_update(old_view@, new_view@, old_pt.loc(), timestamp)
-    &&& store_mut_points_to_update(old_pt, new_pt, val, timestamp, write_view)
-    // because this is a relaxed store, the write view contains the release view
-    &&& write_view.contains(release_view@)
-    // and the thread's current view will now contain the write view
-    &&& new_view@.contains(write_view)
+pub open spec fn store_mut_relaxed<T>(old_pt: AtomicPointsTo<T>, new_pt: AtomicPointsTo<T>, old_view: View, new_view: View, release_view: View, val: T, timestamp: nat, message_view: View) -> bool {
+    &&& store_timestamp_in_view(old_view, new_view, message_view, old_pt.loc(), timestamp)
+    &&& store_view_increasing(old_view, new_view)
+    &&& store_mut_truncate_history(old_pt, new_pt, val, timestamp, message_view)
+    // because this is a relaxed store, the message view contains the release view
+    &&& message_view.contains(release_view)
+    // and the thread's current view will now contain the message view
+    &&& new_view.contains(message_view)
+}
+
+pub ghost struct LoadData {
+    pub timestamp: nat,
+    pub message_view: View
+}
+
+pub ghost struct StoreData {
+    pub timestamp: nat,
+    pub message_view: View
+}
+
+pub ghost struct UpdateData {
+    pub load_timestamp: nat,
+    pub load_message_view: View,
+    pub store_message_view: View
 }
 
 // todo - macro to declare all of the atomic types
@@ -807,9 +819,9 @@ impl PWeakAtomicU8 {
     ))
         ensures
             res.0.loc() == res.1@.loc(),
-            res.1@.hist().is_singleton(res.3@, (i, Some(res.2@.view()))),
-            res.2@.view().contains_loc(res.1@.loc()),
-            res.2@.view().get_timestamp(res.1@.loc()) == res.3@
+            res.1@.hist().is_singleton(res.3@, (i, res.2@@)),
+            res.2@@.contains_loc(res.1@.loc()),
+            res.2@@.get_timestamp(res.1@.loc()) == res.3@
     {
         let p = PWeakAtomicU8 { ato: AtomicU8::new(i) };
         (p, Tracked::assume_new(), Tracked::assume_new(), Ghost::new(unreached()))
@@ -826,10 +838,10 @@ impl PWeakAtomicU8 {
     ))
         ensures
             res.0.loc() == res.1@.loc(),
-            res.1@.hist().is_singleton(res.3@, (i, Some(res.2@.view()))),
-            res.2@.view().contains_loc(res.1@.loc()),
-            res.2@.view().get_timestamp(res.1@.loc()) == res.3@,
-     				res.2@.view().contains(vs.view())
+            res.1@.hist().is_singleton(res.3@, (i, res.2@@)),
+            res.2@@.contains_loc(res.1@.loc()),
+            res.2@@.get_timestamp(res.1@.loc()) == res.3@,
+     		res.2@@.contains(vs@)
     {
         let p = PWeakAtomicU8 { ato: AtomicU8::new(i) };
         (p, Tracked::assume_new(), Tracked::assume_new(), Ghost::new(unreached()))
@@ -857,19 +869,19 @@ impl PWeakAtomicU8 {
         order: Ordering,
         Tracked(v_sn): Tracked<&mut ViewSeen>,
         Tracked(pt): Tracked<&AtomicPointsTo<u8>>,
-    ) -> (out: (u8, Tracked<AcquireViewSeen>, Ghost<nat>, Ghost<View>))
+    ) -> (out: (u8, Tracked<AcquireViewSeen>, Ghost<LoadData>))
         requires
             self.loc() == pt.loc(),
             order matches Ordering::Acquire || order matches Ordering::Relaxed
         ensures
             match order {
-                Ordering::Acquire => load_acquire(*pt, *old(v_sn), *v_sn, out.0, out.2@, out.3@),
-                Ordering::Relaxed => load_relaxed(*pt, *old(v_sn), *v_sn, out.1@, out.0, out.2@, out.3@)
+                Ordering::Acquire => load_acquire(*pt, old(v_sn)@, v_sn@, out.0, out.2@.timestamp, out.2@.message_view),
+                Ordering::Relaxed => load_relaxed(*pt, old(v_sn)@, v_sn@, out.1@@, out.0, out.2@.timestamp, out.2@.message_view)
             }
         opens_invariants none
         no_unwind
     {
-        return (self.ato.load(order), Tracked::assume_new(), Ghost::new(unreached()), Ghost::new(unreached()));
+        return (self.ato.load(order), Tracked::assume_new(), Ghost::new(unreached()));
     }
 
     #[inline(always)]
@@ -882,20 +894,20 @@ impl PWeakAtomicU8 {
         Tracked(v_sn): Tracked<&mut ViewSeen>,
         Tracked(rel_v_sn): Tracked<ReleaseViewSeen>,
         Tracked(pt): Tracked<&mut AtomicPointsTo<u8>>,
-    ) -> (out: (Ghost<nat>, Ghost<View>))
+    ) -> (out: (Ghost<StoreData>))
         requires
             self.loc() == old(pt).loc(),
             order matches Ordering::Release || order matches Ordering::Relaxed
         ensures
             match order {
-                Ordering::Release => store_release(*old(pt), *pt, *old(v_sn), *v_sn, v, out.0@, out.1@),
-                Ordering::Relaxed => store_relaxed(*old(pt), *pt, *old(v_sn), *v_sn, rel_v_sn, v, out.0@, out.1@)
+                Ordering::Release => store_release(*old(pt), *pt, old(v_sn)@, v_sn@, v, out@.timestamp, out@.message_view),
+                Ordering::Relaxed => store_relaxed(*old(pt), *pt, old(v_sn)@, v_sn@, rel_v_sn@, v, out@.timestamp, out@.message_view)
             }
         opens_invariants none
         no_unwind
     {
         self.ato.store(v, order);
-        (Ghost(unreached()), Ghost(unreached()))
+        (Ghost(unreached()))
     }
 
 
@@ -909,21 +921,21 @@ impl PWeakAtomicU8 {
         Tracked(v_sn): Tracked<&mut ViewSeen>,
         Tracked(rel_v_sn): Tracked<ReleaseViewSeen>,
         Tracked(pt): Tracked<&mut AtomicPointsTo<u8>>,
-    ) -> (out: (Ghost<nat>, Ghost<View>))
+    ) -> (out: (Ghost<StoreData>))
         requires
             old(self).loc() == old(pt).loc(),
             order matches Ordering::Release || order matches Ordering::Relaxed
         ensures
             match order {
-                Ordering::Release => store_mut_release(*old(pt), *pt, *old(v_sn), *v_sn, v, out.0@, out.1@),
-                Ordering::Relaxed => store_mut_relaxed(*old(pt), *pt, *old(v_sn), *v_sn, rel_v_sn, v, out.0@, out.1@)
+                Ordering::Release => store_mut_release(*old(pt), *pt, old(v_sn)@, v_sn@, v, out@.timestamp, out@.message_view),
+                Ordering::Relaxed => store_mut_relaxed(*old(pt), *pt, old(v_sn)@, v_sn@, rel_v_sn@, v, out@.timestamp, out@.message_view)
             },
             self.loc() == old(self).loc()
         opens_invariants none
         no_unwind
     {
         self.ato.store(v, order);
-        (Ghost(unreached()), Ghost(unreached()))
+        (Ghost(unreached()))
     }
 
     #[inline(always)]
@@ -955,7 +967,7 @@ impl PWeakAtomicU8 {
         Tracked(v_sn): Tracked<&mut ViewSeen>,
         Tracked(rel_v_sn): Tracked<ReleaseViewSeen>,
         Tracked(pt): Tracked<&mut AtomicPointsTo<u8>>,
-    ) -> (out: (Result<u8, u8>, Tracked<AcquireViewSeen>, Ghost<nat>, Ghost<View>, Ghost<View>))
+    ) -> (out: (Result<u8, u8>, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
         requires
             self.loc() == old(pt).loc(),
             success matches Ordering::AcqRel || success matches Ordering::Acquire || success matches Ordering::Release || success matches Ordering::Relaxed,
@@ -964,23 +976,23 @@ impl PWeakAtomicU8 {
             match out.0 {
                 Ok(v) => {
                     &&& current == v
-                    &&& out.4@.contains_strict(out.3@)
+                    &&& out.2@.store_message_view.contains_strict(out.2@.load_message_view)
                     &&& match success {
                         Ordering::AcqRel => {
-                            &&& load_acquire(*old(pt), *old(v_sn), *v_sn, current, out.2@, out.3@)
-                            &&& store_release(*old(pt), *pt, *old(v_sn), *v_sn, new, out.2@ + 1, out.4@)
+                            &&& load_acquire(*old(pt), old(v_sn)@, v_sn@, current, out.2@.load_timestamp, out.2@.load_message_view)
+                            &&& store_release(*old(pt), *pt, old(v_sn)@, v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
                         },
                         Ordering::Acquire => {
-                            &&& load_acquire(*old(pt), *old(v_sn), *v_sn, current, out.2@, out.3@)
-                            &&& store_relaxed(*old(pt), *pt, *old(v_sn), *v_sn, rel_v_sn, new, out.2@ + 1, out.4@)
+                            &&& load_acquire(*old(pt), old(v_sn)@, v_sn@, current, out.2@.load_timestamp, out.2@.load_message_view)
+                            &&& store_relaxed(*old(pt), *pt, old(v_sn)@, v_sn@, rel_v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
                         },
                         Ordering::Release => {
-                            &&& load_relaxed(*old(pt), *old(v_sn), *v_sn, out.1@, v, out.2@, out.3@)
-                            &&& store_release(*old(pt), *pt, *old(v_sn), *v_sn, new, out.2@ + 1, out.4@)
+                            &&& load_relaxed(*old(pt), old(v_sn)@, v_sn@, out.1@@, v, out.2@.load_timestamp, out.2@.load_message_view)
+                            &&& store_release(*old(pt), *pt, old(v_sn)@, v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
                         },
                         Ordering::Relaxed => {
-                            &&& load_relaxed(*old(pt), *old(v_sn), *v_sn, out.1@, v, out.2@, out.3@)
-                            &&& store_relaxed(*old(pt), *pt, *old(v_sn), *v_sn, rel_v_sn, new, out.2@ + 1, out.4@)
+                            &&& load_relaxed(*old(pt), old(v_sn)@, v_sn@, out.1@@, v, out.2@.load_timestamp, out.2@.load_message_view)
+                            &&& store_relaxed(*old(pt), *pt, old(v_sn)@, v_sn@, rel_v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
                         }
                     }
                 },
@@ -988,15 +1000,15 @@ impl PWeakAtomicU8 {
                     &&& current != v
                     &&& *pt == *old(pt)
                     &&& match failure {
-                        Ordering::Acquire => load_acquire(*old(pt), *old(v_sn), *v_sn, v, out.2@, out.3@),
-                        Ordering::Relaxed => load_relaxed(*old(pt), *old(v_sn), *v_sn, out.1@, v, out.2@, out.3@)
+                        Ordering::Acquire => load_acquire(*old(pt), old(v_sn)@, v_sn@, v, out.2@.load_timestamp, out.2@.load_message_view),
+                        Ordering::Relaxed => load_relaxed(*old(pt), old(v_sn)@, v_sn@, out.1@@, v, out.2@.load_timestamp, out.2@.load_message_view)
                     }
                 }
             }
         opens_invariants none
         no_unwind
     {
-        return (self.ato.compare_exchange(current, new, success, failure), Tracked::assume_new(), Ghost::new(unreached()), Ghost::new(unreached()), Ghost::new(unreached()));
+        return (self.ato.compare_exchange(current, new, success, failure), Tracked::assume_new(), Ghost::new(unreached()));
     }
 }
 
