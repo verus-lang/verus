@@ -8,10 +8,11 @@ use core::sync::atomic::{
 #[cfg(target_has_atomic = "64")]
 use core::sync::atomic::{AtomicI64, AtomicU64};
 
+//use super::verus_builtin::*;
 use super::pervasive::*;
-use crate::prelude::*;
-use crate::cell::CellId;
-use crate::pcm::*;
+use super::prelude::*;
+use super::cell::CellId;
+use super::pcm::*;
 
 verus! {
 
@@ -815,10 +816,9 @@ pub struct PWeakAtomicU8 {
 impl PWeakAtomicU8 {
     pub uninterp spec fn loc(&self) -> CellId;
 
-    // todo - make const
     #[inline(always)]
     #[verifier::external_body]
-    pub /*const*/ fn new(i: u8) -> (res: (
+    pub const fn new(i: u8) -> (res: (
         Self,
         Tracked<AtomicPointsTo<u8>>,
         Tracked<ViewSeen>,
@@ -831,13 +831,12 @@ impl PWeakAtomicU8 {
             res.2@@.get_timestamp(res.1@.loc()) == res.3@
     {
         let p = PWeakAtomicU8 { ato: AtomicU8::new(i) };
-        (p, Tracked::assume_new(), Tracked::assume_new(), Ghost::new(unreached()))
+        (p, Tracked::assume_new(), Tracked::assume_new(), Ghost::assume_new())
     }
 
-    // todo - make const
     #[inline(always)]
     #[verifier::external_body]
-    pub /*const*/ fn new_incl(i: u8, Tracked(vs) : Tracked<ViewSeen>) -> (res: (
+    pub const fn new_incl(i: u8, Tracked(vs) : Tracked<ViewSeen>) -> (res: (
         Self,
         Tracked<AtomicPointsTo<u8>>,
         Tracked<ViewSeen>,
@@ -851,12 +850,12 @@ impl PWeakAtomicU8 {
      		res.2@@.contains(vs@)
     {
         let p = PWeakAtomicU8 { ato: AtomicU8::new(i) };
-        (p, Tracked::assume_new(), Tracked::assume_new(), Ghost::new(unreached()))
+        (p, Tracked::assume_new(), Tracked::assume_new(), Ghost::assume_new())
     }
 
     #[inline(always)]
     #[verifier::external_body]
-    pub fn into_inner(self, Tracked(pt): Tracked<AtomicPointsTo<u8>>) -> (ret: (u8, Ghost<nat>))
+    pub const fn into_inner(self, Tracked(pt): Tracked<AtomicPointsTo<u8>>) -> (ret: (u8, Ghost<nat>))
         requires
             self.loc() == pt.loc(),
         ensures
@@ -865,7 +864,7 @@ impl PWeakAtomicU8 {
         opens_invariants none
         no_unwind
     {
-        (self.ato.into_inner(), Ghost::new(unreached()))
+        (self.ato.into_inner(), Ghost::assume_new())
     }
 
     #[inline(always)]
@@ -888,7 +887,7 @@ impl PWeakAtomicU8 {
         opens_invariants none
         no_unwind
     {
-        return (self.ato.load(order), Tracked::assume_new(), Ghost::new(unreached()));
+        return (self.ato.load(order), Tracked::assume_new(), Ghost::assume_new());
     }
 
     #[inline(always)]
@@ -914,7 +913,7 @@ impl PWeakAtomicU8 {
         no_unwind
     {
         self.ato.store(v, order);
-        (Ghost(unreached()))
+        (Ghost::assume_new())
     }
 
 
@@ -942,13 +941,14 @@ impl PWeakAtomicU8 {
         no_unwind
     {
         self.ato.store(v, order);
-        (Ghost(unreached()))
+        (Ghost::assume_new())
     }
 
     #[inline(always)]
     #[verifier::external_body]
+    #[verifier::atomic]
     // TODO make this proof so that it can be used inside an atomic invariant body
-    pub fn truncate_history(&mut self, Tracked(pt): Tracked<&mut AtomicPointsTo<u8>>) -> (ts: Ghost<nat>)
+    pub const fn truncate_history(&mut self, Tracked(pt): Tracked<&mut AtomicPointsTo<u8>>) -> (ts: Ghost<nat>)
         requires
             old(self).loc() == old(pt).loc()
         ensures
@@ -959,7 +959,7 @@ impl PWeakAtomicU8 {
         opens_invariants none
         no_unwind
     {
-        Ghost(unreached())
+        Ghost::assume_new()
     }
 
     #[inline(always)]
@@ -1015,7 +1015,7 @@ impl PWeakAtomicU8 {
         opens_invariants none
         no_unwind
     {
-        return (self.ato.compare_exchange(current, new, success, failure), Tracked::assume_new(), Ghost::new(unreached()));
+        return (self.ato.compare_exchange(current, new, success, failure), Tracked::assume_new(), Ghost::assume_new());
     }
 }
 
