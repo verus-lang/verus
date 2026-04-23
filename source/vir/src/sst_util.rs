@@ -1,7 +1,8 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, Ident,
-    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Quant, SpannedTyped,
-    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders,
+    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, GenericBound,
+    GenericBoundX, GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth,
+    IntegerTypeBoundKind, Mode, ProofNoteLabel, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
@@ -64,6 +65,30 @@ pub(crate) fn subst_pre_local_decl(
     }
 }
 
+pub fn free_vars_typ_insert(typ: &Typ, vars: &mut HashSet<Ident>) {
+    let _ = crate::ast_visitor::typ_visitor_dfs(typ, &mut |t: &Typ| match &**t {
+        TypX::TypParam(x) => {
+            vars.insert(x.clone());
+            crate::visitor::VisitorControlFlow::Recurse::<()>
+        }
+        _ => crate::visitor::VisitorControlFlow::Recurse::<()>,
+    });
+}
+
+pub fn free_vars_typ(typ: &Typ) -> HashSet<Ident> {
+    let mut vars: HashSet<Ident> = HashSet::new();
+    free_vars_typ_insert(typ, &mut vars);
+    vars
+}
+
+pub fn free_vars_typs(typs: &Typs) -> HashSet<Ident> {
+    let mut vars: HashSet<Ident> = HashSet::new();
+    for typ in typs.iter() {
+        free_vars_typ_insert(typ, &mut vars);
+    }
+    vars
+}
+
 pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
     crate::ast_visitor::map_typ_visitor(typ, &|t: &Typ| match &**t {
         TypX::TypParam(x) => match typ_substs.get(x) {
@@ -73,6 +98,33 @@ pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
         _ => Ok(t.clone()),
     })
     .expect("subst_typ")
+}
+
+pub fn subst_typ_in_bound(typ_substs: &HashMap<Ident, Typ>, bound: &GenericBound) -> GenericBound {
+    let gbx = match &**bound {
+        GenericBoundX::Trait(path, typs) => {
+            let typs = typs.iter().map(|typ| subst_typ(&typ_substs, typ)).collect();
+            GenericBoundX::Trait(path.clone(), Arc::new(typs))
+        }
+        GenericBoundX::TypEquality(path, typs, name, typ) => {
+            let typs = typs.iter().map(|typ| subst_typ(&typ_substs, typ)).collect();
+            let typ = subst_typ(&typ_substs, typ);
+            GenericBoundX::TypEquality(path.clone(), Arc::new(typs), name.clone(), typ)
+        }
+        GenericBoundX::ConstTyp(t1, t2) => {
+            let t1 = subst_typ(&typ_substs, t1);
+            let t2 = subst_typ(&typ_substs, t2);
+            GenericBoundX::ConstTyp(t1, t2)
+        }
+    };
+    Arc::new(gbx)
+}
+
+pub fn subst_typ_in_bounds(
+    typ_substs: &HashMap<Ident, Typ>,
+    bounds: &GenericBounds,
+) -> GenericBounds {
+    Arc::new(bounds.iter().map(|bound| subst_typ_in_bound(typ_substs, bound)).collect())
 }
 
 pub fn subst_typ_for_datatype(
@@ -353,6 +405,7 @@ impl BinaryOp {
                 BitOr => (20, 20, 21),
                 Shr(..) | Shl(..) => (26, 26, 27),
             },
+            IeeeFloat(_) => (5, 90, 90),
             StrGetChar => (90, 90, 90),
             Index(_, _) => (90, 90, 90),
         }
@@ -446,22 +499,22 @@ impl ExpX {
                     ),
                     99,
                 ),
-                UnaryOp::FloatToBits => {
-                    (format!("float_to_bits({})", exp.x.to_user_string(global)), 99)
-                }
                 UnaryOp::IntToReal => {
                     (format!("int_to_real({})", exp.x.to_user_string(global)), 99)
                 }
                 UnaryOp::RealToInt => {
                     (format!("real_to_int({})", exp.x.to_user_string(global)), 99)
                 }
+                UnaryOp::FloatToBits => {
+                    (format!("float_to_bits({})", exp.x.to_user_string(global)), 99)
+                }
+                UnaryOp::IeeeFloat(_) => {
+                    (format!("ieee_float({})", exp.x.to_user_string(global)), 99)
+                }
                 UnaryOp::HeightTrigger => {
                     (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
                 }
                 UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(global, 99)), 90),
-                UnaryOp::StrIsAscii => {
-                    (format!("{}.is_ascii()", exp.x.to_string_prec(global, 99)), 90)
-                }
                 UnaryOp::Trigger(..)
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
@@ -515,9 +568,6 @@ impl ExpX {
                     Field(field) => {
                         (format!("{}.{}", exp.x.to_user_string(global), field.field), 99)
                     }
-                    CustomErr(_msg) => {
-                        (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
-                    }
                     ProofNote(_label) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }
@@ -565,6 +615,7 @@ impl ExpX {
                         Shr(..) => ">>",
                         Shl(..) => "<<",
                     },
+                    IeeeFloat(_) => "ieee_float",
                     StrGetChar => "ignored", // This is a non-infix BinaryOp, so it needs special handling below
                     Index(..) => "ignored", // This is a non-infix BinaryOp, so it needs special handling below
                 };
@@ -737,19 +788,25 @@ impl ExpX {
     }
 }
 
-pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<Arc<String>> {
+pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<ProofNoteLabel> {
     match &exp.x {
         ExpX::UnaryOpr(UnaryOpr::Box(_), e) => sst_exp_get_proof_note(e),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => sst_exp_get_proof_note(e),
-        ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e) => sst_exp_get_proof_note(e),
-        ExpX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
+        ExpX::UnaryOpr(UnaryOpr::ProofNote(label), _) => Some(label.clone()),
         _ => None,
     }
 }
 
 /// Collect proof notes from a function's `requires` clauses.
 pub fn func_collect_requires_proof_notes(func: &FunctionSst) -> HashSet<String> {
-    func.x.decl.reqs.iter().filter_map(sst_exp_get_proof_note).map(|s| s.to_string()).collect()
+    func.x
+        .decl
+        .reqs
+        .iter()
+        .filter_map(sst_exp_get_proof_note)
+        .filter(|proof_note| !proof_note.is_custom_err)
+        .map(|proof_note| proof_note.text.to_string())
+        .collect()
 }
 
 /// Collect proof notes from a function's proof obligations.
@@ -788,8 +845,10 @@ impl<'a> ObligationProofNoteCollector<'a> {
         // NOTE: Skip `func_check.reqs` to exclude `requires` clauses.
         // Collect proof notes from this function's own `ensures` clauses.
         for ens in func_check.post_condition.ens_exps.iter() {
-            if let Some(label) = sst_exp_get_proof_note(ens) {
-                self.proof_notes.insert(label.to_string());
+            if let Some(label) = sst_exp_get_proof_note(ens)
+                && !label.is_custom_err
+            {
+                self.proof_notes.insert(label.text.to_string());
             }
         }
         for stm in func_check.post_condition.ens_spec_precondition_stms.iter() {
@@ -811,13 +870,15 @@ impl<'a> Visitor<Walk, (), NoScoper> for ObligationProofNoteCollector<'a> {
             }
             // Collect proof note labels from `assert` statements.
             StmX::Assert(_, maybe_msg, exp) => {
-                if let Some(label) = sst_exp_get_proof_note(exp) {
-                    self.proof_notes.insert(label.to_string());
+                if let Some(label) = sst_exp_get_proof_note(exp)
+                    && !label.is_custom_err
+                {
+                    self.proof_notes.insert(label.text.to_string());
                 }
                 if let Some(msg) = maybe_msg {
                     // This is likely unnecessary; here for future-proofing.
                     for label in msg.labels.iter() {
-                        if label.is_proof_note {
+                        if label.is_proof_note && !label.is_custom_err {
                             self.proof_notes.insert(label.note.clone());
                         }
                     }
@@ -1040,8 +1101,13 @@ pub(crate) fn sst_call_requires(
     for (typ_param, arg) in func.x.typ_params.iter().zip(typ_args.iter()) {
         typ_substs.insert(typ_param.clone(), arg.clone());
     }
+
+    let skip_dummy =
+        func.x.params.len() > 0 && func.x.params[0].x.name == crate::def::dummy_param_name();
+    let skip_dummy = if skip_dummy { 1 } else { 0 };
+
     let param_typs: Vec<Typ> =
-        func.x.params.iter().map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
+        func.x.params.iter().skip(skip_dummy).map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
 
     let tuple_typ = crate::ast_util::mk_tuple_typ(&Arc::new(param_typs));
     let fndef_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), resolved_fun.clone()));
@@ -1050,7 +1116,7 @@ pub(crate) fn sst_call_requires(
     let fndef_value = crate::poly::coerce_exp_to_poly(ctx, &fndef_value);
 
     let req_args: Vec<Exp> =
-        req_args.iter().map(|r| crate::poly::coerce_exp_to_poly(ctx, r)).collect();
+        req_args.iter().skip(skip_dummy).map(|r| crate::poly::coerce_exp_to_poly(ctx, r)).collect();
     let args_tuple = sst_tuple(span, &Arc::new(req_args));
     let args_tuple = crate::poly::coerce_exp_to_poly(ctx, &args_tuple);
 
@@ -1077,8 +1143,13 @@ pub(crate) fn sst_call_ensures(
     for (typ_param, arg) in func.x.typ_params.iter().zip(typ_args.iter()) {
         typ_substs.insert(typ_param.clone(), arg.clone());
     }
+
+    let skip_dummy =
+        func.x.params.len() > 0 && func.x.params[0].x.name == crate::def::dummy_param_name();
+    let skip_dummy = if skip_dummy { 1 } else { 0 };
+
     let param_typs: Vec<Typ> =
-        func.x.params.iter().map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
+        func.x.params.iter().skip(skip_dummy).map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
 
     let tuple_typ = crate::ast_util::mk_tuple_typ(&Arc::new(param_typs));
     let fndef_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), resolved_fun.clone()));
@@ -1087,7 +1158,7 @@ pub(crate) fn sst_call_ensures(
     let fndef_value = crate::poly::coerce_exp_to_poly(ctx, &fndef_value);
 
     let req_args: Vec<Exp> =
-        req_args.iter().map(|r| crate::poly::coerce_exp_to_poly(ctx, r)).collect();
+        req_args.iter().skip(skip_dummy).map(|r| crate::poly::coerce_exp_to_poly(ctx, r)).collect();
     let args_tuple = sst_tuple(span, &Arc::new(req_args));
     let args_tuple = crate::poly::coerce_exp_to_poly(ctx, &args_tuple);
 

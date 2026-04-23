@@ -162,7 +162,7 @@ test_verify_one_file! {
 
         #[verifier(external_type_specification)]
         struct ExY(X);
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `crate::X`")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::X`")
 }
 
 test_verify_one_file! {
@@ -193,7 +193,7 @@ test_verify_one_file! {
         pub struct ExOption1<T>(core::option::Option<T>);
 
         pub fn test(a: ExOption1<u8>) { }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::ExOption1` marked `external_type_specification` directly")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::ExOption1` marked `external_type_specification` directly")
 }
 
 test_verify_one_file! {
@@ -210,7 +210,7 @@ test_verify_one_file! {
         pub fn test() {
             let a = ExOption1::<u8>(core::option::Option::<u8>::None);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::ExOption1` marked `external_type_specification` directly")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::ExOption1` marked `external_type_specification` directly")
 }
 
 test_verify_one_file! {
@@ -221,7 +221,7 @@ test_verify_one_file! {
         fn test() {
             let x = X { };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::X` which is ignored")
 }
 
 // If you wrongly try to apply a mode
@@ -486,5 +486,5 @@ test_verify_one_file! {
         fn stuff() -> X {
             loop { }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::X` which is ignored")
 }

@@ -292,7 +292,7 @@ test_verify_one_file_with_options! {
 
             resolve(x_ref_box);
 
-            // TODO(new_mut_ref): without this line, Verus doesn't emit the axiom for
+            // TODO(new_mut_ref): (triggers) without this line, Verus doesn't emit the axiom for
             // has_resolved::<Box<_>>
             assert(has_resolved(x_ref_box));
 
@@ -446,7 +446,7 @@ test_verify_one_file_with_options! {
                 a: (0, Box::new((&mut u, 20))),
             };
 
-            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): should be automatic
+            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
 
             assert(u == 0);
         }
@@ -501,7 +501,7 @@ test_verify_one_file_with_options! {
                 a: (0, Box::new((&mut u, 20))),
             };
 
-            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): should be automatic
+            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
 
             assert(u == 0);
             assert(false); // FAILS
@@ -569,7 +569,7 @@ test_verify_one_file_with_options! {
             let mut x = X {
                 a: (0, Box::new((&mut pair_ref_pair, 4))),
             };
-            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): should be automatic
+            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
             assert(has_resolved(pair_ref_pair.1));
             assert(pair === (0, 1));
         }
@@ -665,7 +665,7 @@ test_verify_one_file_with_options! {
             let mut x = X {
                 a: (0, Box::new((&mut pair_ref_pair, 4))),
             };
-            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): should be automatic
+            assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
             assert(has_resolved(pair_ref_pair.1));
             assert(pair === (0, 1));
             assert(false); // FAILS
@@ -760,6 +760,22 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] control_flow_match_on_never ["new-mut-ref"] => verus_code! {
+        #[allow(unreachable_code)]
+        fn test(x: !) {
+            let mut y = 0;
+            let y_ref = &mut y;
+
+            assert(has_resolved(y_ref));
+
+            match x { }
+
+            *y_ref = 20;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not yet implemented: zero-arm match expressions")
 }
 
 test_verify_one_file_with_options! {
@@ -2316,7 +2332,7 @@ test_verify_one_file_with_options! {
             assert(j[0] == (X { a: 20, b: 0 }));
             assert(false); // FAILS
         }
-    } => Err(err) => assert_fails(err, 6) // TODO(new_mut_ref)
+    } => Err(err) => assert_fails(err, 6)
 }
 
 test_verify_one_file_with_options! {
@@ -2549,6 +2565,28 @@ test_verify_one_file_with_options! {
             assert(has_resolved(y.x.b));
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] has_resolved_field_of_struct_with_drop_impl ["new-mut-ref"] => verus_code! {
+        struct X {
+            s: &'static mut u64,
+        }
+
+        impl Drop for X {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+            }
+        }
+
+        fn test(x: X, r: &'static mut u64) {
+            let mut x = x;
+            x.s = r;
+            assert(has_resolved(x.s)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }
 
 test_verify_one_file_with_options! {
@@ -3251,7 +3289,7 @@ test_verify_one_file_with_options! {
             assert(x == 1);
             assert(false);
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `(Verus spec x_ref)` as immutable because it is also borrowed as mutable")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `*(Verus spec x_ref)` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file_with_options! {
@@ -3364,8 +3402,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): fix or disallow
-    #[ignore] #[test] overwrite_two_phase_borrow ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow ["new-mut-ref"] => verus_code! {
         fn set_to(a: &mut u64, b: u64)
             ensures *final(a) == b,
         {
@@ -3382,7 +3419,318 @@ test_verify_one_file_with_options! {
             assert(a == 20);
             assert(b == 1);
         }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow2 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: (&mut u64, u64), b: u64)
+            ensures *final(a.0) == b,
+        {
+            *a.0 = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = (&mut a, 20);
+            set_to(a_ref, ({ a_ref.0 = &mut b; 20 }));
+
+            assert(a == 20);
+            assert(b == 1);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "assign to part of moved value: `a_ref`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow3 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = (&mut a, 0);
+            set_to(a_ref.0, ({ a_ref = (&mut b, 2); 20 }));
+
+            assert(a == 20);
+            assert(b == 1);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow4 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = (&mut a, 0);
+            set_to(a_ref.0, ({ a_ref.0 = &mut b; 20 }));
+
+            assert(a == 20);
+            assert(b == 1);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow5 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = (&mut a, 0);
+            set_to(a_ref.0, ({ a_ref.1 = 17; 20 }));
+
+            assert(a == 20);
+            assert(b == 1);
+            assert(a_ref.1 == 17);
+        }
+
+        fn two_phase_test_fails() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = (&mut a, 0);
+            set_to(a_ref.0, ({ a_ref.1 = 17; 20 }));
+
+            assert(a == 20);
+            assert(b == 1);
+            assert(a_ref.1 == 17);
+            assert(false); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow6 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+            let mut e = 4;
+
+            let mut a_ref = [&mut a, &mut b];
+            set_to(a_ref[0], ({ a_ref[0] = &mut c; 20 }));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow7 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+            let mut e = 4;
+
+            let mut a_ref = [&mut a, &mut b];
+            // this would be ok but we're not going to compare indices
+            set_to(a_ref[0], ({ a_ref[1] = &mut c; 20 }));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow8 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+            let mut e = 4;
+            let mut f = 5;
+
+            let mut a_ref = [(&mut a, &mut b), (&mut c, &mut d)];
+            set_to(a_ref[0].0, ({ a_ref[0] = (&mut e, &mut f); 20 }));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow9 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+            let mut e = 4;
+            let mut f = 5;
+
+            let mut a_ref = [(&mut a, &mut b), (&mut c, &mut d)];
+            set_to(a_ref[0].0, ({ a_ref[0].0 = &mut e; 20 }));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow10 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+            let mut e = 4;
+            let mut f = 5;
+
+            let mut a_ref = [(&mut a, &mut b), (&mut c, &mut d)];
+            set_to(a_ref[0].0, ({ a_ref[0].1 = &mut e; 20 }));
+
+            assert(has_resolved(a_ref));
+            assert(has_resolved(a_ref[0]));
+            assert(has_resolved(a_ref[1]));
+            assert(has_resolved(a_ref[0].0));
+            assert(has_resolved(a_ref[0].1));
+            assert(has_resolved(a_ref[1].0));
+            assert(has_resolved(a_ref[1].1));
+
+            assert(*a_ref[0].1 == 4);
+            assert(a == 20);
+            assert(b == 1);
+            assert(c == 2);
+            assert(d == 3);
+            assert(e == 4);
+        }
+
+        fn two_phase_test_fails() {
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+            let mut e = 4;
+            let mut f = 5;
+
+            let mut a_ref = [(&mut a, &mut b), (&mut c, &mut d)];
+            set_to(a_ref[0].0, ({ a_ref[0].1 = &mut e; 20 }));
+
+            assert(has_resolved(a_ref));
+            assert(has_resolved(a_ref[0]));
+            assert(has_resolved(a_ref[1]));
+            assert(has_resolved(a_ref[0].0));
+            assert(has_resolved(a_ref[0].1));
+            assert(has_resolved(a_ref[1].0));
+            assert(has_resolved(a_ref[1].1));
+
+            assert(*a_ref[0].1 == 4);
+            assert(a == 20);
+            assert(b == 1);
+            assert(c == 2);
+            assert(d == 3);
+            assert(e == 4);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow11 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = &mut a;
+            // ok because the function call is actually unreachable
+            set_to(a_ref, ({ loop { a_ref = &mut b; } 20 }));
+            assert(false);
+        }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow12 ["new-mut-ref"] => verus_code! {
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b,
+        {
+            *a = b;
+        }
+
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = &mut a;
+            set_to(a_ref, ({ loop { a_ref = &mut b; break; } 20 }));
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+}
+
+test_verify_one_file_with_options! {
+    #[test] overwrite_two_phase_borrow13 ["new-mut-ref"] => verus_code! {
+        struct Ctor<'a>(&'a mut u64, u64);
+
+        fn two_phase_test() {
+            let mut a = 0;
+            let mut b = 1;
+
+            let mut a_ref = &mut a;
+            let t = Ctor(a_ref, ({ a_ref = &mut b; 20 }));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
 }
 
 // vec works differently than slice/array since it's a method call instead of a place expression
@@ -4339,7 +4687,7 @@ test_verify_one_file_with_options! {
         fn test_basic_move<T>(t: [X; 2]) {
             let r = id(t[0]);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::X; 2]`, which is non-copy")
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[test_crate::X; 2]`, which is non-copy")
 }
 
 test_verify_one_file_with_options! {
@@ -4364,5 +4712,313 @@ test_verify_one_file_with_options! {
         fn test_ctor_move<T>(t: [Pair<X, X>; 2]) {
             let r = Pair { a: X{}, .. t[0] };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[crate::Pair<crate::X, crate::X>; 2]`, which is non-copy")
+    } => Err(err) => assert_vir_error_msg(err, "cannot move out of type `[test_crate::Pair<test_crate::X, test_crate::X>; 2]`, which is non-copy")
+}
+
+test_verify_one_file_with_options! {
+    #[test] not_extensional_equ ["new-mut-ref"] => verus_code! {
+        proof fn x<T>(a: &mut T, b: &mut T) {
+            assume(mut_ref_current(a) == mut_ref_current(b));
+            assume(mut_ref_future(a) == mut_ref_future(b));
+
+            // Mut refs can't have extensional equality like this; this would make `a == b`
+            // a prophetic operation. In the VerusBelt model, every mut ref has a unique "name".
+            assert(a == b); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] final_is_not_decreases ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        struct Rec {
+            g: Option<Ghost<&'static mut Rec>>,
+        }
+
+        fn test() {
+            let mut r = Rec { g: None };
+
+            let mut r_ref = &mut r;
+            *r_ref = Rec { g: Some(Ghost(r_ref)) };
+
+            // We're allowed to create this value with a "cycle"
+            assert(r.g.is_some());
+            assert(r === *final(r.g.unwrap()@));
+
+            // This is okay because 'final' doesn't imply 'decreases_to'.
+            // In the VerusBelt model, final is only obtained by "looking up" the value
+            // in the prophecy assignment table,
+            // not by structural recursion on an inductive datatype.
+            assert(decreases_to!(r => r.g));
+            assert(decreases_to!(r.g => r.g.unwrap()));
+            let ghost bad_dec = decreases_to!(r.g.unwrap()@ => *final(r.g.unwrap()@));
+            assert(bad_dec); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    // Regression: nested associated-type projection in a mutable-field path.
+    #[test] assoc_projection_nested_trait_mut_ref_regression verus_code! {
+        trait Node {
+            type Cell;
+        }
+
+        trait Wrap {
+            type Item: Node;
+        }
+
+        struct Root;
+        struct Tag;
+        struct Slot {
+            x: u64,
+            y: u64,
+        }
+
+        impl Node for Tag {
+            type Cell = Slot;
+        }
+
+        impl Wrap for Root {
+            type Item = Tag;
+        }
+
+        struct Container<T: Wrap> {
+            data: <T::Item as Node>::Cell,
+        }
+
+        #[verifier::external_body]
+        fn touch(Tracked(v): Tracked<&mut u64>) {
+            unimplemented!()
+        }
+
+        fn trigger() {
+            let tracked mut c = Container::<Root> { data: Slot { x: 3, y: 9 } };
+            touch(Tracked(&mut c.data.x));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Regression: two mutable references into distinct fields under an associated-type field.
+    #[test] assoc_projection_two_mut_fields_regression verus_code! {
+        trait Assoc {
+            type Data;
+        }
+
+        struct Root;
+        struct Data {
+            x: u64,
+            y: u64,
+            z: u64,
+        }
+
+        impl Assoc for Root {
+            type Data = Data;
+        }
+
+        struct Holder<T: Assoc> {
+            value: T::Data,
+        }
+
+        #[verifier::external_body]
+        fn touch2(Tracked(a): Tracked<&mut u64>, Tracked(b): Tracked<&mut u64>) {
+            unimplemented!()
+        }
+
+        fn trigger() {
+            let tracked mut h = Holder::<Root> { value: Data { x: 0, y: 1, z: 2 } };
+            touch2(Tracked(&mut h.value.x), Tracked(&mut h.value.y));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Regression: mutable field update through a projection type where the
+    // underlying datatype has type parameters. An earlier fix rejected this
+    // case because it tried to synthesize the datatype type from scratch.
+    #[test] assoc_projection_generic_datatype_regression verus_code! {
+        trait Node {
+            type Cell;
+        }
+
+        trait Wrap {
+            type Item: Node;
+        }
+
+        struct Root;
+        struct Tag;
+
+        struct Slot<T> {
+            x: T,
+            y: T,
+        }
+
+        impl Node for Tag {
+            type Cell = Slot<u64>;
+        }
+
+        impl Wrap for Root {
+            type Item = Tag;
+        }
+
+        struct Container<T: Wrap> {
+            data: <T::Item as Node>::Cell,
+        }
+
+        #[verifier::external_body]
+        fn touch(Tracked(v): Tracked<&mut u64>) {
+            unimplemented!()
+        }
+
+        fn trigger() {
+            let tracked mut c = Container::<Root> { data: Slot { x: 3, y: 9 } };
+            touch(Tracked(&mut c.data.x));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_fn_returns_mut_ref ["new-mut-ref"] => verus_code! {
+        pub tracked struct X { ghost g: int }
+
+        pub tracked struct S {
+            pub tracked perm: X,
+        }
+
+        proof fn test_tracked_mut_ref(tracked input: &mut S) -> (tracked output: &mut X)
+            ensures
+                *output == old(input).perm,
+                *final(output) == final(input).perm,
+        {
+            &mut input.perm
+        }
+
+        proof fn test1(tracked input: &mut S) {
+            let tracked output = test_tracked_mut_ref(input);
+            output.g = 20;
+            assert(input.perm.g == 20);
+        }
+
+        proof fn test1_fails(tracked input: &mut S) {
+            let tracked output = test_tracked_mut_ref(input);
+            output.g = 20;
+            assert(input.perm.g == 20);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] async_could_get_cancelled ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        async fn callee() {
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn blah() -> &'static mut u64 {
+            loop { }
+        }
+
+        async fn test1(x: &mut &mut u64) {
+            let mr = blah();
+            let c = callee();
+
+            let j = c.await;
+            assert(has_resolved(*x));
+            *x = mr;
+        }
+
+        async fn test2(x: &mut &mut u64) {
+            let mr = blah();
+            let c = callee();
+
+            assert(has_resolved(*x)); // FAILS
+            let j = c.await;
+            *x = mr;
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_local_invariant ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred;
+        impl<'a> InvariantPredicate<(), &'a mut Ghost<u64>> for Pred {
+            closed spec fn inv(k: (), v: &'a mut Ghost<u64>) -> bool {
+                5 <= (*v)@ <= 13
+            }
+        }
+
+        fn test1(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            open_local_invariant!(inv => i => {
+                assert(has_resolved(i)); // FAILS
+            });
+        }
+
+        fn test2(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            open_local_invariant!(inv => i => {
+                proof { *i = Ghost(12); }
+            });
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_local_invariant2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred;
+        impl<'a> InvariantPredicate<(), &'a mut Ghost<u64>> for Pred {
+            closed spec fn inv(k: (), v: &'a mut Ghost<u64>) -> bool {
+                5 <= (*v)@ <= 13
+            }
+        }
+
+        fn test3(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            open_local_invariant!(inv => i => {
+                proof { *i = Ghost(19); }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Cannot show invariant holds at end of block")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_local_invariant_control_flow ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred;
+        impl<'a> InvariantPredicate<(), &'a mut Ghost<u64>> for Pred {
+            closed spec fn inv(k: (), v: &'a mut Ghost<u64>) -> bool {
+                5 <= (*v)@ <= 13
+            }
+        }
+
+        fn test1(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            let mut x: Ghost<u64> = Ghost(0);
+            let x_ref = &mut x;
+            open_local_invariant!(({ *x_ref = Ghost(20u64); inv }) => i => {
+                proof { *i = Ghost(12); }
+            });
+            assert(x == 20);
+            assert(false); // FAILS
+        }
+
+        fn test2(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            let mut x: Ghost<u64> = Ghost(0);
+            let x_ref = &mut x;
+            open_local_invariant!(inv => i => {
+                *x_ref = Ghost(20u64);
+                proof { *i = Ghost(12); }
+            });
+            assert(x == 20);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }

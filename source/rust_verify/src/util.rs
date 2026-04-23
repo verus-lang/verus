@@ -361,3 +361,9 @@ where
         }
     }
 }
+
+pub(crate) fn no_builtin_err(span: &vir::messages::Span) -> VirErr {
+    vir::messages::error(span,
+        "Error: The verus_builtin crate was not imported. This is usually imported via `vstd`, and it is necessary to run Verus.")
+    .help("For getting started with Verus, see: https://verus-lang.github.io/verus/guide/getting_started.html")
+}

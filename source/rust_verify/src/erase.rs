@@ -36,6 +36,7 @@ pub enum CompilableOperator {
     UseTypeInvariant,
     ClosureToFnProof(Mode),
     GhostBorrowMut,
+    MutRefTracked,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).
@@ -172,6 +173,7 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::TrackedBorrow
             | CompilableOperator::TrackedBorrowMut
             | CompilableOperator::GhostBorrowMut
+            | CompilableOperator::MutRefTracked
             | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
         },
         ResolvedCall::MiscEraseAbsolutely => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
@@ -337,6 +339,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         erased_ghost_value_fn_def_id: *verus_items
             .name_to_id
             .get(&VerusItem::ErasedGhostValue)
+            .unwrap(),
+        shadow_ghost_value_fn_def_id: *verus_items
+            .name_to_id
+            .get(&VerusItem::ShadowGhostValue)
             .unwrap(),
         dummy_capture_struct_def_id: *verus_items
             .name_to_id

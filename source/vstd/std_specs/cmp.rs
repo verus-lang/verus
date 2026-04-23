@@ -235,6 +235,8 @@ impl<A: PointeeSized + PartialOrd<Rhs>, Rhs: PointeeSized> PartialOrdIs<Rhs> for
     }
 }
 
+/* bool */
+
 impl PartialEqSpecImpl for bool {
     open spec fn obeys_eq_spec() -> bool {
         true
@@ -249,11 +251,15 @@ pub assume_specification[ <bool as PartialEq<bool>>::eq ](x: &bool, y: &bool) ->
 
 pub assume_specification[ <bool as PartialEq<bool>>::ne ](x: &bool, y: &bool) -> bool;
 
+/* floating point */
+
+/*
 // Note: we do not assume that floating point types have obeys_*_spec() == true
 // because Rust floating point operations are not guaranteed to be deterministic.
 // (See https://github.com/rust-lang/rfcs/blob/master/text/3514-float-semantics.md )
 // Instead, we ensure an uninterpreted function about the result,
 // which can be used to trigger user-supplied axioms.
+*/
 
 pub uninterp spec fn eq_ensures<A>(x: A, y: A, o: bool) -> bool;
 
@@ -341,6 +347,106 @@ pub assume_specification[ <f64 as PartialOrd<f64>>::gt ](x: &f64, y: &f64) -> (o
 pub assume_specification[ <f64 as PartialOrd<f64>>::ge ](x: &f64, y: &f64) -> (o: bool)
     ensures
         ge_ensures::<f64>(*x, *y, o),
+;
+
+/* reference types & */
+
+impl<A: PointeeSized, B: PointeeSized> PartialEqSpecImpl<&B> for &A
+where
+    A: PartialEq<B>,
+{
+    open spec fn obeys_eq_spec() -> bool {
+        <A as PartialEqSpec<B>>::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &&B) -> bool {
+        <A as PartialEqSpec<B>>::eq_spec(*self, *other)
+    }
+}
+
+pub assume_specification<'_0, 'a, A: PointeeSized, B: PointeeSized>[ <&'a A as PartialEq<&B>>::eq ](
+    a: &&'a A,
+    b: &&B,
+) -> bool
+where
+    A: PartialEq<B>,
+;
+
+pub assume_specification<'_0, 'a, A: PointeeSized, B: PointeeSized>[ <&'a A as PartialEq<&B>>::ne ](
+    a: &&'a A,
+    b: &&B,
+) -> bool
+where
+    A: PartialEq<B>,
+;
+
+impl<A: PointeeSized, B: PointeeSized> PartialOrdSpecImpl<&B> for &A
+where
+    A: PartialOrd<B>,
+{
+    open spec fn obeys_partial_cmp_spec() -> bool {
+        <A as PartialOrdSpec<B>>::obeys_partial_cmp_spec()
+    }
+
+    open spec fn partial_cmp_spec(&self, other: &&B) -> Option<core::cmp::Ordering> {
+        <A as PartialOrdSpec<B>>::partial_cmp_spec(*self, *other)
+    }
+}
+
+pub assume_specification<'_0, 'a, A: PointeeSized, B: PointeeSized>[ <&'a A as PartialOrd<&B>>::partial_cmp ](
+    a: &&'a A,
+    b: &&B,
+) -> Option<core::cmp::Ordering>
+where
+    A: PartialOrd<B>,
+;
+
+pub assume_specification<'_0, 'a, A: PointeeSized, B: PointeeSized>[ <&'a A as PartialOrd<&B>>::lt ](
+    a: &&'a A,
+    b: &&B,
+) -> bool
+where
+    A: PartialOrd<B>,
+;
+
+pub assume_specification<'_0, 'a, A: PointeeSized, B: PointeeSized>[ <&'a A as PartialOrd<&B>>::le ](
+    a: &&'a A,
+    b: &&B,
+) -> bool
+where
+    A: PartialOrd<B>,
+;
+
+pub assume_specification<'_0, 'a, A: PointeeSized, B: PointeeSized>[ <&'a A as PartialOrd<&B>>::gt ](
+    a: &&'a A,
+    b: &&B,
+) -> bool
+where
+    A: PartialOrd<B>,
+;
+
+pub assume_specification<'_0, 'a, A: PointeeSized, B: PointeeSized>[ <&'a A as PartialOrd<&B>>::ge ](
+    a: &&'a A,
+    b: &&B,
+) -> bool
+where
+    A: PartialOrd<B>,
+;
+
+impl<A: PointeeSized + Ord> OrdSpecImpl for &A {
+    open spec fn obeys_cmp_spec() -> bool {
+        A::obeys_cmp_spec()
+    }
+
+    open spec fn cmp_spec(&self, other: &Self) -> core::cmp::Ordering {
+        A::cmp_spec(*self, *other)
+    }
+}
+
+pub assume_specification<'a, A: PointeeSized + Ord>[ <&'a A as Ord>::cmp ](
+    a: &&'a A,
+    b: &&'a A,
+) -> core::cmp::Ordering
 ;
 
 } // verus!

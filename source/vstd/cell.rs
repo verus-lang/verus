@@ -157,6 +157,7 @@ impl<V> PointsTo<V> {
     }
 }
 
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::pcell::PCell` or `vstd::cell::pcell_maybe_uninit::PCell` instead")]
 impl<V> PCell<V> {
     /// A unique ID for the cell.
     pub uninterp spec fn id(&self) -> CellId;
@@ -290,6 +291,7 @@ impl<V> PCell<V> {
     }
 }
 
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::pcell::PCell` or `vstd::cell::pcell_maybe_uninit::PCell` instead")]
 impl<V: Copy> PCell<V> {
     #[inline(always)]
     #[verifier::external_body]
@@ -329,6 +331,7 @@ pub struct InvCell<T> {
     perm_inv: Tracked<LocalInvariant<(Set<T>, PCell<T>), PointsTo<T>, InvCellPred>>,
 }
 
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::invcell::InvCell` instead")]
 impl<T> InvCell<T> {
     #[verifier::type_invariant]
     closed spec fn wf(&self) -> bool {
@@ -352,6 +355,7 @@ impl<T> InvCell<T> {
     }
 }
 
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::invcell::InvCell` instead")]
 impl<T> InvCell<T> {
     pub fn replace(&self, val: T) -> (old_val: T)
         requires
@@ -370,6 +374,7 @@ impl<T> InvCell<T> {
     }
 }
 
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::invcell::InvCell` instead")]
 impl<T: Copy> InvCell<T> {
     pub fn get(&self) -> (val: T)
         ensures

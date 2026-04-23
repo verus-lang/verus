@@ -1,4 +1,4 @@
-// rust_verify/tests/example.rs expect-warnings
+// rust_verify/tests/example.rs
 use verus_builtin::*;
 use verus_builtin_macros::*;
 use verus_state_machines_macros::*;

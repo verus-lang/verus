@@ -260,14 +260,14 @@ pub(crate) enum Attr {
     AllowInSpec,
     // specify list of places where == is promoted to =~=
     AutoExtEqual(vir::ast::AutoExtEqual),
-    /// Label for a proof obligation, i.e. the attribute `#[verifier::proof_note("label")]`
-    ProofNote(Span, String),
+    /// Label for a proof obligation, i.e. `#[verifier::proof_note("label")]` or `#[verifier::custom_err("label")]`
+    ProofNote {
+        span: Span,
+        text: String,
+        is_custom_err: bool,
+    },
     // add manual trigger to expression inside quantifier
     Trigger(Option<Vec<u64>>),
-    // custom error string to report for precondition failures
-    CustomReqErr(String),
-    // Add custom error message for expanded diagnostics (split expressions)
-    CustomErr(String),
     // verify using bitvector theory
     BitVector,
     // for 'atomic' operations (e.g., CAS)
@@ -354,6 +354,8 @@ pub(crate) enum Attr {
     StructuralConstWrapper,
     IgnoreOutsideNewMutRefExperiment,
     MigratePostconditionsWithMutRefs(bool),
+    TrackedSwap,
+    TrackedTakeOption,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -413,7 +415,19 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
                 AttrTree::Fun(span, name, attrs) if name == "proof_note" => {
                     let label = get_proof_note_label(*span, attrs)?;
-                    v.push(Attr::ProofNote(*span, label.clone()))
+                    v.push(Attr::ProofNote {
+                        span: *span,
+                        text: label.clone(),
+                        is_custom_err: false,
+                    })
+                }
+                AttrTree::Fun(span, name, attrs) if name == "custom_err" => {
+                    let label = get_proof_note_label(*span, attrs)?;
+                    v.push(Attr::ProofNote {
+                        span: *span,
+                        text: label.clone(),
+                        is_custom_err: true,
+                    })
                 }
                 AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
                 AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
@@ -512,16 +526,6 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "atomic" => v.push(Attr::Atomic),
                 AttrTree::Fun(_, arg, None) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
-                }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Lit(LitKind::Str, msg)]))
-                    if arg == "custom_req_err" =>
-                {
-                    v.push(Attr::CustomReqErr(msg.clone()))
-                }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Lit(LitKind::Str, msg)]))
-                    if arg == "custom_err" =>
-                {
-                    v.push(Attr::CustomErr(msg.clone()))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "bit_vector" => v.push(Attr::BitVector),
                 AttrTree::Fun(_, arg, None) if arg == "decreases_by" || arg == "recommends_by" => {
@@ -674,6 +678,12 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, arg, None) if arg == "exec_allows_no_decreases_clause" => {
                     v.push(Attr::ExecAllowNoDecreasesClause);
+                }
+                AttrTree::Fun(_, arg, None) if arg == "tracked_swap_primitive" => {
+                    v.push(Attr::TrackedSwap)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "tracked_take_option_primitive" => {
+                    v.push(Attr::TrackedTakeOption)
                 }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
@@ -997,25 +1007,16 @@ pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<TriggerAnnotation>,
     Ok(groups)
 }
 
-pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<String>, VirErr> {
-    let mut v = Vec::new();
-    for attr in parse_attrs(attrs, None)? {
-        match attr {
-            Attr::CustomErr(s) => v.push(s),
-            _ => {}
-        }
-    }
-    Ok(v)
-}
-
-pub(crate) fn get_proof_note_annotation(attrs: &[Attribute]) -> Result<Option<String>, VirErr> {
+pub(crate) fn get_proof_note_annotation(
+    attrs: &[Attribute],
+) -> Result<Option<(String, bool)>, VirErr> {
     let mut label = None;
     for attr in parse_attrs(attrs, None)? {
-        if let Attr::ProofNote(span, text) = attr {
+        if let Attr::ProofNote { span, text, is_custom_err } = attr {
             if label.is_some() {
                 return err_span(span, "at most one `proof_note` attribute is allowed");
             }
-            label = Some(text);
+            label = Some((text, is_custom_err));
         }
     }
     Ok(label)
@@ -1070,7 +1071,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) no_auto_trigger: bool,
     pub(crate) autospec: Option<String>,
     pub(crate) allow_in_spec: bool,
-    pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
     pub(crate) for_loop: bool,
     pub(crate) auto_decreases: bool,
@@ -1111,6 +1111,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) encoded_static: bool,
     pub(crate) structural_const_wrapper: bool,
     pub(crate) ignore_outside_new_mut_ref_experiment: bool,
+    pub(crate) tracked_swap: bool,
+    pub(crate) tracked_take_option: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1243,7 +1245,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         no_auto_trigger: false,
         autospec: None,
         allow_in_spec: false,
-        custom_req_err: None,
         bit_vector: false,
         for_loop: false,
         auto_decreases: false,
@@ -1284,6 +1285,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         encoded_static: false,
         structural_const_wrapper: false,
         ignore_outside_new_mut_ref_experiment: false,
+        tracked_swap: false,
+        tracked_take_option: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1324,7 +1327,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::AllowInSpec => vs.allow_in_spec = true,
-            Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,
             Attr::ForLoop => vs.for_loop = true,
             Attr::AutoDecreases => vs.auto_decreases = true,
@@ -1366,6 +1368,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::IgnoreOutsideNewMutRefExperiment => {
                 vs.ignore_outside_new_mut_ref_experiment = true
             }
+            Attr::TrackedSwap => vs.tracked_swap = true,
+            Attr::TrackedTakeOption => vs.tracked_take_option = true,
             _ => {}
         }
     }

@@ -170,6 +170,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] union_generics verus_code! {
+        use vstd::prelude::*;
+
         union U<A: Copy, B: Copy> { x: A, y: B }
 
         fn test_ok() {
@@ -341,8 +343,7 @@ test_verify_one_file! {
         spec fn test(u: U) -> u8 {
             u.x
         }
-    // This error messages could be more specific
-    } => Err(err) => assert_vir_error_msg(err, "expected pure mathematical expression")
+    } => Err(err) => assert_vir_error_msg(err, "union field access is not allowed in pure context (use the Verus `get_union_field` builtin instead)")
 }
 
 test_verify_one_file! {

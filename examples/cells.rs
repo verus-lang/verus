@@ -1,7 +1,9 @@
 #[allow(unused_imports)]
 use verus_builtin::*;
 use verus_builtin_macros::*;
-use vstd::{cell::*, *};
+use vstd::prelude::*;
+use vstd::cell::pcell_maybe_uninit::*;
+use vstd::simple_pptr::MemContents;
 
 verus! {
 

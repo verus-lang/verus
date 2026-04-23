@@ -59,12 +59,16 @@ pub broadcast proof fn axiom_spec_len<T, A: Allocator>(v: &VecDeque<T, A>)
     admit();
 }
 
+impl<T, A: Allocator> super::core::IndexSpecImpl<usize> for VecDeque<T, A> {
+    open spec fn index_req(&self, index: &usize) -> bool {
+        index < self.len()
+    }
+}
+
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::index ](
     v: &VecDeque<T, A>,
     i: usize,
 ) -> (result: &T)
-    requires
-        i < v.len(),
     ensures
         result == v.spec_index(i as int),
 ;

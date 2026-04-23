@@ -1056,7 +1056,7 @@ test_verify_one_file! {
                 _ => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X` which is ignored")
 }
 
 test_verify_one_file! {

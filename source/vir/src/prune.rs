@@ -4,9 +4,9 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     ArrayKind, AssocTypeImpl, AssocTypeImplX, AutospecUsage, BinaryOp, BoundsCheck, CallTarget,
-    Datatype, Dt, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate, KrateX, Mode, Module,
-    ModuleX, OpaqueType, Path, Place, PlaceX, RevealGroup, Stmt, Trait, TraitId, TraitX, Typ, TypX,
-    UnaryOp, UnaryOpr,
+    CrateId, Datatype, Dt, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate, KrateX, Mode,
+    Module, ModuleX, OpaqueType, Path, Place, PlaceX, RevealGroup, Stmt, Trait, TraitId, TraitX,
+    Typ, TypX, UnaryOp, UnaryOpr,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
@@ -86,7 +86,6 @@ struct Ctxt {
     typ_to_trigger_broadcasts: HashMap<ReachedType, Vec<Fun>>,
     // Map each revealed broadcast function f to its ReachBroadcastFunction
     fun_revealed_broadcast_map: HashMap<Fun, ReachBroadcastFunction>,
-    vstd_crate_name: Ident,
     assert_by_compute: bool,
     assert_by_compute_seq_funs: Vec<Fun>,
 }
@@ -113,6 +112,7 @@ struct State {
     dyn_traits: HashSet<Path>,
     uses_array: bool,
     uses_pointee_metadata: bool,
+    uses_ieee_float: bool,
     fndef_types: HashSet<Fun>,
     // broadcast functions that are also defined or called normally
     // (not just used for the broadcast)
@@ -435,12 +435,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             // set operations may be invoked for checking invariant masks,
             // either when opening an invariant or invoking another function.
             let reach_set_ops = |state: &mut State| {
-                reach_function(ctxt, state, &fn_set_contains_name(&ctxt.vstd_crate_name));
-                reach_function(ctxt, state, &fn_set_empty_name(&ctxt.vstd_crate_name));
-                reach_function(ctxt, state, &fn_set_full_name(&ctxt.vstd_crate_name));
-                reach_function(ctxt, state, &fn_set_insert_name(&ctxt.vstd_crate_name));
-                reach_function(ctxt, state, &fn_set_remove_name(&ctxt.vstd_crate_name));
-                reach_function(ctxt, state, &fn_set_subset_of_name(&ctxt.vstd_crate_name));
+                reach_function(ctxt, state, &fn_set_contains_name());
+                reach_function(ctxt, state, &fn_set_empty_name());
+                reach_function(ctxt, state, &fn_set_full_name());
+                reach_function(ctxt, state, &fn_set_insert_name());
+                reach_function(ctxt, state, &fn_set_remove_name());
+                reach_function(ctxt, state, &fn_set_subset_of_name());
             };
             let maybe_reach_set_ops_for_call = |state: &mut State, callee_name: &Fun| {
                 let caller =
@@ -481,16 +481,8 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
                         // references to these particular names.
-                        reach_function(
-                            ctxt,
-                            state,
-                            &fn_inv_name(&ctxt.vstd_crate_name, *atomicity),
-                        );
-                        reach_function(
-                            ctxt,
-                            state,
-                            &fn_namespace_name(&ctxt.vstd_crate_name, *atomicity),
-                        );
+                        reach_function(ctxt, state, &fn_inv_name(*atomicity));
+                        reach_function(ctxt, state, &fn_namespace_name(*atomicity));
                         reach_set_ops(state);
                     }
                     ExprX::Unary(crate::ast::UnaryOp::InferSpecForLoopIter { .. }, _) => {
@@ -512,13 +504,17 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         }
                     }
                     ExprX::Unary(UnaryOp::Length(ArrayKind::Slice), _) => {
-                        reach_function(ctxt, state, &fn_slice_len(&ctxt.vstd_crate_name));
+                        reach_function(ctxt, state, &fn_slice_len());
                     }
                     ExprX::Binary(BinaryOp::Index(ArrayKind::Slice, bounds_check), _, _) => {
-                        reach_function(ctxt, state, &fn_slice_index(&ctxt.vstd_crate_name));
+                        reach_function(ctxt, state, &fn_slice_index());
                         if *bounds_check != BoundsCheck::Allow {
-                            reach_function(ctxt, state, &fn_slice_len(&ctxt.vstd_crate_name));
+                            reach_function(ctxt, state, &fn_slice_len());
                         }
+                    }
+                    ExprX::Unary(UnaryOp::IeeeFloat(_), _)
+                    | ExprX::Binary(BinaryOp::IeeeFloat(_), _, _) => {
+                        state.uses_ieee_float = true;
                     }
                     _ => {}
                 }
@@ -528,13 +524,13 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             let fp = |state: &mut State, _: &mut VisitorScopeMap, p: &Place| {
                 match &p.x {
                     PlaceX::Index(_, _, ArrayKind::Array, _) => {
-                        reach_function(ctxt, state, &fn_array_update(&ctxt.vstd_crate_name));
+                        reach_function(ctxt, state, &fn_array_update());
                     }
                     PlaceX::Index(_, _, ArrayKind::Slice, bounds_check) => {
-                        reach_function(ctxt, state, &fn_slice_index(&ctxt.vstd_crate_name));
-                        reach_function(ctxt, state, &fn_slice_update(&ctxt.vstd_crate_name));
+                        reach_function(ctxt, state, &fn_slice_index());
+                        reach_function(ctxt, state, &fn_slice_update());
                         if *bounds_check != BoundsCheck::Allow {
-                            reach_function(ctxt, state, &fn_slice_len(&ctxt.vstd_crate_name));
+                            reach_function(ctxt, state, &fn_slice_len());
                         }
                     }
                     _ => {}
@@ -551,6 +547,19 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 state.reached_types.iter().chain([ReachedType::None].iter()).map(|t| (t, &f)),
             );
             reach_methods(ctxt, state, methods);
+            if function.x.attrs.is_async {
+                reach_typ(
+                    ctxt,
+                    state,
+                    &function
+                        .x
+                        .async_ret
+                        .as_ref()
+                        .expect("Async function has no return type")
+                        .x
+                        .typ,
+                );
+            }
             continue;
         }
         if let Some(f) = state.worklist_reveal_groups.pop() {
@@ -801,6 +810,7 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
 pub struct UsedBuiltins {
     pub uses_array: bool,
     pub uses_pointee_metadata: bool,
+    pub uses_ieee_float: bool,
 }
 
 //  - module is none: prune to keep what's reachable from current_crate
@@ -820,7 +830,7 @@ pub struct PruneInfo {
 
 pub fn prune_krate_for_module_or_krate(
     krate: &Krate,
-    crate_name: &Ident,
+    crate_name: &CrateId,
     current_crate: Option<&Krate>,
     module: Option<Path>,
     fun: Option<&Fun>,
@@ -985,6 +995,27 @@ pub fn prune_krate_for_module_or_krate(
             if is_root_function(f) {
                 // our function
                 reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
+
+                // an async function, we need to include async related functions
+                if f.x.attrs.is_async {
+                    reach(
+                        &mut state.reached_functions,
+                        &mut state.worklist_functions,
+                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "view"),
+                    );
+
+                    reach(
+                        &mut state.reached_functions,
+                        &mut state.worklist_functions,
+                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "awaited"),
+                    );
+
+                    reach(
+                        &mut state.reached_functions,
+                        &mut state.worklist_functions,
+                        &crate::fun!(CrateId::Vstd => "future", "exec_await"),
+                    );
+                }
             }
             continue;
         }
@@ -1156,7 +1187,6 @@ pub fn prune_krate_for_module_or_krate(
         }
         assoc_type_impl_map.get_mut(&key).unwrap().push(a.clone());
     }
-    let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
     let ctxt = Ctxt {
         module: module.clone(),
         function_map,
@@ -1172,7 +1202,6 @@ pub fn prune_krate_for_module_or_krate(
         fun_to_trigger_broadcasts,
         typ_to_trigger_broadcasts,
         fun_revealed_broadcast_map,
-        vstd_crate_name,
         assert_by_compute,
         assert_by_compute_seq_funs,
     };
@@ -1282,6 +1311,7 @@ pub fn prune_krate_for_module_or_krate(
     let used_builtins = UsedBuiltins {
         uses_array: state.uses_array,
         uses_pointee_metadata: state.uses_pointee_metadata,
+        uses_ieee_float: state.uses_ieee_float,
     };
     let prune_info = PruneInfo {
         mono_abstract_datatypes,

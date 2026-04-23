@@ -292,6 +292,10 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool) -> Option<String> {
                 buf += "Sized";
             }
         }
+        Bound::Tuple => {
+            buf += &clause;
+            buf += "Tuple";
+        }
         Bound::Trait { trait_path, args, equality } => {
             buf += &clause;
             buf += &typ_args_to_string(Some(trait_path), &vec![], args, equality);

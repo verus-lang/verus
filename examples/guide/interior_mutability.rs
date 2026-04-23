@@ -2,7 +2,8 @@
 #[allow(unused_imports)]
 use verus_builtin::*;
 use verus_builtin_macros::*;
-use vstd::{cell::*, prelude::*};
+use vstd::{cell::invcell::*, prelude::*};
+use vstd::predicate::Predicate;
 
 //// InvCell
 
@@ -20,25 +21,25 @@ fn expensive_computation() -> (res: u64)
     1 + 1
 }
 
-spec fn cell_is_valid(cell: &InvCell<Option<u64>>) -> bool {
-    forall|v|
-        (cell.inv(v) <==> match v {
+// Implement this trait to specify validity for the cell contents
+//
+// Validity of the interior contents of the cell means that the value is either
+// `None` or `Some(i)` where `i` is the desired value.
+struct MemoizedCellInvariant;
+impl Predicate<Option<u64>> for MemoizedCellInvariant {
+    closed spec fn predicate(&self, v: Option<u64>) -> bool {
+        match v {
             Option::Some(i) => i == result_of_computation(),
             Option::None => true,
-        })
+        }
+    }
 }
 
 // Memoize the call to `expensive_computation()`.
 // The argument here is an InvCell wrapping an Option<u64>,
 // which is initially None, but then it is set to the correct
 // answer once it's computed.
-//
-// The precondition here, given in the definition of `cell_is_valid` above,
-// says that the InvCell has an invariant that the interior contents is either
-// `None` or `Some(i)` where `i` is the desired value.
-fn memoized_computation(cell: &InvCell<Option<u64>>) -> (res: u64)
-    requires
-        cell_is_valid(cell),
+fn memoized_computation(cell: &InvCell<Option<u64>, MemoizedCellInvariant>) -> (res: u64)
     ensures
         res == result_of_computation(),
 {

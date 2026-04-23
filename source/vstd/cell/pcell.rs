@@ -113,6 +113,13 @@ impl<T: ?Sized> PointsTo<T> {
 
     /// The contents of the cell.
     pub uninterp spec fn value(&self) -> &T;
+
+    /// Guarantees that two permissions can not be associated with the same `CellId`.
+    pub axiom fn is_exclusive(tracked &mut self, tracked other: & PointsTo<T>)
+    ensures
+        *self == *old(self),
+        self.id() != other.id(),
+    ;
 }
 
 impl<T: ?Sized> PCell<T> {

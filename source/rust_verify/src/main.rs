@@ -227,7 +227,7 @@ pub fn main() {
         ) -> Vec<(&std::sync::Arc<vir::ast::PathX>, SmtStat)> {
             let mut stats: Vec<(&std::sync::Arc<vir::ast::PathX>, SmtStat)> =
                 smt_module_stats.iter().map(|(k, v)| (k, selector(v).clone())).collect();
-            stats.sort_by(|(_, a), (_, b)| b.time_micros.cmp(&a.time_micros));
+            stats.sort_by_key(|(_, a)| std::cmp::Reverse(a.time_micros));
             stats
         }
 
