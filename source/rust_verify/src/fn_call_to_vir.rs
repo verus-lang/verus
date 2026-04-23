@@ -1708,9 +1708,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             // but this is not:
             //    let y = x.borrow_mut()
 
-            let p = crate::rust_to_vir_expr::deref_mut_allow_cancelling_two_phase(
-                bctx, expr.span, &vir_arg,
-            )?;
+            let p = crate::rust_to_vir_expr::deref_mut(bctx, expr.span, &vir_arg)?;
             let typ = match &*p.typ {
                 TypX::Decorate(TypDecoration::Ghost | TypDecoration::Tracked, None, t) => t.clone(),
                 _ => p.typ.clone(),
@@ -2182,8 +2180,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                 return err_span(expr.span, "`mut_ref_tracked` must be in a 'proof' block");
             }
             let p = expr_to_vir_place(&bctx, &args[0], ExprModifier::REGULAR)?;
-            let p =
-                crate::rust_to_vir_expr::deref_mut_allow_cancelling_two_phase(bctx, expr.span, &p)?;
+            let p = crate::rust_to_vir_expr::deref_mut(bctx, expr.span, &p)?;
+            let p = crate::rust_to_vir_expr::simplify_place_by_cancelling(&p);
             mk_expr(ExprX::BorrowMutTracked(p))
         }
         VerusItem::BuiltinDeref(d) => {

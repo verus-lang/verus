@@ -1682,9 +1682,10 @@ test_verify_one_file_with_options! {
     ])
 }
 
-// TODO(new_mut_ref): (blocking) fix this issue with mutable temporaries
 test_verify_one_file_with_options! {
-    #[ignore] #[test] mut_ref_temporary_cant_be_elided ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_temporary_cant_be_elided ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
         // This test demonstrates that `* &mut P -> P` is not always a valid simplification.
         // Observe that test1/test2 have different desired behaviors than test3/test4.
 
