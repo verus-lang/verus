@@ -508,6 +508,38 @@ impl<T> ViewAt<T> {
             out.1.view().contains(sn.view()),
     ;
 
+    // VA-SEP
+    pub axiom fn va_join<U>(tracked v0 : ViewAt<T>, tracked v1: ViewAt<U>) -> (tracked out: ViewAt<(T, U)>)
+        requires
+            v0.view() == v1.view(),
+        ensures
+            out.view() == v0.view(),
+            out.value().0 == v0.value(),
+            out.value().1 == v1.value(),
+    ;
+
+    pub proof fn va_join_strong<U>(tracked v0 : ViewAt<T>, tracked v1: ViewAt<U>) -> (tracked out: ViewAt<(T, U)>)
+        ensures
+            out.view() == v0.view().join(v1.view()),
+            out.value().0 == v0.value(),
+            out.value().1 == v1.value(),
+    {
+        let view0 = v0.view();
+        let view1 = v1.view();
+        let view_join = view0.join(view1);
+        assert(view_join.contains(view0)) by {
+            join_contains(view0, view1);
+        }
+        assert(view_join.contains(view1)) by {
+            join_symm(view0, view1);
+            join_contains(view1, view0);
+        }
+        let tracked v0 = v0.weaken(view_join);
+        let tracked v1 = v1.weaken(view_join);
+        ViewAt::va_join(v0, v1)
+    }
+
+
     // VA-ELIM
     pub axiom fn into_inner(tracked self, tracked sn: ViewSeen) -> (tracked out: T)
         requires
@@ -538,6 +570,42 @@ impl<T> ViewAt<T> {
             f.value().ensures((self.value(),), out.value()),
             out.view() == self.view(),
     ;
+
+    pub proof fn va_disjoint(
+        tracked self,
+        tracked f : proof_fn(tracked v : T))
+        requires
+            f.requires((self.value(),)),
+            f.ensures((self.value(), ), ()) ==>  false,
+         ensures
+            false,
+    {
+        let tracked f = proof_fn[Once]|tracked v : T| -> (tracked out : Resource<ExclCarrier>)
+        requires v == self.value(),
+        ensures !out.value().valid(),
+        {
+            f(v);
+            Resource::alloc(ExclCarrier::Excl)
+        };
+
+        let tracked mut va_f = ViewAt::new(f).0;
+        let view1 = va_f.view();
+        let view2 = self.view();
+        let view_join = view1.join(view2);
+        assert(view_join.contains(view1)) by {
+            join_contains(view1, view2);
+        }
+        assert(view_join.contains(view2)) by {
+            join_symm(view1, view2);
+            join_contains(view2, view1);
+        }
+        let tracked va_f = va_f.weaken(view_join);
+        let tracked va_t = self.weaken(view_join);
+        let tracked va_tok = va_t.apply_fn(va_f);
+
+        va_tok.into_inner_objective().validate();
+    }
+
 }
 
 impl<T: Objective> ViewAt<T> {
