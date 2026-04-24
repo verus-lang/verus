@@ -514,7 +514,8 @@ pub broadcast axiom fn next_postcondition<'a>(
 // The iterator consistently obeys, completes, and decreases throughout its lifetime
 
         new_chars.obeys_prophetic_iter_laws() == old_chars.obeys_prophetic_iter_laws(),
-        new_chars.obeys_prophetic_iter_laws() ==> new_chars.will_return_none() == old_chars.will_return_none(),
+        new_chars.obeys_prophetic_iter_laws() ==> new_chars.will_return_none()
+            == old_chars.will_return_none(),
         new_chars.obeys_prophetic_iter_laws() ==> (old_chars.decrease() is Some
             <==> new_chars.decrease() is Some),
         // `next` pops the head of the prophesized remaining(), or returns None
