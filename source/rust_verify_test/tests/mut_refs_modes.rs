@@ -1756,7 +1756,7 @@ test_verify_one_file_with_options! {
         fn test3() {
             let mut x: Tracked<u64> = Tracked(3);
             proof { f(&mut *x); }
-            assert(x == 4);
+            assert(*x == 4);
         }
     } => Ok(())
 }

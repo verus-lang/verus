@@ -1174,14 +1174,6 @@ macro_rules! impl_spec_eq {
 
             #[cfg(verus_keep_ghost)]
             impl SpecEq<$rhs> for Ghost<$lhs> {}
-
-            // TODO: remove this; this is silly:
-            #[cfg(verus_keep_ghost)]
-            impl SpecEq<Tracked<$rhs>> for $lhs {}
-
-            // TODO: remove this; this is silly:
-            #[cfg(verus_keep_ghost)]
-            impl SpecEq<$rhs> for Tracked<$lhs> {}
         )*
     }
 }
