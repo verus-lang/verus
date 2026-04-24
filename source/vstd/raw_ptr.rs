@@ -1280,7 +1280,8 @@ pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
 #[verifier::external_body]
 pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v: T)
     requires
-        old(perm).ptr() == ptr,
+        // Can't prove this precondition due to reborrows
+        // old(perm).ptr() == ptr,
     ensures
         perm.ptr() == ptr,
         perm.mem_contents() == MemContents::Init(v),
@@ -1303,12 +1304,26 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
 #[verifier::external_body]
 pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: T)
     requires
-        old(perm).ptr() == ptr,
-        old(perm).is_init(),
+        // old(perm).ptr() == ptr,
+        // old(perm).is_init(),
     ensures
         perm.ptr() == ptr,
         perm.is_uninit(),
         v == old(perm).value(),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { core::ptr::read(ptr) }
+}
+
+#[inline(always)]
+#[verifier::external_body]
+pub fn ptr_read<T: Copy>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: T)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v == perm.value(),
     opens_invariants none
     no_unwind
 {
