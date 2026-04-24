@@ -944,29 +944,32 @@ pub fn func_def_to_sst(
     state.mask = Some(mask_sst);
 
     // Atomic spec
+    let mut au_stms = Vec::new();
     if let Some(au_expr) = &function.x.atomic_update {
-        let (mut au_stms, au_ret_val) = expr_to_stm_opt(ctx, &mut state, au_expr)?;
+        let (mut stms, au_ret_val) = expr_to_stm_opt(ctx, &mut state, au_expr)?;
         let au_exp: Exp = au_ret_val.expect_exp();
-        let span = &au_exp.span;
+        let span = au_exp.span.clone();
 
         let param_exps = function
             .x
             .params
+            .split_last()
+            .map(|(_, s)| s)
+            .unwrap_or_default()
             .iter()
             .map(|param| {
                 let var = ExpX::Var(param.x.name.clone());
-                let exp = SpannedTyped::new(span, &param.x.typ, var);
+                let exp = SpannedTyped::new(&span, &param.x.typ, var);
                 exp_pre(&exp)
             })
             .collect::<Vec<Exp>>();
 
         let param_tuple = match param_exps.len() {
             1 => param_exps.into_iter().next().unwrap(),
-            _ => crate::sst_util::sst_tuple(span, &Arc::new(param_exps)),
+            _ => crate::sst_util::sst_tuple(&span, &Arc::new(param_exps)),
         };
 
-        let au_typ = crate::ast_util::undecorate_typ(&au_exp.typ);
-        let TypX::Datatype(_, au_typ_args, _) = au_typ.as_ref() else {
+        let TypX::Datatype(_, au_typ_args, _) = au_exp.typ.as_ref() else {
             panic!("atomic update should be a datatype")
         };
 
@@ -975,7 +978,7 @@ pub fn func_def_to_sst(
         };
 
         let call_pred = SpannedTyped::new(
-            span,
+            &span,
             &pred_typ,
             ExpX::Call(
                 ctx.fn_from_path("#vstd::atomic::AtomicUpdate::pred"),
@@ -985,7 +988,7 @@ pub fn func_def_to_sst(
         );
 
         let call_pred_args = SpannedTyped::new(
-            span,
+            &span,
             &param_tuple.typ,
             ExpX::Call(
                 ctx.fn_from_path("#vstd::atomic::pred_args"),
@@ -995,15 +998,14 @@ pub fn func_def_to_sst(
         );
 
         let spec_eq = SpannedTyped::new(
-            span,
+            &span,
             &Arc::new(TypX::Bool),
             ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_pred_args, param_tuple),
         );
 
-        au_stms.push(Spanned::new(span.clone(), StmX::Assume(spec_eq)));
-
-        req_stms.append(&mut au_stms);
+        stms.push(Spanned::new(span, StmX::Assume(spec_eq)));
         state.au_var_exp_to_resolve = Some(au_exp);
+        au_stms = stms;
     }
 
     // Unwind spec: take from trait method if it exists
@@ -1050,6 +1052,10 @@ pub fn func_def_to_sst(
 
     // AST --> SST
     let mut stm = expr_to_one_stm_with_post(ctx, &mut state, &body, &function.span)?;
+
+    // Add atomic spec related statements
+    au_stms.push(stm);
+    stm = stms_to_one_stm(&body.span, au_stms);
 
     // TODO handle via the Lowerer
     if ctx.checking_spec_preconditions() && !inherit {

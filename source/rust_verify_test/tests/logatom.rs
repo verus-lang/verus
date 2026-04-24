@@ -60,6 +60,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] atomic_function_args
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        pub fn atomic_function(x: u8, y: i32)
+            atomically (atomic_update) {}
+        {
+            assert(atomic_update.pred().args(x, y));
+            assume(false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] atomic_function_commit_only
     TOKEN_LIB.to_owned() + verus_code_str! {
         pub fn atomic_function()

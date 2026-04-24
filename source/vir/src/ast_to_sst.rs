@@ -1249,7 +1249,6 @@ pub(crate) fn expr_to_one_stm_with_post(
             // return value of 'unit').
 
             let end_of_fn = find_last_span_in_expr(&expr, func_span);
-
             assert_atomic_update_resolves(ctx, state, &mut stms, |base| {
                 base.secondary_label(end_of_fn, "at the end of the function body")
             });
@@ -1257,7 +1256,7 @@ pub(crate) fn expr_to_one_stm_with_post(
             // secondary label (indicating which post-condition failed) is added later
             // in ast_to_sst when the post condition is expanded
             let base_error = error_with_secondary_label(
-                find_last_span_in_expr(&expr, func_span),
+                end_of_fn,
                 crate::def::POSTCONDITION_FAILURE.to_string(),
                 "at the end of the function body".to_string(),
             );
