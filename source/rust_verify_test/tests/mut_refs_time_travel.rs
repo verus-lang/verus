@@ -120,9 +120,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "`after_borrow` expects a local variable, possibly with dereferences or field accesses")
 }
 
-// TODO(new_mut_ref): (blocking) fix this
 test_verify_one_file_with_options! {
-    #[ignore] #[test] cant_cheat_prophecy_with_assign_in_has_resolved ["new-mut-ref"] => verus_code! {
+    #[test] cant_cheat_prophecy_with_assign_in_has_resolved ["new-mut-ref"] => verus_code! {
         fn test() {
             let ghost nonprophvar: u64 = 0;
 
@@ -135,7 +134,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
         }
-    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed")
+    } => Err(err) => assert_vir_error_msg(err, "assignment is not allowed inside pure context")
 }
 
 test_verify_one_file_with_options! {
@@ -854,6 +853,7 @@ test_verify_one_file_with_options! {
 
 // Loop ordering issues
 
+// TODO(new_mut_ref): (blocking) fix the loop issues
 test_verify_one_file_with_options! {
     #[ignore] #[test] test_loop_decreases_1 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }

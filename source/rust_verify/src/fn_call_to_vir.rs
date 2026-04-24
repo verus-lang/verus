@@ -2092,7 +2092,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             {
                 unsupported_err!(expr.span, "resolve/has_resolved without '-V new-mut-ref'", &args);
             }
-            record_spec_fn(bctx, expr);
+            record_spec_fn_pure_args_only(bctx, expr);
             if !bctx.in_ghost {
                 return err_span(expr.span, "has_resolved must be in a 'proof' block");
             }

@@ -3444,7 +3444,8 @@ fn check_expr_handle_mut_arg(
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use `has_resolved` in exec mode"));
             }
-            check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
+            let mut typing = typing.push_in_pure(true);
+            check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
             let proph = Proph::Yes(ProphReason {
                 span: expr.span.clone(),
                 kind: ProphReasonKind::HasResolved,

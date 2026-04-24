@@ -944,7 +944,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 3)
 }
 
-// TODO(new_mut_ref): fix match eval order issue
+// TODO(new_mut_ref): (blocking) fix match eval order issue
 test_verify_one_file_with_options! {
     #[ignore] #[test] evil_match_mutate_scrutinee_in_guard_pattern ["new-mut-ref"] => verus_code! {
         union Q {
@@ -967,7 +967,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "fail")
 }
 
-// TODO(new_mut_ref): fix match eval order issue
+// TODO(new_mut_ref): (blocking) fix match eval order issue
 test_verify_one_file_with_options! {
     #[ignore] #[test] evil_match_mutate_scrutinee_in_guard_pattern2 ["new-mut-ref"] => verus_code! {
         union Q {
