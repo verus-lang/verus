@@ -1526,7 +1526,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] new_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_to_slice_len_comparison ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
 
         fn consume<A>(a: A) { }
@@ -1764,6 +1764,206 @@ test_verify_one_file_with_options! {
             y[({ *x_ref = 30; 0 })] = 30;
             assert(x == 30);
             assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] has_resolved_in_idx_expr ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test1() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+            let mut b = [0, 1];
+            b[({ *a_ref = 20; assert(has_resolved(a_ref)); 0 })] = 10;
+            assert(a == 20);
+        }
+
+        fn fails1() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+            let mut b = [0, 1];
+            b[({ *a_ref = 20; assert(has_resolved(a_ref)); 0 })] = 10;
+            assert(a == 20);
+            assert(false); // FAILS
+        }
+
+        fn fails2() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+            let mut b = [0, 1];
+            b[({
+                assert(has_resolved(a_ref)); // FAILS
+                *a_ref = 20; assert(has_resolved(a_ref)); 0 })] = 10;
+            assert(a == 20);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] temporary_and_index_resolve_points1 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn fst<A, B>(a: &mut (A, B)) -> (ret: &mut A)
+            ensures *ret == old(a).0 && *final(a) == (*final(ret), old(a).1)
+        {
+            &mut a.0
+        }
+
+        fn test1() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a.0)[({
+                0
+            })] = 20;
+            assert(a.0.0[0] == 20);
+            assert(a.0.0[1] == 1);
+            assert(a.0.1 == 2);
+            assert(a.1 == 3);
+        }
+
+        fn test1_fails() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a.0)[({
+                0
+            })] = 20;
+            assert(a.0.0[0] == 20);
+            assert(a.0.0[1] == 1);
+            assert(a.0.1 == 2);
+            assert(a.1 == 3);
+            assert(false); // FAILS
+        }
+
+        fn test2() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a.0)[({
+                assert(after_borrow(a).0.1 == 2);
+                assert(after_borrow(a).1 == 3);
+                0
+            })] = 20;
+
+            assert(after_borrow(a).0.0[1] == 1);
+            assert(a.0.0[0] == 20);
+        }
+
+        fn test3() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a.0)[({
+                // this fails because our analysis doesn't descend into indices
+                assert(after_borrow(a).0.0[1] == 1); // FAILS
+                0
+            })] = 20;
+
+            assert(a.0.0[0] == 20);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] temporary_and_index_resolve_points2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn fst<A, B>(a: &mut (A, B)) -> (ret: &mut A)
+            ensures *ret == old(a).0 && *final(a) == (*final(ret), old(a).1)
+        {
+            &mut a.0
+        }
+
+        fn test4() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a).0[({
+                assert(after_borrow(a).1 == 3);
+                0
+            })] = 20;
+
+            assert(a.0.1 == 2);
+            assert(a.1 == 3);
+            assert(a.0.0[1] == 1);
+            assert(a.0.0[0] == 20);
+        }
+
+        fn test4_fails() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a).0[({
+                assert(after_borrow(a).1 == 3);
+                0
+            })] = 20;
+
+            assert(a.0.1 == 2);
+            assert(a.1 == 3);
+            assert(a.0.0[1] == 1);
+            assert(a.0.0[0] == 20);
+            assert(false); // FAILS
+        }
+
+        fn test5() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a).0[({
+                // resolution on the granularity of &mut ([u62; 2], u64)
+                assert(after_borrow(a).0.1 == 2); // FAILS
+                0
+            })] = 20;
+
+            assert(after_borrow(a).0.0[1] == 1);
+            assert(a.0.0[0] == 20);
+        }
+
+        fn test6() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a).0[({
+                assert(after_borrow(a).0.0[1] == 1); // FAILS
+                0
+            })] = 20;
+
+            assert(after_borrow(a).0.1 == 2);
+            assert(after_borrow(a).1 == 3);
+            assert(a.0.0[0] == 20);
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] temporary_and_index_resolve_points3 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn fst<A, B>(a: &mut (A, B)) -> (ret: (&mut A, &mut B))
+            ensures
+                *ret.0 == old(a).0,
+                *ret.1 == old(a).1,
+                *final(a) == (*final(ret.0), *final(ret.1)),
+        {
+            (&mut a.0, &mut a.1)
+        }
+
+        fn test1() {
+            let mut a = ([0, 1], 2);
+            fst(&mut a).0[({
+                0
+            })] = 20;
+            assert(a.0[0] == 20);
+            assert(a.0[1] == 1);
+            assert(a.1 == 2);
+        }
+
+        fn test1_fails() {
+            let mut a = ([0, 1], 2);
+            fst(&mut a).0[({
+                0
+            })] = 20;
+            assert(a.0[0] == 20);
+            assert(a.0[1] == 1);
+            assert(a.1 == 2);
+            assert(false); // FAILS
+        }
+
+        fn test2() {
+            let mut a = ([0, 1], 2);
+            fst(&mut a).0[({
+                assert(after_borrow(a).1 == 2);
+                0
+            })] = 20;
+            assert(a.0[0] == 20);
+            assert(a.0[1] == 1);
         }
     } => Err(err) => assert_fails(err, 1)
 }

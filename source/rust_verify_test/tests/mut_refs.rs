@@ -5022,3 +5022,66 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_assign_in_rhs ["new-mut-ref"] => verus_code! {
+        fn test1() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+
+            let mut b = 1;
+            let mut c = 2;
+
+            a_ref = ({ a_ref = &mut b; *a_ref = 20; &mut c });
+            *a_ref = 30;
+
+            assert(a == 0);
+            assert(b == 20);
+            assert(c == 30);
+        }
+
+        fn test2() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+
+            let mut b = 1;
+            let mut c = 2;
+
+            *a_ref = ({ a_ref = &mut b; *a_ref = 20; 30 });
+
+            assert(a == 0);
+            assert(b == 30);
+        }
+
+
+        fn fails1() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+
+            let mut b = 1;
+            let mut c = 2;
+
+            a_ref = ({ a_ref = &mut b; *a_ref = 20; &mut c });
+            *a_ref = 30;
+
+            assert(a == 0);
+            assert(b == 20);
+            assert(c == 30);
+            assert(false); // FAILS
+        }
+
+        fn fails2() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+
+            let mut b = 1;
+            let mut c = 2;
+
+            *a_ref = ({ a_ref = &mut b; *a_ref = 20; 30 });
+
+            assert(a == 0);
+            assert(b == 30);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
