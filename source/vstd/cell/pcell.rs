@@ -144,9 +144,9 @@ impl<T: ?Sized> PCell<T> {
     #[verifier::external_body]
     pub fn borrow<'a>(&'a self, Tracked(perm): Tracked<&'a PointsTo<T>>) -> (v: &'a T)
         requires
-            self.id() === perm.id(),
+            self.id() == perm.id(),
         ensures
-            v === perm.value(),
+            v == perm.value(),
         opens_invariants none
         no_unwind
     {
@@ -160,11 +160,11 @@ impl<T: ?Sized> PCell<T> {
     pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<T>>, in_v: T) -> (out_v: T)
         where T: Sized
         requires
-            self.id() === old(perm).id(),
+            self.id() == old(perm).id(),
         ensures
-            perm.id() === old(perm).id(),
-            *perm.value() === in_v,
-            out_v === *old(perm).value(),
+            perm.id() == old(perm).id(),
+            *perm.value() == in_v,
+            out_v == *old(perm).value(),
         opens_invariants none
         no_unwind
     {
@@ -181,9 +181,9 @@ impl<T: ?Sized> PCell<T> {
     pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<T>>) -> (v: T)
         where T: Sized
         requires
-            self.id() === perm.id(),
+            self.id() == perm.id(),
         ensures
-            v === *perm.value(),
+            v == *perm.value(),
         opens_invariants none
         no_unwind
     {
@@ -198,10 +198,10 @@ impl<T: ?Sized> PCell<T> {
     pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<T>>, in_v: T)
         where T: Sized
         requires
-            self.id() === old(perm).id()
+            self.id() == old(perm).id()
         ensures
-            perm.id() === old(perm).id(),
-            *perm.value() === in_v,
+            perm.id() == old(perm).id(),
+            *perm.value() == in_v,
         opens_invariants none
         no_unwind
     {
@@ -212,7 +212,7 @@ impl<T: ?Sized> PCell<T> {
     pub fn read(&self, Tracked(perm): Tracked<&PointsTo<T>>) -> (out_v: T)
         where T: Copy + Sized
         requires
-            self.id() === perm.id()
+            self.id() == perm.id()
         returns
             *perm.value()
         opens_invariants none

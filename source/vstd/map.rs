@@ -131,7 +131,7 @@ impl<K, V> Map<K, V> {
         requires
             self.dom().contains(key),
         ensures
-            *v === self.index(key),
+            *v == self.index(key),
     ;
 
     pub axiom fn tracked_map_keys<J>(

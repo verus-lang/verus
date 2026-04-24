@@ -389,7 +389,7 @@ pub open spec fn opt_is_none<V>(a: Option<V>) -> bool {
 #[doc(hidden)]
 #[verifier::inline]
 pub open spec fn opt_ge<V>(a: Option<V>, b: Option<V>) -> bool {
-    b is Some ==> a === b
+    b is Some ==> a == b
 }
 
 #[doc(hidden)]
@@ -405,7 +405,7 @@ pub open spec fn opt_add<V>(a: Option<V>, b: Option<V>) -> Option<V> {
 #[doc(hidden)]
 #[verifier::inline]
 pub open spec fn opt_agree<V>(a: Option<V>, b: Option<V>) -> bool {
-    a is Some && b is Some ==> a->0 === b->0
+    a is Some && b is Some ==> a->0 == b->0
 }
 
 #[doc(hidden)]

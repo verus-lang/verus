@@ -191,7 +191,7 @@ test_verify_one_file! {
 
             let v = m.get(&6);
             match v {
-                Some(v) => assert(*v == 6),
+                Some(v) => assert(**v == 6),
                 None => assert(false),
             };
 

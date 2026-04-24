@@ -2578,12 +2578,12 @@ test_verify_one_file_with_options! {
                 (_, b) => b,
             };
 
-            assert(mut_ref_current(fst_ref) == 0);
+            assert(*mut_ref_current(fst_ref) == 0);
             *fst_ref = Box::new(20);
 
-            assert(snd == 1);
-            assert(xyz.0 == 20);
-            assert(xyz.1 == 1);
+            assert(*snd == 1);
+            assert(*xyz.0 == 20);
+            assert(*xyz.1 == 1);
         }
 
         fn test_fails() {
@@ -2597,12 +2597,12 @@ test_verify_one_file_with_options! {
                 (_, b) => b,
             };
 
-            assert(mut_ref_current(fst_ref) == 0);
+            assert(*mut_ref_current(fst_ref) == 0);
             *fst_ref = Box::new(20);
 
-            assert(snd == 1);
-            assert(xyz.0 == 20);
-            assert(xyz.1 == 1);
+            assert(*snd == 1);
+            assert(*xyz.0 == 20);
+            assert(*xyz.1 == 1);
             assert(false); // FAILS
         }
 

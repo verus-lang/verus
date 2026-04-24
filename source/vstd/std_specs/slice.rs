@@ -17,7 +17,7 @@ impl<T, const N: usize> IndexSetTrustedSpec<usize> for [T; N] {
     }
 
     open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ === self@.update(index as int, val)
+        new_container@ == self@.update(index as int, val)
     }
 }
 
@@ -240,18 +240,18 @@ pub assume_specification<T> [ <[T]>::last ](slice: &[T]) -> (res: Option<&T>)
 #[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T> [ <[T]>::first_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
     ensures
-        old(slice).len() == 0 ==> res.is_none() && final(slice)@ === seq![],
+        old(slice).len() == 0 ==> res.is_none() && final(slice)@ == seq![],
         old(slice).len() != 0 ==> res.is_some() && *res.unwrap() == old(slice)[0]
-            && final(slice)@ === old(slice)@.update(0, *final(res.unwrap()))
+            && final(slice)@ == old(slice)@.update(0, *final(res.unwrap()))
 ;
 
 #[doc(hidden)]
 #[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T> [ <[T]>::last_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
     ensures
-        old(slice).len() == 0 ==> res.is_none() && final(slice)@ === seq![],
+        old(slice).len() == 0 ==> res.is_none() && final(slice)@ == seq![],
         old(slice).len() != 0 ==> res.is_some() && *res.unwrap() == old(slice)@.last()
-            && final(slice)@ === old(slice)@.update(old(slice).len() - 1, *final(res.unwrap()))
+            && final(slice)@ == old(slice)@.update(old(slice).len() - 1, *final(res.unwrap()))
 ;
 
 pub assume_specification<T> [ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))

@@ -143,7 +143,7 @@ fn main() {
     // Use entry API to insert to the matp
 
     let entry = m.entry(5);
-    assert(entry.key() == 5 && entry.value() === None);
+    assert(entry.key() == 5 && entry.value() == None);
 
     let value_ref = entry.or_insert(20);
     assert(*value_ref == 20);
