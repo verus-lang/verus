@@ -850,35 +850,6 @@ impl Ctx {
         self.global
     }
 
-    pub fn fn_from_path(&self, path: impl AsRef<str>) -> crate::sst::CallFun {
-        let path = path.as_ref();
-        let mut iter = path.split("::").map(|s| s.trim()).peekable();
-        let krate = match iter.peek().copied() {
-            Some("#vstd") => {
-                iter.next();
-                CrateId::Vstd
-            }
-            Some("#core") => {
-                iter.next();
-                CrateId::Core
-            }
-            Some("#alloc") => {
-                iter.next();
-                CrateId::Alloc
-            }
-            Some("#crate") => {
-                iter.next();
-                self.global.crate_name.clone()
-            }
-            _ => panic!(),
-        };
-
-        let segments = Arc::new(iter.map(|s| Arc::new(s.to_string())).collect());
-        let path = Arc::new(crate::ast::PathX { krate, segments });
-        let fun = Arc::new(crate::ast::FunX { path });
-        crate::sst::CallFun::Fun(fun, None)
-    }
-
     pub fn prelude(&self, prelude_config: crate::prelude::PreludeConfig) -> Commands {
         let nodes = crate::prelude::prelude_nodes(&self.name_ctxt, prelude_config);
         air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))

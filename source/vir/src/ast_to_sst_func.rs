@@ -14,7 +14,9 @@ use crate::context::{Ctx, FunctionCtx};
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
 use crate::messages::{Message, error};
-use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX};
+use crate::sst::{
+    BndX, CallFun, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX,
+};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
@@ -981,7 +983,7 @@ pub fn func_def_to_sst(
             &span,
             &pred_typ,
             ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::pred"),
+                CallFun::Fun(fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "pred"), None),
                 au_typ_args.clone(),
                 Arc::new(vec![au_exp.clone()]),
             ),
@@ -991,7 +993,7 @@ pub fn func_def_to_sst(
             &span,
             &param_tuple.typ,
             ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::pred_args"),
+                CallFun::Fun(fun!(CrateId::Vstd => "atomic", "pred_args"), None),
                 Arc::new(vec![pred_typ.clone(), param_tuple.typ.clone()]),
                 Arc::new(vec![call_pred]),
             ),

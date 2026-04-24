@@ -18,6 +18,7 @@ use crate::def::{
 };
 use crate::poly::MonoTyp;
 use crate::resolve_axioms::{ResolvableType, ResolvedTypeCollection};
+use crate::{fun, path};
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -420,15 +421,7 @@ fn reach_set_ops(state: &mut State, ctxt: &Ctxt) {
 }
 
 fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
-    let base_path = Arc::new(crate::ast::PathX {
-        krate: CrateId::Vstd,
-        segments: Arc::new(vec![
-            Arc::new("atomic".to_owned()),
-            Arc::new("AtomicUpdate".to_owned()),
-        ]),
-    });
-
-    static AU_METHOD_NAMES: &[&str] = &[
+    const AU_METHOD_NAMES: [&str; 8] = [
         // pre and post condition
         "req",
         "ens",
@@ -443,27 +436,16 @@ fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
         "outer_mask",
     ];
 
-    for &method in AU_METHOD_NAMES {
+    let base_path = path!(CrateId::Vstd => "atomic", "AtomicUpdate");
+    for method in AU_METHOD_NAMES {
         let ident = Arc::new(method.to_owned());
         let path = base_path.push_segment(ident);
         let fun = Arc::new(crate::ast::FunX { path });
         reach_function(ctxt, state, &fun);
     }
 
-    reach_function(
-        ctxt,
-        state,
-        &Arc::new(crate::ast::FunX {
-            path: Arc::new(crate::ast::PathX {
-                krate: CrateId::Vstd,
-                segments: Arc::new(vec![
-                    Arc::new("atomic".to_owned()),
-                    Arc::new("branch_bool".to_owned()),
-                ]),
-            }),
-        }),
-    );
-
+    reach_function(ctxt, state, &fun!(CrateId::Vstd => "atomic", "pred_args"));
+    reach_function(ctxt, state, &fun!(CrateId::Vstd => "atomic", "branch_bool"));
     reach_set_ops(state, &ctxt);
 }
 

@@ -10,7 +10,6 @@ use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_typ};
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
-use crate::fun;
 use crate::inv_masks::{MaskQueryKind, MaskSet};
 use crate::messages::{
     Message, Span, ToAny, error, error_with_label, error_with_secondary_label, internal_error,
@@ -28,6 +27,7 @@ use crate::sst_util::{
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, stm_visitor_check};
 use crate::util::vec_map_result;
 use crate::visitor::VisitorControlFlow;
+use crate::{fun, path};
 use air::ast::{Binder, BinderX};
 use air::messages::Diagnostics;
 use air::scope_map::ScopeMap;
@@ -1212,7 +1212,7 @@ fn assert_atomic_update_resolves(
     };
 
     let call_resolves = ExpX::Call(
-        ctx.fn_from_path("#vstd::atomic::AtomicUpdate::resolves"),
+        CallFun::Fun(fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "resolves"), None),
         typ_args.clone(),
         Arc::new(vec![au_exp.clone()]),
     );
@@ -2867,7 +2867,7 @@ pub(crate) fn expr_to_stm_opt(
             // assume atomic requires
 
             let call_req = ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::req"),
+                CallFun::Fun(fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "req"), None),
                 typ_args.clone(),
                 Arc::new(vec![au_var_exp.clone(), x_var_exp.clone()]),
             );
@@ -2887,7 +2887,10 @@ pub(crate) fn expr_to_stm_opt(
                 &expr.span,
                 &int_set_typ,
                 ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::outer_mask"),
+                    CallFun::Fun(
+                        fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "outer_mask"),
+                        None,
+                    ),
                     typ_args.clone(),
                     Arc::new(vec![au_var_exp.clone()]),
                 ),
@@ -2897,7 +2900,10 @@ pub(crate) fn expr_to_stm_opt(
                 &expr.span,
                 &int_set_typ,
                 ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::inner_mask"),
+                    CallFun::Fun(
+                        fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "inner_mask"),
+                        None,
+                    ),
                     typ_args.clone(),
                     Arc::new(vec![au_var_exp.clone()]),
                 ),
@@ -2947,7 +2953,7 @@ pub(crate) fn expr_to_stm_opt(
 
             if !state.checking_recommends(ctx) {
                 let call_ens = ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
+                    CallFun::Fun(fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "ens"), None),
                     typ_args.clone(),
                     Arc::new(vec![au_var_exp.clone(), x_var_exp.clone(), y_var_exp.clone()]),
                 );
@@ -2973,7 +2979,7 @@ pub(crate) fn expr_to_stm_opt(
                 &expr.span,
                 &Arc::new(TypX::Bool),
                 ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::branch_bool"),
+                    CallFun::Fun(fun!(CrateId::Vstd => "atomic", "branch_bool"), None),
                     Arc::new(vec![y_typ.clone()]),
                     Arc::new(vec![y_var_exp.clone()]),
                 ),
@@ -2985,7 +2991,6 @@ pub(crate) fn expr_to_stm_opt(
                 let mut stms = Vec::new();
 
                 atomic_update_bind_and_resolve(
-                    ctx,
                     expr,
                     typ_args,
                     &au_var_exp,
@@ -3082,7 +3087,7 @@ pub(crate) fn expr_to_stm_opt(
                 &expr.span,
                 args_typ,
                 ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::pred_args"),
+                    CallFun::Fun(fun!(CrateId::Vstd => "atomic", "pred_args"), None),
                     Arc::new(vec![pred_typ.clone(), args_typ.clone()]),
                     Arc::new(vec![pred_var_exp.clone()]),
                 ),
@@ -3112,7 +3117,7 @@ pub(crate) fn expr_to_stm_opt(
                 &expr.span,
                 pred_typ,
                 ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::pred"),
+                    CallFun::Fun(fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "pred"), None),
                     au_typ_args.clone(),
                     Arc::new(vec![au_var_exp.clone()]),
                 ),
@@ -3142,7 +3147,10 @@ pub(crate) fn expr_to_stm_opt(
                 &expr.span,
                 &int_set_typ,
                 ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::outer_mask"),
+                    CallFun::Fun(
+                        fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "outer_mask"),
+                        None,
+                    ),
                     au_typ_args.clone(),
                     Arc::new(vec![au_var_exp.clone()]),
                 ),
@@ -3215,7 +3223,10 @@ pub(crate) fn expr_to_stm_opt(
                 &expr.span,
                 &int_set_typ,
                 ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::inner_mask"),
+                    CallFun::Fun(
+                        fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "inner_mask"),
+                        None,
+                    ),
                     au_typ_args.clone(),
                     Arc::new(vec![au_var_exp.clone()]),
                 ),
@@ -3226,7 +3237,10 @@ pub(crate) fn expr_to_stm_opt(
                     &expr.span,
                     &int_set_typ,
                     ExpX::Call(
-                        ctx.fn_from_path("#vstd::atomic::AtomicUpdate::outer_mask"),
+                        CallFun::Fun(
+                            fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "outer_mask"),
+                            None,
+                        ),
                         au_typ_args.clone(),
                         Arc::new(vec![au_var_exp.clone()]),
                     ),
@@ -3261,7 +3275,7 @@ pub(crate) fn expr_to_stm_opt(
             // assert atomic requires
 
             let call_req = ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::req"),
+                CallFun::Fun(fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "req"), None),
                 au_typ_args.clone(),
                 Arc::new(vec![au_var_exp.clone(), x_var_exp.clone()]),
             );
@@ -3287,7 +3301,7 @@ pub(crate) fn expr_to_stm_opt(
                 &expr.span,
                 &Arc::new(TypX::Bool),
                 ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
+                    CallFun::Fun(fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "ens"), None),
                     au_typ_args.clone(),
                     Arc::new(vec![au_var_exp.clone(), x_var_exp.clone(), y_var_exp.clone()]),
                 ),
@@ -3301,7 +3315,7 @@ pub(crate) fn expr_to_stm_opt(
                 &expr.span,
                 &Arc::new(TypX::Bool),
                 ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::branch_bool"),
+                    CallFun::Fun(fun!(CrateId::Vstd => "atomic", "branch_bool"), None),
                     Arc::new(vec![y_typ.clone()]),
                     Arc::new(vec![y_var_exp.clone()]),
                 ),
@@ -3317,7 +3331,6 @@ pub(crate) fn expr_to_stm_opt(
             let if_body_stm = {
                 let mut stms = Vec::new();
                 atomic_update_bind_and_resolve(
-                    ctx,
                     expr,
                     au_typ_args,
                     &au_var_exp,
@@ -3621,7 +3634,6 @@ fn expr_to_stm_opt_with_delayed_obligations(
 }
 
 fn atomic_update_bind_and_resolve(
-    ctx: &Ctx,
     expr: &Expr,
     typ_args: &Typs,
     au_exp: &Exp,
@@ -3629,14 +3641,18 @@ fn atomic_update_bind_and_resolve(
     y_exp: &Exp,
     stms: &mut Vec<Stm>,
 ) {
-    for (name, var_exp) in [
-        ("#vstd::atomic::AtomicUpdate::input", x_exp),
-        ("#vstd::atomic::AtomicUpdate::output", y_exp),
+    for (path, var_exp) in [
+        (path!(CrateId::Vstd => "atomic", "AtomicUpdate", "input"), x_exp),
+        (path!(CrateId::Vstd => "atomic", "AtomicUpdate", "output"), y_exp),
     ] {
-        let call = SpannedTyped::new(
+        let call_exp = SpannedTyped::new(
             &expr.span,
             &var_exp.typ,
-            ExpX::Call(ctx.fn_from_path(name), typ_args.clone(), Arc::new(vec![au_exp.clone()])),
+            ExpX::Call(
+                CallFun::Fun(Arc::new(crate::ast::FunX { path }), None),
+                typ_args.clone(),
+                Arc::new(vec![au_exp.clone()]),
+            ),
         );
 
         stms.push(Spanned::new(
@@ -3644,7 +3660,7 @@ fn atomic_update_bind_and_resolve(
             StmX::Assume(SpannedTyped::new(
                 &expr.span,
                 &Arc::new(TypX::Bool),
-                ExpX::Binary(BinaryOp::Eq(Mode::Spec), call, var_exp.clone()),
+                ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_exp, var_exp.clone()),
             )),
         ));
     }
@@ -3653,7 +3669,7 @@ fn atomic_update_bind_and_resolve(
         &expr.span,
         &Arc::new(TypX::Bool),
         ExpX::Call(
-            ctx.fn_from_path("#vstd::atomic::AtomicUpdate::resolves"),
+            CallFun::Fun(fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "resolves"), None),
             typ_args.clone(),
             Arc::new(vec![au_exp.clone()]),
         ),
