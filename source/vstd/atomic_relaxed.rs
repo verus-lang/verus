@@ -230,20 +230,6 @@ pub broadcast proof fn history_singleton_dom_singleton<T>(h: History<T>, ts : na
     assert (forall |ts1| #[trigger] h.0.dom().contains(ts1) ==>  ts1 == ts);
 }
 
-// pub broadcast axiom fn history_singleton_last<T>(h: History<T>, ts : nat, val : (T, ThreadView))
-//     requires
-//         h.0.dom().finite(),
-//         #[trigger] h.is_singleton(ts, val)
-//     ensures
-//         h.last() == (ts, val);
-
-// pub broadcast axiom fn history_last_ensures<T>(h: History<T>, ts : nat, val: (T, ThreadView))
-//     requires
-//         #[trigger] h.last() == (ts, val)
-//     ensures
-//         #[trigger] h.get(ts) == Some(val),
-//         forall |ts2| #[trigger] h.contains_timestamp(ts2) ==>  ts2 <= ts,
-// ;
 
 
 pub broadcast group group_view_history {
@@ -256,7 +242,9 @@ pub broadcast group group_view_history {
     view_join_contains,
     history_insert_contains_inserted_timestamp,
     history_insert_contains_timestamp_cases,
-    history_get_contains_timestamp
+    history_get_contains_timestamp,
+    view_join_comm,
+    view_join_contains,
 }
 
 // Fence modalities
@@ -525,6 +513,40 @@ impl<T> ViewAt<T> {
             out.1.thread_view().contains(sn@),
     ;
 
+    // VA-BOPS for the separating conjunction case
+    pub axiom fn va_join<U>(tracked v0 : ViewAt<T>, tracked v1: ViewAt<U>) -> (tracked out: ViewAt<(T, U)>)
+        requires
+            v0.thread_view() == v1.thread_view(),
+        ensures
+            out.thread_view() == v0.thread_view(),
+            out.value().0 == v0.value(),
+            out.value().1 == v1.value(),
+    ;
+
+    // We can strengthen the above rule by not requiring that the views match (we can just take the join of the views).
+    // This is useful because it means we don't have to do as much view manipulation in proofs to apply this rule.
+    pub proof fn va_join_strong<U>(tracked v0 : ViewAt<T>, tracked v1: ViewAt<U>) -> (tracked out: ViewAt<(T, U)>)
+        ensures
+            out.thread_view() == v0.thread_view().join(v1.thread_view()),
+            out.value().0 == v0.value(),
+            out.value().1 == v1.value(),
+    {
+        let view0 = v0.thread_view();
+        let view1 = v1.thread_view();
+        let view_join = view0.join(view1);
+        assert(view_join.contains(view0)) by {
+            view_join_contains(view0, view1);
+        }
+        assert(view_join.contains(view1)) by {
+            view_join_comm(view0, view1);
+            view_join_contains(view1, view0);
+        }
+        let tracked v0 = v0.weaken(view_join);
+        let tracked v1 = v1.weaken(view_join);
+        ViewAt::va_join(v0, v1)
+    }
+
+
     // VA-ELIM
     pub axiom fn into_inner(tracked self, tracked sn: ViewSeen) -> (tracked out: T)
         requires
@@ -555,6 +577,50 @@ impl<T> ViewAt<T> {
             f.value().ensures((self.value(),), out.value()),
             out.thread_view() == self.thread_view(),
     ;
+
+    // I needed this function when verifying `spinlock::unlock`
+    /* Basically, I had two resourse a, b : ViewAt<PointsTo<T>>, with
+       a.value().id() == b.value().id() and I wanted to derive a contradiction.
+       I generalized this to a generic (contradictory) T:
+       The way this works is, given a function f that derives a contradiction from T,
+       `va_disjoint` will use f to create a function f' that creates an invalid resource from T,
+    		then it uses ViewAt::apply_fn to go from a ViewAt<T> to a ViewAt<Resource<ExclCarrier>>, with an invalid token,
+        then because Resource<P> is objective, it uses into_inner_objective() to go from ViewAt<T> to T, then uses validate() to derive a contradiction. */
+    pub proof fn va_disjoint(
+        tracked self,
+        tracked f : proof_fn(tracked v : T))
+        requires
+            f.requires((self.value(),)),
+            f.ensures((self.value(), ), ()) ==>  false,
+         ensures
+            false,
+    {
+        let tracked f = proof_fn[Once]|tracked v : T| -> (tracked out : Resource<ExclCarrier>)
+        requires v == self.value(),
+        ensures !out.value().valid(),
+        {
+            f(v);
+            Resource::alloc(ExclCarrier::Excl)
+        };
+
+        let tracked mut va_f = ViewAt::new(f).0;
+        let view1 = va_f.thread_view();
+        let view2 = self.thread_view();
+        let view_join = view1.join(view2);
+        assert(view_join.contains(view1)) by {
+            view_join_contains(view1, view2);
+        }
+        assert(view_join.contains(view2)) by {
+            view_join_comm(view1, view2);
+            view_join_contains(view2, view1);
+        }
+        let tracked va_f = va_f.weaken(view_join);
+        let tracked va_t = self.weaken(view_join);
+        let tracked va_tok = va_t.apply_fn(va_f);
+
+        va_tok.into_inner_objective().validate();
+    }
+
 }
 
 impl<T: Objective> ViewAt<T> {
@@ -1110,5 +1176,50 @@ impl<K, G, Pred> WeakAtomicU8<K, G, Pred>
     }
 }*/
 
+/// Excl PCM
+pub enum ExclCarrier {
+    Excl,
+    Empty,
+    Invalid,
+}
+
+impl PCM for ExclCarrier {
+    closed spec fn valid(self) -> bool {
+        match self {
+            ExclCarrier::Invalid => false,
+            ExclCarrier::Empty | ExclCarrier::Excl => true,
+        }
+    }
+
+    closed spec fn op(self, other: Self) -> Self {
+        match self {
+            ExclCarrier::Invalid => ExclCarrier::Invalid,
+            ExclCarrier::Empty => other,
+            ExclCarrier::Excl => match other {
+                ExclCarrier::Invalid | ExclCarrier::Excl => ExclCarrier::Invalid,
+                ExclCarrier::Empty => self,
+            },
+        }
+    }
+
+    closed spec fn unit() -> Self {
+        ExclCarrier::Empty
+    }
+
+    proof fn closed_under_incl(a: Self, b: Self) {
+    }
+
+    proof fn commutative(a: Self, b: Self) {
+    }
+
+    proof fn associative(a: Self, b: Self, c: Self) {
+    }
+
+    proof fn op_unit(a: Self) {
+    }
+
+    proof fn unit_valid() {
+    }
+}
 
 } // verus!
