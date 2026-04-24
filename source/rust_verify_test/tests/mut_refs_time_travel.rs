@@ -1648,14 +1648,72 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_spec_borrowed(err, "z")
 }
 
-// TODO(new_mut_ref) (blocking) shadow use in pattern guard
 test_verify_one_file_with_options! {
-    #[ignore] #[test] shadow_use_in_pattern_guard ["new-mut-ref"] => verus_code! {
+    #[test] shadow_use_in_pattern_guard ["new-mut-ref"] => verus_code! {
+        enum Option<V> { Some(V), None }
+
         fn test() {
-            let x = Some(3);
+            let x = Option::Some(3);
             match x {
-                Some(y) if ({
+                Option::Some(y) if ({
                     assert(y == 3);
+                    true
+                }) => {
+                }
+                _ => { }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] shadow_use_in_pattern_guard2 ["new-mut-ref"] => verus_code! {
+        enum Option<V> { Some(V), None }
+
+        fn test() {
+            let x = Option::Some(3);
+            match x {
+                Option::Some(y) if ({
+                    let j = &mut y;
+                    true
+                }) => {
+                }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `y` as mutable, as it is immutable for the pattern guard")
+}
+
+test_verify_one_file_with_options! {
+    #[test] shadow_use_in_pattern_guard3 ["new-mut-ref"] => verus_code! {
+        enum Option<V> { Some(V), None }
+
+        fn test() {
+            let mut z = 20;
+            let z_ref = &mut z;
+            let x = Option::Some(3);
+            match x {
+                Option::Some(y) if ({
+                    assert(z == 3);
+                    true
+                }) => {
+                }
+                _ => { }
+            }
+            *z_ref = 30;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "z")
+}
+
+test_verify_one_file_with_options! {
+    #[test] shadow_use_in_pattern_guard4 ["new-mut-ref"] => verus_code! {
+        enum Option<V> { Some(V), None }
+
+        fn test() {
+            let x = Option::Some(3);
+            match x {
+                Option::Some(y) if ({
+                    let ghost y1 = y;
                     true
                 }) => {
                 }
