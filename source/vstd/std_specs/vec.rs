@@ -417,7 +417,6 @@ pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Ve
     A,
 > as core::iter::IntoIterator>::IntoIter);
 
-// TODO: This seems like it's redundant
 pub uninterp spec fn spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>) -> (iter: <&Vec<
     T,
     A,

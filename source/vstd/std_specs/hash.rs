@@ -398,7 +398,6 @@ pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S, A: Allocator>(
 pub broadcast proof fn axiom_spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
     ensures
         ({
-            // REVIEW: I'm not sure whether this is the right set of facts/triggers
             let v = #[trigger] spec_hash_map_iter(m).remaining();
             &&& v.len() == m@.dom().len()
             &&& forall|i: int|

@@ -184,8 +184,6 @@ impl <I> IteratorSpecImpl for Rev<I>
     open spec fn initial_value_inv(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
         &&& rev_iter(*self).initial_value_inv(&rev_iter(*init))
-        //&&& into_iter_elts(*self) == IteratorSpec::remaining(self)
-        // TODO: More here?
     }
 
     closed spec fn decrease(&self) -> Option<nat> {
