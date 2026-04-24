@@ -3,9 +3,9 @@
 Verus supports verifying `for` loops over any type that implements the Rust
 [`Iterator`](https://doc.rust-lang.org/std/iter/trait.Iterator.html) trait, as
 long as that type comes with appropriate Verus specifications.  This page
-explains how to write loop invariants using the specifications Verus provides.
-For information on how to add specifications to your own iterator type, see
-[Iterator Specifications for a Custom Type](./iterator-specs.md).
+explains how to write loop invariants using the specifications Verus provides
+in `vstd`.  For information on how to add specifications to your own iterator
+type, see [Iterator Specifications for a Custom Type](./iterator-specs.md).
 
 ## Ghost State in For Loops
 

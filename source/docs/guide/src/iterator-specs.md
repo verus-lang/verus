@@ -8,8 +8,12 @@ type; e.g., a Rust slice relies on a [`std::slice::Iter`](https://doc.rust-lang.
 3. Implement the `IteratorSpecImpl` trait to provide Verus specification.
 4. Write a constructor function for your type and annotate it with [`#[verifier::when_used_as_spec(...)]`](./reference-attributes.md#verifierwhen_used_as_spec).
 
-In the example below, we will imagine that `Vec` doesn't provide an iterator,
-so we're going to implement one for it.
+To illustrate this process, in the example below, we'll imagine that `Vec`
+doesn't provide an iterator, so we're going to implement one for it.
+
+**NOTE** At present, Verus only supports reasoning about iterators that eventually
+return `None`, and after that point, continue to return `None`.  We hope to eventually
+expand our specifications to support iterators beyond this subset.
 
 ### 1. The iterator struct
 
@@ -44,7 +48,9 @@ on how we define them for our custom iterator.
 
 - **`obeys_prophetic_iter_laws`** — return `true` to assert that this iterator satisfies
   the Verus specification for `next`.  Most iterator implementations should return `true` here,
-  and most iterator adaptors should return their inner iterator's value.
+  and most iterator adaptors should return their inner iterator's value.  By returning `true`,
+  we're saying that the iterator will eventually return `None`, and after that point, continue 
+  to return `None`.  
 - **`remaining`** — a prophetic spec function returning the sequence of items that the iterator will
   eventually produce. For `VecIterator`, this is the subrange `v[i..j]`.
 - **`will_return_none`** — return `true` if the iterator will eventually return `None`.
