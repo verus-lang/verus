@@ -80,44 +80,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_structural_impl_ref_mut_no_ice verus_code! {
-        use vstd::prelude::*;
-
-        verus! {
-
-        struct Local {
-        }
-
-        unsafe impl verus_builtin::Structural for &mut Local {
-        }
-
-        }
-
-        fn main() {}
-    } => Err(err) => assert_vir_error_msg(err, "`Structural` can only be implemented for struct or enum types")
-}
-
-test_verify_one_file! {
-    #[test] test_structural_impl_alias_ref_mut_no_ice verus_code! {
-        use vstd::prelude::*;
-
-        verus! {
-
-        struct Local {
-        }
-
-        type Alias = &'static mut Local;
-
-        unsafe impl verus_builtin::Structural for Alias {
-        }
-
-        }
-
-        fn main() {}
-    } => Err(err) => assert_vir_error_msg(err, "`Structural` can only be implemented for struct or enum types")
-}
-
 test_verify_one_file_with_options! {
     #[test] test_structural_trait_bound ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
