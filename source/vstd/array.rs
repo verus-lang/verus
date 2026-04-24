@@ -123,7 +123,7 @@ pub assume_specification<
     ensures
         iter == spec_array_iter(s),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_inv(&iter, &iter),
+        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 // Referenced by Verus' internal encoding for array -> slice coercion

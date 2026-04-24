@@ -245,9 +245,9 @@ test_verify_one_file! {
             }
 
             #[verifier::prophetic]
-            open spec fn initial_value_inv(&self, init: &Self) -> bool {
+            open spec fn initial_value_relation(&self, init: &Self) -> bool {
                 &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-                &&& self.inner().initial_value_inv(&init.inner())
+                &&& self.inner().initial_value_relation(&init.inner())
             }
 
 

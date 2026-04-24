@@ -454,7 +454,7 @@ pub assume_specification[ str::chars ](s: &str) -> (iter: Chars<'_>)
     ensures
         iter == spec_iter(s),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_inv(&iter, &iter),
+        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 #[cfg(verus_keep_ghost)]
@@ -469,7 +469,7 @@ impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
     uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
-    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
         &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
     }

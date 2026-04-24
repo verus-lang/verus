@@ -51,7 +51,7 @@ on how we define them for our custom iterator.
   Infinite iterators or iterators driven by a non-terminating closure may return `false`.
 - **`decrease`** — a termination metric for Verus's decreases checker.  By default,
   `for` loops expect this to return `Some(n)` where `n` decreases on every call to `next`. Here `j - i` works.
-- **`initial_value_inv`** — a prophetic invariant relating the iterator's initial state to
+- **`initial_value_relation`** — a prophetic invariant relating the iterator's initial state to
   the exec expression used to initialize it. This is what lets loop invariants
   refer to the original collection (e.g., `iter.seq() == v@`).
 - **`peek`** — optionally returns the item at a given look-ahead index. Providing this

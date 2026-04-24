@@ -109,7 +109,7 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
     uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
-    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
         // Standard invariant for the iterator itself:
         //   If there are no steps between start and end, then remaining is empty;
         //   otherwise it contains all of the steps in between start and end

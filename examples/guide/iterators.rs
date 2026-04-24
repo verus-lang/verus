@@ -44,7 +44,7 @@ pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
     ensures 
         iter == vec_iter_spec(v),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_inv(&iter, &vec_iter_spec(v)),
+        IteratorSpec::initial_value_relation(&iter, &vec_iter_spec(v)),
 {
     let i = VecIterator { v: v, i: 0, j: v.len() };
     assert(i.elts() == IteratorSpec::remaining(&i).unref());     // OBSERVE
@@ -90,7 +90,7 @@ impl<'a, T> IteratorSpecImpl for VecIterator<'a, T> {
     }
     
     #[verifier::prophetic]
-    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
         &&& self.elts() == IteratorSpec::remaining(self).unref()
         &&& init.elts() == self.elts()

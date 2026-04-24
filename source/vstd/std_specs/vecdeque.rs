@@ -280,7 +280,7 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
-    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
         &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
     }
@@ -328,7 +328,7 @@ pub assume_specification<'a, T, A: Allocator>[ VecDeque::<T, A>::iter ](
     ensures
         iter == spec_iter(v),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_inv(&iter, &iter),
+        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 pub broadcast group group_vec_dequeue_axioms {

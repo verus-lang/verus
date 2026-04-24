@@ -373,7 +373,7 @@ impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {
     uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
-    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
         &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
     }
@@ -445,7 +445,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
     ensures
         iter == spec_into_iter(vec),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_inv(&iter, &iter),
+        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 #[verifier::when_used_as_spec(spec_into_iter_borrowed)]
@@ -454,7 +454,7 @@ pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::Int
     ensures
         iter == spec_into_iter_borrowed(vec),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_inv(&iter, &iter),
+        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()

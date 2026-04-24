@@ -113,7 +113,7 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
-    open spec fn initial_value_inv(&self, init: &Self) -> bool {
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
         &&& into_iter_elts(*self) == IteratorSpec::remaining(self).unref()
     }
@@ -150,7 +150,7 @@ pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>
     ensures
         iter == spec_slice_iter(s),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_inv(&iter, &iter),
+        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 #[verifier::when_used_as_spec(spec_slice_iter)]
@@ -159,7 +159,7 @@ pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_ite
     ensures
         iter == spec_slice_iter(s),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_inv(&iter, &iter),
+        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 pub assume_specification<T> [ <[T]>::first ](slice: &[T]) -> (res: Option<&T>)
