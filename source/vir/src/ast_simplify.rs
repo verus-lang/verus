@@ -346,52 +346,65 @@ fn simplify_one_place(
 /// Returns a "pure place", i.e., a Place with no-side effects, and which is rooted
 /// at a Local (rather than a Temporary).
 fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
+    let (mut stmts, place, wf) = place_to_pure_place_rec(state, place);
+    stmts.extend(wf);
+    (stmts, place)
+}
+
+/// Returns (Stmts, place, wf)
+/// wf are the remaining obligations to prove that accessing the place is safe
+/// (i.e., those not already icnluded in Stmts)
+fn place_to_pure_place_rec(state: &mut State, place: &Place) -> (Vec<Stmt>, Place, Vec<Stmt>) {
     match &place.x {
         PlaceX::Field(field_opr, p) => {
-            let (mut stmts, p1) = place_to_pure_place(state, p);
+            let (stmts, p1, mut wf) = place_to_pure_place_rec(state, p);
             match field_opr.check {
                 VariantCheck::None => {}
                 VariantCheck::Union => {
                     let p1_expr = place_to_spec_expr(&p1);
                     let assert_stmt =
                         crate::place_preconditions::field_check(&place.span, &p1_expr, field_opr);
-                    stmts.push(assert_stmt);
+                    wf.push(assert_stmt);
                 }
             }
             let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
             let p2 =
                 SpannedTyped::new(&place.span, &place.typ, PlaceX::Field(field_opr.clone(), p1));
-            (stmts, p2)
+            (stmts, p2, wf)
         }
         PlaceX::DerefMut(p) => {
-            let (stmts, p1) = place_to_pure_place(state, p);
+            let (stmts, p1, wf) = place_to_pure_place_rec(state, p);
             let p2 = SpannedTyped::new(&place.span, &place.typ, PlaceX::DerefMut(p1));
-            (stmts, p2)
+            (stmts, p2, wf)
         }
         PlaceX::ModeUnwrap(p, mwm) => {
-            let (stmts, p1) = place_to_pure_place(state, p);
+            let (stmts, p1, wf) = place_to_pure_place_rec(state, p);
             let p2 = SpannedTyped::new(&place.span, &place.typ, PlaceX::ModeUnwrap(p1, *mwm));
-            (stmts, p2)
+            (stmts, p2, wf)
         }
-        PlaceX::Local(_l) => (vec![], place.clone()),
+        PlaceX::Local(_l) => (vec![], place.clone(), vec![]),
         PlaceX::Temporary(expr) => {
             let (ts, var_ident) = temp_var(state, expr);
             let p = SpannedTyped::new(&place.span, &place.typ, PlaceX::Local(var_ident));
-            (vec![ts], p)
+            (vec![ts], p, vec![])
         }
         PlaceX::WithExpr(expr, p) => {
-            let (mut stmts, p1) = place_to_pure_place(state, p);
+            let (mut stmts, p1, wf) = place_to_pure_place_rec(state, p);
             stmts.insert(0, Spanned::new(place.span.clone(), StmtX::Expr(expr.clone())));
-            (stmts, p1)
+            (stmts, p1, wf)
         }
         PlaceX::Index(p, idx, kind, bounds_check) => {
-            let (mut stmts, p1) = place_to_pure_place(state, p);
+            let (mut stmts, p1, mut wf) = place_to_pure_place_rec(state, p);
             let (idx_decl, idx_expr) = temp_expr(state, idx);
             stmts.push(idx_decl);
 
             match bounds_check {
                 BoundsCheck::Allow => {}
                 BoundsCheck::Error => {
+                    if kind.getting_len_requires_read() {
+                        stmts.extend(wf);
+                        wf = vec![];
+                    }
                     let p1_expr = place_to_spec_expr(&p1);
                     let assert_stmt = crate::place_preconditions::index_bound(
                         &place.span,
@@ -409,7 +422,7 @@ fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
                 PlaceX::Index(p1, idx_expr, *kind, BoundsCheck::Allow),
             );
 
-            (stmts, p)
+            (stmts, p, wf)
         }
         PlaceX::UserDefinedTypInvariantObligation(..) => {
             panic!("Verus internal error: unexpected UserDefinedTypInvariantObligation");

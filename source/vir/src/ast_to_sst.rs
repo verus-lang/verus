@@ -3315,10 +3315,11 @@ fn place_to_exp_pair(
     place: &Place,
 ) -> Result<(Vec<Stm>, Maybe<(Exp, Exp, Vec<Obligation>)>), VirErr> {
     let mk_exp = |expx: ExpX| SpannedTyped::new(&place.span, &place.typ, expx);
-    let (stms, exps) = place_to_exp_pair_rec(ctx, state, place)?;
+    let (mut stms, exps) = place_to_exp_pair_rec(ctx, state, place)?;
     let exps = match exps {
         Maybe::Never => Maybe::Never,
-        Maybe::Some((e1, e2, obligations)) => {
+        Maybe::Some((e1, e2, obligations, wf)) => {
+            stms.extend(wf);
             let e1 = mk_exp(ExpX::Loc(e1));
             Maybe::Some((e1, e2, obligations))
         }
@@ -3326,16 +3327,23 @@ fn place_to_exp_pair(
     Ok((stms, exps))
 }
 
+/// Returns:
+/// (1) place as an l-value (sst loc)
+/// (2) place as an r-value (normal Exp)
+/// (3) type invariant obligations that must be satisfied after the loc is written to
+/// (4) assertions to check well-formedness of the place
+///     (those that aren't already discharged in the Stms).
+///     See place_preconditions.rs for more information on handling these.
 fn place_to_exp_pair_rec(
     ctx: &Ctx,
     state: &mut State,
     place: &Place,
-) -> Result<(Vec<Stm>, Maybe<(Exp, Exp, Vec<Obligation>)>), VirErr> {
+) -> Result<(Vec<Stm>, Maybe<(Exp, Exp, Vec<Obligation>, Vec<Stm>)>), VirErr> {
     let mk_exp = |expx: ExpX| SpannedTyped::new(&place.span, &place.typ, expx);
     match &place.x {
         PlaceX::Field(field_opr, p) => {
-            let (mut stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
-            let (e1, e2, obligations) = unwrap_or_return_never!(exps, stms);
+            let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
+            let (e1, e2, obligations, mut wf) = unwrap_or_return_never!(exps, stms);
 
             let check = match field_opr.check {
                 VariantCheck::Union => {
@@ -3349,32 +3357,32 @@ fn place_to_exp_pair_rec(
                 if !state.checking_recommends(ctx) {
                     let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
                     let assert = Spanned::new(place.span.clone(), assert);
-                    stms.push(assert);
+                    wf.push(assert);
                 }
                 let assume = StmX::Assume(condition);
                 let assume = Spanned::new(place.span.clone(), assume);
-                stms.push(assume);
+                wf.push(assume);
             }
 
             let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
 
             let e1 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e1));
             let e2 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr), e2));
-            Ok((stms, Maybe::Some((e1, e2, obligations))))
+            Ok((stms, Maybe::Some((e1, e2, obligations, wf))))
         }
         PlaceX::DerefMut(p) => {
             let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
-            let (e1, e2, obligations) = unwrap_or_return_never!(exps, stms);
+            let (e1, e2, obligations, wf) = unwrap_or_return_never!(exps, stms);
             let e1 = mk_exp(ExpX::Unary(UnaryOp::MutRefCurrent, e1));
             let e2 = mk_exp(ExpX::Unary(UnaryOp::MutRefCurrent, e2));
-            Ok((stms, Maybe::Some((e1, e2, obligations))))
+            Ok((stms, Maybe::Some((e1, e2, obligations, wf))))
         }
         PlaceX::Local(x) => {
             let unique_id = state.get_var_unique_id(&x);
             let e_l = mk_exp(ExpX::VarLoc(unique_id.clone()));
             let e_r = mk_exp(ExpX::Var(unique_id));
             let e_r = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_r));
-            Ok((vec![], Maybe::Some((e_l, e_r, vec![]))))
+            Ok((vec![], Maybe::Some((e_l, e_r, vec![], vec![]))))
         }
         PlaceX::Temporary(e) => {
             let (mut stms, v) = expr_to_stm_opt(ctx, state, e)?;
@@ -3386,7 +3394,7 @@ fn place_to_exp_pair_rec(
 
             let e_l = mk_exp(ExpX::VarLoc(temp_id.clone()));
 
-            Ok((stms, Maybe::Some((e_l, temp_var, vec![]))))
+            Ok((stms, Maybe::Some((e_l, temp_var, vec![], vec![]))))
         }
         PlaceX::WithExpr(e, p) => {
             let (mut stms, v) = expr_to_stm_opt(ctx, state, e)?;
@@ -3400,7 +3408,7 @@ fn place_to_exp_pair_rec(
         PlaceX::ModeUnwrap(p, _mode) => place_to_exp_pair_rec(ctx, state, p),
         PlaceX::Index(p, idx, kind, bounds_check) => {
             let (mut stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
-            let exps = unwrap_or_return_never!(exps, stms);
+            let (e1, e2, obligations, mut wf) = unwrap_or_return_never!(exps, stms);
 
             let (mut stms2, idx_v) = expr_to_stm_opt(ctx, state, idx)?;
             stms.append(&mut stms2);
@@ -3411,9 +3419,13 @@ fn place_to_exp_pair_rec(
             match bounds_check {
                 BoundsCheck::Allow => {}
                 BoundsCheck::Error => {
+                    if kind.getting_len_requires_read() {
+                        stms.extend(wf);
+                        wf = vec![];
+                    }
                     let (condition, msg) = crate::place_preconditions::sst_index_bound(
                         &place.span,
-                        &exps.1,
+                        &e2,
                         &idx_exp,
                         *kind,
                     );
@@ -3430,15 +3442,14 @@ fn place_to_exp_pair_rec(
             }
 
             let op = BinaryOp::Index(*kind, BoundsCheck::Allow);
-            let e_l = mk_exp(ExpX::Binary(op, exps.0, idx_exp.clone()));
-            let e_r = mk_exp(ExpX::Binary(op, exps.1, idx_exp));
-            let obligations = exps.2;
+            let e_l = mk_exp(ExpX::Binary(op, e1, idx_exp.clone()));
+            let e_r = mk_exp(ExpX::Binary(op, e2, idx_exp));
 
-            Ok((stms, Maybe::Some((e_l, e_r, obligations))))
+            Ok((stms, Maybe::Some((e_l, e_r, obligations, wf))))
         }
         PlaceX::UserDefinedTypInvariantObligation(p, fun) => {
             let (stms, mut exps) = place_to_exp_pair_rec(ctx, state, p)?;
-            if let Maybe::Some((_e1, e2, obligations)) = &mut exps {
+            if let Maybe::Some((_e1, e2, obligations, _wf)) = &mut exps {
                 obligations.push(Obligation { fun: fun.clone(), exp: e2.clone() });
             }
             Ok((stms, exps))
