@@ -105,7 +105,7 @@ macro_rules! wrapping_specs {
 
             }
         }
-        )*
+            )*
     }
 }
 wrapping_specs!([
