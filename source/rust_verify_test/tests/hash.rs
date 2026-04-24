@@ -829,7 +829,7 @@ test_verify_one_file_with_options! {
             let mut items = Vec::<u32>::new();
             for k in iter: m.keys()
                 invariant
-                    items@ == iter.seq().take(iter.index@).unref(),
+                    items@ == iter.seq().take(iter.index()).unref(),
             {
                 items.push(*k);
             }
@@ -865,7 +865,7 @@ test_verify_one_file_with_options! {
             let mut items = Vec::<i8>::new();
             for v in iter: m.values()
                 invariant
-                    items@ == iter.seq().take(iter.index@).unref(),
+                    items@ == iter.seq().take(iter.index()).unref(),
             {
                 items.push(*v);
             }
@@ -927,7 +927,7 @@ test_verify_one_file_with_options! {
             for k in iter: m.iter()
                 invariant
                     iter.seq().unref().to_set() =~= set![3u32, 6u32],
-                    items@ == iter.seq().take(iter.index@).unref(),
+                    items@ == iter.seq().take(iter.index()).unref(),
             {
                 items.push(*k);
             }

@@ -39,7 +39,7 @@ test_verify_one_file! {
             let mut i: usize = 0;
             for x in it: v1
                 invariant
-                    i == it.index@,
+                    i == it.index(),
                     it.seq() == seq![3u32, 4u32, 6u32, 7u32, 8u32],
             {
                 assert(x > 2);

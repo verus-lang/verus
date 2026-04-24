@@ -1148,7 +1148,7 @@ test_verify_one_file! {
 
             for x in iter: v
                 invariant
-                    b <==> (forall|i: int| 0 <= i < iter.index@ ==> v[i] > 0),
+                    b <==> (forall|i: int| 0 <= i < iter.index() ==> v[i] > 0),
             {
                 b = b && *x > 0;
             }
@@ -1166,7 +1166,7 @@ test_verify_one_file_with_options! {
                 invariant n == x * 3,
             {
                 assert(x < 10);
-                assert(x == iter.index@);
+                assert(x == iter.index());
                 n += 3;
             }
             assert(n == 30);
@@ -1189,7 +1189,7 @@ test_verify_one_file_with_options! {
                 invariant n == x * 3,
             {
                 assert(x < 9); // FAILS
-                assert(x == iter.index@);
+                assert(x == iter.index());
                 n += 3;
             }
             assert(n == 30);
@@ -1209,7 +1209,7 @@ test_verify_one_file_with_options! {
                     end == 10,
             {
                 assert(x < 10);
-                assert(x == iter.index@);
+                assert(x == iter.index());
                 n += 3;
             }
             assert(n == 30);
@@ -1260,7 +1260,7 @@ test_verify_one_file_with_options! {
             let mut v: Vec<u32> = Vec::new();
             for i in iter: 0..n
                 invariant
-                    v.len() == iter.index@,
+                    v.len() == iter.index(),
                     forall |i| 0 <= i < v.len() ==> v[i] == iter.seq()[i],
             {
                 v.push(i);
@@ -1276,7 +1276,7 @@ test_verify_one_file_with_options! {
             let mut v: Vec<u32> = Vec::new();
             for i in iter: 0..n
                 invariant
-                    v.len() == iter.index@,
+                    v.len() == iter.index(),
                     forall |i| 0 <= i < v.len() ==> v[i] == iter.seq()[i],  // FAILS
             {
                 v.push(0);
@@ -1561,7 +1561,7 @@ test_verify_one_file! {
             let mut i: usize = 0;
             for x in it: v1
                 invariant
-                    i == it.index@,
+                    i == it.index(),
                     it.seq() == seq![3u32, 4u32, 6u32, 7u32, 8u32],
             {
                 assert(x > 2);
@@ -1620,12 +1620,12 @@ test_verify_one_file! {
 
             for x in y: v
               invariant_except_break
-                 sum == sum_u8(v@.take(y.index@))
+                 sum == sum_u8(v@.take(y.index()))
               ensures
-                  (y.index@ == y.seq().len() && sum == sum_u8(y.seq().take(y.index@))) ||
-                      (sum == u8::MAX && sum_u8(v@.take(y.index@)) > u8::MAX),
+                  (y.index() == y.seq().len() && sum == sum_u8(y.seq().take(y.index()))) ||
+                      (sum == u8::MAX && sum_u8(v@.take(y.index())) > u8::MAX),
             {
-                assert(v@.take(y.index@ + 1).drop_last() == v@.take(y.index@ as int)); // OBSERVE
+                assert(v@.take(y.index() + 1).drop_last() == v@.take(y.index() as int)); // OBSERVE
                 if x <= u8::MAX - sum {
                     sum += x;
                 } else {
@@ -1654,7 +1654,7 @@ test_verify_one_file! {
 
             for x in iter: v.iter().rev()
                 invariant
-                    w.len() == iter.index@,
+                    w.len() == iter.index(),
                     forall |i| 0 <= i < w.len() ==> w[i] == iter.seq()[i],
             {
                 w.push(*x);
@@ -1686,7 +1686,7 @@ test_verify_one_file! {
 
             for x in it: to_map(v.iter(), f)
                 invariant
-                    w.len() == it.index@,
+                    w.len() == it.index(),
                     forall |i| 0 <= i < w.len() ==> #[trigger] w[i] == v[i] + 1,
             {
                 w.push(x);
@@ -1740,19 +1740,19 @@ test_verify_one_file! {
           for x in it: vd.iter()
               invariant
                   vd@ == seq![10u32, 20u32, 30u32],
-                  s as nat == sum(vd@.take(it.index@)),
+                  s as nat == sum(vd@.take(it.index())),
           {
               // Prove that we don't overflow
               broadcast use sum_monotonic;
-              assert(sum(vd@.take(it.index@ + 1)) <= sum(vd@.take(vd@.len() as int)));
+              assert(sum(vd@.take(it.index() + 1)) <= sum(vd@.take(vd@.len() as int)));
               assert(sum(vd@.take(vd@.len() as int)) == sum(vd@)) by {
                   assert(vd@.take(vd@.len() as int) == vd@);
               };
               assert(sum(seq![10u32, 20u32, 30u32]) < u32::MAX) by (compute);
               s = s + *x;
               // Prove the invariant
-              assert(s as nat == sum(vd@.take(it.index@ + 1))) by {
-                  assert(vd@.take(it.index@ + 1).drop_last() == vd@.take(it.index@)); // OBSERVE
+              assert(s as nat == sum(vd@.take(it.index() + 1))) by {
+                  assert(vd@.take(it.index() + 1).drop_last() == vd@.take(it.index())); // OBSERVE
               };
           }
           assert(sum(seq![10u32, 20u32, 30u32]) == 60) by (compute);
@@ -1777,7 +1777,7 @@ test_verify_one_file! {
           let mut w: Vec<u32> = Vec::new();
           for x in it: vd.iter().rev()
               invariant
-                  w.len() == it.index@,
+                  w.len() == it.index(),
                   forall |i| 0 <= i < w.len() ==> w[i] == *it.seq()[i],
           {
               w.push(*x);
@@ -1824,11 +1824,11 @@ test_verify_one_file! {
           let mut index: usize = 0;
           for x in it: v
               invariant_except_break
-                  index as int == it.index@,
+                  index as int == it.index(),
                   result is None,
               invariant
                   index <= v.len(),
-                  result is None ==> forall |i: int| 0 <= i < it.index@ ==> v[i] != target,
+                  result is None ==> forall |i: int| 0 <= i < it.index() ==> v[i] != target,
                   result matches Some(idx) ==> idx < v.len() && v[idx as int] == target,
               ensures
                   result is None ==> forall |i: int| 0 <= i < v.len() ==> v[i] != target,

@@ -141,7 +141,7 @@ fn test_basic() {
 
     for x in iter: vec_iter(&v)
         invariant
-            w.len() == iter.index@,
+            w.len() == iter.index(),
             forall |i| 0 <= i < w.len() ==> w@[i] == *iter.seq()[i],
     {
         w.push(*x);
@@ -159,7 +159,7 @@ fn all_positive(v: &Vec<u8>) -> (b: bool)
 
     for x in iter: vec_iter(v)
         invariant
-            b <==> (forall|i: int| 0 <= i < iter.index@ ==> v[i] > 0),
+            b <==> (forall|i: int| 0 <= i < iter.index() ==> v[i] > 0),
     {
         b = b && *x > 0;
     }
@@ -176,7 +176,7 @@ fn build_range(n: u32) -> (v: Vec<u32>)
     let mut v: Vec<u32> = Vec::new();
     for i in r_iter: 0..n
         invariant
-            v.len() == r_iter.index@,
+            v.len() == r_iter.index(),
             forall|j: int| 0 <= j < v.len() ==> v[j] == r_iter.seq()[j],
     {
         v.push(i);
@@ -206,7 +206,7 @@ fn test_reversed(v: &Vec<u8>) -> (w: Vec<u8>)
     let mut w: Vec<u8> = Vec::new();
     for x in iter: v.iter().rev()
         invariant
-            w.len() == iter.index@,
+            w.len() == iter.index(),
             forall|i: int| 0 <= i < w.len() ==> w@[i] == *iter.seq()[i],
     {
         w.push(*x);

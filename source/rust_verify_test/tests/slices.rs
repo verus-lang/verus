@@ -128,7 +128,7 @@ test_verify_one_file! {
             let mut i: usize = 0;
             for x in it: sl.iter()
                 invariant
-                    i == it.index@,
+                    i == it.index(),
                     it.seq().unref() == seq![0u32, 2u32, 4u32],
             {
                 assert(it.seq().unref().contains(*x));

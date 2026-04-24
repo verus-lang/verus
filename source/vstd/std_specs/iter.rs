@@ -227,24 +227,28 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
         self.history@
     }
 
+    pub open spec fn index(self) -> int {
+        self.index@
+    }
+
     /// These properties help maintain the properties in wf,
     /// but they don't need to be exposed to the client
     #[verifier::prophetic]
     pub closed spec fn wf_inner(self) -> bool {
-        &&& self.iter.remaining().len() == self.seq().len() - self.index@
-        &&& forall |i| 0 <= i < self.iter.remaining().len() ==> #[trigger] self.iter.remaining()[i] == self.seq()[self.index@ + i]
+        &&& self.iter.remaining().len() == self.seq().len() - self.index()
+        &&& forall |i| 0 <= i < self.iter.remaining().len() ==> #[trigger] self.iter.remaining()[i] == self.seq()[self.index() + i]
         &&& self.iter.will_return_none() ==> self.snapshot@.will_return_none()
     }
 
     /// These properties are needed for the client code to verify
     #[verifier::prophetic]
     pub open spec fn wf(self) -> bool {
-        &&& 0 <= self.index@ <= self.seq().len()
+        &&& 0 <= self.index() <= self.seq().len()
         &&& self.init@ matches Some(init) ==> self.snapshot@.initial_value_inv(init)
         &&& self.wf_inner()
         &&& self.iter.obeys_prophetic_iter_laws() ==> {
-                &&& self.history@.len() == self.index@
-                &&& forall |i| 0 <= i < self.index@ ==> #[trigger] self.history@[i] == self.seq()[i]
+                &&& self.history@.len() == self.index()
+                &&& forall |i| 0 <= i < self.index() ==> #[trigger] self.history@[i] == self.seq()[i]
             }
     }
 
@@ -277,14 +281,14 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             old(self).wf(),
         ensures
             self.seq() == old(self).seq(),
-            self.index@ == old(self).index@ + if ret is Some { 1int } else { 0 },
+            self.index() == old(self).index() + if ret is Some { 1int } else { 0 },
             self.snapshot == old(self).snapshot,
             self.init == old(self).init,
             self.iter.obeys_prophetic_iter_laws() ==> self.wf(),
             self.iter.obeys_prophetic_iter_laws() && ret is None ==>
-                self.snapshot@.will_return_none() && self.index@ == self.seq().len(),
+                self.snapshot@.will_return_none() && self.index() == self.seq().len(),
             self.iter.obeys_prophetic_iter_laws() ==> (ret matches Some(r) ==>
-                r == old(self).seq()[old(self).index@]),
+                r == old(self).seq()[old(self).index()]),
             // History updates always hold
             ret matches Some(i) ==> self.history@ == old(self).history@.push(i),
             ret is None ==> self.history@ == old(self).history@,

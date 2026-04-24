@@ -191,7 +191,7 @@ test_verify_one_file! {
             let mut i: i8 = 0;
             for x in iter: 0..10
                 invariant i == x * 3,
-                decreases 10 - iter.index@
+                decreases 10 - iter.index()
             {
                 i += 3;
             }

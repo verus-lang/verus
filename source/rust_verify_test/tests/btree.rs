@@ -299,7 +299,7 @@ test_verify_one_file_with_options! {
             for k in iter: m.keys()
                 invariant
                     g_keys == iter.seq(),
-                    items@ == iter.seq().take(iter.index@).unref(),
+                    items@ == iter.seq().take(iter.index()).unref(),
             {
                 items.push(*k);
             }
@@ -368,7 +368,7 @@ test_verify_one_file_with_options! {
             for v in iter: m_values
                 invariant
                     g_values == iter.seq(),
-                    items@ == iter.seq().take(iter.index@).unref(),
+                    items@ == iter.seq().take(iter.index()).unref(),
             {
                 items.push(*v);
             }
@@ -431,7 +431,7 @@ test_verify_one_file_with_options! {
             for k in iter: m.iter()
                 invariant
                     iter.seq().unref().to_set() =~= set![3u32, 6u32],
-                    items@ == iter.seq().take(iter.index@).unref(),
+                    items@ == iter.seq().take(iter.index()).unref(),
             {
                 items.push(*k);
             }

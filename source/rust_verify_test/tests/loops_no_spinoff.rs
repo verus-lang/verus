@@ -1110,7 +1110,7 @@ test_verify_one_file_with_options! {
                 invariant n == x * 3,
             {
                 assert(x < 10);
-                assert(x == iter.index@);
+                assert(x == iter.index());
                 n += 3;
             }
             assert(n == 30);
@@ -1135,7 +1135,7 @@ test_verify_one_file_with_options! {
                 invariant n == x * 3,
             {
                 assert(x < 9); // FAILS
-                assert(x == iter.index@);
+                assert(x == iter.index());
                 n += 3;
             }
             assert(n == 30);
@@ -1156,7 +1156,7 @@ test_verify_one_file_with_options! {
                     end == 10,
             {
                 assert(x < 10);
-                assert(x == iter.index@);
+                assert(x == iter.index());
                 n += 3;
             }
             assert(n == 30);
@@ -1172,7 +1172,7 @@ test_verify_one_file_with_options! {
                     end == 10,
             {
                 assert(x < 10);
-                assert(x == iter.index@);
+                assert(x == iter.index());
                 n += 3;
                 end = end + 0; // causes end to be non-constant, but ok with loop_isolation(false)
             }
@@ -1209,7 +1209,7 @@ test_verify_one_file_with_options! {
             #[verifier::loop_isolation(false)]
             for i in iter: 0..n
                 invariant
-                    v.len() == iter.index@,
+                    v.len() == iter.index(),
                     forall |i| 0 <= i < v.len() ==> v[i] == iter.seq()[i],
             {
                 v.push(i);
@@ -1226,7 +1226,7 @@ test_verify_one_file_with_options! {
             #[verifier::loop_isolation(false)]
             for i in iter: 0..n
                 invariant
-                    v.len() == iter.index@,
+                    v.len() == iter.index(),
                     forall |i| 0 <= i < v.len() ==> v[i] == iter.seq()[i],  // FAILS
             {
                 v.push(0);
@@ -1248,7 +1248,7 @@ test_verify_one_file_with_options! {
             #[verifier::loop_isolation(false)]
             for x in iter: v
                 invariant
-                    b <==> (forall|i: int| 0 <= i < iter.index@ ==> v[i] > 0),
+                    b <==> (forall|i: int| 0 <= i < iter.index() ==> v[i] > 0),
             {
                 b = b && *x > 0;
             }

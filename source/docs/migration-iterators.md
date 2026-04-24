@@ -9,13 +9,13 @@ Below are some examples of how you can update your code to adapt to the new spec
 
 ---
 
-## Change 1: `iter.cur` → `x` or `iter.index@`
+## Change 1: `iter.cur` → `x` or `iter.index()`
 
 *Relevant to anyone using `for … in iter: 0..n`.*
 
 The old `iter.cur` field gave the value of the **current** loop element for range iterators.
-In the new interface, this is just `x` (the loop variable) or `iter.index@` (the number of
-items produced so far). For a zero-based range these are equal (`x == iter.index@`).
+In the new interface, this is just `x` (the loop variable) or `iter.index()` (the number of
+items produced so far). For a zero-based range these are equal (`x == iter.index()`).
 
 **Before:**
 ```rust
@@ -32,7 +32,7 @@ for x in iter: 0..10
 for x in iter: 0..10
     invariant n == x * 3,
 {
-    assert(x == iter.index@);
+    assert(x == iter.index());
     n += 3;
 }
 ```
@@ -52,9 +52,9 @@ for x in iter: 5..10
 ```rust
 for x in iter: 5..10
     invariant 
-        n == 2 * iter.index@,
+        n == 2 * iter.index(),
 {
-    assert(x == iter.index@ + 5);
+    assert(x == iter.index() + 5);
     n += 2;
 }
 ```
@@ -64,7 +64,7 @@ The same applies to `decreases` clauses that referenced `iter.cur`.
 
 ---
 
-## Change 2: `iter@` → `iter.history()` or `iter.seq().take(iter.index@)`
+## Change 2: `iter@` → `iter.history()` or `iter.seq().take(iter.index())`
 
 *Relevant to anyone whose invariants referred to `iter@`.*
 
@@ -73,9 +73,9 @@ In the old system, `iter@` yielded a `Seq` of the items produced so far. The new
 - **`iter.history()`** — a `Seq<Item>` of items produced so far. This is a direct replacement for
   `iter@` when the iterator yields owned values.  Automation may be slightly weaker, since
   this is defined in terms of `iter.seq()`
-- **`iter.seq().take(iter.index@)`** — equivalent, but written in terms of the full prophetic
+- **`iter.seq().take(iter.index())`** — equivalent, but written in terms of the full prophetic
   sequence.  However, the most reliable automation will typically come from writing an explicit quantifier,
-e.g., `forall |i| 0 <= i < iter.index@ ==> iter.seq()[i] == ...`
+e.g., `forall |i| 0 <= i < iter.index() ==> iter.seq()[i] == ...`
 
 In addition, in the new system, both `iter.seq()` and `iter.history()` return a
 `Seq<Item>` where `Item` is exactly the iterator's `Item` type. For iterators
@@ -108,7 +108,7 @@ or preferably:
 ```
 for i in iter: 0..n
     invariant
-        items.len() == iter.index@,
+        items.len() == iter.index(),
         forall 0 <= i < items.len() ==> items[i] == iter.seq()[i],
 {
     items.push(i);
@@ -123,7 +123,7 @@ for i in iter: 0..n
 *Relevant to anyone iterating over slices, arrays, or `Vec` with `iter:` bindings.*
 
 The old slice iterator exposed `.pos` (position) and `.elements` (the full sequence) as
-named fields on the ghost iterator. The new interface uses `iter.index@` and `iter.seq()`:
+named fields on the ghost iterator. The new interface uses `iter.index()` and `iter.seq()`:
 
 **Before:**
 ```rust
@@ -140,7 +140,7 @@ for x in it: sl.iter()
 ```rust
 for x in it: sl.iter()
     invariant
-        i == it.index@,
+        i == it.index(),
         it.seq().unref() == seq![0u32, 2u32, 4u32],
 {
     ...
@@ -158,7 +158,7 @@ Note the `.unref()` call: `sl.iter()` yields references (`&T`), so `it.seq()` ha
 
 The old hash/set iterators exposed iterator-specific ghost fields (`iter.keys`, `iter.values`,
 `iter.elements`, `iter.kv_pairs`, `iter.pos`). The new interface is uniform: `iter.seq()`
-holds all items as references, and `iter.index@` is the position.
+holds all items as references, and `iter.index()` is the position.
 
 Additionally, a common idiom with the old iterators would store the iterator
 into a variable before the loop so as to snapshot its ghost state in advance.
@@ -192,7 +192,7 @@ let mut items = Vec::<u32>::new();
 
 for k in iter: m.keys()      // iterator created inline
     invariant
-        items@ == iter.seq().take(iter.index@).unref(),
+        items@ == iter.seq().take(iter.index()).unref(),
 {
     items.push(*k);
 }
