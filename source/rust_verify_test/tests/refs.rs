@@ -511,7 +511,7 @@ test_verify_one_file! {
         {
             let t: &u8 = &a;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::deref`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::deref`")
 }
 
 test_verify_one_file! {

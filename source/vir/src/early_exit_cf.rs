@@ -75,11 +75,13 @@ fn expr_get_early_exits_rec(
             | ExprX::Nondeterministic { .. }
             | ExprX::TwoPhaseBorrowMut(_)
             | ExprX::BorrowMut(_)
+            | ExprX::BorrowMutTracked(_)
             | ExprX::ImplicitReborrowOrSpecRead(..)
             | ExprX::ReadPlace(..)
             | ExprX::EvalAndResolve(..)
             | ExprX::Old(..)
-            | ExprX::Block(..) => VisitorControlFlow::Recurse,
+            | ExprX::Block(..)
+            | ExprX::Await(_) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
             | ExprX::NonSpecClosure { .. }

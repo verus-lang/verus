@@ -5,6 +5,7 @@ use super::prelude::*;
 
 verus! {
 
+#[verifier::tracked_swap_primitive]
 pub axiom fn tracked_swap<V>(tracked a: &mut V, tracked b: &mut V)
     ensures
         *a == *old(b),

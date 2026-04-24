@@ -248,7 +248,8 @@ fn package_before_release_is_ok() {
 #[test]
 fn features_before_release_is_ok() {
     // --features appearing before --release should work fine
-    let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
+    let package_dir =
+        MockPackage::new("foo").lib().verify(true).features(["default=[]"]).materialize();
 
     let (status, _data) = run_cargo_verus(|cmd| {
         cmd.current_dir(&package_dir).arg("verify");

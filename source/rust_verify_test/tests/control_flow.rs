@@ -964,6 +964,59 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] side_effects_in_arg_struct_style_ctor_with_update2 verus_code! {
+        struct X {
+            a: u64,
+            b: u64,
+            c: u64,
+            d: u64,
+        }
+
+        fn test1(x: X) {
+            let mut i = 0;
+            let y = X { a: 0, b: 1, ..({ i += 1; x }) };
+            assert(i == 1);
+            assert(y.a == 0);
+            assert(y.b == 1);
+            assert(y.c == x.c);
+            assert(y.d == x.d);
+        }
+
+        fn test2(x: X) {
+            let mut i = 0;
+            let y = X { a: 0, b: 1, c: 2, d: 3, ..({ i += 1; x }) };
+            assert(i == 1);
+            assert(y.a == 0);
+            assert(y.b == 1);
+            assert(y.c == 2);
+            assert(y.d == 3);
+        }
+
+        fn test1_fails(x: X) {
+            let mut i = 0;
+            let y = X { a: 0, b: 1, ..({ i += 1; x }) };
+            assert(i == 1);
+            assert(y.a == 0);
+            assert(y.b == 1);
+            assert(y.c == x.c);
+            assert(y.d == x.d);
+            assert(false); // FAILS
+        }
+
+        fn test2_fails(x: X) {
+            let mut i = 0;
+            let y = X { a: 0, b: 1, c: 2, d: 3, ..({ i += 1; x }) };
+            assert(i == 1);
+            assert(y.a == 0);
+            assert(y.b == 1);
+            assert(y.c == 2);
+            assert(y.d == 3);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
     #[test] side_effects_in_arg_array_literal verus_code! {
         use vstd::prelude::*;
 

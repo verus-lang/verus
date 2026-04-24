@@ -473,6 +473,9 @@ test_verify_one_file_with_options! {
             let tracked mut t = t;
             let ret = t(3);
             assert(ret == 4);
+
+            let ret = t(1);
+            assert(ret == 2);
         }
 
         proof fn f2() {
@@ -1814,4 +1817,17 @@ test_verify_one_file_with_options! {
             f(12u32);
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_swap_cant_be_proof_fn ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        proof fn q<V>(tracked f: proof_fn(tracked &mut V, tracked &mut V) -> ()) {
+        }
+        proof fn r() {
+            // future-proofing: this must not be allowed
+            q(tracked_swap);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }

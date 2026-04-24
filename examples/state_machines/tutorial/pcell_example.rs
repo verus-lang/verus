@@ -5,7 +5,9 @@ use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::modes::*;
 use vstd::prelude::*;
-use vstd::{cell::*, pervasive::*};
+use vstd::cell::pcell_maybe_uninit::*;
+use vstd::cell::CellId;
+use vstd::simple_pptr::MemContents;
 
 verus! {
 
@@ -16,14 +18,6 @@ fn main() {
 
     // Initially, cell is unitialized, and the `perm` token
     // represents that as the value `MemContents::Uninit`.
-    // The meaning of the permission token is given by its _view_, here `perm@`.
-    //
-    // The expression `pcell_opt![ pcell.id() => MemContents::Uninit ]` can be read as roughly,
-    // "the cell with value pcell.id() is uninitialized".
-    assert(perm@ === pcell_points![ pcell.id() => MemContents::Uninit ]);
-
-    // The above could also be written by accessing the fields of the
-    // `PointsToData` struct:
     assert(perm.id() === pcell.id());
     assert(perm.mem_contents() === MemContents::Uninit);
 
@@ -33,14 +27,16 @@ fn main() {
     pcell.put(Tracked(&mut perm), 5);
 
     // Having written the value, this is reflected in the token:
-    assert(perm@ === pcell_points![ pcell.id() => MemContents::Init(5) ]);
+    assert(perm.id() === pcell.id());
+    assert(perm.mem_contents() === MemContents::Init(5));
 
     // We can take the value back out:
     let x = pcell.take(Tracked(&mut perm));
 
     // Which leaves it uninitialized again:
     assert(x == 5);
-    assert(perm@ === pcell_points![ pcell.id() => MemContents::Uninit ]);
+    assert(perm.id() === pcell.id());
+    assert(perm.mem_contents() === MemContents::Uninit);
 }
 // ANCHOR_END: example
 

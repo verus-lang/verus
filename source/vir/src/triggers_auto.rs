@@ -355,9 +355,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns,
                 ) => (is_pure, Arc::new(TermX::App(App::ClosureSpec, Arc::new(all_terms)))),
                 CallFun::InternalFun(
-                    InternalFun::CheckDecreaseInt
-                    | InternalFun::CheckDecreaseHeight
-                    | InternalFun::OpenInvariantMask(..),
+                    InternalFun::CheckDecreaseHeight | InternalFun::OpenInvariantMask(..),
                 ) => (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms)))),
             }
         }
@@ -411,11 +409,12 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::Length(_) => 0,
                 UnaryOp::HeightTrigger => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
-                UnaryOp::FloatToBits => 1,
                 UnaryOp::IntToReal => 1,
                 UnaryOp::RealToInt => 1,
+                UnaryOp::FloatToBits => 1,
+                UnaryOp::IeeeFloat(_) => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
-                UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
+                UnaryOp::StrLen => fail_on_strop(),
                 UnaryOp::MutRefFinal(_) => 1,
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
             };
@@ -430,7 +429,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         }
         ExpX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
-        ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::ProofNote(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
@@ -468,7 +466,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let depth = match op {
                 And | Or | Xor | Implies | Eq(_) => 0,
                 HeightCompare { .. } => 1,
-                Ne | Inequality(_) | Arith(..) | RealArith(..) => 1,
+                Ne | Inequality(_) | Arith(..) | RealArith(..) | IeeeFloat(..) => 1,
                 Bitwise(..) => 1,
                 StrGetChar => fail_on_strop(),
                 Index(..) => 1,

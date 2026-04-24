@@ -47,16 +47,16 @@ impl PathX {
 
     pub fn is_rust_std_path(&self) -> bool {
         match &self.krate {
-            Some(k) if &**k == "std" || &**k == "alloc" || &**k == "core" => true,
-            _ => false,
+            CrateId::Internal => false,
+            CrateId::Core => true,
+            CrateId::Alloc => true,
+            CrateId::Vstd => false,
+            CrateId::Id(x, _) => x.as_str() == "std",
         }
     }
 
     pub fn is_vstd_path(&self) -> bool {
-        match &self.krate {
-            Some(k) if &**k == "vstd" => true,
-            _ => false,
-        }
+        self.krate == CrateId::Vstd
     }
 }
 
@@ -76,12 +76,27 @@ pub fn parse_path_segments_from_user_str(s: &str) -> Result<Idents, crate::ast::
     Ok(Arc::new(arg_segments))
 }
 
+impl fmt::Display for CrateId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CrateId::Internal => write!(f, "crate"),
+            CrateId::Core => write!(f, "core"),
+            CrateId::Alloc => write!(f, "alloc"),
+            CrateId::Vstd => write!(f, "vstd"),
+            CrateId::Id(x, _) => write!(f, "{}", x),
+        }
+    }
+}
+
+impl fmt::Debug for CrateId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <CrateId as fmt::Display>::fmt(self, f)
+    }
+}
+
 impl fmt::Debug for PathX {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.krate {
-            None => write!(f, "Path(None, [")?,
-            Some(k) => write!(f, "Path(Some({:?}), [", k)?,
-        }
+        write!(f, "Path({:?}, [", &self.krate)?;
         for (i, s) in self.segments.iter().enumerate() {
             if i == 0 {
                 write!(f, "{:?}", s)?;
@@ -133,9 +148,10 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::SpecFn(ts1, t1), TypX::SpecFn(ts2, t2)) => {
             n_types_equal(ts1, ts2) && types_equal(t1, t2)
         }
-        (TypX::AnonymousClosure(ts1, t1, id1), TypX::AnonymousClosure(ts2, t2, id2)) => {
-            n_types_equal(ts1, ts2) && types_equal(t1, t2) && id1 == id2
-        }
+        (
+            TypX::AnonymousClosure(ts1, t1, id1, kind1),
+            TypX::AnonymousClosure(ts2, t2, id2, kind2),
+        ) => n_types_equal(ts1, ts2) && types_equal(t1, t2) && id1 == id2 && kind1 == kind2,
         (TypX::Datatype(path1, ts1, _), TypX::Datatype(path2, ts2, _)) => {
             path1 == path2 && n_types_equal(ts1, ts2)
         }
@@ -193,7 +209,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Real, _) => false,
         (TypX::Float(_), _) => false,
         (TypX::SpecFn(_, _), _) => false,
-        (TypX::AnonymousClosure(_, _, _), _) => false,
+        (TypX::AnonymousClosure(_, _, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
         (TypX::Dyn(_, _, _), _) => false,
         (TypX::Primitive(_, _), _) => false,
@@ -287,12 +303,15 @@ pub fn undecorate_typ(typ: &Typ) -> Typ {
     if let TypX::Decorate(_, _, t) = &**typ { undecorate_typ(t) } else { typ.clone() }
 }
 
-pub fn allowed_bitvector_type(typ: &Typ) -> bool {
-    match &*undecorate_typ(typ) {
-        TypX::Bool => true,
-        TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize) => true,
+pub fn allowed_bitvector_type(typ: &Typ) -> Option<Typ> {
+    let u = undecorate_typ(typ);
+    match &*u {
+        TypX::Bool => Some(u),
+        TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize) => Some(u),
+        TypX::Float { .. } => Some(u),
+        TypX::Real => Some(u),
         TypX::Boxed(typ) => allowed_bitvector_type(typ),
-        _ => false,
+        _ => None,
     }
 }
 
@@ -393,10 +412,7 @@ pub(crate) fn dt_as_friendly_rust_name_raw(dt: &Dt) -> String {
 }
 
 pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
-    let krate = match &path.krate {
-        None => "crate".to_string(),
-        Some(krate) => crate::def::krate_to_string(krate),
-    };
+    let krate = crate::def::krate_to_string_ignore_stable_id(&path.krate);
     let mut strings: Vec<String> = vec![krate];
     for segment in path.segments.iter() {
         strings.push(segment.to_string());
@@ -420,12 +436,12 @@ pub fn set_path_as_rust_name(path: &Path, friendly: &Path) {
     }
 }
 
-pub fn get_path_as_rust_names_for_krate(krate: &Ident) -> Vec<(Path, String)> {
+pub fn get_path_as_rust_names_for_krate(krate: &CrateId) -> Vec<(Path, String)> {
     let mut v: Vec<(Path, String)> = Vec::new();
     if let Ok(guard) = PATH_AS_RUST_NAME_MAP.lock() {
         if let Some(map) = &*guard {
             for (path, name) in map {
-                if &path.krate == &Some(krate.clone()) {
+                if &path.krate == krate {
                     v.push((path.clone(), name.clone()));
                 }
             }
@@ -902,11 +918,10 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
     )
 }
 
-pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<Arc<String>> {
+pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<ProofNoteLabel> {
     match &expr.x {
         // NOTE: `UnaryOpr::Box` and `Unbox` not relevant; only introduced later in `ast_to_sst`.
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => ast_expr_get_proof_note(e),
-        ExprX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
+        ExprX::UnaryOpr(UnaryOpr::ProofNote(label), _) => Some(label.clone()),
         _ => None,
     }
 }
@@ -937,8 +952,9 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)
         ),
-        TypX::AnonymousClosure(atyps, rtyp, _) => format!(
-            "AnonymousClosure({}) -> {}",
+        TypX::AnonymousClosure(atyps, rtyp, kind, _) => format!(
+            "AnonymousClosure({})({}) -> {}",
+            kind,
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)
         ),
@@ -1219,9 +1235,9 @@ impl MaskSpec {
 
 #[macro_export]
 macro_rules! path {
-    [ $krate:literal => $( $segment:literal ),* ] => {
+    [ $krate:expr => $( $segment:literal ),* ] => {
         ::std::sync::Arc::new($crate::ast::PathX {
-            krate: ::std::option::Option::Some(::std::sync::Arc::new($krate.into())),
+            krate: $krate,
             segments: ::std::sync::Arc::new(
                 ::std::vec![
                     $(
@@ -1235,7 +1251,7 @@ macro_rules! path {
 
 #[macro_export]
 macro_rules! fun {
-    [ $krate:literal => $( $segment:literal ),* ] => {
+    [ $krate:expr => $( $segment:literal ),* ] => {
         Arc::new($crate::ast::FunX { path: $crate::path!($krate => $($segment),*) })
     };
 }
@@ -1460,8 +1476,38 @@ impl BinaryOp {
             | BinaryOp::Arith(_)
             | BinaryOp::RealArith(_)
             | BinaryOp::Bitwise(..)
+            | BinaryOp::IeeeFloat(_)
             | BinaryOp::StrGetChar
             | BinaryOp::Index(..) => false,
+        }
+    }
+}
+
+impl fmt::Display for ClosureKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ClosureKind::Fn => write!(f, "Fn"),
+            ClosureKind::FnOnce => write!(f, "FnOnce"),
+            ClosureKind::FnMut => write!(f, "FnMut"),
+        }
+    }
+}
+
+impl ClosureKind {
+    pub(crate) fn trait_path(&self) -> Path {
+        match self {
+            ClosureKind::Fn => crate::path![CrateId::Core => "ops", "function", "Fn"],
+            ClosureKind::FnMut => crate::path![CrateId::Core => "ops", "function", "FnMut"],
+            ClosureKind::FnOnce => crate::path![CrateId::Core => "ops", "function", "FnOnce"],
+        }
+    }
+}
+
+impl AssertQueryMode {
+    pub(crate) fn name(&self) -> &'static str {
+        match self {
+            AssertQueryMode::NonLinear => "nonlinear_arith",
+            AssertQueryMode::BitVector => "bit_vector",
         }
     }
 }

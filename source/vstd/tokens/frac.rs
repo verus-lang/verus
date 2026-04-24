@@ -299,7 +299,7 @@ impl<T, const TOTAL: u64> FracGhost<T, TOTAL> {
 }
 
 /// See [`GhostVarAuth<T>`] for more information.
-pub struct GhostVar<T> {
+pub tracked struct GhostVar<T> {
     frac: FracGhost<T>,
 }
 
@@ -346,7 +346,7 @@ fn example() {
 ```
 */
 
-pub struct GhostVarAuth<T> {
+pub tracked struct GhostVarAuth<T> {
     frac: FracGhost<T>,
 }
 
@@ -471,13 +471,13 @@ impl<T, const TOTAL: u64> Protocol<(), T> for FractionalCarrierOpt<T, TOTAL> {
 /// Token that maintains fractional access to some resource.
 /// This allows multiple clients to obtain shared references to some resource
 /// via `borrow`.
-pub struct Frac<T, const TOTAL: u64 = 2> {
+pub tracked struct Frac<T, const TOTAL: u64 = 2> {
     r: StorageResource<(), T, FractionalCarrierOpt<T, TOTAL>>,
 }
 
 /// Token that represents the "empty" state of a fractional resource system.
 /// See [`Frac`] for more information.
-pub struct Empty<T, const TOTAL: u64 = 2> {
+pub tracked struct Empty<T, const TOTAL: u64 = 2> {
     r: StorageResource<(), T, FractionalCarrierOpt<T, TOTAL>>,
 }
 

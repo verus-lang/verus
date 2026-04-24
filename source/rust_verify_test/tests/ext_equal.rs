@@ -550,8 +550,8 @@ test_verify_one_file! {
         }
 
         trait Tr : Sized {
-            proof fn foo(self) -> (s: (Self, Self))
-                ensures s.0 == s.1;
+            proof fn foo(self) -> ((lhs, rhs): (Self, Self))
+                ensures lhs == rhs;
         }
 
         struct X { }
@@ -580,8 +580,8 @@ test_verify_one_file! {
 
         #[verifier::auto_ext_equal(ensures)]
         impl Tr2 for Seq<int> {
-            proof fn foo(self) -> (s: (Self, Self))
-                ensures s.0 == s.1
+            proof fn foo(self) -> ((lhs, rhs): (Self, Self))
+                ensures lhs == rhs
             {
                 let s = self;
                 let t = s.push(5).drop_last();

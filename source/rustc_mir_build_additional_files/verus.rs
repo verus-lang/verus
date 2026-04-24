@@ -1,5 +1,6 @@
 use crate::rustc_index::Idx;
 use crate::thir::cx::ThirBuildCx;
+// use crate::thir::pattern::pat_from_hir;
 use hir::HirId;
 use itertools::Itertools;
 use rustc_hir as hir;
@@ -9,7 +10,6 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::hir::place::{Place, Projection, ProjectionKind};
 use rustc_middle::middle::region;
 use rustc_middle::mir::FakeReadCause;
-use rustc_middle::thir;
 use rustc_middle::thir::{
     AdtExprBase, Arm, ArmId, Block, BlockId, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, Pat,
     PatKind, Stmt, StmtId, StmtKind,
@@ -18,7 +18,7 @@ use rustc_middle::ty;
 use rustc_middle::ty::{
     Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVarIndexKind, BoundVariableKind,
     CapturedPlace, GenericArg, Mutability, PolyFnSig, Ty, TyCtxt, TyKind, TypeSuperFoldable,
-    UpvarCapture,
+    UpvarCapture, adjustment::DerefAdjustKind,
 };
 use rustc_middle::ty::{TypeFoldable, TypeFolder, UpvarArgs};
 use rustc_span::Span;
@@ -92,6 +92,7 @@ pub struct VerusErasureCtxt {
 
     /// Some DefIds from builtin that we'll need to handle directly
     pub erased_ghost_value_fn_def_id: DefId,
+    pub shadow_ghost_value_fn_def_id: DefId,
     pub dummy_capture_struct_def_id: DefId,
     pub mutable_reference_tie_fn_def_id: DefId,
 
@@ -129,7 +130,7 @@ fn get_verus_erasure_ctxt() -> Arc<VerusErasureCtxt> {
         .clone()
 }
 
-fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
+pub(crate) fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
     VERUS_ERASURE_CTXT.read().unwrap().clone()
 }
 
@@ -203,7 +204,10 @@ impl VerusThirBuildCtxt {
     }
 }
 
-fn enclosing_fn_local_def_id<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> LocalDefId {
+pub(crate) fn enclosing_fn_local_def_id<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
+) -> LocalDefId {
     if tcx.is_closure_like(local_def_id.into()) {
         let hir_id = tcx.local_def_id_to_hir_id(local_def_id);
         let parent_owner_id = tcx.hir_get_parent_item(hir_id);
@@ -307,9 +311,9 @@ pub(crate) fn erase_tree<'tcx>(
         ty: expr.ty,
         span: hir_expr.span,
         kind: ExprKind::Scope {
+            hir_id: hir_expr.hir_id,
             region_scope: expr_scope,
             value: cx.thir.exprs.push(expr),
-            lint_level: rustc_middle::thir::LintLevel::Explicit(hir_expr.hir_id),
         },
     };
     cx.thir.exprs.push(expr)
@@ -456,7 +460,8 @@ fn erased_ghost_value_remove_type_if_possible<'tcx>(
     match &cx.thir.exprs[e].kind {
         ExprKind::Call { fun, args, .. } => match cx.thir.exprs[*fun].ty.kind() {
             TyKind::FnDef(fn_def_id, _)
-                if *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id =>
+                if *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id
+                    || *fn_def_id == erasure_ctxt.shadow_ghost_value_fn_def_id =>
             {
                 let tup_arg = args[0];
                 let args = match &cx.thir.exprs[tup_arg].kind {
@@ -467,27 +472,27 @@ fn erased_ghost_value_remove_type_if_possible<'tcx>(
                         );
                     }
                 };
-                Some(erased_ghost_value_with_args(
+                Some(some_ghost_value_with_args(
                     cx,
-                    erasure_ctxt,
                     hir_id,
                     span,
                     Ty::new_tup(cx.tcx, &[]),
                     args,
+                    *fn_def_id,
                 ))
             }
             _ => None,
         },
-        ExprKind::Scope { region_scope, lint_level, value } => {
+        ExprKind::Scope { region_scope, value, hir_id } => {
             let region_scope = *region_scope;
-            let lint_level = *lint_level;
+            let hir_id = *hir_id;
             let value = *value;
             let value =
                 erased_ghost_value_remove_type_if_possible(cx, erasure_ctxt, value, hir_id, span);
             match value {
                 Some(v) => {
                     let mut expr = cx.thir.exprs[e].clone();
-                    expr.kind = ExprKind::Scope { region_scope, lint_level, value: v };
+                    expr.kind = ExprKind::Scope { region_scope, value: v, hir_id };
                     expr.ty = cx.thir.exprs[v].ty;
                     Some(cx.thir.exprs.push(expr))
                 }
@@ -498,19 +503,22 @@ fn erased_ghost_value_remove_type_if_possible<'tcx>(
     }
 }
 
-/// Is the given THIR node the result of erasure?
-pub(crate) fn is_erased<'tcx>(
+/// Is the given THIR node the result of erasure or shadow?
+fn is_erased_or_shadow<'tcx>(
     cx: &ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
     expr_kind: &rustc_middle::thir::ExprKind<'tcx>,
 ) -> bool {
     match expr_kind {
         ExprKind::Call { fun, args: _, .. } => match cx.thir.exprs[*fun].ty.kind() {
-            TyKind::FnDef(fn_def_id, _) => *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id,
+            TyKind::FnDef(fn_def_id, _) => {
+                *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id
+                    || *fn_def_id == erasure_ctxt.shadow_ghost_value_fn_def_id
+            }
             _ => false,
         },
-        ExprKind::Scope { region_scope: _, lint_level: _, value } => {
-            is_erased(cx, erasure_ctxt, &cx.thir.exprs[*value].kind)
+        ExprKind::Scope { region_scope: _, value, hir_id: _ } => {
+            is_erased_or_shadow(cx, erasure_ctxt, &cx.thir.exprs[*value].kind)
         }
         _ => false,
     }
@@ -518,7 +526,7 @@ pub(crate) fn is_erased<'tcx>(
 
 /// Given an expression like `&x`, `*x` or `x.field`, determine if it should be erased
 /// by looking at if `x` is erased.
-pub(crate) fn is_node_with_single_arg_erased<'tcx>(
+pub(crate) fn is_node_with_single_arg_erased_or_shadow<'tcx>(
     cx: &ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
     expr_kind: &rustc_middle::thir::ExprKind<'tcx>,
@@ -526,13 +534,13 @@ pub(crate) fn is_node_with_single_arg_erased<'tcx>(
     match expr_kind {
         ExprKind::Call { ty: _, fun: _, args, from_hir_call: _, fn_span: _ } => {
             assert!(args.len() == 1);
-            is_erased(cx, erasure_ctxt, &cx.thir.exprs[args[0]].kind)
+            is_erased_or_shadow(cx, erasure_ctxt, &cx.thir.exprs[args[0]].kind)
         }
         ExprKind::Borrow { borrow_kind: _, arg }
         | ExprKind::Deref { arg }
         | ExprKind::NeverToAny { source: arg }
         | ExprKind::Field { lhs: arg, .. } => {
-            is_erased(cx, erasure_ctxt, &cx.thir.exprs[*arg].kind)
+            is_erased_or_shadow(cx, erasure_ctxt, &cx.thir.exprs[*arg].kind)
         }
         _ => {
             panic!("is_node_with_single_arg_erased got unexpected kind");
@@ -578,6 +586,36 @@ fn erased_ghost_value_with_args<'tcx>(
     expr_id_from_kind(cx, kind, hir_id, span, ty)
 }
 
+fn some_ghost_value_with_args<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    hir_id: HirId,
+    span: Span,
+    ty: Ty<'tcx>,
+    expr_args: Vec<ExprId>,
+    fn_def_id: DefId,
+) -> ExprId {
+    let kind = some_ghost_value_kind_with_args(cx, hir_id, span, ty, expr_args, fn_def_id);
+    expr_id_from_kind(cx, kind, hir_id, span, ty)
+}
+
+pub(crate) fn shadow_ghost_value_kind_with_args<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    erasure_ctxt: &VerusErasureCtxt,
+    hir_id: HirId,
+    span: Span,
+    ty: Ty<'tcx>,
+    expr_args: Vec<ExprId>,
+) -> ExprKind<'tcx> {
+    some_ghost_value_kind_with_args(
+        cx,
+        hir_id,
+        span,
+        ty,
+        expr_args,
+        erasure_ctxt.shadow_ghost_value_fn_def_id,
+    )
+}
+
 pub(crate) fn erased_ghost_value_kind_with_args<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
@@ -586,13 +624,30 @@ pub(crate) fn erased_ghost_value_kind_with_args<'tcx>(
     ty: Ty<'tcx>,
     expr_args: Vec<ExprId>,
 ) -> ExprKind<'tcx> {
+    some_ghost_value_kind_with_args(
+        cx,
+        hir_id,
+        span,
+        ty,
+        expr_args,
+        erasure_ctxt.erased_ghost_value_fn_def_id,
+    )
+}
+
+pub(crate) fn some_ghost_value_kind_with_args<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    hir_id: HirId,
+    span: Span,
+    ty: Ty<'tcx>,
+    expr_args: Vec<ExprId>,
+    fn_def_id: DefId,
+) -> ExprKind<'tcx> {
     let tup_tys = expr_args.iter().map(|e| cx.thir.exprs[*e].ty).collect::<Vec<_>>();
     let tup_ty = Ty::new_tup(cx.tcx, &tup_tys);
 
     let arg1 = GenericArg::from(tup_ty);
     let arg2 = GenericArg::from(ty);
     let args = cx.tcx.mk_args(&[arg1, arg2]);
-    let fn_def_id = erasure_ctxt.erased_ghost_value_fn_def_id;
     let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
 
     let fun_expr_kind = ExprKind::ZstLiteral { user_ty: None };
@@ -661,9 +716,6 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
     match &mut p.kind {
         PatKind::Missing => {}
         PatKind::Wild => {}
-        PatKind::AscribeUserType { ascription: _, subpattern } => {
-            erase_pat_rec(emode, subpattern);
-        }
         PatKind::Binding {
             name: _,
             mode: _,
@@ -704,16 +756,13 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
                 erase_pat_rec(emode, &mut field_pat.pattern);
             }
         }
-        PatKind::Deref { subpattern } => {
+        PatKind::Deref { subpattern, pin: _ } => {
             erase_pat_rec(emode, subpattern);
         }
         PatKind::DerefPattern { subpattern, borrow: _ } => {
             erase_pat_rec(emode, subpattern);
         }
         PatKind::Constant { value: _ } => {}
-        PatKind::ExpandedConstant { def_id: _, subpattern } => {
-            erase_pat_rec(emode, subpattern);
-        }
         PatKind::Range(_pat_range) => {}
         PatKind::Slice { prefix, slice, suffix } | PatKind::Array { prefix, slice, suffix } => {
             for p in prefix.iter_mut() {
@@ -736,12 +785,23 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
     }
 }
 
+pub(crate) struct Proj<'tcx> {
+    pub ty: Ty<'tcx>,
+    pub kind: ProjKind,
+}
+
+pub(crate) enum ProjKind {
+    Deref,
+    Field(rustc_abi::VariantIdx, rustc_abi::FieldIdx),
+}
+
 pub(crate) struct LocalUse<'tcx> {
     pub local: LocalVarId,
     pub hir_id: HirId,
     pub root_hir_id: HirId,
     pub span: Span,
     pub ty: Ty<'tcx>,
+    pub projs: Vec<Proj<'tcx>>,
 }
 
 /// Get all nodes that need pattern checking (match expressions and let stmts)
@@ -843,22 +903,68 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForLocalUses<'a
                     return;
                 }
             }
-            hir::ExprKind::Path(QPath::Resolved(
-                None,
-                rustc_hir::Path { res: Res::Local(id), .. },
-            )) => {
-                self.output_local_uses.push(LocalUse {
-                    local: LocalVarId(*id),
-                    span: expr.span,
-                    ty: self.cx.typeck_results.expr_ty(expr),
-                    hir_id: expr.hir_id,
-                    root_hir_id: self.root_hir_id,
-                });
+            _ => {
+                if let Some(lu) = self.try_unadjusted(expr) {
+                    self.output_local_uses.push(lu);
+                    return;
+                }
             }
-            _ => {}
         }
 
         rustc_hir::intravisit::walk_expr(self, expr);
+    }
+}
+
+impl<'a, 'tcx> VisitTreeForLocalUses<'a, 'tcx> {
+    fn try_unadjusted(&self, expr: &'tcx hir::Expr<'tcx>) -> Option<LocalUse<'tcx>> {
+        match &expr.kind {
+            hir::ExprKind::Path(QPath::Resolved(
+                None,
+                rustc_hir::Path { res: Res::Local(id), .. },
+            )) => Some(LocalUse {
+                local: LocalVarId(*id),
+                span: expr.span,
+                ty: self.cx.typeck_results.expr_ty(expr),
+                hir_id: expr.hir_id,
+                root_hir_id: self.root_hir_id,
+                projs: vec![],
+            }),
+            hir::ExprKind::Field(inner, _f) => {
+                let mut lu = self.try_adjusted(inner)?;
+                lu.projs.push(Proj {
+                    ty: self.cx.typeck_results.expr_ty(expr),
+                    kind: ProjKind::Field(
+                        rustc_abi::FIRST_VARIANT,
+                        self.cx.typeck_results.field_index(expr.hir_id),
+                    ),
+                });
+                Some(lu)
+            }
+            hir::ExprKind::Unary(rustc_hir::UnOp::Deref, inner) => {
+                let mut lu = self.try_adjusted(inner)?;
+                lu.projs
+                    .push(Proj { ty: self.cx.typeck_results.expr_ty(expr), kind: ProjKind::Deref });
+                Some(lu)
+            }
+            _ => None,
+        }
+    }
+
+    fn try_adjusted(&self, expr: &'tcx hir::Expr<'tcx>) -> Option<LocalUse<'tcx>> {
+        let mut projs = vec![];
+        let adjustments = self.cx.typeck_results.expr_adjustments(expr);
+        for adjustment in adjustments.iter() {
+            if let rustc_middle::ty::adjustment::Adjust::Deref(DerefAdjustKind::Builtin) =
+                &adjustment.kind
+            {
+                projs.push(Proj { ty: adjustment.target, kind: ProjKind::Deref });
+            } else {
+                return None;
+            }
+        }
+        let mut lu = self.try_unadjusted(expr)?;
+        lu.projs.extend(projs);
+        Some(lu)
     }
 }
 
@@ -925,12 +1031,7 @@ fn erase_let_for_pattern_checking<'tcx>(
         panic!("erase_let_for_pattern_checking: let-else statement not expected in erased code");
     }
 
-    let pattern = erase_pat_all_binders(crate::thir::pattern::pat_from_hir(
-        cx.tcx,
-        cx.typing_env,
-        cx.typeck_results,
-        pat,
-    ));
+    let pattern = erase_pat_all_binders(cx.pattern_from_hir(pat));
 
     let init_ty = cx.typeck_results.node_type(pat.hir_id);
     let init =
@@ -942,12 +1043,12 @@ fn erase_let_for_pattern_checking<'tcx>(
     };
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id: *hir_id,
             remainder_scope,
             init_scope: region::Scope { local_id: hir_id.local_id, data: region::ScopeData::Node },
             pattern,
             initializer: init,
             else_block: None,
-            lint_level: rustc_middle::thir::LintLevel::Explicit(local.hir_id),
             span: *span,
         },
     };
@@ -987,12 +1088,7 @@ fn erase_arm_for_pattern_checking<'tcx>(
     arm: &'tcx hir::Arm<'tcx>,
     match_ty: Ty<'tcx>,
 ) -> ArmId {
-    let pattern = erase_pat_all_binders(crate::thir::pattern::pat_from_hir(
-        cx.tcx,
-        cx.typing_env,
-        cx.typeck_results,
-        &arm.pat,
-    ));
+    let pattern = erase_pat_all_binders(cx.pattern_from_hir(&arm.pat));
     let guard = arm.guard.map(|guard| {
         let bool_ty = cx.tcx.mk_ty_from_kind(TyKind::Bool);
         erased_ghost_value(cx, erasure_ctxt, root_hir_id, guard.span, bool_ty)
@@ -1001,10 +1097,10 @@ fn erase_arm_for_pattern_checking<'tcx>(
     let body = erased_ghost_value(cx, erasure_ctxt, root_hir_id, arm.body.span, match_ty);
 
     let arm = Arm {
+        hir_id: arm.hir_id,
         pattern,
         guard,
         body,
-        lint_level: rustc_middle::thir::LintLevel::Explicit(arm.hir_id),
         scope: region::Scope { local_id: arm.hir_id.local_id, data: region::ScopeData::Node },
         span: arm.span,
     };
@@ -1025,6 +1121,7 @@ pub(crate) fn func_ty_skip_edge_deletion_for_uninhabited_ty<'tcx>(ty: Ty<'tcx>) 
                 return false;
             };
             *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id
+                || *fn_def_id == erasure_ctxt.shadow_ghost_value_fn_def_id
         }
         _ => false,
     }
@@ -1228,7 +1325,7 @@ pub(crate) fn fn_sig_with_region_vars<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> 
         TyKind::FnDef(def_id, args) => {
             let mut replacer = ReErasedReplacer::new(tcx);
             let args = args.fold_with(&mut replacer);
-            let f = tcx.fn_sig(def_id).instantiate(tcx, args);
+            let f = tcx.fn_sig(*def_id).instantiate(tcx, args);
 
             // suppose the new vars we introduced are e_1, e_2, ..., e_n
             // while our late binders are l_1, ..., l_m
@@ -1798,6 +1895,7 @@ pub(crate) fn make_let<'tcx>(
             is_primary: true,
             is_shorthand: false,
         },
+        extra: None,
     });
 
     let remainder_scope = region::Scope {
@@ -1806,6 +1904,7 @@ pub(crate) fn make_let<'tcx>(
     };
     let stmt = Stmt {
         kind: StmtKind::Let {
+            hir_id: let_stmt.hir_id,
             remainder_scope,
             init_scope: region::Scope {
                 local_id: stmt.hir_id.local_id,
@@ -1814,7 +1913,6 @@ pub(crate) fn make_let<'tcx>(
             pattern,
             initializer: Some(e),
             else_block: None,
-            lint_level: thir::LintLevel::Explicit(let_stmt.hir_id),
             span: stmt.span,
         },
     };

@@ -257,6 +257,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                 &mut *self.ctxt.diagnostics.borrow_mut(),
                 &mut self.errors,
                 span,
+                &general_item,
             );
         }
 
@@ -475,6 +476,7 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
     diagnostics: &mut Vec<VirErrAs>,
     errors: &mut Vec<VirErr>,
     span: rustc_span::Span,
+    general_item: &GeneralItem<'tcx>,
 ) {
     if ctxt.cmd_line_args.vstd == crate::config::Vstd::IsCore {
         // This gives a lot of warnings from the embedding of the 'verus_builtin' crate so ignore it
@@ -558,7 +560,7 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
         //    span,
         //    format!("The verus macro has no effect because item is already marked external"),
         //)));
-        } else if eattrs.any_other_verus_specific_attribute {
+        } else if eattrs.any_other_verus_specific_attribute && !general_item.is_module() {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
                 format!(
@@ -569,7 +571,7 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
     }
 
     if state == VerifState::Default && !opts_in_to_verus(&eattrs) {
-        if eattrs.any_other_verus_specific_attribute {
+        if eattrs.any_other_verus_specific_attribute && !general_item.is_module() {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
                 format!("verus-related attribute has no effect because Verus is already ignoring this item. You may need to mark it as `#[verifier::verify]`."),
@@ -619,6 +621,18 @@ impl<'a> GeneralItem<'a> {
                 TraitItemKind::Fn(..) => true,
                 _ => false,
             },
+        }
+    }
+
+    fn is_module(&self) -> bool {
+        match self {
+            GeneralItem::Item(i) => match i.kind {
+                ItemKind::Mod { .. } => true,
+                _ => false,
+            },
+            GeneralItem::ForeignItem(_) => false,
+            GeneralItem::ImplItem(_) => false,
+            GeneralItem::TraitItem(_) => false,
         }
     }
 }

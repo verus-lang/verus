@@ -28,9 +28,11 @@ pub(crate) struct ExternalInfo {
     // all known traits (both declared-in-verus and #[verifier::external_trait_specification])
     pub(crate) trait_id_set: HashSet<DefId>,
     // all known datatypes (both declared-in-verus and #[verifier::external_type_specification])
-    type_paths: HashSet<Path>,
-    // type_id_map[d] will be true if path(d) is in type_paths; otherwise false or absent
-    type_id_map: HashMap<DefId, bool>,
+    // bool flag is false for imported, true for new to this crate
+    type_paths: HashMap<Path, bool>,
+    // type_id_map[d] will be Some(b) if path(d) is in type_paths; otherwise None or absent
+    // bool flag is false for imported, true for new to this crate
+    type_id_map: HashMap<DefId, Option<bool>>,
     // all non-external trait impls
     pub(crate) internal_trait_impls: HashSet<DefId>,
     // all #[verifier::external_fn_specification] functions that implement a trait
@@ -45,7 +47,7 @@ impl ExternalInfo {
         ExternalInfo {
             local_trait_ids: Vec::new(),
             trait_id_set: HashSet::new(),
-            type_paths: HashSet::new(),
+            type_paths: HashMap::new(),
             type_id_map: HashMap::new(),
             internal_trait_impls: HashSet::new(),
             external_fn_specification_trait_method_impls: Vec::new(),
@@ -53,11 +55,17 @@ impl ExternalInfo {
         }
     }
 
-    pub(crate) fn has_type_id<'tcx>(&mut self, ctxt: &Context<'tcx>, def_id: DefId) -> bool {
+    // None if doesn't have type_id
+    // Some(b) is has type id (b is false for imported, true for new to this crate)
+    pub(crate) fn has_type_id<'tcx>(
+        &mut self,
+        ctxt: &Context<'tcx>,
+        def_id: DefId,
+    ) -> Option<bool> {
         match self.type_id_map.get(&def_id).copied() {
             None => {
-                let path = ctxt.def_id_to_vir_path(def_id);
-                let has = self.type_paths.contains(&path);
+                let path = def_id_to_vir_path_option(ctxt.tcx, Some(&*ctxt.verus_items), def_id);
+                let has = path.and_then(|p| self.type_paths.get(&p).copied());
                 self.type_id_map.insert(def_id, has);
                 has
             }
@@ -325,6 +333,9 @@ pub(crate) fn translate_impl<'tcx>(
             return Ok(());
         } else {
             /* sealed, `unsafe` */
+            // Verus attributes are `Unparsed` where get_all_attrs is acceptable per its
+            // deprecation message.
+            #[allow(deprecated)]
             let trait_attrs = ctxt.tcx.get_all_attrs(trait_def_id);
             let sealed = crate::attributes::is_sealed(
                 trait_attrs,
@@ -572,10 +583,12 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     let mut collected_impls: HashSet<DefId> = HashSet::new();
 
     // All known datatypes:
-    for k in imported.iter().map(|k| &**k).chain(vec![&*krate].into_iter()) {
+    for (is_new, k) in
+        imported.iter().map(|k| (false, &**k)).chain(vec![(true, &*krate)].into_iter())
+    {
         for d in k.datatypes.iter() {
             if let Dt::Path(path) = &d.x.name {
-                external_info.type_paths.insert(path.clone());
+                external_info.type_paths.insert(path.clone(), is_new);
             }
         }
     }
@@ -636,7 +649,20 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             }
             let is_new_trait = new_traits.contains(&path);
             let is_local_impl = impl_def_id.krate == rustc_span::def_id::LOCAL_CRATE;
-            if is_new_trait || is_local_impl {
+            let mut has_new_types = false;
+            for arg in tcx.impl_trait_ref(impl_def_id).skip_binder().args.iter() {
+                for arg in arg.walk() {
+                    if let Some(ty) = arg.as_type() {
+                        use rustc_middle::ty::TyKind;
+                        if let TyKind::Adt(rustc_middle::ty::AdtDef(adt_def_data), _) = ty.kind() {
+                            if external_info.has_type_id(ctxt, adt_def_data.did) == Some(true) {
+                                has_new_types = true;
+                            }
+                        }
+                    }
+                }
+            }
+            if is_new_trait || is_local_impl || has_new_types {
                 // Either the trait is new to us, or the impl is new to us
                 auto_import_impls.push(impl_def_id);
             }
@@ -645,7 +671,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
 
     // Process only the new implementations that could be visible to Verus:
     'impls: for impl_def_id in auto_import_impls {
-        let trait_ref = tcx.impl_trait_ref(&impl_def_id);
+        let trait_ref = tcx.impl_trait_ref(impl_def_id);
         for arg in trait_ref.skip_binder().args.iter() {
             if !crate::rust_to_vir_base::mid_arg_filter_for_external_impls(
                 ctxt,
@@ -662,7 +688,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         ) {
             continue;
         }
-        let span = tcx.def_span(&impl_def_id);
+        let span = tcx.def_span(impl_def_id);
         let impl_path = ctxt.def_id_to_vir_path(impl_def_id);
         let module_path = impl_path.pop_segment();
         let t_impl_opt = trait_impl_to_vir(
@@ -753,7 +779,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     }
 
     for (impl_path, (impl_def_id, funs)) in new_trait_impls.iter() {
-        let trait_ref = tcx.impl_trait_ref(impl_def_id);
+        let trait_ref = tcx.impl_trait_ref(*impl_def_id);
         let trait_did = trait_ref.skip_binder().def_id;
         let trait_path = ctxt.def_id_to_vir_path(trait_did);
         let Some(traitt) = trait_map.get(&trait_path) else {

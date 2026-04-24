@@ -278,7 +278,7 @@ test_verify_one_file! {
             let lock = opt_lock.get_SomeX_0();   // This line triggers panic
             true
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::OptionX::get_SomeX_0` with mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::OptionX::get_SomeX_0` with mode spec")
 }
 
 test_verify_one_file! {
@@ -1157,6 +1157,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] parsing_unit_ret_type_issue937 verus_code! {
+        use vstd::prelude::*;
+
         fn stuff() -> () { }
 
         fn stuff_fn_once<F: FnOnce(u8) -> ()>() { }
@@ -1310,7 +1312,7 @@ test_verify_one_file! {
             assume(true);
             hide(foo);
         }
-    } => Err(e) => assert_vir_error_msg(e, "This kind of statement should go at the beginning of the function body")
+    } => Err(e) => assert_vir_error_msg(e, "This verus_builtin header should go at the beginning of the function body")
 }
 
 test_verify_one_file! {
@@ -1508,7 +1510,7 @@ test_verify_one_file! {
                 _ => 0,
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::Never` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::Never` which is ignored")
 }
 
 test_verify_one_file! {
@@ -1558,6 +1560,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] tuple_copy_bound_issue2211 verus_code! {
+        use vstd::prelude::*;
+
         fn requires_copy<T: Copy>(i: T) {
         }
 
@@ -1568,6 +1572,18 @@ test_verify_one_file! {
             let ref_b = &b;
             requires_copy((a, b));
             requires_copy((ref_a, ref_b));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] no_verus_attribute_warning_issue2211 code! {
+        #[verifier::loop_isolation(false)]
+        mod m {
+            use vstd::prelude::*;
+            verus!{
+                proof fn stuff() { }
+            }
         }
     } => Ok(())
 }

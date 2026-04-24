@@ -225,6 +225,10 @@ impl rustc_span::source_map::FileLoader for TCFileLoader {
         assert!(path.display().to_string() == Self::FILENAME);
         Ok(self.rust_code.as_bytes().into())
     }
+
+    fn current_directory(&self) -> Result<std::path::PathBuf, std::io::Error> {
+        std::env::current_dir()
+    }
 }
 
 #[derive(Debug, Deserialize)]

@@ -121,12 +121,12 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             }
             UnaryOp::Not
             | UnaryOp::Clip { .. }
-            | UnaryOp::FloatToBits
             | UnaryOp::IntToReal
             | UnaryOp::RealToInt
+            | UnaryOp::FloatToBits
+            | UnaryOp::IeeeFloat(_)
             | UnaryOp::BitNot(_)
             | UnaryOp::StrLen
-            | UnaryOp::StrIsAscii
             | UnaryOp::CastToInteger
             | UnaryOp::MutRefCurrent
             | UnaryOp::MutRefFuture(_)
@@ -136,7 +136,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-            UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) | UnaryOpr::ToDyn(_) => {
+            UnaryOpr::ProofNote(_) | UnaryOpr::ToDyn(_) => {
                 // recurse inside coercions
                 check_trigger_expr_arg(state, arg)
             }
@@ -199,6 +199,7 @@ fn check_trigger_expr(
         ExpX::Unary(UnaryOp::BitNot(_), _) => {}
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
+        ExpX::Unary(UnaryOp::IeeeFloat(_), _) | ExpX::Binary(BinaryOp::IeeeFloat(_), _, _) => {}
         ExpX::UnaryOpr(UnaryOpr::HasResolved(_), _) => {}
         _ => {
             return Err(error(
@@ -260,7 +261,6 @@ fn check_trigger_expr(
             }
             ExpX::Unary(op, arg) => match op {
                 UnaryOp::StrLen
-                | UnaryOp::StrIsAscii
                 | UnaryOp::BitNot(_)
                 | UnaryOp::MutRefCurrent
                 | UnaryOp::MutRefFuture(_)
@@ -269,9 +269,10 @@ fn check_trigger_expr(
                     Ok(())
                 }
                 UnaryOp::Clip { .. }
-                | UnaryOp::FloatToBits
                 | UnaryOp::IntToReal
-                | UnaryOp::RealToInt => {
+                | UnaryOp::RealToInt
+                | UnaryOp::FloatToBits
+                | UnaryOp::IeeeFloat(_) => {
                     check_trigger_expr_arg(state, arg);
                     Ok(())
                 }
@@ -291,7 +292,7 @@ fn check_trigger_expr(
             },
             ExpX::UnaryOpr(op, arg) => match op {
                 UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-                UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) | UnaryOpr::ToDyn(_) => Ok(()),
+                UnaryOpr::ProofNote(_) | UnaryOpr::ToDyn(_) => Ok(()),
                 UnaryOpr::IsVariant { .. } | UnaryOpr::Field { .. } => {
                     check_trigger_expr_arg(state, arg);
                     Ok(())
@@ -327,7 +328,7 @@ fn check_trigger_expr(
                         check_trigger_expr_arg(state, arg2);
                         Ok(())
                     }
-                    Arith(..) | RealArith(..) => {
+                    Arith(..) | RealArith(..) | IeeeFloat(..) => {
                         check_trigger_expr_arg(state, arg1);
                         check_trigger_expr_arg(state, arg2);
                         Ok(())
@@ -365,6 +366,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
     for x in state.trigger_vars.iter() {
         map.insert(x.clone(), true).expect("duplicate bound variables");
     }
+    let span = &exp.span;
     crate::sst_visitor::exp_visitor_check(exp, &mut map, &mut |exp, map| {
         // this closure mutates `state`
         match &exp.x {
@@ -443,7 +445,12 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 };
                 for x in bvars {
                     if map.contains_key(&x) {
-                        return Err(error(&bnd.span, "variable shadowing not yet supported"));
+                        return Err(error(
+                            span,
+                            format!(
+                                "Verus Internal Error: get_manual_triggers: variable shadowing case unhandled ({x})"
+                            ),
+                        ));
                     }
                 }
                 if let BndX::Let(binders) = &bnd.x {
