@@ -1,3 +1,5 @@
+#![cfg(feature = "integration-tests")]
+
 #[path = "src/utils.rs"]
 mod utils;
 

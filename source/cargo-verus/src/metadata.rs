@@ -158,7 +158,7 @@ mod tests {
             workspace.path().join("Cargo.toml").to_string_lossy().to_string();
 
         let metadata = fetch_metadata(
-            vec!["--manifest-path".to_string(), manifest_path],
+            vec!["--offline".to_string(), "--manifest-path".to_string(), manifest_path],
             workspace.path().to_path_buf(),
         )
         .unwrap();
