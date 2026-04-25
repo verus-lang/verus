@@ -1120,6 +1120,7 @@ pub const fn spec_cast_float<From: Copy + IeeeFloatCast<To>, To: Decimal>(_from:
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
+#[cfg_attr(verus_keep_ghost, verifier::internal_trait)]
 pub trait SpecEq<Rhs: ?Sized> {}
 
 #[cfg(verus_keep_ghost)]

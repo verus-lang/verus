@@ -708,6 +708,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_spec_eq_trait_error verus_code! {
+        fn f<A: SpecEq<A>>() {}
+    } => Err(err) => assert_vir_error_msg(err, "cannot use trait marked `verifier::internal_trait`")
+}
+
+test_verify_one_file! {
     #[test] test_mut_param verus_code! {
         fn test1(mut x: u32)
             requires
