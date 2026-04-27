@@ -138,6 +138,23 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] cant_cheat_prophecy_with_assign_in_old ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let ghost nonprophvar: u64 = 0;
+
+            let mut x = 0;
+            let x_ref: &mut u64 = &mut x;
+
+            proof {
+                let ghost g = *old({ nonprophvar = x; x_ref });
+            }
+
+            *x_ref = 20;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`old` for a local variable that isn't a parameter")
+}
+
+test_verify_one_file_with_options! {
     #[test] test_borrow_and_pattern_match ["new-mut-ref"] => verus_code! {
         fn test2() {
             let mut x = (0, 1);
