@@ -1,12 +1,12 @@
 use cargo_verus::{
-    ExecutionPlan, plan_execution,
+    BIN_NAME, ExecutionPlan, plan_execution,
     test_utils::{MockPackage, MockWorkspace},
 };
 
 #[test]
 fn late_package_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "verify", "--release", "--package=foo"];
+    let args = [BIN_NAME, "verify", "--release", "--package=foo"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -14,7 +14,7 @@ fn late_package_arg_after_release() {
 #[test]
 fn late_features_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "verify", "--release", "--features=some-feature"];
+    let args = [BIN_NAME, "verify", "--release", "--features=some-feature"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -22,7 +22,7 @@ fn late_features_arg_after_release() {
 #[test]
 fn late_all_features_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "verify", "--release", "--all-features"];
+    let args = [BIN_NAME, "verify", "--release", "--all-features"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -30,7 +30,7 @@ fn late_all_features_arg_after_release() {
 #[test]
 fn late_no_default_features_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "verify", "--release", "--no-default-features"];
+    let args = [BIN_NAME, "verify", "--release", "--no-default-features"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -39,7 +39,7 @@ fn late_no_default_features_arg_after_release() {
 fn late_workspace_arg_after_release() {
     let workspace_dir =
         MockWorkspace::new().members([MockPackage::new("foo").lib().verify(true)]).materialize();
-    let args = ["cargo-verus", "verify", "--release", "--workspace"];
+    let args = [BIN_NAME, "verify", "--release", "--workspace"];
     let result = plan_execution(Some(workspace_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -47,7 +47,7 @@ fn late_workspace_arg_after_release() {
 #[test]
 fn late_frozen_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "verify", "--release", "--frozen"];
+    let args = [BIN_NAME, "verify", "--release", "--frozen"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -55,7 +55,7 @@ fn late_frozen_arg_after_release() {
 #[test]
 fn late_locked_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "verify", "--release", "--locked"];
+    let args = [BIN_NAME, "verify", "--release", "--locked"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -63,7 +63,7 @@ fn late_locked_arg_after_release() {
 #[test]
 fn late_offline_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "verify", "--release", "--offline"];
+    let args = [BIN_NAME, "verify", "--release", "--offline"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -71,7 +71,7 @@ fn late_offline_arg_after_release() {
 #[test]
 fn late_target_dir_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "verify", "--release", "--target-dir=/tmp/foo"];
+    let args = [BIN_NAME, "verify", "--release", "--target-dir=/tmp/foo"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -79,7 +79,7 @@ fn late_target_dir_arg_after_release() {
 #[test]
 fn late_config_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "verify", "--release", "--config=build.jobs=1"];
+    let args = [BIN_NAME, "verify", "--release", "--config=build.jobs=1"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -87,7 +87,7 @@ fn late_config_arg_after_release() {
 #[test]
 fn late_z_flag_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "verify", "--release", "-Z", "unstable-options"];
+    let args = [BIN_NAME, "verify", "--release", "-Z", "unstable-options"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -95,7 +95,7 @@ fn late_z_flag_arg_after_release() {
 #[test]
 fn z_flag_without_space_is_rejected() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "verify", "-Zunstable-options"];
+    let args = [BIN_NAME, "verify", "-Zunstable-options"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -103,10 +103,8 @@ fn z_flag_without_space_is_rejected() {
 #[test]
 fn z_flag_with_space_is_accepted() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let result = plan_execution(
-        Some(package_dir.path()),
-        ["cargo-verus", "verify", "-Z", "unstable-options"],
-    );
+    let result =
+        plan_execution(Some(package_dir.path()), [BIN_NAME, "verify", "-Z", "unstable-options"]);
 
     // The parser should accept `-Z unstable-options` as properly formatted.
     // On stable toolchains, planning may still fail later when cargo metadata rejects `-Z`.
@@ -122,7 +120,7 @@ fn z_flag_with_space_is_accepted() {
 #[test]
 fn package_before_release_is_ok() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "verify", "--package=foo", "--release"];
+    let args = [BIN_NAME, "verify", "--package=foo", "--release"];
 
     let plan = plan_execution(Some(package_dir.path()), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
@@ -140,7 +138,7 @@ fn package_before_release_is_ok() {
 fn features_before_release_is_ok() {
     let package_dir =
         MockPackage::new("foo").lib().verify(true).features(["default=[]"]).materialize();
-    let args = ["cargo-verus", "verify", "--features=default", "--release"];
+    let args = [BIN_NAME, "verify", "--features=default", "--release"];
 
     let plan = plan_execution(Some(package_dir.path()), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
@@ -154,7 +152,7 @@ fn features_before_release_is_ok() {
 #[test]
 fn focus_late_package_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "focus", "--release", "--package=foo"];
+    let args = [BIN_NAME, "focus", "--release", "--package=foo"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -162,7 +160,7 @@ fn focus_late_package_arg_after_release() {
 #[test]
 fn focus_z_flag_without_space_is_rejected() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "focus", "-Zunstable-options"];
+    let args = [BIN_NAME, "focus", "-Zunstable-options"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -170,7 +168,7 @@ fn focus_z_flag_without_space_is_rejected() {
 #[test]
 fn build_late_package_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "build", "--release", "--package=foo"];
+    let args = [BIN_NAME, "build", "--release", "--package=foo"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -178,7 +176,7 @@ fn build_late_package_arg_after_release() {
 #[test]
 fn build_z_flag_without_space_is_rejected() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "build", "-Zunstable-options"];
+    let args = [BIN_NAME, "build", "-Zunstable-options"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -186,7 +184,7 @@ fn build_z_flag_without_space_is_rejected() {
 #[test]
 fn check_late_package_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "check", "--release", "--package=foo"];
+    let args = [BIN_NAME, "check", "--release", "--package=foo"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }
@@ -194,7 +192,7 @@ fn check_late_package_arg_after_release() {
 #[test]
 fn check_z_flag_without_space_is_rejected() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let args = ["cargo-verus", "check", "-Zunstable-options"];
+    let args = [BIN_NAME, "check", "-Zunstable-options"];
     let result = plan_execution(Some(package_dir.path()), args);
     assert!(result.is_err(), "expected planning to fail for args: {args:?}");
 }

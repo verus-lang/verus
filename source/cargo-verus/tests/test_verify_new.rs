@@ -1,5 +1,5 @@
 use cargo_verus::{
-    ExecutionPlan,
+    BIN_NAME, ExecutionPlan,
     test_utils::{
         CARGO_DEFAULT_LIB_METADATA, MockDep, MockPackage, MockWorkspace, RUSTC_WRAPPER,
         VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
@@ -12,8 +12,8 @@ fn crate_optin_workdir() {
     let verify_crate_prefix = format!("{VERUS_DRIVER_VERIFY}{package_name}-0.1.0-");
     let project_dir = MockPackage::new(package_name).lib().verify(true).materialize();
 
-    let plan = cargo_verus::plan_execution(Some(project_dir.path()), ["cargo-verus", "verify"])
-        .expect("plan");
+    let plan =
+        cargo_verus::plan_execution(Some(project_dir.path()), [BIN_NAME, "verify"]).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -35,11 +35,9 @@ fn crate_optin_manifest() {
     let manifest_path = package_dir.path().join("Cargo.toml");
     let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let plan = cargo_verus::plan_execution(
-        None,
-        ["cargo-verus", "verify", "--manifest-path", manifest_path],
-    )
-    .expect("plan");
+    let plan =
+        cargo_verus::plan_execution(None, [BIN_NAME, "verify", "--manifest-path", manifest_path])
+            .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -57,8 +55,8 @@ fn crate_optout_workdir() {
     let package_name = "foo";
     let package_dir = MockPackage::new(package_name).lib().verify(false).materialize();
 
-    let plan = cargo_verus::plan_execution(Some(package_dir.path()), ["cargo-verus", "verify"])
-        .expect("plan");
+    let plan =
+        cargo_verus::plan_execution(Some(package_dir.path()), [BIN_NAME, "verify"]).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -78,11 +76,9 @@ fn crate_optout_manifest() {
     let manifest_path = package_dir.path().join("Cargo.toml");
     let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let plan = cargo_verus::plan_execution(
-        None,
-        ["cargo-verus", "verify", "--manifest-path", manifest_path],
-    )
-    .expect("plan");
+    let plan =
+        cargo_verus::plan_execution(None, [BIN_NAME, "verify", "--manifest-path", manifest_path])
+            .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -100,8 +96,8 @@ fn crate_unset_workdir() {
     let package_name = "foo";
     let package_dir = MockPackage::new(package_name).lib().materialize();
 
-    let plan = cargo_verus::plan_execution(Some(package_dir.path()), ["cargo-verus", "verify"])
-        .expect("plan");
+    let plan =
+        cargo_verus::plan_execution(Some(package_dir.path()), [BIN_NAME, "verify"]).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -122,11 +118,9 @@ fn crate_unset_manifest() {
     let manifest_path = package_dir.path().join("Cargo.toml");
     let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let plan = cargo_verus::plan_execution(
-        None,
-        ["cargo-verus", "verify", "--manifest-path", manifest_path],
-    )
-    .expect("plan");
+    let plan =
+        cargo_verus::plan_execution(None, [BIN_NAME, "verify", "--manifest-path", manifest_path])
+            .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -160,7 +154,7 @@ fn workspace_workdir() {
     let verify_unset_prefix = format!("{VERUS_DRIVER_VERIFY}{unset}-0.1.0-");
     let verify_hasdeps_prefix = format!("{VERUS_DRIVER_VERIFY}{hasdeps}-0.1.0-");
 
-    let plan = cargo_verus::plan_execution(Some(workspace_dir.path()), ["cargo-verus", "verify"])
+    let plan = cargo_verus::plan_execution(Some(workspace_dir.path()), [BIN_NAME, "verify"])
         .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
@@ -201,11 +195,9 @@ fn workspace_manifest() {
     let manifest_path = workspace_dir.path().join("Cargo.toml");
     let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let plan = cargo_verus::plan_execution(
-        None,
-        ["cargo-verus", "verify", "--manifest-path", manifest_path],
-    )
-    .expect("plan");
+    let plan =
+        cargo_verus::plan_execution(None, [BIN_NAME, "verify", "--manifest-path", manifest_path])
+            .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -247,7 +239,7 @@ fn workspace_manifest_package_optin() {
 
     let plan = cargo_verus::plan_execution(
         None,
-        ["cargo-verus", "verify", "--manifest-path", manifest_path, "--package", optin],
+        [BIN_NAME, "verify", "--manifest-path", manifest_path, "--package", optin],
     )
     .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
@@ -291,7 +283,7 @@ fn workspace_manifest_package_hasdeps() {
 
     let plan = cargo_verus::plan_execution(
         None,
-        ["cargo-verus", "verify", "--manifest-path", manifest_path, "--package", hasdeps],
+        [BIN_NAME, "verify", "--manifest-path", manifest_path, "--package", hasdeps],
     )
     .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {

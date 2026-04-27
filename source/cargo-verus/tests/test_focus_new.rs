@@ -1,5 +1,5 @@
 use cargo_verus::{
-    ExecutionPlan,
+    BIN_NAME, ExecutionPlan,
     test_utils::{
         CARGO_DEFAULT_LIB_METADATA, MockDep, MockPackage, MockWorkspace, RUSTC_WRAPPER,
         VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR, VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
@@ -17,11 +17,9 @@ fn crate_optin_manifest() {
     let manifest_path = package_dir.join("Cargo.toml");
     let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let plan = cargo_verus::plan_execution(
-        None,
-        ["cargo-verus", "focus", "--manifest-path", manifest_path],
-    )
-    .expect("plan");
+    let plan =
+        cargo_verus::plan_execution(None, [BIN_NAME, "focus", "--manifest-path", manifest_path])
+            .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -67,11 +65,9 @@ fn workspace_manifest() {
     let manifest_path = workspace_dir.join("Cargo.toml");
     let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let plan = cargo_verus::plan_execution(
-        None,
-        ["cargo-verus", "focus", "--manifest-path", manifest_path],
-    )
-    .expect("plan");
+    let plan =
+        cargo_verus::plan_execution(None, [BIN_NAME, "focus", "--manifest-path", manifest_path])
+            .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -130,7 +126,7 @@ fn workspace_package_hasdeps() {
 
     let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
-        ["cargo-verus", "focus", "--package", hasdeps],
+        [BIN_NAME, "focus", "--package", hasdeps],
     )
     .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
@@ -176,7 +172,7 @@ fn workspace_package_hasdeps_forwards_verus_args_only_to_roots() {
 
     let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
-        ["cargo-verus", "focus", "--package", hasdeps, "--", "--verify-module=bar"],
+        [BIN_NAME, "focus", "--package", hasdeps, "--", "--verify-module=bar"],
     )
     .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {

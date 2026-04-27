@@ -1,5 +1,5 @@
 use cargo_verus::{
-    ExecutionPlan,
+    BIN_NAME, ExecutionPlan,
     test_utils::{
         CARGO_DEFAULT_LIB_METADATA, MockDep, MockPackage, MockWorkspace, RUSTC_WRAPPER,
         VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR, VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
@@ -15,7 +15,7 @@ fn lib_with_example_imports_own_lib() {
         MockPackage::new(package_name).lib().example("foo").verify(true).materialize();
 
     let current_dir = Some(project_dir.path());
-    let args = ["cargo-verus", "build"];
+    let args = [BIN_NAME, "build"];
     let plan = cargo_verus::plan_execution(current_dir, args).expect("plan");
 
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
@@ -38,7 +38,7 @@ fn bin_only_no_own_lib_import() {
     let project_dir = MockPackage::new(package_name).bin("main").verify(true).materialize();
 
     let current_dir = Some(project_dir.path());
-    let args = ["cargo-verus", "build"];
+    let args = [BIN_NAME, "build"];
     let plan = cargo_verus::plan_execution(current_dir, args).expect("plan");
 
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
@@ -75,7 +75,7 @@ fn workspace_workdir() {
     let verify_hasdeps_prefix = format!("{VERUS_DRIVER_VERIFY}{hasdeps}-0.1.0-");
 
     let current_dir = Some(workspace_dir.path());
-    let args = ["cargo-verus", "build", "--release", "--", "--expand-errors", "--rlimit=100"];
+    let args = [BIN_NAME, "build", "--release", "--", "--expand-errors", "--rlimit=100"];
     let plan = cargo_verus::plan_execution(current_dir, args).expect("plan");
 
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {

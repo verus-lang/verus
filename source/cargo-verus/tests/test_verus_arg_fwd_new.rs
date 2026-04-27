@@ -1,5 +1,5 @@
 use cargo_verus::{
-    ExecutionPlan,
+    BIN_NAME, ExecutionPlan,
     test_utils::{MockDep, MockPackage, MockWorkspace, VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR},
 };
 
@@ -42,7 +42,7 @@ fn workspace_explicit_all() {
     let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
-            "cargo-verus",
+            BIN_NAME,
             "verify",
             "--package",
             hasdeps,
@@ -95,7 +95,7 @@ fn workspace_explicit_roots() {
     let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
-            "cargo-verus",
+            BIN_NAME,
             "verify",
             "--package",
             hasdeps,
@@ -148,7 +148,7 @@ fn workspace_explicit_deps() {
     let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
-            "cargo-verus",
+            BIN_NAME,
             "verify",
             "--package",
             hasdeps,
@@ -201,7 +201,7 @@ fn workspace_default_for_verify_is_all() {
     let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
-            "cargo-verus",
+            BIN_NAME,
             "verify",
             "--package",
             hasdeps,
@@ -252,7 +252,7 @@ fn workspace_default_for_build_is_all() {
     let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
-            "cargo-verus",
+            BIN_NAME,
             "build",
             "--package",
             hasdeps,
@@ -303,7 +303,7 @@ fn workspace_default_for_check_is_all() {
     let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
-            "cargo-verus",
+            BIN_NAME,
             "check",
             "--package",
             hasdeps,
@@ -354,7 +354,7 @@ fn workspace_default_for_focus_is_roots() {
     let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
-            "cargo-verus",
+            BIN_NAME,
             "focus",
             "--package",
             hasdeps,
