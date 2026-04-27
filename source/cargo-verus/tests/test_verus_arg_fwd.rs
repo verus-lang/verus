@@ -39,22 +39,20 @@ fn workspace_explicit_all() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let plan = cargo_verus::plan_execution(
-        Some(workspace_dir.as_path()),
-        [
-            BIN_NAME,
-            "verify",
-            "--package",
-            hasdeps,
-            "--package",
-            sibling,
-            "--fwd-verus-args-to",
-            "all",
-            "--",
-            "--verify-module=bar",
-        ],
-    )
-    .expect("plan");
+    let args = [
+        BIN_NAME,
+        "verify",
+        "--package",
+        hasdeps,
+        "--package",
+        sibling,
+        "--fwd-verus-args-to",
+        "all",
+        "--",
+        "--verify-module=bar",
+    ];
+
+    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -92,22 +90,20 @@ fn workspace_explicit_roots() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let plan = cargo_verus::plan_execution(
-        Some(workspace_dir.as_path()),
-        [
-            BIN_NAME,
-            "verify",
-            "--package",
-            hasdeps,
-            "--package",
-            sibling,
-            "--fwd-verus-args-to",
-            "roots",
-            "--",
-            "--verify-module=bar",
-        ],
-    )
-    .expect("plan");
+    let args = [
+        BIN_NAME,
+        "verify",
+        "--package",
+        hasdeps,
+        "--package",
+        sibling,
+        "--fwd-verus-args-to",
+        "roots",
+        "--",
+        "--verify-module=bar",
+    ];
+
+    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -145,22 +141,20 @@ fn workspace_explicit_deps() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let plan = cargo_verus::plan_execution(
-        Some(workspace_dir.as_path()),
-        [
-            BIN_NAME,
-            "verify",
-            "--package",
-            hasdeps,
-            "--package",
-            sibling,
-            "--fwd-verus-args-to",
-            "deps",
-            "--",
-            "--verify-module=bar",
-        ],
-    )
-    .expect("plan");
+    let args = [
+        BIN_NAME,
+        "verify",
+        "--package",
+        hasdeps,
+        "--package",
+        sibling,
+        "--fwd-verus-args-to",
+        "deps",
+        "--",
+        "--verify-module=bar",
+    ];
+
+    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -198,20 +192,18 @@ fn workspace_default_for_verify_is_all() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let plan = cargo_verus::plan_execution(
-        Some(workspace_dir.as_path()),
-        [
-            BIN_NAME,
-            "verify",
-            "--package",
-            hasdeps,
-            "--package",
-            sibling,
-            "--",
-            "--verify-module=bar",
-        ],
-    )
-    .expect("plan");
+    let args = [
+        BIN_NAME,
+        "verify",
+        "--package",
+        hasdeps,
+        "--package",
+        sibling,
+        "--",
+        "--verify-module=bar",
+    ];
+
+    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -249,20 +241,18 @@ fn workspace_default_for_build_is_all() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let plan = cargo_verus::plan_execution(
-        Some(workspace_dir.as_path()),
-        [
-            BIN_NAME,
-            "build",
-            "--package",
-            hasdeps,
-            "--package",
-            sibling,
-            "--",
-            "--verify-module=bar",
-        ],
-    )
-    .expect("plan");
+    let args = [
+        BIN_NAME,
+        "build",
+        "--package",
+        hasdeps,
+        "--package",
+        sibling,
+        "--",
+        "--verify-module=bar",
+    ];
+
+    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -300,20 +290,18 @@ fn workspace_default_for_check_is_all() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let plan = cargo_verus::plan_execution(
-        Some(workspace_dir.as_path()),
-        [
-            BIN_NAME,
-            "check",
-            "--package",
-            hasdeps,
-            "--package",
-            sibling,
-            "--",
-            "--verify-module=bar",
-        ],
-    )
-    .expect("plan");
+    let args = [
+        BIN_NAME,
+        "check",
+        "--package",
+        hasdeps,
+        "--package",
+        sibling,
+        "--",
+        "--verify-module=bar",
+    ];
+
+    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -351,20 +339,18 @@ fn workspace_default_for_focus_is_roots() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let plan = cargo_verus::plan_execution(
-        Some(workspace_dir.as_path()),
-        [
-            BIN_NAME,
-            "focus",
-            "--package",
-            hasdeps,
-            "--package",
-            sibling,
-            "--",
-            "--verify-module=bar",
-        ],
-    )
-    .expect("plan");
+    let args = [
+        BIN_NAME,
+        "focus",
+        "--package",
+        hasdeps,
+        "--package",
+        sibling,
+        "--",
+        "--verify-module=bar",
+    ];
+
+    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };

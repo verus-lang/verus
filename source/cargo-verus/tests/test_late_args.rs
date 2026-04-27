@@ -103,8 +103,8 @@ fn z_flag_without_space_is_rejected() {
 #[test]
 fn z_flag_with_space_is_accepted() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
-    let result =
-        plan_execution(Some(package_dir.path()), [BIN_NAME, "verify", "-Z", "unstable-options"]);
+    let args = [BIN_NAME, "verify", "-Z", "unstable-options"];
+    let result = plan_execution(Some(package_dir.path()), args);
 
     // The parser should accept `-Z unstable-options` as properly formatted.
     // On stable toolchains, planning may still fail later when cargo metadata rejects `-Z`.
