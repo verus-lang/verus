@@ -723,7 +723,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         fake_reads,
                     }))
                 } else if self.verus_ctxt.skip_closure(def_id) {
-                    crate::verus::erase_tree_kind(self, expr, crate::verus::TreeErase::IncludeBasicChecks)
+                    crate::verus::erase_tree_kind(self, expr, expr.hir_id, crate::verus::TreeErase::IncludeBasicChecks)
                 } else {
                 // leave unindented for easier merging
 

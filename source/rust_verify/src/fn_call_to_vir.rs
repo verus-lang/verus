@@ -1,7 +1,7 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
 use crate::config::Vstd;
 use crate::context::{BodyCtxt, HeaderSetting};
-use crate::erase::{CompilableOperator, ResolvedCall};
+use crate::erase::{CompilableOperator, LoopSpecKind, ResolvedCall};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
@@ -643,7 +643,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                     mk_expr(ExprX::Header(header))
                 }
                 SpecItem::Ensures => {
-                    record_spec_fn_pure_args_only(bctx, expr);
+                    if let HeaderSetting::Loop(loop_hir_id) = bctx.header_setting {
+                        record_loop_spec(bctx, expr, loop_hir_id, LoopSpecKind::Ensures);
+                    } else {
+                        record_spec_fn_pure_args_only(bctx, expr);
+                    }
                     unsupported_err_unless!(args_len == 1, expr.span, "expected ensures", &args);
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                     let header = extract_ensures(&bctx, args[0])?;
@@ -651,7 +655,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                     mk_expr_span(args[0].span, ExprX::Header(header))
                 }
                 SpecItem::Decreases => {
-                    record_spec_fn_pure_args_only(bctx, expr);
+                    if let HeaderSetting::Loop(loop_hir_id) = bctx.header_setting {
+                        record_loop_spec(bctx, expr, loop_hir_id, LoopSpecKind::Decreases);
+                    } else {
+                        record_spec_fn_pure_args_only(bctx, expr);
+                    }
+
                     unsupported_err_unless!(args_len == 1, expr.span, "expected decreases", &args);
                     let subargs = extract_tuple(args[0]);
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
@@ -662,7 +671,17 @@ fn verus_item_to_vir<'tcx, 'a>(
                     mk_expr(ExprX::Header(header))
                 }
                 SpecItem::InvariantExceptBreak | SpecItem::Invariant => {
-                    record_spec_fn_pure_args_only(bctx, expr);
+                    if let HeaderSetting::Loop(loop_hir_id) = bctx.header_setting {
+                        let kind = match spec_item {
+                            SpecItem::InvariantExceptBreak => LoopSpecKind::InvariantExceptBreak,
+                            SpecItem::Invariant => LoopSpecKind::Invariant,
+                            _ => unreachable!(),
+                        };
+                        record_loop_spec(bctx, expr, loop_hir_id, kind);
+                    } else {
+                        return err_span(expr.span, "invariant is only expected inside a loop");
+                    }
+
                     unsupported_err_unless!(args_len == 1, expr.span, "expected invariant", &args);
                     let subargs = extract_array(args[0]);
                     for arg in &subargs {
@@ -2080,7 +2099,8 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::ErasedGhostValue
         | VerusItem::ShadowGhostValue
         | VerusItem::DummyCapture(_)
-        | VerusItem::MutableReferenceTie => {
+        | VerusItem::MutableReferenceTie
+        | VerusItem::GetFirst => {
             return err_span(
                 expr.span,
                 format!("this builtin item should not appear in user code",),
@@ -2923,8 +2943,23 @@ fn record_spec_fn<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
 /// This is suitable for directives like `assert`, but not suitable for most
 /// computational spec fns.
 /// When in doubt, use `record_spec_fn` instead.
+/// Also note that loop-related functions should use `record_loop_spec`.
 fn record_spec_fn_pure_args_only<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
     record_call(bctx, expr, ResolvedCall::SpecPure)
+}
+
+/// Record a loop spec function. Similar requirement to `record_spec_fn_pure_args_only`
+fn record_loop_spec<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr,
+    loop_hir_id: rustc_hir::HirId,
+    kind: LoopSpecKind,
+) {
+    if bctx.new_mut_ref {
+        record_call(bctx, expr, ResolvedCall::LoopSpec(loop_hir_id, kind));
+    } else {
+        record_spec_fn_pure_args_only(bctx, expr);
+    }
 }
 
 pub(crate) fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
