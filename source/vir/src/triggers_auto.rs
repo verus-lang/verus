@@ -301,11 +301,11 @@ fn make_score(term: &Term, depth: u64) -> Score {
 }
 
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
-    let fail_on_strop = || {
-        unreachable!(
-            "internal error: doesn't make sense to reach `gather_terms` for string operations defined for verus_builtin, these are only used to tie verus_builtin and vstd together and do not make sense in user programs"
-        )
-    };
+    fn skip_strop(ctxt: &mut Ctxt, terms: Vec<Term>) -> (bool, Term) {
+        // These string builtins are exposed via verus_builtin but are not represented as
+        // dedicated trigger terms, so skip them during auto-trigger inference.
+        (false, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
+    }
 
     fn append_typ_params_as_terms(typ: &Typ, all_terms: &mut Vec<Term>) {
         let ft = |all_terms: &mut Vec<Term>, t: &Typ| match &**t {
@@ -387,8 +387,8 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Unary(UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated, e1) => {
             gather_terms(ctxt, ctx, e1, depth)
         }
-        ExpX::Unary(UnaryOp::CastToInteger, _) => {
-            panic!("internal error: CastToInteger should have been removed before here")
+        ExpX::Unary(UnaryOp::CastToInteger, e1) => {
+            gather_terms(ctxt, ctx, e1, depth)
         }
         ExpX::Unary(op @ (UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_)), e1) => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, e1, depth + 1);
@@ -414,12 +414,13 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::FloatToBits => 1,
                 UnaryOp::IeeeFloat(_) => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
-                UnaryOp::StrLen => fail_on_strop(),
+                UnaryOp::StrLen => 1,
                 UnaryOp::MutRefFinal(_) => 1,
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {
+                UnaryOp::StrLen => skip_strop(ctxt, vec![term1]),
                 UnaryOp::BitNot(_) => (
                     is_pure1,
                     Arc::new(TermX::App(App::BitOp(BitOpName::BitNot), Arc::new(vec![term1]))),
@@ -468,12 +469,13 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 HeightCompare { .. } => 1,
                 Ne | Inequality(_) | Arith(..) | RealArith(..) | IeeeFloat(..) => 1,
                 Bitwise(..) => 1,
-                StrGetChar => fail_on_strop(),
+                StrGetChar => 1,
                 Index(..) => 1,
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (is_pure2, term2) = gather_terms(ctxt, ctx, e2, depth);
             match op {
+                StrGetChar => skip_strop(ctxt, vec![term1, term2]),
                 Bitwise(bp, _) => {
                     let bop = match bp {
                         BitwiseOp::BitXor => BitOpName::BitXor,
