@@ -387,7 +387,7 @@ pub(crate) fn extract_desugared_async_body<'tcx>(
                             return err_span(
                                 body.value.span,
                                 format!(
-                                    "internal error: async function desugered closure expression is not `DropTemps`"
+                                    "internal error: async function desugared closure expression is not `DropTemps`"
                                 ),
                             );
                         }
@@ -397,7 +397,7 @@ pub(crate) fn extract_desugared_async_body<'tcx>(
                     return err_span(
                         body.value.span,
                         format!(
-                            "internal error: async function desugered closure doesn't have a block"
+                            "internal error: async function desugared closure doesn't have a block"
                         ),
                     );
                 }
@@ -406,7 +406,7 @@ pub(crate) fn extract_desugared_async_body<'tcx>(
         _ => {
             return err_span(
                 body.value.span,
-                format!("internal error: async function desugered body is not a closure"),
+                format!("internal error: async function desugared body is not a closure"),
             );
         }
     };
@@ -2199,20 +2199,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
     if func.attrs.is_async {
         if let CheckItemFnEither::BodyId(body_id) = body_id {
-            let param_names = vir_params.iter().map(|p| p.0.x.name.clone()).collect::<Vec<_>>();
-            func = handle_async_func(
-                ctxt,
-                id,
-                body_id,
-                find_body(ctxt, body_id),
-                Mode::Exec,
-                func,
-                &external_trait_from_to,
-                new_mut_ref,
-                migrate_postcondition_vars.clone(),
-                param_names,
-                assume_specification_opaque_type_map,
-            )?;
+            func = handle_async_func(ctxt, find_body(ctxt, body_id), func)?;
         }
     }
 
@@ -2373,30 +2360,9 @@ fn fix_external_fn_specification_trait_method_decl_typs(
 
 fn handle_async_func<'tcx>(
     ctxt: &Context<'tcx>,
-    fun_id: DefId,
-    body_id: &BodyId,
     body_hir: &Body<'tcx>,
-    mode: Mode,
     func: FunctionX,
-    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
-    new_mut_ref: bool,
-    migrate_postcondition_vars: Option<HashSet<VarIdent>>,
-    param_names: Vec<VarIdent>,
-    assume_specification_opaque_type_map: Option<HashMap<Path, Path>>,
 ) -> Result<FunctionX, VirErr> {
-    let bctx = mk_bctx(
-        ctxt,
-        fun_id,
-        body_id,
-        mode,
-        false,
-        external_trait_from_to,
-        new_mut_ref,
-        migrate_postcondition_vars,
-        param_names,
-        assume_specification_opaque_type_map,
-    );
-
     // Each async function body is desugared into a closure.
     // At the beginning of the async function
     // each paramter is re-bound. We need to find thes rebindings and resolve them.
@@ -2437,7 +2403,7 @@ fn handle_async_func<'tcx>(
                 ..
             }) => {
                 let pat = local_to_var(ident, id.local_id);
-                let init = qpath_to_ident(bctx.ctxt.tcx, &qpath)
+                let init = qpath_to_ident(ctxt.tcx, &qpath)
                     .expect("internal error, async closure rebindings has no init value");
                 async_body_modes.insert(init.clone(), pat.clone());
             }
