@@ -2443,9 +2443,9 @@ test_verify_one_file_with_options! {
     #[test] mut_ref_ghost_unwrap ["new-mut-ref"] => verus_code! {
         fn test<T>(t: &mut Ghost<T>) {
             let Ghost(r) = t;
+            // unlike with normal patterns, r has type `T` rather than `&mut T`
             assert(r == (*t));
         }
-        // TODO(new_mut_ref): (blocking) is this the desired behavior?
     } => Ok(())
 }
 

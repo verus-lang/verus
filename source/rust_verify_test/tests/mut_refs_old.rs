@@ -138,6 +138,20 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`")
 }
 
+// TODO(new_mut_ref): fix async issue
+test_verify_one_file_with_options! {
+    #[ignore] #[test] postcondition_missing_old_async_fn ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        pub async fn bar(x: &mut usize) -> (ret: ())
+            ensures
+                *x == 2333,
+        {
+            *x = 2333;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`")
+}
+
 test_verify_one_file_with_options! {
     #[test] postcondition_missing_old_closure ["new-mut-ref"] => verus_code! {
         fn test() {
