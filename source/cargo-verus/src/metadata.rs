@@ -133,7 +133,7 @@ pub fn fetch_metadata(metadata_args: Vec<String>, current_dir: PathBuf) -> Resul
     Ok(metadata)
 }
 
-#[cfg(all(test, not(feature = "integration-tests")))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_utils::{MockDep, MockPackage, MockWorkspace};
