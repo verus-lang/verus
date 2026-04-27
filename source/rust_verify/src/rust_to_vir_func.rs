@@ -1789,6 +1789,12 @@ pub(crate) fn check_item_fn<'tcx>(
         vir_params.push((vir_param, is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
     }
 
+    if is_async {
+        if let CheckItemFnEither::BodyId(body_id) = body_id {
+            vir_params = param_names_for_async_func(ctxt, find_body(ctxt, body_id), &vir_params)?;
+        }
+    }
+
     let migrate_postcondition_vars =
         if do_migration { Some(migrate_postcondition_vars) } else { None };
 
@@ -2197,12 +2203,6 @@ pub(crate) fn check_item_fn<'tcx>(
         func = fix_external_fn_specification_trait_method_decl_typs(sig.span, func)?;
     }
 
-    if func.attrs.is_async {
-        if let CheckItemFnEither::BodyId(body_id) = body_id {
-            func = handle_async_func(ctxt, find_body(ctxt, body_id), func)?;
-        }
-    }
-
     if let Some(action) = autoderive_action {
         if let Some(body_hir_id) = body_hir_id {
             crate::automatic_derive::modify_derived_item(
@@ -2358,11 +2358,11 @@ fn fix_external_fn_specification_trait_method_decl_typs(
     }
 }
 
-fn handle_async_func<'tcx>(
+fn param_names_for_async_func<'tcx>(
     ctxt: &Context<'tcx>,
     body_hir: &Body<'tcx>,
-    func: FunctionX,
-) -> Result<FunctionX, VirErr> {
+    params: &[(vir::ast::Param, Option<Mode>)],
+) -> Result<Vec<(vir::ast::Param, Option<Mode>)>, VirErr> {
     // Each async function body is desugared into a closure.
     // At the beginning of the async function
     // each paramter is re-bound. We need to find thes rebindings and resolve them.
@@ -2412,22 +2412,23 @@ fn handle_async_func<'tcx>(
     }
 
     let mut rewitten_params = vec![];
-    for param in func.params.iter() {
-        rewitten_params.push(Spanned::new(
-            param.span.clone(),
-            ParamX {
-                name: async_body_modes[&param.x.name].clone(),
-                typ: param.x.typ.clone(),
-                mode: param.x.mode,
-                is_mut: param.x.is_mut,
-                unwrapped_info: param.x.unwrapped_info.clone(),
-                user_mut: param.x.user_mut,
-            },
+    for (param, m) in params.iter() {
+        rewitten_params.push((
+            Spanned::new(
+                param.span.clone(),
+                ParamX {
+                    name: async_body_modes[&param.x.name].clone(),
+                    typ: param.x.typ.clone(),
+                    mode: param.x.mode,
+                    is_mut: param.x.is_mut,
+                    unwrapped_info: param.x.unwrapped_info.clone(),
+                    user_mut: param.x.user_mut,
+                },
+            ),
+            *m,
         ));
     }
-    let params = Arc::new(rewitten_params);
-
-    Ok(FunctionX { params, ..func })
+    Ok(rewitten_params)
 }
 
 fn check_generics_for_invariant_fn<'tcx>(
