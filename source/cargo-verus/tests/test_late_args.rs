@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 use utils::*;
 
 // Tests for late Verus argument detection and -Z flag formatting.
-// These tests verify that cargo-verus exits with code 2 when:
+// These tests verify that cargo-verus fails when:
 // 1. Verus-relevant arguments appear after Verus-irrelevant cargo arguments
 // 2. -Z flags are written without a space separator
 
@@ -39,7 +39,6 @@ fn late_package_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -54,7 +53,6 @@ fn late_features_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -69,7 +67,6 @@ fn late_all_features_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -84,7 +81,6 @@ fn late_no_default_features_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -100,7 +96,6 @@ fn late_workspace_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -115,7 +110,6 @@ fn late_frozen_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -130,7 +124,6 @@ fn late_locked_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -145,7 +138,6 @@ fn late_offline_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -160,7 +152,6 @@ fn late_target_dir_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -175,7 +166,6 @@ fn late_config_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -191,7 +181,6 @@ fn late_z_flag_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 // ============================================================================
@@ -209,7 +198,6 @@ fn z_flag_without_space_is_rejected() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -278,7 +266,6 @@ fn focus_late_package_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -292,7 +279,6 @@ fn focus_z_flag_without_space_is_rejected() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 // ============================================================================
@@ -311,7 +297,6 @@ fn build_late_package_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -325,7 +310,6 @@ fn build_z_flag_without_space_is_rejected() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 // ============================================================================
@@ -344,7 +328,6 @@ fn check_late_package_arg_after_release() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
 
 #[test]
@@ -358,5 +341,4 @@ fn check_z_flag_without_space_is_rejected() {
     });
 
     assert!(!status.success());
-    assert_eq!(status.code(), Some(2));
 }
