@@ -6,16 +6,6 @@ use cargo_verus::{
     },
 };
 
-macro_rules! get_cargo_plan {
-    ($current_dir:expr, $args:expr $(,)?) => {{
-        let plan = cargo_verus::plan_execution($current_dir, $args).expect("plan");
-        let ExecutionPlan::RunCargo(cargo_plan) = plan else {
-            panic!("expected `ExecutionPlan::RunCargo`");
-        };
-        cargo_plan
-    }};
-}
-
 #[test]
 fn crate_optin_manifest() {
     let crate_name = "foo";
@@ -27,8 +17,14 @@ fn crate_optin_manifest() {
     let manifest_path = package_dir.join("Cargo.toml");
     let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let cargo_plan =
-        get_cargo_plan!(None, ["cargo-verus", "focus", "--manifest-path", manifest_path]);
+    let plan = cargo_verus::plan_execution(
+        None,
+        ["cargo-verus", "focus", "--manifest-path", manifest_path],
+    )
+    .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let target_dir = package_dir.join("target").join("verus-partial");
     let target_dir = target_dir.to_str().expect("target dir to string");
@@ -71,8 +67,14 @@ fn workspace_manifest() {
     let manifest_path = workspace_dir.join("Cargo.toml");
     let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let cargo_plan =
-        get_cargo_plan!(None, ["cargo-verus", "focus", "--manifest-path", manifest_path]);
+    let plan = cargo_verus::plan_execution(
+        None,
+        ["cargo-verus", "focus", "--manifest-path", manifest_path],
+    )
+    .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let target_dir = workspace_dir.join("target").join("verus-partial");
     let target_dir = target_dir.to_str().expect("target dir to string");
@@ -126,10 +128,14 @@ fn workspace_package_hasdeps() {
     let verify_unset_prefix = format!("{VERUS_DRIVER_VERIFY}{unset}-0.1.0-");
     let verify_hasdeps_prefix = format!("{VERUS_DRIVER_VERIFY}{hasdeps}-0.1.0-");
 
-    let cargo_plan = get_cargo_plan!(
+    let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         ["cargo-verus", "focus", "--package", hasdeps],
-    );
+    )
+    .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let target_dir = workspace_dir.join("target").join("verus-partial");
     let target_dir = target_dir.to_str().expect("target dir to string");
@@ -168,10 +174,14 @@ fn workspace_package_hasdeps_forwards_verus_args_only_to_roots() {
 
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let cargo_plan = get_cargo_plan!(
+    let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
-        ["cargo-verus", "focus", "--package", hasdeps, "--", "--verify-module=bar",],
-    );
+        ["cargo-verus", "focus", "--package", hasdeps, "--", "--verify-module=bar"],
+    )
+    .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(

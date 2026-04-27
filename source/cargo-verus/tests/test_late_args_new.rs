@@ -3,16 +3,6 @@ use cargo_verus::{
     test_utils::{MockPackage, MockWorkspace},
 };
 
-macro_rules! get_cargo_plan {
-    ($current_dir:expr, $args:expr $(,)?) => {{
-        let plan = plan_execution($current_dir, $args.iter().copied()).expect("plan");
-        let ExecutionPlan::RunCargo(cargo_plan) = plan else {
-            panic!("expected `ExecutionPlan::RunCargo`");
-        };
-        cargo_plan
-    }};
-}
-
 #[test]
 fn late_package_arg_after_release() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
@@ -132,11 +122,12 @@ fn z_flag_with_space_is_accepted() {
 #[test]
 fn package_before_release_is_ok() {
     let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
+    let args = ["cargo-verus", "verify", "--package=foo", "--release"];
 
-    let cargo_plan = get_cargo_plan!(
-        Some(package_dir.path()),
-        ["cargo-verus", "verify", "--package=foo", "--release"],
-    );
+    let plan = plan_execution(Some(package_dir.path()), args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     assert!(cargo_plan.args.contains(&"--release".to_string()));
     assert!(
@@ -149,11 +140,12 @@ fn package_before_release_is_ok() {
 fn features_before_release_is_ok() {
     let package_dir =
         MockPackage::new("foo").lib().verify(true).features(["default=[]"]).materialize();
+    let args = ["cargo-verus", "verify", "--features=default", "--release"];
 
-    let cargo_plan = get_cargo_plan!(
-        Some(package_dir.path()),
-        ["cargo-verus", "verify", "--features=default", "--release"],
-    );
+    let plan = plan_execution(Some(package_dir.path()), args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     assert!(cargo_plan.args.contains(&"--release".to_string()));
     assert!(cargo_plan.args.contains(&"--features".to_string()));

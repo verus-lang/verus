@@ -3,16 +3,6 @@ use cargo_verus::{
     test_utils::{MockDep, MockPackage, MockWorkspace, VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR},
 };
 
-macro_rules! get_cargo_plan {
-    ($current_dir:expr, $args:expr $(,)?) => {{
-        let plan = cargo_verus::plan_execution($current_dir, $args).expect("plan");
-        let ExecutionPlan::RunCargo(cargo_plan) = plan else {
-            panic!("expected `ExecutionPlan::RunCargo`");
-        };
-        cargo_plan
-    }};
-}
-
 fn setup_workspace() -> tempfile::TempDir {
     let optin = "optin".to_string();
     let optout = "optout".to_string();
@@ -49,7 +39,7 @@ fn workspace_explicit_all() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let cargo_plan = get_cargo_plan!(
+    let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
             "cargo-verus",
@@ -63,7 +53,11 @@ fn workspace_explicit_all() {
             "--",
             "--verify-module=bar",
         ],
-    );
+    )
+    .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
@@ -98,7 +92,7 @@ fn workspace_explicit_roots() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let cargo_plan = get_cargo_plan!(
+    let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
             "cargo-verus",
@@ -112,7 +106,11 @@ fn workspace_explicit_roots() {
             "--",
             "--verify-module=bar",
         ],
-    );
+    )
+    .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
@@ -147,7 +145,7 @@ fn workspace_explicit_deps() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let cargo_plan = get_cargo_plan!(
+    let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
             "cargo-verus",
@@ -161,7 +159,11 @@ fn workspace_explicit_deps() {
             "--",
             "--verify-module=bar",
         ],
-    );
+    )
+    .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
@@ -196,7 +198,7 @@ fn workspace_default_for_verify_is_all() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let cargo_plan = get_cargo_plan!(
+    let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
             "cargo-verus",
@@ -208,7 +210,11 @@ fn workspace_default_for_verify_is_all() {
             "--",
             "--verify-module=bar",
         ],
-    );
+    )
+    .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
@@ -243,7 +249,7 @@ fn workspace_default_for_build_is_all() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let cargo_plan = get_cargo_plan!(
+    let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
             "cargo-verus",
@@ -255,7 +261,11 @@ fn workspace_default_for_build_is_all() {
             "--",
             "--verify-module=bar",
         ],
-    );
+    )
+    .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
@@ -290,7 +300,7 @@ fn workspace_default_for_check_is_all() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let cargo_plan = get_cargo_plan!(
+    let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
             "cargo-verus",
@@ -302,7 +312,11 @@ fn workspace_default_for_check_is_all() {
             "--",
             "--verify-module=bar",
         ],
-    );
+    )
+    .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
@@ -337,7 +351,7 @@ fn workspace_default_for_focus_is_roots() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let cargo_plan = get_cargo_plan!(
+    let plan = cargo_verus::plan_execution(
         Some(workspace_dir.as_path()),
         [
             "cargo-verus",
@@ -349,7 +363,11 @@ fn workspace_default_for_focus_is_roots() {
             "--",
             "--verify-module=bar",
         ],
-    );
+    )
+    .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
