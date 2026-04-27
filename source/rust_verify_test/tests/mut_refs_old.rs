@@ -471,3 +471,154 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file_with_options! {
+    #[test] mutable_param_used_in_opens_invariants ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        struct X { a: u64 }
+
+        spec fn ns(x: X) -> int { x.a as int }
+
+        fn foo() {
+        }
+
+        fn c0()
+            opens_invariants [ 0int ]
+        {
+        }
+
+        fn test1(x: &mut X)
+            requires x.a == 0,
+            opens_invariants [ ns(*x) ]
+        {
+            *x = X { a: 1 };
+            c0();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] mutable_param_used_in_opens_invariants2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        struct X { a: u64 }
+
+        spec fn ns(x: X) -> int { x.a as int }
+
+        fn foo() {
+        }
+
+        fn c1()
+            opens_invariants [ 1int ]
+        {
+        }
+
+        fn test2(x: &mut X)
+            requires x.a == 0,
+            opens_invariants [ ns(*x) ]
+        {
+            *x = X { a: 1 };
+            c1(); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mutable_param_used_in_opens_invariants3 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred;
+        impl<'a> InvariantPredicate<(), Ghost<u64>> for Pred {
+            closed spec fn inv(k: (), v: Ghost<u64>) -> bool {
+                5 <= v@ <= 13
+            }
+        }
+
+        struct X { a: u64 }
+
+        spec fn ns(x: X) -> int { x.a as int }
+
+        fn foo() {
+        }
+
+        fn test1(x: &mut X, Tracked(p): Tracked<&LocalInvariant<(), Ghost<u64>, Pred>>)
+            requires x.a == 0, p.namespace() == 0,
+            opens_invariants [ ns(*x) ]
+        {
+            *x = X { a: 1 };
+            open_local_invariant!(p => p2 => { });
+        }
+
+        fn test2(x: &mut X, Tracked(p): Tracked<&LocalInvariant<(), Ghost<u64>, Pred>>)
+            requires x.a == 0, p.namespace() == 1,
+            opens_invariants [ ns(*x) ]
+        {
+            *x = X { a: 1 };
+            open_local_invariant!(p => p2 => { }); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mutable_param_used_in_decreases ["new-mut-ref"] => verus_code! {
+        fn test(x: &mut u64)
+            decreases *x
+        {
+            *x = 200;
+            let mut a = 0;
+            test(&mut a); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mutable_param_used_in_returns ["new-mut-ref"] => verus_code! {
+        fn test_returns_fails(x: &mut u64) -> (ret: u64)
+            requires *x < 100,
+            returns *old(x)
+        {
+            let j = *x;
+            *x += 1;
+            return j + 1; // FAILS
+        }
+
+        fn test_returns(x: &mut u64) -> (ret: u64)
+            requires *x < 100,
+            returns *old(x)
+        {
+            let j = *x;
+            *x += 1;
+            return j;
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mutable_param_used_in_unwind_spec ["new-mut-ref"] => verus_code! {
+        fn callee(b: bool)
+            no_unwind when !b
+        {
+        }
+
+        fn test1(x: &mut u64)
+            no_unwind when *x != 0
+        {
+            callee(true); // FAILS
+        }
+
+        fn test2(x: &mut u64)
+            no_unwind when *x != 0
+        {
+            *x = 0;
+            callee(true); // FAILS
+        }
+
+        fn test3(x: &mut u64)
+            requires *x == 0,
+            no_unwind when *x != 0
+        {
+            *x = 1;
+            callee(true);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

@@ -3366,6 +3366,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
         ExprKind::AssignOp(op, lhs, rhs) => {
+            // Note: The semantics are VERY DIFFERENT for method_call vs !method_call cases.
+            // The 2 cases MUST be handled separately.
+            //
+            // In particular:
+            //  - For !method_call, evaluation order is RHS FIRST, so the op must be lowered
+            //    to a VIR operation which is RHS FIRST, like AssignToPlace
+            //  - For method_call, evaluation order is LHS FIRST, so the op must be lowered
+            //    to something that evaluates in the appropriate order.
+
             if bctx.types.is_method_call(expr) {
                 unsupported_err!(expr.span, "overloaded op-assignment operator");
             }
