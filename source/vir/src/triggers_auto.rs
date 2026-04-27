@@ -300,12 +300,27 @@ fn make_score(term: &Term, depth: u64) -> Score {
     }
 }
 
+fn check_no_reachable_internal_auto_trigger_ops(exp: &Exp) -> Result<(), VirErr> {
+    let mut scope_map = air::scope_map::ScopeMap::new();
+    crate::sst_visitor::exp_visitor_check(exp, &mut scope_map, &mut |expr, _scope_map| match &expr.x {
+        ExpX::Unary(UnaryOp::StrLen, _) | ExpX::Binary(BinaryOp::StrGetChar, _, _) => Err(error(
+            &expr.span,
+            "automatic trigger inference does not support internal string operations from verus_builtin",
+        )),
+        ExpX::Unary(UnaryOp::CastToInteger, _) => Err(error(
+            &expr.span,
+            "automatic trigger inference encountered an internal integer cast operation",
+        )),
+        _ => Ok(()),
+    })
+}
+
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
-    fn skip_strop(ctxt: &mut Ctxt, terms: Vec<Term>) -> (bool, Term) {
-        // These string builtins are exposed via verus_builtin but are not represented as
-        // dedicated trigger terms, so skip them during auto-trigger inference.
-        (false, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
-    }
+    let fail_on_strop = || {
+        unreachable!(
+            "internal error: doesn't make sense to reach `gather_terms` for string operations defined for verus_builtin, these are only used to tie verus_builtin and vstd together and do not make sense in user programs"
+        )
+    };
 
     fn append_typ_params_as_terms(typ: &Typ, all_terms: &mut Vec<Term>) {
         let ft = |all_terms: &mut Vec<Term>, t: &Typ| match &**t {
@@ -387,8 +402,8 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Unary(UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated, e1) => {
             gather_terms(ctxt, ctx, e1, depth)
         }
-        ExpX::Unary(UnaryOp::CastToInteger, e1) => {
-            gather_terms(ctxt, ctx, e1, depth)
+        ExpX::Unary(UnaryOp::CastToInteger, _) => {
+            panic!("internal error: CastToInteger should have been removed before here")
         }
         ExpX::Unary(op @ (UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_)), e1) => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, e1, depth + 1);
@@ -414,13 +429,12 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::FloatToBits => 1,
                 UnaryOp::IeeeFloat(_) => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
-                UnaryOp::StrLen => 1,
+                UnaryOp::StrLen => fail_on_strop(),
                 UnaryOp::MutRefFinal(_) => 1,
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {
-                UnaryOp::StrLen => skip_strop(ctxt, vec![term1]),
                 UnaryOp::BitNot(_) => (
                     is_pure1,
                     Arc::new(TermX::App(App::BitOp(BitOpName::BitNot), Arc::new(vec![term1]))),
@@ -469,13 +483,12 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 HeightCompare { .. } => 1,
                 Ne | Inequality(_) | Arith(..) | RealArith(..) | IeeeFloat(..) => 1,
                 Bitwise(..) => 1,
-                StrGetChar => 1,
+                StrGetChar => fail_on_strop(),
                 Index(..) => 1,
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (is_pure2, term2) = gather_terms(ctxt, ctx, e2, depth);
             match op {
-                StrGetChar => skip_strop(ctxt, vec![term1, term2]),
                 Bitwise(bp, _) => {
                     let bop = match bp {
                         BitwiseOp::BitXor => BitOpName::BitXor,
@@ -763,6 +776,7 @@ pub(crate) fn build_triggers(
         ctxt.pure_terms_by_var.insert(x.clone(), HashMap::new());
     }
     let mut timer = Timer { span: span.clone(), timeout_countdown: 10000 };
+    check_no_reachable_internal_auto_trigger_ops(exp)?;
     gather_terms(&mut ctxt, ctx, exp, 0);
     /*
     println!();
