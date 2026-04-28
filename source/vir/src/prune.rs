@@ -11,14 +11,9 @@ use crate::ast::{
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
-use crate::def::{
-    Spanned, fn_array_update, fn_inv_name, fn_namespace_name, fn_set_contains_name,
-    fn_set_empty_name, fn_set_full_name, fn_set_insert_name, fn_set_remove_name,
-    fn_set_subset_of_name, fn_slice_index, fn_slice_len, fn_slice_update,
-};
+use crate::def::*;
 use crate::poly::MonoTyp;
 use crate::resolve_axioms::{ResolvableType, ResolvedTypeCollection};
-use crate::{fun, path};
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -421,31 +416,16 @@ fn reach_set_ops(state: &mut State, ctxt: &Ctxt) {
 }
 
 fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
-    const AU_METHOD_NAMES: [&str; 8] = [
-        // pre and post condition
-        "req",
-        "ens",
-        // predicate projection
-        "pred",
-        // prophesy variables
-        "resolves",
-        "input",
-        "output",
-        // invariant masks
-        "inner_mask",
-        "outer_mask",
-    ];
-
-    let base_path = path!(CrateId::Vstd => "atomic", "AtomicUpdate");
-    for method in AU_METHOD_NAMES {
-        let ident = Arc::new(method.to_owned());
-        let path = base_path.push_segment(ident);
-        let fun = Arc::new(crate::ast::FunX { path });
-        reach_function(ctxt, state, &fun);
-    }
-
-    reach_function(ctxt, state, &fun!(CrateId::Vstd => "atomic", "pred_args"));
-    reach_function(ctxt, state, &fun!(CrateId::Vstd => "atomic", "branch_bool"));
+    reach_function(ctxt, state, &fn_au_req());
+    reach_function(ctxt, state, &fn_au_ens());
+    reach_function(ctxt, state, &fn_au_pred());
+    reach_function(ctxt, state, &fn_au_resolves());
+    reach_function(ctxt, state, &fn_au_input());
+    reach_function(ctxt, state, &fn_au_output());
+    reach_function(ctxt, state, &fn_au_inner_mask());
+    reach_function(ctxt, state, &fn_au_outer_mask());
+    reach_function(ctxt, state, &fn_pred_args());
+    reach_function(ctxt, state, &fn_branch_bool());
     reach_set_ops(state, &ctxt);
 }
 

@@ -983,7 +983,7 @@ pub fn func_def_to_sst(
             &span,
             &pred_typ,
             ExpX::Call(
-                CallFun::Fun(fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "pred"), None),
+                CallFun::Fun(crate::def::fn_au_pred(), None),
                 au_typ_args.clone(),
                 Arc::new(vec![au_exp.clone()]),
             ),
@@ -993,7 +993,7 @@ pub fn func_def_to_sst(
             &span,
             &param_tuple.typ,
             ExpX::Call(
-                CallFun::Fun(fun!(CrateId::Vstd => "atomic", "pred_args"), None),
+                CallFun::Fun(crate::def::fn_pred_args(), None),
                 Arc::new(vec![pred_typ.clone(), param_tuple.typ.clone()]),
                 Arc::new(vec![call_pred]),
             ),
