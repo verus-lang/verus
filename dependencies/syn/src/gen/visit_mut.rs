@@ -1403,6 +1403,7 @@ where
         full!(v.visit_label_mut(it));
     }
     skip!(node.atomically_token);
+    skip!(node.loop_token);
     skip!(node.or1_token);
     v.visit_ident_mut(&mut node.update_fn_binder);
     skip!(node.comma_token);
@@ -5158,6 +5159,10 @@ where
     if let Some(it) = &mut node.follows {
         skip!((it).0);
         full!(v.visit_pat_mut(& mut (it).1));
+    }
+    for mut el in Punctuated::pairs_mut(&mut node.erased_fields) {
+        let it = el.value_mut();
+        v.visit_field_value_mut(it);
     }
 }
 pub fn visit_with_spec_on_fn_mut<V>(v: &mut V, node: &mut crate::WithSpecOnFn)

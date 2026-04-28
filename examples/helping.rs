@@ -435,7 +435,6 @@ fn main() {
             token = update(token).get();
             assert(token.value@ != prev);
         });
-        break;
     };
 
     let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
@@ -443,7 +442,6 @@ fn main() {
         open_atomic_invariant!(credit => &inv => token => {
             token = update(token).get();
         });
-        break;
     };
 }
 

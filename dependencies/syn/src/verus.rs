@@ -638,6 +638,7 @@ ast_struct! {
     pub struct AtomicallyBlock {
         pub label: Option<Label>,
         pub atomically_token: Token![atomically],
+        pub loop_token: Option<Token![loop]>,
         pub or1_token: Token![|],
         pub update_fn_binder: Ident,
         pub comma_token: Option<Token![,]>,
@@ -1925,6 +1926,7 @@ pub mod parsing {
             Ok(AtomicallyBlock {
                 label: input.parse()?,
                 atomically_token: input.parse()?,
+                loop_token: input.parse()?,
                 or1_token: input.parse()?,
                 update_fn_binder: input.parse()?,
                 comma_token: input.parse()?,
@@ -2742,12 +2744,42 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ReturnPat {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            match self {
+                ReturnPat::Default => {}
+                ReturnPat::Pat(arrow, paren, pat, type_hint) => {
+                    arrow.to_tokens(tokens);
+                    paren.surround(tokens, |tokens| {
+                        pat.to_tokens(tokens);
+                        if let Some((colon, ty)) = type_hint.as_deref() {
+                            colon.to_tokens(tokens);
+                            ty.to_tokens(tokens);
+                        }
+                    });
+                }
+                ReturnPat::Type(arrow, ty) => {
+                    arrow.to_tokens(tokens);
+                    ty.to_tokens(tokens);
+                }
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for AtomicallyBlock {
         fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.label.to_tokens(tokens);
             self.atomically_token.to_tokens(tokens);
+            self.loop_token.to_tokens(tokens);
             self.or1_token.to_tokens(tokens);
             self.update_fn_binder.to_tokens(tokens);
+            self.comma_token.to_tokens(tokens);
             self.or2_token.to_tokens(tokens);
+            self.spec_au_binder.to_tokens(tokens);
+            self.invariant_except_breaks.to_tokens(tokens);
+            self.invariants.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
             self.body.to_tokens(tokens);
         }
     }

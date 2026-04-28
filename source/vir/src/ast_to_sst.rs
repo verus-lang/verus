@@ -3054,7 +3054,7 @@ pub(crate) fn expr_to_stm_opt(
                 &err_arm_ret_val,
             ));
         }
-        ExprX::Atomically(info, au_var_id, args_expr, body_expr) => {
+        ExprX::Atomically(info, au_var_id, args_expr, body_expr, is_loop) => {
             // ```
             // let pred = $pred_expr;
             // let au = new existential;
@@ -3067,7 +3067,7 @@ pub(crate) fn expr_to_stm_opt(
             // au
             // ```
 
-            let AtomicCallInfoX { au_typ, au_typ_args, pred_typ, .. } = info.as_ref();
+            let AtomicCallInfoX { au_typ, au_typ_args, pred_typ, call_span, .. } = info.as_ref();
 
             let args_typ = &args_expr.typ;
             let (mut stms, args_raw_exp) = expr_to_stm_opt(ctx, state, args_expr)?;
@@ -3075,7 +3075,6 @@ pub(crate) fn expr_to_stm_opt(
             let args_var_exp = state.make_tmp_var_for_exp(&mut stms, args_raw_val.to_exp());
 
             // construct predicate type
-
             let (pred_var_id, pred_var_exp) = state.declare_temp_var_stm(
                 &expr.span,
                 pred_typ,
@@ -3103,7 +3102,6 @@ pub(crate) fn expr_to_stm_opt(
             ));
 
             // construct atomic update
-
             state.pre_local_decls.push(PreLocalDecl {
                 ident: au_var_id.clone(),
                 typ: au_typ.clone(),
@@ -3135,7 +3133,6 @@ pub(crate) fn expr_to_stm_opt(
             let backup_au_var = state.au_var_exp.replace(au_var_exp.clone());
 
             // check invariant mask
-
             let int_typ = Arc::new(TypX::Int(IntRange::Int));
             let int_set_typ = Arc::new(TypX::Datatype(
                 Dt::Path(crate::def::set_type_path()),
@@ -3156,8 +3153,21 @@ pub(crate) fn expr_to_stm_opt(
                 ),
             ));
 
-            // generate body
+            // generate branch bool
+            let mut branch_bool_exp = None;
+            if !*is_loop {
+                let bool_typ = Arc::new(TypX::Bool);
+                let (var_id, var_exp) = state.declare_temp_var_stm(
+                    &expr.span,
+                    &bool_typ,
+                    PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
+                );
+                stms.push(assume_has_typ(&var_id, &bool_typ, &expr.span));
+                branch_bool_exp = Some(var_exp.clone());
+                state.branch_bool_var = Some((var_id, var_exp));
+            }
 
+            // generate body
             let backup_mask = std::mem::replace(&mut state.mask, Some(outer_mask));
             let (body_stms, exp) = expr_to_stm_opt(ctx, state, body_expr)?;
             stms.extend(body_stms);
@@ -3168,8 +3178,20 @@ pub(crate) fn expr_to_stm_opt(
                 panic!("malformed atomic function call; body does not return unit");
             };
 
-            // return atomic update
+            // check branch bool
+            if !state.checking_recommends(ctx)
+                && let Some(exp) = branch_bool_exp
+            {
+                let msg = error(call_span, "cannot show atomic update was committed").help(
+                    "if the atomic update has an abort case, please use `atomically loop` instead",
+                );
+                stms.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assert(state.next_assert_id(), Some(msg), exp),
+                ));
+            }
 
+            // return atomic update
             state.au_var_exp = backup_au_var;
             Ok((stms, Maybe::Some(Value::Exp(au_var_exp))))
         }

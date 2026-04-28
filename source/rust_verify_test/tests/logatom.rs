@@ -295,7 +295,7 @@ test_verify_one_file! {
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
         #[verifier::loop_isolation(false)]
         fn atomic_function_call() {
-            atomic_function() atomically |update| {
+            atomic_function() atomically loop |update| {
                 let tracked res: Result<Token, Token> = update(Token::new());
                 if cond(res) {
                     assume(res.branch() == UpdateControlFlow::Commit);
@@ -314,7 +314,7 @@ test_verify_one_file! {
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
         #[verifier::loop_isolation(false)]
         fn atomic_function_call() {
-            atomic_function() atomically |update| {
+            atomic_function() atomically loop |update| {
                 let tracked res: Result<Token, Token> = update(Token::new());
                 if cond(res) {
                     break;
@@ -332,7 +332,7 @@ test_verify_one_file! {
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
         #[verifier::loop_isolation(false)]
         fn atomic_function_call() {
-            atomic_function() atomically |update| {
+            atomic_function() atomically loop |update| {
                 let tracked res: Result<Token, Token> = update(Token::new());
                 if cond(res) {
                     assume(res.branch() == UpdateControlFlow::Commit);
@@ -350,7 +350,7 @@ test_verify_one_file! {
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
         #[verifier::loop_isolation(false)]
         fn atomic_function_call() {
-            atomic_function() atomically |update| {
+            atomic_function() atomically loop |update| {
                 let tracked res: Result<Token, Token> = update(Token::new());
                 if cond(res) {
                     assume(res.branch() == UpdateControlFlow::Commit);
@@ -366,7 +366,7 @@ test_verify_one_file! {
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
         #[verifier::loop_isolation(false)]
         fn atomic_function_call() {
-            atomic_function() atomically |update| {}
+            atomic_function() atomically loop |update| {}
         }
     } => Err(err) => assert_any_vir_error_msg(err, "function must be called in `atomically` block")
 }
@@ -376,7 +376,7 @@ test_verify_one_file! {
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
         #[verifier::loop_isolation(false)]
         fn atomic_function_call() {
-            atomic_function() atomically |update| {
+            atomic_function() atomically loop |update| {
                 let tracked _ = update(Token::new());
                 let tracked _ = update(Token::new());
             }
@@ -390,7 +390,7 @@ test_verify_one_file! {
         #[verifier::loop_isolation(false)]
         fn atomic_function_call() {
             let tracked mut token = Token::new();
-            atomic_function() atomically |update|
+            atomic_function() atomically loop |update|
                 invariant token.is_valid(),
             {
                 let tracked res: Result<Token, Token> = update(token);
@@ -409,7 +409,7 @@ test_verify_one_file! {
         #[verifier::loop_isolation(true)]
         fn atomic_function_call() {
             let tracked mut token = Token::new();
-            atomic_function() atomically |update| -> (au: FunAU)
+            atomic_function() atomically loop |update| -> (au: FunAU)
                 invariant token.is_valid(),
             {
                 let tracked res: Result<Token, Token> = update(token);
@@ -436,7 +436,7 @@ test_verify_one_file! {
         #[verifier::loop_isolation(false)]
         fn atomic_function_call() {
             let tracked mut token = Token::new();
-            atomic_function() 'label: atomically |update| -> (au: FunAU)
+            atomic_function() 'label: atomically loop |update| -> (au: FunAU)
                 invariant token.is_valid(),
             {
                 let tracked res = update(token);
@@ -457,13 +457,42 @@ test_verify_one_file! {
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
         #[verifier::loop_isolation(false)]
         fn atomic_function_call() {
-            atomic_function() atomically |update| {
+            atomic_function() atomically loop |update| {
                 let tracked _ = update(Token::invalid());
                 assume(false);
                 break;
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot show atomic precondition holds before update function")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_missing_loop
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            let tracked mut token = Token::new();
+            atomic_function() atomically |update| {
+                update(token);
+            }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "cannot show atomic update was committed")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_misplaced_invariant
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            let tracked mut token = Token::new();
+            atomic_function() atomically |update|
+                invariant token.is_valid(),
+            {
+                update(token);
+                assume(false);
+            }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "invariants are only effective on `atomically loop` function calls")
 }
 
 test_verify_one_file! {
@@ -559,7 +588,7 @@ test_verify_one_file! {
         pub exec fn other_function() {
             let tracked mut value: u32 = 5;
 
-            let out = atomic_function() atomically |update|
+            let out = atomic_function() atomically loop |update|
                 invariant value == 5,
             {
                 let tracked Commit(next) = update(value);
@@ -586,7 +615,7 @@ test_verify_one_file! {
         #[verifier::loop_isolation(false)]
         pub exec fn client() {
             let tracked mut token = Token::new();
-            atomic_function() atomically |update| -> (au) {
+            atomic_function() atomically loop |update| -> (au) {
                 assert(au.req(token));
                 let tracked Commit(new_token) = update(token);
                 assert(au.ens(token, Commit(new_token)));
@@ -595,4 +624,26 @@ test_verify_one_file! {
             };
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] bad_self_type
+    code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        struct Stuff;
+        struct Thing;
+
+        impl Thing {
+            verus! {
+                fn method(self)
+                    atomically (au) {
+                        type PredType,
+                        (input: Stuff) -> (output: Commit<Stuff>),
+                    }
+                {}
+            }
+        }
+    } => Err(err) => assert!(err.errors[0].message.contains("failed to resolve `self` type"))
 }

@@ -561,14 +561,14 @@ impl Visitor {
     fn resolve_receiver(&self, receiver: &Receiver, name: &Ident) -> PatType {
         match &receiver.colon_token {
             None => {
-                let (_generics, mut ty) = self
-                    .inside_impl
-                    .as_deref()
-                    .expect("cannot resolve self type outside of impl block")
-                    .clone();
+                let Some((_, ty)) = self.inside_impl.as_deref() else {
+                    let span = receiver.span();
+                    let err = "cannot resolve type of `self` in function definition";
+                    return parse_quote_spanned!(span => _: compile_error!(#err));
+                };
 
+                let mut ty = ty.clone();
                 let mut rec_mut = receiver.mutability.clone();
-
                 if let Some((and_token, lifetime)) = receiver.reference.clone() {
                     ty = Box::new(Type::Reference(TypeReference {
                         and_token,
@@ -586,17 +586,12 @@ impl Visitor {
                     subpat: None,
                 };
 
-                let colon_token: verus_syn::Token![:] =
-                    parse_quote_spanned! { receiver.span() => : };
-
-                let pat_type = PatType {
+                PatType {
                     attrs: receiver.attrs.clone(),
                     pat: Box::new(Pat::Ident(pat_ident)),
-                    colon_token,
+                    colon_token: parse_quote_spanned!(receiver.span() => :),
                     ty,
-                };
-
-                pat_type
+                }
             }
 
             Some(_colon) => todo!(),
@@ -657,7 +652,7 @@ impl Visitor {
         vis: Option<&Visibility>,
         stmts: &mut Vec<Stmt>,
     ) -> Option<(verus_syn::Ident, verus_syn::PermClause)> {
-        let Some(atomic_spec) = sig.spec.atomic_spec.take() else { return Default::default() };
+        let Some(atomic_spec) = sig.spec.atomic_spec.take() else { return None };
         let full_span = atomic_spec.span();
 
         fn replace_self_with_ident(stream: TokenStream, ident: &Ident) -> TokenStream {
@@ -727,6 +722,17 @@ impl Visitor {
                 }
 
                 FnArgKind::Receiver(receiver) => {
+                    if self.inside_impl.is_none() {
+                        let err = "failed to resolve `self` type; \
+                            make sure the `verus!` macro is applied to \
+                            the entire impl block, not just this method";
+                        self.additional_items.push(parse_quote_spanned!(
+                            receiver.self_token.span() =>
+                                const _FAILED_TO_RESOLVE_SELF: () = compile_error!(#err);
+                        ));
+                        return None;
+                    }
+
                     let ident = Ident::new("this", receiver.self_token.span());
                     let pat_type = self.resolve_receiver(receiver, &ident);
                     self_ident = Some(ident);
@@ -3666,6 +3672,7 @@ impl Visitor {
             label,
             update_fn_binder,
             spec_au_binder,
+            loop_token,
             mut body,
             mut invariant_except_breaks,
             mut invariants,
@@ -3677,32 +3684,66 @@ impl Visitor {
             #[verifier::atomic_call]
         ));
 
-        self.inside_ghost += 1;
-        if let Some(it) = &mut invariant_except_breaks {
-            self.visit_invariant_except_break_mut(it);
-        }
+        // handle loop invariants
+        let loop_header = if loop_token.is_some() {
+            self.inside_ghost += 1;
+            if let Some(it) = &mut invariant_except_breaks {
+                self.visit_invariant_except_break_mut(it);
+            }
 
-        if let Some(it) = &mut invariants {
-            self.visit_invariant_mut(it);
-        }
+            if let Some(it) = &mut invariants {
+                self.visit_invariant_mut(it);
+            }
 
-        if let Some(it) = &mut ensures {
-            self.visit_ensures_mut(it);
-        }
+            if let Some(it) = &mut ensures {
+                self.visit_ensures_mut(it);
+            }
 
-        self.visit_block_mut(&mut body);
-        self.inside_ghost -= 1;
+            self.visit_block_mut(&mut body);
+            self.inside_ghost -= 1;
 
-        let mut loop_header = quote_spanned_builtin!(builtin, span =>
-            #builtin::atomic_call_loop();
-        );
+            let mut loop_header = quote_spanned_builtin!(builtin, span =>
+                #builtin::atomic_call_loop();
+            );
 
-        let mut stmts = Vec::new();
-        self.add_loop_specs(&mut stmts, invariant_except_breaks, invariants, None, ensures, None);
+            let mut stmts = Vec::new();
+            self.add_loop_specs(
+                &mut stmts,
+                invariant_except_breaks,
+                invariants,
+                None,
+                ensures,
+                None,
+            );
 
-        for stmt in stmts {
-            stmt.to_tokens(&mut loop_header)
-        }
+            for stmt in stmts {
+                stmt.to_tokens(&mut loop_header)
+            }
+
+            loop_header
+        } else {
+            let s1 = invariant_except_breaks.map(|x| x.token.span.unwrap());
+            let s2 = invariants.map(|x| x.token.span.unwrap());
+            let s3 = ensures.map(|x| x.token.span.unwrap());
+
+            let spans = std::iter::chain(s1, s2).chain(s3).collect::<Vec<_>>();
+            if !spans.is_empty() {
+                #[cfg(verus_keep_ghost)]
+                proc_macro::Diagnostic::spanned(
+                    spans,
+                    proc_macro::Level::Error,
+                    "invariants are only effective \
+                        on `atomically loop` function calls",
+                )
+                .emit();
+            }
+
+            self.inside_ghost += 1;
+            self.visit_block_mut(&mut body);
+            self.inside_ghost -= 1;
+
+            TokenStream::new()
+        };
 
         // This is a cryptographically secure way to prevent users
         // from guessing the name of this function
@@ -3728,23 +3769,30 @@ impl Visitor {
             _ => quote_spanned!(span => _),
         };
 
+        let inner = match loop_token {
+            Some(loop_token) => quote_spanned!(span =>
+                #[verus::internal(proof)]
+                #[verifier::assume_termination]
+                #label #loop_token {
+                    #loop_header
+                    #au_eq_assume
+                    #body
+                }
+            ),
+
+            None => quote_spanned!(span =>
+                #[verus::internal(proof)] { #body }
+            ),
+        };
+
         let extra_arg = quote_spanned_builtin_builtin_macros_vstd!(builtin, _macros, vstd, span =>
             #vstd::atomic::atomically({
                 let _verus_internal_identifier_for_closures = #vstd::prelude::dummy_capture_new();
-
                 |#update_fn_binder, #ghost_au_binder| {
                     #builtin::dummy_capture_consume(_verus_internal_identifier_for_closures);
-
                     #[verus::internal(spec)]
                     let #au_binder = #builtin::Ghost::view(#ghost_au_binder);
-
-                    #[verus::internal(proof)]
-                    #[verifier::assume_termination]
-                    #label loop {
-                        #loop_header
-                        #au_eq_assume
-                        #body
-                    }
+                    #inner
                 }
             })
         );

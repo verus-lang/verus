@@ -905,7 +905,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     //         #[verifier::internal(spec)]
                     //         let _ = atomic_update;
                     //
-                    //         loop {
+                    //         loop? {
                     //             { ... }
                     //         }
                     //     }
@@ -951,8 +951,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                         panic!("the closure should take exactly two argument")
                     };
 
-                    let spec_au_var = pat_to_var(ghost_au_param.pat)?;
+                    let ExprKind::Block(Block { expr: Some(inner), .. }, _) = body.value.kind
+                    else {
+                        return malformed_err(expr);
+                    };
 
+                    let is_loop = matches!(inner.kind, ExprKind::Loop(..));
+                    let spec_au_var = pat_to_var(ghost_au_param.pat)?;
                     let Some(args) = &bctx.au_pred_args else {
                         return malformed_err(expr);
                     };
@@ -990,7 +995,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let call_spans = rx.try_iter().collect::<Vec<_>>();
                     match call_spans.len() {
                         0 => err_span(update_span, "function must be called in `atomically` block"),
-                        1 => mk_expr(ExprX::Atomically(info, spec_au_var, args_expr, value)),
+                        1 => {
+                            mk_expr(ExprX::Atomically(info, spec_au_var, args_expr, value, is_loop))
+                        }
                         _ => Err(Arc::new(vir::messages::MessageX {
                             level: air::messages::MessageLevel::Error,
                             note: "function must be called exactly once in `atomically` block"

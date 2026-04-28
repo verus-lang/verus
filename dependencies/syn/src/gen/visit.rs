@@ -1399,6 +1399,7 @@ where
         full!(v.visit_label(it));
     }
     skip!(node.atomically_token);
+    skip!(node.loop_token);
     skip!(node.or1_token);
     v.visit_ident(&node.update_fn_binder);
     skip!(node.comma_token);
@@ -5379,6 +5380,10 @@ where
     if let Some(it) = &node.follows {
         skip!((it).0);
         full!(v.visit_pat(& (it).1));
+    }
+    for el in Punctuated::pairs(&node.erased_fields) {
+        let it = el.value();
+        v.visit_field_value(it);
     }
 }
 pub fn visit_with_spec_on_fn<'ast, V>(v: &mut V, node: &'ast crate::WithSpecOnFn)

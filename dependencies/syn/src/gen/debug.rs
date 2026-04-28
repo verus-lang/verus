@@ -159,6 +159,7 @@ impl Debug for crate::AtomicallyBlock {
         let mut formatter = formatter.debug_struct("AtomicallyBlock");
         formatter.field("label", &self.label);
         formatter.field("atomically_token", &self.atomically_token);
+        formatter.field("loop_token", &self.loop_token);
         formatter.field("or1_token", &self.or1_token);
         formatter.field("update_fn_binder", &self.update_fn_binder);
         formatter.field("comma_token", &self.comma_token);
@@ -4428,6 +4429,7 @@ impl Debug for crate::WithSpecOnExpr {
         formatter.field("inputs", &self.inputs);
         formatter.field("outputs", &self.outputs);
         formatter.field("follows", &self.follows);
+        formatter.field("erased_fields", &self.erased_fields);
         formatter.finish()
     }
 }

@@ -152,6 +152,7 @@ impl Clone for crate::AtomicallyBlock {
         crate::AtomicallyBlock {
             label: self.label.clone(),
             atomically_token: self.atomically_token.clone(),
+            loop_token: self.loop_token.clone(),
             or1_token: self.or1_token.clone(),
             update_fn_binder: self.update_fn_binder.clone(),
             comma_token: self.comma_token.clone(),

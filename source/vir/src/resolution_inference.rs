@@ -1066,7 +1066,7 @@ impl<'a> Builder<'a> {
                 bb = self.build(e2, bb)?;
                 Ok(bb)
             }
-            ExprX::Atomically(_i, _v, e1, e2) => {
+            ExprX::Atomically(_i, _v, e1, e2, _b) => {
                 bb = self.build(e1, bb)?;
                 bb = self.build(e2, bb)?;
                 Ok(bb)

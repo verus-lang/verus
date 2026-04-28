@@ -1506,6 +1506,7 @@ where
     crate::AtomicallyBlock {
         label: (node.label).map(|it| full!(f.fold_label(it))),
         atomically_token: node.atomically_token,
+        loop_token: node.loop_token,
         or1_token: node.or1_token,
         update_fn_binder: f.fold_ident(node.update_fn_binder),
         comma_token: node.comma_token,
@@ -5319,6 +5320,11 @@ where
         inputs: crate::punctuated::fold(node.inputs, f, F::fold_expr),
         outputs: (node.outputs).map(|it| ((it).0, full!(f.fold_pat((it).1)))),
         follows: (node.follows).map(|it| ((it).0, full!(f.fold_pat((it).1)))),
+        erased_fields: crate::punctuated::fold(
+            node.erased_fields,
+            f,
+            F::fold_field_value,
+        ),
     }
 }
 pub fn fold_with_spec_on_fn<F>(

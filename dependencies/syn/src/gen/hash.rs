@@ -144,6 +144,7 @@ impl Hash for crate::AtomicallyBlock {
         H: Hasher,
     {
         self.label.hash(state);
+        self.loop_token.hash(state);
         self.update_fn_binder.hash(state);
         self.comma_token.hash(state);
         self.spec_au_binder.hash(state);
@@ -3982,6 +3983,7 @@ impl Hash for crate::WithSpecOnExpr {
         self.inputs.hash(state);
         self.outputs.hash(state);
         self.follows.hash(state);
+        self.erased_fields.hash(state);
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

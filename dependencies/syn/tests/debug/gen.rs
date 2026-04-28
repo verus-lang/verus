@@ -428,6 +428,9 @@ impl Debug for Lite<syn::AtomicallyBlock> {
             }
             formatter.field("label", Print::ref_cast(val));
         }
+        if self.value.loop_token.is_some() {
+            formatter.field("loop_token", &Present);
+        }
         formatter.field("update_fn_binder", Lite(&self.value.update_fn_binder));
         if self.value.comma_token.is_some() {
             formatter.field("comma_token", &Present);
@@ -7448,6 +7451,9 @@ impl Debug for Lite<syn::WithSpecOnExpr> {
                 }
             }
             formatter.field("follows", Print::ref_cast(val));
+        }
+        if !self.value.erased_fields.is_empty() {
+            formatter.field("erased_fields", Lite(&self.value.erased_fields));
         }
         formatter.finish()
     }

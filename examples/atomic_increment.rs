@@ -106,7 +106,7 @@ pub fn increment_good(var: &PAtomicU64) -> (out: u64)
 fn call_increment_good_sync() {
     let (var, Tracked(mut perm)) = PAtomicU64::new(6);
 
-    let prev = increment_good(&var) atomically |update|
+    let prev = increment_good(&var) atomically loop |update|
         invariant
             perm.is_for(var),
             perm.points_to(6),
@@ -138,7 +138,7 @@ fn call_increment_good_inv() {
     let tracked inv = AtomicInvariant::<_, _, UserInv>::new(perm.id(), perm, USER_INV);
     let Tracked(mut credit) = vstd::invariant::create_open_invariant_credit();
 
-    increment_good(&var) atomically |update| {
+    increment_good(&var) atomically loop |update| {
         let tracked mut spare = None;
         open_atomic_invariant!(credit => &inv => perm => {
             let tracked res = update(perm);

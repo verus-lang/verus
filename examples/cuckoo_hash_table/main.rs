@@ -28,41 +28,41 @@ fn main() {
     let tracked pt3 = Some(pt_map.remove(3));
 
     let tracked pt1_a: Option<MPointsTo> = None;
-    let r = hm.read(1)
-        atomically |upd| -> ReadAU
-        invariant pt1.is_some() && pt1.unwrap().instance_id() == hm.id() && pt1.unwrap().key() == 1 && pt1.unwrap().value() === None,
-        { pt1_a = Some(upd(pt1.tracked_take()).get()); break; };
+    let r = hm.read(1) atomically |upd| -> ReadAU {
+        pt1_a = Some(upd(pt1.tracked_take()).get());
+    };
+
     let tracked pt1 = pt1_a;
     assert(r === None);
     print(r);
 
     let tracked pt1_a: Option<MPointsTo> = None;
-    let success = hm.insert(1, 17)
-        atomically |upd| -> InsertAU
-        invariant pt1.is_some() && pt1.unwrap().instance_id() == hm.id() && pt1.unwrap().key() == 1,
-        { pt1_a = Some(upd(pt1.tracked_take()).get()); break; };
+    let success = hm.insert(1, 17) atomically |upd| -> InsertAU {
+        pt1_a = Some(upd(pt1.tracked_take()).get());
+    };
+
     let tracked pt1 = pt1_a;
 
     runtime_assert(success);
 
-    let r = hm.read(1)
-        atomically |upd| -> ReadAU
-        invariant pt1.is_some() && pt1.unwrap().instance_id() == hm.id() && pt1.unwrap().key() == 1 && pt1.unwrap().value() === Some(17),
-        { pt1 = Some(upd(pt1.tracked_take()).get()); break; };
+    let r = hm.read(1) atomically |upd| -> ReadAU {
+        pt1 = Some(upd(pt1.tracked_take()).get());
+    };
+
     assert(r === Some(17));
     print(r);
 
     let tracked pt1_a: Option<MPointsTo> = None;
-    let success = hm.delete(1)
-        atomically |upd| -> DeleteAU
-        invariant pt1.is_some() && pt1.unwrap().instance_id() == hm.id() && pt1.unwrap().key() == 1,
-        { pt1_a = Some(upd(pt1.tracked_take()).get()); break; };
+    let success = hm.delete(1) atomically |upd| -> DeleteAU {
+        pt1_a = Some(upd(pt1.tracked_take()).get());
+    };
+
     let tracked pt1 = pt1_a;
 
-    let r = hm.read(1)
-        atomically |upd| -> ReadAU
-        invariant pt1.is_some() && pt1.unwrap().instance_id() == hm.id() && pt1.unwrap().key() == 1 && pt1.unwrap().value() === None,
-        { pt1 = Some(upd(pt1.tracked_take()).get()); break; };
+    let r = hm.read(1) atomically |upd| -> ReadAU {
+        pt1 = Some(upd(pt1.tracked_take()).get());
+    };
+
     assert(r === None);
     print(r);
 }

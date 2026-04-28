@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2026-03-15-0111",
+  "version": "0.0.0-2026-04-05-0114",
   "types": [
     {
       "ident": "Abi",
@@ -434,6 +434,11 @@
         },
         "atomically_token": {
           "token": "Atomically"
+        },
+        "loop_token": {
+          "option": {
+            "token": "Loop"
+          }
         },
         "or1_token": {
           "token": "Or"
@@ -7960,6 +7965,14 @@
                 "syn": "Pat"
               }
             ]
+          }
+        },
+        "erased_fields": {
+          "punctuated": {
+            "element": {
+              "syn": "FieldValue"
+            },
+            "punct": "Comma"
           }
         }
       }

@@ -3416,7 +3416,7 @@ fn check_expr_handle_mut_arg(
 
             Ok((Mode::Exec, Proph::No))
         }
-        ExprX::Atomically(_info, au, _p, e) => {
+        ExprX::Atomically(_info, au, _p, e, _b) => {
             // REVIEW: This is rather complicated since the atomic function call is encoded
             // using a loop in proof mode, which is currently not allowed in Verus.
             // We get around this by partially destructing the body of the atomic function call,
@@ -3443,42 +3443,48 @@ fn check_expr_handle_mut_arg(
                 _ => (e, false),
             };
 
-            let ExprX::Loop { body, invs, .. } = &e.x else {
-                return Err(error(
-                    &expr.span,
-                    "malformed atomic function call; please do not use `vstd::atomic::atomically` directly",
-                ));
-            };
-
-            let mut typing = typing.push_block_ghostness(Ghost::Ghost);
-            check_expr_has_mode(
-                ctxt,
-                record,
-                &mut typing,
-                Mode::Proof,
-                body,
-                Mode::Proof,
-                outer_proph,
-            )?;
-
-            for inv in invs.iter() {
+            if let ExprX::Loop { body, invs, .. } = &e.x {
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
                 check_expr_has_mode(
                     ctxt,
                     record,
                     &mut typing,
-                    Mode::Spec,
-                    &inv.inv,
-                    Mode::Spec,
+                    Mode::Proof,
+                    body,
+                    Mode::Proof,
                     outer_proph,
                 )?;
-            }
 
-            if loop_is_infinite {
-                let err = error(&expr.span, "atomic function call forms an infinite loop")
-                    .help("make sure to `break` this loop if the update function succeeded");
+                for inv in invs.iter() {
+                    let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                    check_expr_has_mode(
+                        ctxt,
+                        record,
+                        &mut typing,
+                        Mode::Spec,
+                        &inv.inv,
+                        Mode::Spec,
+                        outer_proph,
+                    )?;
+                }
 
-                return Err(err);
+                if loop_is_infinite {
+                    let err = error(&expr.span, "atomic function call forms an infinite loop")
+                        .help("make sure to `break` this loop if the update function succeeded");
+
+                    return Err(err);
+                }
+            } else {
+                let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                check_expr_has_mode(
+                    ctxt,
+                    record,
+                    &mut typing,
+                    Mode::Proof,
+                    e,
+                    Mode::Proof,
+                    outer_proph,
+                )?;
             }
 
             Ok((Mode::Proof, Proph::No))
