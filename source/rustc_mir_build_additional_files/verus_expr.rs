@@ -5,7 +5,9 @@ use crate::verus::{
     is_node_with_single_arg_erased_or_shadow,
 };
 use crate::verus_time_travel_prevention::try_move_head_into_shadow;
+use rustc_hir::HirId;
 use rustc_hir::{Expr, ExprKind, UnOp};
+use rustc_middle::thir::{LocalVarId, Pat, PatKind};
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, DerefAdjustKind};
 
 pub(crate) fn mirror_expr_adjusted_pre<'tcx>(
@@ -123,4 +125,70 @@ pub(crate) fn mirror_expr_post<'tcx>(
     };
 
     crate::verus_time_travel_prevention::expr_post(cx, expr, ty, kind)
+}
+
+pub(crate) fn enter_guard<'tcx>(cx: &mut ThirBuildCx<'tcx>, pat: &Pat<'tcx>) {
+    let mut v = vec![];
+    pat_get_ids(pat, &mut v);
+    cx.verus_ctxt.guard_pattern_vars.push(v);
+}
+
+pub(crate) fn exit_guard<'tcx>(cx: &mut ThirBuildCx<'tcx>) {
+    cx.verus_ctxt.guard_pattern_vars.pop().unwrap();
+}
+
+pub(crate) fn is_bound_via_pattern_guard<'tcx>(cx: &ThirBuildCx<'tcx>, var_hir_id: HirId) -> bool {
+    let var = LocalVarId(var_hir_id);
+    cx.verus_ctxt.guard_pattern_vars.iter().any(|v| v.iter().any(|v| v == &var))
+}
+
+fn pat_get_ids<'tcx>(pat: &Pat<'tcx>, out: &mut Vec<LocalVarId>) {
+    match &pat.kind {
+        PatKind::Missing => {}
+        PatKind::Wild => {}
+        PatKind::Binding {
+            name: _,
+            mode: _,
+            var,
+            ty: _,
+            subpattern,
+            is_primary: _,
+            is_shorthand: _,
+        } => {
+            out.push(*var);
+            if let Some(subpattern) = subpattern {
+                pat_get_ids(subpattern, out);
+            }
+        }
+        PatKind::Variant { adt_def: _, args: _, variant_index: _, subpatterns }
+        | PatKind::Leaf { subpatterns } => {
+            for field_pat in subpatterns.iter() {
+                pat_get_ids(&field_pat.pattern, out);
+            }
+        }
+        PatKind::Deref { subpattern, pin: _ } => pat_get_ids(subpattern, out),
+        PatKind::DerefPattern { subpattern, borrow: _ } => {
+            pat_get_ids(subpattern, out);
+        }
+        PatKind::Constant { value: _ } => {}
+        PatKind::Range(_pat_range) => {}
+        PatKind::Slice { prefix, slice, suffix } | PatKind::Array { prefix, slice, suffix } => {
+            for p in prefix.iter() {
+                pat_get_ids(p, out);
+            }
+            if let Some(sl) = slice {
+                pat_get_ids(sl, out);
+            }
+            for p in suffix.iter() {
+                pat_get_ids(p, out);
+            }
+        }
+        PatKind::Or { pats } => {
+            if pats.len() > 0 {
+                pat_get_ids(&pats[0], out);
+            }
+        }
+        PatKind::Never => {}
+        PatKind::Error(_error_guaranteed) => {}
+    }
 }

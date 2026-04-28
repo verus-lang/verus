@@ -1204,9 +1204,16 @@ impl<'tcx> ThirBuildCx<'tcx> {
     }
 
     fn convert_arm(&mut self, arm: &'tcx hir::Arm<'tcx>) -> ArmId {
+        let pattern = self.pattern_from_hir(&arm.pat);
+        let guard = arm.guard.as_ref().map(|g| {
+            crate::verus_expr::enter_guard(self, &pattern);
+            let e = self.mirror_expr(g);
+            crate::verus_expr::exit_guard(self);
+            e
+        });
         let arm = Arm {
-            pattern: self.pattern_from_hir(&arm.pat),
-            guard: arm.guard.as_ref().map(|g| self.mirror_expr(g)),
+            pattern,
+            guard,
             body: self.mirror_expr(arm.body),
             hir_id: arm.hir_id,
             scope: region::Scope { local_id: arm.hir_id.local_id, data: region::ScopeData::Node },

@@ -156,6 +156,24 @@ to be replicated for the shadow var.
 Inside a closure, we don't emit shadow vars for captured vars. Instead, those are
 emitted by the enclosing fn/closure at the point the closure is created.
 This is handled with the rest of closure-handling, in verus.rs.
+
+### Pattern guards
+
+When a variable is bound by a pattern with a guard, that variable is in-scope during the guard,
+but it cannot be mutably borrowed from. Therefore, we do not need to bind a shadow variable
+during a guard.
+
+```rust
+match m {
+    x if ({
+        // guard expression
+        // don't need to bound any shadow variables here or perform shadow transformations
+        // related to `x`
+    }) => ({
+        let x_shadow = ...; // bind shadow variables here
+    })
+}
+```
 */
 
 use crate::rustc_index::Idx;
@@ -1248,9 +1266,14 @@ fn shadow_place_rec<'tcx>(
             let index = erased_ghost_value(cx, &erasure_ctxt, hir_id, span, index_ty);
             ExprKind::Index { lhs, index }
         }
-        ExprKind::VarRef { id } => ExprKind::VarRef { id: shadow_local_var_id(*id) },
-        ExprKind::UpvarRef { var_hir_id, closure_def_id: _ } => {
-            ExprKind::VarRef { id: shadow_local_var_id(*var_hir_id) }
+        ExprKind::VarRef { id } => {
+            if crate::verus_expr::is_bound_via_pattern_guard(cx, id.0) {
+                return None;
+            }
+            ExprKind::VarRef { id: shadow_local_var_id(*id) }
+        }
+        ExprKind::UpvarRef { var_hir_id: _, closure_def_id: _ } => {
+            return None;
         }
 
         ExprKind::If { .. }
@@ -1479,6 +1502,9 @@ pub(crate) fn shadow_var_uses<'tcx>(
         }
 
         if cx.is_upvar(local_use.local.0) {
+            continue;
+        }
+        if crate::verus_expr::is_bound_via_pattern_guard(cx, local_use.local.0) {
             continue;
         }
 

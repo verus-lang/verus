@@ -174,6 +174,7 @@ pub(crate) struct VerusThirBuildCtxt {
     pub(crate) ctxt: Option<Arc<VerusErasureCtxt>>,
     closure_overrides: HashMap<LocalDefId, ClosureOverrides>,
     pub(crate) do_time_travel_prevention: bool,
+    pub(crate) guard_pattern_vars: Vec<Vec<LocalVarId>>,
 }
 
 impl VerusThirBuildCtxt {
@@ -190,6 +191,7 @@ impl VerusThirBuildCtxt {
             ctxt: get_verus_erasure_ctxt_option(),
             closure_overrides: HashMap::new(),
             do_time_travel_prevention,
+            guard_pattern_vars: vec![],
         }
     }
 
@@ -264,7 +266,9 @@ pub(crate) fn handle_var<'tcx>(
     match erasure_ctxt.vars.get(&expr.hir_id) {
         None | Some(VarErasure::Keep) => None,
         Some(VarErasure::Shadow)
-            if cx.verus_ctxt.do_time_travel_prevention && !cx.is_upvar(var_hir_id) =>
+            if cx.verus_ctxt.do_time_travel_prevention
+                && !cx.is_upvar(var_hir_id)
+                && !crate::verus_expr::is_bound_via_pattern_guard(cx, var_hir_id) =>
         {
             Some(crate::verus_time_travel_prevention::shadow_var_use(
                 cx,
@@ -1694,6 +1698,9 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
                 _ => panic!("Verus internal error: Expected an Upvar"),
             };
             if cx.is_upvar(var_hir_id) {
+                continue;
+            }
+            if crate::verus_expr::is_bound_via_pattern_guard(cx, var_hir_id) {
                 continue;
             }
             let place_expr = cx.convert_captured_hir_place(expr, capt.place.clone());

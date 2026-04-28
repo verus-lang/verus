@@ -4941,3 +4941,248 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_local_invariant ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred;
+        impl<'a> InvariantPredicate<(), &'a mut Ghost<u64>> for Pred {
+            closed spec fn inv(k: (), v: &'a mut Ghost<u64>) -> bool {
+                5 <= (*v)@ <= 13
+            }
+        }
+
+        fn test1(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            open_local_invariant!(inv => i => {
+                assert(has_resolved(i)); // FAILS
+            });
+        }
+
+        fn test2(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            open_local_invariant!(inv => i => {
+                proof { *i = Ghost(12); }
+            });
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_local_invariant2 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred;
+        impl<'a> InvariantPredicate<(), &'a mut Ghost<u64>> for Pred {
+            closed spec fn inv(k: (), v: &'a mut Ghost<u64>) -> bool {
+                5 <= (*v)@ <= 13
+            }
+        }
+
+        fn test3(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            open_local_invariant!(inv => i => {
+                proof { *i = Ghost(19); }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Cannot show invariant holds at end of block")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_local_invariant_control_flow ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred;
+        impl<'a> InvariantPredicate<(), &'a mut Ghost<u64>> for Pred {
+            closed spec fn inv(k: (), v: &'a mut Ghost<u64>) -> bool {
+                5 <= (*v)@ <= 13
+            }
+        }
+
+        fn test1(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            let mut x: Ghost<u64> = Ghost(0);
+            let x_ref = &mut x;
+            open_local_invariant!(({ *x_ref = Ghost(20u64); inv }) => i => {
+                proof { *i = Ghost(12); }
+            });
+            assert(x == 20);
+            assert(false); // FAILS
+        }
+
+        fn test2(Tracked(inv): Tracked<&LocalInvariant<(), &mut Ghost<u64>, Pred>>) {
+            let mut x: Ghost<u64> = Ghost(0);
+            let x_ref = &mut x;
+            open_local_invariant!(inv => i => {
+                *x_ref = Ghost(20u64);
+                proof { *i = Ghost(12); }
+            });
+            assert(x == 20);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_assign_in_rhs ["new-mut-ref"] => verus_code! {
+        fn test1() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+
+            let mut b = 1;
+            let mut c = 2;
+
+            a_ref = ({ a_ref = &mut b; *a_ref = 20; &mut c });
+            *a_ref = 30;
+
+            assert(a == 0);
+            assert(b == 20);
+            assert(c == 30);
+        }
+
+        fn test2() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+
+            let mut b = 1;
+            let mut c = 2;
+
+            *a_ref = ({ a_ref = &mut b; *a_ref = 20; 30 });
+
+            assert(a == 0);
+            assert(b == 30);
+        }
+
+
+        fn fails1() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+
+            let mut b = 1;
+            let mut c = 2;
+
+            a_ref = ({ a_ref = &mut b; *a_ref = 20; &mut c });
+            *a_ref = 30;
+
+            assert(a == 0);
+            assert(b == 20);
+            assert(c == 30);
+            assert(false); // FAILS
+        }
+
+        fn fails2() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+
+            let mut b = 1;
+            let mut c = 2;
+
+            *a_ref = ({ a_ref = &mut b; *a_ref = 20; 30 });
+
+            assert(a == 0);
+            assert(b == 30);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] compound_op_primitive_evaluation_order ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test_primitive() {
+            let mut x = [0, 1];
+            let mut y = 0;
+            // rhs first
+            x[({ y = 3*y + 1; 0 })] += ({ y = 3*y + 2; 2 });
+            assert(y == 7);
+        }
+
+        fn test_primitive_mut_refs() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut x = [0, 1];
+            // rhs first
+            x[({ *a_ref = 1; 0 })] += ({ *a_ref = 2; 2 });
+            assert(a == 1);
+        }
+
+        fn fails_primitive() {
+            let mut x = [0, 1];
+            let mut y = 0;
+            // rhs first
+            x[({ y = 3*y + 1; 0 })] += ({ y = 3*y + 2; 2 });
+            assert(y == 7);
+            assert(false); // FAILS
+        }
+
+        fn fails_primitive_mut_refs() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut x = [0, 1];
+            // rhs first
+            x[({ *a_ref = 1; 0 })] += ({ *a_ref = 2; 2 });
+            assert(a == 1);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] compound_op_overloaded_evaluation_order ["new-mut-ref"] => verus_code! {
+        // Future-proofing test; overloaded compound assignment isn't supported yet
+        use vstd::prelude::*;
+
+        struct X {
+            a: u64,
+        }
+
+        impl std::ops::AddAssign<u64> for X {
+            fn add_assign(&mut self, other: u64)
+            {
+                *self = X { a: self.a & other };
+            }
+        }
+
+        fn test_overload() {
+            let mut x = [X { a: 0 }, X { a: 1 }];
+            let mut y = 0;
+            // lhs first
+            x[({ y = 3*y + 1; 0 })] += ({ y = 3*y + 2; 2 });
+            assert(y == 5);
+        }
+
+        fn test_overload_mut_refs() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut x = [X { a: 0 }, X { a: 1 }];
+            // lhs first
+            x[({ *a_ref = 1; 0 })] += ({ *a_ref = 2; 2 });
+            assert(a == 2);
+        }
+
+        fn fails_overload() {
+            let mut x = [X { a: 0 }, X { a: 1 }];
+            let mut y = 0;
+            // lhs first
+            x[({ y = 3*y + 1; 0 })] += ({ y = 3*y + 2; 2 });
+            assert(y == 5);
+            assert(false); // FAILS
+        }
+
+        fn fails_overload_mut_refs() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut x = [X { a: 0 }, X { a: 1 }];
+            // lhs first
+            x[({ *a_ref = 1; 0 })] += ({ *a_ref = 2; 2 });
+            assert(a == 2);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "overloaded op-assignment operator",
+        "overloaded op-assignment operator",
+        "overloaded op-assignment operator",
+        "overloaded op-assignment operator",
+    ])
+}

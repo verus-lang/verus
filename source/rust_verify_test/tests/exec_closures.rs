@@ -1132,6 +1132,61 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] disallowed_mut_capture5 ["vstd", "new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test1() {
+            let mut x = 0;
+            let f = |t: u8| {
+                let ref mut y = x;
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support closures capturing a mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] disallowed_mut_capture6 ["vstd", "new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test1() {
+            let mut x = 0;
+            let f = |t: u8| {
+                match x {
+                    ref mut y => { }
+                }
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support closures capturing a mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] disallowed_mut_capture7 ["vstd", "new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test1() {
+            let mut x = Some(0);
+            let f = |t: u8| {
+                if let Some(ref mut y) = x {
+                }
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support closures capturing a mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] disallowed_mut_capture8 ["vstd", "new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test1() {
+            let mut x = Some(0);
+            let f = |t: u8| {
+                let Some(ref mut y) = x else { return; };
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support closures capturing a mutable reference")
+}
+
+test_verify_one_file_with_options! {
     #[test] mut_internal_to_closure_is_okay ["vstd"] => verus_code! {
         use vstd::prelude::*;
 

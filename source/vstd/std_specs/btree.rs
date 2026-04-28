@@ -1,5 +1,5 @@
 //! This code adds specifications for the standard-library types
-//! `std::collections::BTreeMap` and `std::collections::BTreeSet`.
+//! `alloc::collections::BTreeMap` and `alloc::collections::BTreeSet`.
 //!
 //! The specification is only meaningful when the `Key` obeys our [`Ord`] model,
 //! as specified by [`super::super::laws_cmp::obeys_cmp_spec`].
@@ -13,13 +13,14 @@ use super::super::prelude::*;
 use super::cmp::OrdSpec;
 
 use alloc::alloc::Allocator;
+use alloc::boxed::Box;
+use alloc::collections::btree_map;
+use alloc::collections::btree_map::{Keys, Values};
+use alloc::collections::btree_set;
+use alloc::collections::{BTreeMap, BTreeSet};
 use core::borrow::Borrow;
 use core::marker::PhantomData;
 use core::option::Option;
-use std::collections::btree_map;
-use std::collections::btree_map::{Keys, Values};
-use std::collections::btree_set;
-use std::collections::{BTreeMap, BTreeSet};
 
 verus! {
 
@@ -55,7 +56,7 @@ pub broadcast axiom fn axiom_increasing_seq_meaning<K: Ord>(s: Seq<K>)
 ;
 
 /// Specifications for the behavior of
-/// [`std::collections::btree_map::Keys`](https://doc.rust-lang.org/std/collections/btree_map/struct.Keys.html).
+/// [`alloc::collections::btree_map::Keys`](https://doc.rust-lang.org/alloc/collections/btree_map/struct.Keys.html).
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
@@ -162,7 +163,7 @@ impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
 }
 
 /// Specifications for the behavior of
-/// [`std::collections::btree_map::Values`](https://doc.rust-lang.org/std/collections/btree_map/struct.Values.html).
+/// [`alloc::collections::btree_map::Values`](https://doc.rust-lang.org/alloc/collections/btree_map/struct.Values.html).
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
@@ -421,7 +422,7 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
         },
 ;
 
-/// Specifications for the behavior of [`std::collections::BTreeMap`](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html).
+/// Specifications for the behavior of [`alloc::collections::BTreeMap`](https://doc.rust-lang.org/alloc/collections/struct.BTreeMap.html).
 ///
 /// We model a `BTreeMap` as having a view of type `Map<Key, Value>`, which reflects the current state of the map.
 ///
@@ -936,7 +937,7 @@ impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
     }
 }
 
-/// Specifications for the behavior of [`std::collections::BTreeSet`](https://doc.rust-lang.org/std/collections/struct.BTreeSet.html).
+/// Specifications for the behavior of [`alloc::collections::BTreeSet`](https://doc.rust-lang.org/alloc/collections/struct.BTreeSet.html).
 ///
 /// We model a `BTreeSet` as having a view of type `Set<Key>`, which reflects the current state of the set.
 ///
