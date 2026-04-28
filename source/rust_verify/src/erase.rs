@@ -332,7 +332,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
     for (hir_id, span_data, resolved_call) in &erasure_hints.resolved_calls {
         let span = span_data.span();
         let ctor_mode = ctor_modes.get(hir_id).cloned();
-        let found = calls.insert(
+        let _found = calls.insert(
             *hir_id,
             resolved_call_to_call_erase(
                 span,
