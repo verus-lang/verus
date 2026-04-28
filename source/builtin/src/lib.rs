@@ -12,6 +12,7 @@
     register_tool(verifier)
 )]
 
+#[cfg(verus_keep_ghost)]
 use core::future::Future;
 use core::marker::PhantomData;
 
