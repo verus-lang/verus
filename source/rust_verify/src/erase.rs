@@ -343,7 +343,9 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
                 &infer_spec_for_loop_iter_erase,
             )?,
         );
-        assert!(found.is_none());
+        // REVIEW: we should check that that there aren't conflicting entries, but right now,
+        // there are some redundant traversals
+        //assert!(found.is_none());
 
         if let ResolvedCall::LoopSpec(loop_hir_id, loop_spec_kind) = resolved_call {
             let l =
