@@ -103,6 +103,30 @@ num_laws_cmp!(usize, usize_laws);
 
 num_laws_cmp!(isize, isize_laws);
 
+verus! {
+mod tuple_2_laws {
+    use super::*;
+
+    pub broadcast proof fn lemma_obeys_cmp_spec<T, U>()
+        where
+            T: Ord + PartialEq + Structural,
+            U: Ord + PartialEq + Structural,
+        requires
+            obeys_cmp::<T>(),
+            obeys_cmp::<U>(),
+        ensures
+            #[trigger] obeys_cmp::<(T, U)>(),
+    {
+        broadcast use group_laws_eq;
+        reveal(obeys_eq_spec_properties);
+        reveal(obeys_partial_cmp_spec_properties);
+        reveal(obeys_cmp_partial_ord);
+        reveal(obeys_cmp_ord);
+        assert(obeys_cmp::<(T, U)>());
+    }
+}
+}
+
 pub broadcast proof fn lemma_ref_obeys_cmp_spec<T: Ord>()
     requires
         obeys_cmp::<T>(),
@@ -160,6 +184,7 @@ pub broadcast group group_laws_cmp {
     isize_laws::lemma_obeys_cmp_spec,
     lemma_ref_obeys_cmp_spec,
     lemma_option_obeys_cmp_spec,
+    tuple_2_laws::lemma_obeys_cmp_spec,
 }
 
 } // verus!
