@@ -124,7 +124,71 @@ primitive_laws_eq!(usize, usize_laws);
 
 primitive_laws_eq!(isize, isize_laws);
 
-/* references */
+verus! {
+mod tuple_2_laws {
+    use super::*;
+
+    pub broadcast proof fn lemma_obeys_eq_spec<T, U>()
+        where
+            T: PartialEq + Structural,
+            U: PartialEq + Structural,
+        requires
+            obeys_eq::<T>(),
+            obeys_eq::<U>(),
+        ensures
+            #[trigger] obeys_eq::<(T, U)>(),
+    {
+        reveal(obeys_eq_spec_properties);
+    }
+
+    pub broadcast proof fn lemma_obeys_concrete_eq<T, U>()
+        where
+            T: PartialEq + Structural,
+            U: PartialEq + Structural,
+        requires
+            obeys_concrete_eq::<T>(),
+            obeys_concrete_eq::<U>(),
+        ensures
+            #[trigger] obeys_concrete_eq::<(T, U)>(),
+    {
+        reveal(obeys_concrete_eq);
+    }
+
+    pub broadcast proof fn lemma_obeys_view_eq<T, U>()
+        where
+            T: PartialEq + Structural + View,
+            U: PartialEq + Structural + View,
+        requires
+            obeys_view_eq::<T>(),
+            obeys_view_eq::<U>(),
+        ensures
+            #[trigger] obeys_view_eq::<(T, U)>(),
+    {
+        reveal(obeys_view_eq);
+    }
+
+    pub broadcast proof fn lemma_obeys_deep_eq<T, U>()
+        where
+            T: PartialEq + Structural + DeepView,
+            U: PartialEq + Structural + DeepView,
+        requires
+            obeys_deep_eq::<T>(),
+            obeys_deep_eq::<U>(),
+        ensures
+            #[trigger] obeys_deep_eq::<(T, U)>(),
+    {
+        reveal(obeys_deep_eq);
+    }
+
+    pub broadcast group group_laws_eq {
+        lemma_obeys_eq_spec,
+        lemma_obeys_concrete_eq,
+        lemma_obeys_view_eq,
+        lemma_obeys_deep_eq,
+    }
+}
+}  /* references */
+
 
 pub broadcast proof fn lemma_ref_obeys_eq_spec<T: PartialEq>()
     requires
@@ -216,6 +280,7 @@ pub broadcast group group_laws_eq {
     i128_laws::group_laws_eq,
     usize_laws::group_laws_eq,
     isize_laws::group_laws_eq,
+    tuple_2_laws::group_laws_eq,
     lemma_ref_obeys_eq_spec,
     lemma_ref_obeys_concrete_eq,
     lemma_ref_obeys_view_eq,

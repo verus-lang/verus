@@ -349,6 +349,62 @@ pub assume_specification[ <f64 as PartialOrd<f64>>::ge ](x: &f64, y: &f64) -> (o
         ge_ensures::<f64>(*x, *y, o),
 ;
 
+/* tuple types & */
+
+impl<U, T> PartialEqSpecImpl for (U, T)
+    where
+        T: Sized + PointeeSized + PartialEq + PartialEqSpec,
+        U: Sized + PointeeSized + PartialEq + PartialEqSpec,
+        (U, T): PointeeSized
+{
+    open spec fn obeys_eq_spec() -> bool {
+        &&& T::obeys_eq_spec()
+        &&& U::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &(U, T)) -> bool {
+        &&& U::eq_spec(&self.0, &other.0)
+        &&& T::eq_spec(&self.1, &other.1)
+    }
+}
+
+impl<U, T> PartialOrdSpecImpl for (U, T)
+    where
+        T: Sized + PartialOrd + PartialOrdSpec,
+        U: Sized + PartialOrd + PartialOrdSpec,
+        (U, T): PointeeSized
+{
+    open spec fn obeys_partial_cmp_spec() -> bool {
+        &&& T::obeys_partial_cmp_spec()
+        &&& U::obeys_partial_cmp_spec()
+    }
+
+    open spec fn partial_cmp_spec(&self, other: &(U, T)) -> Option<core::cmp::Ordering> {
+        match self.0.partial_cmp_spec(&other.0) {
+            Some(core::cmp::Ordering::Equal) => self.1.partial_cmp_spec(&other.1),
+            ordering => ordering
+        }
+    }
+}
+
+impl<U, T> OrdSpecImpl for (U, T)
+    where
+        T: Ord + OrdSpec,
+        U: Ord + OrdSpec,
+{
+    open spec fn obeys_cmp_spec() -> bool {
+        &&& U::obeys_cmp_spec()
+        &&& T::obeys_cmp_spec()
+    }
+
+    open spec fn cmp_spec(&self, other: &(U, T)) -> core::cmp::Ordering {
+        match self.0.cmp_spec(&other.0) {
+            core::cmp::Ordering::Equal => self.1.cmp_spec(&other.1),
+            ordering => ordering
+        }
+    }
+}
+
 /* reference types & */
 
 impl<A: PointeeSized, B: PointeeSized> PartialEqSpecImpl<&B> for &A
