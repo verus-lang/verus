@@ -578,32 +578,17 @@ impl<T> ViewAt<T> {
             out.thread_view() == self.thread_view(),
     ;
 
-    // I needed this function when verifying `spinlock::unlock`
-    /* Basically, I had two resourse a, b : ViewAt<PointsTo<T>>, with
-       a.value().id() == b.value().id() and I wanted to derive a contradiction.
-       I generalized this to a generic (contradictory) T:
-       The way this works is, given a function f that derives a contradiction from T,
-       `va_disjoint` will use f to create a function f' that creates an invalid resource from T,
-    		then it uses ViewAt::apply_fn to go from a ViewAt<T> to a ViewAt<Resource<ExclCarrier>>, with an invalid token,
-        then because Resource<P> is objective, it uses into_inner_objective() to go from ViewAt<T> to T, then uses validate() to derive a contradiction. */
-    pub proof fn va_disjoint(
+    pub proof fn apply_fn_strong<U>(
         tracked self,
-        tracked f : proof_fn(tracked v : T))
+        tracked f: proof_fn[Once](tracked v1: T) -> tracked U,
+    ) -> (tracked out: ViewAt<U>)
         requires
             f.requires((self.value(),)),
-            f.ensures((self.value(), ), ()) ==>  false,
-         ensures
-            false,
+        ensures
+            f.ensures((self.value(),), out.value()),
+            out.thread_view().contains(self.thread_view()),
     {
-        let tracked f = proof_fn[Once]|tracked v : T| -> (tracked out : Resource<ExclCarrier>)
-        requires v == self.value(),
-        ensures !out.value().valid(),
-        {
-            f(v);
-            Resource::alloc(ExclCarrier::Excl)
-        };
-
-        let tracked mut va_f = ViewAt::new(f).0;
+        let tracked va_f = ViewAt::new(f).0;
         let view1 = va_f.thread_view();
         let view2 = self.thread_view();
         let view_join = view1.join(view2);
@@ -616,9 +601,7 @@ impl<T> ViewAt<T> {
         }
         let tracked va_f = va_f.weaken(view_join);
         let tracked va_t = self.weaken(view_join);
-        let tracked va_tok = va_t.apply_fn(va_f);
-
-        va_tok.into_inner_objective().validate();
+        va_t.apply_fn(va_f)
     }
 
 }
