@@ -78,6 +78,21 @@ pub enum LoopSpecKind {
 }
 
 impl LoopSpecKind {
+    /// For the given loop spec kind, at which program points is that expression "evaluated"?
+    ///
+    /// This is needed for the analysis to correctly determine whether the given expressions
+    /// are prophetic, since propheticness depends on the locations of the expressions relative
+    /// to borrows.
+    ///
+    /// For Invariant, our answer is an overapproximation, as the specifics of where
+    /// an 'invariant' is evaluated depend on fiddly variables like loop_isolation level
+    /// and whether the loop has a 'break' statement. However, the distinction only ever matters
+    /// for rare cases when the condition has side-effects, so it doesn't matter very much.
+    ///
+    /// For soundness purposes, the only one that really matters is the 'Decreases' case
+    /// (since it's the only clause which is restricted to be non-prophetic).
+    /// For the other cases, they only matter for the sake of matching the documented behavior
+    /// of requiring prophetic uses to be marked with 'after_borrow'.
     fn loop_spec_evaluation_location(&self) -> LoopSpecEvaluationLocation {
         match self {
             LoopSpecKind::Invariant => LoopSpecEvaluationLocation::BodyStartAndPostLoop,
