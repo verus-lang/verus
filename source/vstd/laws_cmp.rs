@@ -103,29 +103,52 @@ num_laws_cmp!(usize, usize_laws);
 
 num_laws_cmp!(isize, isize_laws);
 
-verus! {
-mod tuple_2_laws {
-    use super::*;
+macro_rules! tuple_cmp_impl {
+    ($modname:ident, $($T:ident )+) => {
+        verus! {
+        mod $modname {
+            use super::*;
 
-    pub broadcast proof fn lemma_obeys_cmp_spec<T, U>()
-        where
-            T: Ord + PartialEq + Structural,
-            U: Ord + PartialEq + Structural,
-        requires
-            obeys_cmp::<T>(),
-            obeys_cmp::<U>(),
-        ensures
-            #[trigger] obeys_cmp::<(T, U)>(),
-    {
-        broadcast use group_laws_eq;
-        reveal(obeys_eq_spec_properties);
-        reveal(obeys_partial_cmp_spec_properties);
-        reveal(obeys_cmp_partial_ord);
-        reveal(obeys_cmp_ord);
-        assert(obeys_cmp::<(T, U)>());
+            pub broadcast proof fn lemma_obeys_cmp_spec<$($T,)+>()
+                where
+                    $($T: Ord + PartialEq + PartialEqSpec + OrdSpec,)+
+                requires
+                    $(obeys_cmp::<$T>(),)+
+                ensures
+                    #[trigger] obeys_cmp::<($($T,)+)>(),
+            {
+                broadcast use group_laws_eq;
+                reveal(obeys_eq_spec_properties);
+                reveal(obeys_partial_cmp_spec_properties);
+                reveal(obeys_cmp_partial_ord);
+                reveal(obeys_cmp_ord);
+                assert(obeys_cmp::<($($T,)+)>());
+            }
+        }
+        }
     }
 }
-}
+
+tuple_cmp_impl!(tuple_1_laws, T);
+
+tuple_cmp_impl!(tuple_2_laws, U T);
+
+tuple_cmp_impl!(tuple_3_laws, V U T);
+
+tuple_cmp_impl!(tuple_4_laws, W V U T);
+
+tuple_cmp_impl!(tuple_5_laws, X W V U T);
+
+tuple_cmp_impl!(tuple_6_laws, Y X W V U T);
+
+/* These exaust a lot of resource limits
+tuple_cmp_impl!(tuple_7_laws, Z Y X W V U T);
+tuple_cmp_impl!(tuple_8_laws, A Z Y X W V U T);
+tuple_cmp_impl!(tuple_9_laws, B A Z Y X W V U T);
+tuple_cmp_impl!(tuple_10_laws, C B A Z Y X W V U T);
+tuple_cmp_impl!(tuple_11_laws, D C B A Z Y X W V U T);
+tuple_cmp_impl!(tuple_12_laws, E D C B A Z Y X W V U T);
+*/
 
 pub broadcast proof fn lemma_ref_obeys_cmp_spec<T: Ord>()
     requires
@@ -184,7 +207,19 @@ pub broadcast group group_laws_cmp {
     isize_laws::lemma_obeys_cmp_spec,
     lemma_ref_obeys_cmp_spec,
     lemma_option_obeys_cmp_spec,
+    tuple_1_laws::lemma_obeys_cmp_spec,
     tuple_2_laws::lemma_obeys_cmp_spec,
+    tuple_3_laws::lemma_obeys_cmp_spec,
+    tuple_4_laws::lemma_obeys_cmp_spec,
+    tuple_5_laws::lemma_obeys_cmp_spec,
+    tuple_6_laws::lemma_obeys_cmp_spec,/* These exhaust resource limits
+    tuple_7_laws::lemma_obeys_cmp_spec,
+    tuple_8_laws::lemma_obeys_cmp_spec,
+    tuple_9_laws::lemma_obeys_cmp_spec,
+    tuple_10_laws::lemma_obeys_cmp_spec,
+    tuple_11_laws::lemma_obeys_cmp_spec,
+    tuple_12_laws::lemma_obeys_cmp_spec,
+    */
 }
 
 } // verus!
