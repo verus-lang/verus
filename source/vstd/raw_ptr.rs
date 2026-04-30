@@ -1293,6 +1293,18 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
     }
 }
 
+// VerusBelt shows equivalence of reference and pointer + PointsTo (no tags, but say they're part of the abstract Provenance)
+// Argue that this generalizes
+// Conversion of ptr+PointsTo into reference is semantically fine
+// Write existing operations in terms of these conversions + normal Rust operations
+// Ptr read and write - think of as reading and writing a mutable reference
+// Q: Do we have anything that doesn't work this way?
+// Pain points: unaligned reads? (although aligned property isn't super interesting)
+// Ptr add: need allocation to exist - shallower property. Pointer conversion which doesn't operate exactly like a reference.
+// Look at how Tree Borrows treats add
+// Maybe don't need Tree Borrows specifics - just their semantic type soundness wrt Rust type system.
+// Is there anything we're doing that can't be borken down that's mroe cmplicated?
+
 /// Calls [`core::ptr::read`] to read from the memory pointed to by `ptr`,
 /// using the permission `perm`.
 ///
@@ -1343,10 +1355,11 @@ pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T
     opens_invariants none
     no_unwind
 {
+    // Like doing a reborrow from a reference = ptr + PointsTo
     unsafe { &*ptr }
 }
 
-/// Equivalent to &mut *X, passing in a permission `perm` to ensure safety.
+/// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
@@ -1357,6 +1370,7 @@ pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> 
         old(perm).ptr() == ptr,
         old(perm).is_init(),
     ensures
+        // Want to say pointer of return value has subtag
         final(perm).ptr() == ptr,
         final(perm).is_init(),
         *v == old(perm).value(),
