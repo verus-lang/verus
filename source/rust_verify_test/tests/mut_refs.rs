@@ -5186,3 +5186,82 @@ test_verify_one_file_with_options! {
         "overloaded op-assignment operator",
     ])
 }
+
+test_verify_one_file_with_options! {
+    #[test] coarse_grained ["new-mut-ref"] => verus_code! {
+        // For this test, the analysis operates over subplaces r.0 and r.1
+        // to prove the assert, we need the analysis that is based on explicit asserts
+        fn test() {
+            let mut a = 0;
+            let mut b = 0;
+            let r = (&mut a, &mut b);
+
+            *r.0 = 20;
+
+            assert(has_resolved(r));
+        }
+
+        fn test2() {
+            let mut a = 0;
+            let mut b = 0;
+            let r = (&mut a, &mut b);
+
+            *r.0 = 20;
+
+            // Using {r} stops the heuristic from working
+            assert(has_resolved({r})); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] trivial_resolve ["new-mut-ref"] => verus_code! {
+        // Resolution of non-mut-ref types are skipped by default
+        // unless you explicitly trigger them
+        fn test() {
+            let mut a = 0;
+            assert(has_resolved(a));
+        }
+
+        fn test2() {
+            let mut a = 0;
+            assert(has_resolved({a})); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] typ_param_resolve ["new-mut-ref"] => verus_code! {
+        // Params are always resolvable, even without an assert to trigger it
+        fn test<T>(a: T) {
+            assert(has_resolved(a));
+        }
+
+        fn test2<T>(a: T) {
+            assert(has_resolved({a}));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] option_resolve ["new-mut-ref"] => verus_code! {
+        enum Option<V> { Some(V), None }
+
+        // Params are always resolvable, even without an assert to trigger it
+        fn test<T>(a: Option<T>) {
+            assert(has_resolved(a));
+        }
+
+        fn test2<T>(a: Option<T>) {
+            assert(has_resolved({a}));
+        }
+
+        fn test3<T>(a: Option<u8>) {
+            assert(has_resolved(a));
+        }
+
+        fn test4<T>(a: Option<u8>) {
+            assert(has_resolved({a})); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
