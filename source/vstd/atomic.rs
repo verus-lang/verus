@@ -607,6 +607,28 @@ impl<X, Y, Pred> core::fmt::Debug for AtomicUpdate<X, Y, Pred> {
     }
 }
 
+/// Mark the `AtomicUpdate` as `Send` if both `X` and `Y` are also `Send`.
+///
+/// # SAFETY
+/// While the `AtomicUpdate` is only a stand-in for a stack of nested callback functions,
+/// when the AU is moved to another thread, e.g. by moving it in and out of an atomic invariant,
+/// it allows resources to cross thread boundaries with it,
+/// so we must ensure the AU is only `Send` when `X: Send` and `Y: Send`.
+///
+/// The predicate type we generate as part of the atomic specification only contains
+/// a ghost copy of function arguments, and ghost-mode data is always fine to move between threads.
+/// There is no need to restrict it, as it is safe by construction.
+unsafe impl<X: Send, Y: Send, Pred> Send for AtomicUpdate<X, Y, Pred> {}
+
+/// Unconditionally mark the `AtomicUpdate` as `Sync`.
+///
+/// # SAFETY
+/// A shared reference to an `AtomicUpdate` is pretty much useless.
+/// The only thing the user can do with an AU is open it, which requires full ownership.
+/// All methods provided by this type are spec-mode,
+/// meaning they can already be used with a much weaker ghost copy of the AU.
+unsafe impl<X, Y, Pred> Sync for AtomicUpdate<X, Y, Pred> {}
+
 verus! {
 
 /// The **atomic update (AU)** is a ghost object which encapsulates the linearization point of a logically atomic function.
@@ -702,6 +724,7 @@ verus! {
 pub struct AtomicUpdate<X, Y, Pred> {
     pred: Pred,
     _dummy: core::marker::PhantomData<fn (fn (X) -> Y)>,
+    _not_send_sync: core::marker::PhantomData<*const ()>,
 }
 
 impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
