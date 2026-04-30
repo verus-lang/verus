@@ -602,7 +602,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore = "testing"] unsound
+    #[test] #[ignore = "wip"] unsound
     TOKEN_LIB.to_owned() + verus_code_str! {
         pub exec fn atomic_function()
             atomically (au) {
@@ -621,6 +621,31 @@ test_verify_one_file! {
                 assert(au.ens(token, Commit(new_token)));
                 assert(au.resolves());
                 break
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] #[ignore = "wip"] terribly_unsound
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function()
+            atomically (_au) {
+                requires true,
+                ensures false,
+            },
+            requires false,
+            ensures true,
+        {}
+
+        #[verifier::loop_isolation(false)]
+        pub exec fn client() {
+            atomic_function() atomically |update| {
+                update(())
             };
         }
     } => Ok(())
