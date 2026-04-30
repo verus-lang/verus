@@ -75,8 +75,7 @@
 # Tutorial: Verification and Rust
 
 - [Mutation, references, and borrowing](mutation-references-borrowing.md)
-    - [Requires and ensures with mutable references](requires-ensures-mut-ref.md)
-    - [Assertions about mutable references](assert-mut-ref.md)
+    - [Mutable references](mutable-references.md)
 - [Traits]()
 - [Iterator Specifications](./iterator-specs.md)
 - [Higher-order executable functions](./higher-order-fns.md)
