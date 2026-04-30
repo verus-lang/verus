@@ -213,7 +213,6 @@ pub proof fn validate_3<P: PCM>(
     r1.validate_2(r3);
     let tracked r2_split = split_mut(r1, old(r1).value(), old(r2).value());
     incorporate(r2, r2_split);
-    assume(false);
 }
 
 // This is a helper function used by `validate_multiple_resources` but
