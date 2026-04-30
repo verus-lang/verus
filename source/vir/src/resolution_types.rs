@@ -2,12 +2,22 @@ use crate::ast::{Datatype, DatatypeTransparency, Dt, Path, Primitive, Typ, TypDe
 use crate::ast_visitor::VisitorControlFlow;
 use std::collections::HashMap;
 
+/// Used to determine whether `has_resolved` for a given type is trivial or nontrivial.
+/// This allows us to avoid cluttering the AIR with useless `assume(has_resolved(...))`
+/// statements.
+///
+/// There are no soundness consequences for this computation. Any type is safe to "resolve".
+/// However, if too many types are considered nontrivial, then we end up cluttering the AIR code,
+/// and if too few types are considered nontrivial, there may be completeness issues.
+/// Therefore, we err on the side of considering a type nontrivial if we don't know.
 pub(crate) struct ResolutionTypes {
     paths: HashMap<Path, bool>,
 }
 
 impl ResolutionTypes {
     pub(crate) fn new(datatypes: &HashMap<Path, Datatype>) -> Self {
+        // We graph dependencies of all datatypes to see which datatypes can "reach"
+        // a `&mut T` type
         let mut graph = crate::reachability::Graph::new();
         for (path, datatype) in datatypes.iter() {
             graph.add_node(path.clone());
@@ -20,15 +30,19 @@ impl ResolutionTypes {
                 DatatypeTransparency::WhenVisible(_) => {
                     for variant in datatype.x.variants.iter() {
                         for field in variant.fields.iter() {
-                            res_typ_visitor(&field.a.0, &mut |resolvedness| match resolvedness {
-                                NodeResolve::Yes => {
-                                    graph.add_root(path.clone());
-                                }
-                                NodeResolve::DatatypePath(p) => {
-                                    graph.add_edge(p.clone(), path.clone());
-                                }
-                                NodeResolve::No | NodeResolve::TypArgDependent => {}
-                            });
+                            res_typ_visitor(
+                                &field.a.0,
+                                true,
+                                &mut |resolvedness| match resolvedness {
+                                    NodeResolve::Yes => {
+                                        graph.add_root(path.clone());
+                                    }
+                                    NodeResolve::DatatypePath(p) => {
+                                        graph.add_edge(p.clone(), path.clone());
+                                    }
+                                    NodeResolve::No | NodeResolve::TypArgDependent => {}
+                                },
+                            );
                         }
                     }
                 }
@@ -39,7 +53,7 @@ impl ResolutionTypes {
 
     pub(crate) fn has_nontrivial_resolve(&self, typ: &Typ) -> bool {
         let mut res = false;
-        res_typ_visitor(typ, &mut |resolvedness| match resolvedness {
+        res_typ_visitor(typ, false, &mut |resolvedness| match resolvedness {
             NodeResolve::Yes => {
                 res = true;
             }
@@ -113,8 +127,11 @@ fn typ_node_resolvability(t: &Typ) -> NodeResolve {
     }
 }
 
-fn res_typ_visitor(typ: &Typ, mf: &mut impl FnMut(&NodeResolve)) {
+fn res_typ_visitor(typ: &Typ, skip_typ_param: bool, mf: &mut impl FnMut(&NodeResolve)) {
     crate::ast_visitor::typ_visitor_dfs(typ, &mut |typ| {
+        if skip_typ_param && matches!(&**typ, TypX::TypParam(_)) {
+            return VisitorControlFlow::Return;
+        }
         let res = typ_node_resolvability(typ);
         match res {
             NodeResolve::No => VisitorControlFlow::Return,
