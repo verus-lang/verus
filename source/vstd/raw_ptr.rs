@@ -2017,7 +2017,8 @@ pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
 #[verifier::external_body]
 pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v: T)
     requires
-        old(perm).ptr() == ptr,
+        // Can't prove this precondition due to reborrows
+        // old(perm).ptr() == ptr,
     ensures
         perm.ptr() == ptr,
         perm.mem_contents() == MemContents::Init(v),
@@ -2028,6 +2029,18 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
         core::ptr::write(ptr, v);
     }
 }
+
+// VerusBelt shows equivalence of reference and pointer + PointsTo (no tags, but say they're part of the abstract Provenance)
+// Argue that this generalizes
+// Conversion of ptr+PointsTo into reference is semantically fine
+// Write existing operations in terms of these conversions + normal Rust operations
+// Ptr read and write - think of as reading and writing a mutable reference
+// Q: Do we have anything that doesn't work this way?
+// Pain points: unaligned reads? (although aligned property isn't super interesting)
+// Ptr add: need allocation to exist - shallower property. Pointer conversion which doesn't operate exactly like a reference.
+// Look at how Tree Borrows treats add
+// Maybe don't need Tree Borrows specifics - just their semantic type soundness wrt Rust type system.
+// Is there anything we're doing that can't be borken down that's mroe cmplicated?
 
 /// Calls [`core::ptr::read`] to read from the memory pointed to by `ptr`,
 /// using the permission `perm`.
@@ -2040,12 +2053,26 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
 #[verifier::external_body]
 pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: T)
     requires
-        old(perm).ptr() == ptr,
-        old(perm).is_init(),
+        // old(perm).ptr() == ptr,
+        // old(perm).is_init(),
     ensures
         perm.ptr() == ptr,
         perm.is_uninit(),
         v == old(perm).value(),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { core::ptr::read(ptr) }
+}
+
+#[inline(always)]
+#[verifier::external_body]
+pub fn ptr_read<T: Copy>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: T)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v == perm.value(),
     opens_invariants none
     no_unwind
 {
@@ -2065,27 +2092,29 @@ pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T
     opens_invariants none
     no_unwind
 {
+    // Like doing a reborrow from a reference = ptr + PointsTo
     unsafe { &*ptr }
 }
 
-/* coming soon
-/// Equivalent to &mut *X, passing in a permission `perm` to ensure safety.
+/// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
+#[verifier::deprecated_postcondition_mut_ref_style(false)]
+#[cfg(verus_verify_core)]
 pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
     requires
         old(perm).ptr() == ptr,
-        old(perm).is_init()
+        old(perm).is_init(),
     ensures
-        perm.ptr() == ptr,
-        perm.is_init(),
-
-        old(perm).value() == *old(v),
-        new(perm).value() == *new(v),
-    unsafe { &*ptr }
+        // Want to say pointer of return value has subtag
+        final(perm).ptr() == ptr,
+        final(perm).is_init(),
+        *v == old(perm).value(),
+        final(perm).value() == *final(v),
+{
+    unsafe { &mut *ptr }
 }
-*/
 
 macro_rules! pointer_specs {
     ($mod_ident:ident, $ptr_from_data:ident, $mu:tt) => {
@@ -2629,7 +2658,7 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     }
 
     #[verifier::external_body]
-    const fn as_ref(self) -> (t: &'a T)
+    pub const fn as_ref(self) -> (t: &'a T)
         ensures
             t == self.value(),
     {
@@ -2705,6 +2734,32 @@ impl<'a, T> View for SharedReference<'a, [T]> {
 pub broadcast axiom fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedReference<'a, [T]>)
     ensures
         shared_ref.value()@ == #[trigger] shared_ref@,
+;
+
+/// Returns the underlying pointer of a mutable reference.
+pub uninterp spec fn mut_ref_ptr<T>(mut_ref: &mut T) -> *mut T;
+
+/// Cast a mutable reference to a pointer.
+/// Temporary until we get as-casting support.
+#[verifier::external_body]
+#[verifier::deprecated_postcondition_mut_ref_style(false)]
+pub fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> (ptr: *mut T)
+    ensures
+        ptr == mut_ref_ptr(old(mut_ref)),
+        *old(mut_ref) == *final(mut_ref),
+{
+    mut_ref as *mut T
+}
+
+/// We can always get an `&mut` to the `PointsTo` which corresponds to a mutable reference.
+#[verifier::deprecated_postcondition_mut_ref_style(false)]
+pub axiom fn mut_ref_points_to<T>(tracked mut_ref: &mut T) -> (tracked pt: &mut PointsTo<T>)
+    ensures
+        pt.ptr() == mut_ref_ptr(old(mut_ref)),
+        pt.is_init(),
+        pt.value() == *old(mut_ref),
+        mut_ref_ptr(final(mut_ref)) == final(pt).ptr(),
+        *final(mut_ref) == final(pt).value(),
 ;
 
 // impl<'a, T> Index<usize> for SharedReference<'a, [T]>
