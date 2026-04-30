@@ -1192,6 +1192,9 @@ impl<'a> Builder<'a> {
             ExprX::EvalAndResolve(..) => {
                 panic!("EvalAndResolve shouldn't be created yet");
             }
+            ExprX::MatchGuardFreeze(..) => {
+                panic!("MatchGuardFreeze shouldn't be created yet");
+            }
             ExprX::ImplicitReborrowOrSpecRead(..) => {
                 panic!("ImplicitReborrowOrSpecRead should have been removed");
             }

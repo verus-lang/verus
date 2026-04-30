@@ -707,7 +707,14 @@ fn simplify_one_expr(
                 } else {
                     assert!(!crate::patterns::pattern_has_or(&arm.x.pattern));
 
-                    let guard = arm.x.guard.clone();
+                    let mut guard = arm.x.guard.clone();
+                    if ctx.new_mut_ref {
+                        guard = SpannedTyped::new(
+                            &guard.span,
+                            &guard.typ,
+                            ExprX::MatchGuardFreeze(place.clone(), guard.clone()),
+                        );
+                    }
                     let test_exp = ExprX::Binary(BinaryOp::And, test_pattern, guard);
                     let test = SpannedTyped::new(&arm.x.pattern.span, &t_bool, test_exp);
                     let block = ExprX::Block(Arc::new(decls.clone()), Some(test));

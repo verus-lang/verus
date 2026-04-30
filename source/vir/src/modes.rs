@@ -271,6 +271,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::Nondeterministic
             | ExprX::EvalAndResolve(..)
             | ExprX::ReadPlace(..)
+            | ExprX::MatchGuardFreeze(..)
             // all borrow types checked in the main function
             | ExprX::ImplicitReborrowOrSpecRead(..)
             | ExprX::BorrowMut(..)
@@ -3499,6 +3500,9 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::EvalAndResolve(..) => {
             panic!("EvalAndResolve shouldn't be created yet");
+        }
+        ExprX::MatchGuardFreeze(..) => {
+            panic!("MatchGuardFreeze shouldn't be created yet");
         }
         ExprX::Old(e) => {
             let mut typing = typing.push_in_pure(true);

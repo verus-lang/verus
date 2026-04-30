@@ -2934,6 +2934,25 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, Maybe::Some(Value::Exp(exp1))))
         }
         ExprX::Old(e) => expr_to_stm_opt(ctx, state, e),
+        ExprX::MatchGuardFreeze(scrutinee, body) => {
+            let (stms, e) = expr_to_stm_opt(ctx, state, body)?;
+            let (stms0, scrutinee) = place_to_exp_pair(ctx, state, scrutinee)?;
+            assert!(stms0.len() == 0);
+            let loc = match scrutinee {
+                Maybe::Some((s, _, _)) => s,
+                Maybe::Never => panic!("Verus Internal Error: MatchGuardFreeze failed"),
+            };
+            for stm in stms.iter() {
+                if let Some(span) = crate::sst_vars::find_overlapping_assignment(stm, &loc) {
+                    return Err(error(
+                        &span,
+                        "Verus doesn't support assigning to scrutinee during match guard",
+                    ));
+                }
+            }
+
+            Ok((stms, e))
+        }
     }
 }
 
