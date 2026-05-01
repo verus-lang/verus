@@ -76,6 +76,7 @@
 
 - [Mutation, references, and borrowing](mutation-references-borrowing.md)
     - [Mutable references](mutable-references.md)
+    - [Assertions about mutable references](assert-mut-ref.md)
 - [Traits]()
 - [Iterator Specifications](./iterator-specs.md)
 - [Higher-order executable functions](./higher-order-fns.md)
