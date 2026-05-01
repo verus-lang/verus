@@ -699,14 +699,14 @@ test_verify_one_file_with_options! {
     #[test] old_works_for_params_from_outside_the_closure ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
-        proof fn foo(b: &mut bool)
-            requires *old(b) == true,
+        proof fn foo(tracked b: &mut int)
+            requires *old(b) == 7,
         {
-            *b = false;
+            *b = 1;
 
             let tracked f = proof_fn|i: u64| {
-                assert(*b == false);
-                assert(*old(b) == true);
+                assert(*b == 1);
+                assert(*old(b) == 7);
             };
         }
     } => Ok(())
@@ -938,7 +938,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] disallowed_mut_capture2 ["vstd"] => verus_code! {
+    #[test] disallowed_mut_capture2_spec ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         proof fn takes_mut(u: &mut u64) { }
@@ -956,12 +956,46 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] disallowed_mut_capture3 ["vstd"] => verus_code! {
+    #[test] disallowed_mut_capture2_tracked ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn takes_mut(tracked u: &mut u64) { }
+
+        proof fn test1() {
+            let tracked mut a = 5;
+
+            let tracked f = proof_fn|t: u8| {
+                takes_mut(&mut a);
+            };
+
+            f(7);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support closures capturing a mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] capture_spec_mut_ref_ok ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         proof fn takes_mut(u: &mut u64) { }
 
         proof fn test1(a: &mut u64) {
+            let tracked f = proof_fn|t: u8| {
+                takes_mut(a);
+            };
+
+            f(7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] disallowed_mut_capture3 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn takes_mut(tracked u: &mut u64) { }
+
+        proof fn test1(tracked a: &mut u64) {
             let tracked f = proof_fn|t: u8| {
                 takes_mut(a);
             };
@@ -975,9 +1009,9 @@ test_verify_one_file_with_options! {
     #[test] disallowed_mut_capture4 ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
-        proof fn takes_mut(u: &mut u64) { }
+        proof fn takes_mut(tracked u: &mut u64) { }
 
-        proof fn test1(a: &mut u64) {
+        proof fn test1(tracked a: &mut u64) {
             let tracked f = proof_fn|t: u8| {
                 takes_mut(&mut *a);
             };

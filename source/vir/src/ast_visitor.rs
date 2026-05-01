@@ -678,6 +678,11 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Await(R::get(e))))
             }
+            ExprX::MatchGuardFreeze(p, e) => {
+                let p = self.visit_place(p)?;
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::MatchGuardFreeze(R::get(p), R::get(e))))
+            }
         }
     }
 

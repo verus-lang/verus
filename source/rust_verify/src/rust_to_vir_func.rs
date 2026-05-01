@@ -387,7 +387,7 @@ pub(crate) fn extract_desugared_async_body<'tcx>(
                             return err_span(
                                 body.value.span,
                                 format!(
-                                    "internal error: async function desugered closure expression is not `DropTemps`"
+                                    "internal error: async function desugared closure expression is not `DropTemps`"
                                 ),
                             );
                         }
@@ -397,7 +397,7 @@ pub(crate) fn extract_desugared_async_body<'tcx>(
                     return err_span(
                         body.value.span,
                         format!(
-                            "internal error: async function desugered closure doesn't have a block"
+                            "internal error: async function desugared closure doesn't have a block"
                         ),
                     );
                 }
@@ -406,7 +406,7 @@ pub(crate) fn extract_desugared_async_body<'tcx>(
         _ => {
             return err_span(
                 body.value.span,
-                format!("internal error: async function desugered body is not a closure"),
+                format!("internal error: async function desugared body is not a closure"),
             );
         }
     };
@@ -1789,6 +1789,12 @@ pub(crate) fn check_item_fn<'tcx>(
         vir_params.push((vir_param, is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
     }
 
+    if is_async {
+        if let CheckItemFnEither::BodyId(body_id) = body_id {
+            vir_params = param_names_for_async_func(ctxt, find_body(ctxt, body_id), &vir_params)?;
+        }
+    }
+
     let migrate_postcondition_vars =
         if do_migration { Some(migrate_postcondition_vars) } else { None };
 
@@ -2197,25 +2203,6 @@ pub(crate) fn check_item_fn<'tcx>(
         func = fix_external_fn_specification_trait_method_decl_typs(sig.span, func)?;
     }
 
-    if func.attrs.is_async {
-        if let CheckItemFnEither::BodyId(body_id) = body_id {
-            let param_names = vir_params.iter().map(|p| p.0.x.name.clone()).collect::<Vec<_>>();
-            func = handle_async_func(
-                ctxt,
-                id,
-                body_id,
-                find_body(ctxt, body_id),
-                Mode::Exec,
-                func,
-                &external_trait_from_to,
-                new_mut_ref,
-                migrate_postcondition_vars.clone(),
-                param_names,
-                assume_specification_opaque_type_map,
-            )?;
-        }
-    }
-
     if let Some(action) = autoderive_action {
         if let Some(body_hir_id) = body_hir_id {
             crate::automatic_derive::modify_derived_item(
@@ -2371,32 +2358,11 @@ fn fix_external_fn_specification_trait_method_decl_typs(
     }
 }
 
-fn handle_async_func<'tcx>(
+fn param_names_for_async_func<'tcx>(
     ctxt: &Context<'tcx>,
-    fun_id: DefId,
-    body_id: &BodyId,
     body_hir: &Body<'tcx>,
-    mode: Mode,
-    func: FunctionX,
-    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
-    new_mut_ref: bool,
-    migrate_postcondition_vars: Option<HashSet<VarIdent>>,
-    param_names: Vec<VarIdent>,
-    assume_specification_opaque_type_map: Option<HashMap<Path, Path>>,
-) -> Result<FunctionX, VirErr> {
-    let bctx = mk_bctx(
-        ctxt,
-        fun_id,
-        body_id,
-        mode,
-        false,
-        external_trait_from_to,
-        new_mut_ref,
-        migrate_postcondition_vars,
-        param_names,
-        assume_specification_opaque_type_map,
-    );
-
+    params: &[(vir::ast::Param, Option<Mode>)],
+) -> Result<Vec<(vir::ast::Param, Option<Mode>)>, VirErr> {
     // Each async function body is desugared into a closure.
     // At the beginning of the async function
     // each paramter is re-bound. We need to find thes rebindings and resolve them.
@@ -2437,7 +2403,7 @@ fn handle_async_func<'tcx>(
                 ..
             }) => {
                 let pat = local_to_var(ident, id.local_id);
-                let init = qpath_to_ident(bctx.ctxt.tcx, &qpath)
+                let init = qpath_to_ident(ctxt.tcx, &qpath)
                     .expect("internal error, async closure rebindings has no init value");
                 async_body_modes.insert(init.clone(), pat.clone());
             }
@@ -2446,22 +2412,23 @@ fn handle_async_func<'tcx>(
     }
 
     let mut rewitten_params = vec![];
-    for param in func.params.iter() {
-        rewitten_params.push(Spanned::new(
-            param.span.clone(),
-            ParamX {
-                name: async_body_modes[&param.x.name].clone(),
-                typ: param.x.typ.clone(),
-                mode: param.x.mode,
-                is_mut: param.x.is_mut,
-                unwrapped_info: param.x.unwrapped_info.clone(),
-                user_mut: param.x.user_mut,
-            },
+    for (param, m) in params.iter() {
+        rewitten_params.push((
+            Spanned::new(
+                param.span.clone(),
+                ParamX {
+                    name: async_body_modes[&param.x.name].clone(),
+                    typ: param.x.typ.clone(),
+                    mode: param.x.mode,
+                    is_mut: param.x.is_mut,
+                    unwrapped_info: param.x.unwrapped_info.clone(),
+                    user_mut: param.x.user_mut,
+                },
+            ),
+            *m,
         ));
     }
-    let params = Arc::new(rewitten_params);
-
-    Ok(FunctionX { params, ..func })
+    Ok(rewitten_params)
 }
 
 fn check_generics_for_invariant_fn<'tcx>(

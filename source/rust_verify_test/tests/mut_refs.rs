@@ -5022,3 +5022,246 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_assign_in_rhs ["new-mut-ref"] => verus_code! {
+        fn test1() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+
+            let mut b = 1;
+            let mut c = 2;
+
+            a_ref = ({ a_ref = &mut b; *a_ref = 20; &mut c });
+            *a_ref = 30;
+
+            assert(a == 0);
+            assert(b == 20);
+            assert(c == 30);
+        }
+
+        fn test2() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+
+            let mut b = 1;
+            let mut c = 2;
+
+            *a_ref = ({ a_ref = &mut b; *a_ref = 20; 30 });
+
+            assert(a == 0);
+            assert(b == 30);
+        }
+
+
+        fn fails1() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+
+            let mut b = 1;
+            let mut c = 2;
+
+            a_ref = ({ a_ref = &mut b; *a_ref = 20; &mut c });
+            *a_ref = 30;
+
+            assert(a == 0);
+            assert(b == 20);
+            assert(c == 30);
+            assert(false); // FAILS
+        }
+
+        fn fails2() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+
+            let mut b = 1;
+            let mut c = 2;
+
+            *a_ref = ({ a_ref = &mut b; *a_ref = 20; 30 });
+
+            assert(a == 0);
+            assert(b == 30);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] compound_op_primitive_evaluation_order ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test_primitive() {
+            let mut x = [0, 1];
+            let mut y = 0;
+            // rhs first
+            x[({ y = 3*y + 1; 0 })] += ({ y = 3*y + 2; 2 });
+            assert(y == 7);
+        }
+
+        fn test_primitive_mut_refs() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut x = [0, 1];
+            // rhs first
+            x[({ *a_ref = 1; 0 })] += ({ *a_ref = 2; 2 });
+            assert(a == 1);
+        }
+
+        fn fails_primitive() {
+            let mut x = [0, 1];
+            let mut y = 0;
+            // rhs first
+            x[({ y = 3*y + 1; 0 })] += ({ y = 3*y + 2; 2 });
+            assert(y == 7);
+            assert(false); // FAILS
+        }
+
+        fn fails_primitive_mut_refs() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut x = [0, 1];
+            // rhs first
+            x[({ *a_ref = 1; 0 })] += ({ *a_ref = 2; 2 });
+            assert(a == 1);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] compound_op_overloaded_evaluation_order ["new-mut-ref"] => verus_code! {
+        // Future-proofing test; overloaded compound assignment isn't supported yet
+        use vstd::prelude::*;
+
+        struct X {
+            a: u64,
+        }
+
+        impl std::ops::AddAssign<u64> for X {
+            fn add_assign(&mut self, other: u64)
+            {
+                *self = X { a: self.a & other };
+            }
+        }
+
+        fn test_overload() {
+            let mut x = [X { a: 0 }, X { a: 1 }];
+            let mut y = 0;
+            // lhs first
+            x[({ y = 3*y + 1; 0 })] += ({ y = 3*y + 2; 2 });
+            assert(y == 5);
+        }
+
+        fn test_overload_mut_refs() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut x = [X { a: 0 }, X { a: 1 }];
+            // lhs first
+            x[({ *a_ref = 1; 0 })] += ({ *a_ref = 2; 2 });
+            assert(a == 2);
+        }
+
+        fn fails_overload() {
+            let mut x = [X { a: 0 }, X { a: 1 }];
+            let mut y = 0;
+            // lhs first
+            x[({ y = 3*y + 1; 0 })] += ({ y = 3*y + 2; 2 });
+            assert(y == 5);
+            assert(false); // FAILS
+        }
+
+        fn fails_overload_mut_refs() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut x = [X { a: 0 }, X { a: 1 }];
+            // lhs first
+            x[({ *a_ref = 1; 0 })] += ({ *a_ref = 2; 2 });
+            assert(a == 2);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "overloaded op-assignment operator",
+        "overloaded op-assignment operator",
+        "overloaded op-assignment operator",
+        "overloaded op-assignment operator",
+    ])
+}
+
+test_verify_one_file_with_options! {
+    #[test] coarse_grained ["new-mut-ref"] => verus_code! {
+        // For this test, the analysis operates over subplaces r.0 and r.1
+        // to prove the assert, we need the analysis that is based on explicit asserts
+        fn test() {
+            let mut a = 0;
+            let mut b = 0;
+            let r = (&mut a, &mut b);
+
+            *r.0 = 20;
+
+            assert(has_resolved(r));
+        }
+
+        fn test2() {
+            let mut a = 0;
+            let mut b = 0;
+            let r = (&mut a, &mut b);
+
+            *r.0 = 20;
+
+            // Using {r} stops the heuristic from working
+            assert(has_resolved({r})); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] trivial_resolve ["new-mut-ref"] => verus_code! {
+        // Resolution of non-mut-ref types are skipped by default
+        // unless you explicitly trigger them
+        fn test() {
+            let mut a = 0;
+            assert(has_resolved(a));
+        }
+
+        fn test2() {
+            let mut a = 0;
+            assert(has_resolved({a})); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] typ_param_resolve ["new-mut-ref"] => verus_code! {
+        // Params are always resolvable, even without an assert to trigger it
+        fn test<T>(a: T) {
+            assert(has_resolved(a));
+        }
+
+        fn test2<T>(a: T) {
+            assert(has_resolved({a}));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] option_resolve ["new-mut-ref"] => verus_code! {
+        enum Option<V> { Some(V), None }
+
+        // Params are always resolvable, even without an assert to trigger it
+        fn test<T>(a: Option<T>) {
+            assert(has_resolved(a));
+        }
+
+        fn test2<T>(a: Option<T>) {
+            assert(has_resolved({a}));
+        }
+
+        fn test3<T>(a: Option<u8>) {
+            assert(has_resolved(a));
+        }
+
+        fn test4<T>(a: Option<u8>) {
+            assert(has_resolved({a})); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

@@ -2443,9 +2443,9 @@ test_verify_one_file_with_options! {
     #[test] mut_ref_ghost_unwrap ["new-mut-ref"] => verus_code! {
         fn test<T>(t: &mut Ghost<T>) {
             let Ghost(r) = t;
+            // unlike with normal patterns, r has type `T` rather than `&mut T`
             assert(r == (*t));
         }
-        // TODO(new_mut_ref): (blocking) is this the desired behavior?
     } => Ok(())
 }
 
@@ -3422,7 +3422,30 @@ test_verify_one_file_with_options! {
                 }
                 Foo::Bar(t) => {
                     // TODO(new_mut_ref): (completeness) this should pass; the resolution goes to a "MatchIntermediate" position which gets dropped
-                    assert(has_resolved(b)); // FAILS
+                    assert(has_resolved({b})); // FAILS
+                }
+            }
+        }
+
+        // Same as test3, but it works if you trigger the insertion based on explicit asserts
+        fn test3_2<A>(foo: Foo<A>, b: A) {
+            let mut b = b;
+
+            match foo {
+                Foo::Bar(t) if cond() => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Qux(t) if cond2(&mut b) => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Qux(t) => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Bar(t) => {
+                    assert(has_resolved(b));
                 }
             }
         }

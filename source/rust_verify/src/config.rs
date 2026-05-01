@@ -409,7 +409,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
-    const EXTENDED_NEW_MUT_REF: &str = "new-mut-ref";
     const EXTENDED_NO_BV_SIMPLIFY: &str = "no-bv-simplify";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
@@ -434,7 +433,6 @@ pub fn parse_args_with_imports(
             EXTENDED_CHECK_API_SAFETY,
             "Check that the API is memory-safe when called from unverified, safe Rust code. Experimental.",
         ),
-        (EXTENDED_NEW_MUT_REF, "experimental support for extended mutable references"),
         (
             EXTENDED_NO_BV_SIMPLIFY,
             "internal option to disable simplification of bit-vector assertions before sending to the SMT solver",
@@ -831,7 +829,7 @@ pub fn parse_args_with_imports(
         solver: if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         axiom_usage_info: extended.contains_key(EXTENDED_AXIOM_USAGE_INFO),
         check_api_safety: extended.contains_key(EXTENDED_CHECK_API_SAFETY),
-        new_mut_ref: extended.contains_key(EXTENDED_NEW_MUT_REF),
+        new_mut_ref: true,
         no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
     };
 
