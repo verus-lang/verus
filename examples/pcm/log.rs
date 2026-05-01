@@ -238,9 +238,9 @@ impl<T> LogResource<T> {
         ensures
             final(self)@ is HalfAuthority,
             final(self).id() == old(self).id(),
-            other.id() == old(self).id(),
+            final(other).id() == old(self).id(),
             final(self)@.log() == old(self)@.log() + seq![v],
-            other@ == final(self)@,
+            final(other)@ == final(self)@,
     {
         self.r.validate_2(&other.r);
         let new_log = self@.log() + seq![v];

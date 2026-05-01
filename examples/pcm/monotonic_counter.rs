@@ -285,8 +285,8 @@ impl MonotonicCounterResource {
         ensures
             old(self)@ == old(other)@,
             final(self).id() == old(self).id(),
-            other.id() == old(self).id(),
-            other@ == final(self)@,
+            final(other).id() == old(self).id(),
+            final(other)@ == final(self)@,
             final(self)@ == (MonotonicCounterResourceValue::HalfRightToAdvance {
                 value: old(self)@->HalfRightToAdvance_value + 1,
             }),
@@ -313,27 +313,11 @@ impl MonotonicCounterResource {
         requires
             old(self).id() == other.id(),
         ensures
-<<<<<<< HEAD
-            self@ == old(self)@,
-            self@ is LowerBound && other@ is FullRightToAdvance ==> self@.n() <= other@.n(),
-            other@ is LowerBound && self@ is FullRightToAdvance ==> other@.n() <= self@.n(),
-            self@ is LowerBound && other@ is HalfRightToAdvance ==> self@.n() <= other@.n(),
-            other@ is LowerBound && self@ is HalfRightToAdvance ==> other@.n() <= self@.n(),
-||||||| parent of d2fcd7fe7 (new-mut-ref: release)
-            self@ == old(self)@,
-            self@ is LowerBound && other@ is FullRightToAdvance ==> self@.n() <= other@.n(),
-            other@ is LowerBound && self@ is FullRightToAdvance ==> other@.n() <= self@.n(),
-            self@ is LowerBound && other@ is HalfRightToAdvance ==> self@.n() <= other@.n(),
-            other@ is LowerBound && self@ is HalfRightToAdvance ==> other@.n() <= self@.n(),
-
-=======
             final(self)@ == old(self)@,
             final(self)@ is LowerBound && other@ is FullRightToAdvance ==> final(self)@.n() <= other@.n(),
             other@ is LowerBound && final(self)@ is FullRightToAdvance ==> other@.n() <= final(self)@.n(),
             final(self)@ is LowerBound && other@ is HalfRightToAdvance ==> final(self)@.n() <= other@.n(),
             other@ is LowerBound && final(self)@ is HalfRightToAdvance ==> other@.n() <= final(self)@.n(),
-
->>>>>>> d2fcd7fe7 (new-mut-ref: release)
     {
         self.r.validate_2(&other.r)
     }

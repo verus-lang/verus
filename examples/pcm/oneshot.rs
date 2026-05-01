@@ -222,9 +222,9 @@ impl OneShotResource {
         ensures
             old(other)@ is HalfRightToComplete,
             final(self)@ is Complete,
-            other@ is Complete,
+            final(other)@ is Complete,
             final(self).id() == old(self).id(),
-            other.id() == old(self).id(),
+            final(other).id() == old(self).id(),
     {
         self.r.validate();
         other.r.validate();
