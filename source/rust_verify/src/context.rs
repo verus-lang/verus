@@ -57,7 +57,7 @@ pub enum HeaderSetting {
     /// Including closures
     Fn,
     /// Loops (invariants, ensures, etc.)
-    Loop,
+    Loop(HirId),
     /// Requires or ensures on an assert-by, assert-by-nonlinear, assert-by-forall etc.
     Assert,
 }

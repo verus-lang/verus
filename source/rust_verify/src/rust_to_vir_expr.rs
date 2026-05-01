@@ -1874,7 +1874,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, vir::messages::Message>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let ty = bctx.types.node_type(expr.hir_id);
+    let ty = bctx.types.expr_ty_adjusted(expr);
     assert!(ty.is_enum());
 
     /*
@@ -2009,7 +2009,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     current_modifier: ExprModifier,
 ) -> Result<ExprOrPlace, VirErr> {
     let bctx = if matches!(&expr.kind, ExprKind::Loop(..)) {
-        &bctx.set_header_setting(HeaderSetting::Loop)
+        &bctx.set_header_setting(HeaderSetting::Loop(expr.hir_id))
     } else {
         bctx
     };
@@ -2388,15 +2388,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let one = one.expect_expr();
                     mk_expr(ExprX::If(source_vir_expr, one, Some(zero)))
                 }
-                (_, TypX::Int(_)) if bctx.types.node_type(source.hir_id).is_enum() => {
+                (_, TypX::Int(_)) if bctx.types.expr_ty_adjusted(source).is_enum() => {
                     let mk_expr =
                         move |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
-                    let cast_to = expr_cast_enum_int_to_vir(
-                        bctx,
-                        source,
-                        source_vir.to_place(bctx, expr.span, source_ty)?,
-                        mk_expr,
-                    )?;
+                    let place = source_vir.to_place(bctx, expr.span, source_ty)?;
+                    let place = simplify_place_by_cancelling(&place);
+                    let cast_to = expr_cast_enum_int_to_vir(bctx, source, place, mk_expr)?;
                     Ok(ExprOrPlace::Expr(mk_ty_clip(
                         bctx,
                         &to_vir_ty,
@@ -2530,13 +2527,21 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     } else if let ExprKind::Lit(lit @ Spanned { node: LitKind::Float(..), .. }) =
                         &arg.kind
                     {
+                        if bctx.types.expr_adjustments(arg).len() != 0 {
+                            return err_span(
+                                expr.span,
+                                "negation of literal expected no implicit adjustments",
+                            );
+                        }
+                        let arg_ty = bctx.types.expr_ty(arg);
+
                         return Ok(ExprOrPlace::Expr(lit_to_vir(
                             bctx,
                             expr.span,
                             *lit,
                             true,
                             &typ_of_expr_adjusted(bctx, expr.span, &arg.hir_id, false)?,
-                            Some(bctx.types.node_type(arg.hir_id)),
+                            Some(arg_ty),
                         )?));
                     } else {
                         expr_to_vir(bctx, arg, modifier)?
@@ -2636,12 +2641,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         },
         ExprKind::Binary(op, lhs, rhs) => {
-            let vlhs = expr_to_vir_consume(bctx, lhs, modifier)?;
-            let vrhs = expr_to_vir_consume(bctx, rhs, modifier)?;
             let ret = operator_overload_to_vir(bctx, expr, modifier)?;
             if let Some(r) = ret {
                 return Ok(ExprOrPlace::Expr(r));
             }
+
+            let vlhs = expr_to_vir_consume(bctx, lhs, modifier)?;
+            let vrhs = expr_to_vir_consume(bctx, rhs, modifier)?;
             let vop = binopkind_to_binaryop(bctx, op, lhs, rhs)?;
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?.expect_expr();
             match op.node {
@@ -2837,7 +2843,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let lhs_ty = mid_ty_simplify(tcx, &bctx.ctxt.verus_items, &lhs_ty, true);
             let field_opr = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_err_unless!(
-                    current_modifier == ExprModifier::REGULAR || !adt_def.is_union(),
+                    bctx.new_mut_ref
+                        || current_modifier == ExprModifier::REGULAR
+                        || !adt_def.is_union(),
                     expr.span,
                     "assigning to or taking &mut of a union field",
                     expr
@@ -2891,6 +2899,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 ExprKind::Let(LetExpr { pat, init: expr, ty: _, span: _, recovered: _ }) => {
                     // if let
                     let vir_place = expr_to_vir_place(bctx, expr, modifier)?;
+                    let vir_place = simplify_place_by_cancelling(&vir_place);
                     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
                     /* lhs */
                     {
@@ -2948,6 +2957,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Match(expr, arms, _match_source) => {
             let vir_place = expr_to_vir_place(bctx, expr, modifier)?;
+            let vir_place = simplify_place_by_cancelling(&vir_place);
             let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
             for arm in arms.iter() {
                 let pattern = pattern_to_vir(bctx, &arm.pat)?;
@@ -3082,6 +3092,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 // Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
                 StructTailExpr::Base(tail_expr) => {
                     let place = expr_to_vir_place(bctx, tail_expr, modifier)?;
+                    let place = simplify_place_by_cancelling(&place);
                     let tf = ctor_tail_get_taken_fields(bctx, expr)?;
                     Some(vir::ast::CtorUpdateTail { place: place, taken_fields: tf })
                 }
@@ -3357,6 +3368,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
         ExprKind::AssignOp(op, lhs, rhs) => {
+            // Note: The semantics are VERY DIFFERENT for method_call vs !method_call cases.
+            // The 2 cases MUST be handled separately.
+            //
+            // In particular:
+            //  - For !method_call, evaluation order is RHS FIRST, so the op must be lowered
+            //    to a VIR operation which is RHS FIRST, like AssignToPlace
+            //  - For method_call, evaluation order is LHS FIRST, so the op must be lowered
+            //    to something that evaluates in the appropriate order.
+
             if bctx.types.is_method_call(expr) {
                 unsupported_err!(expr.span, "overloaded op-assignment operator");
             }
@@ -3591,6 +3611,8 @@ fn expr_assign_to_vir_innermost<'tcx>(
 ) -> Result<ExprOrPlace, vir::messages::Message> {
     if bctx.new_mut_ref {
         let vir_lhs = expr_to_vir_place(bctx, lhs, modifier)?;
+        let vir_lhs = simplify_place_by_cancelling(&vir_lhs);
+
         let vir_rhs = expr_to_vir_consume(bctx, rhs, modifier)?;
 
         let op = match op_kind {
@@ -3701,7 +3723,9 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
         None
     };
     let init = match initializer {
-        Some(e) => Some(expr_to_vir_place(bctx, e, ExprModifier::REGULAR)?),
+        Some(e) => {
+            Some(simplify_place_by_cancelling(&expr_to_vir_place(bctx, e, ExprModifier::REGULAR)?))
+        }
         None => None,
     };
 
@@ -3931,10 +3955,24 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 Ok(vec![bctx.spanned_new(stmt.span, StmtX::Expr(vir_expr))])
             } else {
                 let item = bctx.ctxt.tcx.hir_item(*item_id);
-                if matches!(&item.kind, ItemKind::Use(..) | ItemKind::Macro(..)) {
-                    return Ok(vec![]);
+                match &item.kind {
+                    ItemKind::Use(..) | ItemKind::Macro(..) => {
+                        return Ok(vec![]);
+                    }
+                    ItemKind::Struct(..) | ItemKind::Enum(..) => {
+                        // Nested datatypes are handled elsewhere as standalone items
+                        // It doesn't matter that they also appear here as statements
+                        return Ok(vec![]);
+                    }
+                    ItemKind::Fn { .. } | ItemKind::Const(..) => {
+                        // Nested functions and constants are handled elsewhere as standalone items
+                        // It doesn't matter that they also appear here as statements
+                        return Ok(vec![]);
+                    }
+                    _ => {
+                        unsupported_err!(stmt.span, "internal item statements", stmt)
+                    }
                 }
-                unsupported_err!(stmt.span, "internal item statements", stmt)
             }
         }
         StmtKind::Let(LetStmt { pat, ty: _, init, els, .. }) => {
@@ -4529,27 +4567,10 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Result<Pl
         }
     }
 
-    // `* &mut x` cancels out and we can just use x
-    // This shows up a lot (in part due to adjustments) so we make the simplification
-    // to avoid cluttering the encoding.
-
     // *final(x) is equivalent to mut_ref_future(x)
 
     match &place.x {
         PlaceX::Temporary(e) => match &e.x {
-            ExprX::ImplicitReborrowOrSpecRead(inner_place, false, _inner_span) => {
-                // There's the case where the ImplicitReborrowOrSpecRead is ignored, and the
-                // case where it's not ignored.
-                // If it's not ignored, then
-                //      ImplicitReborrow(x) --> &mut *x
-                // and,
-                //      * &mut *x --> *x
-                // So this is a convenient way to remove unneeded ImplicitReborrowOrSpecRead nodes
-                return deref_mut(bctx, span, inner_place);
-            }
-            ExprX::BorrowMut(place) => {
-                return Ok(place.clone());
-            }
             ExprX::Unary(UnaryOp::MutRefFinal(_), arg) => {
                 let t = match &*undecorate_typ(&place.typ) {
                     TypX::MutRef(t) => t.clone(),
@@ -4572,42 +4593,14 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Result<Pl
     Ok(bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone())))
 }
 
-/// Like the above, but also cancels with two-phase borrows
-/// It's _probably_ okay to always call this, but it's good to be cautious about two-phase
-pub(crate) fn deref_mut_allow_cancelling_two_phase(
-    bctx: &BodyCtxt,
-    span: Span,
-    place: &Place,
-) -> Result<Place, VirErr> {
-    match &place.x {
-        PlaceX::Temporary(e) => match &e.x {
-            ExprX::ImplicitReborrowOrSpecRead(inner_place, false | true, _inner_span) => {
-                return deref_mut(bctx, span, inner_place);
-            }
-            ExprX::BorrowMut(place) => {
-                return Ok(place.clone());
-            }
-            ExprX::TwoPhaseBorrowMut(place) => {
-                return Ok(place.clone());
-            }
-            _ => {}
-        },
-        _ => {}
-    }
-
-    let t = match &*place.typ {
-        TypX::MutRef(t) => t.clone(),
-        _ => panic!("expected mut ref"),
-    };
-    Ok(bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone())))
-}
-
 pub(crate) fn borrow_mut_vir(
     bctx: &BodyCtxt,
     span: Span,
     place: &Place,
     allow_two_phase: AllowTwoPhase,
 ) -> vir::ast::Expr {
+    let place = simplify_place_by_cancelling(place);
+
     // In general, `&mut *x` does NOT cancel itself out;
     // this is a reborrow which has nontrivial semantics.
     // However, if x is a temporary, then it's ok.
@@ -4675,4 +4668,105 @@ fn ctor_tail_get_taken_fields<'tcx>(
     }
 
     Ok(Arc::new(taken_fields))
+}
+
+/**
+This performs the simplification `*&mut P  -->  P` throughout a given Place.
+
+This is needed mainly because our handling of Ghost::borrow_mut and Tracked::borrow_mut
+requires it (see the explanation in fn_call_to_vir).
+It also has the side-benefit of simplifying the VCs in some cases, though the cases
+where it matters are not very common, I think.
+
+However, we need to be careful, because this simplification is not always semantics-preserving.
+The tricky cases are (see the mut_ref_temporary_cant_be_elided test case):
+
+```rust
+fn test1() {
+    let mut a: [u64; 2] = [0, 1];
+    let mut b: [u64; 2] = [2, 3];
+    let mut x = &mut a;
+
+    let z = x[ ({ x = &mut b; 0 }) ];
+    assert(z == 2);
+}
+```
+
+vs.
+
+```rust
+fn test2() {
+    let mut a: [u64; 2] = [0, 1];
+    let mut b: [u64; 2] = [2, 3];
+    let mut x = &mut a;
+
+    let z = (&mut *x)[ ({ x = &mut b; 0 }) ];
+    assert(z == 0);
+}
+```
+
+The difference is in the evaluation order. In the first case, there is effectively one
+place expression, `(*x)[_]`. This means the `*x` is not evaluated until AFTER the index expression.
+In the second case, the explicit mutable reference "splits" the place expression, forcing the
+evaluation of `*x` early.
+
+Therefore, this should only be called on a place when you know how that place is being used.
+For example, when constructing an expression like `&mut P` or `P = rhs`, you can go ahead
+and call `simplify_place_by_cancelling` on P. But if P is only partially constructed
+might be composed with an Index place later, it's not safe to call this yet.
+*/
+pub(crate) fn simplify_place_by_cancelling(place: &Place) -> Place {
+    match &place.x {
+        PlaceX::Field(opr, p) => {
+            let p = simplify_place_by_cancelling(p);
+            SpannedTyped::new(&place.span, &place.typ, PlaceX::Field(opr.clone(), p))
+        }
+        PlaceX::ModeUnwrap(p, mwm) => {
+            let p = simplify_place_by_cancelling(p);
+            SpannedTyped::new(&place.span, &place.typ, PlaceX::ModeUnwrap(p, *mwm))
+        }
+        PlaceX::DerefMut(p) => {
+            match &p.x {
+                PlaceX::Temporary(e) => {
+                    match &e.x {
+                        ExprX::BorrowMut(p) => {
+                            return p.clone();
+                        }
+                        ExprX::TwoPhaseBorrowMut(p) => {
+                            return p.clone();
+                        }
+                        ExprX::ImplicitReborrowOrSpecRead(inner_place, _, _inner_span) => {
+                            // There's the case where the ImplicitReborrowOrSpecRead is ignored,
+                            // and the case where it's not ignored.
+                            // If it's not ignored, then:
+                            //      * ImplicitReborrow(x) --> * &mut *x --> *x
+                            // If it IS ignored, then we just immediately have:
+                            //      * ImplicitReborrow(x) --> * x
+                            //
+                            // Also note that in this case, we won't have called
+                            // `simplify_place_by_cancelling` on the inner_place yet,
+                            // so do so now.
+                            let p = SpannedTyped::new(
+                                &place.span,
+                                &place.typ,
+                                PlaceX::DerefMut(inner_place.clone()),
+                            );
+                            return simplify_place_by_cancelling(&p);
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+            let p = simplify_place_by_cancelling(p);
+            SpannedTyped::new(&place.span, &place.typ, PlaceX::DerefMut(p))
+        }
+        PlaceX::Local(..) => place.clone(),
+        // For the reasons above, we stop if we encounter an Index place.
+        PlaceX::Index(..) => place.clone(),
+        PlaceX::Temporary(..) => place.clone(),
+        PlaceX::WithExpr(..) | PlaceX::UserDefinedTypInvariantObligation(..) => {
+            panic!("simplify_place_by_cancelling got unexpected place kind");
+        }
+    }
 }

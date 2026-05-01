@@ -22,9 +22,9 @@ const PROPH: &str = verus_code_str! {
         #[verifier::external_body]
         pub proof fn resolve(tracked &mut self, value: T)
             requires old(self).may_resolve(),
-            ensures !self.may_resolve(),
-                self.value() == old(self).value(),
-                self.value() == value,
+            ensures !final(self).may_resolve(),
+                final(self).value() == old(self).value(),
+                final(self).value() == value,
         { unimplemented!() }
     }
 };
@@ -67,9 +67,9 @@ test_verify_one_file! {
                 requires
                     old(self).wf(),
                 ensures
-                    self.wf(),
-                    self.result() == old(self).result(),
-                    b == self.result(),
+                    final(self).wf(),
+                    final(self).result() == old(self).result(),
+                    b == final(self).result(),
             {
                 if self.value.is_none() {
                     let flip = rand();

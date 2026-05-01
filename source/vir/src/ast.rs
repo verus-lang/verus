@@ -1215,6 +1215,9 @@ pub enum ExprX {
     Old(Expr),
     /// Async await
     Await(Expr),
+    /// Used to check that match guards don't mutate the scrutinee, these are used between
+    /// ast_simplify and ast_to_sst
+    MatchGuardFreeze(Place, Expr),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]

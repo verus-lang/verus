@@ -56,13 +56,12 @@ pub mod math;
 pub mod modes;
 pub mod multiset;
 pub mod multiset_lib;
-pub mod pcm;
-pub mod pcm_lib;
 pub mod pervasive;
 pub mod predicate;
 pub mod proph;
 pub mod raw_ptr;
 pub mod relations;
+pub mod resource;
 pub mod rwlock;
 pub mod seq;
 pub mod seq_lib;
@@ -73,7 +72,6 @@ pub mod shared;
 pub mod simple_pptr;
 pub mod slice;
 pub mod state_machine_internal;
-pub mod storage_protocol;
 pub mod string;
 #[cfg(feature = "std")]
 pub mod thread;
@@ -137,7 +135,7 @@ pub broadcast group group_vstd_default {
     //
     #[cfg(all(feature = "alloc", feature = "std"))]
     std_specs::hash::group_hash_axioms,
-    #[cfg(all(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     std_specs::btree::group_btree_axioms,
 }
 

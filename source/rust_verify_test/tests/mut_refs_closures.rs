@@ -4,6 +4,207 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
+    #[test] closure_with_mut_ref_arg_basic ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let c = |a: &mut u64|
+                requires *a < 100,
+                ensures *final(a) == *old(a) + 1 // FAILS
+            {
+                return;
+            };
+        }
+
+        fn test1() {
+            let c = |a: &mut u64|
+                requires *a < 100,
+                ensures *final(a) == *old(a) + 1
+            {
+                *a += 1;
+            };
+
+            let mut x = 0;
+            c(&mut x);
+            assert(x == 1);
+
+            let mut y = 0;
+            c(&mut y);
+            assert(y == 1);
+        }
+
+        fn test2() {
+            let c = |a: &mut u64|
+                requires *a < 100,
+                ensures *final(a) == *old(a) + 1
+            {
+                *a += 1;
+            };
+
+            let mut x = 0;
+            c(&mut x);
+            assert(x == 1);
+            assert(false); // FAILS
+        }
+
+        fn test3() {
+            let c = |a: &mut u64|
+                requires *a < 100,
+                ensures *final(a) == *old(a) + 1
+            {
+                *a += 1;
+            };
+
+            let mut x = 100;
+            c(&mut x); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_returning_mut_ref_arg_basic ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn constrain<T: Fn(&mut (u64, u64)) -> &mut u64>(t: T) -> T
+            returns t
+        { t }
+
+        fn test() {
+            let c = constrain(|pair: &mut (u64, u64)| -> (fst: &mut u64)
+                ensures
+                    *final(pair) == (*final(fst), old(pair).1), // FAILS
+            {
+                &mut pair.1
+            });
+        }
+
+        fn test1() {
+            let c = constrain(|pair: &mut (u64, u64)| -> (fst: &mut u64)
+                ensures
+                    *fst == old(pair).0,
+                    *final(pair) == (*final(fst), old(pair).1),
+            {
+                &mut pair.0
+            });
+
+            let mut x = (0, 1);
+            *c(&mut x) = 10;
+            assert(x === (10, 1));
+
+            let mut y = (2, 3);
+            let r = c(&mut y);
+            *r = 20;
+            assert(y === (20, 3));
+        }
+
+        fn test2() {
+            let c = constrain(|pair: &mut (u64, u64)| -> (fst: &mut u64)
+                ensures
+                    *fst == old(pair).0,
+                    *final(pair) == (*final(fst), old(pair).1),
+            {
+                &mut pair.0
+            });
+
+            let mut x = (0, 1);
+            *c(&mut x) = 10;
+            assert(x === (10, 1));
+
+            let mut y = (2, 3);
+            let r = c(&mut y);
+            *r = 20;
+            assert(y === (20, 3));
+
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_with_mut_ref_arg_pass_as_arg ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test1() {
+            let c = |a: &mut u64|
+                requires *a < 100,
+                ensures *final(a) == *old(a) + 1
+            {
+                *a += 1;
+            };
+
+            assert(forall |x: &mut u64| *x < 100 ==> call_requires(c, (x,)));
+            assert(forall |x: &mut u64, y: ()| call_ensures(c, (x,), y) ==> *final(x) == *x + 1);
+        }
+
+        fn test_caller() {
+            let c = |a: &mut u64|
+                requires *a < 100,
+                ensures *final(a) == *old(a) + 1,
+            {
+                *a += 1;
+            };
+            test_callee(c);
+        }
+
+        fn test_callee(c: impl Fn(&mut u64))
+            requires
+                forall |x: &mut u64| *x < 100 ==> call_requires(c, (x,)),
+                forall |x: &mut u64, y: ()| call_ensures(c, (x,), y) ==> *final(x) == *x + 1,
+        {
+            let mut x = 0;
+            c(&mut x);
+            assert(x == 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_returning_mut_ref_arg_pass_as_arg ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn constrain<T: Fn(&mut (u64, u64)) -> &mut u64>(t: T) -> T
+            returns t
+        { t }
+
+        fn test1() {
+            let c = constrain(|pair: &mut (u64, u64)| -> (fst: &mut u64)
+                ensures
+                    *fst == old(pair).0,
+                    *final(pair) == (*final(fst), old(pair).1),
+            {
+                &mut pair.0
+            });
+
+            assert(forall |x: &mut (u64, u64)| call_requires(c, (x,)));
+            assert(forall |x: &mut (u64, u64), y: &mut u64| call_ensures(c, (x,), y) ==>
+                    *y == x.0 && *final(x) == (*final(y), x.1));
+        }
+
+        fn test_caller() {
+            let c = constrain(|pair: &mut (u64, u64)| -> (fst: &mut u64)
+                ensures
+                    *fst == old(pair).0,
+                    *final(pair) == (*final(fst), old(pair).1),
+            {
+                &mut pair.0
+            });
+            test_callee(c);
+        }
+
+        fn test_callee(c: impl Fn(&mut (u64, u64)) -> &mut u64)
+            requires
+                forall |x: &mut (u64, u64)| call_requires(c, (x,)),
+                forall |x: &mut (u64, u64), y: &mut u64| call_ensures(c, (x,), y) ==>
+                        *y == x.0 && *final(x) == (*final(y), x.1),
+        {
+            let mut x = (0, 1);
+            *c(&mut x) = 30;
+            assert(x === (30, 1));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
     #[test] closure_resolve_basic_move ["new-mut-ref"] => verus_code! {
         fn consume<T>(t: T) { }
 

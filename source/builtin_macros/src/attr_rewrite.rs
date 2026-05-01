@@ -245,7 +245,35 @@ impl VisitMut for ExecReplacer {
     /// proof_with!{ p: Tracked(p) }
     /// STest { u }
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
-        syn::visit_mut::visit_block_mut(self, block);
+        // Don't call visit_block_mut to recurse on the whole block --
+        // skip statements that will be processed by their own #[verus_spec] attribute.
+        // syn::visit_mut::visit_block_mut(self, block);
+        for stmt in &mut block.stmts {
+            // Don't recurse here into Fn and Const.
+            // Instead, let a subsequent expansion of #[verus_spec] handle the visit
+            let span = stmt.span();
+            match stmt {
+                syn::Stmt::Item(Item::Fn(item)) => {
+                    if get_verus_spec(&item.attrs).is_none() {
+                        item.attrs.push(crate::syntax::mk_rust_attr_syn(
+                            span,
+                            VERUS_SPEC,
+                            TokenStream::new(),
+                        ));
+                    }
+                }
+                syn::Stmt::Item(Item::Const(item)) => {
+                    if get_verus_spec(&item.attrs).is_none() {
+                        item.attrs.push(crate::syntax::mk_rust_attr_syn(
+                            span,
+                            VERUS_SPEC,
+                            TokenStream::new(),
+                        ));
+                    }
+                }
+                _ => self.visit_stmt_mut(stmt),
+            }
+        }
 
         // If we are in non-verification mode, we erase all proof-related statements.
         if !self.erase.keep() {

@@ -330,12 +330,36 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] mut_params_error verus_code! {
-        fn stuff(x: &mut u8) { }
+        use vstd::prelude::*;
+
+        fn stuff(x: &mut u8)
+            requires *x < 5
+            ensures *final(x) == *old(x) + 1
+        {
+            *x += 1;
+        }
 
         fn test() {
-            let x = stuff;
+            let stuff_fn = stuff;
+            let mut x = 0;
+            stuff_fn(&mut x);
+            assert(x == 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "not supported: using a function that takes '&mut' params as a value")
+
+        fn test2() {
+            let stuff_fn = stuff;
+            let mut x = 0;
+            stuff_fn(&mut x);
+            assert(x == 1);
+            assert(false); // FAILS
+        }
+
+        fn test3() {
+            let stuff_fn = stuff;
+            let mut x = 20;
+            stuff_fn(&mut x); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {

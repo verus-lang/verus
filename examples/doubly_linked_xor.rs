@@ -129,14 +129,15 @@ impl<V> DListXor<V> {
             old(self).wf(),
             old(self).ptrs@.len() == 0,
         ensures
-            self.wf(),
-            self@ == old(self)@.push(v),
+            final(self).wf(),
+            final(self)@ == old(self)@.push(v),
     {
         let (ptr, Tracked(perm)) = PPtr::new(Node::<V> { xored: 0, v });
         proof {
             self.ptrs@ = self.ptrs@.push(ptr);
             (&perm).is_nonnull();
-            self.perms.borrow_mut().tracked_insert((self.ptrs@.len() - 1) as nat, perm);
+            let idx = (self.ptrs@.len() - 1) as nat;
+            self.perms.borrow_mut().tracked_insert(idx, perm);
         }
         self.tail = ptr.addr() as u64;
         self.head = self.tail;
@@ -148,8 +149,8 @@ impl<V> DListXor<V> {
         requires
             old(self).wf(),
         ensures
-            self.wf(),
-            self@ == old(self)@.push(v),
+            final(self).wf(),
+            final(self)@ == old(self)@.push(v),
     {
         if self.tail == 0 {
             // Special case: list is empty
@@ -167,9 +168,8 @@ impl<V> DListXor<V> {
                 lemma_usize_u64(tail_ptr_u64);
             }
             let tail_ptr = PPtr::<Node<V>>::from_usize(tail_ptr_u64 as usize);
-            let tracked mut tail_perm: MemPerms<V> = self.perms.borrow_mut().tracked_remove(
-                (self.ptrs@.len() - 1) as nat,
-            );
+            let ghost idx = (self.ptrs@.len() - 1) as nat;
+            let tracked mut tail_perm: MemPerms<V> = self.perms.borrow_mut().tracked_remove(idx);
             let mut tail_node = tail_ptr.take(Tracked(&mut tail_perm));
             let second_to_last_ptr = tail_node.xored;
             let (ptr, Tracked(perm)) = PPtr::new(
@@ -182,11 +182,9 @@ impl<V> DListXor<V> {
             tail_node.xored = second_to_last_ptr ^ new_ptr_u64;
             tail_ptr.put(Tracked(&mut tail_perm), tail_node);
             proof {
-                self.perms.borrow_mut().tracked_insert(
-                    (self.ptrs@.len() - 1) as nat,
-                    tail_perm,
-                );
-                self.perms.borrow_mut().tracked_insert(self.ptrs@.len(), perm);
+                let ghost idx = (self.ptrs@.len() - 1) as nat;
+                self.perms.borrow_mut().tracked_insert(idx, tail_perm);
+                self.perms.borrow_mut().tracked_insert(idx+1, perm);
                 self.ptrs@ = self.ptrs@.push(ptr);
             }
             self.tail = new_ptr_u64;
@@ -224,8 +222,8 @@ impl<V> DListXor<V> {
             old(self).wf(),
             old(self)@.len() > 0,
         ensures
-            self.wf(),
-            self@ == old(self)@.drop_last(),
+            final(self).wf(),
+            final(self)@ == old(self)@.drop_last(),
             v == old(self)@[old(self)@.len() - 1],
     {
         assert(self.wf_perm((self.ptrs@.len() - 1) as nat));
@@ -234,9 +232,8 @@ impl<V> DListXor<V> {
             lemma_usize_u64(last_u64);
         }
         let last_ptr = PPtr::<Node<V>>::from_usize(last_u64 as usize);
-        let tracked last_perm: MemPerms<V> = self.perms.borrow_mut().tracked_remove(
-            (self.ptrs@.len() - 1) as nat,
-        );
+        let ghost idx = (self.ptrs@.len() - 1) as nat;
+        let tracked last_perm: MemPerms<V> = self.perms.borrow_mut().tracked_remove(idx);
         let last_node = last_ptr.into_inner(Tracked(last_perm));
         let penult_u64 = last_node.xored;
         let v = last_node.v;
@@ -266,9 +263,8 @@ impl<V> DListXor<V> {
                 lemma_usize_u64(penult_u64);
             }
             let penult_ptr = PPtr::<Node<V>>::from_usize(penult_u64 as usize);
-            let tracked mut penult_perm = self.perms.borrow_mut().tracked_remove(
-                (self.ptrs@.len() - 2) as nat,
-            );
+            let ghost idx = (self.ptrs@.len() - 2) as nat;
+            let tracked mut penult_perm = self.perms.borrow_mut().tracked_remove(idx);
             let mut penult_node = penult_ptr.take(Tracked(&mut penult_perm));
             let t: Ghost<u64> = Ghost(self.prev_of((self.ptrs@.len() - 2) as nat));
             assert((t@ ^ last_u64) ^ last_u64 == t@ ^ 0) by (bit_vector);
@@ -276,10 +272,8 @@ impl<V> DListXor<V> {
             assert(penult_node.xored == t@ ^ 0);
             penult_ptr.put(Tracked(&mut penult_perm), penult_node);
             proof {
-                self.perms.borrow_mut().tracked_insert(
-                    (self.ptrs@.len() - 2) as nat,
-                    penult_perm,
-                );
+                let ghost idx = (self.ptrs@.len() - 2) as nat;
+                self.perms.borrow_mut().tracked_insert(idx, penult_perm);
             }
         }
         proof {
@@ -318,8 +312,8 @@ impl<V> DListXor<V> {
             old(self).wf(),
             old(self)@.len() > 0,
         ensures
-            self.wf(),
-            self@ == old(self)@.subrange(1, old(self)@.len() as int),
+            final(self).wf(),
+            final(self)@ == old(self)@.subrange(1, old(self)@.len() as int),
             v == old(self)@[0],
     {
         assert(self.wf_perm(0));
@@ -405,8 +399,8 @@ impl<V> DListXor<V> {
         requires
             old(self).wf(),
         ensures
-            self.wf(),
-            self@ == seq![v].add(old(self)@),
+            final(self).wf(),
+            final(self)@ == seq![v].add(old(self)@),
     {
         if self.tail == 0 {
             // Special case: list is empty

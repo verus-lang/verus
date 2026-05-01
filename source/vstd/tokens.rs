@@ -2,11 +2,6 @@ use super::multiset::*;
 use super::prelude::*;
 use core::marker::PhantomData;
 
-pub mod frac;
-pub mod map;
-pub mod seq;
-pub mod set;
-
 use verus as verus_;
 verus_! {
 
@@ -24,7 +19,7 @@ broadcast use {
 /// Unique identifier for every VerusSync instance.
 /// Every "Token" and "Instance" object has an `InstanceId`. These ID values must agree
 /// to perform any token operation.
-pub ghost struct InstanceId(pub int);
+pub type InstanceId = super::resource::Loc;
 
 /// Interface for VerusSync tokens created for a field marked with the
 /// `variable`, `option` or `persistent_option` strategies.

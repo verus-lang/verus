@@ -9,8 +9,8 @@ use vir::modes::ErasureModes;
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
-    BodyErasure, CallErasure, NodeErase, TreeErase, VarErasure, VerusErasureCtxt,
-    set_verus_aware_def_ids, set_verus_erasure_ctxt,
+    BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase, TreeErase,
+    VarErasure, VerusErasureCtxt, set_verus_aware_def_ids, set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -65,6 +65,42 @@ pub enum ResolvedCall {
     MiscEraseAbsolutely,
     /// InferSpecForLoopIter. May need to be erased depending on mode-checking results
     InferSpecForLoopIter(AstId),
+    /// Loop spec (invariant, decreases, etc.). HirId is the HirId of the loop body.
+    LoopSpec(HirId, LoopSpecKind),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LoopSpecKind {
+    Invariant,
+    Decreases,
+    Ensures,
+    InvariantExceptBreak,
+}
+
+impl LoopSpecKind {
+    /// For the given loop spec kind, at which program points is that expression "evaluated"?
+    ///
+    /// This is needed for the analysis to correctly determine whether the given expressions
+    /// are prophetic, since propheticness depends on the locations of the expressions relative
+    /// to borrows.
+    ///
+    /// For Invariant, our answer is an overapproximation, as the specifics of where
+    /// an 'invariant' is evaluated depend on fiddly variables like loop_isolation level
+    /// and whether the loop has a 'break' statement. However, the distinction only ever matters
+    /// for rare cases when the condition has side-effects, so it doesn't matter very much.
+    ///
+    /// For soundness purposes, the only one that really matters is the 'Decreases' case
+    /// (since it's the only clause which is restricted to be non-prophetic).
+    /// For the other cases, they only matter for the sake of matching the documented behavior
+    /// of requiring prophetic uses to be marked with 'after_borrow'.
+    fn loop_spec_evaluation_location(&self) -> LoopSpecEvaluationLocation {
+        match self {
+            LoopSpecKind::Invariant => LoopSpecEvaluationLocation::BodyStartAndPostLoop,
+            LoopSpecKind::Decreases => LoopSpecEvaluationLocation::BodyStart,
+            LoopSpecKind::Ensures => LoopSpecEvaluationLocation::PostLoop,
+            LoopSpecKind::InvariantExceptBreak => LoopSpecEvaluationLocation::BodyStart,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -177,6 +213,9 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
         },
         ResolvedCall::MiscEraseAbsolutely => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
+        // LoopSpecs get special handling, so they are marked EraseAbsolutely to avoid
+        // double-handling.
+        ResolvedCall::LoopSpec(..) => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
         ResolvedCall::InferSpecForLoopIter(ast_id) => {
             if infer_spec_for_loop_iter_erase[ast_id] {
                 CallErasure::EraseTree(TreeErase::EraseAbsolutely)
@@ -304,10 +343,11 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
     }
 
     let mut calls = HashMap::<HirId, CallErasure>::new();
+    let mut loop_erasure = HashMap::<HirId, LoopErasure>::new();
     for (hir_id, span_data, resolved_call) in &erasure_hints.resolved_calls {
         let span = span_data.span();
         let ctor_mode = ctor_modes.get(hir_id).cloned();
-        calls.insert(
+        let _found = calls.insert(
             *hir_id,
             resolved_call_to_call_erase(
                 span,
@@ -318,6 +358,15 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
                 &infer_spec_for_loop_iter_erase,
             )?,
         );
+        // REVIEW: we should check that that there aren't conflicting entries, but right now,
+        // there are some redundant traversals
+        //assert!(found.is_none());
+
+        if let ResolvedCall::LoopSpec(loop_hir_id, loop_spec_kind) = resolved_call {
+            let l =
+                loop_erasure.entry(*loop_hir_id).or_insert_with(|| LoopErasure { specs: vec![] });
+            l.specs.push((*hir_id, loop_spec_kind.loop_spec_evaluation_location()));
+        }
     }
 
     let mut bodies = HashMap::<LocalDefId, BodyErasure>::new();
@@ -335,6 +384,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         calls,
         bodies,
         adjusted_node_erasure,
+        loop_erasure,
 
         erased_ghost_value_fn_def_id: *verus_items
             .name_to_id
@@ -352,6 +402,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             .name_to_id
             .get(&VerusItem::MutableReferenceTie)
             .unwrap(),
+        get_first_fn_def_id: *verus_items.name_to_id.get(&VerusItem::GetFirst).unwrap(),
 
         new_mut_ref: crate::config::new_mut_ref(),
     };

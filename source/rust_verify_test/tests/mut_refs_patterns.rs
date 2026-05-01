@@ -2443,9 +2443,9 @@ test_verify_one_file_with_options! {
     #[test] mut_ref_ghost_unwrap ["new-mut-ref"] => verus_code! {
         fn test<T>(t: &mut Ghost<T>) {
             let Ghost(r) = t;
+            // unlike with normal patterns, r has type `T` rather than `&mut T`
             assert(r == (*t));
         }
-        // TODO(new_mut_ref): (blocking) is this the desired behavior?
     } => Ok(())
 }
 
@@ -3422,7 +3422,30 @@ test_verify_one_file_with_options! {
                 }
                 Foo::Bar(t) => {
                     // TODO(new_mut_ref): (completeness) this should pass; the resolution goes to a "MatchIntermediate" position which gets dropped
-                    assert(has_resolved(b)); // FAILS
+                    assert(has_resolved({b})); // FAILS
+                }
+            }
+        }
+
+        // Same as test3, but it works if you trigger the insertion based on explicit asserts
+        fn test3_2<A>(foo: Foo<A>, b: A) {
+            let mut b = b;
+
+            match foo {
+                Foo::Bar(t) if cond() => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Qux(t) if cond2(&mut b) => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Qux(t) => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Bar(t) => {
+                    assert(has_resolved(b));
                 }
             }
         }
@@ -4171,4 +4194,59 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_mut_ref_borrows_from_enum ["new-mut-ref"] => verus_code! {
+        enum Option<V> { Some(V), None }
+        fn test() {
+            let mut x = Option::Some((1, 2));
+            let a1 = match x {
+                Option::Some((ref mut a, _)) => a,
+                _ => { return; },
+            };
+            let b1 = match x {
+                Option::Some((_, ref mut b)) => b,
+                _ => { return; },
+            };
+            *a1 = 11;
+            *b1 = 12;
+            assert(x === Option::Some((11, 12)));
+        }
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot use `x` because it was mutably borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_mut_ref_borrows_from_enum_no_lifetime ["new-mut-ref", "--no-lifetime"] => verus_code! {
+        enum Option<V> { Some(V), None }
+        fn test() {
+            let mut x = Option::Some((1, 2));
+            let a1 = match x {
+                Option::Some((ref mut a, _)) => a,
+                _ => { return; },
+            };
+            let b1 = match x {
+                Option::Some((_, ref mut b)) => b,
+                _ => { return; },
+            };
+            *a1 = 11;
+            *b1 = 12;
+            assert(x === Option::Some((11, 12)));
+        }
+        fn test_fails() {
+            let mut x = Option::Some((1, 2));
+            let a1 = match x {
+                Option::Some((ref mut a, _)) => a,
+                _ => { return; },
+            };
+            let b1 = match x {
+                Option::Some((_, ref mut b)) => b,
+                _ => { return; },
+            };
+            *a1 = 11;
+            *b1 = 12;
+            assert(x === Option::Some((11, 12)));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

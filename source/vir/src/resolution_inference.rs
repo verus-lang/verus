@@ -245,6 +245,7 @@ use crate::messages::error;
 use crate::messages::{AstId, Span};
 use crate::modes::ReadKindFinals;
 use crate::patterns::pattern_has_mut;
+use crate::resolution_types::ResolutionTypes;
 use crate::sst_util::subst_typ_for_datatype;
 use air::ast_util::str_ident;
 use air::scope_map::ScopeMap;
@@ -266,12 +267,13 @@ pub(crate) fn infer_resolution(
     module: &Path,
     var_modes: &HashMap<VarIdent, Mode>,
     temporary_modes: &HashMap<AstId, Mode>,
+    rtypes: &ResolutionTypes,
     dual_mode: bool,
 ) -> Result<Expr, VirErr> {
-    let (cfg, assigns_to_resolve, typ_inv_obligations) =
+    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts) =
         new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes)?;
     //println!("{:}", pretty_cfg(&cfg));
-    let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg) };
+    let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
     apply_resolutions(
         &cfg,
         params,
@@ -455,6 +457,7 @@ struct Builder<'a> {
     locals: LocalCollection<'a>,
     assigns_to_resolve: Vec<AstId>,
     typ_inv_obligations: Vec<(AstId, Fun)>,
+    asserts: Vec<((BBIndex, usize), Expr)>,
     errors: Vec<VirErr>,
 
     /// Loop stack, outermost to innermost
@@ -523,7 +526,7 @@ fn new_cfg<'a>(
     functions: &'a HashMap<Fun, Function>,
     var_modes: &'a HashMap<VarIdent, Mode>,
     temporary_modes: &'a HashMap<AstId, Mode>,
-) -> Result<(CFG<'a>, Vec<AstId>, Vec<(AstId, Fun)>), VirErr> {
+) -> Result<(CFG<'a>, Vec<AstId>, Vec<(AstId, Fun)>, Vec<((BBIndex, usize), Expr)>), VirErr> {
     let mut var_modes = var_modes.clone();
     for p in params.iter() {
         var_modes.insert(p.x.name.clone(), p.x.mode);
@@ -535,6 +538,7 @@ fn new_cfg<'a>(
         fns: vec![],
         assigns_to_resolve: vec![],
         typ_inv_obligations: vec![],
+        asserts: vec![],
         errors: vec![],
         locals: LocalCollection {
             locals: vec![],
@@ -585,7 +589,7 @@ fn new_cfg<'a>(
     }
 
     let cfg = CFG { basic_blocks: builder.basic_blocks, locals: builder.locals };
-    Ok((cfg, builder.assigns_to_resolve, builder.typ_inv_obligations))
+    Ok((cfg, builder.assigns_to_resolve, builder.typ_inv_obligations, builder.asserts))
 }
 
 impl<'a> Builder<'a> {
@@ -727,15 +731,21 @@ impl<'a> Builder<'a> {
             | ExprX::Fuel(..)
             | ExprX::RevealString(_)
             | ExprX::Header(_)
-            | ExprX::AssertAssume { .. }
-            | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
-            | ExprX::AssertBy { .. }
-            | ExprX::AssertQuery { .. }
-            | ExprX::AssertCompute(..)
             | ExprX::ProofInSpec(..)
             | ExprX::AirStmt(..)
             | ExprX::Old(..)
             | ExprX::Nondeterministic => Ok(bb),
+
+            ExprX::AssertAssume { .. }
+            | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
+            | ExprX::AssertBy { .. }
+            | ExprX::AssertQuery { .. }
+            | ExprX::AssertCompute(..) => {
+                let idx = self.basic_blocks[bb].instructions.len();
+                self.asserts.push(((bb, idx), expr.clone()));
+                Ok(bb)
+            }
+
             ExprX::Call(call_target, es, post_args) => {
                 assert!(post_args.is_none());
 
@@ -1025,7 +1035,6 @@ impl<'a> Builder<'a> {
             }
 
             ExprX::OpenInvariant(arg, binder, body, _) => {
-                // TODO(new_mut_ref): (blocking) test cases
                 bb = self.build(arg, bb)?;
 
                 let local = FlattenedPlaceTyped {
@@ -1193,12 +1202,20 @@ impl<'a> Builder<'a> {
             ExprX::EvalAndResolve(..) => {
                 panic!("EvalAndResolve shouldn't be created yet");
             }
+            ExprX::MatchGuardFreeze(..) => {
+                panic!("MatchGuardFreeze shouldn't be created yet");
+            }
             ExprX::ImplicitReborrowOrSpecRead(..) => {
                 panic!("ImplicitReborrowOrSpecRead should have been removed");
             }
             ExprX::Await(e) => {
                 bb = self.build(e, bb)?;
-                Ok(bb)
+                let cancel_bb = self.new_bb(AstPosition::OnUnwind(expr.span.id), false);
+                let main_bb = self.new_bb(AstPosition::After(expr.span.id), false);
+                self.basic_blocks[bb].successors.push(cancel_bb);
+                self.basic_blocks[bb].successors.push(main_bb);
+                self.basic_blocks[cancel_bb].is_exit = true;
+                Ok(main_bb)
             }
         }
     }
@@ -2207,6 +2224,30 @@ impl<'a> LocalCollection<'a> {
         output_projections
     }
 
+    fn get_typ(&self, fp: &FlattenedPlace) -> Typ {
+        let mut tree = &self.locals[fp.local].tree;
+        for projection in fp.projections.iter() {
+            match projection {
+                Projection::StructField((variant_idx, field_idx)) => {
+                    let (_dt, inner_trees) = match tree {
+                        PlaceTree::Struct(_ty, dt, trees) => (dt, trees),
+                        _ => unreachable!(),
+                    };
+                    let inner_tree = inner_trees[*variant_idx][*field_idx].as_ref().unwrap();
+                    tree = inner_tree;
+                }
+                Projection::DerefMut => {
+                    let inner_tree = match tree {
+                        PlaceTree::MutRef(_ty, tr) => tr,
+                        _ => unreachable!(),
+                    };
+                    tree = &inner_tree;
+                }
+            }
+        }
+        tree.typ().clone()
+    }
+
     /// Turn a FlattenedPlace back into a vir::ast::Place
     fn to_ast_place(&self, span: &Span, fp: &FlattenedPlace) -> Place {
         let mut ast_place = SpannedTyped::new(
@@ -2306,6 +2347,67 @@ impl<'a> LocalCollection<'a> {
                     Self::traverse_rec(child, cur, output, go_inside_muts);
                     cur.projections.pop();
                 }
+            }
+        }
+    }
+
+    fn try_get_flattened_place(&self, place: &Place) -> Option<FlattenedPlace> {
+        self.try_get_flattened_place_rec(place).map(|m| m.0)
+    }
+
+    fn try_get_flattened_place_rec(
+        &self,
+        place: &Place,
+    ) -> Option<(FlattenedPlace, Option<&PlaceTree>)> {
+        match &place.x {
+            PlaceX::Local(var) => match self.ident_to_idx.get(&LocalName::Named(var.clone())) {
+                Some(idx) => {
+                    let fp = FlattenedPlace { local: *idx, projections: vec![] };
+                    let tree = &self.locals[*idx].tree;
+                    Some((fp, Some(tree)))
+                }
+                None => None,
+            },
+            PlaceX::DerefMut(p) => {
+                let m = self.try_get_flattened_place_rec(p);
+                m.map(|(mut fp, tree)| match tree {
+                    None => (fp, None),
+                    Some(PlaceTree::Leaf(_)) => (fp, None),
+                    Some(PlaceTree::Struct(..)) => {
+                        panic!("Verus Internal Error: unexpected PlaceTree::Struct")
+                    }
+                    Some(PlaceTree::MutRef(_, child)) => {
+                        fp.projections.push(Projection::DerefMut);
+                        let child: &PlaceTree = &child;
+                        (fp, Some(child))
+                    }
+                })
+            }
+            PlaceX::Field(field_opr, p) => {
+                let m = self.try_get_flattened_place_rec(p);
+                m.map(|(mut fp, tree)| match tree {
+                    None => (fp, None),
+                    Some(PlaceTree::Leaf(_)) => (fp, None),
+                    Some(PlaceTree::MutRef(..)) => {
+                        panic!("Verus Internal Error: unexpected PlaceTree::Struct")
+                    }
+                    Some(PlaceTree::Struct(_, _, variants)) => {
+                        let indices = field_opr_to_indices(field_opr, &self.datatypes);
+                        fp.projections.push(Projection::StructField(indices));
+                        let child: Option<&PlaceTree> = variants[indices.0][indices.1].as_ref();
+                        (fp, child)
+                    }
+                })
+            }
+            PlaceX::Temporary(..) => None,
+            PlaceX::ModeUnwrap(p, ModeWrapperMode::Proof) => self.try_get_flattened_place_rec(p),
+            PlaceX::ModeUnwrap(_, ModeWrapperMode::Spec) => None,
+            PlaceX::WithExpr(..) | PlaceX::UserDefinedTypInvariantObligation(..) => {
+                panic!("Verus Internal Error: unexpected place");
+            }
+            PlaceX::Index(p, ..) => {
+                let m = self.try_get_flattened_place_rec(p);
+                m.map(|(fp, _tree)| (fp, None))
             }
         }
     }
@@ -2411,6 +2513,18 @@ impl FlattenedPlace {
             InstructionKind::Mutate(sp) => self.intersects(sp),
             InstructionKind::DropFrom(_) => false,
         }
+    }
+
+    fn truncate_to_deref(&self) -> FlattenedPlace {
+        for i in 0..self.projections.len() {
+            if matches!(self.projections[i], Projection::DerefMut) {
+                return FlattenedPlace {
+                    local: self.local,
+                    projections: self.projections[0..i].into(),
+                };
+            }
+        }
+        return self.clone();
     }
 }
 
@@ -3016,8 +3130,13 @@ impl ResolveSafety {
 
 ////// Use the results of the analysis to determine where resolutions should go
 
-/// Determine the resolutions to be inserted. Doesn't account for scopes.
-fn get_resolutions(cfg: &CFG) -> Vec<ResolutionToInsert> {
+/// Determine the resolutions to be inserted. Doesn't account for scopes, so we might
+/// drop some resolutions later if they turn out to refer to variables that are out-of-scope.
+fn get_resolutions(
+    cfg: &CFG,
+    rtypes: &ResolutionTypes,
+    asserts: Vec<((BBIndex, usize), Expr)>,
+) -> Vec<ResolutionToInsert> {
     // A place behind an initialized mutable reference can't be uninitialized,
     // so we only check places that aren't behind mutable references.
     let initialization_places = cfg.locals.places_skip_insides_of_mut_refs();
@@ -3062,18 +3181,84 @@ fn get_resolutions(cfg: &CFG) -> Vec<ResolutionToInsert> {
         //println!("{:}\n", pretty_flattened_place(&cfg.locals, &resolve_places[r_idx]));
         //println!("{:}\n", pretty_basics_blocks_with_dataflow2(&cfg, &resolve_analyses[r_idx], &initialization_analyses[i_idx]));
 
-        // TODO(new_mut_ref): (blocking) filter for "interesting" types, i.e., those containing a &mut ref
+        let typ = cfg.locals.get_typ(&resolve_places[r_idx]);
+        if rtypes.has_nontrivial_resolve(&typ) {
+            get_resolutions_for_place(
+                cfg,
+                &resolve_places[r_idx],
+                &initialization_analyses[i_idx],
+                &resolve_analyses[r_idx],
+                &mut output,
+            );
+        }
+    }
 
-        get_resolutions_for_place(
-            cfg,
-            &resolve_places[r_idx],
-            &initialization_analyses[i_idx],
-            &resolve_analyses[r_idx],
-            &mut output,
-        );
+    // Check the asserts for explicit mentions of has_resolved
+    for (cfg_loc, assert_expr) in asserts.into_iter() {
+        crate::ast_visitor::expr_visitor_check::<(), _>(&assert_expr, &mut |_, e: &Expr| {
+            let ExprX::UnaryOpr(UnaryOpr::HasResolved(_), e1) = &e.x else {
+                return Ok(());
+            };
+            let ExprX::ReadPlace(p, _) = &e1.x else {
+                return Ok(());
+            };
+            let Some(fp) = cfg.locals.try_get_flattened_place(p) else {
+                return Ok(());
+            };
+            // Suppose the user is asserting about has_resolved(x) but the analysis
+            // operates over subplaces x.0 and x.1. We have to take the union of all these
+            // subplaces.
+            let is_safe = whole_is_initialized(
+                &initialization_places,
+                &initialization_analyses,
+                &fp,
+                cfg_loc,
+            ) && whole_can_resolve(&resolve_places, &resolve_analyses, &fp, cfg_loc);
+            if is_safe {
+                output.push(ResolutionToInsert {
+                    place: fp,
+                    position: cfg.basic_blocks[cfg_loc.0].position(cfg_loc.1),
+                });
+            }
+            Ok(())
+        })
+        .unwrap();
     }
 
     output
+}
+
+fn whole_is_initialized(
+    initialized_places: &[FlattenedPlace],
+    initialization_analysis: &[DataflowOutput<InitializationPossibilities>],
+    fp: &FlattenedPlace,
+    cfg_loc: (BBIndex, usize),
+) -> bool {
+    let fp = fp.truncate_to_deref();
+    for (fp0, analysis) in initialized_places.iter().zip(initialization_analysis.iter()) {
+        if fp.contains(fp0) {
+            if analysis.output[cfg_loc.0][cfg_loc.1].can_be_uninit {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn whole_can_resolve(
+    resolve_places: &[FlattenedPlace],
+    resolve_analysis: &[DataflowOutput<ResolveSafety>],
+    fp: &FlattenedPlace,
+    cfg_loc: (BBIndex, usize),
+) -> bool {
+    for (fp0, analysis) in resolve_places.iter().zip(resolve_analysis.iter()) {
+        if fp.contains_and_not_separated_by_deref(fp0) {
+            if !analysis.output[cfg_loc.0][cfg_loc.1].can_resolve {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn get_resolutions_for_place(
@@ -3107,14 +3292,20 @@ fn get_resolutions_for_place(
                 if should_assume_has_resolved {
                     output.push(ResolutionToInsert {
                         place: place.clone(),
-                        position: if i == 0 {
-                            cfg.basic_blocks[bb].position_of_start
-                        } else {
-                            cfg.basic_blocks[bb].instructions[i - 1].post_instruction_position
-                        },
+                        position: cfg.basic_blocks[bb].position(i),
                     });
                 }
             }
+        }
+    }
+}
+
+impl BasicBlock {
+    fn position(&self, i: usize) -> AstPosition {
+        if i == 0 {
+            self.position_of_start
+        } else {
+            self.instructions[i - 1].post_instruction_position
         }
     }
 }
