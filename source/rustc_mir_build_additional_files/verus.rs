@@ -58,7 +58,7 @@ pub enum TreeErase {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CallErasure {
     /// Erase the call and ALL subexpressions. This can only be used when the node is guaranteed
-    /// to have no proof code in the subtree (outer_mode = spec in modes.rs)
+    /// to have no proof code in the subtree (e.g., consired 'pure' by modes.rs)
     EraseTree(TreeErase),
     Call(NodeErase),
 }
@@ -68,6 +68,22 @@ pub enum CallErasure {
 pub struct BodyErasure {
     pub erase_body: bool,
     pub ret_spec: bool,
+}
+
+/// Set of program locations relative to a Loop expressions.
+/// For a loop, if we mark the two points A and B: `loop { A; body }; B`
+/// then: A = BodyStart and B = PostLoop
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum LoopSpecEvaluationLocation {
+    BodyStart,
+    PostLoop,
+    BodyStartAndPostLoop,
+}
+
+/// Information for a loop.
+#[derive(Debug, Clone)]
+pub struct LoopErasure {
+    pub specs: Vec<(HirId, LoopSpecEvaluationLocation)>,
 }
 
 /// Global context with all information across the krate.
@@ -88,6 +104,11 @@ pub struct VerusErasureCtxt {
     /// Useful, e.g., to erase a single argument of some call.
     pub adjusted_node_erasure: HashSet<HirId>,
 
+    /// Loop headers require special handling. This maps every loop expression to
+    /// a list of all its headers. (Note: the headers themselves should be marked
+    /// EraseAbsolutely so they don't end up being double-handled.)
+    pub loop_erasure: HashMap<HirId, LoopErasure>,
+
     pub bodies: HashMap<LocalDefId, BodyErasure>,
 
     /// Some DefIds from builtin that we'll need to handle directly
@@ -95,6 +116,7 @@ pub struct VerusErasureCtxt {
     pub shadow_ghost_value_fn_def_id: DefId,
     pub dummy_capture_struct_def_id: DefId,
     pub mutable_reference_tie_fn_def_id: DefId,
+    pub get_first_fn_def_id: DefId,
 
     pub new_mut_ref: bool,
 }
@@ -303,7 +325,7 @@ pub(crate) fn erase_tree<'tcx>(
     hir_expr: &'tcx hir::Expr<'tcx>,
     t: TreeErase,
 ) -> ExprId {
-    let kind = erase_tree_kind(cx, hir_expr, t);
+    let kind = erase_tree_kind(cx, hir_expr, hir_expr.hir_id, t);
     let ty = cx.typeck_results.expr_ty(hir_expr);
 
     let expr = Expr { temp_scope_id: hir_expr.hir_id.local_id, ty, span: hir_expr.span, kind };
@@ -326,6 +348,7 @@ pub(crate) fn erase_tree<'tcx>(
 pub(crate) fn erase_tree_kind<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
+    root_hir_id: HirId,
     t: TreeErase,
 ) -> ExprKind<'tcx> {
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
@@ -336,7 +359,7 @@ pub(crate) fn erase_tree_kind<'tcx>(
         TreeErase::IncludeBasicChecks => {
             // We have to preserve all match statements
             let (mut exprs, local_uses) =
-                get_all_stmts_with_pattern_checking(cx, &erasure_ctxt, expr);
+                get_all_stmts_with_pattern_checking(cx, &erasure_ctxt, expr, root_hir_id);
             if cx.verus_ctxt.do_time_travel_prevention {
                 exprs.append(&mut crate::verus_time_travel_prevention::shadow_var_uses(
                     cx,
@@ -813,12 +836,12 @@ fn get_all_stmts_with_pattern_checking<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
     expr: &'tcx hir::Expr<'tcx>,
+    root_hir_id: HirId,
 ) -> (Vec<ExprId>, Vec<LocalUse<'tcx>>) {
     use crate::rustc_hir::intravisit::Visitor;
 
     // We use two visitors, one that visits closure bodies and one that doesn't.
 
-    let root_hir_id = expr.hir_id;
     let mut vis = VisitTreeForPats { cx, erasure_ctxt, root_hir_id, output_exprs: vec![] };
     vis.visit_expr(expr);
     let output_exprs = vis.output_exprs;

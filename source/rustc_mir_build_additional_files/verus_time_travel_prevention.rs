@@ -174,14 +174,41 @@ match m {
     })
 }
 ```
+
+### Loops
+
+Loops make for an additional complication because the way they are encoded in Verus source / HIR
+does not correspond to their conceptual "evaluation" points, e.g., a while-loop would be desugared
+as thus:
+
+```rust
+loop {
+    if cond() {
+        ::verus_builtin::invariant(...);
+        body;
+    } else {
+        break;
+    }
+}
+```
+
+when the conceptual evaluation point of the `invariant` is at the beginning/end of the loop.
+Same issue for `invariant_except_break` / `ensures` / `decreases`
+(and remember that the prophecy check is essential for soundness when it comes to decreases).
+
+To resolve this, we have to handle all loop headers specially. First, we simply ignore them
+when we encounter them during the main traversal (they should be marked EraseAbsolutely).
+Then, when handling the Loop node itself, we insert the headers' shadow usages at the
+appropriate program points.
 */
 
 use crate::rustc_index::Idx;
 use crate::thir::cx::ThirBuildCx;
 use crate::verus::{LocalUse, expr_id_from_kind};
 use crate::verus::{
-    VarErasure, VerusErasureCtxt, erased_ghost_value, erased_ghost_value_kind_with_args,
-    make_fake_call_kind_with_original_fn, shadow_ghost_value_kind_with_args,
+    LoopSpecEvaluationLocation, TreeErase, VarErasure, VerusErasureCtxt, erase_tree_kind,
+    erased_ghost_value, erased_ghost_value_kind_with_args, make_fake_call_kind_with_original_fn,
+    shadow_ghost_value_kind_with_args,
 };
 use rustc_hir as hir;
 use rustc_hir::def_id::LocalDefId;
@@ -279,6 +306,7 @@ pub(crate) fn expr_post<'tcx>(
         ExprKind::LoopMatch { .. } => {
             panic!("Verus Internal Error: LoopMatch not supported");
         }
+        ExprKind::Loop { .. } => loop_post(cx, hir_expr, ty, kind),
         ExprKind::Call { .. } => call_post(cx, hir_expr, ty, kind),
         _ => kind,
     }
@@ -1717,4 +1745,151 @@ fn sequence_2_unit_exprs<'tcx>(
         cx.tcx.types.unit,
         vec![e1, e2],
     )
+}
+
+pub(crate) fn loop_post<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    hir_expr: &hir::Expr<'tcx>,
+    ty: Ty<'tcx>,
+    kind: rustc_middle::thir::ExprKind<'tcx>,
+) -> rustc_middle::thir::ExprKind<'tcx> {
+    let rustc_hir::ExprKind::Loop(hir_block, ..) = &hir_expr.kind else {
+        panic!("Verus Internal Error: Expected ExprKind::Loop from THIR Loop");
+    };
+
+    let erasure_ctxt = cx.verus_ctxt.ctxt.clone().unwrap();
+
+    let Some(loop_erasure) = erasure_ctxt.loop_erasure.get(&hir_expr.hir_id) else {
+        // nothing to do
+        return kind;
+    };
+
+    let mut inner_exprs = vec![];
+    let mut outer_exprs = vec![];
+
+    for (fn_hir_id, loc) in loop_erasure.specs.iter() {
+        let (inner, outer) = match loc {
+            LoopSpecEvaluationLocation::BodyStart => (true, false),
+            LoopSpecEvaluationLocation::PostLoop => (false, true),
+            LoopSpecEvaluationLocation::BodyStartAndPostLoop => (true, true),
+        };
+        let rustc_hir::Node::Expr(fn_hir_expr) = cx.tcx.hir_node(*fn_hir_id) else {
+            panic!("Verus Internal Error: loop_post expected expected Expr");
+        };
+        let rustc_hir::ExprKind::Call(_fn, args) = &fn_hir_expr.kind else {
+            panic!("Verus Internal Error: loop_post expected expected ExprKind::Call");
+        };
+        if args.len() != 1 {
+            panic!("Verus Internal Error: loop_post expected expected args.len() == 1");
+        }
+        let arg_hir_expr = &args[0];
+        let arg_ty = cx.typeck_results.expr_ty(arg_hir_expr);
+
+        if inner {
+            let kind =
+                erase_tree_kind(cx, arg_hir_expr, hir_block.hir_id, TreeErase::IncludeBasicChecks);
+            let e = expr_id_from_kind(cx, kind, hir_block.hir_id, hir_block.span, arg_ty);
+            inner_exprs.push(e);
+        }
+
+        if outer {
+            let kind =
+                erase_tree_kind(cx, arg_hir_expr, hir_expr.hir_id, TreeErase::IncludeBasicChecks);
+            let e = expr_id_from_kind(cx, kind, hir_expr.hir_id, hir_expr.span, arg_ty);
+            outer_exprs.push(e);
+        }
+    }
+
+    let mut kind = kind;
+
+    // Insert inner_exprs
+    let ExprKind::Loop { body } = kind else { unreachable!() };
+    let new_body = insert_exprs_before(cx, inner_exprs, body, hir_block);
+    kind = ExprKind::Loop { body: new_body };
+
+    // Insert outer_exprs
+    kind = insert_exprs_after_kind(cx, kind, ty, outer_exprs, hir_expr);
+
+    return kind;
+}
+
+fn insert_exprs_before<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    pre_exprs: Vec<ExprId>,
+    last_expr: ExprId,
+    hir_block: &rustc_hir::Block<'tcx>,
+) -> ExprId {
+    if pre_exprs.len() == 0 {
+        return last_expr;
+    }
+    let scope =
+        region::Scope { local_id: hir_block.hir_id.local_id, data: region::ScopeData::Node };
+    let mut stmts = vec![];
+    for e in pre_exprs.into_iter() {
+        let stmt = Stmt { kind: StmtKind::Expr { scope, expr: e } };
+        stmts.push(cx.thir.stmts.push(stmt));
+    }
+    let block = Block {
+        targeted_by_break: false,
+        region_scope: scope,
+        span: hir_block.span,
+        stmts: stmts.into_boxed_slice(),
+        expr: Some(last_expr),
+        safety_mode: BlockSafety::Safe,
+    };
+    let block = cx.thir.blocks.push(block);
+    let kind = ExprKind::Block { block };
+    let ty = cx.thir.exprs[last_expr].ty;
+    expr_id_from_kind(cx, kind, hir_block.hir_id, hir_block.span, ty)
+}
+
+fn insert_exprs_after_kind<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    kind: rustc_middle::thir::ExprKind<'tcx>,
+    ty: Ty<'tcx>,
+    post_exprs: Vec<ExprId>,
+    hir_expr: &rustc_hir::Expr<'tcx>,
+) -> rustc_middle::thir::ExprKind<'tcx> {
+    if post_exprs.len() == 0 {
+        return kind;
+    }
+    let erasure_ctxt = cx.verus_ctxt.ctxt.clone().unwrap();
+
+    let e1 = expr_id_from_kind(cx, kind, hir_expr.hir_id, hir_expr.span, ty);
+
+    let scope = region::Scope { local_id: hir_expr.hir_id.local_id, data: region::ScopeData::Node };
+    let mut stmts = vec![];
+    for e in post_exprs.into_iter() {
+        let stmt = Stmt { kind: StmtKind::Expr { scope, expr: e } };
+        stmts.push(cx.thir.stmts.push(stmt));
+    }
+    let block = Block {
+        targeted_by_break: false,
+        region_scope: scope,
+        span: hir_expr.span,
+        stmts: stmts.into_boxed_slice(),
+        expr: None,
+        safety_mode: BlockSafety::Safe,
+    };
+    let block = cx.thir.blocks.push(block);
+    let kind = ExprKind::Block { block };
+    let e2 = expr_id_from_kind(cx, kind, hir_expr.hir_id, hir_expr.span, cx.tcx.types.unit);
+
+    // get_first(e1, e2)
+    let arg1 = GenericArg::from(cx.thir.exprs[e1].ty);
+    let arg2 = GenericArg::from(cx.thir.exprs[e2].ty);
+    let args = cx.tcx.mk_args(&[arg1, arg2]);
+    let fn_def_id = erasure_ctxt.get_first_fn_def_id;
+    let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
+
+    let fun_expr_kind = ExprKind::ZstLiteral { user_ty: None };
+    let fun_expr = expr_id_from_kind(cx, fun_expr_kind, hir_expr.hir_id, hir_expr.span, fn_ty);
+
+    ExprKind::Call {
+        ty: fn_ty,
+        fun: fun_expr,
+        args: Box::new([e1, e2]),
+        from_hir_call: false,
+        fn_span: hir_expr.span,
+    }
 }

@@ -14,7 +14,7 @@ pub mod manually_drop;
 pub mod maybe_uninit;
 pub mod ops;
 
-#[cfg(all(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 pub mod btree;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash;

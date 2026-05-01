@@ -138,6 +138,23 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] cant_cheat_prophecy_with_assign_in_old ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let ghost nonprophvar: u64 = 0;
+
+            let mut x = 0;
+            let x_ref: &mut u64 = &mut x;
+
+            proof {
+                let ghost g = *old({ nonprophvar = x; x_ref });
+            }
+
+            *x_ref = 20;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`old` for a local variable that isn't a parameter")
+}
+
+test_verify_one_file_with_options! {
     #[test] test_borrow_and_pattern_match ["new-mut-ref"] => verus_code! {
         fn test2() {
             let mut x = (0, 1);
@@ -853,9 +870,8 @@ test_verify_one_file_with_options! {
 
 // Loop ordering issues
 
-// TODO(new_mut_ref): (blocking) fix the loop issues
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_decreases_1 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_decreases_1 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }
 
         fn test_loop_1() {
@@ -882,7 +898,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_decreases_2 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_decreases_2 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }
 
         fn test_while_2() {
@@ -906,7 +922,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_decreases_3 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_decreases_3 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }
 
         fn test_while_3() {
@@ -928,7 +944,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_decreases_4 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_decreases_4 ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
 
         fn cond() -> bool { true }
@@ -956,7 +972,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_ensures_1 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_ensures_1 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -982,7 +998,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_ensures_2 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_ensures_2 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1007,7 +1023,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_ensures_3 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_ensures_3 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1031,7 +1047,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_ensures_4 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_ensures_4 ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
 
         fn cond() -> bool { true }
@@ -1061,7 +1077,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_invariant_except_break_1 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_except_break_1 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1087,12 +1103,11 @@ test_verify_one_file_with_options! {
 
             *z = 20;
         }
-    //} => Ok(())
-    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_invariant_except_break_2 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_except_break_2 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1117,7 +1132,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_invariant_except_break_3 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_except_break_3 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1141,7 +1156,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_invariant_except_break_4 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_except_break_4 ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
 
         fn cond() -> bool { true }
@@ -1170,7 +1185,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_invariant_1 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_1 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1196,7 +1211,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_invariant_2 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_2 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1221,7 +1236,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_invariant_3 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_3 ["new-mut-ref"] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1244,7 +1259,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test_loop_invariant_4 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_4 ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
 
         fn cond() -> bool { true }
@@ -1267,6 +1282,37 @@ test_verify_one_file_with_options! {
             }
 
             *z = 20;
+        }
+    } => Err(err) => assert_spec_borrowed(err, "a")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_loop_invariant_5 ["new-mut-ref"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_while_with_no_break() {
+            let mut a = 0;
+
+            let mut b = 0;
+            let mut z = &mut b;
+
+            while ({
+                z = &mut a;
+                cond()
+            })
+                invariant a == 0 || true,
+            {
+                loop { }
+            }
+            // <-- Verus borrowck requires the invariant to be evaluable at this
+            //     program point (i.e., immediately after the condition returns false),
+            //     even though this this is not reflected in the VCs
+            //     (because the loop has no 'break').
+            //     Thus this test case fails, even though it should probably succeed,
+            //     but this case is obscure enough it doesn't really matter.
+
+            *z = 30;
         }
     } => Err(err) => assert_spec_borrowed(err, "a")
 }

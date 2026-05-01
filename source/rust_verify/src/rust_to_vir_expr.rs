@@ -2008,7 +2008,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     current_modifier: ExprModifier,
 ) -> Result<ExprOrPlace, VirErr> {
     let bctx = if matches!(&expr.kind, ExprKind::Loop(..)) {
-        &bctx.set_header_setting(HeaderSetting::Loop)
+        &bctx.set_header_setting(HeaderSetting::Loop(expr.hir_id))
     } else {
         bctx
     };
@@ -2640,12 +2640,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         },
         ExprKind::Binary(op, lhs, rhs) => {
-            let vlhs = expr_to_vir_consume(bctx, lhs, modifier)?;
-            let vrhs = expr_to_vir_consume(bctx, rhs, modifier)?;
             let ret = operator_overload_to_vir(bctx, expr, modifier)?;
             if let Some(r) = ret {
                 return Ok(ExprOrPlace::Expr(r));
             }
+
+            let vlhs = expr_to_vir_consume(bctx, lhs, modifier)?;
+            let vrhs = expr_to_vir_consume(bctx, rhs, modifier)?;
             let vop = binopkind_to_binaryop(bctx, op, lhs, rhs)?;
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?.expect_expr();
             match op.node {
@@ -3366,6 +3367,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
         ExprKind::AssignOp(op, lhs, rhs) => {
+            // Note: The semantics are VERY DIFFERENT for method_call vs !method_call cases.
+            // The 2 cases MUST be handled separately.
+            //
+            // In particular:
+            //  - For !method_call, evaluation order is RHS FIRST, so the op must be lowered
+            //    to a VIR operation which is RHS FIRST, like AssignToPlace
+            //  - For method_call, evaluation order is LHS FIRST, so the op must be lowered
+            //    to something that evaluates in the appropriate order.
+
             if bctx.types.is_method_call(expr) {
                 unsupported_err!(expr.span, "overloaded op-assignment operator");
             }
@@ -3934,10 +3944,24 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 Ok(vec![bctx.spanned_new(stmt.span, StmtX::Expr(vir_expr))])
             } else {
                 let item = bctx.ctxt.tcx.hir_item(*item_id);
-                if matches!(&item.kind, ItemKind::Use(..) | ItemKind::Macro(..)) {
-                    return Ok(vec![]);
+                match &item.kind {
+                    ItemKind::Use(..) | ItemKind::Macro(..) => {
+                        return Ok(vec![]);
+                    }
+                    ItemKind::Struct(..) | ItemKind::Enum(..) => {
+                        // Nested datatypes are handled elsewhere as standalone items
+                        // It doesn't matter that they also appear here as statements
+                        return Ok(vec![]);
+                    }
+                    ItemKind::Fn { .. } | ItemKind::Const(..) => {
+                        // Nested functions and constants are handled elsewhere as standalone items
+                        // It doesn't matter that they also appear here as statements
+                        return Ok(vec![]);
+                    }
+                    _ => {
+                        unsupported_err!(stmt.span, "internal item statements", stmt)
+                    }
                 }
-                unsupported_err!(stmt.span, "internal item statements", stmt)
             }
         }
         StmtKind::Let(LetStmt { pat, ty: _, init, els, .. }) => {

@@ -5,7 +5,8 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test_btree_map verus_code! {
-        use std::collections::BTreeMap;
+        extern crate alloc;
+        use alloc::collections::BTreeMap;
         use vstd::prelude::*;
         fn test()
         {
@@ -49,7 +50,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_btree_set verus_code! {
-        use std::collections::BTreeSet;
+        extern crate alloc;
+        use alloc::collections::BTreeSet;
         use vstd::prelude::*;
         fn test()
         {

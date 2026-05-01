@@ -944,9 +944,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 3)
 }
 
-// TODO(new_mut_ref): (blocking) fix match eval order issue
 test_verify_one_file_with_options! {
-    #[ignore] #[test] evil_match_mutate_scrutinee_in_guard_pattern ["new-mut-ref"] => verus_code! {
+    #[test] evil_match_mutate_scrutinee_in_guard_pattern ["new-mut-ref"] => verus_code! {
         union Q {
             a: (u64, u64),
             b: bool,
@@ -964,12 +963,11 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "fail")
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning to scrutinee during match guard")
 }
 
-// TODO(new_mut_ref): (blocking) fix match eval order issue
 test_verify_one_file_with_options! {
-    #[ignore] #[test] evil_match_mutate_scrutinee_in_guard_pattern2 ["new-mut-ref"] => verus_code! {
+    #[test] evil_match_mutate_scrutinee_in_guard_pattern2 ["new-mut-ref"] => verus_code! {
         union Q {
             a: (u64, u64),
             b: bool,
@@ -987,5 +985,5 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "fail")
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning to scrutinee during match guard")
 }
