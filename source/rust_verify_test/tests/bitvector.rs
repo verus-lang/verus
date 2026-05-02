@@ -1518,7 +1518,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_dereference_mut_ref_2 ["new-mut-ref"] => verus_code! {
+    #[test] test_dereference_mut_ref_2 [] => verus_code! {
         fn nonlinear_test(x: &mut u64, y: &mut u64)
         {
             assert(*x == *y ==> x == y) by(bit_vector)
@@ -1527,7 +1527,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_dereference_mut_ref_final_not_supported ["new-mut-ref"] => verus_code! {
+    #[test] test_dereference_mut_ref_final_not_supported [] => verus_code! {
         fn nonlinear_test(x: &mut u64)
         {
             assert(*final(x) == *x) by(bit_vector)
@@ -1536,7 +1536,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_old_not_supported ["new-mut-ref"] => verus_code! {
+    #[test] test_old_not_supported [] => verus_code! {
         fn nonlinear(x: &mut u64)
             requires *x == 0,
         {

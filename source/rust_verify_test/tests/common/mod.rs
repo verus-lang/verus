@@ -329,10 +329,6 @@ pub fn run_verus(
             is_core = true;
         } else if *option == "--disable-internal-test-mode" {
             use_internal_test_mode = false;
-        } else if *option == "new-mut-ref" {
-            // TODO remove new-mut-ref from the test harness
-            //verus_args.push("-V".to_string());
-            //verus_args.push("new-mut-ref".to_string());
         } else if *option == "no-bv-simplify" {
             verus_args.push("-V".to_string());
             verus_args.push("no-bv-simplify".to_string());

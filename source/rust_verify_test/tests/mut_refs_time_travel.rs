@@ -22,7 +22,7 @@ fn assert_spec_borrowed_field(err: TestErr, var: &str, star: &str, field: &str) 
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_basic_fails ["new-mut-ref"] => verus_code! {
+    #[test] test_basic_fails [] => verus_code! {
         fn test() {
             let mut x = 0;
             let x_ref = &mut x;
@@ -33,7 +33,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_basic_reborrow_fails ["new-mut-ref"] => verus_code! {
+    #[test] test_basic_reborrow_fails [] => verus_code! {
         fn test() {
             let mut x = 0;
             let x_ref = &mut x;
@@ -45,7 +45,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_basic_fails_let_ghost ["new-mut-ref"] => verus_code! {
+    #[test] test_basic_fails_let_ghost [] => verus_code! {
         fn test() {
             let mut x = 0;
             let x_ref = &mut x;
@@ -56,7 +56,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_ref_mut_binding_fails ["new-mut-ref"] => verus_code! {
+    #[test] test_ref_mut_binding_fails [] => verus_code! {
         fn test() {
             let mut x = 0;
             let ref mut x_ref = x;
@@ -67,7 +67,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_ok_with_after_borrow ["new-mut-ref"] => verus_code! {
+    #[test] test_ok_with_after_borrow [] => verus_code! {
         fn test_after_borrow() {
             let mut x = 0;
             let ref mut x_ref = x;
@@ -93,7 +93,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_ok_with_has_resolved ["new-mut-ref"] => verus_code! {
+    #[test] test_ok_with_has_resolved [] => verus_code! {
         fn test_after_borrow() {
             let mut x = 0;
             let ref mut x_ref = x;
@@ -104,7 +104,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] cant_cheat_prophecy_with_assign_in_after_borrow ["new-mut-ref"] => verus_code! {
+    #[test] cant_cheat_prophecy_with_assign_in_after_borrow [] => verus_code! {
         fn test() {
             let ghost nonprophvar: u64 = 0;
 
@@ -121,7 +121,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] cant_cheat_prophecy_with_assign_in_has_resolved ["new-mut-ref"] => verus_code! {
+    #[test] cant_cheat_prophecy_with_assign_in_has_resolved [] => verus_code! {
         fn test() {
             let ghost nonprophvar: u64 = 0;
 
@@ -138,7 +138,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] cant_cheat_prophecy_with_assign_in_old ["new-mut-ref"] => verus_code! {
+    #[test] cant_cheat_prophecy_with_assign_in_old [] => verus_code! {
         fn test() {
             let ghost nonprophvar: u64 = 0;
 
@@ -155,7 +155,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_borrow_and_pattern_match ["new-mut-ref"] => verus_code! {
+    #[test] test_borrow_and_pattern_match [] => verus_code! {
         fn test2() {
             let mut x = (0, 1);
             let (x_ref, _) = &mut x;
@@ -166,7 +166,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_borrow_and_pattern_match2 ["new-mut-ref"] => verus_code! {
+    #[test] test_borrow_and_pattern_match2 [] => verus_code! {
         fn test3() {
             let mut x = (0, 1);
             let z = &mut x;
@@ -178,7 +178,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_let_else ["new-mut-ref"] => verus_code! {
+    #[test] test_let_else [] => verus_code! {
         enum Option<V> { Some(V), None }
         fn test4() {
             let mut x = Option::Some(0);
@@ -191,7 +191,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ref_mut_binding_in_match ["new-mut-ref"] => verus_code! {
+    #[test] ref_mut_binding_in_match [] => verus_code! {
         enum Option<V> { Some(V), None }
         fn test5() {
             let mut x = Option::Some(0);
@@ -207,7 +207,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ref_mut_binding_in_if_let ["new-mut-ref"] => verus_code! {
+    #[test] ref_mut_binding_in_if_let [] => verus_code! {
         enum Option<V> { Some(V), None }
         fn test_let_expr() {
             let mut o = Option::Some(0);
@@ -220,7 +220,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ref_mut_binding_in_pat_let_decl ["new-mut-ref"] => verus_code! {
+    #[test] ref_mut_binding_in_pat_let_decl [] => verus_code! {
         fn test13() {
             let mut x = (0, 1);
             let (ref mut x_ref, l) = x;
@@ -231,7 +231,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase1 ["new-mut-ref"] => verus_code! {
+    #[test] two_phase1 [] => verus_code! {
         fn check<'a>(a: &'a mut u64, b: &'a mut u64) -> &'a u64 { &*a }
 
         fn twophase1() {
@@ -250,7 +250,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase2 ["new-mut-ref"] => verus_code! {
+    #[test] two_phase2 [] => verus_code! {
         fn check<'a>(a: &'a mut u64, b: &'a mut u64) -> (res: &'a u64) { &*a }
 
         fn twophase2() {
@@ -269,7 +269,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase3 ["new-mut-ref"] => verus_code! {
+    #[test] two_phase3 [] => verus_code! {
         fn check<'a>(a: &'a mut u64, b: &'a mut u64) -> (res: &'a mut u64) { &mut *a }
 
         fn twophase2() {
@@ -288,7 +288,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase4 ["new-mut-ref"] => verus_code! {
+    #[test] two_phase4 [] => verus_code! {
         fn check<T>(a: T, b: T) -> (res: T) { a }
 
         fn twophase2() {
@@ -309,7 +309,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase5 ["new-mut-ref"] => verus_code! {
+    #[test] two_phase5 [] => verus_code! {
         fn check<'a>(a: &'a mut u64, b: &'a mut u64) -> &'a u64 { &*a }
 
         fn twophase1() {
@@ -329,7 +329,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] param ["new-mut-ref"] => verus_code! {
+    #[test] param [] => verus_code! {
         fn param_failure(mut x: u64) {
             let y = &mut x;
             assert(x == 0);
@@ -339,7 +339,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] param_old_use_ok ["new-mut-ref"] => verus_code! {
+    #[test] param_old_use_ok [] => verus_code! {
         fn param_ok(mut x: &mut u64)
             requires *x == 0,
         {
@@ -351,7 +351,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_local ["new-mut-ref"] => verus_code! {
+    #[test] closure_local [] => verus_code! {
         use vstd::prelude::*;
         fn closure_test() {
             let clos = || {
@@ -366,7 +366,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_param ["new-mut-ref"] => verus_code! {
+    #[test] closure_param [] => verus_code! {
         use vstd::prelude::*;
         fn closure_test() {
             let clos = |mut x: u64, z: &mut u64| {
@@ -382,7 +382,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] double_closure_param ["new-mut-ref"] => verus_code! {
+    #[test] double_closure_param [] => verus_code! {
         use vstd::prelude::*;
         fn closure_test() {
             let clos2 = || {
@@ -401,7 +401,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_capture ["new-mut-ref"] => verus_code! {
+    #[test] closure_capture [] => verus_code! {
         use vstd::prelude::*;
         fn closure_test() {
             let mut y = 0;
@@ -419,7 +419,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_capture_let_ghost ["new-mut-ref"] => verus_code! {
+    #[test] closure_capture_let_ghost [] => verus_code! {
         use vstd::prelude::*;
         fn closure_test() {
             let mut y = 0;
@@ -437,7 +437,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_capture_in_requires ["new-mut-ref"] => verus_code! {
+    #[test] closure_capture_in_requires [] => verus_code! {
         use vstd::prelude::*;
         fn closure_test() {
             let mut y = 0;
@@ -456,7 +456,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_capture_in_ensures ["new-mut-ref"] => verus_code! {
+    #[test] closure_capture_in_ensures [] => verus_code! {
         use vstd::prelude::*;
         fn closure_test() {
             let mut y = 0;
@@ -475,7 +475,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] misc_borrows_and_reborrows ["new-mut-ref"] => verus_code! {
+    #[test] misc_borrows_and_reborrows [] => verus_code! {
         fn test() {
             let mut a = 0;
             let mut b = 0;
@@ -575,7 +575,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] generic_instantiation ["new-mut-ref", "--no-erasure-check"] => verus_code! {
+    #[test] generic_instantiation ["--no-erasure-check"] => verus_code! {
         fn f<T>(a: T) -> T { a }
         fn test<'a>(a: &'a mut u64, b: u64) -> &'a mut u64 { a }
 
@@ -590,7 +590,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] generic_instantiation2 ["new-mut-ref"] => verus_code! {
+    #[test] generic_instantiation2 [] => verus_code! {
         fn f<T>(a: T) -> T { a }
         fn test<'a>(a: &'a mut u64, b: u64) -> &'a mut u64 { a }
 
@@ -605,7 +605,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] generic_instantiation3 ["new-mut-ref"] => verus_code! {
+    #[test] generic_instantiation3 [] => verus_code! {
         fn f<T>(a: T) -> T { a }
         fn test<'a>(a: &'a mut u64, b: u64) -> &'a mut u64 { a }
 
@@ -622,7 +622,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] spec_closure_use ["new-mut-ref"] => verus_code! {
+    #[test] spec_closure_use [] => verus_code! {
         spec fn foo(t: u64, y: u64) -> bool { true }
 
         fn closure_test() {
@@ -635,7 +635,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] assert_forall_use ["new-mut-ref"] => verus_code! {
+    #[test] assert_forall_use [] => verus_code! {
         spec fn foo(t: u64, y: u64) -> bool { true }
 
         fn closure_test() {
@@ -648,7 +648,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_closure_call ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_closure_call [] => verus_code! {
         use vstd::prelude::*;
 
         fn constrain<F>(f: F) -> F
@@ -674,7 +674,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_field_and_use_whole ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_whole [] => verus_code! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x.0;
@@ -685,7 +685,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_whole_and_use_field ["new-mut-ref"] => verus_code! {
+    #[test] borrow_whole_and_use_field [] => verus_code! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x;
@@ -696,7 +696,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_field_and_use_field ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_field [] => verus_code! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x.0;
@@ -707,7 +707,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_field_and_use_different_field ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_different_field [] => verus_code! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x.0;
@@ -718,7 +718,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_field_and_use_different_field2 ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_different_field2 [] => verus_code! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x.0;
@@ -729,7 +729,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_field_and_use_different_field_with_deref ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_different_field_with_deref [] => verus_code! {
         fn test() {
             let mut y = (0, 1);
             let mut x = &mut y;
@@ -741,7 +741,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_field_and_use_different_field_with_deref2 ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_different_field_with_deref2 [] => verus_code! {
         fn test() {
             let mut y = (0, 1);
             let mut x = &mut y;
@@ -753,7 +753,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_field_and_use_same_field_with_deref ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_same_field_with_deref [] => verus_code! {
         fn test() {
             let mut y = (0, 1);
             let mut x = &mut y;
@@ -765,7 +765,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_field_and_use_same_field_with_deref2 ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_same_field_with_deref2 [] => verus_code! {
         fn test() {
             let mut y = (0, 1);
             let mut x = &mut y;
@@ -777,7 +777,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_field_and_use_same_field_with_explicit_deref ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_same_field_with_explicit_deref [] => verus_code! {
         fn test() {
             let mut y = (0, 1);
             let mut x = &mut y;
@@ -789,7 +789,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_field_and_use_same_field_with_explicit_deref2 ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_same_field_with_explicit_deref2 [] => verus_code! {
         fn test() {
             let mut y = (0, 1);
             let mut x = &mut y;
@@ -801,7 +801,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_field_and_use_different_field_with_explicit_deref ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_different_field_with_explicit_deref [] => verus_code! {
         fn test() {
             let mut y = (0, 1);
             let mut x = &mut y;
@@ -813,7 +813,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] borrow_field_and_use_different_field_with_explicit_deref2 ["new-mut-ref"] => verus_code! {
+    #[test] borrow_field_and_use_different_field_with_explicit_deref2 [] => verus_code! {
         fn test() {
             let mut y = (0, 1);
             let mut x = &mut y;
@@ -825,7 +825,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] quant1 ["new-mut-ref"] => verus_code! {
+    #[test] quant1 [] => verus_code! {
         fn test1() {
             let mut x = 0;
             let x_ref = &mut x;
@@ -836,7 +836,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] quant2 ["new-mut-ref"] => verus_code! {
+    #[test] quant2 [] => verus_code! {
         fn test2() {
             let mut x = 0;
             let x_ref = &mut x;
@@ -847,7 +847,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] quant3 ["new-mut-ref"] => verus_code! {
+    #[test] quant3 [] => verus_code! {
         fn test3() {
             let mut x = 0;
             let x_ref = &mut x;
@@ -858,7 +858,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] quant4 ["new-mut-ref"] => verus_code! {
+    #[test] quant4 [] => verus_code! {
         fn test4() {
             let mut x = 0;
             let x_ref = &mut x;
@@ -871,7 +871,7 @@ test_verify_one_file_with_options! {
 // Loop ordering issues
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_decreases_1 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_decreases_1 [] => verus_code! {
         fn cond() -> bool { true }
 
         fn test_loop_1() {
@@ -898,7 +898,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_decreases_2 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_decreases_2 [] => verus_code! {
         fn cond() -> bool { true }
 
         fn test_while_2() {
@@ -922,7 +922,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_decreases_3 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_decreases_3 [] => verus_code! {
         fn cond() -> bool { true }
 
         fn test_while_3() {
@@ -944,7 +944,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_decreases_4 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_decreases_4 [] => verus_code! {
         use vstd::prelude::*;
 
         fn cond() -> bool { true }
@@ -972,7 +972,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_ensures_1 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_ensures_1 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -998,7 +998,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_ensures_2 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_ensures_2 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1023,7 +1023,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_ensures_3 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_ensures_3 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1047,7 +1047,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_ensures_4 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_ensures_4 [] => verus_code! {
         use vstd::prelude::*;
 
         fn cond() -> bool { true }
@@ -1077,7 +1077,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_invariant_except_break_1 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_except_break_1 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1107,7 +1107,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_invariant_except_break_2 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_except_break_2 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1132,7 +1132,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_invariant_except_break_3 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_except_break_3 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1156,7 +1156,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_invariant_except_break_4 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_except_break_4 [] => verus_code! {
         use vstd::prelude::*;
 
         fn cond() -> bool { true }
@@ -1185,7 +1185,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_invariant_1 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_1 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1211,7 +1211,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_invariant_2 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_2 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1236,7 +1236,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_invariant_3 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_3 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1259,7 +1259,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_invariant_4 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_4 [] => verus_code! {
         use vstd::prelude::*;
 
         fn cond() -> bool { true }
@@ -1287,7 +1287,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_invariant_5 ["new-mut-ref"] => verus_code! {
+    #[test] test_loop_invariant_5 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1318,7 +1318,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_if_let_with_move ["new-mut-ref"] => verus_code! {
+    #[test] test_if_let_with_move [] => verus_code! {
         fn consume<A>(a: A) { }
         struct X { }
         enum Option<V> { Some(V), None }
@@ -1354,7 +1354,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_if_let_with_move_conjunction ["new-mut-ref", "--edition 2024"] => verus_code! {
+    #[test] test_if_let_with_move_conjunction ["--edition 2024"] => verus_code! {
         fn consume<A>(a: A) { }
         struct X { }
         enum Option<V> { Some(V), None }
@@ -1372,7 +1372,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_if_let_with_move_fail1 ["new-mut-ref", "--no-erasure-check"] => verus_code! {
+    #[test] test_if_let_with_move_fail1 ["--no-erasure-check"] => verus_code! {
         fn consume<A>(a: A) { }
         struct X { }
         enum Option<V> { Some(V), None }
@@ -1390,7 +1390,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_if_let_with_move_fail2 ["new-mut-ref", "--no-erasure-check"] => verus_code! {
+    #[test] test_if_let_with_move_fail2 ["--no-erasure-check"] => verus_code! {
         fn consume<A>(a: A) { }
         struct X { }
         enum Option<V> { Some(V), None }
@@ -1409,7 +1409,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_if_let_with_move_fail3 ["new-mut-ref", "--no-erasure-check"] => verus_code! {
+    #[test] test_if_let_with_move_fail3 ["--no-erasure-check"] => verus_code! {
         fn consume<A>(a: A) { }
         struct X { }
         enum Option<V> { Some(V), None }
@@ -1430,7 +1430,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] proof_mode_test_if_let_with_move ["new-mut-ref"] => verus_code! {
+    #[test] proof_mode_test_if_let_with_move [] => verus_code! {
         use vstd::prelude::*;
 
         proof fn consume<A>(tracked a: A) { }
@@ -1459,7 +1459,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] proof_mode_test_if_let_with_move_fail ["new-mut-ref"] => verus_code! {
+    #[test] proof_mode_test_if_let_with_move_fail [] => verus_code! {
         proof fn consume<A>(tracked a: A) { }
         struct X { }
         enum Option<V> { Some(V), None }
@@ -1477,7 +1477,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] proof_mode_test_if_let_with_move_fail2 ["new-mut-ref"] => verus_code! {
+    #[test] proof_mode_test_if_let_with_move_fail2 [] => verus_code! {
         use vstd::prelude::*;
 
         proof fn consume<A>(tracked a: A) { }
@@ -1500,7 +1500,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] match_in_loop_invariant_issue2344 ["new-mut-ref"] => verus_code! {
+    #[test] match_in_loop_invariant_issue2344 [] => verus_code! {
         enum Option<V> { Some(V), None }
 
         fn minimal(n: u64) {
@@ -1519,7 +1519,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_lifetime_through_closure ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_lifetime_through_closure [] => verus_code! {
         use vstd::prelude::*;
 
         fn constrain<T: Fn(&mut (u64, u64)) -> &mut u64>(t: T) -> T
@@ -1546,7 +1546,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_capture_whole_shadow_field ["new-mut-ref"] => verus_code! {
+    #[test] closure_capture_whole_shadow_field [] => verus_code! {
         struct Y { u: u64 }
         struct X { a: Y, b: Y }
 
@@ -1563,7 +1563,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_capture_field_shadow_whole ["new-mut-ref"] => verus_code! {
+    #[test] closure_capture_field_shadow_whole [] => verus_code! {
         struct Y { u: u64 }
         struct X { a: Y, b: Y }
 
@@ -1580,7 +1580,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_capture_field_shadow_different_field ["new-mut-ref"] => verus_code! {
+    #[test] closure_capture_field_shadow_different_field [] => verus_code! {
         struct Y { u: u64 }
         struct X { a: Y, b: Y }
 
@@ -1597,7 +1597,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_capture_field_shadow_different_field2 ["new-mut-ref"] => verus_code! {
+    #[test] closure_capture_field_shadow_different_field2 [] => verus_code! {
         struct Y { u: u64 }
         struct X { a: Y, b: Y }
 
@@ -1614,7 +1614,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_capture_field_shadow_different_field3 ["new-mut-ref"] => verus_code! {
+    #[test] closure_capture_field_shadow_different_field3 [] => verus_code! {
         struct Y { u: u64 }
         struct X { a: Y, b: Y, c: Y }
 
@@ -1631,7 +1631,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_capture_field_shadow_same_field ["new-mut-ref"] => verus_code! {
+    #[test] closure_capture_field_shadow_same_field [] => verus_code! {
         struct Y { u: u64 }
         struct X { a: Y, b: Y }
 
@@ -1648,7 +1648,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_capture_field_shadow_same_field2 ["new-mut-ref"] => verus_code! {
+    #[test] closure_capture_field_shadow_same_field2 [] => verus_code! {
         struct Y { u: u64 }
         struct X { a: Y, b: Y }
 
@@ -1665,7 +1665,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] double_closure1 ["new-mut-ref"] => verus_code! {
+    #[test] double_closure1 [] => verus_code! {
         use vstd::prelude::*;
         fn test1() {
             let z = 0;
@@ -1679,7 +1679,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] double_closure2 ["new-mut-ref"] => verus_code! {
+    #[test] double_closure2 [] => verus_code! {
         use vstd::prelude::*;
         fn test2() {
             let mut z = 0;
@@ -1695,7 +1695,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] shadow_use_in_pattern_guard ["new-mut-ref"] => verus_code! {
+    #[test] shadow_use_in_pattern_guard [] => verus_code! {
         enum Option<V> { Some(V), None }
 
         fn test() {
@@ -1713,7 +1713,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] shadow_use_in_pattern_guard2 ["new-mut-ref"] => verus_code! {
+    #[test] shadow_use_in_pattern_guard2 [] => verus_code! {
         enum Option<V> { Some(V), None }
 
         fn test() {
@@ -1731,7 +1731,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] shadow_use_in_pattern_guard3 ["new-mut-ref"] => verus_code! {
+    #[test] shadow_use_in_pattern_guard3 [] => verus_code! {
         enum Option<V> { Some(V), None }
 
         fn test() {
@@ -1752,7 +1752,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] shadow_use_in_pattern_guard4 ["new-mut-ref"] => verus_code! {
+    #[test] shadow_use_in_pattern_guard4 [] => verus_code! {
         enum Option<V> { Some(V), None }
 
         fn test() {

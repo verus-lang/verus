@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] basic_match_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] basic_match_mut_ref [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -85,7 +85,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] basic_let_stmt_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] basic_let_stmt_mut_ref [] => verus_code! {
         struct Foo(u64);
 
         fn test_foo(o: Foo, orig: Foo) {
@@ -114,7 +114,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] match_on_a_field_place_via_dot ["new-mut-ref"] => verus_code! {
+    #[test] match_on_a_field_place_via_dot [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -190,7 +190,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] match_on_a_field_via_underscore ["new-mut-ref"] => verus_code! {
+    #[test] match_on_a_field_via_underscore [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -266,7 +266,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_decl_on_a_field_place ["new-mut-ref"] => verus_code! {
+    #[test] let_decl_on_a_field_place [] => verus_code! {
         fn test() {
             let mut x = 0;
             let mut pair = (20, 30);
@@ -328,7 +328,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] match_explicit_ref_mut_binding ["new-mut-ref"] => verus_code! {
+    #[test] match_explicit_ref_mut_binding [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -418,7 +418,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_explicit_ref_mut_binding ["new-mut-ref"] => verus_code! {
+    #[test] let_explicit_ref_mut_binding [] => verus_code! {
         enum Foo<T> { Some(T) }
         use crate::Foo::Some;
 
@@ -474,7 +474,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ref_mut_inside_immut_ref ["new-mut-ref"] => verus_code! {
+    #[test] ref_mut_inside_immut_ref [] => verus_code! {
         use vstd::prelude::*;
         fn ref_mut(o: Option<u64>, orig: Option<u64>) {
             let mut o = o;
@@ -490,7 +490,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ref_mut_inside_immut_ref_no_lifetime ["new-mut-ref", "--no-lifetime"] => verus_code! {
+    #[test] ref_mut_inside_immut_ref_no_lifetime ["--no-lifetime"] => verus_code! {
         use vstd::prelude::*;
         fn ref_mut(o: Option<u64>, orig: Option<u64>) {
             let mut o = o;
@@ -506,7 +506,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ref_mut_inside_at_binder ["new-mut-ref"] => verus_code! {
+    #[test] ref_mut_inside_at_binder [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_copy_with_ref_mut_binder_in_subpat(o: Option<u64>, orig: Option<u64>) {
@@ -537,7 +537,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] match_complex_mut_ref_combos ["new-mut-ref"] => verus_code! {
+    #[test] match_complex_mut_ref_combos [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -714,7 +714,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] complex_nesting_enum_1_variant ["new-mut-ref"] => verus_code! {
+    #[test] complex_nesting_enum_1_variant [] => verus_code! {
         enum BigEnum1<'a, 'b, 'c> {
             A((&'a mut (u64, &'b mut u64), &'c mut u64)),
         }
@@ -880,7 +880,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_decl_complex_nesting_enum_1_variant ["new-mut-ref"] => verus_code! {
+    #[test] let_decl_complex_nesting_enum_1_variant [] => verus_code! {
         enum BigEnum1<'a, 'b, 'c> {
             A((&'a mut (u64, &'b mut u64), &'c mut u64)),
         }
@@ -1034,7 +1034,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] complex_nesting_enum_2_variant ["new-mut-ref"] => verus_code! {
+    #[test] complex_nesting_enum_2_variant [] => verus_code! {
         enum BigEnum<'a, 'b, 'c> {
             A((&'a mut (u64, &'b mut u64), &'c mut u64)),
             B(&'c mut u64)
@@ -1255,7 +1255,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_to_struct_with_immut_refs ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_to_struct_with_immut_refs [] => verus_code! {
         struct BigStruct<'a, 'b>(&'a u64, &'b (u64, u64));
 
         fn test_mut_ref_to_struct_with_immut_refs() {
@@ -1310,7 +1310,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_decl_mut_ref_to_struct_with_immut_refs ["new-mut-ref"] => verus_code! {
+    #[test] let_decl_mut_ref_to_struct_with_immut_refs [] => verus_code! {
         struct BigStruct<'a, 'b>(&'a u64, &'b (u64, u64));
 
         fn test_mut_ref_to_struct_with_immut_refs() {
@@ -1359,7 +1359,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_to_enum_with_immut_refs ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_to_enum_with_immut_refs [] => verus_code! {
         enum BigEnum<'a, 'b> {
           A(&'a u64, &'b (u64, u64)),
           B(&'a u64),
@@ -1446,7 +1446,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] struct_mut_refs_immut_refs ["new-mut-ref"] => verus_code! {
+    #[test] struct_mut_refs_immut_refs [] => verus_code! {
         struct BigStruct<'a, 'b>(&'a mut (u64, &'b (u64, u64)));
 
         fn test_struct() {
@@ -1495,7 +1495,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] enum_mut_refs_immut_refs ["new-mut-ref"] => verus_code! {
+    #[test] enum_mut_refs_immut_refs [] => verus_code! {
         enum BigEnum<'a, 'b> {
           A(&'a mut (u64, &'b (u64, u64))),
           B,
@@ -1568,7 +1568,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] struct_immut_refs_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] struct_immut_refs_mut_refs [] => verus_code! {
         struct BigStruct<'a, 'b>(&'a (u64, &'b mut (u64, u64)));
 
         fn test_struct() {
@@ -1652,7 +1652,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] enum_immut_refs_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] enum_immut_refs_mut_refs [] => verus_code! {
         enum BigEnum<'a, 'b> {
             A(&'a (u64, &'b mut (u64, u64))),
             B,
@@ -1779,7 +1779,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] enum_immut_refs_mut_refs2 ["new-mut-ref"] => verus_code! {
+    #[test] enum_immut_refs_mut_refs2 [] => verus_code! {
         struct BigStruct<'a, 'b>(&'a &'b mut (u64, u64));
 
         enum BigEnum<'a, 'b> {
@@ -1863,7 +1863,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ref_mut_binding_and_nothing_else ["new-mut-ref"] => verus_code! {
+    #[test] ref_mut_binding_and_nothing_else [] => verus_code! {
         fn test() {
             let mut x = 3;
             match x {
@@ -1907,7 +1907,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] enum_take_mut_refs_to_same_var_in_both_branches ["new-mut-ref"] => verus_code! {
+    #[test] enum_take_mut_refs_to_same_var_in_both_branches [] => verus_code! {
         enum BigEnum<'a, 'b, 'c, 'd> {
           A(&'a mut (u64,), &'b mut (u64,)),
           B(&'c mut (u64,), &'d mut (u64,)),
@@ -2000,7 +2000,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_with_range_and_const_patterns ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_with_range_and_const_patterns [] => verus_code! {
         const MY_CONST: u64 = 24;
 
         fn test_match_const_and_ranges(p: (u64, u64)) {
@@ -2035,7 +2035,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] binders_in_pattern_copy_vs_no_copy ["new-mut-ref"] => verus_code! {
+    #[test] binders_in_pattern_copy_vs_no_copy [] => verus_code! {
         enum Option<A> {
             Some(A),
             None,
@@ -2171,7 +2171,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] binders_in_pattern_ghost_vs_no_ghost ["new-mut-ref"] => verus_code! {
+    #[test] binders_in_pattern_ghost_vs_no_ghost [] => verus_code! {
         tracked struct Pair<A, B>(tracked A, tracked B);
 
         tracked struct GhostPair<A, B>(ghost A, ghost B);
@@ -2315,7 +2315,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_resolve_ghost_binders ["new-mut-ref"] => verus_code! {
+    #[test] no_resolve_ghost_binders [] => verus_code! {
         proof fn test1<T>(x: (T, T)) {
             match x {
                 (y, z) => {
@@ -2363,7 +2363,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_ghost_binder_forbidden ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_ghost_binder_forbidden [] => verus_code! {
         struct X {
             a: u64
         }
@@ -2378,7 +2378,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_ghost_atbinder_forbidden ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_ghost_atbinder_forbidden [] => verus_code! {
         struct X {
             a: u64
         }
@@ -2397,7 +2397,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_tracked_binder_forbidden ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_tracked_binder_forbidden [] => verus_code! {
         tracked struct X {
             tracked a: u64
         }
@@ -2412,7 +2412,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_tracked_atbinder_forbidden ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_tracked_atbinder_forbidden [] => verus_code! {
         tracked struct X {
             a: u64
         }
@@ -2431,7 +2431,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_tracked_unwrap ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_tracked_unwrap [] => verus_code! {
         fn test<T>(t: &mut Tracked<T>) {
             let Tracked(r) = t;
         }
@@ -2440,7 +2440,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_ghost_unwrap ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_ghost_unwrap [] => verus_code! {
         fn test<T>(t: &mut Ghost<T>) {
             let Ghost(r) = t;
             // unlike with normal patterns, r has type `T` rather than `&mut T`
@@ -2450,7 +2450,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_ghost_binder_forbidden_mut_ref_field ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_ghost_binder_forbidden_mut_ref_field [] => verus_code! {
         enum Opt<T> { Some(T), None }
 
         struct X {
@@ -2468,7 +2468,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_ghost_binder_forbidden_ghost_type ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_ghost_binder_forbidden_ghost_type [] => verus_code! {
         enum Opt<T> { Some(T), None }
         struct X { a: u64 }
 
@@ -2484,7 +2484,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_ghost_binder_forbidden_trk_type ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_ghost_binder_forbidden_trk_type [] => verus_code! {
         enum Opt<T> { Some(T), None }
         struct X { a: u64 }
 
@@ -2500,7 +2500,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_ghost_match_ok_when_no_binder ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_ghost_match_ok_when_no_binder [] => verus_code! {
         enum Opt<T> { Some(T), None }
 
         struct X {
@@ -2538,7 +2538,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] partial_move_from_enum_with_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] partial_move_from_enum_with_mut_ref [] => verus_code! {
         use vstd::*;
 
         enum Option<T> { Some(T), None }
@@ -2564,7 +2564,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] partial_move_from_pair_with_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] partial_move_from_pair_with_mut_ref [] => verus_code! {
         use vstd::*;
 
         fn test() {
@@ -2610,7 +2610,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_refs_with_if_let ["new-mut-ref"] => verus_code! {
+    #[test] mut_refs_with_if_let [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -2682,7 +2682,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] side_effects_in_match_arg ["new-mut-ref"] => verus_code! {
+    #[test] side_effects_in_match_arg [] => verus_code! {
         enum Blah {
             A(bool),
             B(bool, bool),
@@ -2773,7 +2773,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] enum_conditional_resolution ["new-mut-ref"] => verus_code! {
+    #[test] enum_conditional_resolution [] => verus_code! {
         enum Foo<A, B> {
             Bar(A, B),
             Qux(A, B),
@@ -2840,7 +2840,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] enum_conditional_resolution_with_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] enum_conditional_resolution_with_mut_refs [] => verus_code! {
         enum Foo<A, B> {
             Bar(A, B),
             Qux(A, B),
@@ -2917,7 +2917,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] enum_conditional_resolution_with_mut_refs_and_moves ["new-mut-ref"] => verus_code! {
+    #[test] enum_conditional_resolution_with_mut_refs_and_moves [] => verus_code! {
         enum Foo<A, B> {
             Bar(A, B),
             Qux(A, B),
@@ -2994,7 +2994,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] enum_conditional_resolution_nested ["new-mut-ref"] => verus_code! {
+    #[test] enum_conditional_resolution_nested [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -3064,7 +3064,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] enum_conditional_resolution_nested_with_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] enum_conditional_resolution_nested_with_mut_refs [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -3113,7 +3113,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] partial_move_out_of_enum ["new-mut-ref"] => verus_code! {
+    #[test] partial_move_out_of_enum [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -3141,7 +3141,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] partial_move_out_of_enum_no_lifetime ["new-mut-ref", "--no-lifetime"] => verus_code! {
+    #[test] partial_move_out_of_enum_no_lifetime ["--no-lifetime"] => verus_code! {
         // Rust's ownership-checking rejects this with "use of partially moved value: `x`"
         // at the second match statement. (As shown in the above test case.)
         // According to a rust dev, this is because the second match statement has to
@@ -3206,7 +3206,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] partial_move_out_of_enum2 ["new-mut-ref"] => verus_code! {
+    #[test] partial_move_out_of_enum2 [] => verus_code! {
         // One way to get around the error more legitimately was to use an enum where
         // one variant is impossible, but this is no longer allowed as of 1.95.0.
 
@@ -3263,7 +3263,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] partial_move_out_of_enum3 ["new-mut-ref"] => verus_code! {
+    #[test] partial_move_out_of_enum3 [] => verus_code! {
         // Or we could just have an enum with only 1 variant
         // (though this is basically the same as a struct anyway
         // so not a very interesting test case)
@@ -3317,7 +3317,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] not_support_pattern_mut_ref_binding_with_guard ["new-mut-ref"] => verus_code! {
+    #[test] not_support_pattern_mut_ref_binding_with_guard [] => verus_code! {
         fn test() {
             let m = (0, 1);
             match m {
@@ -3329,7 +3329,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] not_support_pattern_mut_ref_binding_with_or_pat ["new-mut-ref"] => verus_code! {
+    #[test] not_support_pattern_mut_ref_binding_with_or_pat [] => verus_code! {
         fn test() {
             let m = (0, false);
             match m {
@@ -3341,7 +3341,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] not_support_let_pattern_mut_ref_binding_with_or_pat ["new-mut-ref"] => verus_code! {
+    #[test] not_support_let_pattern_mut_ref_binding_with_or_pat [] => verus_code! {
         fn test() {
             let x = Some((5, true));
             let Some((ref mut i, true | false)) = x;
@@ -3350,7 +3350,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_match_guards ["new-mut-ref"] => verus_code! {
+    #[test] test_match_guards [] => verus_code! {
         enum Foo<A> {
             Bar(A),
             Qux(A),
@@ -3471,7 +3471,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_or_patterns ["new-mut-ref"] => verus_code! {
+    #[test] test_or_patterns [] => verus_code! {
         enum Foo<A> {
             Bar(A),
             Qux(A),
@@ -3503,7 +3503,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] decl_test_or_patterns ["new-mut-ref"] => verus_code! {
+    #[test] decl_test_or_patterns [] => verus_code! {
         enum Foo<A> {
             Bar(A),
             Qux(A),
@@ -3520,7 +3520,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] or_patterns_with_conditional_moves ["new-mut-ref"] => verus_code! {
+    #[test] or_patterns_with_conditional_moves [] => verus_code! {
         fn consume<A>(a: A) { }
 
         fn test<A>(foo: (bool, A, A)) {
@@ -3537,7 +3537,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] or_patterns_with_conditional_moves2 ["new-mut-ref"] => verus_code! {
+    #[test] or_patterns_with_conditional_moves2 [] => verus_code! {
         fn consume<A>(a: A) { }
 
         fn test<A>(foo: (bool, A, A)) {
@@ -3553,7 +3553,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] or_patterns_with_moves_in_same_place ["new-mut-ref"] => verus_code! {
+    #[test] or_patterns_with_moves_in_same_place [] => verus_code! {
         fn consume<A>(a: A) { }
 
         fn test<A>(foo: (bool, A, A)) {
@@ -3569,7 +3569,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_else_cfg_reachability ["new-mut-ref"] => verus_code! {
+    #[test] let_else_cfg_reachability [] => verus_code! {
         enum Opt<A> { Some(A), None }
         use Opt::Some;
         use Opt::None;
@@ -3630,7 +3630,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] basic_let_else_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] basic_let_else_mut_ref [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -3698,7 +3698,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_else_on_a_field_place_via_dot ["new-mut-ref"] => verus_code! {
+    #[test] let_else_on_a_field_place_via_dot [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -3765,7 +3765,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_else_match_on_a_field_via_underscore ["new-mut-ref"] => verus_code! {
+    #[test] let_else_match_on_a_field_via_underscore [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -3831,7 +3831,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_else_explicit_ref_mut_binding ["new-mut-ref"] => verus_code! {
+    #[test] let_else_explicit_ref_mut_binding [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -3906,7 +3906,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_else_ref_mut_inside_immut_ref ["new-mut-ref"] => verus_code! {
+    #[test] let_else_ref_mut_inside_immut_ref [] => verus_code! {
         use vstd::prelude::*;
         #[verifier::exec_allows_no_decreases_clause]
         fn ref_mut(o: Option<u64>, orig: Option<u64>) {
@@ -3918,7 +3918,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_else_ref_mut_inside_immut_ref_no_lifetime ["new-mut-ref", "--no-lifetime"] => verus_code! {
+    #[test] let_else_ref_mut_inside_immut_ref_no_lifetime ["--no-lifetime"] => verus_code! {
         use vstd::prelude::*;
         #[verifier::exec_allows_no_decreases_clause]
         fn ref_mut(o: Option<u64>, orig: Option<u64>) {
@@ -3930,7 +3930,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_else_ref_mut_inside_at_binder ["new-mut-ref"] => verus_code! {
+    #[test] let_else_ref_mut_inside_at_binder [] => verus_code! {
         use vstd::prelude::*;
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -3957,7 +3957,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_else_complex_mut_ref_combos ["new-mut-ref"] => verus_code! {
+    #[test] let_else_complex_mut_ref_combos [] => verus_code! {
         enum Option<T> { Some(T), None }
         use crate::Option::Some;
         use crate::Option::None;
@@ -4033,7 +4033,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_else_complex_nesting_enum_1_variant ["new-mut-ref"] => verus_code! {
+    #[test] let_else_complex_nesting_enum_1_variant [] => verus_code! {
         enum BigEnum1<'a, 'b, 'c> {
             A((&'a mut (u64, &'b mut u64), &'c mut u64)),
         }
@@ -4197,7 +4197,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_mut_ref_borrows_from_enum ["new-mut-ref"] => verus_code! {
+    #[test] two_mut_ref_borrows_from_enum [] => verus_code! {
         enum Option<V> { Some(V), None }
         fn test() {
             let mut x = Option::Some((1, 2));
@@ -4217,7 +4217,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_mut_ref_borrows_from_enum_no_lifetime ["new-mut-ref", "--no-lifetime"] => verus_code! {
+    #[test] two_mut_ref_borrows_from_enum_no_lifetime ["--no-lifetime"] => verus_code! {
         enum Option<V> { Some(V), None }
         fn test() {
             let mut x = Option::Some((1, 2));
