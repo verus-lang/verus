@@ -2095,7 +2095,7 @@ impl Verifier {
             false,
             self.args.check_api_safety,
             self.args.axiom_usage_info,
-            self.args.new_mut_ref,
+            true,
             self.args.no_bv_simplify,
             self.args.report_long_running,
         )?;
@@ -2772,18 +2772,6 @@ impl Verifier {
         // Convert HIR -> VIR
         let time1 = Instant::now();
 
-        let other_vir_crates = if self.args.new_mut_ref {
-            other_vir_crates
-                .into_iter()
-                .map(|krate| vir::migrate_mut_refs::migrate_mut_ref_krate(krate))
-                .collect()
-        } else {
-            other_vir_crates
-                .into_iter()
-                .map(|krate| vir::migrate_mut_refs::ignore_mut_ref_only_fns(krate))
-                .collect()
-        };
-
         let (ctxt, vir_crate) =
             crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
                 .map_err(map_errs_diagnostics)?;
@@ -2956,8 +2944,7 @@ impl Verifier {
         let vir_crate =
             vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         let (vir_crate, erasure_modes, _read_kind_finals) =
-            vir::modes::check_crate(&vir_crate, self.args.new_mut_ref)
-                .map_err(|e| (vec![e], Vec::new()))?;
+            vir::modes::check_crate(&vir_crate, true).map_err(|e| (vec![e], Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
 

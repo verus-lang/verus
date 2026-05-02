@@ -1,5 +1,4 @@
 use crate::attributes::get_verifier_attrs;
-use crate::config::new_mut_ref;
 use crate::context::{BodyCtxt, Context};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_impl::ExternalInfo;
@@ -1066,13 +1065,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let (t0, ghost) = t_rec(tys)?;
             (Arc::new(TypX::Decorate(TypDecoration::Ref, None, t0.clone())), ghost)
         }
-        TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if new_mut_ref() => {
+        TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => {
             let (t0, ghost) = t_rec(tys)?;
             (Arc::new(TypX::MutRef(t0.clone())), ghost)
-        }
-        TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
-            let (t0, ghost) = t_rec(tys)?;
-            (Arc::new(TypX::Decorate(TypDecoration::MutRef, None, t0.clone())), ghost)
         }
         TyKind::Param(param) if param.name == kw::SelfUpper => {
             (Arc::new(TypX::TypParam(vir::def::trait_self_type_param())), false)
@@ -1422,9 +1417,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             }
         }
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
-        TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {
-            unsupported_err!(span, "&mut types, except in special cases")
-        }
         TyKind::FnPtr(..) => unsupported_err!(span, "function pointer types"),
         TyKind::Coroutine(..) => unsupported_err!(span, "generator types"),
         TyKind::CoroutineWitness(..) => unsupported_err!(span, "generator witness types"),
@@ -1584,28 +1576,6 @@ pub(crate) fn typ_of_node_unadjusted<'tcx>(
         allow_mut_ref,
         bctx.external_opaque_type_map.as_ref(),
     )
-}
-
-pub(crate) fn typ_of_node_unadjusted_expect_mut_ref<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    span: Span,
-    id: &HirId,
-) -> Result<Typ, VirErr> {
-    let ty = bctx.types.node_type(*id);
-    if let TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) = ty.kind() {
-        mid_ty_to_vir(
-            bctx.ctxt.tcx,
-            &bctx.ctxt.verus_items,
-            None::<&mut HashMap<_, _>>,
-            bctx.fun_id,
-            span,
-            &ty,
-            true,
-            bctx.external_opaque_type_map.as_ref(),
-        )
-    } else {
-        err_span(span, "a mutable reference is expected here")
-    }
 }
 
 pub(crate) fn implements_structural<'tcx>(
@@ -2306,36 +2276,6 @@ pub(crate) fn check_generics_bounds_with_polarity<'tcx>(
         vattrs,
         diagnostics,
     )
-}
-
-/// Returns if auto-dereferencing is supported for the given type.
-///
-/// Currently, this checks if the type is a `Box`, `Rc`, or `Arc`. Also, a
-/// reference of a `Box`, `Rc`, or `Arc` is supported since it should be the
-/// argument to the `deref` call.
-pub(crate) fn auto_deref_supported_for_ty<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    ty: &rustc_middle::ty::Ty<'tcx>,
-) -> bool {
-    fn is_supported_adt<'tcx>(tcx: TyCtxt<'tcx>, adt_def: &rustc_middle::ty::AdtDefData) -> bool {
-        let did = adt_def.did;
-        matches!(
-            verus_items::get_rust_item(tcx, did),
-            Some(RustItem::Box | RustItem::Rc | RustItem::Arc)
-        )
-    }
-
-    match ty.kind() {
-        TyKind::Adt(AdtDef(adt_def), _args) => is_supported_adt(tcx, adt_def),
-        TyKind::Ref(_, t, _) => {
-            // Only one-level of recursion.
-            match t.kind() {
-                TyKind::Adt(AdtDef(adt_def), _args) => is_supported_adt(tcx, adt_def),
-                _ => false,
-            }
-        }
-        _ => false,
-    }
 }
 
 pub(crate) fn ty_is_vec<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {

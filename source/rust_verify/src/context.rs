@@ -73,7 +73,6 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) in_ghost: bool,
     // loop_isolation for the nearest enclosing loop, false otherwise
     pub(crate) loop_isolation: bool,
-    pub(crate) new_mut_ref: bool,
     pub(crate) migrate_postcondition_vars: Option<std::collections::HashSet<vir::ast::VarIdent>>,
     /// Context to interpret a header if we encounter one
     /// (this is used to determine when it's correct to set `in_fn_sig`).

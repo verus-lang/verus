@@ -403,8 +403,6 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             .get(&VerusItem::MutableReferenceTie)
             .unwrap(),
         get_first_fn_def_id: *verus_items.name_to_id.get(&VerusItem::GetFirst).unwrap(),
-
-        new_mut_ref: crate::config::new_mut_ref(),
     };
     set_verus_erasure_ctxt(Arc::new(verus_erasure_ctxt));
 

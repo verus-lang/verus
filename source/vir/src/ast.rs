@@ -1506,8 +1506,6 @@ pub struct FunctionAttrsX {
     pub exec_assume_termination: bool,
     /// Whether to allow this function to not terminate
     pub exec_allows_no_decreases_clause: bool,
-    /// Is this only for the new_mut_ref experiment
-    pub ignore_outside_new_mut_ref: bool,
     /// Is this function `tracked_swap`, which requires special handling
     pub tracked_swap: bool,
     /// Is this function `Option::tracked_take`, which requires special handling

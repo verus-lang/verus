@@ -267,7 +267,6 @@ fn handle_autospec<'tcx>(
                     is_unsafe: false,
                     exec_assume_termination: false,
                     exec_allows_no_decreases_clause: false,
-                    ignore_outside_new_mut_ref: functionx.attrs.ignore_outside_new_mut_ref,
                     tracked_swap: false,
                     tracked_take_option: false,
                     is_async: false,
@@ -298,7 +297,6 @@ fn mk_bctx<'tcx>(
     mode: Mode,
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
-    new_mut_ref: bool,
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     param_names: Vec<VarIdent>,
     external_opaque_type_map: Option<HashMap<Path, Path>>,
@@ -312,7 +310,6 @@ fn mk_bctx<'tcx>(
         external_body,
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
-        new_mut_ref,
         migrate_postcondition_vars,
         in_fn_sig: false,
         in_postcondition: false,
@@ -333,7 +330,6 @@ fn body_to_vir<'tcx>(
     mode: Mode,
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
-    new_mut_ref: bool,
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     param_names: Vec<VarIdent>,
     external_opaque_type_map: Option<HashMap<Path, Path>>,
@@ -346,7 +342,6 @@ fn body_to_vir<'tcx>(
         mode,
         external_body,
         external_trait_from_to,
-        new_mut_ref,
         migrate_postcondition_vars,
         param_names,
         external_opaque_type_map,
@@ -1369,7 +1364,6 @@ fn make_attributes<'tcx>(
     is_async: bool,
     span: Span,
     is_trait_decl_no_default: bool,
-    ignore_outside_new_mut_ref: bool,
 ) -> Result<vir::ast::FunctionAttrs, VirErr> {
     if vattrs.nonlinear && vattrs.spinoff_prover {
         return err_span(
@@ -1413,7 +1407,6 @@ fn make_attributes<'tcx>(
         } else {
             vattrs.exec_allows_no_decreases_clause
         },
-        ignore_outside_new_mut_ref,
         tracked_swap: vattrs.tracked_swap,
         tracked_take_option: vattrs.tracked_take_option,
         is_async: is_async,
@@ -1432,23 +1425,6 @@ pub(crate) fn fixup_unerased_proxy_path(
         Ok(p)
     } else {
         crate::internal_err!(span, "bad use of unerased_proxy attribute")
-    }
-}
-
-/// Yes this is extremely hackish, but it's only temporary for the new_mut_ref transition
-struct NewMutRefFixGlobal {
-    old: bool,
-}
-impl NewMutRefFixGlobal {
-    fn new(v: bool) -> Self {
-        let old = crate::config::new_mut_ref();
-        crate::config::NEW_MUT_REF.store(v, std::sync::atomic::Ordering::SeqCst);
-        Self { old }
-    }
-}
-impl Drop for NewMutRefFixGlobal {
-    fn drop(&mut self) {
-        crate::config::NEW_MUT_REF.store(self.old, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -1483,24 +1459,17 @@ pub(crate) fn check_item_fn<'tcx>(
         FnOrConstSigEnum::ConstVar(..) => get_mode(Mode::Spec, attrs),
     };
 
-    let do_migration = if ctxt.cmd_line_args.new_mut_ref {
-        if vattrs.ignore_outside_new_mut_ref_experiment {
-            false
-        } else {
-            let migration_attr =
-                crate::attributes::migrate_postconditions_walk_parents(ctxt.tcx, id);
-            migration_attr == Some(true)
-        }
-    } else {
+    let do_migration = if vattrs.ignore_outside_new_mut_ref_experiment {
         false
+    } else {
+        let migration_attr = crate::attributes::migrate_postconditions_walk_parents(ctxt.tcx, id);
+        migration_attr == Some(true)
     };
 
     let new_mut_ref = vattrs.ignore_outside_new_mut_ref_experiment;
     if new_mut_ref && !matches!(ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore) {
         return err_span(sig.span, "ignore_outside_new_mut_ref_experiment is only for vstd");
     }
-    let new_mut_ref = new_mut_ref || ctxt.cmd_line_args.new_mut_ref;
-    let _new_mut_ref_fix_global = NewMutRefFixGlobal::new(new_mut_ref);
 
     if vattrs.encoded_const || vattrs.encoded_static {
         let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();
@@ -1529,7 +1498,6 @@ pub(crate) fn check_item_fn<'tcx>(
             &typ,
             body_id,
             vattrs.encoded_static,
-            new_mut_ref,
         )?;
         return Ok(Some(fun));
     }
@@ -1704,7 +1672,7 @@ pub(crate) fn check_item_fn<'tcx>(
     };
 
     let mut migrate_postcondition_vars: HashSet<VarIdent> = HashSet::new();
-    let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
+    let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     assert!(params.len() == inputs.len());
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
         let param_mode = if let Some(hir_id) = hir_id {
@@ -1722,28 +1690,7 @@ pub(crate) fn check_item_fn<'tcx>(
             }
         }
 
-        let is_ref_mut = if new_mut_ref { None } else { is_mut_ty(ctxt, *input) };
-        if is_ref_mut.is_some() && mode == Mode::Spec {
-            return err_span(span, format!("&mut parameter not allowed for spec functions"));
-        }
-
-        let typ = {
-            let typ = ctxt.mid_ty_to_vir(
-                id,
-                span,
-                is_ref_mut.map(|(t, _)| t).unwrap_or(input),
-                false,
-                None,
-            )?;
-            if let Some((_, decoration)) = is_ref_mut.and_then(|(_, w)| w) {
-                Arc::new(TypX::Decorate(decoration, None, typ))
-            } else {
-                typ
-            }
-        };
-
-        // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
-        let is_mut = is_ref_mut.is_some();
+        let typ = ctxt.mid_ty_to_vir(id, span, input, false, None)?;
 
         if matches!(&*typ, TypX::MutRef(_)) {
             if vattrs.allow_in_spec {
@@ -1766,9 +1713,9 @@ pub(crate) fn check_item_fn<'tcx>(
                 name: name.clone(),
                 typ: typ.clone(),
                 mode: param_mode,
-                is_mut,
+                is_mut: false,
                 unwrapped_info: None,
-                user_mut: is_mut_var || is_mut,
+                user_mut: is_mut_var,
             },
         );
 
@@ -1776,17 +1723,9 @@ pub(crate) fn check_item_fn<'tcx>(
             if mode == Mode::Spec {
                 return err_span(span, format!("mut argument not allowed for spec functions"));
             }
-            if is_mut {
-                // REVIEW
-                // For all mut params, we introduce a new variable that shadows the original mut
-                // param and assign the value of the param to the new variable. This does not
-                // work properly when the type of the param is a mutable reference because
-                // declaring and assigning to a variable of type `&mut T` is not implemented yet.
-                unsupported_err!(span, "mut parameters of &mut types")
-            }
         }
 
-        vir_params.push((vir_param, is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
+        vir_params.push(vir_param);
     }
 
     if is_async {
@@ -1808,7 +1747,7 @@ pub(crate) fn check_item_fn<'tcx>(
             };
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
-            let param_names = vir_params.iter().map(|p| p.0.x.name.clone()).collect::<Vec<_>>();
+            let param_names = vir_params.iter().map(|p| p.x.name.clone()).collect::<Vec<_>>();
             let mut vir_body = body_to_vir(
                 ctxt,
                 id,
@@ -1817,7 +1756,6 @@ pub(crate) fn check_item_fn<'tcx>(
                 mode,
                 external_body,
                 &external_trait_from_to,
-                new_mut_ref,
                 migrate_postcondition_vars.clone(),
                 param_names,
                 assume_specification_opaque_type_map.clone(),
@@ -1937,7 +1875,7 @@ pub(crate) fn check_item_fn<'tcx>(
         all_param_names.push(unwrap.inner_name.clone());
         unwrap_param_map.insert(unwrap.outer_name.clone(), unwrap.clone());
     }
-    for (param, unwrap_mut) in vir_params.iter_mut() {
+    for param in vir_params.iter_mut() {
         all_param_names.push(param.x.name.clone());
         if let Some(unwrap) = unwrap_param_map.get(&param.x.name) {
             if mode != Mode::Exec {
@@ -1950,16 +1888,6 @@ pub(crate) fn check_item_fn<'tcx>(
             paramx.name = unwrap.inner_name.clone();
             paramx.unwrapped_info = Some((unwrap.mode, unwrap.outer_name.clone()));
             *param = vir::def::Spanned::new(param.span.clone(), paramx);
-        } else if vir_body.is_some() && unwrap_mut.is_some() {
-            let param_user_name = vir::def::user_local_name(&param.x.name);
-            return Err(vir::messages::error(
-                &param.span,
-                format!("parameter {} must be unwrapped", param_user_name),
-            )
-            .help(format!(
-                "use Tracked({}): Tracked<&mut T> to unwrap the tracked argument",
-                param_user_name
-            )));
         }
     }
     for name in all_param_names.iter() {
@@ -1968,8 +1896,7 @@ pub(crate) fn check_item_fn<'tcx>(
         }
         all_param_name_set.insert(name.clone());
     }
-    let params: vir::ast::Params =
-        Arc::new(vir_params.clone().into_iter().map(|(p, _)| p).collect());
+    let params: vir::ast::Params = Arc::new(vir_params);
 
     let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode.clone()) {
         (None, None) => (air_unique_var(RETURN_VALUE), unit_typ(), mode),
@@ -2092,7 +2019,6 @@ pub(crate) fn check_item_fn<'tcx>(
         is_async,
         sig.span,
         matches!(kind, FunctionKind::TraitMethodDecl { has_default: false, .. }),
-        new_mut_ref,
     )?;
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
@@ -2361,8 +2287,8 @@ fn fix_external_fn_specification_trait_method_decl_typs(
 fn param_names_for_async_func<'tcx>(
     ctxt: &Context<'tcx>,
     body_hir: &Body<'tcx>,
-    params: &[(vir::ast::Param, Option<Mode>)],
-) -> Result<Vec<(vir::ast::Param, Option<Mode>)>, VirErr> {
+    params: &[vir::ast::Param],
+) -> Result<Vec<vir::ast::Param>, VirErr> {
     // Each async function body is desugared into a closure.
     // At the beginning of the async function
     // each paramter is re-bound. We need to find thes rebindings and resolve them.
@@ -2412,20 +2338,17 @@ fn param_names_for_async_func<'tcx>(
     }
 
     let mut rewitten_params = vec![];
-    for (param, m) in params.iter() {
-        rewitten_params.push((
-            Spanned::new(
-                param.span.clone(),
-                ParamX {
-                    name: async_body_modes[&param.x.name].clone(),
-                    typ: param.x.typ.clone(),
-                    mode: param.x.mode,
-                    is_mut: param.x.is_mut,
-                    unwrapped_info: param.x.unwrapped_info.clone(),
-                    user_mut: param.x.user_mut,
-                },
-            ),
-            *m,
+    for param in params.iter() {
+        rewitten_params.push(Spanned::new(
+            param.span.clone(),
+            ParamX {
+                name: async_body_modes[&param.x.name].clone(),
+                typ: param.x.typ.clone(),
+                mode: param.x.mode,
+                is_mut: param.x.is_mut,
+                unwrapped_info: param.x.unwrapped_info.clone(),
+                user_mut: param.x.user_mut,
+            },
         ));
     }
     Ok(rewitten_params)
@@ -2870,7 +2793,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     typ: &Typ,
     body_id: &BodyId,
     is_static: bool,
-    new_mut_ref: bool,
 ) -> Result<Fun, VirErr> {
     let mut path = ctxt.def_id_to_vir_path(id);
 
@@ -2924,7 +2846,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         body_mode,
         vattrs.external_body,
         &None,
-        new_mut_ref,
         None,
         vec![],
         None,
@@ -2970,7 +2891,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         is_async,
         span,
         false,
-        new_mut_ref,
     )?;
 
     let (ensure, ens_has_return) =
