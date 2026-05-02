@@ -172,7 +172,7 @@ impl ExprOrPlace {
     ) -> Result<Place, VirErr> {
         match self {
             ExprOrPlace::Expr(e) => {
-                let typ = bctx.mid_ty_to_vir(span, &ty, false)?;
+                let typ = bctx.mid_ty_to_vir(span, &ty)?;
                 Ok(SpannedTyped::new(&e.span, &typ, PlaceX::Temporary(e.clone())))
             }
             ExprOrPlace::Place(p) => Ok(p.clone()),
@@ -337,7 +337,7 @@ pub(crate) fn closure_param_typs<'tcx>(
             let mut args: Vec<Typ> = Vec::new();
             // REVIEW: rustc docs refer to skip_binder as "dangerous"
             for t in sig.inputs().skip_binder().iter() {
-                args.push(bctx.mid_ty_to_vir(expr.span, t, /* allow_mut_ref */ false)?);
+                args.push(bctx.mid_ty_to_vir(expr.span, t)?);
             }
             assert!(args.len() == 1);
             match &*args[0] {
@@ -355,7 +355,7 @@ fn closure_ret_typ<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<Typ
         TyKind::Closure(_def, substs) => {
             let sig = substs.as_closure().sig();
             let t = sig.output().skip_binder();
-            bctx.mid_ty_to_vir(expr.span, &t, /* allow_mut_ref */ false)
+            bctx.mid_ty_to_vir(expr.span, &t)
         }
         _ => panic!("closure_param_types expected Closure type"),
     }
@@ -568,7 +568,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let expr_typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)?;
+    let expr_typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?;
 
     let variant_name = str_ident(&ctor.variant_def.ident(tcx).as_str());
     let vir_path = bctx.ctxt.def_id_to_vir_path(ctor.adt_def_id);
@@ -663,7 +663,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
     pat: &Pat<'tcx>,
 ) -> Result<vir::ast::Pattern, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let mut pat_typ = typ_of_node_unadjusted(bctx, pat.span, &pat.hir_id, false)?;
+    let mut pat_typ = typ_of_node_unadjusted(bctx, pat.span, &pat.hir_id)?;
     unsupported_err_unless!(pat.default_binding_modes, pat.span, "destructuring assignment");
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard(false),
@@ -1141,7 +1141,7 @@ fn invariant_block_to_vir<'tcx>(
             );
             let vir_expr =
                 body.expr.map(|expr| expr_to_vir_consume(bctx, &expr, modifier)).transpose()?;
-            let ty = typ_of_node_unadjusted(bctx, e.span, &e.hir_id, false)?;
+            let ty = typ_of_node_unadjusted(bctx, e.span, &e.hir_id)?;
             // NOTE: we use body.span here instead of e.span
             // body.span leads to better error messages
             // (e.g., the "Cannot show invariant holds at end of block" error)
@@ -1156,19 +1156,19 @@ fn invariant_block_to_vir<'tcx>(
     let vir_arg = expr_to_vir_consume(bctx, &inv_arg, modifier)?;
 
     let name = pat_to_var(inner_pat)?;
-    let inner_ty = typ_of_node_unadjusted(bctx, inner_pat.span, &inner_hir, false)?;
+    let inner_ty = typ_of_node_unadjusted(bctx, inner_pat.span, &inner_hir)?;
     let vir_binder = Arc::new(VarBinderX { name, a: inner_ty });
 
     let mid_exp = bctx.spanned_typed_new(
         mid_stmt.span,
-        &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)?,
+        &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
         ExprX::OpenInvariant(vir_arg, vir_binder, vir_body, atomicity),
     );
     let spend_stmt_vir = stmt_to_vir(&bctx, spend_stmt)
         .expect("could not convert spend_open_invariant_credit call to vir");
     Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
         expr.span,
-        &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)?,
+        &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
         ExprX::Block(Arc::new(spend_stmt_vir), Some(mid_exp)),
     )))
 }
@@ -1232,7 +1232,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     // peeling off the adjustment (i-1).
     // Whereas the node (expr, 0) is just expr by itself.
 
-    let expr_typ = || bctx.mid_ty_to_vir(expr.span, &adjustments[adjustment_idx - 1].target, false);
+    let expr_typ = || bctx.mid_ty_to_vir(expr.span, &adjustments[adjustment_idx - 1].target);
 
     if adjustment_idx == 0 {
         let vir_expr = expr_to_vir_innermost(bctx, expr, current_modifier)?;
@@ -1317,7 +1317,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 } else {
                     vir::ast::ModeWrapperMode::Spec
                 };
-                let typ = bctx.mid_ty_to_vir(expr.span, &ty, false)?;
+                let typ = bctx.mid_ty_to_vir(expr.span, &ty)?;
                 return Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
                     expr.span,
                     &typ,
@@ -1399,7 +1399,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                             b,
                             bctx.ctxt.spans.to_air_span(expr.span),
                         );
-                        let typ = bctx.mid_ty_to_vir(expr.span, &adjustment.target, false)?;
+                        let typ = bctx.mid_ty_to_vir(expr.span, &adjustment.target)?;
                         let e = bctx.spanned_typed_new(expr.span, &typ, x);
                         return Ok(ExprOrPlace::Expr(e));
                     }
@@ -1445,7 +1445,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
             let op = match (tyr1.kind(), tyr2.kind()) {
                 (_, TyKind::Dynamic(_, _)) => {
-                    let vir_ty = bctx.mid_ty_to_vir(expr.span, &tyr1, false)?;
+                    let vir_ty = bctx.mid_ty_to_vir(expr.span, &tyr1)?;
                     Some(UnaryOpr::ToDyn(vir_ty))
                 }
                 _ => None,
@@ -1453,7 +1453,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             if let Some(op) = op {
                 let arg = arg.consume(bctx, get_inner_ty());
                 let x = ExprX::UnaryOpr(op, arg);
-                let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2, false)?;
+                let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2)?;
                 return Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ, x)));
             }
 
@@ -1558,7 +1558,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 let arg = arg.consume(bctx, get_inner_ty());
                 let args = Arc::new(vec![arg.clone()]);
                 let x = ExprX::Call(call_target, args, None);
-                let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2, false)?;
+                let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2)?;
                 Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ, x)))
             } else {
                 unsupported_err!(
@@ -1933,7 +1933,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
     let tcx = bctx.ctxt.tcx;
     let tc = bctx.types;
-    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false);
+    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id);
     let mk_expr =
         move |x: ExprX| Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ()?, x)));
 
@@ -2089,7 +2089,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
                     let vir_args =
                         vec_map_result(&args, |arg| expr_to_vir_consume(bctx, arg, modifier))?;
-                    let expr_typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)?;
+                    let expr_typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?;
 
                     let proof_fn = crate::rust_to_vir_base::try_get_proof_fn_modes(
                         &bctx.ctxt, expr.span, &fun_ty,
@@ -2122,11 +2122,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // Compute `tup_typ` with the correct decoration:
                         let mut arg_typs = vec![];
                         for arg in args.iter() {
-                            arg_typs.push(bctx.mid_ty_to_vir(
-                                arg.span,
-                                &bctx.types.expr_ty_adjusted(arg),
-                                false,
-                            )?);
+                            arg_typs.push(
+                                bctx.mid_ty_to_vir(arg.span, &bctx.types.expr_ty_adjusted(arg))?,
+                            );
                         }
                         let tup_typ = mk_tuple_typ(&Arc::new(arg_typs));
 
@@ -2135,7 +2133,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // ignored later, but for consistency with other typ_args I
                         // decided to get the decorated version)
                         // Also, allow &mut refs here since that can happen for FnMut.
-                        let fun_typ = bctx.mid_ty_to_vir(fun.span, &fun_ty, true)?;
+                        let fun_typ = bctx.mid_ty_to_vir(fun.span, &fun_ty)?;
 
                         let (kind, rcall) = if let Some((arg_modes, ret_mode)) = proof_fn {
                             if arg_modes.len() != args.len() {
@@ -2239,8 +2237,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             if is_copy {
                 let arg_vir = expr_to_vir_consume(bctx, e, modifier)?;
                 let fun = vir::fun!(CrateId::Vstd => "array", "array_fill_for_copy_types");
-                let array_vir_typ =
-                    bctx.mid_ty_to_vir(expr.span, &bctx.types.expr_ty(expr), false)?;
+                let array_vir_typ = bctx.mid_ty_to_vir(expr.span, &bctx.types.expr_ty(expr))?;
                 let typ_args = match &*array_vir_typ {
                     TypX::Primitive(Primitive::Array, typs) => typs.clone(),
                     _ => {
@@ -2270,7 +2267,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             expr.span,
             *lit,
             false,
-            &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)?,
+            &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
             Some(bctx.types.node_type(expr.hir_id)),
         )?)),
         ExprKind::Cast(source, _) => {
@@ -2424,7 +2421,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         mk_lit_int(
                             true,
                             i.get(),
-                            typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)?,
+                            typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
                         )?
                     } else if let ExprKind::Lit(lit @ Spanned { node: LitKind::Float(..), .. }) =
                         &arg.kind
@@ -2442,7 +2439,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             expr.span,
                             *lit,
                             true,
-                            &typ_of_expr_adjusted(bctx, expr.span, &arg.hir_id, false)?,
+                            &typ_of_expr_adjusted(bctx, expr.span, &arg.hir_id)?,
                             Some(arg_ty),
                         )?));
                     } else {
@@ -2491,7 +2488,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         } else {
                             vir::ast::ModeWrapperMode::Spec
                         };
-                        let typ = bctx.mid_ty_to_vir(expr.span, &ty, false)?;
+                        let typ = bctx.mid_ty_to_vir(expr.span, &ty)?;
                         return Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
                             expr.span,
                             &typ,
@@ -2713,7 +2710,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let vir_lhs = expr_to_vir_place(bctx, lhs, lhs_modifier)?;
 
             let lhs_ty = tc.expr_ty_adjusted(lhs);
-            let lhs_ty = mid_ty_simplify(tcx, &bctx.ctxt.verus_items, &lhs_ty, true);
+            // REVIEW: this call to mid_ty_simplify seems unneeded?
+            let lhs_ty = mid_ty_simplify(tcx, &bctx.ctxt.verus_items, &lhs_ty);
             let field_opr = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_err_unless!(
                     adt_def.variants().len() == 1,
@@ -2843,7 +2841,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
             let allow_complex_invariants = allow_complex_invariants();
             let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
-            let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id, false)?;
+            let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
             let label = label.map(|l| l.ident.to_string());
@@ -3288,7 +3286,7 @@ fn binopkind_to_binaryop_inner<'tcx>(
         BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
         BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
         BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
-            let ty = bctx.mid_ty_to_vir(lhs.span, &tc.expr_ty_adjusted(lhs), false)?;
+            let ty = bctx.mid_ty_to_vir(lhs.span, &tc.expr_ty_adjusted(lhs))?;
             let range = get_range(&ty);
             let ob = if bctx.in_ghost {
                 OverflowBehavior::Truncate(range)
@@ -3405,7 +3403,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
         rhs: vir_rhs,
         op: op,
         resolve: false,
-        typ: bctx.mid_ty_to_vir(lhs.span, &bctx.types.expr_ty_adjusted(lhs), false)?,
+        typ: bctx.mid_ty_to_vir(lhs.span, &bctx.types.expr_ty_adjusted(lhs))?,
     })
 }
 
@@ -3425,8 +3423,8 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
             unsupported_err!(els.span, "let-else in spec/proof", els);
         }
         let init = initializer.unwrap();
-        let init_type = typ_of_expr_adjusted(bctx, els.span, &init.hir_id, false)?;
-        let els_typ = typ_of_node_unadjusted(bctx, els.span, &els.hir_id, false)?;
+        let init_type = typ_of_expr_adjusted(bctx, els.span, &init.hir_id)?;
+        let els_typ = typ_of_node_unadjusted(bctx, els.span, &els.hir_id)?;
         let els_block = block_to_vir(bctx, els, &els.span, &els_typ, ExprModifier::REGULAR)?;
         Some(bctx.spanned_typed_new(els.span, &init_type, ExprX::NeverToAny(els_block)))
     } else {
@@ -3889,30 +3887,30 @@ fn is_ptr_cast<'tcx>(
             } else if ty2
                 .is_sized(bctx.ctxt.tcx, TypingEnv::post_analysis(bctx.ctxt.tcx, bctx.fun_id))
             {
-                let src_ty = bctx.mid_ty_to_vir(span, ty1, false)?;
-                let dst_ty = bctx.mid_ty_to_vir(span, ty2, false)?;
+                let src_ty = bctx.mid_ty_to_vir(span, ty1)?;
+                let dst_ty = bctx.mid_ty_to_vir(span, ty2)?;
                 let fun = vir::fun!(CrateId::Vstd => "raw_ptr", "cast_ptr_to_thin_ptr");
                 let typs = Arc::new(vec![src_ty, dst_ty]);
                 return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
             } else {
                 match (ty1.kind(), ty2.kind()) {
                     (TyKind::Slice(s1), TyKind::Slice(s2)) => {
-                        let arg1 = bctx.mid_ty_to_vir(span, s1, false)?;
-                        let arg2 = bctx.mid_ty_to_vir(span, s2, false)?;
+                        let arg1 = bctx.mid_ty_to_vir(span, s1)?;
+                        let arg2 = bctx.mid_ty_to_vir(span, s2)?;
                         let fun =
                             vir::fun!(CrateId::Vstd => "raw_ptr", "cast_slice_ptr_to_slice_ptr");
                         let typs = Arc::new(vec![arg1, arg2]);
                         return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
                     }
                     (TyKind::Slice(s1), TyKind::Str) => {
-                        let arg = bctx.mid_ty_to_vir(span, s1, false)?;
+                        let arg = bctx.mid_ty_to_vir(span, s1)?;
                         let fun =
                             vir::fun!(CrateId::Vstd => "raw_ptr", "cast_slice_ptr_to_str_ptr");
                         let typs = Arc::new(vec![arg]);
                         return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
                     }
                     (TyKind::Str, TyKind::Slice(s2)) => {
-                        let arg = bctx.mid_ty_to_vir(span, s2, false)?;
+                        let arg = bctx.mid_ty_to_vir(span, s2)?;
                         let fun =
                             vir::fun!(CrateId::Vstd => "raw_ptr", "cast_str_ptr_to_slice_ptr");
                         let typs = Arc::new(vec![arg]);
@@ -3926,7 +3924,7 @@ fn is_ptr_cast<'tcx>(
         (TyKind::RawPtr(ty1, _), _ty2)
             if crate::rust_to_vir_base::is_integer_ty(&bctx.ctxt.verus_items, &dst) =>
         {
-            let src_ty = bctx.mid_ty_to_vir(span, ty1, false)?;
+            let src_ty = bctx.mid_ty_to_vir(span, ty1)?;
             let typs = Arc::new(vec![src_ty]);
             let fun = vir::fun!(CrateId::Vstd => "raw_ptr", "cast_ptr_to_usize");
 
@@ -3963,7 +3961,7 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
             );
             let args = Arc::new(vec![src_vir.clone()]);
             let x = ExprX::Call(call_target, args, None);
-            let expr_typ = typ_of_node_unadjusted(bctx, dst_expr.span, &dst_expr.hir_id, false)?;
+            let expr_typ = typ_of_node_unadjusted(bctx, dst_expr.span, &dst_expr.hir_id)?;
 
             if clip {
                 let expr_attrs = bctx.ctxt.tcx.hir_attrs(dst_expr.hir_id);
@@ -4058,7 +4056,7 @@ pub(crate) fn deref_overloaded<'tcx>(
                 target_ty,
                 Mutability::Not,
             ));
-            let ref_of_target_typ = bctx.mid_ty_to_vir(span, &ref_of_target_ty, false)?;
+            let ref_of_target_typ = bctx.mid_ty_to_vir(span, &ref_of_target_ty)?;
 
             // Method call first:
             let call_expr = match inner_ty.kind() {

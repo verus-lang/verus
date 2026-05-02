@@ -434,13 +434,8 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = ctxt.mid_ty_to_vir(
-                id,
-                span,
-                &output_ty,
-                false,
-                assume_specification_opaque_type_map,
-            )?;
+            let typ =
+                ctxt.mid_ty_to_vir(id, span, &output_ty, assume_specification_opaque_type_map)?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -1485,7 +1480,7 @@ pub(crate) fn check_item_fn<'tcx>(
         };
 
         let ty = fn_sig.output().skip_binder();
-        let typ = ctxt.mid_ty_to_vir(id, sig.span, &ty, false, None)?;
+        let typ = ctxt.mid_ty_to_vir(id, sig.span, &ty, None)?;
 
         let fun = check_item_const_or_static(
             ctxt,
@@ -1690,7 +1685,7 @@ pub(crate) fn check_item_fn<'tcx>(
             }
         }
 
-        let typ = ctxt.mid_ty_to_vir(id, span, input, false, None)?;
+        let typ = ctxt.mid_ty_to_vir(id, span, input, None)?;
 
         if matches!(&*typ, TypX::MutRef(_)) {
             if vattrs.allow_in_spec {
@@ -2765,7 +2760,7 @@ fn get_external_def_id<'tcx>(
                 let trait_ref = tcx.impl_trait_ref(impl_def_id);
 
                 for ty in trait_ref.instantiate(tcx, impl_args).args.types() {
-                    types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, false, None)?);
+                    types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, None)?);
                 }
 
                 let kind = FunctionKind::ForeignTraitMethodImpl {
@@ -3001,13 +2996,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = no_body_param_to_var(param);
         let is_mut = is_mut_ty(ctxt, *input);
-        let typ = ctxt.mid_ty_to_vir(
-            id,
-            param.span,
-            is_mut.map(|(t, _)| t).unwrap_or(input),
-            false,
-            None,
-        )?;
+        let typ =
+            ctxt.mid_ty_to_vir(id, param.span, is_mut.map(|(t, _)| t).unwrap_or(input), None)?;
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,

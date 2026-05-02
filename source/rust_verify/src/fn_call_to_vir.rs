@@ -55,7 +55,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
 
-    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false);
+    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id);
 
     let rust_item = verus_items::get_rust_item(tcx, f);
     let verus_item = bctx.ctxt.get_verus_item(f);
@@ -193,7 +193,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     // Normal function call
     let tcx = bctx.ctxt.tcx;
-    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false);
+    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id);
 
     let path = bctx.ctxt.def_id_to_vir_path(f);
     let name = Arc::new(FunX { path: path.clone() });
@@ -346,7 +346,7 @@ pub(crate) fn const_var_to_vir<'tcx>(
             ExprModifier::REGULAR,
         );
     }
-    let typ = typ_of_node_unadjusted(bctx, span, hir_id, false)?;
+    let typ = typ_of_node_unadjusted(bctx, span, hir_id)?;
     let path = bctx.ctxt.def_id_to_vir_path(id);
     let fun = FunX { path };
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
@@ -1310,7 +1310,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             // We need to check there's no 'Ghost' decoration.
             let arg_typ = bctx.types.expr_ty_adjusted(&args[0]);
-            let t = bctx.mid_ty_to_vir(expr.span, &arg_typ, false)?;
+            let t = bctx.mid_ty_to_vir(expr.span, &arg_typ)?;
             vir::user_defined_type_invariants::check_typ_ok_for_use_typ_invariant(&exp.span, &t)?;
 
             // The correct fun is filled in later, in the pass that elaborates these conditions
@@ -1481,7 +1481,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             record_spec_fn(bctx, expr);
 
             let arg_typ =
-                undecorate_typ(&typ_of_expr_adjusted(bctx, args[0].span, &args[0].hir_id, false)?);
+                undecorate_typ(&typ_of_expr_adjusted(bctx, args[0].span, &args[0].hir_id)?);
 
             let varg = mk_one_vir_arg(bctx, expr.span, &args)?;
 
@@ -1720,8 +1720,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             record_spec_fn(bctx, expr);
 
             if matches!(equ_item, EqualityItem::SpecEq) {
-                let t1 = typ_of_expr_adjusted(bctx, args[0].span, &args[0].hir_id, true)?;
-                let t2 = typ_of_expr_adjusted(bctx, args[1].span, &args[1].hir_id, true)?;
+                let t1 = typ_of_expr_adjusted(bctx, args[0].span, &args[0].hir_id)?;
+                let t2 = typ_of_expr_adjusted(bctx, args[1].span, &args[1].hir_id)?;
                 // REVIEW: there's some code that (harmlessly) uses == on types that are
                 // different in decoration; Rust would reject this, but we currently allow it:
                 let t1 = undecorate_typ(&t1);
@@ -1749,7 +1749,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             if matches!(equ_item, EqualityItem::ExtEqual | EqualityItem::ExtEqualDeep) {
                 assert!(node_substs.len() == 1);
                 let t = match node_substs[0].as_type() {
-                    Some(ty) => bctx.mid_ty_to_vir(expr.span, &ty, false)?,
+                    Some(ty) => bctx.mid_ty_to_vir(expr.span, &ty)?,
                     _ => panic!("unexpected ext_equal type argument"),
                 };
                 let vop = vir::ast::BinaryOpr::ExtEq(equ_item == &EqualityItem::ExtEqualDeep, t);
@@ -2045,7 +2045,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 },
                 _ => unreachable!(),
             };
-            let t = bctx.mid_ty_to_vir(expr.span, &arg_typ, false)?;
+            let t = bctx.mid_ty_to_vir(expr.span, &arg_typ)?;
             mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
         }
         VerusItem::MutRefCurrent | VerusItem::MutRefFuture | VerusItem::Final => {
@@ -2591,7 +2591,7 @@ pub(crate) fn mk_typ_args<'tcx>(
     for typ_arg in substs {
         match typ_arg.kind() {
             GenericArgKind::Type(ty) => {
-                typ_args.push(bctx.mid_ty_to_vir(span, &ty, false)?);
+                typ_args.push(bctx.mid_ty_to_vir(span, &ty)?);
             }
             GenericArgKind::Lifetime(_) => {}
             GenericArgKind::Const(cnst) => {
@@ -2677,7 +2677,7 @@ pub(crate) fn check_variant_field<'tcx>(
         }
     };
 
-    let vir_adt_ty = bctx.mid_ty_to_vir(span, &ty, false)?;
+    let vir_adt_ty = bctx.mid_ty_to_vir(span, &ty)?;
     let adt_path = match &*vir_adt_ty {
         TypX::Datatype(path, _, _) => path.clone(),
         _ => {
@@ -2719,8 +2719,8 @@ pub(crate) fn check_variant_field<'tcx>(
             };
 
             let field_ty = field.ty(tcx, substs);
-            let vir_field_ty = bctx.mid_ty_to_vir(span, &field_ty, false)?;
-            let vir_expected_field_ty = bctx.mid_ty_to_vir(span, &expected_field_typ, false)?;
+            let vir_field_ty = bctx.mid_ty_to_vir(span, &field_ty)?;
+            let vir_expected_field_ty = bctx.mid_ty_to_vir(span, &expected_field_typ)?;
             if !types_equal(&vir_field_ty, &vir_expected_field_ty) {
                 return err_span(span, "field has the wrong type");
             }
@@ -2765,13 +2765,13 @@ fn check_union_field<'tcx>(
     };
 
     let field_ty = field.ty(tcx, substs);
-    let vir_field_ty = bctx.mid_ty_to_vir(span, &field_ty, false)?;
-    let vir_expected_field_ty = bctx.mid_ty_to_vir(span, &expected_field_typ, false)?;
+    let vir_field_ty = bctx.mid_ty_to_vir(span, &field_ty)?;
+    let vir_expected_field_ty = bctx.mid_ty_to_vir(span, &expected_field_typ)?;
     if !types_equal(&vir_field_ty, &vir_expected_field_ty) {
         return err_span(span, "field has the wrong type");
     }
 
-    let vir_adt_ty = bctx.mid_ty_to_vir(span, &ty, false)?;
+    let vir_adt_ty = bctx.mid_ty_to_vir(span, &ty)?;
     let adt_path = match &*vir_adt_ty {
         TypX::Datatype(path, _, _) => path.clone(),
         _ => {

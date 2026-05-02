@@ -173,7 +173,6 @@ impl<'tcx> ContextX<'tcx> {
         param_env_src: DefId,
         span: rustc_span::Span,
         ty: &rustc_middle::ty::Ty<'tcx>,
-        allow_mut_ref: bool,
         assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
     ) -> Result<vir::ast::Typ, VirErr> {
         crate::rust_to_vir_base::mid_ty_to_vir(
@@ -183,7 +182,6 @@ impl<'tcx> ContextX<'tcx> {
             param_env_src,
             span,
             ty,
-            allow_mut_ref,
             assume_specification_opaque_type_map,
         )
     }
@@ -207,15 +205,8 @@ impl<'tcx> BodyCtxt<'tcx> {
         &self,
         span: rustc_span::Span,
         ty: &rustc_middle::ty::Ty<'tcx>,
-        allow_mut_ref: bool,
     ) -> Result<vir::ast::Typ, VirErr> {
-        self.ctxt.mid_ty_to_vir(
-            self.fun_id,
-            span,
-            ty,
-            allow_mut_ref,
-            self.external_opaque_type_map.as_ref(),
-        )
+        self.ctxt.mid_ty_to_vir(self.fun_id, span, ty, self.external_opaque_type_map.as_ref())
     }
     pub(crate) fn is_param_migrated(&self, ident: &vir::ast::VarIdent) -> bool {
         let Some(vars) = &self.migrate_postcondition_vars else {
