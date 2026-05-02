@@ -8,7 +8,7 @@ use crate::rust_to_vir_base::{
     no_body_param_to_var,
 };
 use crate::rust_to_vir_base::{mk_visibility, qpath_to_ident};
-use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir_consume, pat_to_mut_var};
+use crate::rust_to_vir_expr::{expr_to_vir_consume, pat_to_mut_var};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
@@ -348,7 +348,7 @@ fn body_to_vir<'tcx>(
     );
     let body_expr =
         if is_async { extract_desugared_async_body(&bctx.ctxt, body)? } else { &body.value };
-    let e = expr_to_vir_consume(&bctx, body_expr, ExprModifier::REGULAR)?;
+    let e = expr_to_vir_consume(&bctx, body_expr)?;
 
     if external_body {
         match &e.x {
