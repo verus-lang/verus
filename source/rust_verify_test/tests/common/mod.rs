@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, clippy::result_large_err)]
 
 extern crate rustc_driver;
 extern crate rustc_errors;
@@ -54,7 +54,6 @@ pub struct TestErr {
     pub json_output: Option<serde_json::Value>, // captured when `--output-json` is used
 }
 
-#[allow(dead_code)]
 pub fn verify_files(
     name: &str,
     files: impl IntoIterator<Item = (String, String)>,
@@ -66,10 +65,9 @@ pub fn verify_files(
 
 use std::{cell::RefCell, path};
 thread_local! {
-    pub static THREAD_LOCAL_TEST_NAME: RefCell<Option<String>> = RefCell::new(None);
+    pub static THREAD_LOCAL_TEST_NAME: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
-#[allow(dead_code)]
 pub fn verify_files_vstd(
     name: &str,
     files: impl IntoIterator<Item = (String, String)>,
@@ -80,7 +78,6 @@ pub fn verify_files_vstd(
     verify_files_vstd_all_diags(name, files, entry_file, import_vstd, options).map(|_| ())
 }
 
-#[allow(dead_code)]
 pub fn verify_files_vstd_all_diags(
     name: &str,
     files: impl IntoIterator<Item = (String, String)>,
@@ -201,9 +198,8 @@ pub fn parse_diags(
 
     // eprintln!("rust_output: {}", &rust_output);
     if rust_output.len() > 0 {
-        for ss in rust_output.split("\n") {
-            let diag: Result<Diagnostic, _> = serde_json::from_str(ss);
-            if let Ok(diag) = diag {
+        for line in rust_output.lines() {
+            if let Ok(diag) = serde_json::from_str::<Diagnostic>(line) {
                 eprintln!("{}", diag.rendered);
                 if diag.level == "note" && diag.message.starts_with("diagnostics via expansion") {
                     // TODO(main_new) define in defs
@@ -224,8 +220,14 @@ pub fn parse_diags(
                 }
                 errors.push(diag);
             } else {
+                // HACK: ignore long running messages
+                if line.contains("has been running for") {
+                    eprintln!("{line}");
+                    continue;
+                }
+
                 *is_failure = true;
-                eprintln!("[unexpected json] \"{}\"", ss);
+                eprintln!("[unexpected json] \"{line}\"");
             }
         }
     }
@@ -493,7 +495,7 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
     child.env("VERUS_Z3_PATH", z3);
 
     let child = child
-        .args(&args[..])
+        .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -518,8 +520,19 @@ pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     // verus_builtin and vstd to require unstable features not available on stable Rust
     child.env_remove("RUSTFLAGS");
 
+    // Reset build and target directory in case they have been set upstream
+    //
+    // The test setup we're using assumes that every crate has its own target
+    // directory, and that running `cargo clean` on one crate does not affect
+    // any other tests running concurrently, which may not be the case if the
+    // system has one unified target directory, so we must reset it manually.
+    let target = dir.join("target");
+    child.env("CARGO_TARGET_DIR", &target);
+    child.env("CARGO_BUILD_TARGET_DIR", &target);
+    child.env("CARGO_BUILD_BUILD_DIR", &target);
+
     let child = child
-        .args(&args[..])
+        .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -532,7 +545,6 @@ pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     run
 }
 
-#[allow(dead_code)]
 pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     // If we're using the pre-macro-expanded vstd lib, then it might have
     // some macro-internal stuff in it, and rustc needs this option in order to accept it.
@@ -555,13 +567,11 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(const_destruct)]
 };
 
-#[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
     use verus_builtin::*;
     use verus_builtin_macros::*;
 };
 
-#[allow(dead_code)]
 pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<TestErr, TestErr> {
     let mut options: Vec<_> = options.into_iter().map(|x| *x).collect();
     let mut no_prelude = false;
@@ -725,14 +735,10 @@ pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
     }) {
         return e;
     }
-    err.iter()
-        .filter(|e| e.label != Some(vir::def::THIS_PRE_FAILED.to_string()))
-        .next()
-        .expect("span")
+    err.iter().find(|e| e.label != Some(vir::def::THIS_PRE_FAILED.to_string())).expect("span")
 }
 
 /// Assert that one verification failure happened on source lines containing the string "FAILS".
-#[allow(dead_code)]
 pub fn assert_one_fails(err: TestErr) {
     assert_eq!(err.errors.len(), 1);
     assert!(
@@ -746,7 +752,6 @@ pub fn assert_one_fails(err: TestErr) {
 
 /// When this testcase has ONE verification failure,
 /// assert that all spans are properly reported (All spans are respoinsible to the verification failure)
-#[allow(dead_code)]
 pub fn assert_expand_fails(err: TestErr, span_count: usize) {
     assert_fails(err.clone(), 1);
 
@@ -759,7 +764,6 @@ pub fn assert_expand_fails(err: TestErr, span_count: usize) {
 }
 
 /// Assert that `count` verification failures happened on source lines containin the string "FAILS".
-#[allow(dead_code)]
 pub fn assert_fails(err: TestErr, count: usize) {
     assert_eq!(err.errors.len(), count);
     for c in 0..count {
@@ -773,20 +777,17 @@ pub fn assert_fails(err: TestErr, count: usize) {
     }
 }
 
-#[allow(dead_code)]
 pub fn assert_vir_error_msg(err: TestErr, expected_msg: &str) {
     assert_eq!(err.errors.len(), 1);
     assert!(err.errors[0].code.is_none()); // thus likely a VIR error
     assert!(err.errors[0].message.contains(expected_msg));
 }
 
-#[allow(dead_code)]
 pub fn assert_any_vir_error_msg(err: TestErr, expected_msg: &str) {
     assert!(err.errors.iter().all(|x| x.code.is_none())); // thus likely a VIR error
     assert!(err.errors.iter().any(|x| x.message.contains(expected_msg)));
 }
 
-#[allow(dead_code)]
 pub fn assert_vir_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     assert!(err.errors.len() == expected_msgs.len());
     assert!(err.errors.iter().all(|x| x.code.is_none())); // thus likely a VIR error
@@ -795,7 +796,6 @@ pub fn assert_vir_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     }
 }
 
-#[allow(dead_code)]
 pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
     assert!(
         err.errors.iter().any(|x| x.message.contains("custom attribute panicked")
@@ -803,12 +803,10 @@ pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
     );
 }
 
-#[allow(dead_code)]
 pub fn assert_help_error_msg(err: TestErr, expected_msg: &str) {
     assert!(err.errors.iter().any(|x| x.rendered.contains(expected_msg)));
 }
 
-#[allow(dead_code)]
 pub fn assert_help_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     assert!(
         expected_msgs
@@ -817,7 +815,6 @@ pub fn assert_help_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     );
 }
 
-#[allow(dead_code)]
 pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
     assert_eq!(err.errors.len(), 1);
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
@@ -830,14 +827,12 @@ pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
     assert!(err.errors[0].message.contains(expected_msg));
 }
 
-#[allow(dead_code)]
 pub fn assert_rust_error_msg_skip_spec_msgs(err: TestErr, expected_msg: &str) {
     let mut err = err;
-    err.errors = err.errors.into_iter().filter(|e| !e.message.contains("(Verus spec")).collect();
+    err.errors.retain(|e| !e.message.contains("(Verus spec"));
     assert_rust_error_msg(err, expected_msg)
 }
 
-#[allow(dead_code)]
 pub fn assert_rust_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     assert_eq!(err.errors.len(), expected_msgs.len());
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
@@ -852,7 +847,6 @@ pub fn assert_rust_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     }
 }
 
-#[allow(dead_code)]
 pub fn assert_rust_error_msg_all(err: TestErr, expected_msg: &str) {
     assert!(err.errors.len() >= 1);
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
@@ -862,7 +856,6 @@ pub fn assert_rust_error_msg_all(err: TestErr, expected_msg: &str) {
     }
 }
 
-#[allow(dead_code)]
 pub fn assert_rust_error_msg_any(err: TestErr, expected_msg: &str) {
     assert!(err.errors.len() >= 1);
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
@@ -876,7 +869,6 @@ pub fn assert_rust_error_msg_any(err: TestErr, expected_msg: &str) {
     assert!(found);
 }
 
-#[allow(dead_code)]
 pub fn assert_spans_contain(err: &Diagnostic, needle: &str) {
     assert!(
         err.spans
@@ -886,7 +878,6 @@ pub fn assert_spans_contain(err: &Diagnostic, needle: &str) {
     );
 }
 
-#[allow(dead_code)]
 pub fn assert_fails_bv(err: TestErr, fail32: bool, fail64: bool) {
     assert_eq!(err.errors.len(), (if fail32 { 1 } else { 0 }) + (if fail64 { 1 } else { 0 }));
     if fail32 {
@@ -898,29 +889,22 @@ pub fn assert_fails_bv(err: TestErr, fail32: bool, fail64: bool) {
     }
 }
 
-#[allow(dead_code)]
 pub fn assert_fails_bv_32bit(err: TestErr) {
     assert_fails_bv(err, true, false);
 }
 
-#[allow(dead_code)]
 pub fn assert_fails_bv_64bit(err: TestErr) {
     assert_fails_bv(err, false, true);
 }
 
-#[allow(dead_code)]
 pub fn assert_fails_bv_32bit_64bit(err: TestErr) {
     assert_fails_bv(err, true, true);
 }
 
 pub fn typ_inv_relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
-    err.iter()
-        .filter(|e| e.label != Some("type invariant declared here".to_string()))
-        .next()
-        .expect("span")
+    err.iter().find(|e| e.label != Some("type invariant declared here".to_string())).expect("span")
 }
 
-#[allow(dead_code)]
 pub fn assert_has_recommends_failure(err: TestErr) {
     assert!(err.errors.len() > 0);
     let mut found_rec_failure = false;
@@ -933,7 +917,6 @@ pub fn assert_has_recommends_failure(err: TestErr) {
     assert!(found_rec_failure);
 }
 
-#[allow(dead_code)]
 pub fn assert_fails_type_invariant_error(err: TestErr, count: usize) {
     assert_eq!(err.errors.len(), count);
     for c in 0..count {
