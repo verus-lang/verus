@@ -34,6 +34,22 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] recursive_exec_function_with_decreases_clause_exec_allows_no_decreases_clause_no_warning ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::allow(decreases_when_exec_allows_no_decreases_clause)]
+        fn a(i: u64) -> (r: u64)
+            ensures r == i
+            decreases i
+        {
+            if i == 0 {
+                return 0;
+            } else {
+                return 1 + a(i - 1);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
     #[test] recursive_exec_function_with_decreases_clause_exec_allows_no_decreases_clause_fails ["exec_allows_no_decreases_clause"] => verus_code! {
         fn a(i: u64) -> (r: u64)
             ensures r == i

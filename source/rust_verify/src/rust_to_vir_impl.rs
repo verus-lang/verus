@@ -1,6 +1,7 @@
 use crate::automatic_derive::is_automatically_derived;
 use crate::context::Context;
 use crate::external::CrateItems;
+use crate::rust_to_vir::State;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path_option, mid_ty_const_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
 };
@@ -236,11 +237,11 @@ fn translate_assoc_type<'tcx>(
 
 pub(crate) fn translate_impl<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     vir: &mut KrateX,
     item: &'tcx Item<'tcx>,
     impll: &rustc_hir::Impl<'tcx>,
     module_path: Path,
-    external_info: &mut ExternalInfo,
     crate_items: &CrateItems,
     attrs: &[rustc_hir::Attribute],
 ) -> Result<(), Vec<VirErr>> {
@@ -353,7 +354,7 @@ pub(crate) fn translate_impl<'tcx>(
     let trait_path_typ_args =
         if let Some(TraitImplHeader { trait_ref: TraitRef { path, .. }, .. }) = &impll.of_trait {
             let impl_def_id = item.owner_id.to_def_id();
-            external_info.internal_trait_impls.insert(impl_def_id);
+            state.external_info.internal_trait_impls.insert(impl_def_id);
             let path_span = path.span.to(impll.self_ty.span);
             match trait_impl_to_vir(
                 ctxt,
@@ -361,7 +362,7 @@ pub(crate) fn translate_impl<'tcx>(
                 path_span,
                 impl_def_id,
                 Some(impll.generics),
-                external_info,
+                &mut state.external_info,
                 module_path.clone(),
                 false,
                 vattrs.external_trait_blanket,
@@ -396,11 +397,11 @@ pub(crate) fn translate_impl<'tcx>(
         }
         let r = translate_impl_item(
             ctxt,
+            state,
             vir,
             item,
             impll,
             &module_path,
-            external_info,
             crate_items,
             impl_item_id,
             &trait_path_typ_args,
@@ -417,11 +418,11 @@ pub(crate) fn translate_impl<'tcx>(
 
 pub(crate) fn translate_impl_item<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     vir: &mut KrateX,
     item: &'tcx Item<'tcx>,
     impll: &rustc_hir::Impl<'tcx>,
     module_path: &Path,
-    external_info: &mut ExternalInfo,
     crate_items: &CrateItems,
     impl_item_id: &rustc_hir::ImplItemId,
     trait_path_typ_args: &Option<(Path, Typs)>,
@@ -470,6 +471,7 @@ pub(crate) fn translate_impl_item<'tcx>(
 
                     check_item_fn(
                         ctxt,
+                        state,
                         &mut vir.functions,
                         Some(&mut vir.reveal_groups),
                         impl_item.owner_id.to_def_id(),
@@ -483,7 +485,6 @@ pub(crate) fn translate_impl_item<'tcx>(
                         CheckItemFnEither::BodyId(&body_id),
                         None,
                         None,
-                        external_info,
                         autoderive_action.as_ref(),
                         &mut vir.opaque_types,
                     )?;
@@ -531,6 +532,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                 if trait_path_typ_args.is_none() {
                     crate::rust_to_vir_func::check_item_const_or_static(
                         ctxt,
+                        state,
                         &mut vir.functions,
                         impl_item.span,
                         impl_item.owner_id.to_def_id(),
@@ -546,6 +548,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                     let kind = mk_trait_function_kind();
                     crate::rust_to_vir_func::check_item_fn(
                         ctxt,
+                        state,
                         &mut vir.functions,
                         Some(&mut vir.reveal_groups),
                         impl_item.owner_id.to_def_id(),
@@ -559,7 +562,6 @@ pub(crate) fn translate_impl_item<'tcx>(
                         crate::rust_to_vir_func::CheckItemFnEither::BodyId(&body_id),
                         None,
                         None,
-                        external_info,
                         None,
                         &mut vir.opaque_types,
                     )?;
