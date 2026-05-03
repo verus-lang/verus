@@ -170,12 +170,6 @@ fn handle_autospec<'tcx>(
 
         let mut spec_params = vec![];
         for p in functionx.params.iter() {
-            if p.x.is_mut {
-                return err_span(
-                    span,
-                    format!("allow_in_spec not supported for function with &mut param"),
-                );
-            }
             if p.x.unwrapped_info.is_some() {
                 return err_span(
                     span,
@@ -190,7 +184,6 @@ fn handle_autospec<'tcx>(
                     name: p.x.name.clone(),
                     typ: p.x.typ.clone(),
                     mode: Mode::Spec,
-                    is_mut: false,
                     unwrapped_info: None,
                     user_mut: false,
                 },
@@ -203,7 +196,6 @@ fn handle_autospec<'tcx>(
                 name: air_unique_var(RETURN_VALUE),
                 typ: ret_param.x.typ.clone(),
                 mode: Mode::Spec,
-                is_mut: false,
                 unwrapped_info: None,
                 user_mut: false,
             },
@@ -1708,7 +1700,6 @@ pub(crate) fn check_item_fn<'tcx>(
                 name: name.clone(),
                 typ: typ.clone(),
                 mode: param_mode,
-                is_mut: false,
                 unwrapped_info: None,
                 user_mut: is_mut_var,
             },
@@ -1906,7 +1897,6 @@ pub(crate) fn check_item_fn<'tcx>(
             name: ret_name.clone(),
             typ: ret_typ,
             mode: ret_mode,
-            is_mut: false,
             user_mut: false,
             unwrapped_info: None,
         },
@@ -1923,7 +1913,6 @@ pub(crate) fn check_item_fn<'tcx>(
                         .0
                         .clone(),
                     mode: ret_mode,
-                    is_mut: false,
                     unwrapped_info: None,
                     user_mut: false,
                 },
@@ -2340,7 +2329,6 @@ fn param_names_for_async_func<'tcx>(
                 name: async_body_modes[&param.x.name].clone(),
                 typ: param.x.typ.clone(),
                 mode: param.x.mode,
-                is_mut: param.x.is_mut,
                 unwrapped_info: param.x.unwrapped_info.clone(),
                 user_mut: param.x.user_mut,
             },
@@ -2431,10 +2419,6 @@ fn check_generics_for_invariant_fn<'tcx>(
     }
 }
 
-// &mut T => Some(T, None)
-// Ghost<&mut T> => Some(T, Some(Spec))
-// Tracked<&mut T> => Some(T, Some(Proof))
-// _ => None
 fn is_mut_ty<'tcx>(
     ctxt: &Context<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
@@ -2869,7 +2853,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             name: ret_name,
             typ: typ.clone(),
             mode: ret_mode,
-            is_mut: false,
             user_mut: false,
             unwrapped_info: None,
         },
@@ -2995,20 +2978,11 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = no_body_param_to_var(param);
-        let is_mut = is_mut_ty(ctxt, *input);
-        let typ =
-            ctxt.mid_ty_to_vir(id, param.span, is_mut.map(|(t, _)| t).unwrap_or(input), None)?;
+        let typ = ctxt.mid_ty_to_vir(id, param.span, input, None)?;
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,
-            ParamX {
-                name,
-                typ,
-                mode,
-                is_mut: is_mut.is_some(),
-                unwrapped_info: None,
-                user_mut: false,
-            },
+            ParamX { name, typ, mode, unwrapped_info: None, user_mut: false },
         );
         vir_params.push(vir_param);
     }
@@ -3021,7 +2995,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         name: air_unique_var(RETURN_VALUE),
         typ: ret_typ,
         mode: ret_mode,
-        is_mut: false,
         user_mut: false,
         unwrapped_info: None,
     };

@@ -94,55 +94,28 @@ pub fn mk_fun_ctx<F: FunctionCommon>(
     mk_fun_ctx_dec(f, checking_spec_preconditions, false)
 }
 
-pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
+pub(crate) fn param_to_par(param: &Param) -> Par {
     param.map_x(|p| {
-        let ParamX { name, typ, mode, is_mut, user_mut: _, unwrapped_info: _ } = p;
-        if *is_mut && !allow_is_mut {
-            panic!("mut unexpected here");
-        }
-        ParX {
-            name: name.clone(),
-            typ: typ.clone(),
-            mode: *mode,
-            is_mut: *is_mut,
-            purpose: ParPurpose::Regular,
-        }
+        let ParamX { name, typ, mode, user_mut: _, unwrapped_info: _ } = p;
+        ParX { name: name.clone(), typ: typ.clone(), mode: *mode, purpose: ParPurpose::Regular }
     })
 }
 
-pub(crate) fn params_to_pars(params: &Params, allow_is_mut: bool) -> Pars {
-    Arc::new(vec_map(params, |p| param_to_par(p, allow_is_mut)))
+pub(crate) fn params_to_pars(params: &Params) -> Pars {
+    Arc::new(vec_map(params, |p| param_to_par(p)))
 }
 
-pub(crate) fn params_to_pre_post_pars(params: &Params, pre: bool) -> Pars {
+pub(crate) fn params_to_pre_post_pars(params: &Params) -> Pars {
     Arc::new(
         params
             .iter()
-            .flat_map(|param| {
-                let mut res = Vec::new();
-                if param.x.is_mut {
-                    res.push(param.map_x(|p| ParX {
-                        name: p.name.clone(),
-                        typ: p.typ.clone(),
-                        mode: p.mode,
-                        is_mut: p.is_mut,
-                        purpose: ParPurpose::MutPre,
-                    }));
-                }
-                if !(param.x.is_mut && pre) {
-                    res.push(param.map_x(|p| ParX {
-                        name: p.name.clone(),
-                        typ: p.typ.clone(),
-                        mode: p.mode,
-                        is_mut: p.is_mut,
-                        purpose: if param.x.is_mut {
-                            ParPurpose::MutPost
-                        } else {
-                            ParPurpose::Regular
-                        },
-                    }));
-                }
-                res
+            .map(|param| {
+                param.map_x(|p| ParX {
+                    name: p.name.clone(),
+                    typ: p.typ.clone(),
+                    mode: p.mode,
+                    purpose: ParPurpose::Regular,
+                })
             })
             .collect::<Vec<_>>(),
     )
@@ -155,7 +128,7 @@ fn func_body_to_sst(
     body: &Expr,
     verifying_owning_bucket: bool,
 ) -> Result<FuncSpecBodySst, VirErr> {
-    let pars = params_to_pars(&function.x.params, false);
+    let pars = params_to_pars(&function.x.params);
 
     // ast --> sst
     let mut state = State::new(diagnostics);
@@ -425,15 +398,14 @@ fn req_ens_to_sst(
     specs: &Vec<Expr>,
     pre: bool,
 ) -> Result<(Pars, Vec<Exp>), VirErr> {
-    let mut pars = params_to_pre_post_pars(&function.x.params, pre);
+    let mut pars = params_to_pre_post_pars(&function.x.params);
     let pars_mut = Arc::make_mut(&mut pars);
     if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.ens_has_return {
         if !function.x.attrs.is_async {
-            pars_mut.push(param_to_par(&function.x.ret, false));
+            pars_mut.push(param_to_par(&function.x.ret));
         } else {
             pars_mut.push(param_to_par(
                 &function.x.async_ret.as_ref().expect("Async function has no return type"),
-                false,
             ));
         }
     }
@@ -597,7 +569,7 @@ pub fn func_axioms_to_sst(
                 assert!(function.x.ensure.1.len() == 0);
                 let ens = crate::ast_util::conjoin(span, &*function.x.ensure.0);
                 let req_ens = crate::ast_util::mk_implies(span, &req, &ens);
-                let params = params_to_pre_post_pars(&function.x.params, false);
+                let params = params_to_pre_post_pars(&function.x.params);
                 // Use expr_to_bind_decls_exp_skip_checks, skipping checks on req_ens,
                 // because the requires/ensures are checked when the function itself is checked
                 let exp = expr_to_bind_decls_exp_skip_checks(ctx, diagnostics, &params, &req_ens)?;
@@ -864,15 +836,10 @@ pub fn func_def_to_sst(
         None
     };
     let ens_params = Arc::new(ens_params);
-    let ens_pars = params_to_pars(&ens_params, true);
+    let ens_pars = params_to_pars(&ens_params);
 
     for param in function.x.params.iter() {
-        state.declare_var_stm(
-            &param.x.name,
-            &param.x.typ,
-            if param.x.is_mut { PreLocalDeclKind::MutParam } else { PreLocalDeclKind::Param },
-            false,
-        );
+        state.declare_var_stm(&param.x.name, &param.x.typ, PreLocalDeclKind::Param, false);
     }
 
     // When emitting an expression that refers to input variables, but which is embedded
@@ -881,9 +848,7 @@ pub fn func_def_to_sst(
     // Collect all such vars here.
     let mut params_to_use_pre = HashSet::<VarIdent>::new();
     for param in function.x.params.iter() {
-        if !param.x.is_mut {
-            params_to_use_pre.insert(param.x.name.clone());
-        }
+        params_to_use_pre.insert(param.x.name.clone());
     }
     // We need to perform this translation on:
     //  - Postcondition
@@ -1140,8 +1105,8 @@ pub fn function_to_sst(
         opaqueness: function.x.opaqueness.clone(),
         typ_params: function.x.typ_params.clone(),
         typ_bounds: function.x.typ_bounds.clone(),
-        pars: params_to_pars(&function.x.params, true),
-        ret: param_to_par(&function.x.ret, true),
+        pars: params_to_pars(&function.x.params),
+        ret: param_to_par(&function.x.ret),
         ens_has_return: function.x.ens_has_return,
         item_kind: function.x.item_kind,
         attrs: function.x.attrs.clone(),
@@ -1152,7 +1117,7 @@ pub fn function_to_sst(
         recommends_check,
         safe_api_check,
         async_ret: match &function.x.async_ret {
-            Some(async_ret) => Some(param_to_par(async_ret, true)),
+            Some(async_ret) => Some(param_to_par(async_ret)),
             None => None,
         },
     };

@@ -93,7 +93,6 @@ enum NoProphReason {
     NonSpecDecl,
     AssignToNonProphPlace,
     MutBorrow,
-    MutBorrowArgument,
     Index,
     LoopCondition,
     GhostWrap,
@@ -149,7 +148,6 @@ impl Proph {
             NoProphReason::DecreasesClause => ("'decreases' clause", "this decreases-measure"),
             NoProphReason::NonSpecDecl => ("declaration of non-ghost variables", "this expression"),
             NoProphReason::MutBorrow => ("mutable borrow", "this operand"),
-            NoProphReason::MutBorrowArgument => ("mutable borrow", "this operand"),
             NoProphReason::Index => ("index into array or slice", "index"),
             NoProphReason::LoopCondition => ("loop condition", "this condition"),
             NoProphReason::GhostWrap => ("'Ghost' wrapper", "operand of this wrapper"),
@@ -1968,76 +1966,19 @@ fn check_expr_handle_mut_arg(
             }
             for (param, arg) in function.x.params.iter().zip(es.iter()) {
                 let param_mode = mode_join(outer_mode, param.x.mode);
-                if param.x.is_mut {
-                    if typing.in_forall_stmt {
-                        return Err(error(
-                            &arg.span,
-                            "cannot call function with &mut parameter inside 'assert ... by' statements",
-                        ));
-                    }
-                    if typing.in_proof_in_spec {
-                        return Err(error(
-                            &arg.span,
-                            "cannot call function with &mut parameter inside spec",
-                        ));
-                    }
-                    if typing.in_pure {
-                        return Err(error(
-                            &arg.span,
-                            "cannot call function with &mut parameter inside pure context",
-                        ));
-                    }
-                    let (arg_mode_read, arg_mode_write, proph) = check_expr_handle_mut_arg(
-                        ctxt,
-                        record,
-                        typing,
-                        outer_mode,
-                        Expect::none(),
-                        arg,
-                        outer_proph,
-                    )?;
-                    proph.check(&arg.span, NoProphReason::MutBorrowArgument)?;
-                    let arg_mode_write = if let Some(arg_mode_write) = arg_mode_write {
-                        arg_mode_write
-                    } else {
-                        return Err(error(
-                            &arg.span,
-                            format!("cannot write to argument with mode {}", param_mode),
-                        ));
-                    };
-                    if arg_mode_read != param_mode {
-                        return Err(error(
-                            &arg.span,
-                            format!(
-                                "expected mode {}, &mut argument has mode {}",
-                                param_mode, arg_mode_read
-                            ),
-                        ));
-                    }
-                    if arg_mode_write != param_mode {
-                        return Err(error(
-                            &arg.span,
-                            format!(
-                                "expected mode {}, &mut argument has mode {}",
-                                param_mode, arg_mode_write
-                            ),
-                        ));
-                    }
-                } else {
-                    let p = check_expr_has_mode(
-                        ctxt,
-                        record,
-                        typing,
-                        param_mode,
-                        arg,
-                        param.x.mode,
-                        outer_proph,
-                    )?;
-                    if let Some(disallow_arg_proph) = disallow_arg_proph {
-                        p.check(&arg.span, disallow_arg_proph)?;
-                    };
-                    out_proph = out_proph.join(p);
-                }
+                let p = check_expr_has_mode(
+                    ctxt,
+                    record,
+                    typing,
+                    param_mode,
+                    arg,
+                    param.x.mode,
+                    outer_proph,
+                )?;
+                if let Some(disallow_arg_proph) = disallow_arg_proph {
+                    p.check(&arg.span, disallow_arg_proph)?;
+                };
+                out_proph = out_proph.join(p);
             }
             if function.x.attrs.tracked_swap || function.x.attrs.tracked_take_option {
                 if typing.block_ghostness == Ghost::Exec {

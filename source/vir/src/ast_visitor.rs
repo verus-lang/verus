@@ -981,14 +981,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
     }
 
     fn visit_param(&mut self, param: &Param) -> Result<R::Ret<Param>, Err> {
-        let ParamX { name, typ, mode, is_mut, user_mut, unwrapped_info } = &param.x;
+        let ParamX { name, typ, mode, user_mut, unwrapped_info } = &param.x;
         let typ = self.visit_typ(typ)?;
         R::ret(|| {
             param.new_x(ParamX {
                 name: name.clone(),
                 typ: R::get(typ),
                 mode: *mode,
-                is_mut: *is_mut,
                 user_mut: *user_mut,
                 unwrapped_info: unwrapped_info.clone(),
             })

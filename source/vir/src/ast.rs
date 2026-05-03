@@ -1376,8 +1376,6 @@ pub struct ParamX {
     pub mode: Mode,
     /// Marked 'mut' at the source level?
     pub user_mut: bool,
-    /// An &mut parameter (only used outside new-mut-ref)
-    pub is_mut: bool,
     /// If the parameter uses a Ghost(x) or Tracked(x) pattern to unwrap the value, this is
     /// the mode of the resulting unwrapped x variable (Spec for Ghost(x), Proof for Tracked(x)).
     /// We also save a copy of the original wrapped name for lifetime_generate
