@@ -2095,7 +2095,6 @@ impl Verifier {
             false,
             self.args.check_api_safety,
             self.args.axiom_usage_info,
-            true,
             self.args.no_bv_simplify,
             self.args.report_long_running,
         )?;
@@ -2944,7 +2943,7 @@ impl Verifier {
         let vir_crate =
             vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         let (vir_crate, erasure_modes, _read_kind_finals) =
-            vir::modes::check_crate(&vir_crate, true).map_err(|e| (vec![e], Vec::new()))?;
+            vir::modes::check_crate(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
 

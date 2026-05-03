@@ -60,7 +60,6 @@ pub struct GlobalCtx {
     pub solver: SmtSolver,
     pub check_api_safety: bool,
     pub axiom_usage_info: bool,
-    pub new_mut_ref: bool,
     pub no_bv_simplify: bool,
     pub report_long_running: bool,
 }
@@ -285,7 +284,6 @@ impl GlobalCtx {
         after_simplify: bool,
         check_api_safety: bool,
         axiom_usage_info: bool,
-        new_mut_ref: bool,
         no_bv_simplify: bool,
         report_long_running: bool,
     ) -> Result<Self, VirErr> {
@@ -699,7 +697,6 @@ impl GlobalCtx {
             solver,
             check_api_safety,
             axiom_usage_info,
-            new_mut_ref,
             no_bv_simplify,
             report_long_running,
         })
@@ -731,7 +728,6 @@ impl GlobalCtx {
             solver: self.solver.clone(),
             check_api_safety: self.check_api_safety,
             axiom_usage_info: self.axiom_usage_info,
-            new_mut_ref: self.new_mut_ref,
             no_bv_simplify: self.no_bv_simplify,
             report_long_running: self.report_long_running,
         }

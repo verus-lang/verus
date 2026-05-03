@@ -11,13 +11,12 @@ use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BoundsCheck, BuiltinSpecFun, ByRef, CallTarget,
     ChainedOp, ClosureKind, Constant, CtorPrintStyle, CtorUpdateTail, Datatype,
     DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, Field, FieldOpr, Fun, Function,
-    FunctionKind, Ident, InequalityOp, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path,
-    Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ,
-    TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
+    FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern,
+    PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX,
+    UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_spec_expr, typ_args_for_datatype_typ,
-    unit_typ, wrap_in_trigger,
+    conjoin, mk_eq, place_to_spec_expr, typ_args_for_datatype_typ, unit_typ, wrap_in_trigger,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
@@ -152,128 +151,6 @@ fn small_or_temp(state: &mut State, expr: &Expr) -> (Vec<Stmt>, Expr) {
     } else {
         let (ts, te) = temp_expr(state, expr);
         (vec![ts], te)
-    }
-}
-
-fn pattern_field_expr(span: &Span, expr: &Expr, pat_typ: &Typ, field_op: UnaryOpr) -> Expr {
-    let field = ExprX::UnaryOpr(field_op, expr.clone());
-    SpannedTyped::new(span, pat_typ, field)
-}
-
-// Compute:
-// - expression that tests whether exp matches pattern
-// - bindings of pattern variables to fields of exp
-fn pattern_to_exprs(
-    ctx: &GlobalCtx,
-    state: &mut State,
-    expr: &Expr,
-    pattern: &Pattern,
-    decls: &mut Vec<Stmt>,
-) -> Result<Expr, VirErr> {
-    let mut pattern_bound_decls = vec![];
-    let e = pattern_to_exprs_rec(ctx, state, expr, pattern, &mut pattern_bound_decls)?;
-
-    for pbd in pattern_bound_decls {
-        let PatternBoundDecl { name, expr } = pbd;
-        let pattern = PatternX::simple_var(name, &expr.span, &expr.typ);
-        // Mode doesn't matter at this stage; arbitrarily set it to None
-        let decl = StmtX::Decl {
-            pattern,
-            mode: None,
-            init: Some(PlaceX::spec_temporary(expr.clone())),
-            els: None,
-        };
-        decls.push(Spanned::new(expr.span.clone(), decl));
-    }
-
-    Ok(e)
-}
-
-struct PatternBoundDecl {
-    name: VarIdent,
-    expr: Expr,
-}
-
-fn pattern_to_exprs_rec(
-    ctx: &GlobalCtx,
-    state: &mut State,
-    expr: &Expr,
-    pattern: &Pattern,
-    decls: &mut Vec<PatternBoundDecl>,
-) -> Result<Expr, VirErr> {
-    let t_bool = Arc::new(TypX::Bool);
-    match &pattern.x {
-        PatternX::Wildcard(_) => {
-            Ok(SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true))))
-        }
-        PatternX::Var(binding) => {
-            decls.push(PatternBoundDecl { name: binding.name.clone(), expr: expr.clone() });
-            Ok(SpannedTyped::new(&expr.span, &t_bool, ExprX::Const(Constant::Bool(true))))
-        }
-        PatternX::Binding { binding, sub_pat } => {
-            let pattern_test = pattern_to_exprs_rec(ctx, state, expr, sub_pat, decls)?;
-            decls.push(PatternBoundDecl { name: binding.name.clone(), expr: expr.clone() });
-            Ok(pattern_test)
-        }
-        PatternX::Constructor(path, variant, patterns) => {
-            let is_variant_opr =
-                UnaryOpr::IsVariant { datatype: path.clone(), variant: variant.clone() };
-            let test_variant = ExprX::UnaryOpr(is_variant_opr, expr.clone());
-            let mut test = SpannedTyped::new(&pattern.span, &t_bool, test_variant);
-            for binder in patterns.iter() {
-                let field_op = UnaryOpr::Field(FieldOpr {
-                    datatype: path.clone(),
-                    variant: variant.clone(),
-                    field: binder.name.clone(),
-                    get_variant: false,
-                    check: VariantCheck::None,
-                });
-                let field_exp = pattern_field_expr(&pattern.span, expr, &binder.a.typ, field_op);
-                let pattern_test = pattern_to_exprs_rec(ctx, state, &field_exp, &binder.a, decls)?;
-                let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
-                test = SpannedTyped::new(&pattern.span, &t_bool, and);
-            }
-            Ok(test)
-        }
-        PatternX::Or(pat1, pat2) => {
-            let mut decls1 = vec![];
-            let mut decls2 = vec![];
-
-            let pat1_matches = pattern_to_exprs_rec(ctx, state, expr, pat1, &mut decls1)?;
-            let pat2_matches = pattern_to_exprs_rec(ctx, state, expr, pat2, &mut decls2)?;
-
-            let matches = disjoin(&pattern.span, &vec![pat1_matches.clone(), pat2_matches]);
-
-            assert!(decls1.len() == decls2.len());
-            for d1 in decls1 {
-                let d2 = decls2
-                    .iter()
-                    .find(|d| d.name == d1.name)
-                    .expect("both sides of 'or' pattern should bind the same variables");
-                let combined_decl = PatternBoundDecl {
-                    name: d1.name,
-                    expr: if_then_else(&pattern.span, &pat1_matches, &d1.expr, &d2.expr),
-                };
-                decls.push(combined_decl);
-            }
-
-            Ok(matches)
-        }
-        PatternX::Expr(e) => Ok(mk_eq(&pattern.span, expr, e)),
-        PatternX::Range(lower, upper) => {
-            let mut v = vec![];
-            if let Some(lower) = lower {
-                v.push(mk_ineq(&pattern.span, lower, expr, InequalityOp::Le));
-            }
-            if let Some((upper, upper_ineq)) = upper {
-                v.push(mk_ineq(&pattern.span, expr, upper, *upper_ineq));
-            }
-            Ok(conjoin(&pattern.span, &v))
-        }
-        PatternX::ImmutRef(p) => pattern_to_exprs_rec(ctx, state, expr, p, decls),
-        PatternX::MutRef(_p) => {
-            panic!("PatternX::MutRef not expected without `-V new-mut-ref`");
-        }
     }
 }
 
@@ -671,17 +548,7 @@ fn simplify_one_expr(
             }
         }
         ExprX::Match(place, arms1) => {
-            let mut place = place.clone();
-
-            let (temp_decl, expr0) = if ctx.new_mut_ref {
-                let (stmts, p) = place_to_pure_place(state, &place);
-                place = p;
-                let unused = crate::ast_util::mk_bool(&expr.span, false);
-                (stmts, unused)
-            } else {
-                let expr0 = place_to_spec_expr(&place);
-                small_or_temp(state, &expr0)
-            };
+            let (temp_decl, place) = place_to_pure_place(state, place);
 
             // Translate into If expression
             let t_bool = Arc::new(TypX::Bool);
@@ -690,17 +557,13 @@ fn simplify_one_expr(
                 let mut decls: Vec<Stmt> = Vec::new();
                 let has_guard = arm.x.has_guard();
 
-                let test_pattern = if ctx.new_mut_ref {
-                    crate::patterns::pattern_to_exprs(
-                        ctx,
-                        &place,
-                        &arm.x.pattern,
-                        has_guard,
-                        &mut decls,
-                    )?
-                } else {
-                    pattern_to_exprs(ctx, state, &expr0, &arm.x.pattern, &mut decls)?
-                };
+                let test_pattern = crate::patterns::pattern_to_exprs(
+                    ctx,
+                    &place,
+                    &arm.x.pattern,
+                    has_guard,
+                    &mut decls,
+                )?;
 
                 let test = if !has_guard {
                     test_pattern
@@ -708,13 +571,11 @@ fn simplify_one_expr(
                     assert!(!crate::patterns::pattern_has_or(&arm.x.pattern));
 
                     let mut guard = arm.x.guard.clone();
-                    if ctx.new_mut_ref {
-                        guard = SpannedTyped::new(
-                            &guard.span,
-                            &guard.typ,
-                            ExprX::MatchGuardFreeze(place.clone(), guard.clone()),
-                        );
-                    }
+                    guard = SpannedTyped::new(
+                        &guard.span,
+                        &guard.typ,
+                        ExprX::MatchGuardFreeze(place.clone(), guard.clone()),
+                    );
                     let test_exp = ExprX::Binary(BinaryOp::And, test_pattern, guard);
                     let test = SpannedTyped::new(&arm.x.pattern.span, &t_bool, test_exp);
                     let block = ExprX::Block(Arc::new(decls.clone()), Some(test));
@@ -862,41 +723,23 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
             Ok(vec![stmt.clone()])
         }
         StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
-            if ctx.new_mut_ref {
-                let (mut stmts, place) = place_to_pure_place(state, init);
-                let mut stmts2: Vec<Stmt> = vec![];
-                let pattern_check =
-                    crate::patterns::pattern_to_exprs(ctx, &place, pattern, false, &mut stmts2)?;
-                if let Some(els) = &els {
-                    let checkx = ExprX::Unary(UnaryOp::Not, pattern_check.clone());
-                    let check = SpannedTyped::new(&pattern_check.span, &pattern_check.typ, checkx);
-                    let neverx = ExprX::NeverToAny(els.clone());
-                    let never = SpannedTyped::new(&els.span, &unit_typ(), neverx);
-                    let ifx = ExprX::If(check.clone(), never, None);
-                    let ife = SpannedTyped::new(&stmt.span, &unit_typ(), ifx);
-                    let ifstmtx = StmtX::Expr(ife);
-                    let ifstmt = Spanned::new(stmt.span.clone(), ifstmtx);
-                    stmts.push(ifstmt);
-                }
-                stmts.extend(stmts2);
-                Ok(stmts)
-            } else {
-                let mut decls: Vec<Stmt> = Vec::new();
-                let (temp_decl, init) = small_or_temp(state, &place_to_spec_expr(init));
-                decls.extend(temp_decl.into_iter());
-                let mut decls2: Vec<Stmt> = Vec::new();
-                let pattern_check = pattern_to_exprs(ctx, state, &init, &pattern, &mut decls2)?;
-                if let Some(els) = &els {
-                    let e = ExprX::Unary(UnaryOp::Not, pattern_check.clone());
-                    let check = SpannedTyped::new(&pattern_check.span, &pattern_check.typ, e);
-                    let ifx = ExprX::If(check.clone(), els.clone(), Some(init.clone()));
-                    let init = SpannedTyped::new(&els.span, &init.typ, ifx);
-                    let (temp_decl, _) = temp_expr(state, &init);
-                    decls.push(temp_decl);
-                }
-                decls.extend(decls2);
-                Ok(decls)
+            let (mut stmts, place) = place_to_pure_place(state, init);
+            let mut stmts2: Vec<Stmt> = vec![];
+            let pattern_check =
+                crate::patterns::pattern_to_exprs(ctx, &place, pattern, false, &mut stmts2)?;
+            if let Some(els) = &els {
+                let checkx = ExprX::Unary(UnaryOp::Not, pattern_check.clone());
+                let check = SpannedTyped::new(&pattern_check.span, &pattern_check.typ, checkx);
+                let neverx = ExprX::NeverToAny(els.clone());
+                let never = SpannedTyped::new(&els.span, &unit_typ(), neverx);
+                let ifx = ExprX::If(check.clone(), never, None);
+                let ife = SpannedTyped::new(&stmt.span, &unit_typ(), ifx);
+                let ifstmtx = StmtX::Expr(ife);
+                let ifstmt = Spanned::new(stmt.span.clone(), ifstmtx);
+                stmts.push(ifstmt);
             }
+            stmts.extend(stmts2);
+            Ok(stmts)
         }
         StmtX::Expr(_) => Ok(vec![stmt.clone()]),
     }
@@ -1707,7 +1550,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         true,
         ctx.check_api_safety,
         ctx.axiom_usage_info,
-        ctx.new_mut_ref,
         ctx.no_bv_simplify,
         ctx.report_long_running,
     )?;
