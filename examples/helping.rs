@@ -4,7 +4,8 @@
 use vstd::prelude::*;
 use vstd::atomic::*;
 use vstd::invariant::*;
-use vstd::tokens::frac::*;
+use vstd::resource::*;
+use vstd::resource::ghost_var::*;
 use vstd::set::Set;
 
 verus! {
@@ -42,7 +43,7 @@ impl Protocol {
     }
 }
 
-type K = (int, int, int, int);
+type K = (int, int, Loc, Loc);
 type V = (PermissionBool, PermissionU32, GhostVarAuth<bool>, GhostVar<Option<FlipAU>>, Protocol);
 
 pub struct FlagInv;
@@ -84,7 +85,7 @@ pub struct FlagToken {
 }
 
 impl FlagToken {
-    pub open spec fn id(self) -> int {
+    pub open spec fn id(self) -> Loc {
         self.value.id()
     }
 }
@@ -102,7 +103,7 @@ impl Flag {
         &&& self.inv@.namespace() == FLAG_INV
     }
 
-    pub open spec fn token_id(self) -> int {
+    pub open spec fn token_id(self) -> Loc {
         self.inv@.constant().2
     }
 
@@ -414,8 +415,8 @@ impl Flag {
 
 pub struct UserInv;
 pub open spec const USER_INV: int = 5;
-impl InvariantPredicate<int, FlagToken> for UserInv {
-    open spec fn inv(id: int, token: FlagToken) -> bool {
+impl InvariantPredicate<Loc, FlagToken> for UserInv {
+    open spec fn inv(id: Loc, token: FlagToken) -> bool {
         &&& token.id() == id
     }
 }
@@ -424,7 +425,7 @@ fn main() {
     let (flag, Tracked(token)) = Flag::new(false);
     assert(token.value@ == false);
 
-    let tracked inv = AtomicInvariant::<int, FlagToken, UserInv>::new(
+    let tracked inv = AtomicInvariant::<Loc, FlagToken, UserInv>::new(
         token.id(), token, USER_INV
     );
 

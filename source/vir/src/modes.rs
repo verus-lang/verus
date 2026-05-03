@@ -9,6 +9,7 @@ use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_s
 use crate::def::user_local_name;
 use crate::messages::{Span, error, internal_error};
 use crate::messages::{error_bare, error_with_label};
+use crate::resolution_types::ResolutionTypes;
 use crate::util::vec_map_result;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -270,6 +271,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::Nondeterministic
             | ExprX::EvalAndResolve(..)
             | ExprX::ReadPlace(..)
+            | ExprX::MatchGuardFreeze(..)
             // all borrow types checked in the main function
             | ExprX::ImplicitReborrowOrSpecRead(..)
             | ExprX::BorrowMut(..)
@@ -485,7 +487,6 @@ struct Ctxt {
     pub(crate) check_ghost_blocks: bool,
     pub(crate) fun_mode: Mode,
     pub(crate) special_paths: SpecialPaths,
-    pub(crate) new_mut_ref: bool,
 }
 
 pub(crate) struct TypeInvInfo {
@@ -1470,15 +1471,13 @@ fn check_place_rec_inner(
             let (mode, proph) =
                 check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;
 
-            if ctxt.new_mut_ref {
-                if record.temporary_modes.contains_key(&place.span.id) {
-                    return Err(error(
-                        &place.span,
-                        &format!("Verus Internal Error: duplicate PlaceX::Temporary ID"),
-                    ));
-                }
-                record.temporary_modes.insert(place.span.id, mode);
+            if record.temporary_modes.contains_key(&place.span.id) {
+                return Err(error(
+                    &place.span,
+                    &format!("Verus Internal Error: duplicate PlaceX::Temporary ID"),
+                ));
             }
+            record.temporary_modes.insert(place.span.id, mode);
 
             Ok((mode, proph))
         }
@@ -1714,11 +1713,7 @@ fn type_is_ghost_assignable_zst(typ: &Typ) -> bool {
 fn type_is_non_exec(ctxt: &Ctxt, typ: &Typ) -> bool {
     match &**typ {
         TypX::Decorate(
-            TypDecoration::Ref
-            | TypDecoration::MutRef
-            | TypDecoration::Box
-            | TypDecoration::Rc
-            | TypDecoration::Arc,
+            TypDecoration::Ref | TypDecoration::Box | TypDecoration::Rc | TypDecoration::Arc,
             _,
             t,
         ) => type_is_non_exec(ctxt, t),
@@ -2083,9 +2078,7 @@ fn check_expr_handle_mut_arg(
                     out_proph = out_proph.join(p);
                 }
             }
-            if ctxt.new_mut_ref
-                && (function.x.attrs.tracked_swap || function.x.attrs.tracked_take_option)
-            {
+            if function.x.attrs.tracked_swap || function.x.attrs.tracked_take_option {
                 if typing.block_ghostness == Ghost::Exec {
                     return Err(error(&expr.span, mode_error_msg()));
                 }
@@ -3398,6 +3391,8 @@ fn check_expr_handle_mut_arg(
                 return Err(error(&expr.span, "cannot open atomic update in spec mode"));
             }
 
+            record.var_modes.insert(x_bind.name.clone(), Mode::Proof);
+
             let (au_mode, _au_proph) = {
                 let mut ghost_typing = typing.push_block_ghostness(Ghost::Ghost);
                 check_expr(
@@ -3709,6 +3704,9 @@ fn check_expr_handle_mut_arg(
         ExprX::EvalAndResolve(..) => {
             panic!("EvalAndResolve shouldn't be created yet");
         }
+        ExprX::MatchGuardFreeze(..) => {
+            panic!("MatchGuardFreeze shouldn't be created yet");
+        }
         ExprX::Old(e) => {
             let mut typing = typing.push_in_pure(true);
             let proph = check_expr_has_mode(
@@ -3868,7 +3866,7 @@ fn check_function(
     record: &mut Record,
     typing: &mut Typing,
     function: &mut Function,
-    new_mut_ref: bool,
+    rtypes: &ResolutionTypes,
 ) -> Result<(), VirErr> {
     // Reset this, we only need it per-function
     record.type_inv_info =
@@ -4183,31 +4181,23 @@ fn check_function(
 
         if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
             let functionx = &mut Arc::make_mut(&mut *function).x;
-            if !new_mut_ref {
-                crate::user_defined_type_invariants::annotate_user_defined_invariants(
-                    functionx,
-                    &record.type_inv_info,
-                    &ctxt.funs,
+            // For dual mode we _could_ probably skip entirely, but
+            // resolution_inference does some extra (soundness-related) checks
+            // besides resolution inference that would not be good to skip
+            if let Some(body) = &mut functionx.body {
+                *body = crate::resolution_inference::infer_resolution(
+                    &functionx.params,
+                    &body,
+                    &record.read_kind_finals,
                     &ctxt.datatypes,
+                    &ctxt.funs,
+                    &record.type_inv_info,
+                    functionx.owning_module.as_ref().unwrap(),
+                    &record.var_modes,
+                    &record.temporary_modes,
+                    &rtypes,
+                    dual_mode_fn,
                 )?;
-            } else if new_mut_ref {
-                // For dual mode we _could_ probably skip entirely, but
-                // resolution_inference does some extra (soundness-related) checks
-                // besides resolution inference that would not be good to skip
-                if let Some(body) = &mut functionx.body {
-                    *body = crate::resolution_inference::infer_resolution(
-                        &functionx.params,
-                        &body,
-                        &record.read_kind_finals,
-                        &ctxt.datatypes,
-                        &ctxt.funs,
-                        &record.type_inv_info,
-                        functionx.owning_module.as_ref().unwrap(),
-                        &record.var_modes,
-                        &record.temporary_modes,
-                        dual_mode_fn,
-                    )?;
-                }
             }
         }
     }
@@ -4216,10 +4206,7 @@ fn check_function(
     Ok(())
 }
 
-pub fn check_crate(
-    krate: &Krate,
-    new_mut_ref: bool,
-) -> Result<(Krate, ErasureModes, ReadKindFinals), VirErr> {
+pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -4248,7 +4235,6 @@ pub fn check_crate(
         check_ghost_blocks: false,
         fun_mode: Mode::Exec,
         special_paths,
-        new_mut_ref,
     };
     let type_inv_info =
         TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
@@ -4274,19 +4260,20 @@ pub fn check_crate(
     };
     let mut typing = Typing::new(&mut state);
     let mut kratex = (**krate).clone();
+    let rtypes = ResolutionTypes::new(&ctxt.datatypes);
     for function in kratex.functions.iter_mut() {
         ctxt.check_ghost_blocks = function.x.attrs.uses_ghost_blocks;
         ctxt.fun_mode = function.x.mode;
         if function.x.attrs.atomic {
             let mut typing = typing.push_atomic_insts(Some(AtomicInstCollector::new()));
-            check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref)?;
+            check_function(&ctxt, &mut record, &mut typing, function, &rtypes)?;
             typing
                 .atomic_insts
                 .as_ref()
                 .expect("atomic_insts")
                 .validate(&function.span, ValidateCtx::AtomicFunction)?;
         } else {
-            check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref)?;
+            check_function(&ctxt, &mut record, &mut typing, function, &rtypes)?;
         }
     }
     Ok((Arc::new(kratex), record.erasure_modes, record.read_kind_finals))

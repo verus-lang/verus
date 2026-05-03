@@ -78,34 +78,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] union_mut_assign verus_code! {
-        union U { x: u8, y: bool }
-
-        fn test_fail() {
-            let mut u = U { x: 3 };
-            unsafe {
-                u.x = 7;
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: assigning to or taking &mut of a union field")
-}
-
-test_verify_one_file! {
-    #[test] union_mut_ref verus_code! {
-        union U { x: u8, y: bool }
-
-        fn take_mut_ref(x: &mut u8) { }
-
-        fn test_fail() {
-            let mut u = U { x: 3 };
-            unsafe {
-                take_mut_ref(&mut u.x);
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: assigning to or taking &mut of a union field")
-}
-
-test_verify_one_file! {
     #[test] get_union_field_non_union verus_code! {
         enum X {
             Foo(u8),

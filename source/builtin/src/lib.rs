@@ -12,6 +12,7 @@
     register_tool(verifier)
 )]
 
+#[cfg(verus_keep_ghost)]
 use core::future::Future;
 use core::marker::PhantomData;
 
@@ -2344,6 +2345,12 @@ pub fn erased_ghost_value<S, T>(_: S) -> T {
 #[rustc_diagnostic_item = "verus::verus_builtin::shadow_ghost_value"]
 pub fn shadow_ghost_value<S, T>(_: S) -> T {
     unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::verus_erasure_get_first"]
+pub fn verus_erasure_get_first<S, T>(s: S, _: T) -> S {
+    s
 }
 
 #[cfg(verus_keep_ghost)]

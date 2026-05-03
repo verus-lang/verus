@@ -10,7 +10,7 @@ const TOKEN_LIB: &'static str = verus_code_str! {
     use vstd::prelude::*;
     use vstd::atomic::*;
 
-    pub struct Token {
+    pub tracked struct Token {
         state: u16,
     }
 
@@ -44,7 +44,7 @@ const TOKEN_LIB: &'static str = verus_code_str! {
 
         pub proof fn modify(tracked &mut self)
             requires old(self).is_valid(),
-            ensures self.is_valid(),
+            ensures final(self).is_valid(),
         {
             self.state = (1000 - self.state) as u16;
         }

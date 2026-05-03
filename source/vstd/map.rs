@@ -108,17 +108,26 @@ impl<K, V> Map<K, V> {
         self.dom().len()
     }
 
+    /// Create an empty tracked map.
+    ///
+    /// This allows us to create a map, which we know is empty, that is _tracked_.
     pub axiom fn tracked_empty() -> (tracked out_v: Self)
         ensures
             out_v == Map::<K, V>::empty(),
     ;
 
+    /// Inserts the given `(key, tracked value)` pair into the map.
+    ///
+    /// If the key is already present from the map, then its existing value is overwritten
+    /// by the new value.
     pub axiom fn tracked_insert(tracked &mut self, key: K, tracked value: V)
         ensures
             *self == Map::insert(*old(self), key, value),
     ;
 
-    /// todo fill in documentation
+    /// Removes the given key and its associated _tracked_ value from the map.
+    ///
+    /// The key must exist in the map
     pub axiom fn tracked_remove(tracked &mut self, key: K) -> (tracked v: V)
         requires
             old(self).dom().contains(key),
@@ -127,6 +136,7 @@ impl<K, V> Map<K, V> {
             v == old(self)[key],
     ;
 
+    /// Index into a tracked map, getting a tracked borrow of the value
     pub axiom fn tracked_borrow(tracked &self, key: K) -> (tracked v: &V)
         requires
             self.dom().contains(key),
@@ -134,26 +144,30 @@ impl<K, V> Map<K, V> {
             *v === self.index(key),
     ;
 
+    /// Change the keys of a map, by reverse lookup in a different map.
+    ///
+    /// For each `(old_key, new_key)` pair in `key_map`, the new map will have `(new_key, old_map[old_key])`.
+    /// Note the new map may be smaller than the old map if the `key_map` omits mappings for some of the old keys.
     pub axiom fn tracked_map_keys<J>(
         tracked old_map: Map<K, V>,
         key_map: Map<J, K>,
     ) -> (tracked new_map: Map<J, V>)
         requires
-            forall|j|
-                #![auto]
-                key_map.dom().contains(j) ==> old_map.dom().contains(key_map.index(j)),
+            forall|j| #![auto] key_map.contains_key(j) ==> old_map.contains_key(key_map[j]),
             forall|j1, j2|
                 #![auto]
-                !equal(j1, j2) && key_map.dom().contains(j1) && key_map.dom().contains(j2)
-                    ==> !equal(key_map.index(j1), key_map.index(j2)),
+                j1 != j2 && key_map.contains_key(j1) && key_map.contains_key(j2) ==> key_map[j1]
+                    != key_map[j2],
         ensures
-            forall|j| #[trigger] new_map.dom().contains(j) <==> key_map.dom().contains(j),
+            new_map.dom() == key_map.dom(),
             forall|j|
-                key_map.dom().contains(j) ==> new_map.dom().contains(j) && #[trigger] new_map.index(
-                    j,
-                ) == old_map.index(key_map.index(j)),
+                key_map.contains_key(j) ==> new_map.contains_key(j) && #[trigger] new_map[j]
+                    == old_map[key_map[j]],
     ;
 
+    /// Extract a set of keys (and their corresponding values) out of the map.
+    ///
+    /// This allows us to split a map based on a subset of the domain.
     pub axiom fn tracked_remove_keys(tracked &mut self, keys: Set<K>) -> (tracked out_map: Map<
         K,
         V,
@@ -165,6 +179,9 @@ impl<K, V> Map<K, V> {
             out_map == old(self).restrict(keys),
     ;
 
+    /// Merge a map into a tracked map.
+    ///
+    /// The new (key, value) pairs take precendece.
     pub axiom fn tracked_union_prefer_right(tracked &mut self, right: Self)
         ensures
             *self == old(self).union_prefer_right(right),

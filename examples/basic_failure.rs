@@ -12,7 +12,7 @@ verus! {
     }
     
     fn fail_a_post_stmt(r: &mut u64)
-        ensures *r == 1
+        ensures *final(r) == 1
     {
         *r = 0;
     }

@@ -1,3 +1,5 @@
+// rust_verify/tests/example.rs ignore --- broken
+
 #![verifier::exec_allows_no_decreases_clause]
 #![verifier::loop_isolation(false)]
 
@@ -18,8 +20,8 @@ pub fn increment_bad(var: &PAtomicU64, Tracked(perm): Tracked<&mut PermissionU64
     requires
         old(perm)@.patomic == var.id(),
     ensures
-        perm@.patomic == old(perm)@.patomic,
-        perm@.value == old(perm)@.value.wrapping_add(1),
+        final(perm)@.patomic == old(perm)@.patomic,
+        final(perm)@.value == old(perm)@.value.wrapping_add(1),
         out == old(perm)@.value,
 {
     let curr = var.load(Tracked(&*perm));

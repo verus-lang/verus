@@ -154,7 +154,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         pub async fn bar(x: &mut usize) -> (ret: ())
             ensures
-                *x == 2333,
+                *final(x) == 2333,
         {
             *x = 2333;
         }

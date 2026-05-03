@@ -1,18 +1,18 @@
 #![verifier::exec_allows_no_decreases_clause]
 #![verifier::loop_isolation(false)]
 
+use vstd::prelude::*;
 use vstd::atomic::*;
 use vstd::invariant::*;
-use vstd::prelude::*;
-use vstd::simple_pptr::*;
-use vstd::tokens::frac::*;
-use vstd::logatom::{self, *};
+use vstd::resource::*;
+use vstd::resource::ghost_var::*;
+use vstd::logatom;
 
 verus! {
 
 pub struct K {
     pub patomic_id: int,
-    pub ghost_var_id: int,
+    pub ghost_var_id: Loc,
 }
 
 pub struct V {
@@ -21,7 +21,7 @@ pub struct V {
 }
 
 pub struct InvPred;
-impl vstd::invariant::InvariantPredicate<K, V> for InvPred {
+impl InvariantPredicate<K, V> for InvPred {
     open spec fn inv(k: K, v: V) -> bool {
         let K { patomic_id, ghost_var_id } = k;
         let V { perm, auth } = v;
@@ -36,7 +36,7 @@ pub struct MyPermissionU64 {
 }
 
 impl MyPermissionU64 {
-    pub open spec fn id(self) -> int {
+    pub open spec fn id(self) -> Loc {
         self.inner.id()
     }
 
@@ -64,7 +64,7 @@ impl MyPAtomicU64 {
         &&& self.inner.id() == patomic_id
     }
 
-    pub open spec fn id(self) -> int {
+    pub open spec fn id(self) -> Loc {
         let ghost K { ghost_var_id, .. } = self.inv@.constant();
         ghost_var_id
     }
@@ -140,8 +140,8 @@ pub exec fn increment_seq(var: &MyPAtomicU64, Tracked(my_perm): Tracked<&mut MyP
         var.wf(),
         old(my_perm).is_for(*var),
     ensures
-        my_perm.value() == old(my_perm).value().wrapping_add(1),
-        my_perm.is_for(*var),
+        final(my_perm).value() == old(my_perm).value().wrapping_add(1),
+        final(my_perm).is_for(*var),
 {
     let curr;
     open_atomic_invariant!(var.inv.borrow() => v => {
@@ -176,8 +176,8 @@ pub fn increment_perm(var: &MyPAtomicU64, Tracked(my_perm): Tracked<&mut MyPermi
         var.wf(),
         old(my_perm).is_for(*var),
     ensures
-        my_perm.is_for(*var),
-        my_perm.points_to(old(my_perm).value().wrapping_add(1)),
+        final(my_perm).is_for(*var),
+        final(my_perm).points_to(old(my_perm).value().wrapping_add(1)),
 {
     let tracked inv = var.inv.borrow();
     let mut curr;
@@ -235,7 +235,7 @@ pub struct IncrementUpdate {
 }
 
 impl IncrementUpdate {
-    pub open spec fn id(self) -> int {
+    pub open spec fn id(self) -> Loc {
         self.auth.id()
     }
 
@@ -247,11 +247,11 @@ impl IncrementUpdate {
         requires
             old(self).id() == old(my_perm).id(),
         ensures
-            self.id() == old(self).id(),
-            my_perm.id() == old(my_perm).id(),
+            final(self).id() == old(self).id(),
+            final(my_perm).id() == old(my_perm).id(),
             old(self).value() == old(my_perm).value(),
-            self.value() == my_perm.value(),
-            my_perm.value() == old(my_perm).value().wrapping_add(1),
+            final(self).value() == final(my_perm).value(),
+            final(my_perm).value() == old(my_perm).value().wrapping_add(1),
     {
         let next = self.auth@.wrapping_add(1);
         self.auth.update(&mut my_perm.inner, next);
@@ -259,7 +259,7 @@ impl IncrementUpdate {
 }
 
 pub struct IncrementOp {
-    pub id: int,
+    pub id: Loc,
 }
 
 impl logatom::MutOperation for IncrementOp {
@@ -424,14 +424,14 @@ pub fn client_sync() {
 
 pub struct UserInv;
 pub open spec const USER_INV: int = 6789;
-impl InvariantPredicate<int, MyPermissionU64> for UserInv {
-    open spec fn inv(id: int, perm: MyPermissionU64) -> bool {
+impl InvariantPredicate<Loc, MyPermissionU64> for UserInv {
+    open spec fn inv(id: Loc, perm: MyPermissionU64) -> bool {
         &&& perm.id() == id
     }
 }
 
 pub struct ClientInvCarrier<'a> {
-    pub my_inv: &'a AtomicInvariant<int, MyPermissionU64, UserInv>,
+    pub my_inv: &'a AtomicInvariant<Loc, MyPermissionU64, UserInv>,
     pub credit: OpenInvariantCredit,
 }
 

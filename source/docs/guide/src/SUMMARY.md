@@ -30,6 +30,7 @@
     - [Loops and invariants](while.md)
         - [Loops with break](break.md)
         - [For Loops](for.md)
+        - [Iterators](iterators.md)
     - [Lexicographic decreases clauses and mutual recursion](lex_mutual.md)
 - [Datatypes: struct and enum](datatypes.md)
     - [Struct](datatypes_struct.md)
@@ -74,9 +75,10 @@
 # Tutorial: Verification and Rust
 
 - [Mutation, references, and borrowing](mutation-references-borrowing.md)
-    - [Requires and ensures with mutable references](requires-ensures-mut-ref.md)
+    - [Mutable references](mutable-references.md)
     - [Assertions about mutable references](assert-mut-ref.md)
 - [Traits]()
+- [Iterator Specifications](./iterator-specs.md)
 - [Higher-order executable functions](./higher-order-fns.md)
     - [Passing functions as values](./exec_funs_as_values.md)
     - [Closures](./exec_closures.md)
