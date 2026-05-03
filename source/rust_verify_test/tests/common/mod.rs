@@ -493,8 +493,14 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
     let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
     child.env("VERUS_Z3_PATH", z3);
 
+    // Reset build and target directory in case they have been set upstream
+    let target = dir.join("target");
+    child.env("CARGO_TARGET_DIR", &target);
+    child.env("CARGO_BUILD_TARGET_DIR", &target);
+    child.env("CARGO_BUILD_BUILD_DIR", &target);
+
     let child = child
-        .args(&args[..])
+        .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()

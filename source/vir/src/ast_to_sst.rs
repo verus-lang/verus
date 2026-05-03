@@ -58,8 +58,6 @@ pub(crate) enum PreLocalDeclKind {
     ExecClosureParam,
     /// StmtLet (mutability to be inferred)
     StmtLet,
-    /// Param, always consider mut
-    MutParam,
 }
 
 #[derive(Clone)]
@@ -544,7 +542,6 @@ impl PreLocalDeclKind {
                 Ok(LocalDeclKind::ExecClosureParam { mutable: mutbl.is_some() })
             }
             PreLocalDeclKind::StmtLet => Ok(LocalDeclKind::StmtLet { mutable: mutbl.is_some() }),
-            PreLocalDeclKind::MutParam => Ok(LocalDeclKind::Param { mutable: true }),
         }
     }
 }
