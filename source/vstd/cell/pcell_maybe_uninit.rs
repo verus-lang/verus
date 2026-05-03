@@ -89,8 +89,8 @@ impl<V> PointsTo<V> {
     /// Guarantees that two permissions can not be associated with the same `CellId`.
     pub proof fn is_exclusive(tracked &mut self, tracked other: &PointsTo<V>)
     ensures
-        *self == *old(self),
-        self.id() != other.id(),
+        *final(self) == *old(self),
+        final(self).id() != other.id(),
     {
         self.0.is_exclusive(&other.0);
     }
@@ -129,8 +129,8 @@ impl<V> PCell<V> {
             old(perm).id() == self.id(),
             old(perm).mem_contents() === MemContents::Uninit,
         ensures
-            perm.id() == self.id(),
-            perm.mem_contents() === MemContents::Init(in_v),
+            final(perm).id() == self.id(),
+            final(perm).mem_contents() === MemContents::Init(in_v),
         opens_invariants none
         no_unwind
     {
@@ -143,8 +143,8 @@ impl<V> PCell<V> {
             self.id() === old(perm).id(),
             old(perm).is_init(),
         ensures
-            perm.id() === old(perm).id(),
-            perm.mem_contents() === MemContents::Uninit,
+            final(perm).id() === old(perm).id(),
+            final(perm).mem_contents() === MemContents::Uninit,
             out_v === old(perm).value(),
         opens_invariants none
         no_unwind
@@ -160,8 +160,8 @@ impl<V> PCell<V> {
             self.id() === old(perm).id(),
             old(perm).is_init(),
         ensures
-            perm.id() === old(perm).id(),
-            perm.mem_contents() === MemContents::Init(in_v),
+            final(perm).id() === old(perm).id(),
+            final(perm).mem_contents() === MemContents::Init(in_v),
             out_v === old(perm).value(),
         opens_invariants none
         no_unwind
@@ -205,8 +205,8 @@ impl<V> PCell<V> {
         requires
             self.id() === old(perm).id(),
         ensures
-            perm.id() === old(perm).id(),
-            perm.mem_contents() === MemContents::Init(in_v),
+            final(perm).id() === old(perm).id(),
+            final(perm).mem_contents() === MemContents::Init(in_v),
         opens_invariants none
         no_unwind
     {

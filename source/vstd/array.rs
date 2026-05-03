@@ -62,7 +62,7 @@ impl<T, const N: usize> ArrayAdditionalExecFns<T> for [T; N] {
         requires
             0 <= idx < N,
         ensures
-            self@ == old(self)@.update(idx as int, t),
+            final(self)@ == old(self)@.update(idx as int, t),
     {
         self[idx] = t;
     }

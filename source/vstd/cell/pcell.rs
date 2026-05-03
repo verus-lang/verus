@@ -117,8 +117,8 @@ impl<T: ?Sized> PointsTo<T> {
     /// Guarantees that two permissions can not be associated with the same `CellId`.
     pub axiom fn is_exclusive(tracked &mut self, tracked other: & PointsTo<T>)
     ensures
-        *self == *old(self),
-        self.id() != other.id(),
+        *final(self) == *old(self),
+        final(self).id() != other.id(),
     ;
 }
 
@@ -162,8 +162,8 @@ impl<T: ?Sized> PCell<T> {
         requires
             self.id() === old(perm).id(),
         ensures
-            perm.id() === old(perm).id(),
-            *perm.value() === in_v,
+            final(perm).id() === old(perm).id(),
+            *final(perm).value() === in_v,
             out_v === *old(perm).value(),
         opens_invariants none
         no_unwind
@@ -200,8 +200,8 @@ impl<T: ?Sized> PCell<T> {
         requires
             self.id() === old(perm).id()
         ensures
-            perm.id() === old(perm).id(),
-            *perm.value() === in_v,
+            final(perm).id() === old(perm).id(),
+            *final(perm).value() === in_v,
         opens_invariants none
         no_unwind
     {

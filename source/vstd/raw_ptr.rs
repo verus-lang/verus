@@ -287,8 +287,8 @@ impl<T> PointsTo<T> {
     /// Only the proof-code representation changes.
     pub axiom fn leak_contents(tracked &mut self)
         ensures
-            self.ptr() == old(self).ptr(),
-            self.is_uninit(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).is_uninit(),
     ;
 
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
@@ -307,9 +307,9 @@ impl<T> PointsTo<T> {
             size_of::<T>() != 0,
             size_of::<S>() != 0,
         ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= self.ptr() as int,
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= final(self).ptr() as int,
     ;
 }
 
@@ -580,8 +580,8 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
     requires
         old(perm).ptr() == ptr,
     ensures
-        perm.ptr() == ptr,
-        perm.opt_value() == MemContents::Init(v),
+        final(perm).ptr() == ptr,
+        final(perm).opt_value() == MemContents::Init(v),
     opens_invariants none
     no_unwind
 {
@@ -604,8 +604,8 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
         old(perm).ptr() == ptr,
         old(perm).is_init(),
     ensures
-        perm.ptr() == ptr,
-        perm.is_uninit(),
+        final(perm).ptr() == ptr,
+        final(perm).is_uninit(),
         v == old(perm).value(),
     opens_invariants none
     no_unwind

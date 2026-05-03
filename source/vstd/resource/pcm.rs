@@ -211,8 +211,8 @@ impl<P: PCM> Resource<P> {
         requires
             old(self).loc() == other.loc(),
         ensures
-            *self == *old(self),
-            P::op(self.value(), other.value()).valid(),
+            *final(self) == *old(self),
+            P::op(final(self).value(), other.value()).valid(),
     ;
 
     /// We can do a similar update to [`update_with_shared`](Self::update_with_shared) for non-deterministic updates

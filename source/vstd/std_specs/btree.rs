@@ -77,11 +77,11 @@ pub assume_specification<'a, Key, Value>[ Keys::<'a, Key, Value>::next ](
             let (old_index, old_seq) = old(keys)@;
             match r {
                 None => {
-                    &&& keys@ == old(keys)@
+                    &&& final(keys)@ == old(keys)@
                     &&& old_index >= old_seq.len()
                 },
                 Some(k) => {
-                    let (new_index, new_seq) = keys@;
+                    let (new_index, new_seq) = final(keys)@;
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1
@@ -184,11 +184,11 @@ pub assume_specification<'a, Key, Value>[ Values::<'a, Key, Value>::next ](
             let (old_index, old_seq) = old(values)@;
             match r {
                 None => {
-                    &&& values@ == old(values)@
+                    &&& final(values)@ == old(values)@
                     &&& old_index >= old_seq.len()
                 },
                 Some(v) => {
-                    let (new_index, new_seq) = values@;
+                    let (new_index, new_seq) = final(values)@;
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1
@@ -295,11 +295,11 @@ pub assume_specification<'a, K: 'a, V: 'a>[ btree_map::Iter::<'a, K, V>::next ](
             let (old_index, old_seq) = old(iter)@;
             match r {
                 None => {
-                    &&& iter@ == old(iter)@
+                    &&& final(iter)@ == old(iter)@
                     &&& old_index >= old_seq.len()
                 },
                 Some((k, v)) => {
-                    let (new_index, new_seq) = iter@;
+                    let (new_index, new_seq) = final(iter)@;
                     let (old_k, old_v) = old_seq[old_index];
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
@@ -629,7 +629,7 @@ pub assume_specification<Key: Ord, Value, A: Allocator + Clone>[ BTreeMap::<
 >::insert ](m: &mut BTreeMap<Key, Value, A>, k: Key, v: Value) -> (result: Option<Value>)
     ensures
         obeys_cmp::<Key>() ==> {
-            &&& m@ == old(m)@.insert(k, v)
+            &&& final(m)@ == old(m)@.insert(k, v)
             &&& match result {
                 Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
                 None => !old(m)@.contains_key(k),
@@ -783,7 +783,7 @@ pub assume_specification<
     Option<Value>)
     ensures
         obeys_cmp::<Key>() ==> {
-            &&& borrowed_key_removed(old(m)@, m@, k)
+            &&& borrowed_key_removed(old(m)@, final(m)@, k)
             &&& match result {
                 Some(v) => maps_borrowed_key_to_value(old(m)@, k, v),
                 None => !contains_borrowed_key(old(m)@, k),
@@ -795,7 +795,7 @@ pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Valu
     m: &mut BTreeMap<Key, Value, A>,
 )
     ensures
-        m@ == Map::<Key, Value>::empty(),
+        final(m)@ == Map::<Key, Value>::empty(),
 ;
 
 pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::keys ](
@@ -857,11 +857,11 @@ pub assume_specification<'a, Key>[ btree_set::Iter::<'a, Key>::next ](
             let (old_index, old_seq) = old(elements)@;
             match r {
                 None => {
-                    &&& elements@ == old(elements)@
+                    &&& final(elements)@ == old(elements)@
                     &&& old_index >= old_seq.len()
                 },
                 Some(element) => {
-                    let (new_index, new_seq) = elements@;
+                    let (new_index, new_seq) = final(elements)@;
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1
@@ -1012,7 +1012,7 @@ pub assume_specification<Key: Ord, A: Allocator + Clone>[ BTreeSet::<Key, A>::in
 ) -> (result: bool)
     ensures
         obeys_cmp::<Key>() ==> {
-            &&& m@ == old(m)@.insert(k)
+            &&& final(m)@ == old(m)@.insert(k)
             &&& result == !old(m)@.contains(k)
         },
 ;
@@ -1133,7 +1133,7 @@ pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?S
 >::remove::<Q> ](m: &mut BTreeSet<Key, A>, k: &Q) -> (result: bool)
     ensures
         obeys_cmp::<Key>() ==> {
-            &&& sets_differ_by_borrowed_key(old(m)@, m@, k)
+            &&& sets_differ_by_borrowed_key(old(m)@, final(m)@, k)
             &&& result == set_contains_borrowed_key(old(m)@, k)
         },
 ;
@@ -1142,7 +1142,7 @@ pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::clear ]
     m: &mut BTreeSet<Key, A>,
 ) where A: Clone
     ensures
-        m@ == Set::<Key>::empty(),
+        final(m)@ == Set::<Key>::empty(),
 ;
 
 pub assume_specification<'a, Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::iter ](

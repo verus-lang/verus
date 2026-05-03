@@ -122,7 +122,7 @@ impl<K, V> Map<K, V> {
     /// by the new value.
     pub axiom fn tracked_insert(tracked &mut self, key: K, tracked value: V)
         ensures
-            *self == Map::insert(*old(self), key, value),
+            *final(self) == Map::insert(*old(self), key, value),
     ;
 
     /// Removes the given key and its associated _tracked_ value from the map.
@@ -132,7 +132,7 @@ impl<K, V> Map<K, V> {
         requires
             old(self).dom().contains(key),
         ensures
-            *self == Map::remove(*old(self), key),
+            *final(self) == Map::remove(*old(self), key),
             v == old(self)[key],
     ;
 
@@ -175,7 +175,7 @@ impl<K, V> Map<K, V> {
         requires
             keys.subset_of(old(self).dom()),
         ensures
-            *self == old(self).remove_keys(keys),
+            *final(self) == old(self).remove_keys(keys),
             out_map == old(self).restrict(keys),
     ;
 
@@ -184,7 +184,7 @@ impl<K, V> Map<K, V> {
     /// The new (key, value) pairs take precendece.
     pub axiom fn tracked_union_prefer_right(tracked &mut self, right: Self)
         ensures
-            *self == old(self).union_prefer_right(right),
+            *final(self) == old(self).union_prefer_right(right),
     ;
 }
 
@@ -457,9 +457,9 @@ impl<K, V> Map<K, V> {
                 j1 != j2 && key_map.dom().contains(j1) && key_map.dom().contains(j2)
                     ==> key_map.index(j1) != key_map.index(j2),
         ensures
-            forall|j| #[trigger] self.dom().contains(j) == key_map.dom().contains(j),
+            forall|j| #[trigger] final(self).dom().contains(j) == key_map.dom().contains(j),
             forall|j|
-                key_map.dom().contains(j) ==> self.dom().contains(j) && #[trigger] self.index(j)
+                key_map.dom().contains(j) ==> final(self).dom().contains(j) && #[trigger] final(self).index(j)
                     == old(self).index(key_map.index(j)),
     {
         let tracked mut tmp = Self::tracked_empty();

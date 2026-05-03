@@ -143,8 +143,8 @@ pub trait ExMetaSized {
 
 pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
     ensures
-        *a == *old(b),
-        *b == *old(a),
+        *final(a) == *old(b),
+        *final(b) == *old(a),
     opens_invariants none
     no_unwind
 ;
@@ -232,7 +232,7 @@ pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
     requires
         old(container).spec_index_set_requires(index),
     ensures
-        old(container).spec_index_set_ensures(container, index, val),
+        old(container).spec_index_set_ensures(final(container), index, val),
     no_unwind
 {
     container[index] = val;

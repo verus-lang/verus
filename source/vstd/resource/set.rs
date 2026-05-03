@@ -201,9 +201,9 @@ impl<T> GhostSetAuth<T> {
         requires
             old(self)@.disjoint(s),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@.union(s),
-            result.id() == self.id(),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@.union(s),
+            result.id() == final(self).id(),
             result@ == s,
     {
         let m = s.mk_map(|k: T| ());
@@ -227,9 +227,9 @@ impl<T> GhostSetAuth<T> {
         requires
             !old(self)@.contains(v),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@.insert(v),
-            result.id() == self.id(),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@.insert(v),
+            result.id() == final(self).id(),
             result@ == v,
     {
         let tracked map = self.map.insert(v, ());
@@ -254,8 +254,8 @@ impl<T> GhostSetAuth<T> {
         requires
             f.id() == old(self).id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@.difference(f@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@.difference(f@),
     {
         self.map.delete(f.map);
     }
@@ -277,8 +277,8 @@ impl<T> GhostSetAuth<T> {
         requires
             p.id() == old(self).id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@.remove(p@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@.remove(p@),
     {
         self.map.delete_points_to(p.map);
     }
@@ -322,10 +322,10 @@ impl<T> GhostSubset<T> {
     /// Extract the [`GhostSubset`] from a mutable reference, leaving behind an empty map.
     pub proof fn take(tracked &mut self) -> (tracked result: GhostSubset<T>)
         ensures
-            old(self).id() == self.id(),
-            self@.is_empty(),
+            old(self).id() == final(self).id(),
+            final(self)@.is_empty(),
             result == *old(self),
-            result.id() == self.id(),
+            result.id() == final(self).id(),
     {
         let tracked map = self.map.take();
         GhostSubset { map }
@@ -365,8 +365,8 @@ impl<T> GhostSubset<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@.union(other@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@.union(other@),
             old(self)@.disjoint(other@),
     {
         self.map.combine(other.map);
@@ -378,8 +378,8 @@ impl<T> GhostSubset<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@.insert(other@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@.insert(other@),
             !old(self)@.contains(other@),
     {
         self.map.combine_points_to(other.map);
@@ -390,9 +390,9 @@ impl<T> GhostSubset<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            self@.disjoint(other@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            final(self)@.disjoint(other@),
     {
         self.map.disjoint(&other.map);
     }
@@ -403,9 +403,9 @@ impl<T> GhostSubset<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            self@.disjoint(other@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            final(self)@.disjoint(other@),
     {
         self.map.disjoint_persistent(&other.map);
     }
@@ -416,9 +416,9 @@ impl<T> GhostSubset<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            !self@.contains(other@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            !final(self)@.contains(other@),
     {
         self.map.disjoint_points_to(&other.map);
     }
@@ -432,9 +432,9 @@ impl<T> GhostSubset<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            !self@.contains(other@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            !final(self)@.contains(other@),
     {
         self.map.disjoint_persistent_points_to(&other.map);
     }
@@ -444,11 +444,11 @@ impl<T> GhostSubset<T> {
         requires
             s <= old(self)@,
         ensures
-            self.id() == old(self).id(),
-            result.id() == self.id(),
-            old(self)@ == self@.union(result@),
+            final(self).id() == old(self).id(),
+            result.id() == final(self).id(),
+            old(self)@ == final(self)@.union(result@),
             result@ =~= s,
-            self@ =~= old(self)@ - s,
+            final(self)@ =~= old(self)@ - s,
     {
         let tracked map = self.map.split(s);
         GhostSubset { map }
@@ -459,11 +459,11 @@ impl<T> GhostSubset<T> {
         requires
             old(self)@.contains(v),
         ensures
-            self.id() == old(self).id(),
-            result.id() == self.id(),
-            old(self)@ == self@.insert(result@),
+            final(self).id() == old(self).id(),
+            result.id() == final(self).id(),
+            old(self)@ == final(self)@.insert(result@),
             result@ == v,
-            self@ =~= old(self)@.remove(v),
+            final(self)@ =~= old(self)@.remove(v),
     {
         let tracked map = self.map.split_points_to(v);
         GhostSingleton { map }
@@ -530,10 +530,10 @@ impl<T> GhostPersistentSubset<T> {
     /// Duplicate the [`GhostPersistentSubset`]
     pub proof fn duplicate(tracked &mut self) -> (tracked result: GhostPersistentSubset<T>)
         ensures
-            self.id() == result.id(),
-            old(self).id() == self.id(),
-            old(self)@ == self@,
-            result@ == self@,
+            final(self).id() == result.id(),
+            old(self).id() == final(self).id(),
+            old(self)@ == final(self)@,
+            result@ == final(self)@,
     {
         let tracked map = self.map.duplicate();
         GhostPersistentSubset { map }
@@ -574,8 +574,8 @@ impl<T> GhostPersistentSubset<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@.union(other@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@.union(other@),
     {
         self.map.combine(other.map);
     }
@@ -586,8 +586,8 @@ impl<T> GhostPersistentSubset<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@.insert(other@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@.insert(other@),
     {
         self.map.combine_points_to(other.map);
     }
@@ -597,9 +597,9 @@ impl<T> GhostPersistentSubset<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            self@.disjoint(other@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            final(self)@.disjoint(other@),
     {
         self.map.disjoint(&other.map);
     }
@@ -610,9 +610,9 @@ impl<T> GhostPersistentSubset<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            !self@.contains(other@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            !final(self)@.contains(other@),
     {
         self.map.disjoint_points_to(&other.map);
     }
@@ -622,11 +622,11 @@ impl<T> GhostPersistentSubset<T> {
         requires
             s <= old(self)@,
         ensures
-            self.id() == old(self).id(),
-            result.id() == self.id(),
-            old(self)@ == self@.union(result@),
+            final(self).id() == old(self).id(),
+            result.id() == final(self).id(),
+            old(self)@ == final(self)@.union(result@),
             result@ =~= s,
-            self@ =~= old(self)@ - s,
+            final(self)@ =~= old(self)@ - s,
     {
         let tracked map = self.map.split(s);
         GhostPersistentSubset { map }
@@ -638,11 +638,11 @@ impl<T> GhostPersistentSubset<T> {
         requires
             old(self)@.contains(v),
         ensures
-            self.id() == old(self).id(),
-            result.id() == self.id(),
-            old(self)@ == self@.insert(result@),
+            final(self).id() == old(self).id(),
+            result.id() == final(self).id(),
+            old(self)@ == final(self)@.insert(result@),
             result@ == v,
-            self@ =~= old(self)@.remove(v),
+            final(self)@ =~= old(self)@.remove(v),
     {
         let tracked map = self.map.split_points_to(v);
         GhostPersistentSingleton { map }
@@ -719,9 +719,9 @@ impl<T> GhostSingleton<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            self@ != other@,
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            final(self)@ != other@,
     {
         self.map.disjoint(&other.map)
     }
@@ -731,9 +731,9 @@ impl<T> GhostSingleton<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            self@ != other@,
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            final(self)@ != other@,
     {
         self.map.disjoint_persistent(&other.map)
     }
@@ -743,9 +743,9 @@ impl<T> GhostSingleton<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            !other@.contains(self@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            !other@.contains(final(self)@),
     {
         self.map.disjoint_submap(&other.map);
     }
@@ -758,9 +758,9 @@ impl<T> GhostSingleton<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            !other@.contains(self@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            !other@.contains(final(self)@),
     {
         self.map.disjoint_persistent_submap(&other.map);
     }
@@ -800,10 +800,10 @@ impl<T> GhostPersistentSingleton<T> {
     /// Duplicate the [`GhostPersistentSingleton`]
     pub proof fn duplicate(tracked &mut self) -> (tracked result: GhostPersistentSingleton<T>)
         ensures
-            self.id() == result.id(),
-            old(self).id() == self.id(),
-            old(self)@ == self@,
-            result@ == self@,
+            final(self).id() == result.id(),
+            old(self).id() == final(self).id(),
+            old(self)@ == final(self)@,
+            result@ == final(self)@,
     {
         let tracked map = self.map.duplicate();
         GhostPersistentSingleton { map }
@@ -855,9 +855,9 @@ impl<T> GhostPersistentSingleton<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            self@ != other@,
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            final(self)@ != other@,
     {
         self.map.disjoint(&other.map)
     }
@@ -867,9 +867,9 @@ impl<T> GhostPersistentSingleton<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            !other@.contains(self@),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            !other@.contains(final(self)@),
     {
         self.map.disjoint_submap(&other.map);
     }

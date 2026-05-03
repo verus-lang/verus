@@ -204,8 +204,8 @@ impl<RA: ResourceAlgebra> Resource<RA> {
         requires
             old(self).loc() == other.loc(),
         ensures
-            *self == *old(self),
-            RA::op(self.value(), other.value()).valid(),
+            *final(self) == *old(self),
+            RA::op(final(self).value(), other.value()).valid(),
     {
         use_type_invariant(&*self);
         use_type_invariant(other);
