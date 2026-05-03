@@ -132,7 +132,6 @@ pub axiom fn proof_fn_as_req_ens<
             f.ensures(args, output) ==> #[trigger] R::ens(args, output),
 ;
 
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub broadcast axiom fn axiom_fn_mut_call_requires<Args: core::marker::Tuple, F: FnMut<Args>>(
     f: &mut F,
     args: Args,
@@ -143,7 +142,6 @@ pub broadcast axiom fn axiom_fn_mut_call_requires<Args: core::marker::Tuple, F: 
         #[trigger] call_requires::<Args, &mut F>(f, args),
 ;
 
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub broadcast axiom fn axiom_fn_mut_call_ensures<Args: core::marker::Tuple, F: FnMut<Args>>(
     f: &mut F,
     args: Args,

@@ -272,7 +272,6 @@ impl<V> PCell<V> {
     }
 
     #[doc(hidden)]
-    #[verifier::ignore_outside_new_mut_ref_experiment]
     #[inline(always)]
     #[verifier::external_body]
     pub fn borrow_mut<'a>(&'a self, Tracked(perm): Tracked<&'a mut PointsTo<V>>) -> (v: &'a mut V)
