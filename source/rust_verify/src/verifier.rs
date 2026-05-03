@@ -3108,6 +3108,9 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) tc_end_time: Option<Instant>,
     pub(crate) verus_externs: Option<VerusExterns>,
     pub(crate) spans: Option<SpanContext>,
+    /// import-dep-if-present names that did not match any direct `--extern`;
+    /// resolved against rustc's loaded transitive crates in `after_expansion`.
+    pub(crate) unresolved_import_deps: HashSet<String>,
 }
 
 pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
@@ -3134,11 +3137,11 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 .as_ref()
                 .expect("dep_tracker is present, so via_cargo_args must be Some")
                 .import_dep_if_present;
-            let import_deps_if_present: HashSet<String> =
+            let mut import_deps_if_present: HashSet<String> =
                 import_dep_if_present.iter().cloned().collect();
             let success = crate::cargo_verus::handle_externs(
                 &config.opts.externs,
-                import_deps_if_present,
+                &mut import_deps_if_present,
                 &mut dep_tracker,
             );
             match success {
@@ -3150,6 +3153,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     std::process::exit(1);
                 }
             }
+            self.unresolved_import_deps = import_deps_if_present;
             dep_tracker.config_install(config);
         }
 
@@ -3228,20 +3232,27 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         rustc_interface::passes::write_dep_info(tcx);
         self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
 
+        let mut import_virs_via_cargo =
+            self.verifier.import_virs_via_cargo.clone().unwrap_or_default();
+        if !self.unresolved_import_deps.is_empty() {
+            import_virs_via_cargo.extend(crate::cargo_verus::handle_transitive_imports(
+                tcx,
+                &self.unresolved_import_deps,
+            ));
+        }
+
         let time_import0 = Instant::now();
-        let imported = match crate::import_export::import_crates(
-            &self.verifier.args,
-            self.verifier.import_virs_via_cargo.clone().unwrap_or_default(),
-        ) {
-            Ok(imported) => imported,
-            Err(err) => {
-                assert!(err.spans.len() == 0);
-                assert!(err.level == MessageLevel::Error);
-                compiler.sess.dcx().err(err.note.clone());
-                self.verifier.encountered_vir_error = true;
-                return rustc_driver::Compilation::Stop;
-            }
-        };
+        let imported =
+            match crate::import_export::import_crates(&self.verifier.args, import_virs_via_cargo) {
+                Ok(imported) => imported,
+                Err(err) => {
+                    assert!(err.spans.len() == 0);
+                    assert!(err.level == MessageLevel::Error);
+                    compiler.sess.dcx().err(err.note.clone());
+                    self.verifier.encountered_vir_error = true;
+                    return rustc_driver::Compilation::Stop;
+                }
+            };
         let time_import1 = Instant::now();
         self.verifier.time_import = time_import1 - time_import0;
         let verus_items =
