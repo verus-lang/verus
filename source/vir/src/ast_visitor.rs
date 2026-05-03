@@ -305,7 +305,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         match &expr.x {
             ExprX::Const(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Var(_) => R::ret(|| expr_new(expr.x.clone())),
-            ExprX::VarLoc(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::VarAt(_, _) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::ConstVar(_, _) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::StaticVar(_) => R::ret(|| expr_new(expr.x.clone())),
@@ -315,10 +314,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::BreakOrContinue { label: _, is_break: _ } => R::ret(|| expr_new(expr.x.clone())),
             ExprX::AirStmt(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Nondeterministic => R::ret(|| expr_new(expr.x.clone())),
-            ExprX::Loc(e) => {
-                let e1 = self.visit_expr(e)?;
-                R::ret(|| expr_new(ExprX::Loc(R::get(e1))))
-            }
             ExprX::Call(call_target, exprs, opt_e) => {
                 let ct = self.visit_call_target(call_target)?;
                 let es = self.visit_exprs(exprs)?;
@@ -458,11 +453,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         body: R::get(body),
                     })
                 })
-            }
-            ExprX::Assign { lhs, rhs, op } => {
-                let lhs = self.visit_expr(lhs)?;
-                let rhs = self.visit_expr(rhs)?;
-                R::ret(|| expr_new(ExprX::Assign { lhs: R::get(lhs), rhs: R::get(rhs), op: *op }))
             }
             ExprX::AssignToPlace { place, rhs, op, resolve, typ } => {
                 let place = self.visit_place(place)?;

@@ -717,17 +717,14 @@ impl<'a> Builder<'a> {
         match &expr.x {
             ExprX::Const(_)
             | ExprX::Var(_)
-            | ExprX::VarLoc(_)
             | ExprX::VarAt(..)
             | ExprX::ConstVar(..)
             | ExprX::StaticVar(_)
-            | ExprX::Loc(_)
             | ExprX::Quant(..)
             | ExprX::Closure(..)
             | ExprX::ExecFnByName(..)
             | ExprX::Choose { .. }
             | ExprX::WithTriggers { .. }
-            | ExprX::Assign { .. }
             | ExprX::Fuel(..)
             | ExprX::RevealString(_)
             | ExprX::Header(_)

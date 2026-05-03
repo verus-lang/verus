@@ -546,9 +546,7 @@ fn check_one_expr<Emit: EmitError>(
                 &mut crate::ast_visitor::VisitorScopeMap::new(),
                 &mut (),
                 &mut |_, scope_map, e| match &e.x {
-                    ExprX::Var(x) | ExprX::VarLoc(x)
-                        if !scope_map.contains_key(&x) && !referenced.contains(x) =>
-                    {
+                    ExprX::Var(x) if !scope_map.contains_key(&x) && !referenced.contains(x) => {
                         Err(error(
                             &e.span,
                             format!("variable {} not mentioned in requires/ensures", x).as_str(),

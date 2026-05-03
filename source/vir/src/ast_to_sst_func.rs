@@ -593,9 +593,6 @@ pub(crate) fn map_expr_rename_vars(
         &|expr| {
             Ok(match &expr.x {
                 ExprX::Var(i) => expr.new_x(ExprX::Var(param_renames.get(i).unwrap_or(i).clone())),
-                ExprX::VarLoc(i) => {
-                    expr.new_x(ExprX::VarLoc(param_renames.get(i).unwrap_or(i).clone()))
-                }
                 ExprX::VarAt(i, at) => {
                     expr.new_x(ExprX::VarAt(param_renames.get(i).unwrap_or(i).clone(), *at))
                 }

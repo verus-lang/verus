@@ -231,11 +231,9 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
     match &e.x {
         ExprX::Const(_)
             | ExprX::Var(_)
-            | ExprX::VarLoc(_)
             | ExprX::VarAt(..)
             | ExprX::ConstVar(..)
             | ExprX::StaticVar(..)
-            | ExprX::Loc(_)
             | ExprX::Call(..) // requires more complex checks
             | ExprX::Ctor(..)
             | ExprX::NullaryOpr(_)
@@ -250,7 +248,6 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::ExecFnByName(_)
             | ExprX::Choose { .. }
             | ExprX::WithTriggers { .. }
-            | ExprX::Assign { .. } // requires more complex checks
             | ExprX::AssignToPlace { .. } // requires more complex checks
             | ExprX::Fuel(..)
             | ExprX::RevealString(..)
@@ -1025,102 +1022,6 @@ fn check_expr_in_pattern(expr: &Expr) -> Result<(), VirErr> {
     }
 }
 
-fn get_var_loc_mode(
-    ctxt: &Ctxt,
-    record: &mut Record,
-    typing: &mut Typing,
-    outer_mode: Mode,
-    expr_inner_mode: Option<Mode>,
-    expr: &Expr,
-) -> Result<(Mode, Proph), VirErr> {
-    let (x_mode, x_proph) = match &expr.x {
-        ExprX::VarLoc(x) => {
-            let (x_mode, x_proph) = typing.get(x, &expr.span)?;
-            let x_proph = x_proph.to_proph(x, &expr.span);
-
-            record.erasure_modes.var_modes.push((expr.span.clone(), (x_mode, x_mode)));
-
-            if ctxt.check_ghost_blocks
-                && typing.block_ghostness == Ghost::Exec
-                && x_mode != Mode::Exec
-            {
-                return Err(error(&expr.span, "exec code cannot mutate non-exec variable"));
-            }
-
-            (x_mode, x_proph)
-        }
-        ExprX::Unary(
-            UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind: ModeCoercion::BorrowMut },
-            e1,
-        ) => {
-            if ctxt.check_ghost_blocks {
-                if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
-                    return Err(error(
-                        &expr.span,
-                        format!("cannot perform operation with mode {}", op_mode),
-                    ));
-                }
-            }
-            if outer_mode != *op_mode {
-                return Err(error(
-                    &expr.span,
-                    format!("cannot perform operation with mode {}", op_mode),
-                ));
-            }
-            let (mode1, proph1) =
-                get_var_loc_mode(ctxt, record, typing, outer_mode, Some(*to_mode), e1)?;
-            if !mode_le(mode1, *from_mode) {
-                return Err(error(
-                    &expr.span,
-                    format!("expected mode {}, found mode {}", *from_mode, mode1),
-                ));
-            }
-            (*to_mode, proph1)
-        }
-        ExprX::UnaryOpr(
-            UnaryOpr::Field(FieldOpr { datatype, variant: _, field, get_variant, check: _ }),
-            rcvr,
-        ) => {
-            let (rcvr_mode, rcvr_proph) =
-                get_var_loc_mode(ctxt, record, typing, outer_mode, expr_inner_mode, rcvr)?;
-            record
-                .type_inv_info
-                .field_loc_needs_check
-                .insert(expr.span.id, rcvr_mode != Mode::Spec);
-            let field_mode = match datatype {
-                Dt::Path(path) => {
-                    let datatype = &ctxt.datatypes[path].x;
-                    assert!(datatype.variants.len() == 1);
-                    let (_, field_mode, _) = &datatype.variants[0]
-                        .fields
-                        .iter()
-                        .find(|x| x.name == *field)
-                        .expect("datatype field valid")
-                        .a;
-                    *field_mode
-                }
-                Dt::Tuple(_arity) => Mode::Exec,
-            };
-            let call_mode = if *get_variant { Mode::Spec } else { rcvr_mode };
-            (mode_join(call_mode, field_mode), rcvr_proph)
-        }
-        ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => {
-            // For now, only support the special case for Tracked::borrow_mut.
-            get_var_loc_mode(ctxt, record, typing, outer_mode, None, e1)?
-        }
-        ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => {
-            // For now, only support the special case for Tracked::borrow_mut.
-            let mut typing = typing.push_block_ghostness(Ghost::Ghost);
-            let mode = get_var_loc_mode(ctxt, record, &mut typing, outer_mode, None, e1)?;
-            mode
-        }
-        _ => {
-            panic!("unexpected loc {:?}", expr);
-        }
-    };
-    Ok((x_mode, x_proph))
-}
-
 fn check_place_has_mode(
     ctxt: &Ctxt,
     record: &mut Record,
@@ -1753,7 +1654,7 @@ fn check_expr_handle_mut_arg(
 
     let mode_proph = match &expr.x {
         ExprX::Const(_) => Ok((Mode::Exec, Proph::No)),
-        ExprX::Var(x) | ExprX::VarLoc(x) | ExprX::VarAt(x, _) => {
+        ExprX::Var(x) | ExprX::VarAt(x, _) => {
             let (x_mode, proph) = typing.get(x, &expr.span)?;
             let proph = proph.to_proph(x, &expr.span);
 
@@ -2310,17 +2211,6 @@ fn check_expr_handle_mut_arg(
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
             Ok((Mode::Spec, proph))
         }
-        ExprX::Loc(e) => {
-            return check_expr_handle_mut_arg(
-                ctxt,
-                record,
-                typing,
-                outer_mode,
-                expect,
-                e,
-                outer_proph,
-            );
-        }
         ExprX::Binary(op, e1, e2) => {
             let op_mode = match op {
                 BinaryOp::Eq(mode) => *mode,
@@ -2639,85 +2529,6 @@ fn check_expr_handle_mut_arg(
             }
 
             Ok((lhs_mode, Proph::No))
-        }
-        ExprX::Assign { lhs, rhs, op: _ } => {
-            if typing.in_forall_stmt {
-                return Err(error(
-                    &expr.span,
-                    "assignment is not allowed in 'assert ... by' statement",
-                ));
-            }
-            if typing.in_proof_in_spec {
-                return Err(error(&expr.span, "assignment is not allowed inside spec"));
-            }
-            if typing.in_pure {
-                return Err(error(&expr.span, "assignment is not allowed inside pure context"));
-            }
-            if let (ExprX::VarLoc(xl), ExprX::ReadPlace(pr, _)) = (&lhs.x, &rhs.x) {
-                if let PlaceX::Local(xr) = &pr.x {
-                    // Special case mode inference just for our encoding of "let tracked pat = ..."
-                    // in Rust as "let xl; ... { let pat ... xl = xr; }".
-                    if let Some(span) = typing.to_be_inferred(xl) {
-                        let (mode, pv) = typing.get(xr, &rhs.span)?;
-                        typing.infer_as(xl, mode, pv.clone());
-                        record.var_modes.insert(xl.clone(), mode);
-                        record.erasure_modes.var_modes.push((span, (mode, mode)));
-                    }
-                }
-            }
-
-            let (x_mode, lhs_proph, rhs_proph) = match &lhs.x {
-                ExprX::VarLoc(xl) if typing.proph_to_be_inferred(xl) => {
-                    // Special case the delayed inference of a variable's propheticness
-                    let rhs_proph = check_expr_has_mode(
-                        ctxt,
-                        record,
-                        typing,
-                        outer_mode,
-                        rhs,
-                        Mode::Spec,
-                        outer_proph,
-                    )?;
-                    let pv = rhs_proph.to_inferred_proph_var();
-                    typing.infer_proph_as(xl, pv);
-                    let (x_mode, lhs_proph) =
-                        get_var_loc_mode(ctxt, record, typing, outer_mode, None, lhs)?;
-                    if !mode_le(outer_mode, x_mode) {
-                        return Err(error(
-                            &expr.span,
-                            format!("cannot assign to {x_mode} variable from {outer_mode} mode"),
-                        ));
-                    }
-                    (x_mode, lhs_proph, rhs_proph)
-                }
-                _ => {
-                    let (x_mode, lhs_proph) =
-                        get_var_loc_mode(ctxt, record, typing, outer_mode, None, lhs)?;
-                    if !mode_le(outer_mode, x_mode) {
-                        return Err(error(
-                            &expr.span,
-                            format!("cannot assign to {x_mode} variable from {outer_mode} mode"),
-                        ));
-                    }
-                    let rhs_proph = check_expr_has_mode(
-                        ctxt,
-                        record,
-                        typing,
-                        outer_mode,
-                        rhs,
-                        x_mode,
-                        outer_proph,
-                    )?;
-                    (x_mode, lhs_proph, rhs_proph)
-                }
-            };
-
-            if matches!(lhs_proph, Proph::No) {
-                outer_proph.outer_check(&expr.span, OuterProphReason::AssignToNonProphPlace)?;
-                rhs_proph.check(&expr.span, NoProphReason::AssignToNonProphPlace)?;
-            }
-
-            Ok((x_mode, Proph::No))
         }
         ExprX::Fuel(_, _, _) => {
             if typing.block_ghostness == Ghost::Exec {

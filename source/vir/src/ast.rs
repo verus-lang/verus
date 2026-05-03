@@ -1040,8 +1040,6 @@ pub enum ExprX {
     Const(Constant),
     /// Local variable as a right-hand side
     Var(VarIdent),
-    /// Local variable as a left-hand side
-    VarLoc(VarIdent),
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(VarIdent, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
@@ -1050,9 +1048,6 @@ pub enum ExprX {
     ConstVar(Fun, AutospecUsage),
     /// Use of a static variable.
     StaticVar(Fun),
-    /// Location ("l-value") used for mutable references and assignments.
-    /// Not used when new-mut-refs is enabled.
-    Loc(Expr),
     /// Call to a function passing some expression arguments
     /// The optional expression is to be executed *after* the arguments but *before* the call.
     /// This is used for two-phase borrows.
@@ -1102,11 +1097,6 @@ pub enum ExprX {
     Choose { params: VarBinders<Typ>, cond: Expr, body: Expr },
     /// Manually supply triggers for body of quantifier
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
-    /// Assign to local variable
-    /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
-    ///
-    /// Not used when new-mut-refs is enabled.
-    Assign { lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Assign to the given place.
     ///
     /// If `resolve` is set, then we also emit

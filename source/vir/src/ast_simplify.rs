@@ -118,7 +118,6 @@ fn is_small_expr(expr: &Expr) -> bool {
         ExprX::Const(_) => true,
         ExprX::Unary(UnaryOp::Not | UnaryOp::Clip { .. }, e) => is_small_expr(e),
         ExprX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
-        ExprX::Loc(_) => panic!("expr is a location"),
         _ => false,
     }
 }
@@ -321,45 +320,17 @@ fn simplify_one_expr(
     match &expr.x {
         ExprX::Var(x) => Ok(expr.new_x(ExprX::Var(rename_var(state, scope_map, x)))),
         ExprX::VarAt(x, at) => Ok(expr.new_x(ExprX::VarAt(rename_var(state, scope_map, x), *at))),
-        ExprX::VarLoc(x) => {
-            // Note: the below reasoning is why I originally added this check, but the reasoning
-            // doesn't entirely apply anymore since now ast_to_sst infers mutability rather
-            // than relying on user checks. I'm leaving this for now (since the check can't hurt)
-            // but this case is obselete by new-mut-ref anyway.
-            //
-            // ========
-            //
-            // If we try to mutate `x`, check that `x` is actually marked mut.
-            // This is *usually* caught by rustc for us, during our lifetime checking phase.
-            // However, there are a few cases to watch out for:
-            //
-            //  1. The user provides --no-lifetime. (We still need need to do the check
-            //     because the AIR encoding later on will rely on mutability-ness being
-            //     well-formed. This isn't *really* necessary, since --no-lifetime is
-            //     unsound anyway and doesn't really have any guarantees - but doing
-            //     this check is nicer than an AIR type error down the line.)
-            //
-            //  2. If the user does as @-assignment, `x@ = ...` where `t: Ghost<T>`.
-            //     This is a special Verus thing so we have to do the check ourselves.
-            //     (issue #424)
-            //
-            // It would usually make more sense to have this in well_formed.rs, but
-            // in the majority of cases, it's nicer to have rustc catch the error
-            // for its better diagnostics. So the check is here in ast_simplify,
-            // which comes after our lifetime checking pass.
-            match scope_map.get(x) {
-                None => Err(error(&expr.span, "Verus Internal Error: cannot find this variable")),
-                Some(entry) if entry.user_mut == Some(false) && entry.init => {
-                    let name = user_local_name(x);
-                    Err(error(&expr.span, format!("variable `{name:}` is not marked mutable")))
-                }
-                _ => Ok(expr.new_x(ExprX::VarLoc(rename_var(state, scope_map, x)))),
-            }
-        }
         ExprX::AssignToPlace { place, .. }
         | ExprX::BorrowMut(place)
         | ExprX::TwoPhaseBorrowMut(place)
         | ExprX::BorrowMutTracked(place) => {
+            // This check is no longer needed for soundness because ast_to_sst infers
+            // mutability rather than relying on the user annotations.
+            // Nonetheless, this check lets us pick up a few situations that wouldn't
+            // get caught by borrowck (ghost variables).
+            // However, much of the time it _does_ get caught by borrowck.
+            // This check is in ast_simplify because it's after borrowck
+            // (borrowck errors look nicer).
             if !crate::ast_util::place_has_deref_mut(place)
                 && let Some(local) = crate::ast_util::place_get_local(place)
             {
@@ -641,25 +612,6 @@ fn simplify_one_expr(
                     external_spec,
                 },
             ))
-        }
-        ExprX::Assign { lhs, rhs, op: Some(op) } => {
-            match &lhs.x {
-                ExprX::VarLoc(id) => {
-                    // convert VarLoc to Var to be used on the RHS
-                    let var = SpannedTyped::new(&lhs.span, &lhs.typ, ExprX::Var(id.clone()));
-                    let new_rhs = SpannedTyped::new(
-                        &expr.span,
-                        &lhs.typ,
-                        ExprX::Binary(op.clone(), var, rhs.clone()),
-                    );
-                    Ok(SpannedTyped::new(
-                        &expr.span,
-                        &expr.typ,
-                        ExprX::Assign { lhs: lhs.clone(), rhs: new_rhs, op: None },
-                    ))
-                }
-                _ => Err(error(&lhs.span, "not yet implemented: lhs of compound assignment")),
-            }
         }
         _ => Ok(expr.clone()),
     }
