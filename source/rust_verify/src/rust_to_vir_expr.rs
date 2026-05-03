@@ -1885,7 +1885,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 );
                 let arg = arg.consume(bctx, get_inner_ty());
                 let args = Arc::new(vec![arg.clone()]);
-                let x = ExprX::Call(call_target, args, None);
+                let x = ExprX::Call { target: call_target, args, post_args: None, body: None };
                 let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2, false)?;
                 Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ, x)))
             } else {
@@ -2568,7 +2568,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
                         expr.span,
                         &expr_typ,
-                        ExprX::Call(target, Arc::new(vir_args), None),
+                        ExprX::Call {
+                            target,
+                            args: Arc::new(vir_args),
+                            post_args: None,
+                            body: None,
+                        },
                     )))
                 }
             }
@@ -2615,7 +2620,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     false,
                 );
                 let args = Arc::new(vec![arg_vir.clone()]);
-                mk_expr(ExprX::Call(call_target, args, None))
+                mk_expr(ExprX::Call { target: call_target, args, post_args: None, body: None })
             } else {
                 // Could be a const. In this case the array needs to be translated like:
                 //    forall |i| array[i] satisfies post-condition of const
@@ -2712,7 +2717,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         false,
                     );
                     let args = Arc::new(vec![source_vir_expr.clone()]);
-                    mk_expr(ExprX::Call(call_target, args, None))
+                    mk_expr(ExprX::Call { target: call_target, args, post_args: None, body: None })
                 }
                 _ => {
                     let to_ty = bctx.types.expr_ty(expr);
@@ -3551,7 +3556,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 // tgt[idx] is equivalent to either *index(tgt, idx) or *index_mut(tgt, idx)
                 // (The * on the outside isn't part of the adjustments; we add it here)
                 let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
-                let x = ExprX::Call(call_target, args, None);
+                let x = ExprX::Call { target: call_target, args, post_args: None, body: None };
                 let call_ret_typ = if mutbl {
                     Arc::new(TypX::MutRef(expr_typ()?))
                 } else {
@@ -3626,7 +3631,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     false,
                 );
                 let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
-                mk_expr(ExprX::Call(call_target, args, None))
+                mk_expr(ExprX::Call { target: call_target, args, post_args: None, body: None })
             } else {
                 // general Index trait case
                 let rustc_middle::ty::Ref(_, tgt_ty, _) = tgt_ty.kind() else {
@@ -3646,7 +3651,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     false,
                 );
                 let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
-                mk_expr(ExprX::Call(call_target, args, None))
+                mk_expr(ExprX::Call { target: call_target, args, post_args: None, body: None })
             }
         }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
@@ -3967,7 +3972,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
         let index_set = bctx.spanned_typed_new(
             lhs.span,
             &mk_tuple_typ(&Arc::new(vec![])),
-            ExprX::Call(call_target, args, None),
+            ExprX::Call { target: call_target, args, post_args: None, body: None },
         );
         // lhs is not recorded and so explicitly add it here.
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
@@ -4522,7 +4527,7 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
                 false,
             );
             let args = Arc::new(vec![src_vir.clone()]);
-            let x = ExprX::Call(call_target, args, None);
+            let x = ExprX::Call { target: call_target, args, post_args: None, body: None };
             let expr_typ = typ_of_node_unadjusted(bctx, dst_expr.span, &dst_expr.hir_id, false)?;
 
             if clip {

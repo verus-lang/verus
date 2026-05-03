@@ -236,7 +236,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::ConstVar(..)
             | ExprX::StaticVar(..)
             | ExprX::Loc(_)
-            | ExprX::Call(..) // requires more complex checks
+            | ExprX::Call {..} // requires more complex checks
             | ExprX::Ctor(..)
             | ExprX::NullaryOpr(_)
             | ExprX::Unary(..)
@@ -287,6 +287,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
 
         // todo
         ExprX::TryOpenAtomicUpdate(..) |
+        ExprX::AtomicUpdateInitDummy(..) |
         ExprX::Atomically(..) |
         ExprX::Update(..) |
         ExprX::InvMask(..) => None,
@@ -1562,7 +1563,13 @@ fn check_tracked_swap(
     expr: &Expr,
     option_take: bool,
 ) -> Result<(), VirErr> {
-    let ExprX::Call(CallTarget::Fun(_, _, typ_args, ..), args, None) = &expr.x else {
+    let ExprX::Call {
+        target: CallTarget::Fun(_, _, typ_args, ..),
+        args,
+        post_args: None,
+        body: None,
+    } = &expr.x
+    else {
         unreachable!()
     };
     if option_take {
@@ -1834,7 +1841,12 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::ConstVar(x, _)
         | ExprX::StaticVar(x)
-        | ExprX::Call(CallTarget::Fun(_, x, _, _, _, true), _, _) => {
+        | ExprX::Call {
+            target: CallTarget::Fun(_, x, _, _, _, true),
+            args: _,
+            post_args: _,
+            body: _,
+        } => {
             let function = match ctxt.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
@@ -1869,11 +1881,14 @@ fn check_expr_handle_mut_arg(
             record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
             Ok((mode, Proph::No))
         }
-        ExprX::Call(
-            CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _, _),
-            es,
-            None,
-        ) => {
+        ExprX::Call {
+            target: CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _, _),
+            args: es,
+            post_args: None,
+            body,
+        } => {
+            assert!(body.is_none());
+
             // es = [FnProof, (...args...)]
             assert!(es.len() == 2);
             let binders = if let ExprX::Ctor(Dt::Tuple(_), _, binders, None) = &es[1].x {
@@ -1918,7 +1933,12 @@ fn check_expr_handle_mut_arg(
 
             Ok((*ret_mode, Proph::No))
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage, const_var), es, None) => {
+        ExprX::Call {
+            target: CallTarget::Fun(kind, x, _, _, autospec_usage, const_var),
+            args: es,
+            post_args: None,
+            body,
+        } => {
             assert!(*autospec_usage == AutospecUsage::Final);
             assert!(!const_var); // const_var is handled in ConstVar/StaticVar case
 
@@ -2071,9 +2091,15 @@ fn check_expr_handle_mut_arg(
                 }
                 check_tracked_swap(ctxt, record, &expr, function.x.attrs.tracked_take_option)?;
             }
+
+            if let Some(expr) = body {
+                let _ = check_expr(ctxt, record, typing, outer_mode, expect, expr, outer_proph)?;
+            }
+
             Ok((function.x.ret.x.mode, out_proph))
         }
-        ExprX::Call(CallTarget::FnSpec(e0), es, None) => {
+        ExprX::Call { target: CallTarget::FnSpec(e0), args: es, post_args: None, body } => {
+            assert!(body.is_none());
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot call spec function from exec mode"));
             }
@@ -2093,7 +2119,13 @@ fn check_expr_handle_mut_arg(
             }
             Ok((Mode::Spec, proph))
         }
-        ExprX::Call(CallTarget::BuiltinSpecFun(_f, _typs, _impl_paths), es, None) => {
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(_f, _typs, _impl_paths),
+            args: es,
+            post_args: None,
+            body,
+        } => {
+            assert!(body.is_none());
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot call spec function from exec mode"));
             }
@@ -2112,7 +2144,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok((Mode::Spec, proph))
         }
-        ExprX::Call(_, _, Some(_)) => {
+        ExprX::Call { post_args: Some(_), .. } => {
             return Err(error(&expr.span, "ExprX::Call should not have post_args at this point"));
         }
         ExprX::ArrayLiteral(es) => {
@@ -3416,7 +3448,12 @@ fn check_expr_handle_mut_arg(
 
             Ok((Mode::Exec, Proph::No))
         }
-        ExprX::Atomically(_info, au, _p, e, _b) => {
+        ExprX::AtomicUpdateInitDummy(_e) => {
+            // This is a dummy expression that is generated by Verus internally.
+            // It does not need to be mode checked at all.
+            Ok((outer_mode, outer_proph.clone()))
+        }
+        ExprX::Atomically(_info, au, e, _b) => {
             // REVIEW: This is rather complicated since the atomic function call is encoded
             // using a loop in proof mode, which is currently not allowed in Verus.
             // We get around this by partially destructing the body of the atomic function call,

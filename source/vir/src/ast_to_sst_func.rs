@@ -286,8 +286,8 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
         let awaited_call = SpannedTyped::new(
             &e.span,
             &Arc::new(TypX::Bool),
-            ExprX::Call(
-                CallTarget::Fun(
+            ExprX::Call {
+                target: CallTarget::Fun(
                     crate::ast::CallTargetKind::Dynamic,
                     fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "awaited"),
                     Arc::new(vec![
@@ -307,7 +307,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                     AutospecUsage::Final,
                     false,
                 ),
-                Arc::new(vec![SpannedTyped::new(
+                args: Arc::new(vec![SpannedTyped::new(
                     &e.span,
                     &function
                         .x
@@ -328,8 +328,9 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                             .clone(),
                     ),
                 )]),
-                None,
-            ),
+                post_args: None,
+                body: None,
+            },
         );
         let view_call = SpannedTyped::new(
             &e.span,
@@ -337,8 +338,8 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
             PlaceX::Temporary(SpannedTyped::new(
                 &e.span,
                 &function.x.ret.x.typ,
-                ExprX::Call(
-                    CallTarget::Fun(
+                ExprX::Call {
+                    target: CallTarget::Fun(
                         crate::ast::CallTargetKind::Dynamic,
                         fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "view"),
                         Arc::new(vec![
@@ -358,7 +359,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                         AutospecUsage::Final,
                         false,
                     ),
-                    Arc::new(vec![SpannedTyped::new(
+                    args: Arc::new(vec![SpannedTyped::new(
                         &e.span,
                         &function
                             .x
@@ -379,8 +380,9 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                                 .clone(),
                         ),
                     )]),
-                    None,
-                ),
+                    post_args: None,
+                    body: None,
+                },
             )),
         );
         let block = SpannedTyped::new(

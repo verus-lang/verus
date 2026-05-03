@@ -75,7 +75,6 @@ pub(crate) struct BodyCtxt<'tcx> {
     // loop_isolation for the nearest enclosing loop, false otherwise
     pub(crate) loop_isolation: bool,
     pub(crate) atomically: Option<Arc<AtomicallyCtxt>>,
-    pub(crate) au_pred_args: Option<vir::ast::Exprs>,
     pub(crate) new_mut_ref: bool,
     pub(crate) migrate_postcondition_vars: Option<std::collections::HashSet<vir::ast::VarIdent>>,
     /// Context to interpret a header if we encounter one

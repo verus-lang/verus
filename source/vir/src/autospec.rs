@@ -22,11 +22,12 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
             let var = ExprX::ConstVar(tgt, AutospecUsage::Final);
             Ok(SpannedTyped::new(&expr.span, &expr.typ, var))
         }
-        ExprX::Call(
-            CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage, const_var),
+        ExprX::Call {
+            target: CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage, const_var),
             args,
             post_args,
-        ) => {
+            body,
+        } => {
             use crate::ast::CallTargetKind;
             let (kind, tgt, typs, impl_paths) = match (kind, autospec_usage) {
                 (
@@ -71,11 +72,19 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
                     (kind.clone(), new_tgt(tgt, *autospec_usage), typs.clone(), impl_paths.clone())
                 }
             };
-            let call = ExprX::Call(
-                CallTarget::Fun(kind, tgt, typs, impl_paths, AutospecUsage::Final, *const_var),
-                args.clone(),
-                post_args.clone(),
-            );
+            let call = ExprX::Call {
+                target: CallTarget::Fun(
+                    kind,
+                    tgt,
+                    typs,
+                    impl_paths,
+                    AutospecUsage::Final,
+                    *const_var,
+                ),
+                args: args.clone(),
+                post_args: post_args.clone(),
+                body: body.clone(),
+            };
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         _ => Ok(expr.clone()),

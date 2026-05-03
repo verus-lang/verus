@@ -54,9 +54,9 @@ fn expr_get_early_exits_rec(
             | ExprX::ConstVar(..)
             | ExprX::StaticVar(..)
             | ExprX::Loc(..)
-            | ExprX::Call(CallTarget::Fun(..), _, _)
-            | ExprX::Call(CallTarget::FnSpec(..), _, _)
-            | ExprX::Call(CallTarget::BuiltinSpecFun(..), _, _)
+            | ExprX::Call { target: CallTarget::Fun(..), .. }
+            | ExprX::Call { target: CallTarget::FnSpec(..), .. }
+            | ExprX::Call { target: CallTarget::BuiltinSpecFun(..), .. }
             | ExprX::ArrayLiteral(..)
             | ExprX::Ctor(..)
             | ExprX::NullaryOpr(..)
@@ -73,6 +73,7 @@ fn expr_get_early_exits_rec(
             | ExprX::ProofInSpec(..)
             | ExprX::NeverToAny { .. }
             | ExprX::Nondeterministic { .. }
+            | ExprX::AtomicUpdateInitDummy(..)
             | ExprX::Atomically(..)
             | ExprX::Update(..)
             | ExprX::InvMask(..)

@@ -1954,6 +1954,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             split,
             dest,
             assert_id,
+            body,
         } => {
             // When we emit the VCs for a call to `f`, we might also want these to include
             // the generic conditions
@@ -2152,6 +2153,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 if ctx.debug {
                     state.map_span(&stm, SpanKind::Full);
                 }
+            }
+
+            if let Some(stm) = body {
+                let stmt = stm_to_stmts(ctx, state, stm)?;
+                stmts.extend(stmt);
             }
 
             let (has_ens, resolved_ens, ens_fun, ens_typ_args) = match resolved_method {

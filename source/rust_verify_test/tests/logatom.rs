@@ -602,7 +602,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore = "wip"] unsound
+    #[test] previously_unsound_1
     TOKEN_LIB.to_owned() + verus_code_str! {
         pub exec fn atomic_function()
             atomically (au) {
@@ -623,11 +623,11 @@ test_verify_one_file! {
                 break
             };
         }
-    } => Ok(())
+    } => Err(err) => assert_vir_error_msg(err, "precondition not satisfied")
 }
 
 test_verify_one_file! {
-    #[test] #[ignore = "wip"] terribly_unsound
+    #[test] previously_unsound_2
     verus_code! {
         use vstd::*;
         use vstd::prelude::*;
@@ -648,7 +648,7 @@ test_verify_one_file! {
                 update(())
             };
         }
-    } => Ok(())
+    } => Err(err) => assert_vir_error_msg(err, "precondition not satisfied")
 }
 
 test_verify_one_file! {

@@ -511,8 +511,8 @@ fn simplify_one_expr(
             Ok(expr.clone())
         }
         ExprX::ConstVar(x, autospec) => {
-            let call = ExprX::Call(
-                CallTarget::Fun(
+            let call = ExprX::Call {
+                target: CallTarget::Fun(
                     CallTargetKind::Static,
                     x.clone(),
                     Arc::new(vec![]),
@@ -520,16 +520,18 @@ fn simplify_one_expr(
                     *autospec,
                     true,
                 ),
-                Arc::new(vec![]),
-                None,
-            );
+                args: Arc::new(vec![]),
+                post_args: None,
+                body: None,
+            };
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Call(
-            CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage, const_var),
+        ExprX::Call {
+            target: CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage, const_var),
             args,
             post_args,
-        ) => {
+            body,
+        } => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
             let is_trait_impl = match kind {
@@ -550,8 +552,8 @@ fn simplify_one_expr(
                 args.clone()
             };
 
-            let call = ExprX::Call(
-                CallTarget::Fun(
+            let call = ExprX::Call {
+                target: CallTarget::Fun(
                     kind.clone(),
                     tgt.clone(),
                     typs.clone(),
@@ -560,8 +562,9 @@ fn simplify_one_expr(
                     *const_var,
                 ),
                 args,
-                post_args.clone(),
-            );
+                post_args: post_args.clone(),
+                body: body.clone(),
+            };
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Ctor(name, variant, partial_binders, Some(update)) => {
@@ -960,15 +963,16 @@ fn mk_closure_req_call(
     SpannedTyped::new(
         span,
         &bool_typ,
-        ExprX::Call(
-            CallTarget::BuiltinSpecFun(
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(
                 BuiltinSpecFun::ClosureReq,
                 closure_trait_call_typ_args(state, fn_val, params),
                 Arc::new(vec![]),
             ),
-            Arc::new(vec![fn_val.clone(), arg_tuple.clone()]),
-            None,
-        ),
+            args: Arc::new(vec![fn_val.clone(), arg_tuple.clone()]),
+            post_args: None,
+            body: None,
+        },
     )
 }
 
@@ -985,15 +989,16 @@ fn mk_closure_ens_call(
     SpannedTyped::new(
         span,
         &bool_typ,
-        ExprX::Call(
-            CallTarget::BuiltinSpecFun(
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(
                 builtin_spec_fun,
                 closure_trait_call_typ_args(state, fn_val, params),
                 Arc::new(vec![]),
             ),
-            Arc::new(vec![fn_val.clone(), arg_tuple.clone(), ret_arg.clone()]),
-            None,
-        ),
+            args: Arc::new(vec![fn_val.clone(), arg_tuple.clone(), ret_arg.clone()]),
+            post_args: None,
+            body: None,
+        },
     )
 }
 

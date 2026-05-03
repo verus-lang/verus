@@ -736,7 +736,7 @@ impl<'a> Builder<'a> {
             | ExprX::AirStmt(..)
             | ExprX::Old(..)
             | ExprX::Nondeterministic => Ok(bb),
-            ExprX::Call(call_target, es, post_args) => {
+            ExprX::Call { target: call_target, args: es, post_args, body: _ } => {
                 assert!(post_args.is_none());
 
                 // Can skip the expression in CallTarget because
@@ -1065,9 +1065,12 @@ impl<'a> Builder<'a> {
                 bb = self.build(e2, bb)?;
                 Ok(bb)
             }
-            ExprX::Atomically(_i, _v, e1, e2, _b) => {
-                bb = self.build(e1, bb)?;
-                bb = self.build(e2, bb)?;
+            ExprX::AtomicUpdateInitDummy(e) => {
+                bb = self.build(e, bb)?;
+                Ok(bb)
+            }
+            ExprX::Atomically(_i, _v, e, _b) => {
+                bb = self.build(e, bb)?;
                 Ok(bb)
             }
             ExprX::Update(_i, e) => {
@@ -3569,7 +3572,7 @@ fn apply_after_args_exprs(expr: Expr, exprs: Vec<Expr>) -> Expr {
         return expr;
     }
     match &expr.x {
-        ExprX::Call(ct, args, None) => {
+        ExprX::Call { target: ct, args, post_args: None, body } => {
             let mut stmts = vec![];
             for e in exprs.into_iter() {
                 stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
@@ -3579,7 +3582,12 @@ fn apply_after_args_exprs(expr: Expr, exprs: Vec<Expr>) -> Expr {
             SpannedTyped::new(
                 &expr.span,
                 &expr.typ,
-                ExprX::Call(ct.clone(), args.clone(), Some(block)),
+                ExprX::Call {
+                    target: ct.clone(),
+                    args: args.clone(),
+                    post_args: Some(block),
+                    body: body.clone(),
+                },
             )
         }
         _ => {

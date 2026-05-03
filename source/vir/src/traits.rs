@@ -29,23 +29,25 @@ fn demote_one_expr(
     expr: &Expr,
 ) -> Result<Expr, VirErr> {
     match &expr.x {
-        ExprX::Call(
-            CallTarget::Fun(
-                CallTargetKind::DynamicResolved {
-                    resolved: resolved_fun,
-                    typs: resolved_typs,
-                    impl_paths,
-                    is_trait_default: _,
-                },
-                fun,
-                _typs,
-                _impl_paths,
-                autospec_usage,
-                const_var,
-            ),
+        ExprX::Call {
+            target:
+                CallTarget::Fun(
+                    CallTargetKind::DynamicResolved {
+                        resolved: resolved_fun,
+                        typs: resolved_typs,
+                        impl_paths,
+                        is_trait_default: _,
+                    },
+                    fun,
+                    _typs,
+                    _impl_paths,
+                    autospec_usage,
+                    const_var,
+                ),
             args,
             post_args,
-        ) if !traits.contains(&get_trait(fun)) || !funs.contains(fun) => {
+            body,
+        } if !traits.contains(&get_trait(fun)) || !funs.contains(fun) => {
             if let Some(spec_trait) = impl_to_spec_traits.get(&get_trait(fun)) {
                 return Err(error(
                     &expr.span,
@@ -64,25 +66,32 @@ fn demote_one_expr(
                 *autospec_usage,
                 *const_var,
             );
-            Ok(expr.new_x(ExprX::Call(ct, args.clone(), post_args.clone())))
+            Ok(expr.new_x(ExprX::Call {
+                target: ct,
+                args: args.clone(),
+                post_args: post_args.clone(),
+                body: body.clone(),
+            }))
         }
-        ExprX::Call(
-            CallTarget::Fun(
-                CallTargetKind::DynamicResolved {
-                    resolved: resolved_fun,
-                    typs: _,
-                    impl_paths: _,
-                    is_trait_default: true,
-                },
-                fun,
-                typs,
-                impl_paths,
-                autospec_usage,
-                const_var,
-            ),
+        ExprX::Call {
+            target:
+                CallTarget::Fun(
+                    CallTargetKind::DynamicResolved {
+                        resolved: resolved_fun,
+                        typs: _,
+                        impl_paths: _,
+                        is_trait_default: true,
+                    },
+                    fun,
+                    typs,
+                    impl_paths,
+                    autospec_usage,
+                    const_var,
+                ),
             args,
             post_args,
-        ) if traits.contains(&get_trait(fun))
+            body,
+        } if traits.contains(&get_trait(fun))
             && !internal_traits.contains(&get_trait(fun))
             && funs.contains(fun)
             && !funs.contains(resolved_fun) =>
@@ -97,25 +106,32 @@ fn demote_one_expr(
                 *autospec_usage,
                 *const_var,
             );
-            Ok(expr.new_x(ExprX::Call(ct, args.clone(), post_args.clone())))
+            Ok(expr.new_x(ExprX::Call {
+                target: ct,
+                args: args.clone(),
+                post_args: post_args.clone(),
+                body: body.clone(),
+            }))
         }
-        ExprX::Call(
-            CallTarget::Fun(
-                CallTargetKind::DynamicResolved {
-                    resolved: resolved_fun,
-                    typs: _,
-                    impl_paths: _,
-                    is_trait_default: _,
-                },
-                fun,
-                typs,
-                impl_paths,
-                autospec_usage,
-                const_var,
-            ),
+        ExprX::Call {
+            target:
+                CallTarget::Fun(
+                    CallTargetKind::DynamicResolved {
+                        resolved: resolved_fun,
+                        typs: _,
+                        impl_paths: _,
+                        is_trait_default: _,
+                    },
+                    fun,
+                    typs,
+                    impl_paths,
+                    autospec_usage,
+                    const_var,
+                ),
             args,
             post_args,
-        ) if extension_traits.contains(&get_trait(fun)) => {
+            body,
+        } if extension_traits.contains(&get_trait(fun)) => {
             assert!(traits.contains(&get_trait(fun)));
             assert!(funs.contains(fun));
             assert!(!funs.contains(resolved_fun));
@@ -129,7 +145,12 @@ fn demote_one_expr(
                 *autospec_usage,
                 *const_var,
             );
-            Ok(expr.new_x(ExprX::Call(ct, args.clone(), post_args.clone())))
+            Ok(expr.new_x(ExprX::Call {
+                target: ct,
+                args: args.clone(),
+                post_args: post_args.clone(),
+                body: body.clone(),
+            }))
         }
         _ => Ok(expr.clone()),
     }
@@ -306,11 +327,12 @@ pub fn rewrite_one_external_expr(
             expr.new_x(ExprX::ExecFnByName(fun))
         }
         (
-            ExprX::Call(
-                CallTarget::Fun(kind, fun, typs, impl_paths, auto, const_var),
+            ExprX::Call {
+                target: CallTarget::Fun(kind, fun, typs, impl_paths, auto, const_var),
                 args,
                 post_args,
-            ),
+                body,
+            },
             Some(to_spec),
         ) => {
             let fun = rewrite_fun(from_path, to_spec, fun);
@@ -331,11 +353,19 @@ pub fn rewrite_one_external_expr(
                     is_trait_default: *is_trait_default,
                 },
             };
-            expr.new_x(ExprX::Call(
-                CallTarget::Fun(kind, fun, typs.clone(), impl_paths.clone(), *auto, *const_var),
-                args.clone(),
-                post_args.clone(),
-            ))
+            expr.new_x(ExprX::Call {
+                target: CallTarget::Fun(
+                    kind,
+                    fun,
+                    typs.clone(),
+                    impl_paths.clone(),
+                    *auto,
+                    *const_var,
+                ),
+                args: args.clone(),
+                post_args: post_args.clone(),
+                body: body.clone(),
+            })
         }
         _ => expr.clone(),
     }

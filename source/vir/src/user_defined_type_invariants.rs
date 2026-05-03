@@ -37,9 +37,11 @@ pub(crate) fn annotate_user_defined_invariants(
         &|expr: &Expr| {
             match &expr.x {
                 ExprX::Ctor(Dt::Path(_), ..) => {
-                    if info.ctor_needs_check[&expr.span.id]
-                        && typ_has_user_defined_type_invariant(datatypes, &expr.typ)
-                    {
+                    let Some(&needs_check) = info.ctor_needs_check.get(&expr.span.id) else {
+                        panic!("info.ctor_needs_check has no entry for {expr:?}")
+                    };
+
+                    if needs_check && typ_has_user_defined_type_invariant(datatypes, &expr.typ) {
                         let fun =
                             typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
                         let Some(function) = functions.get(&fun) else {
@@ -61,7 +63,12 @@ pub(crate) fn annotate_user_defined_invariants(
                         Ok(expr.clone())
                     }
                 }
-                ExprX::Call(CallTarget::Fun(_, fun, _, _, _, _), args, _post_args) => {
+                ExprX::Call {
+                    target: CallTarget::Fun(_, fun, _, _, _, _),
+                    args,
+                    post_args: _,
+                    body: _,
+                } => {
                     let function = &functions.get(fun).unwrap();
                     let mut all_asserts = vec![];
                     for (arg, param) in args.iter().zip(function.x.params.iter()) {
@@ -135,9 +142,11 @@ pub(crate) fn annotate_one(
 ) -> Result<Expr, VirErr> {
     match &expr.x {
         ExprX::Ctor(Dt::Path(_), ..) => {
-            if info.ctor_needs_check[&expr.span.id]
-                && typ_has_user_defined_type_invariant(datatypes, &expr.typ)
-            {
+            let Some(&needs_check) = info.ctor_needs_check.get(&expr.span.id) else {
+                panic!("info.ctor_needs_check has no entry for {expr:?}")
+            };
+
+            if needs_check && typ_has_user_defined_type_invariant(datatypes, &expr.typ) {
                 let fun = typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
                 let Some(function) = functions.get(&fun) else {
                     return Err(internal_error(&expr.span, "missing type invariant function"));

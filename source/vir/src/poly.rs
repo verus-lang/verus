@@ -845,6 +845,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             split,
             dest,
             assert_id,
+            body,
         } => {
             let function = &ctx.func_sst_map[fun].x;
             let is_spec = function.mode == Mode::Spec;
@@ -872,7 +873,8 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             } else {
                 None
             };
-            let callx = StmX::Call {
+            let body = body.as_ref().map(|stm| visit_stm(ctx, state, stm));
+            mk_stm(StmX::Call {
                 fun: fun.clone(),
                 resolved_method: resolved_method.clone(),
                 is_trait_default: *is_trait_default,
@@ -882,8 +884,8 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 split: split.clone(),
                 dest,
                 assert_id: assert_id.clone(),
-            };
-            mk_stm(callx)
+                body,
+            })
         }
         StmX::Assert(id, msg, e1) => {
             let e1 = visit_exp_native(ctx, state, e1);

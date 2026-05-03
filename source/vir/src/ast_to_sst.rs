@@ -843,6 +843,7 @@ struct ReturnedCall {
     args: Exps,
     obligations: Vec<Obligation>,
     may_unwind: bool,
+    body: Option<Stm>,
 }
 
 fn expr_get_call(
@@ -852,7 +853,7 @@ fn expr_get_call(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Maybe<ReturnedCall>)>, VirErr> {
     match &expr.x {
-        ExprX::Call(target, args, post_args) => match target {
+        ExprX::Call { target, args, post_args, body } => match target {
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
@@ -951,6 +952,14 @@ fn expr_get_call(
 
                 let (stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
 
+                let body = match body {
+                    Some(expr) => {
+                        let (stms, _) = expr_to_stm_opt(ctx, state, expr)?;
+                        stms_to_one_stm_opt(&expr.span, stms)
+                    }
+                    None => None,
+                };
+
                 use crate::ast::{CallTargetKind, FunctionKind};
                 let is_trait_default =
                     if let FunctionKind::TraitMethodDecl { has_default: true, .. } =
@@ -982,6 +991,7 @@ fn expr_get_call(
                             function.x.unwind_spec_or_default(),
                             UnwindSpec::NoUnwind
                         ),
+                        body,
                     }),
                 )))
             }
@@ -1001,9 +1011,12 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Maybe<ReturnedCall>)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, _, _), _, _)
-            if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? =>
-        {
+        ExprX::Call {
+            target: CallTarget::Fun(kind, x, _, _, _, _),
+            args: _,
+            post_args: _,
+            body: _,
+        } if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? => {
             expr_get_call(ctx, state, disallow_poly_ret, expr)
         }
         _ => Ok(None),
@@ -1364,6 +1377,7 @@ fn stm_call(
     typs: Typs,
     args: Exps,
     dest: Option<Dest>,
+    body: Option<Stm>,
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
@@ -1412,6 +1426,7 @@ fn stm_call(
         split: None,
         dest,
         assert_id: state.next_assert_id(),
+        body,
     };
 
     stms.push(Spanned::new(span.clone(), call));
@@ -1639,6 +1654,7 @@ pub(crate) fn expr_to_stm_opt(
                         args,
                         obligations,
                         may_unwind,
+                        body,
                     }),
                 )) => {
                     // make a Call
@@ -1673,6 +1689,7 @@ pub(crate) fn expr_to_stm_opt(
                         typs,
                         args,
                         Some(dest),
+                        body,
                     )?);
                     // REVIEW: for a similar case in `ExprX::Call` we emit a StmX::Assign to set the
                     // value of the destination when, in recommends checking, the StmX::Call is used
@@ -1703,8 +1720,9 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
         }
-        ExprX::Call(CallTarget::FnSpec(e0), args, post_args) => {
+        ExprX::Call { target: CallTarget::FnSpec(e0), args, post_args, body } => {
             assert!(post_args.is_none());
+            assert!(body.is_none());
             let (mut check_stms, e0) = expr_to_pure_exp_check(ctx, state, e0)?;
             let mut arg_exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
@@ -1715,8 +1733,14 @@ pub(crate) fn expr_to_stm_opt(
             let call = ExpX::CallLambda(e0, Arc::new(arg_exps));
             Ok((check_stms, Maybe::Some(Value::Exp(mk_exp(call)))))
         }
-        ExprX::Call(CallTarget::BuiltinSpecFun(bsf, ts, _impl_paths), args, post_args) => {
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(bsf, ts, _impl_paths),
+            args,
+            post_args,
+            body,
+        } => {
             assert!(post_args.is_none());
+            assert!(body.is_none());
             let mut check_stms: Vec<Stm> = Vec::new();
             let mut arg_exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
@@ -1738,7 +1762,7 @@ pub(crate) fn expr_to_stm_opt(
                 )))),
             ))
         }
-        ExprX::Call(CallTarget::Fun(..), _, _) => {
+        ExprX::Call { target: CallTarget::Fun(..), args: _, post_args: _, body: _ } => {
             match expr_get_call(ctx, state, None, expr)?.expect("Call") {
                 (stms, Maybe::Never) => Ok((stms, Maybe::Never)),
                 (
@@ -1752,6 +1776,7 @@ pub(crate) fn expr_to_stm_opt(
                         args,
                         obligations,
                         may_unwind,
+                        body,
                     }),
                 ) => {
                     if function_can_be_exp(ctx, state, expr, &x, &resolved_method)? {
@@ -1780,6 +1805,7 @@ pub(crate) fn expr_to_stm_opt(
                             typs.clone(),
                             args.clone(),
                             Some(dest),
+                            body,
                         )?);
                         // REVIEW: this emits a StmX::Assign to set the value of the destination when,
                         // in recommends checking, the StmX::Call is used to check its recommends, however
@@ -1819,6 +1845,7 @@ pub(crate) fn expr_to_stm_opt(
                             typs.clone(),
                             args,
                             None,
+                            body,
                         )?);
                         let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(x) };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
@@ -3048,20 +3075,15 @@ pub(crate) fn expr_to_stm_opt(
                 &err_arm_ret_val,
             ));
         }
-        ExprX::Atomically(info, au_var_id, args_expr, body_expr, is_loop) => {
-            // ```
-            // let pred = $pred_expr;
-            // let au = new existential;
-            // assume(pred(au) == pred);
-            //
-            // with state.mask = outer_mask(au) {
-            //     () = $body;
-            // }
-            //
-            // au
-            // ```
+        ExprX::AtomicUpdateInitDummy(args_expr) => {
+            let au_typ = undecorate_typ(&expr.typ);
+            let TypX::Datatype(_, au_typ_args, _) = au_typ.as_ref() else {
+                panic!("atomic update type should have type arguments")
+            };
 
-            let AtomicCallInfoX { au_typ, au_typ_args, pred_typ, call_span, .. } = info.as_ref();
+            let [_x_typ, _y_typ, pred_typ] = au_typ_args.as_slice() else {
+                panic!("atomic update type should have exactly three type arguments")
+            };
 
             let args_typ = &args_expr.typ;
             let (mut stms, args_raw_exp) = expr_to_stm_opt(ctx, state, args_expr)?;
@@ -3096,14 +3118,9 @@ pub(crate) fn expr_to_stm_opt(
             ));
 
             // construct atomic update
-            state.pre_local_decls.push(PreLocalDecl {
-                ident: au_var_id.clone(),
-                typ: au_typ.clone(),
-                kind: PreLocalDeclKind::Param,
-            });
-
-            stms.push(assume_has_typ(&au_var_id, au_typ, &expr.span));
-            let au_var_exp = SpannedTyped::new(&expr.span, au_typ, ExpX::Var(au_var_id.clone()));
+            let (au_var_id, au_var_exp) =
+                state.declare_temp_var_stm(&expr.span, &au_typ, PreLocalDeclKind::Param);
+            stms.push(assume_has_typ(&au_var_id, &au_typ, &expr.span));
 
             let call_au_pred = SpannedTyped::new(
                 &expr.span,
@@ -3124,7 +3141,41 @@ pub(crate) fn expr_to_stm_opt(
                 )),
             ));
 
-            let backup_au_var = state.au_var_exp.replace(au_var_exp.clone());
+            state.au_var_exp = Some(au_var_exp.clone());
+
+            Ok((stms, Maybe::Some(Value::Exp(au_var_exp))))
+        }
+        ExprX::Atomically(info, ghost_au_var_id, body_expr, is_loop) => {
+            // ```
+            // let pred = $pred_expr;
+            // let au = new existential;
+            // assume(pred(au) == pred);
+            //
+            // with state.mask = outer_mask(au) {
+            //     () = $body;
+            // }
+            //
+            // au
+            // ```
+
+            let AtomicCallInfoX { au_typ, au_typ_args, call_span, .. } = info.as_ref();
+            let mut stms = Vec::<Stm>::new();
+
+            // rebind atomic update
+            state.pre_local_decls.push(PreLocalDecl {
+                ident: ghost_au_var_id.clone(),
+                typ: au_typ.clone(),
+                kind: PreLocalDeclKind::Param,
+            });
+
+            let Some(temp_au_var_exp) = &state.au_var_exp else {
+                panic!("atomic update should have been created by ExprX::AtomicUpdateInitDummy")
+            };
+
+            stms.push(init_var(&expr.span, &ghost_au_var_id, temp_au_var_exp));
+            let au_var_exp =
+                SpannedTyped::new(&expr.span, au_typ, ExpX::Var(ghost_au_var_id.clone()));
+            state.au_var_exp = Some(au_var_exp.clone());
 
             // check invariant mask
             let int_typ = Arc::new(TypX::Int(IntRange::Int));
@@ -3183,7 +3234,6 @@ pub(crate) fn expr_to_stm_opt(
             }
 
             // return atomic update
-            state.au_var_exp = backup_au_var;
             Ok((stms, Maybe::Some(Value::Exp(au_var_exp))))
         }
         ExprX::Update(info, x_expr) => {
@@ -3539,8 +3589,8 @@ pub(crate) fn expr_to_stm_opt(
             let call_expr = SpannedTyped::new(
                 &expr.span,
                 &expr.typ,
-                ExprX::Call(
-                    CallTarget::Fun(
+                ExprX::Call {
+                    target: CallTarget::Fun(
                         crate::ast::CallTargetKind::Static,
                         fun!(CrateId::Vstd => "future", "exec_await"),
                         Arc::new(vec![e.typ.clone()]),
@@ -3548,9 +3598,10 @@ pub(crate) fn expr_to_stm_opt(
                         AutospecUsage::Final,
                         false,
                     ),
-                    Arc::new(vec![e.clone()]),
-                    None,
-                ),
+                    args: Arc::new(vec![e.clone()]),
+                    post_args: None,
+                    body: None,
+                },
             );
             let rewritten = expr_to_stm_opt(ctx, state, &call_expr)?;
             Ok(rewritten)
@@ -4210,6 +4261,7 @@ fn stmt_to_stm(
                             args,
                             obligations,
                             may_unwind,
+                            body,
                         }),
                     )) => {
                         // Special case: convert to a Call
@@ -4228,6 +4280,7 @@ fn stmt_to_stm(
                             typs,
                             args,
                             Some(dest),
+                            body,
                         )?);
                         // REVIEW: for a similar case in `ExprX::Call` we emit a StmX::Assign to set the
                         // value of the destination when, in recommends checking, the StmX::Call is used

@@ -314,7 +314,6 @@ fn mk_bctx<'tcx>(
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
         atomically: None,
-        au_pred_args: None,
         new_mut_ref,
         migrate_postcondition_vars,
         in_fn_sig: false,

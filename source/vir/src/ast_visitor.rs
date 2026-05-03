@@ -319,11 +319,19 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e1 = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Loc(R::get(e1))))
             }
-            ExprX::Call(call_target, exprs, opt_e) => {
-                let ct = self.visit_call_target(call_target)?;
-                let es = self.visit_exprs(exprs)?;
-                let oe = self.visit_opt_expr(opt_e)?;
-                R::ret(|| expr_new(ExprX::Call(R::get(ct), R::get_vec_a(es), R::get_opt(oe))))
+            ExprX::Call { target, args, post_args, body } => {
+                let ct = self.visit_call_target(target)?;
+                let es = self.visit_exprs(args)?;
+                let pa = self.visit_opt_expr(post_args)?;
+                let bd = self.visit_opt_expr(body)?;
+                R::ret(|| {
+                    expr_new(ExprX::Call {
+                        target: R::get(ct),
+                        args: R::get_vec_a(es),
+                        post_args: R::get_opt(pa),
+                        body: R::get_opt(bd),
+                    })
+                })
             }
             ExprX::Ctor(dt, id, binders, opt_tail) => {
                 let bs = self.visit_binders_expr(binders)?;
@@ -619,12 +627,15 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     ))
                 })
             }
-            ExprX::Atomically(i, v, e1, e2, b) => {
+            ExprX::AtomicUpdateInitDummy(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::AtomicUpdateInitDummy(R::get(e))))
+            }
+            ExprX::Atomically(i, v, e, b) => {
                 let i = i.clone();
                 let v = v.clone();
-                let e1 = self.visit_expr(e1)?;
-                let e2 = self.visit_expr(e2)?;
-                R::ret(|| expr_new(ExprX::Atomically(i, v, R::get(e1), R::get(e2), *b)))
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Atomically(i, v, R::get(e), *b)))
             }
             ExprX::Update(i, e) => {
                 let i = i.clone();
