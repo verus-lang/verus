@@ -214,9 +214,6 @@ pub enum IntRange {
 pub enum TypDecoration {
     /// &T
     Ref,
-    /// &mut T
-    /// For new-mut-ref, don't use this; use TypX::MutRef instead
-    MutRef,
     /// Box<T>
     /// This is complicated due to the Allocator type argument; see `TypDecorationArg`.
     Box,

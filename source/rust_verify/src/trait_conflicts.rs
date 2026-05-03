@@ -136,7 +136,6 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
         vir::ast::TypX::Decorate(d, targ, t) => {
             let n = match d {
                 TypDecoration::Ref => TypNum::Ref,
-                TypDecoration::MutRef => TypNum::MutRef,
                 TypDecoration::Box => TypNum::Box,
                 TypDecoration::Rc => TypNum::Rc,
                 TypDecoration::Arc => TypNum::Arc,

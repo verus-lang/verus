@@ -219,7 +219,6 @@ pub fn range_to_id(range: &IntRange) -> Expr {
 fn decoration_str(d: TypDecoration) -> &'static str {
     match d {
         TypDecoration::Ref => crate::def::DECORATE_REF,
-        TypDecoration::MutRef => crate::def::DECORATE_MUT_REF,
         TypDecoration::Box => crate::def::DECORATE_BOX,
         TypDecoration::Rc => crate::def::DECORATE_RC,
         TypDecoration::Arc => crate::def::DECORATE_ARC,

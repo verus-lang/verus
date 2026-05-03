@@ -996,9 +996,6 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Decorate(TypDecoration::Ref, _, typ) => {
             format!("&{}", typ_to_diagnostic_str(typ))
         }
-        TypX::Decorate(TypDecoration::MutRef, _, typ) => {
-            format!("&mut {}", typ_to_diagnostic_str(typ))
-        }
         TypX::Decorate(TypDecoration::ConstPtr, _, typ) => match &**typ {
             TypX::Primitive(crate::ast::Primitive::Ptr, typs) => {
                 format!("*const {}", typ_to_diagnostic_str(&typs[0]))

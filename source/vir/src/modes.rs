@@ -1683,11 +1683,7 @@ fn type_is_ghost_assignable_zst(typ: &Typ) -> bool {
 fn type_is_non_exec(ctxt: &Ctxt, typ: &Typ) -> bool {
     match &**typ {
         TypX::Decorate(
-            TypDecoration::Ref
-            | TypDecoration::MutRef
-            | TypDecoration::Box
-            | TypDecoration::Rc
-            | TypDecoration::Arc,
+            TypDecoration::Ref | TypDecoration::Box | TypDecoration::Rc | TypDecoration::Arc,
             _,
             t,
         ) => type_is_non_exec(ctxt, t),
