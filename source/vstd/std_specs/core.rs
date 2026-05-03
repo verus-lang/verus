@@ -62,6 +62,7 @@ pub trait ExHash: PointeeSized {
     type ExternalTraitSpecificationFor: core::hash::Hash;
 }
 
+#[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
 pub trait ExPtrPointee: PointeeSized {
     type ExternalTraitSpecificationFor: core::ptr::Pointee;
