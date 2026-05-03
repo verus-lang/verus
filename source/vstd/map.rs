@@ -446,6 +446,11 @@ macro_rules! assert_maps_equal_internal {
 pub use assert_maps_equal_internal;
 pub use assert_maps_equal;
 
+} // verus!
+use verus as verus_;
+
+verus_! {
+
 impl<K, V> Map<K, V> {
     pub proof fn tracked_map_keys_in_place(tracked &mut self, key_map: Map<K, K>)
         requires

@@ -118,9 +118,8 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     pub fn remove(&mut self, k: &Key) -> (out: Option<Value>)
         ensures
             match out {
-                Some(v) => old(self)@.contains_key(k@) && v == old(self)@[k@] && final(self)@ == old(
-                    self,
-                )@.remove(k@),
+                Some(v) => old(self)@.contains_key(k@) && v == old(self)@[k@] && final(self)@
+                    == old(self)@.remove(k@),
                 None => !old(self)@.contains_key(k@) && final(self)@ == old(self)@,
             },
     {

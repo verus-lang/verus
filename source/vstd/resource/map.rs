@@ -1628,7 +1628,8 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
         ensures
             final(self).id() == old(self).id(),
             final(self)@ == old(self)@,
-            other@.contains_key(final(self).key()) ==> other@[final(self).key()] == final(self).value(),
+            other@.contains_key(final(self).key()) ==> other@[final(self).key()]
+                == final(self).value(),
     {
         use_type_invariant(&*self);
         use_type_invariant(other);

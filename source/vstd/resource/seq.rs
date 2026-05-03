@@ -273,7 +273,10 @@ impl<V> GhostSubseq<V> {
             final(self).off() == old(self).off(),
             final(auth).id() == old(auth).id(),
             final(self)@ =~= v,
-            final(auth)@ =~= old(auth)@.update_subrange_with(final(self).off() - final(auth).off(), v),
+            final(auth)@ =~= old(auth)@.update_subrange_with(
+                final(self).off() - final(auth).off(),
+                v,
+            ),
             final(self).off() == old(self).off(),
             final(auth).off() == old(auth).off(),
     {
@@ -373,8 +376,8 @@ impl<V> GhostSubseq<V> {
             final(self).id() == old(self).id(),
             final(self).off() == old(self).off(),
             final(self)@ == old(self)@,
-            final(self)@.len() == 0 || other@.len() == 0 || final(self).off() + final(self)@.len() <= other.off()
-                || other.off() + other@.len() <= final(self).off(),
+            final(self)@.len() == 0 || other@.len() == 0 || final(self).off() + final(self)@.len()
+                <= other.off() || other.off() + other@.len() <= final(self).off(),
     {
         use_type_invariant(&*self);
         use_type_invariant(other);
