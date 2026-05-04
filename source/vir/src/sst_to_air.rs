@@ -1742,6 +1742,40 @@ fn loc_to_field_update_data(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldUp
     }
 }
 
+// Semantically equivalent to BinaryOp::FieldUpdate (the SMT update-field),
+// but deliberately mentions each unchanged field explicitly for better quantifier triggering.
+fn update_field(
+    ctx: &Ctx,
+    expr_ctxt: &ExprCtxt,
+    base_exp: &Exp,
+    opr: &FieldOpr,
+    value: &Expr,
+) -> Result<Expr, VirErr> {
+    let mut args: Vec<Expr> = Vec::new();
+    let datatype = &ctx.datatype_map[&opr.datatype];
+    let fields = &get_variant(&datatype.x.variants, &opr.variant).fields;
+    for field in fields.iter() {
+        if &field.name == &opr.field {
+            args.push(value.clone());
+        } else {
+            let op = UnaryOpr::Field(FieldOpr {
+                datatype: opr.datatype.clone(),
+                variant: opr.variant.clone(),
+                field: field.name.clone(),
+                get_variant: false,
+                check: crate::ast::VariantCheck::None,
+            });
+            let expx = ExpX::UnaryOpr(op, base_exp.clone());
+            let typ_args = crate::ast_util::typ_args_for_datatype_typ(&base_exp.typ);
+            let ty = subst_typ_for_datatype(&datatype.x.typ_params, typ_args, &field.a.0);
+            let exp = SpannedTyped::new(&base_exp.span, &ty, expx);
+            args.push(exp_to_expr(ctx, &exp, expr_ctxt)?);
+        };
+    }
+    let variant_ident = ctx.name_ctxt.variant_ident(&opr.datatype, &opr.variant);
+    Ok(Arc::new(ExprX::Apply(variant_ident, Arc::new(args))))
+}
+
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
     let expr_ctxt = &ExprCtxt::new();
@@ -2197,14 +2231,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 let base_expr = exp_to_expr(ctx, &base_exp, expr_ctxt)?;
                 match opr {
                     FieldUpdateDatumOpr::Field(opr) => {
-                        let acc = ctx.name_ctxt.variant_field_ident_internal(
-                            &encode_dt_as_path(&opr.datatype),
-                            &opr.variant,
-                            &opr.field,
-                            true,
-                        );
-                        let bop = air::ast::BinaryOp::FieldUpdate(acc);
-                        value = Arc::new(ExprX::Binary(bop, base_expr, value));
+                        value = update_field(ctx, expr_ctxt, base_exp, opr, &value)?;
                     }
                     FieldUpdateDatumOpr::MutRefCurrent => {
                         let ident = Arc::new(crate::def::MUT_REF_UPDATE_CURRENT.to_string());
