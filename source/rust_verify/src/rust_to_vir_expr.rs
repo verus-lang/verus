@@ -1244,6 +1244,10 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             // and deref_mut has signature (&mut self) -> &mut Self::Target
             // The adjustment, though, goes from self -> Self::Target
             // without the refs.
+            // We thus produce 3 operations in total:
+            //  - Initial borrow (T -> &T) or (T -> &mut T)
+            //  - Call to deref or deref_mut (gives us &Self::Target or &mut Self::Target)
+            //  - A final dereference (giving us Self::Target)
             let inner = expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?;
             let mutbl = matches!(deref.mutbl, Mutability::Mut);
 
@@ -3961,9 +3965,30 @@ pub(crate) fn deref_overloaded<'tcx>(
             // Immutable dereference is implicit
             Ok(temp_place)
         }
-        TyKind::Ref(_, inner_ty, rustc_ast::Mutability::Mut) => {
-            // deref_mut
-            unsupported_err!(span, format!("deref_mut for {inner_ty:?} not yet supported"))
+        TyKind::Ref(_, _inner_ty, rustc_ast::Mutability::Mut) => {
+            let ref_of_target_ty = bctx.ctxt.tcx.mk_ty_from_kind(TyKind::Ref(
+                bctx.ctxt.tcx.lifetimes.re_erased,
+                target_ty,
+                Mutability::Mut,
+            ));
+            let ref_of_target_typ = bctx.mid_ty_to_vir(span, &ref_of_target_ty)?;
+
+            let call_expr = crate::fn_call_to_vir::deref_to_vir(
+                bctx,
+                fn_def_id,
+                expr.clone(),
+                ref_of_target_typ.clone(),
+                ty,
+                span,
+            )?;
+
+            let temp_place = bctx.spanned_typed_new(
+                span,
+                &ref_of_target_typ,
+                PlaceX::Temporary(call_expr.clone()),
+            );
+
+            deref_mut(bctx, span, &temp_place)
         }
         _ => {
             crate::internal_err!(span, format!("overloaded deref expected ref or mut ref"))

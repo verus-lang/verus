@@ -251,6 +251,14 @@ pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::dere
         slice@ == vec@,
 ;
 
+pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::DerefMut>::deref_mut ](
+    vec: &mut Vec<T, A>,
+) -> (slice: &mut [T])
+    ensures
+        slice@ == old(vec)@,
+        final(slice)@ == final(vec)@,
+;
+
 pub assume_specification<T, A: Allocator + core::clone::Clone>[ Vec::<T, A>::split_off ](
     vec: &mut Vec<T, A>,
     at: usize,

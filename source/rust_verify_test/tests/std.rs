@@ -696,3 +696,52 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] vec_deref_mut verus_code! {
+        use vstd::prelude::*;
+
+        fn test_implicit_via_adjustment() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut a;
+            b[0] = 10;
+            assert(a@ === seq![10, 2]);
+        }
+
+        fn test_overloaded_star_operator() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut *a;
+            b[0] = 10;
+            assert(a@ === seq![10, 2]);
+        }
+
+        fn test_overloaded_star_operator2() {
+            let mut a = vec![1, 2];
+            (*a)[1] = 20;
+            assert(a@ === seq![1, 20]);
+        }
+
+        fn fails_implicit_via_adjustment() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut a;
+            b[0] = 10;
+            assert(a@ === seq![10, 2]);
+            assert(false); // FAILS
+        }
+
+        fn fails_overloaded_star_operator() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut *a;
+            b[0] = 10;
+            assert(a@ === seq![10, 2]);
+            assert(false); // FAILS
+        }
+
+        fn fails_overloaded_star_operator2() {
+            let mut a = vec![1, 2];
+            (*a)[1] = 20;
+            assert(a@ === seq![1, 20]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}

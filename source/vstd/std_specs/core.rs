@@ -37,6 +37,13 @@ pub trait ExDeref: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
+pub trait ExDerefMut: core::ops::Deref + PointeeSized {
+    type ExternalTraitSpecificationFor: core::ops::DerefMut;
+
+    fn deref_mut(&mut self) -> &mut Self::Target;
+}
+
+#[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IndexSpec via IndexSpecImpl)]
 pub trait ExIndex<Idx> where Idx: ?Sized {
     type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
