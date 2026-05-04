@@ -44,6 +44,11 @@ macro_rules! wrapping_specs {
                 pub open spec fn wrapping_mul(x: $uN, y: $uN) -> $uN {
                     ((x as nat * y as nat) % $range as nat) as $uN
                 }
+
+                pub open spec fn count_ones(x: $uN) -> u32 {
+                    // TODO: implement
+                    0
+                }
             }
 
             pub mod $modname_i {
@@ -87,6 +92,11 @@ macro_rules! wrapping_specs {
 
                 pub open spec fn wrapping_mul(x: $iN, y: $iN) -> $iN {
                     signed_crop(x * y)
+                }
+
+                pub open spec fn count_ones(x: $iN) -> u32 {
+                    // TODO: implement
+                    0
                 }
             }
 
