@@ -430,7 +430,7 @@ fn main() {
     );
 
     let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
-    flag.flip() atomically |update| -> FlipAU {
+    (&flag).flip() atomically |update| -> FlipAU {
         open_atomic_invariant!(credit => &inv => token => {
             let prev = token.value@;
             token = update(token).get();
@@ -439,7 +439,7 @@ fn main() {
     };
 
     let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
-    let out = flag.read() atomically |update| -> ReadAU {
+    let out = (&flag).read() atomically |update| -> ReadAU {
         open_atomic_invariant!(credit => &inv => token => {
             token = update(token).get();
         });

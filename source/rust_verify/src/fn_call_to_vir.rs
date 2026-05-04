@@ -37,7 +37,7 @@ use vir::ast::{
     VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
-    const_int_from_string, mk_tuple, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
+    const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
     undecorate_typ, unit_typ, unpack_tuple,
 };
 use vir::def::field_ident_from_rust;
@@ -338,18 +338,23 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                 panic!("atomic call must have at least one argument");
             };
 
-            let mut vir_args = mk_vir_args(bctx, prefix)?;
-            let expr_span = bctx.ctxt.spans.to_air_span(expr.span);
-            let pred_args_expr = match vir_args.as_slice() {
-                [single] => single.clone(),
-                _ => mk_tuple(&expr_span, &Arc::new(vir_args.clone())),
+            let mut arg_typs = Vec::new();
+            for expr in prefix {
+                let typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?;
+                arg_typs.push(typ);
+            }
+
+            let arg_tuple_typ = match <[_; 1]>::try_from(arg_typs) {
+                Ok([single]) => single,
+                Err(vec) => mk_tuple_typ(&Arc::new(vec)),
             };
 
+            let mut vir_args = mk_vir_args(bctx, prefix)?;
             let au_expr = expr_to_vir_consume(&bctx, au)?;
             vir_args.push(bctx.spanned_typed_new(
                 au.span,
                 &au_expr.typ,
-                ExprX::AtomicUpdateInitDummy(pred_args_expr),
+                ExprX::AtomicUpdateInitDummy(arg_tuple_typ),
             ));
 
             (vir_args, Some(au_expr))
@@ -2893,7 +2898,7 @@ pub(crate) fn mk_typ_args<'tcx>(
 
 fn mk_vir_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    args: &[&'tcx Expr<'tcx>], //???
+    args: &[&'tcx Expr<'tcx>],
 ) -> Result<Vec<vir::ast::Expr>, VirErr> {
     args.iter().map(|arg| expr_to_vir_consume(bctx, arg)).collect::<Result<Vec<_>, _>>()
 }

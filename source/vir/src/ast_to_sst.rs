@@ -111,6 +111,9 @@ pub(crate) struct State<'a> {
 
     pub mask: Option<MaskSet>,
 
+    /// Function arguments to be used in the construction of the update
+    /// predicate for the atomic update by the atomic function call.
+    pub au_pred_args: Vec<crate::sst::Exp>,
     /// This is the atomic update bound in the atomic spec,
     /// we must assert `au.resolves()` at the end of the function.
     pub au_var_exp_to_resolve: Option<crate::sst::Exp>,
@@ -245,6 +248,7 @@ impl<'a> State<'a> {
             assert_id_counter: 0,
             loop_id_counter: 0,
             mask: None,
+            au_pred_args: Vec::new(),
             au_var_exp_to_resolve: None,
             au_var_exp: None,
             branch_bool_var: None,
@@ -900,13 +904,19 @@ fn expr_get_call(
                 // delayed "phase2" Stms
                 let mut second_phase: Vec<Stm> = Vec::new();
                 let mut all_obligations: Vec<Obligation> = Vec::new();
+                let mut atomically: Option<&Expr> = None;
 
-                for arg in args.iter() {
+                for (k, arg) in args.iter().enumerate() {
                     let poly =
                         crate::poly::arg_is_poly(ctx, &function.x.kind, function.x.mode, &arg.typ);
                     let kind = Immutable(LocalDeclKind::StmCallArg { native: !poly });
 
                     match &arg.x {
+                        ExprX::AtomicUpdateInitDummy(_) => {
+                            assert_eq!(k + 1, args.len());
+                            atomically = Some(arg);
+                            break
+                        }
                         ExprX::TwoPhaseBorrowMut(_) => {
                             let (phase1_stms, bor_sst) = borrow_mut_to_sst(ctx, state, arg)?;
 
@@ -947,7 +957,20 @@ fn expr_get_call(
                     second_phase.append(&mut stms0);
                 }
 
-                let (stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
+                let (mut stms, mut exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
+
+                if let Some(expr) = atomically {
+                    for exp in &mut exps {
+                        *exp = state.make_tmp_var_for_exp(&mut stms, exp.clone());
+                    }
+
+                    state.au_pred_args = exps.clone();
+                    let (au_stms, value) = expr_to_stm_opt(ctx, state, expr)?;
+                    let au_exp = value.expect_exp();
+
+                    stms.extend(au_stms);
+                    exps.push(au_exp);
+                }
 
                 let body = match body {
                     Some(expr) => {
@@ -2973,7 +2996,9 @@ pub(crate) fn expr_to_stm_opt(
                 &err_arm_ret_val,
             ));
         }
-        ExprX::AtomicUpdateInitDummy(args_expr) => {
+        ExprX::AtomicUpdateInitDummy(args_exp_typ) => {
+            let mut stms = Vec::<Stm>::new();
+
             let au_typ = undecorate_typ(&expr.typ);
             let TypX::Datatype(_, au_typ_args, _) = au_typ.as_ref() else {
                 panic!("atomic update type should have type arguments")
@@ -2983,10 +3008,11 @@ pub(crate) fn expr_to_stm_opt(
                 panic!("atomic update type should have exactly three type arguments")
             };
 
-            let args_typ = &args_expr.typ;
-            let (mut stms, args_raw_exp) = expr_to_stm_opt(ctx, state, args_expr)?;
-            let args_raw_val = unwrap_or_return_never!(args_raw_exp, stms);
-            let args_var_exp = state.make_tmp_var_for_exp(&mut stms, args_raw_val.to_exp());
+            let au_pred_args = std::mem::take(&mut state.au_pred_args);
+            let args_exp = match <[_; 1]>::try_from(au_pred_args) {
+                Ok([single]) => single.clone(),
+                Err(exps) => crate::sst_util::sst_tuple(&expr.span, &Arc::new(exps)),
+            };
 
             // construct predicate type
             let (pred_var_id, pred_var_exp) = state.declare_temp_var_stm(
@@ -2998,10 +3024,10 @@ pub(crate) fn expr_to_stm_opt(
 
             let call_pred_args = SpannedTyped::new(
                 &expr.span,
-                args_typ,
+                &args_exp_typ,
                 ExpX::Call(
                     CallFun::Fun(def::fn_pred_args(), None),
-                    Arc::new(vec![pred_typ.clone(), args_typ.clone()]),
+                    Arc::new(vec![pred_typ.clone(), args_exp_typ.clone()]),
                     Arc::new(vec![pred_var_exp.clone()]),
                 ),
             );
@@ -3011,7 +3037,7 @@ pub(crate) fn expr_to_stm_opt(
                 StmX::Assume(SpannedTyped::new(
                     &expr.span,
                     &Arc::new(TypX::Bool),
-                    ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_pred_args, args_var_exp),
+                    ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_pred_args, args_exp),
                 )),
             ));
 
