@@ -1408,8 +1408,11 @@ impl<'a> Builder<'a> {
             }
             PlaceX::Temporary(e) => {
                 let bb = self.build(e, bb)?;
-                let mode = self.locals.temporary_modes[&place.span.id];
-                if mode == Mode::Spec {
+                let Some(mode) = self.locals.temporary_modes.get(&place.span.id) else {
+                    panic!("unknown mode for temporary place {:?}", place);
+                };
+
+                if *mode == Mode::Spec {
                     Ok((ComputedPlaceTyped::Ghost(None), bb))
                 } else {
                     let temp_name = self.locals.new_temp_name(place.span.id);
@@ -2084,7 +2087,10 @@ impl<'a> LocalCollection<'a> {
     fn new_temp_name(&mut self, ast_id: AstId) -> LocalName {
         let temp_id = TempId(self.next_temp_id);
         self.next_temp_id += 1;
-        assert!(!self.ast_id_to_temp_id.contains_key(&ast_id));
+        if let Some(prev) = self.ast_id_to_temp_id.get(&ast_id) {
+            panic!("attempt to override entry AstId({ast_id}) => {prev:?} with {temp_id:?}");
+        };
+
         self.ast_id_to_temp_id.insert(ast_id, temp_id);
         LocalName::Temporary(ast_id, temp_id)
     }
