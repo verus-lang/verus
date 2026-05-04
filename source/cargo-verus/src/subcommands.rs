@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap as Map, BTreeSet as Set, VecDeque};
+use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
@@ -391,41 +391,11 @@ fn make_cargo_plan(
                 verus_driver_args_for_package.push("--no-verify".to_owned());
             }
 
-            // Walk the transitive dep closure: rustc may load a deeper crate's
-            // metadata when items are referenced by canonical path through a
-            // re-exporting facade, and Verus then needs the matching .vir.
-            // Direct deps use the consumer-side dep name (honoring `package =
-            // "..."` renames); deeper deps use the lib target name.
-            let mut visited: Set<&PackageId> = Set::new();
-            let mut queue: VecDeque<(&PackageId, Option<String>)> = VecDeque::new();
-            for dep in entry.deps() {
-                queue.push_back((&dep.pkg, Some(dep.name.clone())));
-            }
-            while let Some((pkg_id, name_override)) = queue.pop_front() {
-                if !visited.insert(pkg_id) {
-                    continue;
-                }
-                let dep_entry = metadata_index.get(pkg_id);
-                if dep_entry.verus_metadata().verify {
-                    let import_name = match name_override {
-                        Some(n) => Some(n),
-                        None => dep_entry
-                            .package()
-                            .targets
-                            .iter()
-                            .find(|t| t.is_lib())
-                            .map(|t| t.name.clone()),
-                    };
-                    if let Some(import_name) = import_name {
-                        verus_driver_args_for_package.extend_from_slice(&[
-                            "--VIA-CARGO".to_owned(),
-                            format!("import-dep-if-present={import_name}"),
-                        ]);
-                    }
-                }
-                for d in dep_entry.deps() {
-                    queue.push_back((&d.pkg, None));
-                }
+            for import_name in metadata_index.transitive_verified_import_names(pkg_id) {
+                verus_driver_args_for_package.extend_from_slice(&[
+                    "--VIA-CARGO".to_owned(),
+                    format!("import-dep-if-present={import_name}"),
+                ]);
             }
 
             // If the package has a lib target *and* a non-lib target, like a test or example,
