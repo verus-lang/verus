@@ -28,7 +28,7 @@ verus! {
 #[verifier::external_body]
 #[verifier::ext_equal]
 #[verifier::accept_recursive_types(A)]
-pub struct Seq<A> {
+pub tracked struct Seq<A> {
     dummy: marker::PhantomData<A>,
 }
 
