@@ -915,7 +915,7 @@ fn expr_get_call(
                         ExprX::AtomicUpdateInitDummy(_) => {
                             assert_eq!(k + 1, args.len());
                             atomically = Some(arg);
-                            break
+                            break;
                         }
                         ExprX::TwoPhaseBorrowMut(_) => {
                             let (phase1_stms, bor_sst) = borrow_mut_to_sst(ctx, state, arg)?;

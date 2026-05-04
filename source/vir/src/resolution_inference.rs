@@ -1067,9 +1067,7 @@ impl<'a> Builder<'a> {
 
                 Ok(bb)
             }
-            ExprX::AtomicUpdateInitDummy(_) => {
-                Ok(bb)
-            }
+            ExprX::AtomicUpdateInitDummy(_) => Ok(bb),
             ExprX::Atomically(_i, _v, e, _b) => {
                 bb = self.build(e, bb)?;
                 Ok(bb)
