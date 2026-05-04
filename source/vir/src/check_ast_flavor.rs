@@ -127,10 +127,11 @@ pub fn check_krate_simplified(krate: &Krate) {
     }
 }
 
+// REVIEW: is this still needed?
 fn expr_no_loc_in_spec(
     expr: &Expr,
     scope_map: &mut VisitorScopeMap,
-    in_spec: bool,
+    _in_spec: bool,
 ) -> VisitorControlFlow<()> {
     let mut recurse_in_spec = |e| match expr_visitor_dfs(
         e,
@@ -150,7 +151,6 @@ fn expr_no_loc_in_spec(
         ExprX::AssertBy { vars: _, require, ensure, proof: _ } => {
             recurse_in_spec(require).and_then(|_| recurse_in_spec(ensure))
         }
-        ExprX::VarLoc(_) | ExprX::Loc(_) if in_spec => Err(()),
         _ => Ok(true),
     } {
         Ok(true) => VisitorControlFlow::Recurse,

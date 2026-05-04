@@ -49,11 +49,9 @@ fn expr_get_early_exits_rec(
         match &expr.x {
             ExprX::Const(..)
             | ExprX::Var(..)
-            | ExprX::VarLoc(..)
             | ExprX::VarAt(..)
             | ExprX::ConstVar(..)
             | ExprX::StaticVar(..)
-            | ExprX::Loc(..)
             | ExprX::Call { target: CallTarget::Fun(..), .. }
             | ExprX::Call { target: CallTarget::FnSpec(..), .. }
             | ExprX::Call { target: CallTarget::BuiltinSpecFun(..), .. }
@@ -64,8 +62,11 @@ fn expr_get_early_exits_rec(
             | ExprX::UnaryOpr(..)
             | ExprX::Binary(..)
             | ExprX::BinaryOpr(..)
+            | ExprX::AtomicUpdateInitDummy(..)
+            | ExprX::Atomically(..)
+            | ExprX::Update(..)
+            | ExprX::InvMask(..)
             | ExprX::Multi(..)
-            | ExprX::Assign { .. }
             | ExprX::AssignToPlace { .. }
             | ExprX::If(..)
             | ExprX::Match(..)
@@ -73,10 +74,6 @@ fn expr_get_early_exits_rec(
             | ExprX::ProofInSpec(..)
             | ExprX::NeverToAny { .. }
             | ExprX::Nondeterministic { .. }
-            | ExprX::AtomicUpdateInitDummy(..)
-            | ExprX::Atomically(..)
-            | ExprX::Update(..)
-            | ExprX::InvMask(..)
             | ExprX::TwoPhaseBorrowMut(_)
             | ExprX::BorrowMut(_)
             | ExprX::BorrowMutTracked(_)

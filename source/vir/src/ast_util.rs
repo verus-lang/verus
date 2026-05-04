@@ -800,7 +800,7 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
         &mut (),
         &mut |_, _, e| {
             match &e.x {
-                ExprX::Var(x) | ExprX::VarLoc(x) => {
+                ExprX::Var(x) => {
                     vars.borrow_mut().insert(x.clone());
                 }
                 _ => (),
