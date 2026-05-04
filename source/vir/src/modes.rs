@@ -480,7 +480,6 @@ struct Ctxt {
 
 pub(crate) struct TypeInvInfo {
     pub ctor_needs_check: HashMap<crate::messages::AstId, bool>,
-    pub field_loc_needs_check: HashMap<crate::messages::AstId, bool>,
 }
 
 pub type ReadKindFinals = HashMap<u64, ReadKind>;
@@ -1269,7 +1268,7 @@ fn check_place_rec_inner(
     outer_proph: &Proph,
 ) -> Result<(Mode, Proph), VirErr> {
     match &place.x {
-        PlaceX::Field(FieldOpr { datatype, variant, field, get_variant: _, check }, p) => {
+        PlaceX::Field(FieldOpr { datatype, variant, field, get_variant, check }, p) => {
             let (mode, proph) = check_place_rec(
                 ctxt,
                 record,
@@ -1285,6 +1284,12 @@ fn check_place_rec_inner(
                 return Err(error(
                     &place.span,
                     "union field access is not allowed in pure context (use the Verus `get_union_field` builtin instead)",
+                ));
+            }
+            if *get_variant {
+                return Err(error(
+                    &place.span,
+                    "Verus Internal Error: field accesses should be through Expr nodes for builtin spec operators like get_variant_field",
                 ));
             }
 
@@ -1634,25 +1639,11 @@ fn check_expr(
     expr: &Expr,
     outer_proph: &Proph,
 ) -> Result<(Mode, Proph), VirErr> {
-    let (mode, _, proph) =
-        check_expr_handle_mut_arg(ctxt, record, typing, outer_mode, expect, expr, outer_proph)?;
-    Ok((mode, proph))
-}
-
-fn check_expr_handle_mut_arg(
-    ctxt: &Ctxt,
-    record: &mut Record,
-    typing: &mut Typing,
-    outer_mode: Mode,
-    expect: Expect,
-    expr: &Expr,
-    outer_proph: &Proph,
-) -> Result<(Mode, Option<Mode>, Proph), VirErr> {
     if let Some(r) = outer_reason_by_expr_kind(expr) {
         outer_proph.outer_check(&expr.span, r)?;
     }
 
-    let mode_proph = match &expr.x {
+    match &expr.x {
         ExprX::Const(_) => Ok((Mode::Exec, Proph::No)),
         ExprX::Var(x) | ExprX::VarAt(x, _) => {
             let (x_mode, proph) = typing.get(x, &expr.span)?;
@@ -1672,7 +1663,7 @@ fn check_expr_handle_mut_arg(
                 // This protects against effectively consuming a linear proof variable
                 // multiple times for different instantiations of the forall variables.
                 record.erasure_modes.var_modes.push((expr.span.clone(), (Mode::Spec, Mode::Spec)));
-                return Ok((Mode::Spec, None, proph));
+                return Ok((Mode::Spec, proph));
             }
 
             if ctxt.check_ghost_blocks
@@ -1701,7 +1692,7 @@ fn check_expr_handle_mut_arg(
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
             record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
-            return Ok((mode, Some(x_mode), proph));
+            return Ok((mode, proph));
         }
         ExprX::ConstVar(x, _)
         | ExprX::StaticVar(x)
@@ -2060,18 +2051,6 @@ fn check_expr_handle_mut_arg(
             }
             let param_mode = mode_join(outer_mode, *from_mode);
             match kind {
-                ModeCoercion::BorrowMut => {
-                    let proph = check_expr_has_mode(
-                        ctxt,
-                        record,
-                        typing,
-                        param_mode,
-                        e1,
-                        *from_mode,
-                        outer_proph,
-                    )?;
-                    return Ok((*to_mode, Some(*to_mode), proph));
-                }
                 ModeCoercion::Constructor | ModeCoercion::Field => {
                     let (mode, proph) = check_expr(
                         ctxt,
@@ -2163,42 +2142,23 @@ fn check_expr_handle_mut_arg(
             check_expr(ctxt, record, typing, outer_mode, Expect(Mode::Spec), e1, outer_proph)
         }
         ExprX::UnaryOpr(
-            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant, check: _ }),
+            UnaryOpr::Field(FieldOpr { datatype: _, variant: _, field: _, get_variant, check: _ }),
             e1,
         ) => {
+            if !*get_variant {
+                return Err(error(
+                    &expr.span,
+                    "Verus Internal Error: field accesses should be through Place nodes (except for builtin spec operators like get_variant_field)",
+                ));
+            }
             if *get_variant && ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot get variant in exec mode"));
             }
-            let (e1_mode_read, e1_mode_write, proph) = check_expr_handle_mut_arg(
-                ctxt,
-                record,
-                typing,
-                outer_mode,
-                expect,
-                e1,
-                outer_proph,
-            )?;
+            let (_e1_mode, proph) =
+                check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
 
-            record
-                .type_inv_info
-                .field_loc_needs_check
-                .insert(expr.span.id, e1_mode_write != None && e1_mode_write != Some(Mode::Spec));
-
-            let field_mode = match datatype {
-                Dt::Path(path) => {
-                    let datatype = &ctxt.datatypes[path];
-                    let field = get_field(&datatype.x.get_variant(variant).fields, field);
-                    field.a.1
-                }
-                Dt::Tuple(_) => Mode::Exec,
-            };
-            let mode_read =
-                if *get_variant { Mode::Spec } else { mode_join(e1_mode_read, field_mode) };
-            if let Some(e1_mode_write) = e1_mode_write {
-                return Ok((mode_read, Some(mode_join(e1_mode_write, field_mode)), proph));
-            } else {
-                Ok((mode_read, proph))
-            }
+            let mode_read = Mode::Spec;
+            Ok((mode_read, proph))
         }
         ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(_kind, min_mode), e1) => {
             let joined_mode = mode_join(outer_mode, *min_mode);
@@ -2940,7 +2900,7 @@ fn check_expr_handle_mut_arg(
                 _ => outer_mode,
             };
             let m = if *tracked { Mode::Proof } else { Mode::Spec };
-            let inner_mode = check_expr_handle_mut_arg(
+            let inner_mode = check_expr(
                 ctxt,
                 record,
                 &mut typing,
@@ -2950,7 +2910,7 @@ fn check_expr_handle_mut_arg(
                 outer_proph,
             )?;
             let mode = if *alloc_wrapper {
-                let (inner_read, inner_write, inner_proph) = inner_mode;
+                let (inner_read, inner_proph) = inner_mode;
                 let target_mode = if *tracked { Mode::Proof } else { Mode::Spec };
                 if !mode_le(inner_read, target_mode) {
                     return Err(error(
@@ -2961,17 +2921,12 @@ fn check_expr_handle_mut_arg(
                         ),
                     ));
                 }
-                let outer_write = if inner_write == Some(inner_read) && inner_read == target_mode {
-                    Some(Mode::Exec)
-                } else {
-                    None
-                };
-                (Mode::Exec, outer_write, inner_proph)
+                (Mode::Exec, inner_proph)
             } else {
                 inner_mode
             };
             if mode.0 != Mode::Spec {
-                mode.2.check(
+                mode.1.check(
                     &expr.span,
                     if *tracked { NoProphReason::TrackedWrap } else { NoProphReason::GhostWrap },
                 )?;
@@ -2996,15 +2951,7 @@ fn check_expr_handle_mut_arg(
             check_expr(ctxt, record, &mut typing, Mode::Proof, Expect(Mode::Spec), e1, outer_proph)
         }
         ExprX::Block(ss, Some(e1)) if ss.len() == 0 => {
-            return check_expr_handle_mut_arg(
-                ctxt,
-                record,
-                typing,
-                outer_mode,
-                expect,
-                e1,
-                outer_proph,
-            );
+            return check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph);
         }
         ExprX::Block(ss, e1) => {
             let mut typing = typing.push_var_multi_scope();
@@ -3274,9 +3221,7 @@ fn check_expr_handle_mut_arg(
             let mut typing = typing.push_var_multi_scope();
             Ok(check_expr(ctxt, record, &mut typing, outer_mode, expect, e, outer_proph)?)
         }
-    };
-    let (mode, proph) = mode_proph?;
-    Ok((mode, None, proph))
+    }
 }
 
 fn unwrap_mut_ref_tracked_typ(span: &Span, typ: &Typ) -> Result<Typ, VirErr> {
@@ -3410,8 +3355,7 @@ fn check_function(
     rtypes: &ResolutionTypes,
 ) -> Result<(), VirErr> {
     // Reset this, we only need it per-function
-    record.type_inv_info =
-        TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
+    record.type_inv_info = TypeInvInfo { ctor_needs_check: HashMap::new() };
     record.var_modes = HashMap::new();
     record.temporary_modes = HashMap::new();
     record.mut_bor_place_modes = HashMap::new();
@@ -3777,8 +3721,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals
         fun_mode: Mode::Exec,
         special_paths,
     };
-    let type_inv_info =
-        TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
+    let type_inv_info = TypeInvInfo { ctor_needs_check: HashMap::new() };
     let mut record = Record {
         erasure_modes,
         infer_spec_for_loop_iter_modes: None,
