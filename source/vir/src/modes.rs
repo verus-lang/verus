@@ -2834,22 +2834,28 @@ fn check_expr(
             if typing.in_pure {
                 return Err(error(&expr.span, "return is not allowed in pure context"));
             }
-            match (e1, typing.ret_mode) {
-                (None, _) => {}
-                (Some(v), None) if is_unit(&v.typ) => {}
-                (_, None) => return Err(internal_error(&expr.span, "missing return type")),
-                (Some(e1), Some(ret_mode)) => {
-                    let proph = check_expr_has_mode(
-                        ctxt,
-                        record,
-                        typing,
-                        outer_mode,
-                        e1,
-                        ret_mode,
-                        outer_proph,
-                    )?;
-                    proph.check(&expr.span, NoProphReason::Return)?;
+            if let Some(e1) = e1 {
+                let expect = match typing.ret_mode {
+                    Some(mode) => Expect(mode),
+                    None => Expect::none(),
+                };
+                let (mode, proph) =
+                    check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
+                if is_unit(&e1.typ) {
+                    return Ok((Mode::Exec, Proph::No));
                 }
+                match typing.ret_mode {
+                    None => return Err(internal_error(&expr.span, "missing return type")),
+                    Some(ret_mode) => {
+                        if !mode_le(mode, ret_mode) {
+                            return Err(error(
+                                &expr.span,
+                                format!("expression has mode {}, expected mode {}", mode, ret_mode),
+                            ));
+                        }
+                    }
+                }
+                proph.check(&expr.span, NoProphReason::Return)?;
             }
             Ok((Mode::Exec, Proph::No))
         }
