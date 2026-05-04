@@ -629,24 +629,24 @@ pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T
     unsafe { &*ptr }
 }
 
-/* coming soon
-/// Equivalent to &mut *X, passing in a permission `perm` to ensure safety.
+/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
 pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
     requires
         old(perm).ptr() == ptr,
-        old(perm).is_init()
+        old(perm).is_init(),
     ensures
-        perm.ptr() == ptr,
-        perm.is_init(),
-
-        old(perm).value() == *old(v),
-        new(perm).value() == *new(v),
-    unsafe { &*ptr }
+        final(perm).ptr() == ptr,
+        final(perm).is_init(),
+        old(perm).value() == *v,
+        final(perm).value() == *final(v),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
 }
-*/
 
 macro_rules! pointer_specs {
     ($mod_ident:ident, $ptr_from_data:ident, $mu:tt) => {

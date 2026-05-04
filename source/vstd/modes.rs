@@ -16,9 +16,17 @@ pub axiom fn tracked_swap<V>(tracked a: &mut V, tracked b: &mut V)
 ///
 /// Tip: If you try to use this and run into problems relating to the introduction
 /// of a lifetime variable, you want to try [`Shared`](crate::shared::Shared) instead.
-pub axiom fn tracked_static_ref<V>(tracked v: V) -> (tracked res: &'static V)
+pub proof fn tracked_static_ref<V>(tracked v: V) -> (tracked res: &'static V)
     ensures
         res == v,
+{
+    tracked_static_mut_ref(v)
+}
+
+/// Make any tracked object permanently mutably borrowed.
+pub axiom fn tracked_static_mut_ref<V>(tracked v: V) -> (tracked res: &'static mut V)
+    ensures
+        *res == v,
 ;
 
 } // verus!

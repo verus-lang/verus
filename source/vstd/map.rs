@@ -4,7 +4,8 @@ use super::pervasive::*;
 use super::prelude::*;
 use super::set::*;
 
-verus! {
+use verus as verus_; // skip verusfmt due to unhandled return-value-pattern
+verus_! {
 
 /// `Map<K, V>` is an abstract map type for specifications.
 /// To use a "map" in compiled code, use an `exec` type like HashMap (TODO)
@@ -142,6 +143,26 @@ impl<K, V> Map<K, V> {
             self.dom().contains(key),
         ensures
             *v === self.index(key),
+    ;
+
+    /// Index into a tracked map, getting a tracked mutable borrow of the value
+    pub axiom fn tracked_borrow_mut(tracked &mut self, key: K) -> (tracked v: &mut V)
+        requires
+            self.dom().contains(key),
+        ensures
+            *v === old(self).index(key),
+            *final(self) === old(self).insert(key, *final(v))
+    ;
+
+    /// Split a mutable borrow of a map into two.
+    pub axiom fn tracked_borrow_mut_split(tracked &mut self, keys: Set<K>)
+        -> (tracked (m1, m2): (&mut Self, &mut Self))
+        requires
+            keys <= self.dom(),
+        ensures
+            *m1 == old(self).restrict(keys),
+            *m2 == old(self).remove_keys(keys),
+            *final(self) == final(m1).union_prefer_right(*final(m2)),
     ;
 
     /// Change the keys of a map, by reverse lookup in a different map.
@@ -447,9 +468,8 @@ pub use assert_maps_equal_internal;
 pub use assert_maps_equal;
 
 } // verus!
-use verus as verus_;
 
-verus_! {
+verus_! { // skip verusfmt, issue with 'final'
 
 impl<K, V> Map<K, V> {
     pub proof fn tracked_map_keys_in_place(tracked &mut self, key_map: Map<K, K>)

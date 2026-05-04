@@ -187,6 +187,23 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
+    pub fn borrow_mut<'a>(&'a self, Tracked(perm): Tracked<&'a mut PointsTo<V>>) -> (v: &'a mut V)
+        requires
+            self.id() === perm.id(),
+            perm.is_init(),
+        ensures
+            *v === old(perm).value(),
+            final(perm).is_init(),
+            final(perm).value() == *final(v),
+        opens_invariants none
+        no_unwind
+    {
+        unsafe {
+            self.0.borrow_mut(Tracked(&mut perm.0)).assume_init_mut()
+        }
+    }
+
+    #[inline(always)]
     pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
         requires
             self.id() === perm.id(),

@@ -532,6 +532,27 @@ impl<V> PPtr<V> {
         ptr_ref(ptr, Tracked(&perm.points_to))
     }
 
+    /// Given a shared borrow of the `PointsTo<V>`, obtain a shared borrow of `V`.
+    #[inline(always)]
+    pub fn borrow_mut<'a>(self, Tracked(perm): Tracked<&'a mut PointsTo<V>>) -> (v: &'a mut V)
+        requires
+            perm.pptr() == self,
+            perm.is_init(),
+        ensures
+            final(perm).pptr() == self,
+            final(perm).is_init(),
+            *v === old(perm).value(),
+            final(perm).value() == *final(v),
+        opens_invariants none
+        no_unwind
+    {
+        proof {
+            use_type_invariant(&*perm);
+        }
+        let ptr: *mut V = with_exposed_provenance(self.0, Tracked(perm.exposed));
+        ptr_mut_ref(ptr, Tracked(&mut perm.points_to))
+    }
+
     #[inline(always)]
     pub fn write(self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) where V: Copy
         requires
