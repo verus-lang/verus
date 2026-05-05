@@ -5265,3 +5265,15 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_in_return_stmt_unit_return [] => verus_code! {
+        pub fn mutates(Tracked(a): Tracked<&mut int>)
+        {
+        }
+
+        pub fn returns(Tracked(a): Tracked<&mut int>) {
+            return mutates(Tracked(a));
+        }
+    } => Ok(())
+}

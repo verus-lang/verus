@@ -351,10 +351,6 @@ pub enum TriggerAnnotation {
 /// Operations on Ghost and Tracked
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, Hash, PartialEq, Eq, ToDebugSNode)]
 pub enum ModeCoercion {
-    /// Mutable borrows (Ghost::borrow_mut and Tracked::borrow_mut) are treated specially by
-    /// the mode checker when checking assignments.
-    /// (Only used outside new-mut-ref)
-    BorrowMut,
     /// This operation behaves like a datatype constructor with a mode annotation
     /// `from_mode` on its field.
     /// (e.g., Tracked(...) is proof -> exec, Ghost(...) is spec -> exec.
