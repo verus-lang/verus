@@ -19,12 +19,6 @@ mod calc_macro;
 mod contrib;
 mod enum_synthesize;
 mod fndecl;
-
-// Proc macros must reside at the root of the crate
-#[proc_macro]
-pub fn fndecl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    proc_macro::TokenStream::from(fndecl::fndecl(proc_macro2::TokenStream::from(input)))
-}
 mod is_variant;
 mod rustdoc;
 mod struct_decl_inv;
@@ -86,6 +80,12 @@ impl EraseGhost {
             EraseGhost::EraseAll => true,
         }
     }
+}
+
+// Proc macros must reside at the root of the crate
+#[proc_macro]
+pub fn fndecl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    proc_macro::TokenStream::from(fndecl::fndecl(proc_macro2::TokenStream::from(input)))
 }
 
 #[proc_macro]

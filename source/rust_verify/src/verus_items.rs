@@ -687,7 +687,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::create_open_invariant_credit",         VerusItem::Vstd(VstdItem::Invariant(InvariantItem::CreateOpenInvariantCredit      ), Some(Arc::new("invariant::create_open_invariant_credit"        .to_owned())))),
         ("verus::vstd::invariant::spend_open_invariant_credit",          VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCredit       ), Some(Arc::new("invariant::spend_open_invariant_credit"         .to_owned())))),
         ("verus::vstd::invariant::spend_open_invariant_credit_in_proof", VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditInProof), Some(Arc::new("invariant::spend_open_invariant_credit_in_proof".to_owned())))),
-        ("verus::vstd::vstd::exec_nonstatic_call",  VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
+        ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
         ("verus::vstd::atomic::atomically",               VerusItem::Spec(SpecItem::Atomically)),
@@ -741,11 +741,11 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
         ("verus::verus_builtin::constrain_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)),
         ("verus::verus_builtin::get_future_output_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType)),
-        
+
         ("verus::verus_builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
 
         ("verus::verus_builtin::FnProof",          VerusItem::External(ExternalItem::FnProof)),
-        ("verus::verus_builtin::FOpts",            VerusItem::External(ExternalItem::FOpts)),
+        ("verus::verus_builtin::FOpts",   VerusItem::External(ExternalItem::FOpts)),
         ("verus::verus_builtin::ProofFnReqEnsDef::req", VerusItem::External(ExternalItem::FnProofReq)),
         ("verus::verus_builtin::ProofFnReqEnsDef::ens", VerusItem::External(ExternalItem::FnProofEns)),
         ("verus::verus_builtin::ProofFnOnce",      VerusItem::External(ExternalItem::ProofFnOnce)),

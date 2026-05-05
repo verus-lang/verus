@@ -472,7 +472,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         ),
         VerusItem::OpenAtomicUpdate(_) => err_span(
             expr.span,
-            format!("{} should never be used except through open_atomic_update macro", f_name),
+            format!("{f_name} should never be used except through open_atomic_update macro"),
         ),
         VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Decimal)) => {
             record_spec_fn(bctx, expr);
@@ -647,9 +647,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                     let inner = expr_to_vir_consume(&bctx, args[0])?;
                     let ExprX::InvMask(mask_spec) = &inner.x else {
-                        let msg =
-                            "malformed opens_invariants item; expected invariant mask expression";
-                        return err_span(expr.span, msg);
+                        return err_span(
+                            expr.span,
+                            "malformed opens_invariants item; \
+                            expected invariant mask expression",
+                        );
                     };
 
                     let header = HeaderExprX::OpensInvariantMask(mask_spec.clone());

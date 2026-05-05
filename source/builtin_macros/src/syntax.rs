@@ -1,12 +1,24 @@
 #![allow(unused_macros)]
+use crate::EraseGhost;
 use crate::rustdoc::env_rustdoc;
-use crate::{EraseGhost, VstdKind, vstd_kind};
+use crate::{VstdKind, vstd_kind};
 use convert_case::{Case, Casing};
-use proc_macro2::{Group, Span, TokenStream, TokenTree};
-use quote::{ToTokens, format_ident, quote, quote_spanned};
+use proc_macro2::Group;
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use proc_macro2::TokenTree;
+use quote::ToTokens;
+use quote::format_ident;
+use quote::{quote, quote_spanned};
 use syn::token::Comma;
 use syn::visit::Visit as SynVisit;
+use verus_syn::BroadcastUse;
+use verus_syn::DefaultEnsures;
+use verus_syn::ExprBlock;
+use verus_syn::ExprForLoop;
+use verus_syn::Generics;
 use verus_syn::parse::{Parse, ParseStream};
+use verus_syn::parse_quote_spanned;
 use verus_syn::punctuated::Punctuated;
 use verus_syn::spanned::Spanned;
 use verus_syn::token;
@@ -19,20 +31,18 @@ use verus_syn::visit_mut::{
     visit_item_union_mut, visit_local_mut, visit_specification_mut, visit_trait_item_fn_mut,
 };
 use verus_syn::{
-    AssumeSpecification, AtomicSpec, AtomicallyBlock, Attribute, BareFnArg, BinOp, Block,
-    BroadcastUse, DataMode, Decreases, DefaultEnsures, Ensures, Expr, ExprBinary, ExprBlock,
-    ExprCall, ExprForLoop, ExprLit, ExprLoop, ExprMatches, ExprMethodCall, ExprTuple, ExprUnary,
-    ExprWhile, Field, FnArg, FnArgKind, FnMode, GenericParam, Generics, Global, Ident, ImplItem,
-    ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
-    InvariantNameSetList, InvariantNameSetSet, Item, ItemBroadcastGroup, ItemConst, ItemEnum,
-    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local,
-    MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec, ModeSpecChecked, Pat, PatIdent,
-    PatType, Path, PathArguments, Publish, Receiver, Recommends, Requires, ReturnType, Returns,
-    Signature, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
+    AssumeSpecification, AtomicSpec, AtomicallyBlock, Attribute, BareFnArg, BinOp, Block, DataMode,
+    Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprMatches, ExprMethodCall,
+    ExprTuple, ExprUnary, ExprWhile, Field, FnArg, FnArgKind, FnMode, GenericParam, Global, Ident,
+    ImplItem, ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
+    InvariantNameSetList, InvariantNameSetListCompl, InvariantNameSetSet, Item, ItemBroadcastGroup,
+    ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion,
+    Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec, ModeSpecChecked, Pat,
+    PatIdent, PatType, Path, PathArguments, Publish, Receiver, Recommends, Requires, ReturnType,
+    Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
     SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath,
     TypeReference, UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
 };
-use verus_syn::{InvariantNameSetListCompl, parse_quote_spanned};
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
 
@@ -160,7 +170,7 @@ fn wrap_expr_with_attrs(expr: Expr, attrs: Vec<Attribute>) -> Expr {
 }
 
 pub(crate) fn into_spans(span: Span) -> proc_macro2::extra::DelimSpan {
-    let mut group = Group::new(proc_macro2::Delimiter::None, TokenStream::new());
+    let mut group = proc_macro2::Group::new(proc_macro2::Delimiter::None, TokenStream::new());
     group.set_span(span);
     group.delim_span()
 }
@@ -882,8 +892,8 @@ impl Visitor {
         fn_ident: &Ident,
         generics: Option<impl ToTokens>,
         inputs: (Option<impl ToTokens>, impl ToTokens), // optional self and args
+        is_async_fn: bool,                              // is the function an async function
         atomic_perm_clause: Option<(verus_syn::Ident, verus_syn::PermClause)>,
-        is_async_fn: bool, // is the function an async function
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
         let recommends = self.take_ghost(&mut spec.recommends);
@@ -1396,8 +1406,8 @@ impl Visitor {
             &sig.ident,
             verus_generic_to_tokens(&sig.generics),
             verus_inputs_to_tokens(&sig.inputs),
-            atomic_perm_clause,
             sig.asyncness.is_some(),
+            atomic_perm_clause,
         );
         if !self.erase_ghost.erase() {
             if !(self.rustdoc && sig.constness.is_some()) {
@@ -5626,8 +5636,8 @@ pub(crate) fn sig_specs_attr(
         &sig.ident,
         generic_to_tokens(&sig.generics),
         inputs_to_tokens(&sig.inputs),
-        None,
         sig.asyncness.is_some(),
+        None,
     ));
     spec_stmts
 }

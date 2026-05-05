@@ -120,13 +120,8 @@ fn expr_get_early_exits_rec(
                 });
                 VisitorControlFlow::Recurse
             }
-            ExprX::OpenInvariant(inv, _binder, _body, _atomicity) => {
-                expr_get_early_exits_rec(inv, in_loop, scope_map, results);
-                // Skip checking nested loops to avoid quadratic behavior:
-                VisitorControlFlow::Return
-            }
-            ExprX::TryOpenAtomicUpdate(au, _binder, _is_mut, _body) => {
-                expr_get_early_exits_rec(au, in_loop, scope_map, results);
+            ExprX::OpenInvariant(expr, ..) | ExprX::TryOpenAtomicUpdate(expr, ..) => {
+                expr_get_early_exits_rec(expr, in_loop, scope_map, results);
                 // Skip checking nested loops to avoid quadratic behavior:
                 VisitorControlFlow::Return
             }
