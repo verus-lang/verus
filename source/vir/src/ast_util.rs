@@ -254,26 +254,9 @@ pub fn params_equal_opt(
     // the publicly visible parameters.
     // 'user_mut' also isn't important at this level since it is only used to determine
     // if mutation is allowed within the function
-    let ParamX {
-        name: name1,
-        typ: typ1,
-        mode: mode1,
-        is_mut: is_mut1,
-        unwrapped_info: _,
-        user_mut: _,
-    } = &param1.x;
-    let ParamX {
-        name: name2,
-        typ: typ2,
-        mode: mode2,
-        is_mut: is_mut2,
-        unwrapped_info: _,
-        user_mut: _,
-    } = &param2.x;
-    (!check_names || name1 == name2)
-        && types_equal(typ1, typ2)
-        && (!check_modes || mode1 == mode2)
-        && is_mut1 == is_mut2
+    let ParamX { name: name1, typ: typ1, mode: mode1, unwrapped_info: _, user_mut: _ } = &param1.x;
+    let ParamX { name: name2, typ: typ2, mode: mode2, unwrapped_info: _, user_mut: _ } = &param2.x;
+    (!check_names || name1 == name2) && types_equal(typ1, typ2) && (!check_modes || mode1 == mode2)
 }
 
 pub fn params_equal(param1: &Param, param2: &Param) -> bool {
@@ -817,7 +800,7 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
         &mut (),
         &mut |_, _, e| {
             match &e.x {
-                ExprX::Var(x) | ExprX::VarLoc(x) => {
+                ExprX::Var(x) => {
                     vars.borrow_mut().insert(x.clone());
                 }
                 _ => (),
@@ -995,9 +978,6 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         ),
         TypX::Decorate(TypDecoration::Ref, _, typ) => {
             format!("&{}", typ_to_diagnostic_str(typ))
-        }
-        TypX::Decorate(TypDecoration::MutRef, _, typ) => {
-            format!("&mut {}", typ_to_diagnostic_str(typ))
         }
         TypX::Decorate(TypDecoration::ConstPtr, _, typ) => match &**typ {
             TypX::Primitive(crate::ast::Primitive::Ptr, typs) => {

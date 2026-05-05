@@ -15,19 +15,6 @@ use crate::messages::error;
 pub fn check_closure_well_formed(expr: &Expr, is_proof_fn: bool) -> Result<(), VirErr> {
     expr_visitor_check(expr, &mut |scope_map, expr| {
         match &expr.x {
-            ExprX::VarLoc(ident) => {
-                if !scope_map.contains_key(ident) {
-                    // If this isn't in the scope_map, then the var must have been
-                    // declared outside the closure.
-
-                    Err(error(
-                        &expr.span,
-                        "Verus does not currently support closures capturing a mutable reference for variables of any mode",
-                    ))
-                } else {
-                    Ok(())
-                }
-            }
             ExprX::AssignToPlace { place, .. } | ExprX::BorrowMut(place) => {
                 if let Some(local) = place_get_local(place) {
                     let PlaceX::Local(ident) = &local.x else { unreachable!() };

@@ -1,17 +1,15 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
-use crate::config::Vstd;
 use crate::context::{BodyCtxt, HeaderSetting};
 use crate::erase::{CompilableOperator, LoopSpecKind, ResolvedCall};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
     bitwidth_and_signedness_of_integer_type, is_smt_arith, is_type_std_rc_or_arc_or_ref,
-    typ_of_expr_adjusted, typ_of_node_unadjusted, typ_of_node_unadjusted_expect_mut_ref,
+    typ_of_expr_adjusted, typ_of_node_unadjusted,
 };
 use crate::rust_to_vir_expr::{
-    ExprModifier, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir,
-    expr_to_vir_consume, expr_to_vir_place, extract_array, extract_tuple, get_fn_path,
-    is_expr_typ_mut_ref, mk_ty_clip, pat_to_var,
+    check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, expr_to_vir_consume,
+    expr_to_vir_place, extract_array, extract_tuple, get_fn_path, mk_ty_clip, pat_to_var,
 };
 use crate::util::{err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
@@ -22,8 +20,7 @@ use crate::verus_items::{
 use crate::{unsupported_err, unsupported_err_unless};
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
-use rustc_hir::def::Res;
-use rustc_hir::{Block, BlockCheckMode, Expr, ExprKind, Node, QPath, StmtKind};
+use rustc_hir::{Block, BlockCheckMode, Expr, ExprKind, QPath, StmtKind};
 use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
@@ -36,8 +33,8 @@ use vir::ast::{
     BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
     Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
     IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place,
-    PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX,
-    VarIdent, VariantCheck, VirErr,
+    PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarIdent,
+    VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -52,12 +49,11 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     _fn_span: Span,
     args: Vec<&'tcx Expr<'tcx>>,
-    outer_modifier: ExprModifier,
     is_method: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
 
-    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false);
+    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id);
 
     let rust_item = verus_items::get_rust_item(tcx, f);
     let verus_item = bctx.ctxt.get_verus_item(f);
@@ -148,7 +144,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     tcx,
                     node_substs,
                     f,
-                    outer_modifier,
                 );
             }
         }
@@ -178,7 +173,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         Some(args),
         rust_item,
         false,
-        outer_modifier,
     )
 }
 
@@ -191,11 +185,10 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
     args: Option<Vec<&'tcx Expr<'tcx>>>,
     rust_item: Option<RustItem>,
     const_var: bool,
-    outer_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     // Normal function call
     let tcx = bctx.ctxt.tcx;
-    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false);
+    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id);
 
     let path = bctx.ctxt.def_id_to_vir_path(f);
     let name = Arc::new(FunX { path: path.clone() });
@@ -240,7 +233,6 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                         tcx,
                         res_args,
                         did,
-                        outer_modifier,
                     );
                 }
 
@@ -310,8 +302,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
     record_call(bctx, expr, ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost));
 
-    let vir_args =
-        if let Some(args) = args { mk_vir_args(bctx, node_substs, f, &args)? } else { vec![] };
+    let vir_args = if let Some(args) = args { mk_vir_args(bctx, &args)? } else { vec![] };
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
     let impl_paths = get_impl_paths(bctx, f, node_substs, None, const_var, expr.span)?;
@@ -337,19 +328,9 @@ pub(crate) fn const_var_to_vir<'tcx>(
         let Some(expr) = expr else {
             unsupported_err!(span, "associated constant in pattern");
         };
-        return fn_call_or_assoc_const_to_vir(
-            bctx,
-            expr,
-            id,
-            node_substs,
-            span,
-            None,
-            None,
-            true,
-            ExprModifier::REGULAR,
-        );
+        return fn_call_or_assoc_const_to_vir(bctx, expr, id, node_substs, span, None, None, true);
     }
-    let typ = typ_of_node_unadjusted(bctx, span, hir_id, false)?;
+    let typ = typ_of_node_unadjusted(bctx, span, hir_id)?;
     let path = bctx.ctxt.def_id_to_vir_path(id);
     let fun = FunX { path };
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
@@ -415,7 +396,6 @@ fn verus_item_to_vir<'tcx, 'a>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     f: DefId,
-    outer_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     // DO NOT use f_name to find items (i.e. do not use f_name == "core::cmp::Eq"),
     // use `crate::verus_item::get_rust_item` instead
@@ -559,9 +539,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                     let subargs = extract_array(args[0]);
 
-                    let vir_args = vec_map_result(&subargs, |arg| {
-                        expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
-                    })?;
+                    let vir_args = vec_map_result(&subargs, |arg| expr_to_vir_consume(&bctx, arg))?;
 
                     if matches!(spec_item, SpecItem::Returns) && subargs.len() != 1 {
                         return err_span(
@@ -664,9 +642,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     unsupported_err_unless!(args_len == 1, expr.span, "expected decreases", &args);
                     let subargs = extract_tuple(args[0]);
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                    let vir_args = vec_map_result(&subargs, |arg| {
-                        expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
-                    })?;
+                    let vir_args = vec_map_result(&subargs, |arg| expr_to_vir_consume(&bctx, arg))?;
                     let header = Arc::new(HeaderExprX::Decreases(Arc::new(vir_args)));
                     mk_expr(ExprX::Header(header))
                 }
@@ -690,9 +666,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         }
                     }
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                    let vir_args = vec_map_result(&subargs, |arg| {
-                        expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
-                    })?;
+                    let vir_args = vec_map_result(&subargs, |arg| expr_to_vir_consume(&bctx, arg))?;
                     let header = match spec_item {
                         SpecItem::InvariantExceptBreak => {
                             Arc::new(HeaderExprX::InvariantExceptBreak(Arc::new(vir_args)))
@@ -839,47 +813,24 @@ fn verus_item_to_vir<'tcx, 'a>(
                 unsupported_err_unless!(args_len == 1, expr.span, "expected choose", &args);
                 extract_choose(bctx, expr.span, args[0], true, expr_typ()?)
             }
-            ExprItem::Old if bctx.new_mut_ref => {
+            ExprItem::Old => {
                 record_spec_fn_pure_args_only(bctx, expr);
                 // TODO(new_mut_ref): (blocking) restrict to form like `old(x)` or `old(x.field)`?
                 // TODO(new_mut_ref): (fix when done) old type signature should accept any type
                 let bctx = &BodyCtxt { in_old: true, ..bctx.clone() };
-                let arg = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+                let arg = expr_to_vir_consume(bctx, &args[0])?;
                 mk_expr(ExprX::Old(arg))
-            }
-            ExprItem::Old => {
-                record_spec_fn_pure_args_only(bctx, expr);
-                if let ExprKind::Path(QPath::Resolved(
-                    None,
-                    rustc_hir::Path { res: Res::Local(id), .. },
-                )) = &args[0].kind
-                {
-                    if let Node::Pat(pat) = tcx.hir_node(*id) {
-                        let typ = typ_of_node_unadjusted_expect_mut_ref(
-                            bctx,
-                            args[0].span,
-                            &expr.hir_id,
-                        )?;
-                        let name = pat_to_var(pat)?;
-                        return Ok(bctx.spanned_typed_new(
-                            expr.span,
-                            &typ,
-                            ExprX::VarAt(name, VarAt::Pre),
-                        ));
-                    }
-                }
-                err_span(expr.span, "only a variable binding is allowed as the argument to old")
             }
             ExprItem::ArrayIndex => {
                 record_spec_fn(bctx, expr);
                 match &expr.kind {
                     ExprKind::Call(_, args) if args.len() == 2 => {
                         let arg0 = args.first().unwrap();
-                        let arg0 = expr_to_vir_consume(bctx, arg0, ExprModifier::REGULAR).expect(
+                        let arg0 = expr_to_vir_consume(bctx, arg0).expect(
                             "invalid parameter for verus_builtin::array_index at arg0, arg0 must be self",
                         );
                         let arg1 = &args[1];
-                        let arg1 = expr_to_vir_consume(bctx, arg1, ExprModifier::REGULAR)
+                        let arg1 = expr_to_vir_consume(bctx, arg1)
                             .expect("invalid parameter for verus_builtin::array_index at arg1; arg1 must be an integer");
                         mk_expr(ExprX::Binary(
                             BinaryOp::Index(ArrayKind::Array, BoundsCheck::Allow),
@@ -898,8 +849,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprKind::Call(_, args) => {
                         assert!(args.len() == 1);
                         let arg0 = args.first().unwrap();
-                        let arg0 = expr_to_vir_consume(bctx, arg0, ExprModifier::REGULAR)
-                            .expect("internal compiler error");
+                        let arg0 =
+                            expr_to_vir_consume(bctx, arg0).expect("internal compiler error");
                         mk_expr(ExprX::Unary(UnaryOp::FloatToBits, arg0))
                     }
                     _ => panic!(
@@ -913,8 +864,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprKind::Call(_, args) => {
                         assert!(args.len() == 1);
                         let arg0 = args.first().unwrap();
-                        let arg0 = expr_to_vir_consume(bctx, arg0, ExprModifier::REGULAR)
-                            .expect("internal compiler error");
+                        let arg0 =
+                            expr_to_vir_consume(bctx, arg0).expect("internal compiler error");
                         mk_expr(ExprX::Unary(UnaryOp::FloatToBits, arg0))
                     }
                     _ => panic!(
@@ -928,8 +879,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprKind::Call(_, args) => {
                         assert!(args.len() == 1);
                         let arg0 = args.first().unwrap();
-                        let arg0 = expr_to_vir_consume(bctx, arg0, ExprModifier::REGULAR)
-                            .expect("internal compiler error");
+                        let arg0 =
+                            expr_to_vir_consume(bctx, arg0).expect("internal compiler error");
                         mk_expr(ExprX::Unary(UnaryOp::StrLen, arg0))
                     }
                     _ => panic!(
@@ -942,11 +893,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                 match &expr.kind {
                     ExprKind::Call(_, args) if args.len() == 2 => {
                         let arg0 = args.first().unwrap();
-                        let arg0 = expr_to_vir_consume(bctx, arg0, ExprModifier::REGULAR).expect(
+                        let arg0 = expr_to_vir_consume(bctx, arg0).expect(
                             "invalid parameter for verus_builtin::strslice_get_char at arg0, arg0 must be self",
                         );
                         let arg1 = &args[1];
-                        let arg1 = expr_to_vir_consume(bctx, arg1, ExprModifier::REGULAR)
+                        let arg1 = expr_to_vir_consume(bctx, arg1)
                             .expect("invalid parameter for verus_builtin::strslice_get_char at arg1, arg1 must be an integer");
                         mk_expr(ExprX::Binary(BinaryOp::StrGetChar, arg0, arg1))
                     }
@@ -1000,14 +951,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         record_spec_fn_pure_args_only(bctx, expr);
                         None
                     };
-                    closure_to_vir(
-                        bctx,
-                        &args[0],
-                        expr_typ()?,
-                        is_spec_fn,
-                        proof_fn_modes,
-                        ExprModifier::REGULAR,
-                    )
+                    closure_to_vir(bctx, &args[0], expr_typ()?, is_spec_fn, proof_fn_modes)
                 } else {
                     err_span(args[0].span, "the argument to `closure_to_fn` must be a closure")
                 }
@@ -1015,7 +959,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             ExprItem::SignedMin | ExprItem::SignedMax | ExprItem::UnsignedMax => {
                 record_spec_fn(bctx, expr);
                 assert!(args.len() == 1);
-                let arg = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+                let arg = expr_to_vir_consume(bctx, &args[0])?;
                 let kind = match expr_item {
                     ExprItem::SignedMin => IntegerTypeBoundKind::SignedMin,
                     ExprItem::SignedMax => IntegerTypeBoundKind::SignedMax,
@@ -1057,10 +1001,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 assert!(args.len() == 3);
                 let arg = if bctx.loop_isolation {
                     crate::erase::mark_adjusted_node_for_erasure(&bctx.ctxt, &args[0]);
-                    expr_to_vir_consume(bctx, &args[1], ExprModifier::REGULAR)?
+                    expr_to_vir_consume(bctx, &args[1])?
                 } else {
                     crate::erase::mark_adjusted_node_for_erasure(&bctx.ctxt, &args[1]);
-                    expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?
+                    expr_to_vir_consume(bctx, &args[0])?
                 };
                 let print_hint = matches!(
                     &args[2],
@@ -1073,7 +1017,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             ExprItem::IsVariant => {
                 record_spec_fn(bctx, expr);
                 assert!(args.len() == 2);
-                let adt_arg = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+                let adt_arg = expr_to_vir_consume(bctx, &args[0])?;
                 let variant_name = get_string_lit_arg(&args[1], &f_name)?;
 
                 let (adt_path, _) =
@@ -1087,7 +1031,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             ExprItem::GetVariantField => {
                 record_spec_fn(bctx, expr);
                 assert!(args.len() == 3);
-                let adt_arg = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+                let adt_arg = expr_to_vir_consume(bctx, &args[0])?;
                 let variant_name = get_string_lit_arg(&args[1], &f_name)?;
                 let field_name = get_string_lit_arg(&args[2], &f_name)?;
 
@@ -1113,7 +1057,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             ExprItem::GetUnionField => {
                 record_spec_fn(bctx, expr);
                 assert!(args.len() == 2);
-                let adt_arg = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+                let adt_arg = expr_to_vir_consume(bctx, &args[0])?;
                 let field_name = get_string_lit_arg(&args[1], &f_name)?;
 
                 let adt_path = check_union_field(
@@ -1156,7 +1100,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 == Some(GhostBlockAttr::Wrapper)
             {
                 let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
-                let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+                let vir_args = mk_vir_args(bctx, &args)?;
                 let vir_arg = strip_two_phase(&vir_args[0]);
                 match (compilable_opr, get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(arg.hir_id))) {
                     (CompilableOprItem::GhostExec, Some(GhostBlockAttr::GhostWrapped)) => {
@@ -1180,7 +1124,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     }
                 }
             } else {
-                let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+                let vir_args = mk_vir_args(bctx, &args)?;
                 let vir_arg = strip_two_phase(&vir_args[0]);
                 if matches!(verus_item, VerusItem::CompilableOpr(CompilableOprItem::GhostExec)) {
                     let op = UnaryOp::CoerceMode {
@@ -1207,7 +1151,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             match assert_item {
                 AssertItem::Assert => {
                     unsupported_err_unless!(args_len == 1, expr.span, "expected assert", &args);
-                    let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+                    let exp = expr_to_vir_consume(bctx, &args[0])?;
                     mk_expr(ExprX::AssertAssume { is_assume: false, expr: exp, msg: None })
                 }
                 AssertItem::AssertBy => {
@@ -1218,8 +1162,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                         &Arc::new(TypX::Bool),
                         ExprX::Const(Constant::Bool(true)),
                     );
-                    let ensure = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
-                    let proof = expr_to_vir_consume(bctx, &args[1], ExprModifier::REGULAR)?;
+                    let ensure = expr_to_vir_consume(bctx, &args[0])?;
+                    let proof = expr_to_vir_consume(bctx, &args[1])?;
                     mk_expr(ExprX::AssertBy { vars, require, ensure, proof })
                 }
                 AssertItem::AssertByCompute => {
@@ -1229,7 +1173,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         "expected assert_by_compute",
                         &args
                     );
-                    let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+                    let exp = expr_to_vir_consume(bctx, &args[0])?;
                     mk_expr(ExprX::AssertCompute(exp, ComputeMode::Z3))
                 }
                 AssertItem::AssertByComputeOnly => {
@@ -1239,7 +1183,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         "expected assert_by_compute_only",
                         &args
                     );
-                    let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+                    let exp = expr_to_vir_consume(bctx, &args[0])?;
                     mk_expr(ExprX::AssertCompute(exp, ComputeMode::ComputeOnly))
                 }
                 AssertItem::AssertNonlinearBy | AssertItem::AssertBitvectorBy => {
@@ -1250,7 +1194,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         &args
                     );
                     let bctx = bctx.set_header_setting(HeaderSetting::Assert);
-                    let mut vir_expr = expr_to_vir_consume(&bctx, &args[0], ExprModifier::REGULAR)?;
+                    let mut vir_expr = expr_to_vir_consume(&bctx, &args[0])?;
                     use vir::headers::{HeaderAllow, HeaderAllows};
                     let header = vir::headers::read_header(
                         &mut vir_expr,
@@ -1305,7 +1249,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 // internally translate this into `assert_bitvector_by`. REVIEW: consider deprecating this at all
                 AssertItem::AssertBitVector => {
-                    let vir_expr = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+                    let vir_expr = expr_to_vir_consume(bctx, &args[0])?;
                     let requires = Arc::new(vec![bctx.spanned_typed_new(
                         expr.span,
                         &Arc::new(TypX::Bool),
@@ -1332,11 +1276,11 @@ fn verus_item_to_vir<'tcx, 'a>(
             if !bctx.in_ghost {
                 return err_span(expr.span, "use_type_invariant must be in a 'proof' block");
             }
-            let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+            let exp = expr_to_vir_consume(bctx, &args[0])?;
 
             // We need to check there's no 'Ghost' decoration.
             let arg_typ = bctx.types.expr_ty_adjusted(&args[0]);
-            let t = bctx.mid_ty_to_vir(expr.span, &arg_typ, false)?;
+            let t = bctx.mid_ty_to_vir(expr.span, &arg_typ)?;
             vir::user_defined_type_invariants::check_typ_ok_for_use_typ_invariant(&exp.span, &t)?;
 
             // The correct fun is filled in later, in the pass that elaborates these conditions
@@ -1349,9 +1293,8 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::WithTriggers => {
             record_spec_fn(bctx, expr);
             unsupported_err_unless!(args_len == 2, expr.span, "expected with_triggers", &args);
-            let modifier = ExprModifier::REGULAR;
-            let triggers_tuples = expr_to_vir_consume(bctx, args[0], modifier)?;
-            let body = expr_to_vir_consume(bctx, args[1], modifier)?;
+            let triggers_tuples = expr_to_vir_consume(bctx, args[0])?;
+            let body = expr_to_vir_consume(bctx, args[1])?;
             let mut trigs: Vec<vir::ast::Exprs> = Vec::new();
             match unpack_tuple(&triggers_tuples) {
                 Some(triggers) => {
@@ -1379,7 +1322,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::UnaryOp(UnaryOpItem::SpecCastReal) => {
             record_spec_fn(bctx, expr);
             unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
-            let source_vir0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let source_vir0 = expr_to_vir(bctx, &args[0])?;
             let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
             let source_ty = undecorate_typ(&source_vir.typ);
             match &*source_ty {
@@ -1394,7 +1337,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::UnaryOp(UnaryOpItem::RealFloor) => {
             record_spec_fn(bctx, expr);
             unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
-            let source_vir0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let source_vir0 = expr_to_vir(bctx, &args[0])?;
             let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
             let source_ty = undecorate_typ(&source_vir.typ);
             assert!(matches!(&*source_ty, TypX::Real));
@@ -1403,7 +1346,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::UnaryOp(UnaryOpItem::SpecCastFloat) => {
             record_spec_fn(bctx, expr);
             unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
-            let source_vir0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let source_vir0 = expr_to_vir(bctx, &args[0])?;
             let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
             let source_ty = undecorate_typ(&source_vir.typ);
             match &*source_ty {
@@ -1422,7 +1365,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             let to_ty = undecorate_typ(&expr_typ()?);
 
             unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
-            let source_vir0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let source_vir0 = expr_to_vir(bctx, &args[0])?;
             let source_vir0_ty = bctx.types.expr_ty_adjusted(&args[0]);
             let source_vir = source_vir0.consume(bctx, source_vir0_ty);
             let source_ty = undecorate_typ(&source_vir.typ);
@@ -1507,7 +1450,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             record_spec_fn(bctx, expr);
 
             let arg_typ =
-                undecorate_typ(&typ_of_expr_adjusted(bctx, args[0].span, &args[0].hir_id, false)?);
+                undecorate_typ(&typ_of_expr_adjusted(bctx, args[0].span, &args[0].hir_id)?);
 
             let varg = mk_one_vir_arg(bctx, expr.span, &args)?;
 
@@ -1539,7 +1482,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::Chained(chained_item) => {
             record_spec_fn(bctx, expr);
-            let vir_args = mk_vir_args_auto_skip_mut_refs(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args(bctx, &args)?;
             match chained_item {
                 ChainedItem::Value => {
                     unsupported_err_unless!(args_len == 1, expr.span, "spec_chained_value", &args);
@@ -1633,7 +1576,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_spec_fn(bctx, expr);
             }
 
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args(bctx, &args)?;
             assert!(vir_args.len() == 1);
             let is_ghost_new = verus_item == &VerusItem::CompilableOpr(CompilableOprItem::GhostNew);
             let op = UnaryOp::CoerceMode {
@@ -1646,7 +1589,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::CompilableOpr(CompilableOprItem::TrackedNew) => {
             record_compilable_operator(bctx, expr, CompilableOperator::TrackedNew);
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args(bctx, &args)?;
             assert!(vir_args.len() == 1);
             let op = UnaryOp::CoerceMode {
                 op_mode: Mode::Proof,
@@ -1658,7 +1601,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::CompilableOpr(CompilableOprItem::TrackedExecBorrow) => {
             record_compilable_operator(bctx, expr, CompilableOperator::TrackedExecBorrow);
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args(bctx, &args)?;
             assert!(vir_args.len() == 1);
             let op = UnaryOp::CoerceMode {
                 op_mode: Mode::Exec,
@@ -1681,7 +1624,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 },
             );
 
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args(bctx, &args)?;
             assert!(vir_args.len() == 1);
             let op = UnaryOp::CoerceMode {
                 op_mode: Mode::Proof,
@@ -1693,9 +1636,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
 
         VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))
-        | VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)
-            if bctx.new_mut_ref =>
-        {
+        | VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut) => {
             let tracked_mode =
                 matches!(verus_item, VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut));
 
@@ -1708,7 +1649,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             assert!(args.len() == 1);
 
-            let vir_arg = expr_to_vir_place(bctx, &args[0], ExprModifier::REGULAR)?;
+            let vir_arg = expr_to_vir_place(bctx, &args[0])?;
 
             // x.borrow_mut() takes &mut Tracked<T> and returns &mut T
             // so this is equivalent to `&mut (*x).unwrap`
@@ -1744,45 +1685,12 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             Ok(e)
         }
-
-        VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut)) => {
-            record_compilable_operator(bctx, expr, CompilableOperator::GhostBorrowMut);
-
-            assert!(args.len() == 1);
-            let modif = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&args[0]), outer_modifier)?;
-            let vir_arg = expr_to_vir_consume(bctx, &args[0], modif)?;
-
-            let op = UnaryOp::CoerceMode {
-                op_mode: Mode::Proof,
-                from_mode: Mode::Proof,
-                to_mode: Mode::Spec,
-                kind: ModeCoercion::BorrowMut,
-            };
-            let typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, true)?;
-            Ok(bctx.spanned_typed_new(expr.span, &typ, ExprX::Unary(op, vir_arg)))
-        }
-        VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut) => {
-            record_compilable_operator(bctx, expr, CompilableOperator::TrackedBorrowMut);
-
-            assert!(args.len() == 1);
-            let modif = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&args[0]), outer_modifier)?;
-            let vir_arg = expr_to_vir_consume(bctx, &args[0], modif)?;
-
-            let op = UnaryOp::CoerceMode {
-                op_mode: Mode::Proof,
-                from_mode: Mode::Proof,
-                to_mode: Mode::Proof,
-                kind: ModeCoercion::BorrowMut,
-            };
-            let typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, true)?;
-            Ok(bctx.spanned_typed_new(expr.span, &typ, ExprX::Unary(op, vir_arg)))
-        }
         VerusItem::BinaryOp(BinaryOpItem::Equality(equ_item)) => {
             record_spec_fn(bctx, expr);
 
             if matches!(equ_item, EqualityItem::SpecEq) {
-                let t1 = typ_of_expr_adjusted(bctx, args[0].span, &args[0].hir_id, true)?;
-                let t2 = typ_of_expr_adjusted(bctx, args[1].span, &args[1].hir_id, true)?;
+                let t1 = typ_of_expr_adjusted(bctx, args[0].span, &args[0].hir_id)?;
+                let t2 = typ_of_expr_adjusted(bctx, args[1].span, &args[1].hir_id)?;
                 // REVIEW: there's some code that (harmlessly) uses == on types that are
                 // different in decoration; Rust would reject this, but we currently allow it:
                 let t1 = undecorate_typ(&t1);
@@ -1803,32 +1711,14 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
             }
 
-            if !bctx.ctxt.cmd_line_args.new_mut_ref {
-                let check = &|ty: rustc_middle::ty::Ty, span| match ty.kind() {
-                    TyKind::Ref(_, _, rustc_middle::ty::Mutability::Mut) => {
-                        Err(crate::util::err_span_bare(
-                            span,
-                            format!(
-                                "Dereference this mutable reference to compare the value via Verus spec equality."
-                            ),
-                        ))
-                    }
-                    _ => Ok(()),
-                };
-                let ty = bctx.types.expr_ty_adjusted(&args[0]);
-                check(ty, args[0].span)?;
-                let ty = bctx.types.expr_ty_adjusted(&args[1]);
-                check(ty, args[1].span)?;
-            }
-
-            let vir_args = mk_vir_args_auto_skip_mut_refs(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args(bctx, &args)?;
             let lhs = vir_args[0].clone();
             let rhs = vir_args[1].clone();
 
             if matches!(equ_item, EqualityItem::ExtEqual | EqualityItem::ExtEqualDeep) {
                 assert!(node_substs.len() == 1);
                 let t = match node_substs[0].as_type() {
-                    Some(ty) => bctx.mid_ty_to_vir(expr.span, &ty, false)?,
+                    Some(ty) => bctx.mid_ty_to_vir(expr.span, &ty)?,
                     _ => panic!("unexpected ext_equal type argument"),
                 };
                 let vop = vir::ast::BinaryOpr::ExtEq(equ_item == &EqualityItem::ExtEqualDeep, t);
@@ -2079,7 +1969,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             let vir_args = args
                 .iter()
-                .map(|arg| expr_to_vir_consume(bctx, &arg, ExprModifier::REGULAR))
+                .map(|arg| expr_to_vir_consume(bctx, &arg))
                 .collect::<Result<Vec<_>, _>>()?;
 
             let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
@@ -2107,17 +1997,12 @@ fn verus_item_to_vir<'tcx, 'a>(
             );
         }
         item @ (VerusItem::HasResolved | VerusItem::HasResolvedUnsized) => {
-            if !bctx.new_mut_ref
-                && !matches!(bctx.ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore)
-            {
-                unsupported_err!(expr.span, "resolve/has_resolved without '-V new-mut-ref'", &args);
-            }
             record_spec_fn_pure_args_only(bctx, expr);
             if !bctx.in_ghost {
                 return err_span(expr.span, "has_resolved must be in a 'proof' block");
             }
             let bctx = BodyCtxt { in_explicit_prophecy_node: true, ..bctx.clone() };
-            let exp = expr_to_vir_consume(&bctx, &args[0], ExprModifier::REGULAR)?;
+            let exp = expr_to_vir_consume(&bctx, &args[0])?;
             let arg_typ = bctx.types.expr_ty_adjusted(&args[0]);
             let arg_typ = match item {
                 VerusItem::HasResolved => arg_typ,
@@ -2129,7 +2014,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 },
                 _ => unreachable!(),
             };
-            let t = bctx.mid_ty_to_vir(expr.span, &arg_typ, false)?;
+            let t = bctx.mid_ty_to_vir(expr.span, &arg_typ)?;
             mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
         }
         VerusItem::MutRefCurrent | VerusItem::MutRefFuture | VerusItem::Final => {
@@ -2140,9 +2025,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                 _ => unreachable!(),
             };
 
-            if !bctx.new_mut_ref {
-                unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
-            }
             if bctx.migrate_postcondition_vars.is_some() {
                 return err_span(
                     expr.span,
@@ -2156,7 +2038,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             if !bctx.in_ghost {
                 return err_span(expr.span, format!("{name} must be in a 'proof' block"));
             }
-            let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+            let exp = expr_to_vir_consume(bctx, &args[0])?;
             let op = match verus_item {
                 VerusItem::MutRefCurrent => UnaryOp::MutRefCurrent,
                 VerusItem::MutRefFuture => {
@@ -2168,15 +2050,12 @@ fn verus_item_to_vir<'tcx, 'a>(
             mk_expr(ExprX::Unary(op, exp))
         }
         VerusItem::AfterBorrow => {
-            if !bctx.new_mut_ref {
-                unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
-            }
             record_spec_fn(bctx, expr);
             if !bctx.in_ghost {
                 return err_span(expr.span, "`after_borrow` must be in a 'proof' block");
             }
             let bctx = BodyCtxt { in_explicit_prophecy_node: true, ..bctx.clone() };
-            let p = expr_to_vir_place(&bctx, &args[0], ExprModifier::REGULAR)?;
+            let p = expr_to_vir_place(&bctx, &args[0])?;
             if !is_place_ok_for_spec_after_borrow(&p) {
                 return err_span(
                     expr.span,
@@ -2193,13 +2072,10 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::MutRefTracked => {
             record_compilable_operator(bctx, expr, CompilableOperator::MutRefTracked);
-            if !bctx.new_mut_ref {
-                unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
-            }
             if !bctx.in_ghost {
                 return err_span(expr.span, "`mut_ref_tracked` must be in a 'proof' block");
             }
-            let p = expr_to_vir_place(&bctx, &args[0], ExprModifier::REGULAR)?;
+            let p = expr_to_vir_place(&bctx, &args[0])?;
             let p = crate::rust_to_vir_expr::deref_mut(bctx, expr.span, &p)?;
             let p = crate::rust_to_vir_expr::simplify_place_by_cancelling(&p);
             mk_expr(ExprX::BorrowMutTracked(p))
@@ -2370,7 +2246,7 @@ fn extract_quant<'tcx>(
                 binders.push(Arc::new(VarBinderX { name: pat_to_var(x.pat)?, a: t }));
             }
             let expr = &body.value;
-            let mut vir_expr = expr_to_vir_consume(bctx, expr, ExprModifier::REGULAR)?;
+            let mut vir_expr = expr_to_vir_consume(bctx, expr)?;
             let _ = vir::headers::read_header(
                 &mut vir_expr,
                 &vir::headers::HeaderAllows::Some(vec![]),
@@ -2404,7 +2280,7 @@ fn get_ensures_arg<'tcx>(
                 }
             }
         }
-        Ok((default_ensures, expr_to_vir_consume(bctx, expr, ExprModifier::REGULAR)?))
+        Ok((default_ensures, expr_to_vir_consume(bctx, expr)?))
     } else {
         err_span(expr.span, "ensures needs a bool expression")
     }
@@ -2433,7 +2309,7 @@ fn extract_assert_forall_by<'tcx>(
             }
             let expr = &body.value;
             let bctx = &bctx.set_header_setting(HeaderSetting::Assert);
-            let mut vir_expr = expr_to_vir_consume(bctx, expr, ExprModifier::REGULAR)?;
+            let mut vir_expr = expr_to_vir_consume(bctx, expr)?;
             use vir::headers::{HeaderAllow, HeaderAllows};
             let header = vir::headers::read_header(
                 &mut vir_expr,
@@ -2499,7 +2375,7 @@ fn extract_choose<'tcx>(
             }
             let typs = vec_map(&params, |p| p.a.clone());
             let cond_expr = &closure_body.value;
-            let cond = expr_to_vir_consume(bctx, cond_expr, ExprModifier::REGULAR)?;
+            let cond = expr_to_vir_consume(bctx, cond_expr)?;
             let body = if tuple {
                 let typ = mk_tuple_typ(&Arc::new(typs));
                 if !vir::ast_util::types_equal(&typ, &expr_typ) {
@@ -2606,8 +2482,8 @@ fn mk_is_smaller_than<'tcx>(
             bctx.spanned_typed_new(span, &tbool, ExprX::Binary(op, e1, e2))
         };
         let mk_cmp = |lt: bool| -> Result<vir::ast::Expr, VirErr> {
-            let e0 = expr_to_vir_consume(bctx, exp0, ExprModifier::REGULAR)?;
-            let e1 = expr_to_vir_consume(bctx, exp1, ExprModifier::REGULAR)?;
+            let e0 = expr_to_vir_consume(bctx, exp0)?;
+            let e1 = expr_to_vir_consume(bctx, exp1)?;
             if vir::recursion::height_is_int(&e0.typ) && vir::recursion::height_is_int(&e1.typ) {
                 if lt {
                     // 0 <= x < y
@@ -2616,7 +2492,7 @@ fn mk_is_smaller_than<'tcx>(
                     let op0 = BinaryOp::Inequality(InequalityOp::Le);
                     let cmp0 = mk_bop(op0, zero, e0);
                     let op1 = BinaryOp::Inequality(InequalityOp::Lt);
-                    let e0 = expr_to_vir_consume(bctx, exp0, ExprModifier::REGULAR)?;
+                    let e0 = expr_to_vir_consume(bctx, exp0)?;
                     let cmp1 = mk_bop(op1, e0, e1);
                     Ok(mk_bop(BinaryOp::And, cmp0, cmp1))
                 } else {
@@ -2684,7 +2560,7 @@ pub(crate) fn mk_typ_args<'tcx>(
     for typ_arg in substs {
         match typ_arg.kind() {
             GenericArgKind::Type(ty) => {
-                typ_args.push(bctx.mid_ty_to_vir(span, &ty, false)?);
+                typ_args.push(bctx.mid_ty_to_vir(span, &ty)?);
             }
             GenericArgKind::Lifetime(_) => {}
             GenericArgKind::Const(cnst) => {
@@ -2701,68 +2577,9 @@ pub(crate) fn mk_typ_args<'tcx>(
 
 fn mk_vir_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    node_substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
-    f: DefId,
     args: &Vec<&'tcx Expr<'tcx>>,
 ) -> Result<Vec<vir::ast::Expr>, VirErr> {
-    let tcx = bctx.ctxt.tcx;
-    let raw_inputs = bctx.ctxt.tcx.fn_sig(f).instantiate(tcx, node_substs).skip_binder().inputs();
-    assert!(raw_inputs.len() == args.len());
-    args.iter()
-        .zip(raw_inputs)
-        .map(|(arg, raw_param)| {
-            let is_mut_ref_param = !bctx.new_mut_ref
-                && match raw_param.kind() {
-                    TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
-                    _ => false,
-                };
-            if is_mut_ref_param {
-                let TyKind::Ref(_, inner_ty, _) = raw_param.kind() else { unreachable!() };
-                let place =
-                    expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of_mut: true })?
-                        .to_place(bctx, arg.span, *inner_ty)?;
-                let expr = crate::rust_to_vir_expr::place_to_loc(&place)?;
-                Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
-            } else {
-                expr_to_vir_consume(
-                    bctx,
-                    arg,
-                    is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), ExprModifier::REGULAR)?,
-                )
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()
-}
-
-fn mk_vir_args_auto_skip_mut_refs<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    node_substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
-    f: DefId,
-    args: &Vec<&'tcx Expr<'tcx>>,
-) -> Result<Vec<vir::ast::Expr>, VirErr> {
-    let tcx = bctx.ctxt.tcx;
-    let raw_inputs = bctx.ctxt.tcx.fn_sig(f).instantiate(tcx, node_substs).skip_binder().inputs();
-    assert!(raw_inputs.len() == args.len());
-    args.iter()
-        .zip(raw_inputs)
-        .map(|(arg, raw_param)| {
-            let is_mut_ref_param = !bctx.new_mut_ref
-                && match raw_param.kind() {
-                    TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
-                    _ => false,
-                };
-            let modifier = if is_mut_ref_param {
-                ExprModifier { deref_mut: true, addr_of_mut: false }
-            } else {
-                ExprModifier::REGULAR
-            };
-            expr_to_vir_consume(
-                bctx,
-                arg,
-                is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), modifier)?,
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()
+    args.iter().map(|arg| expr_to_vir_consume(bctx, arg)).collect::<Result<Vec<_>, _>>()
 }
 
 fn mk_one_vir_arg<'tcx>(
@@ -2771,7 +2588,7 @@ fn mk_one_vir_arg<'tcx>(
     args: &Vec<&'tcx Expr<'tcx>>,
 ) -> Result<vir::ast::Expr, VirErr> {
     unsupported_err_unless!(args.len() == 1, span, "expected 1 argument", &args);
-    expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)
+    expr_to_vir_consume(bctx, &args[0])
 }
 
 fn mk_two_vir_args<'tcx>(
@@ -2780,8 +2597,8 @@ fn mk_two_vir_args<'tcx>(
     args: &Vec<&'tcx Expr<'tcx>>,
 ) -> Result<(vir::ast::Expr, vir::ast::Expr), VirErr> {
     unsupported_err_unless!(args.len() == 2, span, "expected 2 arguments", &args);
-    let e0 = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
-    let e1 = expr_to_vir_consume(bctx, &args[1], ExprModifier::REGULAR)?;
+    let e0 = expr_to_vir_consume(bctx, &args[0])?;
+    let e1 = expr_to_vir_consume(bctx, &args[1])?;
     Ok((e0, e1))
 }
 
@@ -2821,7 +2638,7 @@ pub(crate) fn check_variant_field<'tcx>(
         }
     };
 
-    let vir_adt_ty = bctx.mid_ty_to_vir(span, &ty, false)?;
+    let vir_adt_ty = bctx.mid_ty_to_vir(span, &ty)?;
     let adt_path = match &*vir_adt_ty {
         TypX::Datatype(path, _, _) => path.clone(),
         _ => {
@@ -2863,8 +2680,8 @@ pub(crate) fn check_variant_field<'tcx>(
             };
 
             let field_ty = field.ty(tcx, substs);
-            let vir_field_ty = bctx.mid_ty_to_vir(span, &field_ty, false)?;
-            let vir_expected_field_ty = bctx.mid_ty_to_vir(span, &expected_field_typ, false)?;
+            let vir_field_ty = bctx.mid_ty_to_vir(span, &field_ty)?;
+            let vir_expected_field_ty = bctx.mid_ty_to_vir(span, &expected_field_typ)?;
             if !types_equal(&vir_field_ty, &vir_expected_field_ty) {
                 return err_span(span, "field has the wrong type");
             }
@@ -2909,13 +2726,13 @@ fn check_union_field<'tcx>(
     };
 
     let field_ty = field.ty(tcx, substs);
-    let vir_field_ty = bctx.mid_ty_to_vir(span, &field_ty, false)?;
-    let vir_expected_field_ty = bctx.mid_ty_to_vir(span, &expected_field_typ, false)?;
+    let vir_field_ty = bctx.mid_ty_to_vir(span, &field_ty)?;
+    let vir_expected_field_ty = bctx.mid_ty_to_vir(span, &expected_field_typ)?;
     if !types_equal(&vir_field_ty, &vir_expected_field_ty) {
         return err_span(span, "field has the wrong type");
     }
 
-    let vir_adt_ty = bctx.mid_ty_to_vir(span, &ty, false)?;
+    let vir_adt_ty = bctx.mid_ty_to_vir(span, &ty)?;
     let adt_path = match &*vir_adt_ty {
         TypX::Datatype(path, _, _) => path.clone(),
         _ => {
@@ -2955,11 +2772,7 @@ fn record_loop_spec<'tcx>(
     loop_hir_id: rustc_hir::HirId,
     kind: LoopSpecKind,
 ) {
-    if bctx.new_mut_ref {
-        record_call(bctx, expr, ResolvedCall::LoopSpec(loop_hir_id, kind));
-    } else {
-        record_spec_fn_pure_args_only(bctx, expr);
-    }
+    record_call(bctx, expr, ResolvedCall::LoopSpec(loop_hir_id, kind));
 }
 
 pub(crate) fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {

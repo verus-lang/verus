@@ -1132,7 +1132,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] disallowed_mut_capture5 ["vstd", "new-mut-ref"] => verus_code! {
+    #[test] disallowed_mut_capture5 ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         fn test1() {
@@ -1145,7 +1145,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] disallowed_mut_capture6 ["vstd", "new-mut-ref"] => verus_code! {
+    #[test] disallowed_mut_capture6 ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         fn test1() {
@@ -1160,7 +1160,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] disallowed_mut_capture7 ["vstd", "new-mut-ref"] => verus_code! {
+    #[test] disallowed_mut_capture7 ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         fn test1() {
@@ -1174,7 +1174,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] disallowed_mut_capture8 ["vstd", "new-mut-ref"] => verus_code! {
+    #[test] disallowed_mut_capture8 ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         fn test1() {

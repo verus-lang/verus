@@ -115,7 +115,7 @@ impl MockWorkspace {
 
         let manifest = root.path().join("Cargo.toml");
         std::fs::write(&manifest, manifest_lines.join("\n"))
-            .expect(&format!("write manifest to {manifest:?}"));
+            .unwrap_or_else(|_| panic!("write manifest to {manifest:?}"));
 
         root
     }
@@ -278,7 +278,7 @@ impl MockPackage {
 
         let manifest = root.join("Cargo.toml");
         std::fs::write(&manifest, manifest_lines.join("\n"))
-            .expect(&format!("write manifest to {manifest:?}"));
+            .unwrap_or_else(|_| panic!("write manifest to {manifest:?}"));
 
         if !self.has_lib || self.bin_names.is_empty() {
             let src = root.join("src");
@@ -286,12 +286,12 @@ impl MockPackage {
 
             if self.has_lib {
                 let lib = src.join("lib.rs");
-                std::fs::write(&lib, "").expect(&format!("write {lib:?}"));
+                std::fs::write(&lib, "").unwrap_or_else(|_| panic!("write {lib:?}"));
             }
 
             for name in self.bin_names {
                 let bin = src.join(format!("{name}.rs"));
-                std::fs::write(&bin, "").expect(&format!("write {bin:?}"));
+                std::fs::write(&bin, "").unwrap_or_else(|_| panic!("write {bin:?}"));
             }
         }
 
@@ -301,7 +301,8 @@ impl MockPackage {
 
             for name in self.example_names {
                 let example = examples.join(format!("{name}.rs"));
-                std::fs::write(&example, "fn main() {}").expect(&format!("write {example:?}"));
+                std::fs::write(&example, "fn main() {}")
+                    .unwrap_or_else(|_| panic!("write {example:?}"));
             }
         }
     }
@@ -340,7 +341,8 @@ impl CargoRunPlan {
     }
 
     pub fn parse_driver_args(&self, key: &str) -> Vec<&str> {
-        let encoded_args = self.env.get(key).expect(&format!("retrieve env var `{}`", key));
+        let encoded_args =
+            self.env.get(key).unwrap_or_else(|| panic!("retrieve env var `{}`", key));
         encoded_args.split(VERUS_DRIVER_ARGS_SEP).collect()
     }
 

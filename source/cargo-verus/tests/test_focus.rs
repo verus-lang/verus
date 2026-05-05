@@ -1,45 +1,42 @@
-#[path = "src/utils.rs"]
-mod utils;
-
-use utils::*;
+use cargo_verus::{
+    BIN_NAME, ExecutionPlan,
+    test_utils::{
+        CARGO_DEFAULT_LIB_METADATA, MockDep, MockPackage, MockWorkspace, RUSTC_WRAPPER,
+        VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR, VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
+    },
+};
 
 #[test]
 fn crate_optin_manifest() {
     let crate_name = "foo";
-    let verify_crate_prefix = format!("__VERUS_DRIVER_VERIFY_{crate_name}-0.1.0-");
-    let verify_for_crate_prefix = format!(" __VERUS_DRIVER_ARGS_FOR_{crate_name}-0.1.0-");
+    let verify_crate_prefix = format!("{VERUS_DRIVER_VERIFY}{crate_name}-0.1.0-");
+    let verify_for_crate_prefix = format!("{VERUS_DRIVER_ARGS_FOR}{crate_name}-0.1.0-");
     let package_dir = MockPackage::new(crate_name).lib().verify(true).materialize();
 
-    // Canonicalize the path to avoid weirdness on e.g. macOS
     let package_dir = package_dir.path().canonicalize().expect("canonical path");
-
     let manifest_path = package_dir.join("Cargo.toml");
+    let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.arg("focus");
-        cmd.arg("--manifest-path").arg(&manifest_path);
-    });
+    let args = [BIN_NAME, "focus", "--manifest-path", manifest_path];
 
-    assert!(status.success());
+    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let target_dir = package_dir.join("target").join("verus-partial");
+    let target_dir = target_dir.to_str().expect("target dir to string");
 
     assert_eq!(
-        data.args,
-        vec![
-            "check",
-            "--manifest-path",
-            manifest_path.to_str().expect("manifest path to string"),
-            "--target-dir",
-            target_dir.to_str().expect("target dir to string"),
-        ]
+        cargo_plan.args,
+        ["check", "--manifest-path", manifest_path, "--target-dir", target_dir],
     );
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
-    data.assert_env_sets_key_prefix(&verify_crate_prefix, "1");
-    data.assert_env_has_no_key_prefix(&verify_for_crate_prefix);
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
+    cargo_plan.assert_env_sets_key_prefix(&verify_crate_prefix, "1");
+    cargo_plan.assert_env_has_no_key_prefix(&verify_for_crate_prefix);
 }
 
 #[test]
@@ -58,52 +55,47 @@ fn workspace_manifest() {
         ])
         .materialize();
 
-    // Canonicalize the path to avoid weirdness on e.g. macOS
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");
-    let verify_optout_prefix = format!("__VERUS_DRIVER_VERIFY_{optout}-0.1.0-");
-    let verify_unset_prefix = format!("__VERUS_DRIVER_VERIFY_{unset}-0.1.0-");
-    let verify_hasdeps_prefix = format!("__VERUS_DRIVER_VERIFY_{hasdeps}-0.1.0-");
+    let verify_optin_prefix = format!("{VERUS_DRIVER_VERIFY}{optin}-0.1.0-");
+    let verify_optout_prefix = format!("{VERUS_DRIVER_VERIFY}{optout}-0.1.0-");
+    let verify_unset_prefix = format!("{VERUS_DRIVER_VERIFY}{unset}-0.1.0-");
+    let verify_hasdeps_prefix = format!("{VERUS_DRIVER_VERIFY}{hasdeps}-0.1.0-");
 
     let manifest_path = workspace_dir.join("Cargo.toml");
+    let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.arg("focus");
-        cmd.arg("--manifest-path").arg(&manifest_path);
-    });
+    let args = [BIN_NAME, "focus", "--manifest-path", manifest_path];
 
-    assert!(status.success());
+    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let target_dir = workspace_dir.join("target").join("verus-partial");
+    let target_dir = target_dir.to_str().expect("target dir to string");
 
     assert_eq!(
-        data.args,
-        vec![
-            "check",
-            "--manifest-path",
-            manifest_path.to_str().expect("manifest path to string"),
-            "--target-dir",
-            target_dir.to_str().expect("target dir to string"),
-        ]
+        cargo_plan.args,
+        ["check", "--manifest-path", manifest_path, "--target-dir", target_dir],
     );
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
 
-    data.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
-    let verify_hasdeps_args = data
-        .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
+    cargo_plan.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
+    let verify_hasdeps_args = cargo_plan
+        .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{hasdeps}-0.1.0-"));
     assert!(!verify_hasdeps_args.contains(&"--no-verify"));
 
-    data.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
-    let verify_optin_args =
-        data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
+    cargo_plan.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
+    let verify_optin_args = cargo_plan
+        .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optin}-0.1.0-"));
     assert!(!verify_optin_args.contains(&"--no-verify"));
 
-    data.assert_env_has_no_key_prefix(&verify_optout_prefix);
-    data.assert_env_has_no_key_prefix(&verify_unset_prefix);
+    cargo_plan.assert_env_has_no_key_prefix(&verify_optout_prefix);
+    cargo_plan.assert_env_has_no_key_prefix(&verify_unset_prefix);
 }
 
 #[test]
@@ -125,51 +117,41 @@ fn workspace_package_hasdeps() {
         ])
         .materialize();
 
-    // Canonicalize the path to avoid weirdness on e.g. macOS
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");
-    let verify_optout_prefix = format!("__VERUS_DRIVER_VERIFY_{optout}-0.1.0-");
-    let verify_unset_prefix = format!("__VERUS_DRIVER_VERIFY_{unset}-0.1.0-");
-    let verify_hasdeps_prefix = format!("__VERUS_DRIVER_VERIFY_{hasdeps}-0.1.0-");
+    let verify_optin_prefix = format!("{VERUS_DRIVER_VERIFY}{optin}-0.1.0-");
+    let verify_optout_prefix = format!("{VERUS_DRIVER_VERIFY}{optout}-0.1.0-");
+    let verify_unset_prefix = format!("{VERUS_DRIVER_VERIFY}{unset}-0.1.0-");
+    let verify_hasdeps_prefix = format!("{VERUS_DRIVER_VERIFY}{hasdeps}-0.1.0-");
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.current_dir(&workspace_dir);
-        cmd.arg("focus");
-        cmd.arg("--package").arg(hasdeps);
-    });
+    let args = [BIN_NAME, "focus", "--package", hasdeps];
 
-    assert!(status.success());
+    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
     let target_dir = workspace_dir.join("target").join("verus-partial");
+    let target_dir = target_dir.to_str().expect("target dir to string");
 
-    assert_eq!(
-        data.args,
-        vec![
-            "check",
-            "--target-dir",
-            target_dir.to_str().expect("target dir to string"),
-            "--package",
-            "hasdeps",
-        ]
-    );
+    assert_eq!(cargo_plan.args, ["check", "--target-dir", target_dir, "--package", hasdeps],);
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
 
-    data.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
-    let verify_hasdeps_args = data
-        .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
+    cargo_plan.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
+    let verify_hasdeps_args = cargo_plan
+        .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{hasdeps}-0.1.0-"));
     assert!(!verify_hasdeps_args.contains(&"--no-verify"));
 
-    data.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
-    let verify_optin_args =
-        data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
+    cargo_plan.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
+    let verify_optin_args = cargo_plan
+        .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optin}-0.1.0-"));
     assert!(verify_optin_args.contains(&"--no-verify"));
 
-    data.assert_env_has_no_key_prefix(&verify_optout_prefix);
-    data.assert_env_has_no_key_prefix(&verify_unset_prefix);
+    cargo_plan.assert_env_has_no_key_prefix(&verify_optout_prefix);
+    cargo_plan.assert_env_has_no_key_prefix(&verify_unset_prefix);
 }
 
 #[test]
@@ -184,38 +166,31 @@ fn workspace_package_hasdeps_forwards_verus_args_only_to_roots() {
         ])
         .materialize();
 
-    // Canonicalize the path to avoid weirdness on e.g. macOS
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.current_dir(&workspace_dir);
-        cmd.arg("focus");
-        cmd.arg("--package").arg(hasdeps);
-        cmd.arg("--");
-        cmd.arg("--verify-module=bar");
-    });
+    let args = [BIN_NAME, "focus", "--package", hasdeps, "--", "--verify-module=bar"];
 
-    assert!(status.success());
+    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
-    // Forwarded Verus args should not be globally set in `focus` mode.
-    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
         !driver_args.contains(&"--verify-module=bar"),
-        "forwarded Verus args should not be in __VERUS_DRIVER_ARGS__"
+        "forwarded Verus args should not be in {VERUS_DRIVER_ARGS}"
     );
 
-    // Selected root crates should receive forwarded Verus args.
-    let root_driver_args = data
-        .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
+    let root_driver_args = cargo_plan
+        .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{hasdeps}-0.1.0-"));
     assert!(
         root_driver_args.contains(&"--verify-module=bar"),
         "expected root crate to receive --verify-module=bar, got: {:?}",
         root_driver_args
     );
 
-    // Dependency crates should not receive forwarded Verus args.
-    let dep_driver_args =
-        data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
+    let dep_driver_args = cargo_plan
+        .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optin}-0.1.0-"));
     assert!(
         !dep_driver_args.contains(&"--verify-module=bar"),
         "dependency should not receive --verify-module=bar, got: {:?}",

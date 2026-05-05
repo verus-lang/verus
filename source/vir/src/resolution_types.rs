@@ -114,7 +114,6 @@ fn typ_node_resolvability(t: &Typ) -> NodeResolve {
             | TypDecoration::Never
             | TypDecoration::ConstPtr => NodeResolve::No,
             TypDecoration::Box | TypDecoration::Tracked => NodeResolve::TypArgDependent,
-            TypDecoration::MutRef => NodeResolve::Yes,
         },
 
         TypX::Datatype(Dt::Path(p), ..) => NodeResolve::DatatypePath(p.clone()),

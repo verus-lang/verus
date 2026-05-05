@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] test_basic ["new-mut-ref"] => verus_code! {
+    #[test] test_basic [] => verus_code! {
         union X { a: u64, b: (bool, bool) }
 
         fn test_mut_ref() {
@@ -97,7 +97,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_wrong_variant_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] test_wrong_variant_mut_ref [] => verus_code! {
         union X { a: u64, b: (bool, bool) }
 
         fn test_mut_ref() {
@@ -117,7 +117,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_wrong_variant_assign ["new-mut-ref"] => verus_code! {
+    #[test] test_wrong_variant_assign [] => verus_code! {
         union X { a: u64, b: (bool, bool) }
         fn test_assign() {
             let mut x = X { b: (true, false) };
@@ -129,7 +129,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_wrong_variant_assign_nested ["new-mut-ref"] => verus_code! {
+    #[test] test_wrong_variant_assign_nested [] => verus_code! {
         union X { a: u64, b: (bool, bool) }
         fn test_assign_nested() {
             let mut x = X { a: 0 };
@@ -140,7 +140,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ctor_update_tail ["new-mut-ref"] => verus_code! {
+    #[test] ctor_update_tail [] => verus_code! {
         use vstd::prelude::*;
 
         #[derive(Clone, Copy)]
@@ -175,7 +175,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_match ["new-mut-ref"] => verus_code! {
+    #[test] test_match [] => verus_code! {
         union X { a: u64, b: (bool, bool) }
 
         fn test_match() {
@@ -238,7 +238,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_temporary ["new-mut-ref"] => verus_code! {
+    #[test] test_temporary [] => verus_code! {
         union X { a: u64, b: (bool, bool) }
 
         fn test1() {
@@ -312,7 +312,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] array_plus_union_field ["new-mut-ref"] => verus_code! {
+    #[test] array_plus_union_field [] => verus_code! {
         use vstd::prelude::*;
 
         union X { a: u64, b: (bool, bool) }
@@ -349,7 +349,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] union_has_resolved ["new-mut-ref"] => verus_code! {
+    #[test] union_has_resolved [] => verus_code! {
         use vstd::prelude::*;
         use std::mem::ManuallyDrop;
 
@@ -374,7 +374,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] union_with_mut_ref_in_fields ["new-mut-ref"] => verus_code! {
+    #[test] union_with_mut_ref_in_fields [] => verus_code! {
         use vstd::prelude::*;
         use std::mem::ManuallyDrop;
         use std::ops::DerefMut;
@@ -493,7 +493,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_array_issue1 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_array_issue1 [] => verus_code! {
         union U { a: [u64; 2], b: bool }
 
         // fails, field access UB
@@ -510,7 +510,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_array_issue2 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_array_issue2 [] => verus_code! {
         union U { a: [u64; 2], b: bool }
 
         // ok
@@ -527,7 +527,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_array_issue3 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_array_issue3 [] => verus_code! {
         use vstd::prelude::*;
         union U { a: [u64; 2], b: bool }
 
@@ -546,7 +546,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_array_issue4 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_array_issue4 [] => verus_code! {
         use vstd::prelude::*;
         union U { a: [u64; 2], b: bool }
 
@@ -562,7 +562,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_slice_issue1 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_slice_issue1 [] => verus_code! {
         use vstd::prelude::*;
         union V { a: &'static [u64], b: bool }
 
@@ -585,7 +585,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_slice_issue2 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_slice_issue2 [] => verus_code! {
         use vstd::prelude::*;
         union V { a: &'static [u64], b: bool }
 
@@ -608,7 +608,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_slice_issue3 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_slice_issue3 [] => verus_code! {
         use vstd::prelude::*;
         union V { a: &'static [u64], b: bool }
 
@@ -632,7 +632,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_slice_issue4 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_slice_issue4 [] => verus_code! {
         use vstd::prelude::*;
         union V { a: &'static [u64], b: bool }
 
@@ -653,7 +653,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_array_issue1 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_array_issue1 [] => verus_code! {
         use vstd::prelude::*;
         union W { a: [(u64, u64); 2], b: bool }
 
@@ -671,7 +671,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_array_issue2 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_array_issue2 [] => verus_code! {
         use vstd::prelude::*;
         union W { a: [(u64, u64); 2], b: bool }
 
@@ -689,7 +689,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_array_issue3 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_array_issue3 [] => verus_code! {
         use vstd::prelude::*;
         union W { a: [(u64, u64); 2], b: bool }
 
@@ -708,7 +708,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_array_issue4 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_array_issue4 [] => verus_code! {
         use vstd::prelude::*;
         union W { a: [(u64, u64); 2], b: bool }
 
@@ -724,7 +724,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_slice_issue1 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_slice_issue1 [] => verus_code! {
         use vstd::prelude::*;
         union Y { a: &'static [(u64, u64)], b: bool }
 
@@ -747,7 +747,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_slice_issue2 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_slice_issue2 [] => verus_code! {
         use vstd::prelude::*;
         union Y { a: &'static [(u64, u64)], b: bool }
 
@@ -770,7 +770,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_slice_issue3 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_slice_issue3 [] => verus_code! {
         use vstd::prelude::*;
         union Y { a: &'static [(u64, u64)], b: bool }
 
@@ -794,7 +794,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_slice_issue4 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_slice_issue4 [] => verus_code! {
         use vstd::prelude::*;
         union Y { a: &'static [(u64, u64)], b: bool }
 
@@ -815,7 +815,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_borrows_to_union_fields ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_borrows_to_union_fields [] => verus_code! {
         union X {
             a: u64,
             b: u64,
@@ -884,7 +884,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_borrows_to_union_fields2 ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_borrows_to_union_fields2 [] => verus_code! {
         use vstd::prelude::*;
 
         #[derive(Clone, Copy)]
@@ -945,7 +945,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] evil_match_mutate_scrutinee_in_guard_pattern ["new-mut-ref"] => verus_code! {
+    #[test] evil_match_mutate_scrutinee_in_guard_pattern [] => verus_code! {
         union Q {
             a: (u64, u64),
             b: bool,
@@ -967,7 +967,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] evil_match_mutate_scrutinee_in_guard_pattern2 ["new-mut-ref"] => verus_code! {
+    #[test] evil_match_mutate_scrutinee_in_guard_pattern2 [] => verus_code! {
         union Q {
             a: (u64, u64),
             b: bool,

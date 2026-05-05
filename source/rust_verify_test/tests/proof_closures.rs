@@ -1854,7 +1854,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] tracked_swap_cant_be_proof_fn ["new-mut-ref"] => verus_code! {
+    #[test] tracked_swap_cant_be_proof_fn [] => verus_code! {
         use vstd::prelude::*;
         use vstd::modes::*;
         proof fn q<V>(tracked f: proof_fn(tracked &mut V, tracked &mut V) -> ()) {

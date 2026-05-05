@@ -117,8 +117,6 @@ pub struct VerusErasureCtxt {
     pub dummy_capture_struct_def_id: DefId,
     pub mutable_reference_tie_fn_def_id: DefId,
     pub get_first_fn_def_id: DefId,
-
-    pub new_mut_ref: bool,
 }
 
 /// Used to communicate the set of LocalDefIds that may require erasure.
@@ -206,8 +204,7 @@ impl VerusThirBuildCtxt {
             VERUS_AWARE_DEF_IDS.read().unwrap().clone().unwrap().contains(&fn_local_def_id);
         let ctxt = get_verus_erasure_ctxt_option();
 
-        let do_time_travel_prevention =
-            verus_aware && ctxt.is_some() && ctxt.as_ref().unwrap().new_mut_ref;
+        let do_time_travel_prevention = verus_aware && ctxt.is_some();
 
         VerusThirBuildCtxt {
             ctxt: get_verus_erasure_ctxt_option(),

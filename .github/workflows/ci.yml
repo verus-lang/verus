@@ -94,7 +94,7 @@ jobs:
             cargo_verus:
               - 'source/cargo-verus/**'
 
-  # run integration tests for cargo-verus
+  # run cargo-verus tests
   cargo-verus-test:
     needs: [fmt, clippy, change_filter]
     runs-on: ubuntu-22.04
@@ -113,10 +113,10 @@ jobs:
         with:
           toolchain: 1.95.0
 
-      - name: cargo-verus integration tests
+      - name: cargo-verus tests
         if: needs.change_filter.outputs.cargo_verus == 'true'
         working-directory: ./source
-        run: cargo test -p cargo-verus --features integration-tests -- --skip z_flag_with_space_is_accepted
+        run: cargo test -p cargo-verus
 
   # check if it builds and runs on macos, running the full test suite
   # (in release mode because it makes a huge difference)

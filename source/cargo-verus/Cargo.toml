@@ -4,9 +4,6 @@ version = "0.1.0"
 edition = "2021"
 description = "A Cargo subcommand that enables verification of Rust code as part of the normal Cargo workflow."
 
-[features]
-integration-tests = []
-
 [dependencies]
 cargo_metadata = "0.23.1"
 clap = { version = "4.5.53", features = ["derive"] }
@@ -22,14 +19,6 @@ tempfile = "3"
 
 [build-dependencies]
 rustc_tools_util = "0.3.0"
-
-[dev-dependencies]
-assert_cmd = "2.0"
-
-[[bin]]
-name = "fake-cargo"
-path = "tests/src/fake_cargo.rs"
-required-features = ["integration-tests"]
 
 [lints]
 workspace = true

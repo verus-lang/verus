@@ -162,8 +162,7 @@ fn check_item<'tcx>(
         }
 
         let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
-        let vir_ty =
-            ctxt.mid_ty_to_vir(def_id, item.span, &mid_ty, false, None).map_err(|e| vec![e])?;
+        let vir_ty = ctxt.mid_ty_to_vir(def_id, item.span, &mid_ty, None).map_err(|e| vec![e])?;
 
         crate::rust_to_vir_func::check_item_const_or_static(
             ctxt,
@@ -176,7 +175,6 @@ fn check_item<'tcx>(
             &vir_ty,
             body_id,
             matches!(item.kind, ItemKind::Static(_, _, _, _)),
-            false,
         )
         .map_err(|e| vec![e])?;
 
