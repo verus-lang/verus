@@ -3229,17 +3229,24 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             }
         }
 
-        rustc_interface::passes::write_dep_info(tcx);
-        self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
-
         let mut import_virs_via_cargo =
             self.verifier.import_virs_via_cargo.clone().unwrap_or_default();
         if !self.unresolved_import_deps.is_empty() {
-            import_virs_via_cargo.extend(crate::cargo_verus::handle_transitive_imports(
-                tcx,
-                &self.unresolved_import_deps,
-            ));
+            // Resolve transitive .vir imports before `write_dep_info` so each
+            // resolved .vir gets registered in `psess.file_depinfo` and ends
+            // up in the consumer's `.d` file, mirroring `dep_tracker.mark_file`
+            // for direct externs.
+            match crate::cargo_verus::handle_transitive_imports(tcx, &self.unresolved_import_deps) {
+                Ok(extra) => import_virs_via_cargo.extend(extra),
+                Err(err) => {
+                    eprintln!("Error: {}", err);
+                    std::process::exit(1);
+                }
+            }
         }
+
+        rustc_interface::passes::write_dep_info(tcx);
+        self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
 
         let time_import0 = Instant::now();
         let imported =
