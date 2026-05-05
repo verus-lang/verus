@@ -2818,6 +2818,9 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::TwoPhaseBorrowMut(_place) => {
             panic!("TwoPhaseBorrowMut should have been handled by the parent node");
         }
+        ExprX::ShrRefStructWrap(..) => {
+            panic!("ShrRefStructWrap should have been simplified out");
+        }
         ExprX::ReadPlace(place, _) | ExprX::ImplicitReborrowOrSpecRead(place, _, _) => {
             let (stms, e) = place_to_exp_for_read(ctx, state, place)?;
             let e = unwrap_or_return_never!(e, stms);

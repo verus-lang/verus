@@ -1080,6 +1080,24 @@ fn verus_item_to_vir<'tcx, 'a>(
                     adt_arg,
                 ))
             }
+            ExprItem::ShrRefStructWrap => {
+                record_compilable_operator(bctx, expr, CompilableOperator::ShrRefStructWrap);
+                assert!(args.len() == 4);
+                let arg0 = expr_to_vir_consume(bctx, &args[0])?;
+                let arg1 = expr_to_vir_consume(bctx, &args[1])?;
+                let variant_name = get_string_lit_arg(&args[2], &f_name)?;
+                let field_name = get_string_lit_arg(&args[3], &f_name)?;
+                let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
+                assert!(typ_args.len() == 2);
+                mk_expr(ExprX::ShrRefStructWrap(
+                    arg0,
+                    arg1,
+                    typ_args[0].clone(),
+                    typ_args[1].clone(),
+                    str_ident(&variant_name),
+                    str_ident(&field_name),
+                ))
+            }
         },
         VerusItem::CompilableOpr(
             compilable_opr @ (CompilableOprItem::GhostExec | CompilableOprItem::TrackedExec),

@@ -149,6 +149,7 @@ pub(crate) enum ExprItem {
     IsSmallerThanRecursiveFunctionField,
     DefaultEnsures,
     InferSpecForLoopIter,
+    ShrRefStructWrap,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -512,6 +513,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::is_smaller_than_recursive_function_field", VerusItem::Expr(ExprItem::IsSmallerThanRecursiveFunctionField)),
         ("verus::verus_builtin::default_ensures",         VerusItem::Expr(ExprItem::DefaultEnsures)),
         ("verus::verus_builtin::infer_spec_for_loop_iter", VerusItem::Expr(ExprItem::InferSpecForLoopIter)),
+        ("verus::verus_builtin::shr_ref_struct_wrap",     VerusItem::Expr(ExprItem::ShrRefStructWrap)),
 
         ("verus::verus_builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),
         // TODO ("verus::verus_builtin::smartptr_new",    VerusItem::CompilableOpr(CompilableOprItem::SmartPtrNew)),

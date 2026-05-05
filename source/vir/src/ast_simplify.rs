@@ -16,7 +16,8 @@ use crate::ast::{
     UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    conjoin, mk_eq, place_to_spec_expr, typ_args_for_datatype_typ, unit_typ, wrap_in_trigger,
+    conjoin, mk_eq, place_to_spec_expr, typ_args_for_datatype_typ, undecorate_typ, unit_typ,
+    wrap_in_trigger,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
@@ -445,8 +446,7 @@ fn simplify_one_expr(
             };
 
             let (typ_positives, variants) = &ctx.datatypes[path];
-            assert_eq!(variants.len(), 1);
-            let fields = &variants[0].fields;
+            let fields = &crate::ast_util::get_variant(&variants, variant).fields;
             let typ_args = typ_args_for_datatype_typ(&expr.typ);
             // replace ..update
             // with f1: update.f1, f2: update.f2, ...
@@ -473,6 +473,30 @@ fn simplify_one_expr(
                 let block = ExprX::Block(Arc::new(decls), Some(ctor));
                 Ok(SpannedTyped::new(&expr.span, &expr.typ, block))
             }
+        }
+        ExprX::ShrRefStructWrap(e1, e2, _t1, t2, variant, field) => {
+            // Simplify as `Struct { field: e1, .. e2 }`
+            let datatype_typ = undecorate_typ(&t2);
+            let (dt, _typ_args) = match &*datatype_typ {
+                TypX::Datatype(dt, typ_args, ..) => (dt, typ_args),
+                _ => panic!("ShrRefStructWrap expects datatype"),
+            };
+            let Dt::Path(path) = dt else { panic!("ShrRefStructWrap expects Dt::Path") };
+            let partial_binders =
+                Arc::new(vec![Arc::new(air::ast::BinderX { name: field.clone(), a: e1.clone() })]);
+            let place = SpannedTyped::new(&e2.span, &e2.typ, PlaceX::Temporary(e2.clone()));
+            // taken_fields is ignored by this point
+            let upd = CtorUpdateTail { place: place, taken_fields: Arc::new(vec![]) };
+            let variant = if **variant == "" {
+                let (_, variants) = &ctx.datatypes[path];
+                assert!(variants.len() == 1);
+                variants[0].name.clone()
+            } else {
+                variant.clone()
+            };
+            let ctor = ExprX::Ctor(dt.clone(), variant.clone(), partial_binders, Some(upd));
+            let ctor = SpannedTyped::new(&expr.span, &expr.typ, ctor);
+            simplify_one_expr(ctx, state, scope_map, &ctor)
         }
         ExprX::Unary(UnaryOp::CoerceMode { .. }, expr0) => Ok(expr0.clone()),
         ExprX::Multi(MultiOp::Chained(ops), args) => {

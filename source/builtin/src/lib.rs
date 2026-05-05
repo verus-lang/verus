@@ -2407,3 +2407,14 @@ pub fn after_borrow<T>(_: T) -> T {
 pub fn mut_ref_tracked<T>(_: &mut T) -> &mut Tracked<T> {
     unimplemented!()
 }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::shr_ref_struct_wrap"]
+pub fn shr_ref_struct_wrap<'a, 'b, A, B>(
+    _: &'a A,
+    _: &'b B,
+    _variant: &'static str,
+    _field: &'static str,
+) -> &'a B {
+    unimplemented!()
+}

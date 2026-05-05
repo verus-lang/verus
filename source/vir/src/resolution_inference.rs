@@ -1214,6 +1214,11 @@ impl<'a> Builder<'a> {
                 self.basic_blocks[cancel_bb].is_exit = true;
                 Ok(main_bb)
             }
+            ExprX::ShrRefStructWrap(e1, e2, _t1, _t2, _variant, _ident) => {
+                bb = self.build(e1, bb)?;
+                bb = self.build(e2, bb)?;
+                Ok(bb)
+            }
         }
     }
 

@@ -673,6 +673,22 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::MatchGuardFreeze(R::get(p), R::get(e))))
             }
+            ExprX::ShrRefStructWrap(e1, e2, t1, t2, variant, field) => {
+                let e1 = self.visit_expr(e1)?;
+                let e2 = self.visit_expr(e2)?;
+                let t1 = self.visit_typ(t1)?;
+                let t2 = self.visit_typ(t2)?;
+                R::ret(|| {
+                    expr_new(ExprX::ShrRefStructWrap(
+                        R::get(e1),
+                        R::get(e2),
+                        R::get(t1),
+                        R::get(t2),
+                        variant.clone(),
+                        field.clone(),
+                    ))
+                })
+            }
         }
     }
 

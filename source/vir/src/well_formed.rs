@@ -1,13 +1,13 @@
 use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Constant, Datatype, DatatypeTransparency, Dt, Expr,
     ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
-    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec,
-    VirErr, VirErrAs, Visibility,
+    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypDecoration, TypX, UnaryOp,
+    UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
-    ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name,
-    is_body_visible_to, is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr,
-    typ_to_diagnostic_str, types_equal, undecorate_typ,
+    ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name, get_field_or_err,
+    get_variant_or_err, is_body_visible_to, is_visible_to_opt, path_as_friendly_rust_name,
+    referenced_vars_expr, typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
@@ -735,6 +735,80 @@ fn check_one_expr<Emit: EmitError>(
                 &expr.span,
                 "`old` is meaningless in spec functions",
             ).help("You can dereference the mutable reference normally to get the \"current\"/\"old\" value"));
+        }
+        ExprX::ShrRefStructWrap(_e1, _e2, t1, t2, variant_ident, field_ident) => {
+            let datatype_typ = undecorate_typ(&t2);
+            let (dt, typ_args) = match &*datatype_typ {
+                TypX::Datatype(dt, typ_args, ..) => (dt, typ_args),
+                _ => {
+                    return Err(error(
+                        &expr.span,
+                        "second argument to `shr_ref_struct_wrap` should be a datatype",
+                    ));
+                }
+            };
+            let Dt::Path(path) = dt else {
+                return Err(error(&expr.span, "shr_ref_struct_wrap not supported for tuples"));
+            };
+            check_datatype_access(
+                ctxt,
+                path,
+                disallow_private_access,
+                &function.x.owning_module,
+                &expr.span,
+                "`shr_ref_struct_wrap` operator",
+                emit,
+            )?;
+            let datatype = ctxt.dts.get(path).unwrap();
+            let variant = if datatype.x.variants.len() == 1 && **variant_ident == "" {
+                &datatype.x.variants[0]
+            } else {
+                get_variant_or_err(&expr.span, &datatype.x.variants, variant_ident)?
+            };
+            let field = get_field_or_err(&expr.span, &variant.fields, field_ident)?;
+            let field_typ = crate::sst_util::subst_typ_for_datatype(
+                &datatype.x.typ_params,
+                typ_args,
+                &field.a.0,
+            );
+            // REVIEW: not robust to normalization
+            if !types_equal(t1, &field_typ) {
+                return Err(error(
+                    &expr.span,
+                    format!(
+                        "shr_ref_struct_wrap: first argument of type `{:}` should match field type `{:}`",
+                        typ_to_diagnostic_str(t1),
+                        typ_to_diagnostic_str(&field_typ)
+                    ),
+                ));
+            }
+            if datatype.x.mode == Mode::Spec {
+                return Err(error(
+                    &expr.span,
+                    "shr_ref_struct_wrap cannot target ghost-mode datatype",
+                ));
+            };
+            if field.a.1 == Mode::Spec {
+                return Err(error(
+                    &expr.span,
+                    "shr_ref_struct_wrap cannot target ghost-mode field",
+                ));
+            }
+            for field in variant.fields.iter() {
+                if &field.name != field_ident {
+                    if field.a.1 != Mode::Spec
+                        && !matches!(&*field.a.0, TypX::Decorate(TypDecoration::Ghost, ..))
+                    {
+                        return Err(error(
+                            &expr.span,
+                            format!(
+                                "shr_ref_struct_wrap can only be applied when all other fields of the relevant variant are ghost-mode or of type Ghost (field `{:}` does not meet this requirement)",
+                                &field.name
+                            ),
+                        ));
+                    }
+                }
+            }
         }
         _ => {}
     }

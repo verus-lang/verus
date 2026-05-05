@@ -186,7 +186,7 @@ impl<T> FracGhost<T> {
     {
         use_type_invariant(self);
         use_type_invariant(other);
-        let tracked joined = self.r.as_ref().join_shared(&other.r.as_ref());
+        let tracked joined = self.r.join_shared(&other.r);
         joined.validate()
     }
 
@@ -264,7 +264,7 @@ impl<T> FracGhost<T> {
         use_type_invariant(&mself);
         use_type_invariant(&other);
         let tracked mut r = mself.r;
-        r.validate_2(&other.r.as_ref());
+        r.validate_2(&other.r);
         *self = Self { r: r.join(other.r) };
     }
 

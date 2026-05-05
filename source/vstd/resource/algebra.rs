@@ -17,22 +17,6 @@ pub tracked struct Resource<RA: ResourceAlgebra> {
     pcm: pcm::Resource<Option<RA>>,
 }
 
-#[verifier::accept_recursive_types(RA)]
-pub tracked struct ResourceRef<'a, RA: ResourceAlgebra> {
-    pcm: &'a pcm::Resource<Option<RA>>,
-}
-
-impl<RA: ResourceAlgebra> Resource<RA> {
-    pub proof fn as_ref(tracked &self) -> (tracked r: ResourceRef<'_, RA>)
-        ensures
-            self.loc() == r.loc(),
-            self.value() == r.value(),
-    {
-        use_type_invariant(self);
-        ResourceRef { pcm: &self.pcm }
-    }
-}
-
 /// A Resource Algebra operating on a type T
 ///
 /// This construction is based off the [Iris from the Ground Up](https://people.mpi-sws.org/~dreyer/papers/iris-ground-up/paper.pdf)
@@ -200,7 +184,7 @@ impl<RA: ResourceAlgebra> Resource<RA> {
 
     /// Validate two items at once. If we have two resources at the same location then its
     /// composition is valid.
-    pub proof fn validate_2(tracked &mut self, tracked other: &ResourceRef<'_, RA>)
+    pub proof fn validate_2(tracked &mut self, tracked other: &Resource<RA>)
         requires
             old(self).loc() == other.loc(),
         ensures
@@ -215,7 +199,7 @@ impl<RA: ResourceAlgebra> Resource<RA> {
     /// We can do a similar update to [`update_with_shared`](Self::update_with_shared) for non-deterministic updates
     pub proof fn update_nondeterministic_with_shared(
         tracked self,
-        tracked other: &ResourceRef<'_, RA>,
+        tracked other: &Resource<RA>,
         new_values: Set<RA>,
     ) -> (tracked out: Self)
         requires
@@ -245,7 +229,7 @@ impl<RA: ResourceAlgebra> Resource<RA> {
     /// we can update the `y` resource to `z`.
     pub proof fn update_with_shared(
         tracked self,
-        tracked other: &ResourceRef<'_, RA>,
+        tracked other: &Resource<RA>,
         new_value: RA,
     ) -> (tracked out: Self)
         requires
@@ -265,35 +249,11 @@ impl<RA: ResourceAlgebra> Resource<RA> {
         assert(so.contains(RA::op(new_value, other.value())));
         self.update_nondeterministic_with_shared(other, new_values)
     }
-}
-
-impl<'a, RA: ResourceAlgebra> ResourceRef<'a, RA> {
-    #[verifier::type_invariant]
-    spec fn inv(self) -> bool {
-        self.pcm.value() is Some
-    }
-
-    pub closed spec fn loc(self) -> Loc {
-        self.pcm.loc()
-    }
-
-    pub closed spec fn value(self) -> RA {
-        self.pcm.value()->Some_0
-    }
-
-    /// Whenever we have a resource, that resource is valid.
-    /// See [`Resource::validate`] for more details
-    pub proof fn validate(tracked &self)
-        ensures
-            self.value().valid(),
-    {
-        use_type_invariant(self);
-        self.pcm.validate();
-    }
 
     /// This is useful when you have two (or more) shared resources and want to learn
     /// that they agree, as you can combine this validate, e.g., `x.join_shared(y).validate()`.
-    pub proof fn join_shared(tracked &self, tracked other: &Self) -> (tracked out: Self)
+    pub proof fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
+        &'a Self)
         requires
             self.loc() == other.loc(),
         ensures
@@ -309,11 +269,11 @@ impl<'a, RA: ResourceAlgebra> ResourceRef<'a, RA> {
         assert(incl(Some(other.value()), pcm.value()));
         lemma_incl_opt_rev(self.value(), pcm.value()->Some_0);
         lemma_incl_opt_rev(other.value(), pcm.value()->Some_0);
-        ResourceRef { pcm }
+        Self::mk_ref(pcm)
     }
 
     /// Extract a shared reference to a preceding element in the extension order from a shared reference.
-    pub proof fn weaken(tracked &self, target: RA) -> (tracked out: ResourceRef<'a, RA>)
+    pub proof fn weaken(tracked &self, target: RA) -> (tracked out: &Self)
         requires
             incl(target, self.value()),
         ensures
@@ -323,12 +283,12 @@ impl<'a, RA: ResourceAlgebra> ResourceRef<'a, RA> {
         use_type_invariant(self);
         lemma_incl_opt(target, self.value());
         let tracked pcm = self.pcm.weaken(Some(target));
-        ResourceRef { pcm }
+        Self::mk_ref(pcm)
     }
 
     /// If `x --> x · y` is a frame-perserving update, and we have a shared reference to `x`,
     /// we can create a resource to y
-    pub proof fn duplicate_previous(tracked &self, value: RA) -> (tracked out: Resource<RA>)
+    pub proof fn duplicate_previous(tracked &self, value: RA) -> (tracked out: Self)
         requires
             frame_preserving_update_opt(self.value(), RA::op(value, self.value())),
         ensures
@@ -343,11 +303,11 @@ impl<'a, RA: ResourceAlgebra> ResourceRef<'a, RA> {
     }
 
     /// We can do a similar update to [`update_with_shared`](Resource::update_with_shared) for non-deterministic updates
-    pub proof fn join_shared_to_target(
-        tracked &self,
-        tracked other: &Self,
+    pub proof fn join_shared_to_target<'a>(
+        tracked &'a self,
+        tracked other: &'a Self,
         target: RA,
-    ) -> (tracked out: Self)
+    ) -> (tracked out: &'a Self)
         requires
             self.loc() == other.loc(),
             conjunct_shared(Some(self.value()), Some(other.value()), Some(target)),
@@ -377,6 +337,15 @@ impl<'a, RA: ResourceAlgebra> ResourceRef<'a, RA> {
         } else {
             joined.weaken(target)
         }
+    }
+
+    proof fn mk_ref<'a>(tracked pcm: &'a pcm::Resource<Option<RA>>) -> (tracked res: &'a Self)
+        requires
+            pcm.value() is Some,
+        ensures
+            res.pcm == pcm,
+    {
+        shr_ref_struct_wrap(pcm, &Self { pcm: arbitrary() }, "", "pcm")
     }
 }
 

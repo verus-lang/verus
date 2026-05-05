@@ -55,7 +55,7 @@ pub proof fn lemma_agree<T>(
     ensures
         a.value()@ == b.value()@,
 {
-    a.as_ref().join_shared(&b.as_ref()).validate();
+    a.join_shared(b).validate();
 }
 
 } // verus!
