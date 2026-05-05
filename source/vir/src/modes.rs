@@ -284,7 +284,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
 
         // todo
         ExprX::TryOpenAtomicUpdate(..) |
-        ExprX::AtomicUpdateInitDummy(..) |
+        ExprX::AtomicUpdateInitDummy |
         ExprX::Atomically(..) |
         ExprX::Update(..) |
         ExprX::InvMask(..) => None,
@@ -3195,7 +3195,7 @@ fn check_expr_handle_mut_arg(
 
             Ok((Mode::Exec, Proph::No))
         }
-        ExprX::AtomicUpdateInitDummy(_) => {
+        ExprX::AtomicUpdateInitDummy => {
             // Nothing to do here.
             Ok((outer_mode, outer_proph.clone()))
         }

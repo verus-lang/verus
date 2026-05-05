@@ -617,10 +617,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     ))
                 })
             }
-            ExprX::AtomicUpdateInitDummy(t) => {
-                let t = self.visit_typ(t)?;
-                R::ret(|| expr_new(ExprX::AtomicUpdateInitDummy(R::get(t))))
-            }
+            ExprX::AtomicUpdateInitDummy => R::ret(|| expr_new(ExprX::AtomicUpdateInitDummy)),
             ExprX::Atomically(i, v, e, b) => {
                 let i = i.clone();
                 let v = v.clone();

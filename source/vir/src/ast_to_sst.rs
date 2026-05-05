@@ -912,7 +912,7 @@ fn expr_get_call(
                     let kind = Immutable(LocalDeclKind::StmCallArg { native: !poly });
 
                     match &arg.x {
-                        ExprX::AtomicUpdateInitDummy(_) => {
+                        ExprX::AtomicUpdateInitDummy => {
                             assert_eq!(k + 1, args.len());
                             atomically = Some(arg);
                             break;
@@ -960,8 +960,9 @@ fn expr_get_call(
                 let (mut stms, mut exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
 
                 if let Some(expr) = atomically {
-                    for exp in &mut exps {
-                        *exp = state.make_tmp_var_for_exp(&mut stms, exp.clone());
+                    for (exp, param) in std::iter::zip(&mut exps, &*function.x.params) {
+                        let tmp = state.make_tmp_var_for_exp(&mut stms, exp.clone());
+                        *exp = SpannedTyped::new(&tmp.span, &param.x.typ, tmp.x.clone());
                     }
 
                     state.au_pred_args = exps.clone();
@@ -2996,7 +2997,7 @@ pub(crate) fn expr_to_stm_opt(
                 &err_arm_ret_val,
             ));
         }
-        ExprX::AtomicUpdateInitDummy(args_exp_typ) => {
+        ExprX::AtomicUpdateInitDummy => {
             let mut stms = Vec::<Stm>::new();
 
             let au_typ = undecorate_typ(&expr.typ);
@@ -3024,10 +3025,10 @@ pub(crate) fn expr_to_stm_opt(
 
             let call_pred_args = SpannedTyped::new(
                 &expr.span,
-                &args_exp_typ,
+                &args_exp.typ,
                 ExpX::Call(
                     CallFun::Fun(def::fn_pred_args(), None),
-                    Arc::new(vec![pred_typ.clone(), args_exp_typ.clone()]),
+                    Arc::new(vec![pred_typ.clone(), args_exp.typ.clone()]),
                     Arc::new(vec![pred_var_exp.clone()]),
                 ),
             );

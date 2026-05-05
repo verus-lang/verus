@@ -1171,7 +1171,7 @@ pub enum ExprX {
     /// Open Atomic Update
     TryOpenAtomicUpdate(Expr, VarBinder<Typ>, bool, Expr),
     /// Placeholder expression for the atomic update argument in the atomic function call
-    AtomicUpdateInitDummy(Typ),
+    AtomicUpdateInitDummy,
     /// Atomic function call
     Atomically(AtomicCallInfo, VarIdent, Expr, bool),
     /// Atomic function call update marker

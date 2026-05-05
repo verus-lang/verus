@@ -62,7 +62,7 @@ fn expr_get_early_exits_rec(
             | ExprX::UnaryOpr(..)
             | ExprX::Binary(..)
             | ExprX::BinaryOpr(..)
-            | ExprX::AtomicUpdateInitDummy(..)
+            | ExprX::AtomicUpdateInitDummy
             | ExprX::Atomically(..)
             | ExprX::Update(..)
             | ExprX::InvMask(..)

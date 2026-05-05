@@ -338,23 +338,12 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                 panic!("atomic call must have at least one argument");
             };
 
-            let mut arg_typs = Vec::new();
-            for expr in prefix {
-                let typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?;
-                arg_typs.push(typ);
-            }
-
-            let arg_tuple_typ = match <[_; 1]>::try_from(arg_typs) {
-                Ok([single]) => single,
-                Err(vec) => mk_tuple_typ(&Arc::new(vec)),
-            };
-
             let mut vir_args = mk_vir_args(bctx, prefix)?;
             let au_expr = expr_to_vir_consume(&bctx, au)?;
             vir_args.push(bctx.spanned_typed_new(
                 au.span,
                 &au_expr.typ,
-                ExprX::AtomicUpdateInitDummy(arg_tuple_typ),
+                ExprX::AtomicUpdateInitDummy,
             ));
 
             (vir_args, Some(au_expr))
