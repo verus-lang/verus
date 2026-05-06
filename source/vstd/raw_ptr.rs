@@ -1,23 +1,19 @@
+//! Tools and reasoning principles for [raw pointers](https://doc.rust-lang.org/std/primitive.pointer.html).
+//! The tools here are meant to address "real Rust pointers, including all their subtleties on the Rust Abstract Machine,
+//! to the largest extent that is reasonable."
+//!
+//! For a gentler introduction to some of the concepts here, see [`PPtr`](crate::simple_pptr), which uses a much-simplified pointer model.
+//!
+//! ### Pointer model
+//!
+//! A pointer consists of an address (`ptr.addr()` or `ptr as usize`), a provenance `ptr@.provenance`,
+//! and metadata `ptr@.metadata` (which is trivial except for pointers to non-sized types).
+//! Note that in spec code, pointer equality requires *all 3* to be equal, whereas runtime equality (eq)
+//! only compares addresses and metadata.
+//!
+//! `*mut T` vs. `*const T` do not have any semantic difference and Verus treats them as the same;
+//! they can be seamlessly cast to and fro.
 #![allow(unused_imports)]
-
-/*!
-Tools and reasoning principles for [raw pointers](https://doc.rust-lang.org/std/primitive.pointer.html).
-The tools here are meant to address "real Rust pointers, including all their subtleties on the Rust Abstract Machine,
-to the largest extent that is reasonable."
-
-For a gentler introduction to some of the concepts here, see [`PPtr`](crate::simple_pptr), which uses a much-simplified pointer model.
-
-### Pointer model
-
-A pointer consists of an address (`ptr.addr()` or `ptr as usize`), a provenance `ptr@.provenance`,
-and metadata `ptr@.metadata` (which is trivial except for pointers to non-sized types).
-Note that in spec code, pointer equality requires *all 3* to be equal, whereas runtime equality (eq)
-only compares addresses and metadata.
-
-`*mut T` vs. `*const T` do not have any semantic difference and Verus treats them as the same;
-they can be seamlessly cast to and fro.
-*/
-
 use super::layout::*;
 use super::prelude::*;
 
@@ -98,7 +94,44 @@ pub ghost struct PtrData<T: core::marker::PointeeSized> {
     pub metadata: Metadata<T>,
 }
 
-/// Permission to access possibly-initialized, _typed_ memory.
+/**
+Permission to access possibly-initialized, _typed_ memory.
+
+The associated pointer ([`points_to.ptr()`](PointsTo::ptr)) is always a valid pointer for constructing
+a reference to the underlying data. That means it's always aligned to its type
+([`is_aligned`](PointsTo::is_nonnull)) and is non-null ([`is_nonnull`](PointsTo::is_nonnull)).
+
+### Notes
+
+The invariants on a `PointsTo` are a little more restrictive than is necessary for all
+Rust operations you might want to do. For example:
+
+1. With a null pointer to a ZST, Rust lets you read and write (though not take a reference).
+
+```
+#[derive(Copy, Clone)]
+#[repr(align(64))]
+struct X { }
+
+fn zst_test() {
+    let x_ptr: *mut X = std::ptr::null_mut();
+
+    let x = unsafe { *x_ptr };  // allowed
+
+    let x = X { };
+    unsafe { *x_ptr = x; }      // allowed
+
+    let j = unsafe { &*x_ptr }; // not allowed because ptr is null
+}
+```
+
+2. The [`std::ptr::read_unaligned`] and [`std::ptr::write_unaligned`] don't require the pointer
+   to be aligned.
+
+Currently, these use-cases aren't supported because `PointsTo` enforces both non-nullness
+and alignment.
+*/
+
 // ptr |--> Init(v) means:
 //   bytes in this memory are consistent with value v
 //   and we have all the ghost state associated with type V
@@ -235,20 +268,13 @@ impl<T> PointsTo<T> {
         self.opt_value().value()
     }
 
-    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
-    ///
-    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    // See https://doc.rust-lang.org/std/ptr/#safety
+    /// Guarantee that the `PointsTo` points to a non-null address.
     pub axiom fn is_nonnull(tracked &self)
-        requires
-            size_of::<T>() != 0,
         ensures
             self@.ptr@.addr != 0,
     ;
 
     /// Guarantee that the `PointsTo` points to an aligned address.
-    ///
-    // Note that even for ZSTs, pointers need to be aligned.
     pub axiom fn is_aligned(tracked &self)
         ensures
             self@.ptr@.addr as nat % align_of::<T>() == 0,
@@ -261,20 +287,29 @@ impl<T> PointsTo<T> {
     /// Only the proof-code representation changes.
     pub axiom fn leak_contents(tracked &mut self)
         ensures
-            self.ptr() == old(self).ptr(),
-            self.is_uninit(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).is_uninit(),
     ;
 
-    /// Guarantees that the memory ranges associated with two permissions will not overlap,
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since both S and T are non-zero-sized, this implies the pointers have distinct addresses.
     ///
-    /// Note: If both S and T are non-zero-sized, then this implies the pointers
-    /// have distinct addresses.
+    /// Note: If either S or T is zero-sized, we get disjointness "for free" without having to call this axiom,
+    /// since the empty memory range corresponding to a ZST cannot possibly intersect with any other memory.
+    /// However, note that if one type is a ZST and the other is a non-ZST,
+    /// the disjointness definition as stated here here does not hold,
+    /// since the ZST pointer could be in the middle of the non-ZST's range.
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
+        requires
+            size_of::<T>() != 0,
+            size_of::<S>() != 0,
         ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= self.ptr() as int,
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= final(self).ptr() as int,
     ;
 }
 
@@ -439,6 +474,78 @@ pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (resu
     ptr as *mut [T]
 }
 
+/// Cast a slice pointer to another slice pointer.
+/// Length is preserved even if the size of the elements changes.
+pub open spec fn spec_cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> *mut [U] {
+    ptr_mut_from_data(
+        PtrData::<[U]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+    )
+}
+
+/// Cast a slice pointer to another slice pointer.
+/// Length is preserved even if the size of the elements changes.
+///
+/// Don't call this directly; use an `as`-cast instead.
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_slice_ptr_to_slice_ptr")]
+#[verifier::when_used_as_spec(spec_cast_slice_ptr_to_slice_ptr)]
+pub fn cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> (result: *mut [U])
+    ensures
+        result == spec_cast_slice_ptr_to_slice_ptr::<T, U>(ptr),
+    opens_invariants none
+    no_unwind
+{
+    ptr as *mut [U]
+}
+
+/// Cast a slice pointer to a `str` pointer.
+/// Length is preserved even if the size of the elements changes.
+pub open spec fn spec_cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> *mut str {
+    ptr_mut_from_data(
+        PtrData::<str> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+    )
+}
+
+/// Cast a slice pointer to a `str` pointer.
+/// Length is preserved even if the size of the elements changes.
+///
+/// Don't call this directly; use an `as`-cast instead.
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_slice_ptr_to_str_ptr")]
+#[verifier::when_used_as_spec(spec_cast_slice_ptr_to_str_ptr)]
+pub fn cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> (result: *mut str)
+    ensures
+        result == spec_cast_slice_ptr_to_str_ptr::<T>(ptr),
+    opens_invariants none
+    no_unwind
+{
+    ptr as *mut str
+}
+
+/// Cast a `str` pointer to a slice pointer.
+/// Length is preserved even if the size of the elements changes.
+pub open spec fn spec_cast_str_ptr_to_slice_ptr<T>(ptr: *mut str) -> *mut [T] {
+    ptr_mut_from_data(
+        PtrData::<[T]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+    )
+}
+
+/// Cast a `str` pointer to a slice pointer.
+/// Length is preserved even if the size of the elements changes.
+///
+/// Don't call this directly; use an `as`-cast instead.
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_str_ptr_to_slice_ptr")]
+#[verifier::when_used_as_spec(spec_cast_str_ptr_to_slice_ptr)]
+pub fn cast_str_ptr_to_slice_ptr<T>(ptr: *mut str) -> (result: *mut [T])
+    ensures
+        result == spec_cast_str_ptr_to_slice_ptr::<T>(ptr),
+    opens_invariants none
+    no_unwind
+{
+    ptr as *mut [T]
+}
+
 /// Cast a pointer to a `usize` by extracting just the address.
 pub open spec fn spec_cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> usize {
     ptr@.addr
@@ -473,8 +580,8 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
     requires
         old(perm).ptr() == ptr,
     ensures
-        perm.ptr() == ptr,
-        perm.opt_value() == MemContents::Init(v),
+        final(perm).ptr() == ptr,
+        final(perm).opt_value() == MemContents::Init(v),
     opens_invariants none
     no_unwind
 {
@@ -497,8 +604,8 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
         old(perm).ptr() == ptr,
         old(perm).is_init(),
     ensures
-        perm.ptr() == ptr,
-        perm.is_uninit(),
+        final(perm).ptr() == ptr,
+        final(perm).is_uninit(),
         v == old(perm).value(),
     opens_invariants none
     no_unwind
@@ -522,24 +629,24 @@ pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T
     unsafe { &*ptr }
 }
 
-/* coming soon
-/// Equivalent to &mut *X, passing in a permission `perm` to ensure safety.
+/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
 pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
     requires
         old(perm).ptr() == ptr,
-        old(perm).is_init()
+        old(perm).is_init(),
     ensures
-        perm.ptr() == ptr,
-        perm.is_init(),
-
-        old(perm).value() == *old(v),
-        new(perm).value() == *new(v),
-    unsafe { &*ptr }
+        final(perm).ptr() == ptr,
+        final(perm).is_init(),
+        old(perm).value() == *v,
+        final(perm).value() == *final(v),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
 }
-*/
 
 macro_rules! pointer_specs {
     ($mod_ident:ident, $ptr_from_data:ident, $mu:tt) => {
@@ -716,10 +823,15 @@ impl PointsToRaw {
     /// provided that `start` is aligned to `V` and
     /// that the domain of the `PointsToRaw` permission matches the size of `V`.
     ///
-    /// In combination with PointsToRaw::empty(),
-    /// this lets us create a PointsTo for a ZST for _any_ aligned pointer (any address and provenance, even null).
+    /// In combination with [`PointsToRaw::empty()`],
+    /// this lets us create a PointsTo for a ZST for _any_ non-null aligned pointer.
+    ///
+    /// To call this, it is necessary for the address to be non-null. This can be proved either
+    /// by showing `start != 0` or by showing the size of the type is non-zero (in which case
+    /// the non-null-ness follows from the existence of the `PointsToRaw`).
     pub axiom fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
+            start != 0 || size_of::<V>() != 0,
             start as int % align_of::<V>() as int == 0,
             self.is_range(start as int, size_of::<V>() as int),
         ensures

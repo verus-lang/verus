@@ -51,6 +51,7 @@ pub struct TestErr {
     pub warnings: Vec<Diagnostic>,
     pub notes: Vec<Diagnostic>,
     pub expand_errors_notes: Vec<Diagnostic>, // produced by the `--expand-errors` flag
+    pub json_output: Option<serde_json::Value>, // captured when `--output-json` is used
 }
 
 #[allow(dead_code)]
@@ -143,6 +144,12 @@ pub fn verify_files_vstd_all_diags(
     let run =
         run_verus(options, &test_input_dir, &test_input_dir.join(&entry_file), import_vstd, true);
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+    let json_output = if options.contains(&"--output-json") {
+        let stdout_str = std::str::from_utf8(&run.stdout[..]).unwrap_or("").trim();
+        serde_json::from_str(stdout_str).ok()
+    } else {
+        None
+    };
 
     let mut errors = Vec::new();
     let mut expand_errors_notes = Vec::new();
@@ -174,9 +181,9 @@ pub fn verify_files_vstd_all_diags(
     }
 
     if is_failure {
-        Err(TestErr { errors, warnings, notes, expand_errors_notes })
+        Err(TestErr { errors, warnings, notes, expand_errors_notes, json_output })
     } else {
-        Ok(TestErr { errors, warnings, notes, expand_errors_notes })
+        Ok(TestErr { errors, warnings, notes, expand_errors_notes, json_output })
     }
 }
 
@@ -295,16 +302,20 @@ pub fn run_verus(
             verus_args.push("2".to_string());
         } else if *option == "--compile" {
             verus_args.push("--compile".to_string());
-            verus_args.push("-o".to_string());
-            verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
         } else if *option == "--no-external-by-default" {
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
+        } else if *option == "--no-erasure-check" {
+            verus_args.push("--no-erasure-check".to_string());
+        } else if *option == "--no-verify" {
+            verus_args.push("--no-verify".to_string());
         } else if *option == "--no-report-long-running" {
             verus_args.push("--no-report-long-running".to_string());
         } else if *option == "--no-cheating" {
             verus_args.push("--no-cheating".to_string());
+        } else if *option == "--output-json" {
+            verus_args.push("--output-json".to_string());
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {
@@ -318,12 +329,12 @@ pub fn run_verus(
             is_core = true;
         } else if *option == "--disable-internal-test-mode" {
             use_internal_test_mode = false;
-        } else if *option == "new-mut-ref" {
-            verus_args.push("-V".to_string());
-            verus_args.push("new-mut-ref".to_string());
         } else if *option == "no-bv-simplify" {
             verus_args.push("-V".to_string());
             verus_args.push("no-bv-simplify".to_string());
+        } else if *option == "--edition 2024" {
+            verus_args.push("--edition".to_string());
+            verus_args.push("2024".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
@@ -360,9 +371,24 @@ pub fn run_verus(
             // suppress Rust's generation of long-type files
             "-Z".to_string(),
             "write_long_types_to_disk=no".to_string(),
+            // suppress common warnings in examples and tests
+            "-A".to_string(),
+            "non_snake_case".to_string(),
+            "-A".to_string(),
+            "deprecated".to_string(),
         ]
         .into_iter(),
     );
+
+    let compile = options.contains(&"--compile");
+    verus_args.push("-o".to_string());
+    if compile {
+        verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
+    } else {
+        verus_args
+            .push(test_dir.join("libtest_crate.rmeta").to_str().expect("valid path").to_owned());
+        verus_args.push("--emit=metadata".to_string());
+    }
 
     if json_errors {
         verus_args.push("--error-format=json".to_string());
@@ -511,11 +537,18 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![allow(unused_imports)]
     #![allow(unused_macros)]
     #![allow(deprecated)]
+    #![allow(non_snake_case)]
+    #![allow(non_camel_case_types)]
+    #![allow(non_upper_case_globals)]
+    #![allow(unused_comparisons)]
+    #![allow(noop_method_call)]
     #![feature(allocator_api)]
     #![feature(proc_macro_hygiene)]
     #![feature(never_type)]
     #![feature(core_intrinsics)]
     #![feature(ptr_metadata)]
+    #![feature(sized_hierarchy)]
+    #![feature(const_destruct)]
 };
 
 #[allow(dead_code)]
@@ -794,6 +827,13 @@ pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
 }
 
 #[allow(dead_code)]
+pub fn assert_rust_error_msg_skip_spec_msgs(err: TestErr, expected_msg: &str) {
+    let mut err = err;
+    err.errors = err.errors.into_iter().filter(|e| !e.message.contains("(Verus spec")).collect();
+    assert_rust_error_msg(err, expected_msg)
+}
+
+#[allow(dead_code)]
 pub fn assert_rust_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     assert_eq!(err.errors.len(), expected_msgs.len());
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
@@ -874,6 +914,19 @@ pub fn typ_inv_relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan
         .filter(|e| e.label != Some("type invariant declared here".to_string()))
         .next()
         .expect("span")
+}
+
+#[allow(dead_code)]
+pub fn assert_has_recommends_failure(err: TestErr) {
+    assert!(err.errors.len() > 0);
+    let mut found_rec_failure = false;
+    for note in err.notes.iter() {
+        if note.message.contains("recommendation not met") {
+            found_rec_failure = true;
+            break;
+        }
+    }
+    assert!(found_rec_failure);
 }
 
 #[allow(dead_code)]

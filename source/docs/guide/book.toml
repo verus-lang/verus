@@ -1,6 +1,5 @@
 [book]
 language = "en"
-multilingual = false
 src = "src"
 title = "Verus Tutorial and Reference"
 
@@ -8,7 +7,7 @@ title = "Verus Tutorial and Reference"
 edition = "2018"
 
 [output.html]
-curly-quotes = true
+smart-punctuation = true
 
 [output.html.playground]
 runnable = false

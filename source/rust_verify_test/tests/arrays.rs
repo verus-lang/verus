@@ -58,8 +58,8 @@ test_verify_one_file! {
             old(ar)[0] == 1,
             old(ar)[2] == 2,
         ensures
-            ar[0] == 2,
-            ar[2] == 3,
+            final(ar)[0] == 2,
+            final(ar)[2] == 3,
         {
             ar[0] += 1;
             ar[ar[0]] += 1;
@@ -76,8 +76,8 @@ test_verify_one_file! {
         requires
             *old(i) < 10,
         ensures
-            ret == old(i),
-            *i == *old(i) + 1,
+            ret == *old(i),
+            *final(i) == *old(i) + 1,
         {
             let oldi = *i;
             *i = *i + 1;
@@ -88,15 +88,15 @@ test_verify_one_file! {
         requires
             old(ar)[0] < 10,
         ensures
-            ar[0] == old(ar)[0] + 1,
-            ar[1] == 1,
+            final(ar)[0] == old(ar)[0] + 1,
+            final(ar)[1] == 1,
         {
             let mut i = 0usize;
             ar[potential_side_effect(&mut i)] += 1;
             ar[potential_side_effect(&mut i)] = 1;
+            assert(i == 2);
         }
-
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: assign op to index_mut with tgt/idx that could have side effects")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -117,7 +117,18 @@ test_verify_one_file! {
             ar[0] += 1;
         }
 
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: assign op to index_mut for non smt arithmetic types")
+    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: overloaded op-assignment operator")
+}
+
+test_verify_one_file! {
+    #[test] test_array_clone verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let a = [0u8; 16];
+            let _b = a.clone();
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -127,7 +138,7 @@ test_verify_one_file! {
 
         fn test(ar: &mut [u8; 20])
         ensures
-            ar[0] == 1,
+            final(ar)[0] == 1,
         {
             ar[0] = 1;
         }
@@ -318,6 +329,19 @@ test_verify_one_file! {
         exec fn test() {
             let ghost a = [3u64, 4, 5];
             assert(a[1] == 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_array_index_generic verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test<A, const N: usize>(a: [A; N], i: int)
+            requires 0 <= i < N
+        {
+            use vstd::array::array_view;
+            assert(a@[i] == array_index(a, i));
         }
     } => Ok(())
 }

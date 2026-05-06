@@ -1,0 +1,989 @@
+#![feature(rustc_private)]
+#[macro_use]
+mod common;
+use common::*;
+
+test_verify_one_file_with_options! {
+    #[test] test_basic [] => verus_code! {
+        union X { a: u64, b: (bool, bool) }
+
+        fn test_mut_ref() {
+            unsafe {
+                let mut x = X { a: 5 };
+                let field_ref = &mut x.a;
+                *field_ref = 6;
+
+                let y = x.a;
+                assert(y == 6);
+            }
+        }
+
+        fn fails_mut_ref() {
+            unsafe {
+                let mut x = X { a: 5 };
+                let field_ref = &mut x.a;
+                *field_ref = 6;
+
+                let y = x.a;
+                assert(y == 6);
+                assert(false); // FAILS
+            }
+        }
+
+        fn test_mut_ref_nested() {
+            unsafe {
+                let mut x = X { b: (true, false) };
+                let field_ref = &mut x.b.1;
+                *field_ref = true;
+
+                let y = x.b;
+            }
+        }
+
+        fn fails_mut_ref_nested() {
+            unsafe {
+                let mut x = X { b: (true, false) };
+                let field_ref = &mut x.b.1;
+                *field_ref = true;
+
+                let y = x.b;
+                assert(y == (true, true));
+                assert(false); // FAILS
+            }
+        }
+
+        fn test_assign() {
+            unsafe {
+                let mut x = X { a: 5 };
+                x.a = 6;
+
+                let y = x.a;
+                assert(y == 6);
+            }
+        }
+
+        fn fails_assign() {
+            unsafe {
+                let mut x = X { a: 5 };
+                x.a = 6;
+
+                let y = x.a;
+                assert(y == 6);
+                assert(false); // FAILS
+            }
+        }
+
+        fn test_assign_nested() {
+            unsafe {
+                let mut x = X { b: (true, false) };
+                x.b.1 = true;
+
+                let y = x.b;
+                assert(y == (true, true));
+            }
+        }
+
+        fn fails_assign_nested() {
+            unsafe {
+                let mut x = X { b: (true, false) };
+                x.b.1 = true;
+
+                let y = x.b;
+                assert(y == (true, true));
+                assert(false); // FAILS
+            }
+        }
+    } => Err(e) => assert_fails(e, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_wrong_variant_mut_ref [] => verus_code! {
+        union X { a: u64, b: (bool, bool) }
+
+        fn test_mut_ref() {
+            unsafe {
+                let mut x = X { b: (true, false) };
+                let field_ref = &mut x.a; // FAILS
+            }
+        }
+
+        fn test_mut_ref_nested() {
+            unsafe {
+                let mut x = X { a: 5 };
+                let field_ref = &mut x.b.1; // FAILS
+            }
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_wrong_variant_assign [] => verus_code! {
+        union X { a: u64, b: (bool, bool) }
+        fn test_assign() {
+            let mut x = X { b: (true, false) };
+
+            // this could actually be supported
+            x.a = 6; // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_wrong_variant_assign_nested [] => verus_code! {
+        union X { a: u64, b: (bool, bool) }
+        fn test_assign_nested() {
+            let mut x = X { a: 0 };
+            // this is safe Rust, but the semantics would be hard for us to support
+            x.b.1 = true; // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] ctor_update_tail [] => verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Clone, Copy)]
+        struct Pair { a: bool, b: bool }
+
+        union X { a: u64, b: Pair }
+
+        fn test_update() {
+            unsafe {
+                let x = X { b: Pair { a: false, b: true } };
+                let r = Pair { a: true, .. x.b };
+                assert(r.a && r.b);
+            }
+        }
+
+        fn fails_update() {
+            unsafe {
+                let x = X { b: Pair { a: false, b: true } };
+                let r = Pair { a: true, .. x.b };
+                assert(r.a && r.b);
+                assert(false); // FAILS
+            }
+        }
+
+        fn wrong_variant() {
+            unsafe {
+                let x = X { a: 3 };
+                let r = Pair { a: true, .. x.b }; // FAILS
+            }
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_match [] => verus_code! {
+        union X { a: u64, b: (bool, bool) }
+
+        fn test_match() {
+            unsafe {
+                let mut x = X { b: (true, false) };
+                match x.b {
+                    (ref mut bool1, ref mut bool2) => {
+                        assert(*bool1 == true);
+                        assert(*bool2 == false);
+                        *bool1 = false;
+                        *bool2 = true;
+                    }
+                }
+                let y = x.b;
+                assert(y == (false, true));
+            }
+        }
+
+        fn fails_match() {
+            unsafe {
+                let mut x = X { b: (true, false) };
+                match x.b {
+                    (ref mut bool1, ref mut bool2) => {
+                        assert(*bool1 == true);
+                        assert(*bool2 == false);
+                        *bool1 = false;
+                        *bool2 = true;
+                    }
+                }
+                let y = x.b;
+                assert(y == (false, true));
+                assert(false); // FAILS
+            }
+        }
+
+        fn wrong_variant() {
+            unsafe {
+                let mut x = X { a: 0 };
+                match
+                    x.b // FAILS
+                {
+                    (ref mut bool1, ref mut bool2) => {
+                    }
+                }
+            }
+        }
+
+        fn wrong_variant2() {
+            unsafe {
+                let mut x = X { a: 0 };
+                match
+                    x.b // FAILS
+                {
+                    _ => {
+                    }
+                }
+            }
+        }
+    } => Err(e) => assert_fails(e, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_temporary [] => verus_code! {
+        union X { a: u64, b: (bool, bool) }
+
+        fn test1() {
+            let r = &mut (X { a: 0 }).a;
+            assert(*r == 0);
+        }
+
+        fn fails_test1() {
+            let r = &mut (X { a: 0 }).a;
+            assert(*r == 0);
+            assert(false); // FAILS
+        }
+
+        fn test_wrong_variant() {
+            let r = &mut (X { a: 0 }).b; // FAILS
+        }
+
+        fn test_counts() {
+            let mut count = 0;
+            let z = ({ count = count + 1; X { b: (true, false) } }).b;
+            assert(z == (true, false));
+            assert(count == 1);
+        }
+
+        fn fail_counts() {
+            let mut count = 0;
+            let z = ({ count = count + 1; X { b: (true, false) } }).b;
+            assert(z == (true, false));
+            assert(count == 1);
+            assert(false); // FAILS
+        }
+
+        fn test_counts_mut_ref() {
+            let mut count = 0;
+            let z = &mut ({ count = count + 1; X { b: (true, false) } }).b;
+            assert(*z == (true, false));
+            assert(count == 1);
+        }
+
+        fn fail_counts_mut_ref() {
+            let mut count = 0;
+            let z = &mut ({ count = count + 1; X { b: (true, false) } }).b;
+            assert(*z == (true, false));
+            assert(count == 1);
+            assert(false); // FAILS
+        }
+
+        fn test_counts_match() {
+            let mut count = 0;
+            match ({ count = count + 1; X { b: (true, false) } }).b {
+                (ref mut bool1, ref mut bool2) => {
+                    assert(*bool1 == true);
+                    assert(*bool2 == false);
+                }
+            }
+            assert(count == 1);
+        }
+
+        fn fail_counts_match() {
+            let mut count = 0;
+            match ({ count = count + 1; X { b: (true, false) } }).b {
+                (ref mut bool1, ref mut bool2) => {
+                    assert(*bool1 == true);
+                    assert(*bool2 == false);
+                }
+            }
+            assert(count == 1);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] array_plus_union_field [] => verus_code! {
+        use vstd::prelude::*;
+
+        union X { a: u64, b: (bool, bool) }
+
+        fn test() {
+            let mut a: [X; 2] = [X { a: 0 }, X { b: (true, false) }];
+            let mut count = 0;
+            let r = &mut a[({ count = count + 1; 0 })].a;
+            assert(*r == 0);
+            *r = 20;
+
+            let y1 = a[0].a;
+            let y2 = a[1].b;
+            assert(y1 == 20);
+            assert(y2 == (true, false));
+            assert(count == 1);
+        }
+
+        fn test2() {
+            let mut a: [X; 2] = [X { a: 0 }, X { b: (true, false) }];
+            let mut count = 0;
+            let r = &mut a[({ count = count + 1; 0 })].a;
+            assert(*r == 0);
+            *r = 20;
+
+            let y1 = a[0].a;
+            let y2 = a[1].b;
+            assert(y1 == 20);
+            assert(y2 == (true, false));
+            assert(count == 1);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] union_has_resolved [] => verus_code! {
+        use vstd::prelude::*;
+        use std::mem::ManuallyDrop;
+
+        union Foo<'a> {
+            a: ManuallyDrop<&'a mut u64>,
+            b: ManuallyDrop<&'a mut u64>,
+        }
+
+        proof fn test<'a>(foo: Foo<'a>) {
+            assert(has_resolved(foo) ==> is_variant(foo, "a") ==>
+                has_resolved(get_union_field::<_, ManuallyDrop<&'a mut u64>>(foo, "a")@));
+
+            assert(has_resolved(foo) ==> is_variant(foo, "b") ==>
+                has_resolved(get_union_field::<_, ManuallyDrop<&'a mut u64>>(foo, "b")@));
+        }
+
+        proof fn test2<'a>(foo: Foo<'a>) {
+            assert(has_resolved(foo) ==>
+                has_resolved(get_union_field::<_, ManuallyDrop<&'a mut u64>>(foo, "a")@)); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] union_with_mut_ref_in_fields [] => verus_code! {
+        use vstd::prelude::*;
+        use std::mem::ManuallyDrop;
+        use std::ops::DerefMut;
+
+        union Foo<'a> {
+            a: ManuallyDrop<&'a mut u64>,
+            b: ManuallyDrop<&'a mut u64>,
+        }
+
+        #[verifier::external_body]
+        fn manually_drop_deref_mut<T>(m: &mut ManuallyDrop<T>) -> (ret: &mut T)
+            ensures
+                mut_ref_current(ret) == mut_ref_current(m)@,
+                mut_ref_future(ret) == mut_ref_future(m)@,
+        {
+            m.deref_mut()
+        }
+
+        fn test<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let foo = Foo { a: ManuallyDrop::new(a_ref) };
+            assert(has_resolved(get_union_field::<_, ManuallyDrop<&mut u64>>(foo, "a"))); // TODO(new_mut_ref): bad triggers
+            assert(a == 0);
+        }
+
+        fn fail<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let foo = Foo { a: ManuallyDrop::new(a_ref) };
+            assert(has_resolved(get_union_field::<_, ManuallyDrop<&mut u64>>(foo, "a"))); // TODO(new_mut_ref): bad triggers
+            assert(a == 0);
+            assert(false); // FAILS
+        }
+
+        fn test2<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            assert(a == 5);
+        }
+
+        fn fail2<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            assert(a == 5);
+            assert(false); // FAILS
+        }
+
+        fn test3<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            let a_ref2 = foo.a;
+            assert(a == 5);
+        }
+
+        fn fail3<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            let a_ref2 = foo.a;
+            assert(a == 5);
+            assert(false); // FAILS
+        }
+
+        fn test4<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            let a_ref2 = foo.a;
+            let a_ref2 = ManuallyDrop::into_inner(a_ref2);
+            *a_ref2 = 20;
+            assert(a == 20);
+        }
+
+        fn fail4<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            let a_ref2 = foo.a;
+            let a_ref2 = ManuallyDrop::into_inner(a_ref2);
+            *a_ref2 = 20;
+            assert(a == 20);
+            assert(false); // FAILS
+        }
+
+        fn test5<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            let a_ref2 = ManuallyDrop::into_inner(foo.a);
+            *a_ref2 = 20;
+            assert(a == 20);
+        }
+
+        fn fail5<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            let a_ref2 = ManuallyDrop::into_inner(foo.a);
+            *a_ref2 = 20;
+            assert(a == 20);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_array_issue1 [] => verus_code! {
+        union U { a: [u64; 2], b: bool }
+
+        // fails, field access UB
+        fn test_union_array_issue() {
+            unsafe {
+                let mut u = U { a: [0, 1] };
+                let x = u.a[{
+                  u = U { b: false };
+                  0
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_array_issue2 [] => verus_code! {
+        union U { a: [u64; 2], b: bool }
+
+        // ok
+        fn test_union_array_issue2() {
+            unsafe {
+                let mut u = U { b: false };
+                let x = u.a[{
+                  u = U { a: [0, 1] };
+                  0
+                }];
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_array_issue3 [] => verus_code! {
+        use vstd::prelude::*;
+        union U { a: [u64; 2], b: bool }
+
+        // out-of-bounds index panics before UB happens
+        // because reading from u.a is _not_ needed to do the bounds-check
+        fn test_union_array_issue3() {
+            unsafe {
+                let mut u = U { a: [0, 1] };
+                let x = u.a[{
+                  u = U { b: false };
+                  3
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_array_issue4 [] => verus_code! {
+        use vstd::prelude::*;
+        union U { a: [u64; 2], b: bool }
+
+        // out-of-bounds index panics before UB happens
+        // because reading from u.a is _not_ needed to do the bounds-check
+        fn test_union_array_issue4() {
+            unsafe {
+                let mut u = U { b: false };
+                let x = u.a[3];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_slice_issue1 [] => verus_code! {
+        use vstd::prelude::*;
+        union V { a: &'static [u64], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // fails, field access UB
+        fn test_union_slice_issue() {
+            let r: &'static [u64] = leak(Box::new([0, 1]));
+
+            unsafe {
+                let mut u = V { a: r };
+                let x = u.a[{
+                  u = V { b: false };
+                  1
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_slice_issue2 [] => verus_code! {
+        use vstd::prelude::*;
+        union V { a: &'static [u64], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // ok
+        fn test_union_slice_issue2() {
+            let r: &'static [u64] = leak(Box::new([0, 1]));
+
+            unsafe {
+                let mut u = V { b: false };
+                let x = u.a[{
+                  u = V { a: r };
+                  1
+                }];
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_slice_issue3 [] => verus_code! {
+        use vstd::prelude::*;
+        union V { a: &'static [u64], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // UB happens before bounds-check
+        // because reading from u.a is needed to do the bounds-check
+        fn test_union_slice_issue3() {
+            let r: &'static [u64] = leak(Box::new([0, 1]));
+
+            unsafe {
+                let mut u = V { a: r };
+                let x = u.a[{
+                  u = V { b: false };
+                  3
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_slice_issue4 [] => verus_code! {
+        use vstd::prelude::*;
+        union V { a: &'static [u64], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // UB happens before bounds-check
+        // because reading from u.a is needed to do the bounds-check
+        fn test_union_slice_issue4() {
+            let r: &'static [u64] = leak(Box::new([0, 1]));
+
+            unsafe {
+                let mut u = V { b: false };
+                let x = u.a[3];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_array_issue1 [] => verus_code! {
+        use vstd::prelude::*;
+        union W { a: [(u64, u64); 2], b: bool }
+
+        // UB
+        fn pattern_test_union_array_issue1() {
+            unsafe {
+                let mut u = W { a: [(0,1), (2,3)] };
+                let (x, y) = u.a[{
+                  u = W { b: false };
+                  0
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_array_issue2 [] => verus_code! {
+        use vstd::prelude::*;
+        union W { a: [(u64, u64); 2], b: bool }
+
+        // ok
+        fn pattern_test_union_array_issue2() {
+            unsafe {
+                let mut u = W { b: false };
+                let (x, y) = u.a[{
+                  u = W { a: [(0,1), (2,3)] };
+                  0
+                }];
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_array_issue3 [] => verus_code! {
+        use vstd::prelude::*;
+        union W { a: [(u64, u64); 2], b: bool }
+
+        // out-of-bounds index panics before UB happens
+        // because reading from u.a is _not_ needed to do the bounds-check
+        fn pattern_test_union_array_issue3() {
+            unsafe {
+                let mut u = W { a: [(0,1), (2,3)] };
+                let (x, y) = u.a[{
+                  u = W { b: false };
+                  3
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_array_issue4 [] => verus_code! {
+        use vstd::prelude::*;
+        union W { a: [(u64, u64); 2], b: bool }
+
+        // out-of-bounds index panics before UB happens
+        // because reading from u.a is _not_ needed to do the bounds-check
+        fn pattern_test_union_array_issue4() {
+            unsafe {
+                let mut u = W { b: false };
+                let (x, y) = u.a[3];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_slice_issue1 [] => verus_code! {
+        use vstd::prelude::*;
+        union Y { a: &'static [(u64, u64)], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // UB
+        fn pattern_test_union_slice_issue1() {
+            let r: &'static [(u64, u64)] = leak(Box::new([(0, 1), (2, 3)]));
+
+            unsafe {
+                let mut u = Y { a: r };
+                let (x, y) = u.a[{
+                  u = Y { b: false };
+                  1
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "requirement not met: to access this field, the union must be in the correct variant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_slice_issue2 [] => verus_code! {
+        use vstd::prelude::*;
+        union Y { a: &'static [(u64, u64)], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // ok
+        fn pattern_test_union_slice_issue2() {
+            let r: &'static [(u64, u64)] = leak(Box::new([(0, 1), (2, 3)]));
+
+            unsafe {
+                let mut u = Y { b: false };
+                let (x, y) = u.a[{
+                  u = Y { a: r };
+                  1
+                }];
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_slice_issue3 [] => verus_code! {
+        use vstd::prelude::*;
+        union Y { a: &'static [(u64, u64)], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // UB happens before bounds-check
+        // because reading from u.a is needed to do the bounds-check
+        fn pattern_test_union_slice_issue3() {
+            let r: &'static [(u64, u64)] = leak(Box::new([(0, 1), (2, 3)]));
+
+            unsafe {
+                let mut u = Y { a: r };
+                let (x, y) = u.a[{
+                  u = Y { b: false };
+                  3
+                }];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] eval_order_union_pattern_slice_issue4 [] => verus_code! {
+        use vstd::prelude::*;
+        union Y { a: &'static [(u64, u64)], b: bool }
+
+        #[verifier::external_body]
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+
+        // UB happens before bounds-check
+        // because reading from u.a is needed to do the bounds-check
+        fn pattern_test_union_slice_issue4() {
+            let r: &'static [(u64, u64)] = leak(Box::new([(0, 1), (2, 3)]));
+
+            unsafe {
+                let mut u = Y { b: false };
+                let (x, y) = u.a[3];
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_borrows_to_union_fields [] => verus_code! {
+        union X {
+            a: u64,
+            b: u64,
+            c: u64,
+            d: u64,
+        }
+
+        fn upd(a: &mut u64, b: u64)
+            ensures *final(a) == b
+        {
+            *a = b;
+        }
+
+        fn test1() {
+            let mut x = X { a: 18 };
+            unsafe {
+                upd(&mut x.a, 20);
+            }
+            assert(is_variant(x, "a"));
+            assert(get_union_field::<X, u64>(x, "a") === 20);
+        }
+
+        fn test2() {
+            let mut x = X { a: 18 };
+            let x_ref = unsafe { &mut x.a };
+            upd(x_ref, *x_ref + 1);
+            assert(is_variant(x, "a"));
+            assert(get_union_field::<X, u64>(x, "a") === 19);
+        }
+
+        fn test1_fails() {
+            let mut x = X { a: 18 };
+            unsafe {
+                upd(&mut x.a, 20);
+            }
+            assert(is_variant(x, "a"));
+            assert(get_union_field::<X, u64>(x, "a") === 20);
+            assert(false); // FAILS
+        }
+
+        fn test2_fails() {
+            let mut x = X { a: 18 };
+            let x_ref = unsafe { &mut x.a };
+            upd(x_ref, *x_ref + 1);
+            assert(is_variant(x, "a"));
+            assert(get_union_field::<X, u64>(x, "a") === 19);
+            assert(false); // FAILS
+        }
+
+        fn test1_fails_access() {
+            let mut x = X { a: 18 };
+            unsafe {
+                upd(&mut x.b, 20); // FAILS
+            }
+        }
+
+        fn test2_fails_access() {
+            let mut x = X { a: 18 };
+            let x_ref = unsafe { &mut x.a }; // FAILS
+            upd(x_ref, *x_ref + 1);
+            assert(is_variant(x, "a"));
+            assert(get_union_field::<X, u64>(x, "a") === 19);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_borrows_to_union_fields2 [] => verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Clone, Copy)]
+        struct Y {
+            e: u64,
+            f: u64,
+        }
+
+        union X {
+            a: u64,
+            b: u64,
+            c: u64,
+            d: u64,
+            y: Y,
+        }
+
+        impl Y {
+            fn upd(&mut self, b: u64)
+                ensures *final(self) == (Y { e: b, f: old(self).f })
+            {
+                self.e = b;
+            }
+        }
+
+        fn test1() {
+            let mut x = X { y: Y { e: 0, f: 1 } };
+            unsafe {
+                x.y.upd(x.y.e + 10);
+            }
+            assert(is_variant(x, "y"));
+            assert(get_union_field::<X, Y>(x, "y") === Y { e: 10, f: 1 });
+        }
+
+        fn test2_fails() {
+            let mut x = X { y: Y { e: 0, f: 1 } };
+            unsafe {
+                x.y.upd(x.y.e + 10);
+            }
+            assert(is_variant(x, "y"));
+            assert(get_union_field::<X, Y>(x, "y") === Y { e: 10, f: 1 });
+            assert(false); // FAILS
+        }
+
+        fn test1_fails_access() {
+            let mut x = X { a: 20 };
+            unsafe {
+                x.y.upd(x.a + 10); // FAILS
+            }
+        }
+
+        fn test1_fails_access2() {
+            let mut x = X { y: Y { e: 0, f: 1 } };
+            unsafe {
+                x.y.upd(x.a + 10); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] evil_match_mutate_scrutinee_in_guard_pattern [] => verus_code! {
+        union Q {
+            a: (u64, u64),
+            b: bool,
+        }
+
+        fn match_test() {
+            unsafe {
+                let mut q = Q { a: (0, 1) };
+                match q.a {
+                    _ if ({
+                        q = Q { b: false };
+                        false
+                    }) => { }
+                    (x, y) => { }
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning to scrutinee during match guard")
+}
+
+test_verify_one_file_with_options! {
+    #[test] evil_match_mutate_scrutinee_in_guard_pattern2 [] => verus_code! {
+        union Q {
+            a: (u64, u64),
+            b: bool,
+        }
+
+        fn match_test() {
+            unsafe {
+                let mut q = Q { a: (0, 1) };
+                match q.a {
+                    (_, _) if ({
+                        q = Q { b: false };
+                        false
+                    }) => { }
+                    (x, y) => { }
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning to scrutinee during match guard")
+}

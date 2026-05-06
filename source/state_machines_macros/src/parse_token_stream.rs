@@ -205,7 +205,7 @@ fn attr_is_any_mode(attr: &Attribute) -> bool {
         Meta::Path(path) => {
             let segments = path.segments.iter().collect::<Vec<_>>();
             match &segments[..] {
-                [prefix_segment, segment] if prefix_segment.ident.to_string() == "verifier" => {
+                [prefix_segment, segment] if prefix_segment.ident == "verifier" => {
                     let name = segment.ident.to_string();
                     name == "spec" || name == "proof" || name == "exec"
                 }
@@ -390,7 +390,6 @@ enum ShardingType {
 /// In a tokenized state machine, we require this for each field.
 /// In a 'normal' state machine, we error if we find such an attribute
 /// (but internally we represent the field as having the 'variable' strategy).
-
 fn get_sharding_type(
     field_span: Span,
     attrs: &[Attribute],
@@ -492,7 +491,7 @@ fn check_untemplated_type(ty: &Type, strategy: &str, type_name: &str) -> parse::
     match ty {
         Type::Path(TypePath { qself: None, path }) if path.segments.len() == 1 => {
             let path_segment = &path.segments[0];
-            if path_segment.ident.to_string() == type_name {
+            if path_segment.ident == type_name {
                 match &path_segment.arguments {
                     PathArguments::None => {
                         return Ok(());
@@ -524,7 +523,7 @@ fn extract_template_params(
     match ty {
         Type::Path(TypePath { qself: None, path }) if path.segments.len() == 1 => {
             let path_segment = &path.segments[0];
-            if path_segment.ident.to_string() == type_name {
+            if path_segment.ident == type_name {
                 match &path_segment.arguments {
                     PathArguments::AngleBracketed(args) => {
                         if args.args.len() == num_expected_args {
@@ -663,9 +662,9 @@ fn impl_item_method_from_item_fn(item_fn: ItemFn) -> ImplItemFn {
 }
 
 fn item_type_check_name(ident: &Ident) -> parse::Result<bool> {
-    if ident.to_string() == TRANSITION_LABEL_TYPE_NAME {
+    if ident == TRANSITION_LABEL_TYPE_NAME {
         Ok(false)
-    } else if ident.to_string() == INIT_LABEL_TYPE_NAME {
+    } else if ident == INIT_LABEL_TYPE_NAME {
         Ok(true)
     } else {
         Err(Error::new(
@@ -678,14 +677,13 @@ fn item_type_check_name(ident: &Ident) -> parse::Result<bool> {
 }
 
 fn is_okay_label_generic_ident(ident: &Ident, main_generics: &Option<Generics>) -> bool {
-    let s = ident.to_string();
     match main_generics {
         None => false,
         Some(main_generics) => {
             for p in &main_generics.params {
                 match p {
                     GenericParam::Type(TypeParam { ident: i, .. }) => {
-                        if i.to_string() == s {
+                        if i == ident {
                             return true;
                         }
                     }

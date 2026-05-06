@@ -8,6 +8,7 @@ and publishing for the Verus project.
 ### 1. CI Workflow (`ci.yml`)
 
 **Triggers:**
+
 - Push to `main` branch
 - Pull requests (opened, synchronized, reopened)
 - Manual dispatch
@@ -16,29 +17,38 @@ and publishing for the Verus project.
 
 **Jobs:**
 
-1. **`fmt`** (macOS ARM64)
+1. **`fmt`** (linux)
    - Validates Rust code formatting with `rustfmt`
    - Validates `vstd` formatting with `verusfmt`
 
-2. **`test-and-release-macos`** (macOS ARM64)
-   - Runs full test suite across multiple feature configurations:
-     - Default features (full test suite)
-     - `record-history` (limited tests)
-     - `no-std` and `no-alloc` (vstd variants)
-     - `singular` (computer algebra system integration)
-     - `cvc5` (alternate SMT solver)
-   - Builds release binary for ARM64 macOS
-   - Generates vstd API documentation
-   - Uploads `verus-arm64-macos.zip` artifact
+2. **`change_filter`** (linux)
+   - Detects whether `source/cargo-verus/**` changed
+
+3. **`cargo-verus-test`** (linux)
+   - Only runs on changes to `source/cargo-verus/**`
+   - Runs `cargo-verus` tests (unit- and package-level)
+   - Runs after `fmt` and `clippy` pass
+
+4. **`full-test`** (macOS ARM64)
+   - Runs full test suite.
+
+5. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
+   - Runs basic tests only
+
+6. **`smoke-test`** (macOs ARM64)
+   - Checks that `verus` builds with esoteric configurations
+   - Runs minimal tests relevant to the configuration
+
+7. **`build-docs`** (linux)
+   - Builds the `verusdoc` artifact
    - Uploads `verusdoc` artifact for documentation deployment
 
-3. **`smoke-test-and-release-...`** 
-    - Jobs of each of macOS x86, Windows x64, and Linux x64
-   - Runs basic smoke tests only
-   - Builds a release binary for the target
-   - Uploads the `verus-....zip` artifact
+8. **`build-release`** (macOS ARM64, macOs x64, Windows x64, and Linux x64)
+   - Only runs if `basic-test`, `cargo-verus-test`, and `smoke-test` pass
+   - Builds release binary artifacts for every supported platform
+   - Uploads `verus-<arch>-<os>.zip` artifacts
 
-6. **`release`** (Ubuntu)
+9. **`release`** (linux)
    - **Only runs on push to `main`** (not PRs)
    - Downloads all platform artifacts
    - Extracts version information from `version.txt`
@@ -50,6 +60,7 @@ and publishing for the Verus project.
    - Publishes the updated rolling release
 
 **Output:**
+
 - Continuous binary distribution via the Rolling Release
 - Documentation artifacts for GitHub Pages deployment
 - Platform artifacts available for download from the workflow run
@@ -59,6 +70,7 @@ and publishing for the Verus project.
 ### 2. Release Workflow (`release.yml`)
 
 **Triggers:**
+
 - Schedule: Weekly on Mondays at midnight UTC
 
 **Purpose:** Promote a Rolling Release to a permanent versioned release
@@ -115,6 +127,7 @@ and publishing for the Verus project.
 ```
 
 **Key Distinction:**
+
 - **Rolling Release**: Ephemeral, continuously updated with latest main
 - **Permanent Release**: Immutable snapshot at a point in time
 - Users tracking development use the rolling release
@@ -125,13 +138,14 @@ and publishing for the Verus project.
 ### 3. Pages Workflow (`pages.yml`)
 
 **Triggers:**
+
 - Workflow run completion (after `ci.yml` completes successfully on `main`)
 
 **Purpose:** Build and deploy project documentation to GitHub Pages
 
 **Jobs:**
 
-1. **`build`** (Ubuntu)
+1. **`build`** (Linux)
    - Sets up mdbook for building documentation
    - Builds user guide: `source/docs/guide` → `/_site/guide`
    - Builds state machines guide: `source/docs/state_machines` → `/_site/state_machines`
@@ -140,11 +154,12 @@ and publishing for the Verus project.
    - Builds Verus landing page using Jekyll
    - Uploads combined site artifact
 
-2. **`deploy`** (Ubuntu)
+2. **`deploy`** (Linux)
    - Deploys the built site to GitHub Pages
    - Makes documentation available at the GitHub Pages URL
 
 **Output:**
+
 - User-facing documentation at the project's GitHub Pages site
 - API documentation (verusdoc)
 - Tutorial guides
@@ -155,19 +170,20 @@ and publishing for the Verus project.
 ### 4. Crate Updates Workflow (`crate-updates.yml`)
 
 **Triggers:**
+
 - Manual dispatch
 - Schedule: Weekly on Sundays at midnight UTC
-    - This way, the updated versions are incorporated into the Monday release
+  - This way, the updated versions are incorporated into the Monday release
 
 **Purpose:** Automated maintenance of published crates on crates.io
 
 **Assumptions:**
-1. Assumes that `main` is in a building and verifying state.
 
+1. Assumes that `main` is in a building and verifying state.
 
 **Jobs:**
 
-1. **`bump-crate-versions`** (Ubuntu)
+1. **`bump-crate-versions`** (linux)
    - Runs version bump tool: `source/tools/bump_crate_versions` with update command
    - Commits version changes if needed
    - Pushes changes to `main`
@@ -197,8 +213,13 @@ crate-updates.yml (weekly/manual) → Updates crate versions → Publishes to cr
 ## Platform Support
 
 All workflows build and test Verus on:
-- **Linux**: `x86_64` (Ubuntu 22.04)
+
+- **Linux**: `x86_64` (ubuntu-22.04)
 - **macOS**: ARM64 (macOS 14) and `x86_64` (macOS 15)
-- **Windows**: `x86_64` (latest)
+- **Windows**: `x86_64` (2022)
 
 ARM64 macOS receives full testing; other platforms run smoke tests for efficiency.
+
+The general rule of thumb is that we lag one version behind the latest offered on Github.
+
+_Note_: when updating the OS versions used here, be sure to update the versions listed in the Support section of [INSTALL.md](../../INSTALL.md).

@@ -1,6 +1,6 @@
 use crate::ast::{
     Expr, ExprX, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, Path, Quant, SpannedTyped,
-    StmtX, Trait, TypX, UnwindSpec, VarBinderX, VirErr,
+    Trait, TypX, UnwindSpec, VarBinderX, VirErr,
 };
 use crate::ast_util::fun_as_friendly_rust_name;
 use crate::context::Ctx;
@@ -148,7 +148,6 @@ fn mask_spec_restricts_implementation(mask_spec: &MaskSpec) -> bool {
 ///
 /// Therefore we always handle exec functions, and only handle proof functions if
 /// they don't have a body.
-
 pub fn function_has_obligation(ctx: &Ctx, function: &Function) -> bool {
     ctx.global.check_api_safety
         && is_decl_in_safe_public_trait(&ctx.trait_map, function)
@@ -157,49 +156,21 @@ pub fn function_has_obligation(ctx: &Ctx, function: &Function) -> bool {
 }
 
 /// Create a body where all outputs are havoced, this represents "any safe implementation".
-
 pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
     // For each mut param, output:
     //  let tmp;
     //  *arg = tmp;
 
     let span = &function.span;
-    let mut stmts = vec![];
-    for param in function.x.params.iter() {
-        if param.x.is_mut {
-            stmts.push(Spanned::new(
-                span.clone(),
-                StmtX::Expr(SpannedTyped::new(
-                    span,
-                    &crate::ast_util::unit_typ(),
-                    ExprX::Assign {
-                        init_not_mut: false,
-                        lhs: SpannedTyped::new(
-                            span,
-                            &param.x.typ,
-                            ExprX::Loc(SpannedTyped::new(
-                                span,
-                                &param.x.typ,
-                                ExprX::VarLoc(param.x.name.clone()),
-                            )),
-                        ),
-                        rhs: SpannedTyped::new(span, &param.x.typ, ExprX::Nondeterministic),
-                        op: None,
-                    },
-                )),
-            ));
-        }
-    }
 
     let ret = &function.x.ret;
     let ret_expr = SpannedTyped::new(span, &ret.x.typ, ExprX::Nondeterministic);
 
-    SpannedTyped::new(span, &ret.x.typ, ExprX::Block(Arc::new(stmts), Some(ret_expr)))
+    SpannedTyped::new(span, &ret.x.typ, ExprX::Block(Arc::new(vec![]), Some(ret_expr)))
 }
 
 /// When emitting a proof obligation, we need axioms that the trait spec fns are given
 /// their default bodies.
-
 pub fn axioms_for_default_spec_fns(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
@@ -271,7 +242,7 @@ pub fn axioms_for_default_spec_fns(
                 );
 
                 state.pop_scope();
-                state.finalize();
+                state.finalize()?;
 
                 let call_exp = SpannedTyped::new(
                     &function.span,

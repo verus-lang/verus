@@ -2,6 +2,7 @@
 use super::prelude::*;
 use super::seq::*;
 use super::view::*;
+use core::slice::SliceIndex;
 
 #[cfg(verus_keep_ghost)]
 #[cfg(feature = "alloc")]
@@ -49,7 +50,7 @@ impl<T> SliceAdditionalExecFns<T> for [T] {
         requires
             0 <= idx < old(self)@.len(),
         ensures
-            self@ == old(self)@.update(idx as int, t),
+            final(self)@ == old(self)@.update(idx as int, t),
     {
         self[idx] = t;
     }
@@ -67,6 +68,7 @@ pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
 }
 
 ////// Len (with autospec)
+#[cfg_attr(all(verus_keep_ghost), rustc_diagnostic_item = "verus::vstd::slice::spec_slice_len")]
 pub uninterp spec fn spec_slice_len<T>(slice: &[T]) -> usize;
 
 // This axiom is slightly better than defining spec_slice_len to just be `slice@.len() as usize`
@@ -76,10 +78,20 @@ pub broadcast axiom fn axiom_spec_len<T>(slice: &[T])
         #[trigger] spec_slice_len(slice) == slice@.len(),
 ;
 
-#[verifier::when_used_as_spec(spec_slice_len)]
+#[verifier::allow_in_spec]
 pub assume_specification<T>[ <[T]>::len ](slice: &[T]) -> (len: usize)
+    returns
+        spec_slice_len(slice),
+;
+
+pub open spec fn spec_slice_is_empty<T>(slice: &[T]) -> bool {
+    slice@.len() == 0
+}
+
+#[verifier::when_used_as_spec(spec_slice_is_empty)]
+pub assume_specification<T>[ <[T]>::is_empty ](slice: &[T]) -> (b: bool)
     ensures
-        len == spec_slice_len(slice),
+        b <==> slice@.len() == 0,
 ;
 
 #[cfg(feature = "alloc")]
@@ -102,23 +114,30 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
 }
 
 #[verifier::external_trait_specification]
+#[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
 pub trait ExSliceIndex<T> where T: ?Sized {
-    type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
+    type ExternalTraitSpecificationFor: SliceIndex<T>;
 
     type Output: ?Sized;
+
+    spec fn index_req(&self, slice: &T) -> bool;
+
+    fn index(self, slice: &T) -> &Self::Output
+        requires
+            self.index_req(slice),
+    ;
 }
 
 pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Option<
-    &<I as core::slice::SliceIndex<[T]>>::Output,
->) where I: core::slice::SliceIndex<[T]>
+    &<I as SliceIndex<[T]>>::Output,
+>) where I: SliceIndex<[T]>
     returns
         spec_slice_get(slice, i),
 ;
 
-pub uninterp spec fn spec_slice_get<T: ?Sized, I: core::slice::SliceIndex<T>>(
-    val: &T,
-    idx: I,
-) -> Option<&<I as core::slice::SliceIndex<T>>::Output>;
+pub uninterp spec fn spec_slice_get<T: ?Sized, I: SliceIndex<T>>(val: &T, idx: I) -> Option<
+    &<I as SliceIndex<T>>::Output,
+>;
 
 pub broadcast axiom fn axiom_slice_get_usize<T>(v: &[T], i: usize)
     ensures
@@ -132,10 +151,38 @@ pub broadcast axiom fn axiom_slice_ext_equal<T>(a1: &[T], a2: &[T])
             0 <= i < a1.len() ==> a1[i] == a2[i]),
 ;
 
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::slice::spec_slice_update")]
+pub uninterp spec fn spec_slice_update<T>(slice: &[T], i: int, t: T) -> &[T];
+
+pub broadcast axiom fn axiom_spec_slice_update<T>(slice: &[T], i: int, t: T)
+    ensures
+        0 <= i < spec_slice_len(slice) ==> (#[trigger] spec_slice_update(slice, i, t)@)
+            == slice@.update(i, t),
+;
+
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::slice::spec_slice_index")]
+pub uninterp spec fn spec_slice_index<T>(slice: &[T], i: int) -> T;
+
+pub broadcast axiom fn axiom_spec_slice_index<T>(slice: &[T], i: int)
+    ensures
+        0 <= i < spec_slice_len(slice) ==> (#[trigger] spec_slice_index(slice, i)) == slice@[i],
+;
+
+pub broadcast axiom fn axiom_slice_has_resolved<T>(slice: &[T], i: int)
+    ensures
+        0 <= i < spec_slice_len(slice) ==> #[trigger] has_resolved_unsized::<[T]>(slice)
+            ==> has_resolved(#[trigger] slice@[i]),
+;
+
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
     axiom_slice_get_usize,
     axiom_slice_ext_equal,
+    axiom_spec_slice_update,
+    axiom_spec_slice_index,
+    axiom_slice_has_resolved,
 }
 
 } // verus!

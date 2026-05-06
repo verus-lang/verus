@@ -1,8 +1,9 @@
 use super::super::prelude::*;
-use super::core::IndexSetTrustedSpec;
-use super::core::TrustedSpecSealed;
+use super::super::slice::SliceIndexSpec;
+use super::core::{IndexSetTrustedSpec, IndexSpec, TrustedSpecSealed};
 
-use core::slice::Iter;
+use core::ops::{Index, Range};
+use core::slice::{Iter, SliceIndex};
 
 use verus as verus_;
 
@@ -31,6 +32,60 @@ impl<T> IndexSetTrustedSpec<usize> for [T] {
         new_container@ == self@.update(index as int, val)
     }
 }
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for usize {
+    open spec fn index_req(&self, slice: &[T]) -> bool {
+        *self < slice@.len()
+    }
+}
+
+pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index ](i: usize, slice: &[T]) -> &T
+    returns
+        slice@[i as int],
+;
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for Range<usize> {
+    open spec fn index_req(&self, slice: &[T]) -> bool {
+        &&& self.start <= self.end
+        &&& self.end <= slice@.len()
+    }
+}
+
+pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index ](i: Range<usize>, slice: &[T]) -> (r: &[T])
+    ensures
+        r@ == slice@.subrange(i.start as int, i.end as int),
+;
+
+impl<T, I: SliceIndex<[T]>> super::core::IndexSpecImpl<I> for [T] {
+    open spec fn index_req(&self, index: &I) -> bool {
+        index.index_req(self)
+    }
+}
+
+impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
+    where [T]: Index<I>
+{
+    open spec fn index_req(&self, index: &I) -> bool {
+        <[T] as IndexSpec<I>>::index_req(self, index)
+    }
+}
+
+pub assume_specification<T, I: SliceIndex<[T]>> [<[T] as Index<I>>::index] (
+    slice: &[T],
+    index: I,
+) -> (output: &<I as core::slice::SliceIndex<[T]>>::Output)
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::index, (index, slice), output),
+;
+
+pub assume_specification<T, I, const N: usize> [<[T; N] as Index<I>>::index] (
+    array: &[T; N],
+    index: I,
+) -> (output: &<[T; N] as core::ops::Index<I>>::Output)
+    where [T]: Index<I>,
+    ensures
+        call_ensures(<[T] as Index<I>>::index, (array, index), output),
+;
 
 pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
     requires
@@ -67,11 +122,11 @@ pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T
             let (old_index, old_seq) = old(elements)@;
             match r {
                 None => {
-                    &&& elements@ == old(elements)@
+                    &&& final(elements)@ == old(elements)@
                     &&& old_index >= old_seq.len()
                 },
                 Some(element) => {
-                    let (new_index, new_seq) = elements@;
+                    let (new_index, new_seq) = final(elements)@;
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1
@@ -167,6 +222,52 @@ pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>
             &&& index == 0
             &&& seq == s@
         }),
+;
+
+pub assume_specification<T> [ <[T]>::first ](slice: &[T]) -> (res: Option<&T>)
+    ensures
+        slice.len() == 0 ==> res.is_none(),
+        slice.len() != 0 ==> res.is_some() && res.unwrap() == slice[0]
+;
+
+pub assume_specification<T> [ <[T]>::last ](slice: &[T]) -> (res: Option<&T>)
+    ensures
+        slice.len() == 0 ==> res.is_none(),
+        slice.len() != 0 ==> res.is_some() && res.unwrap() == slice@.last()
+;
+
+#[doc(hidden)]
+pub assume_specification<T> [ <[T]>::first_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
+    ensures
+        old(slice).len() == 0 ==> res.is_none() && final(slice)@ === seq![],
+        old(slice).len() != 0 ==> res.is_some() && *res.unwrap() == old(slice)[0]
+            && final(slice)@ === old(slice)@.update(0, *final(res.unwrap()))
+;
+
+#[doc(hidden)]
+pub assume_specification<T> [ <[T]>::last_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
+    ensures
+        old(slice).len() == 0 ==> res.is_none() && final(slice)@ === seq![],
+        old(slice).len() != 0 ==> res.is_some() && *res.unwrap() == old(slice)@.last()
+            && final(slice)@ === old(slice)@.update(old(slice).len() - 1, *final(res.unwrap()))
+;
+
+pub assume_specification<T> [ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))
+    requires
+        0 <= mid <= slice.len(),
+    ensures
+        ret.0@ == slice@.subrange(0, mid as int),
+        ret.1@ == slice@.subrange(mid as int, slice@.len() as int),
+;
+
+#[doc(hidden)]
+pub assume_specification<T> [ <[T]>::split_at_mut ](slice: &mut [T], mid: usize) -> (ret: (&mut [T], &mut [T]))
+    requires
+        0 <= mid <= slice.len(),
+    ensures
+        ret.0@ == old(slice)@.subrange(0, mid as int),
+        ret.1@ == old(slice)@.subrange(mid as int, old(slice)@.len() as int),
+        final(slice)@ == final(ret.0)@ + final(ret.1)@,
 ;
 
 pub broadcast group group_slice_axioms {

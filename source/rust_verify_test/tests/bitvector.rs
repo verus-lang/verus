@@ -234,7 +234,7 @@ test_verify_one_bv_file! {
         proof fn test_int(x: X, y: X) {
             assert(x == y) by (bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle this type")
+    } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle type `test_crate::X`")
 }
 
 test_verify_one_bv_file! {
@@ -1479,4 +1479,69 @@ test_verify_one_file! {
         }
 
     } => Ok(())
+}
+
+// Check the handling of WithTriggers expressions (created by the #![trigger ...] syntax).
+//   https://github.com/verus-lang/verus/issues/1995
+// This only works with simplification enabled,
+test_verify_one_file! {
+    #[test] test_const_in_with_triggers verus_code! {
+        const ONE: u64 = 1;
+
+        proof fn test_const_inlined_in_with_triggers() {
+            // This works because the trigger is on the expression itself
+            assert(forall|a: u64| #[trigger] (a & ONE) == a & ONE) by (bit_vector);
+            // This requires the interpreter to inline ONE inside the WithTriggers body
+            assert(forall|a: u64| #![trigger (a & 1)] a & ONE == a & ONE) by (bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_dereference_mut_ref verus_code! {
+        fn nonlinear_test(x: &mut u64)
+        {
+            *x = 0;
+
+            assert(*x == 0) by(bit_vector)
+              requires *x == 0
+        }
+
+        fn nonlinear_test2(x: &mut u64)
+        {
+            *x = 0;
+
+            assert(*x == 1) by(bit_vector) // FAILS
+              requires *x == 0
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_dereference_mut_ref_2 [] => verus_code! {
+        fn nonlinear_test(x: &mut u64, y: &mut u64)
+        {
+            assert(*x == *y ==> x == y) by(bit_vector)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle type `&mut u64`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_dereference_mut_ref_final_not_supported [] => verus_code! {
+        fn nonlinear_test(x: &mut u64)
+        {
+            assert(*final(x) == *x) by(bit_vector)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "unsupported for bitvector: this mutable reference operator")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_old_not_supported [] => verus_code! {
+        fn nonlinear(x: &mut u64)
+            requires *x == 0,
+        {
+            *x = 5;
+            assert(*x == 0 && *old(x) == 5) by(bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`old` is not supported in `bit_vector` assert")
 }

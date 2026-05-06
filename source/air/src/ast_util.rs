@@ -11,6 +11,7 @@ impl Debug for Constant {
         match self {
             Constant::Bool(b) => write!(f, "{}", b),
             Constant::Nat(n) => write!(f, "{}", n),
+            Constant::Real(n) => write!(f, "{}", n),
             Constant::BitVec(n, width) => write!(f, "{}(bv{})", n, width),
         }
     }
@@ -297,7 +298,24 @@ pub fn mk_bitvector_option(solver: &SmtSolver) -> Vec<Command> {
 }
 
 pub fn mk_nat<S: ToString>(n: S) -> Expr {
-    Arc::new(ExprX::Const(Constant::Nat(Arc::new(n.to_string()))))
+    let s = n.to_string();
+    assert!(s.len() > 0);
+    assert!(s.chars().all(|c| c.is_ascii_digit()));
+    Arc::new(ExprX::Const(Constant::Nat(Arc::new(s))))
+}
+
+pub fn is_valid_real<S: ToString>(n: S) -> bool {
+    let s = n.to_string();
+    s.chars().all(|c| c.is_ascii_digit() || c == '.')
+        && s.chars().filter(|c| *c == '.').count() == 1
+        && !s.starts_with(".")
+        && !s.ends_with(".")
+}
+
+pub fn mk_real<S: ToString>(n: S) -> Expr {
+    let s = n.to_string();
+    assert!(is_valid_real(&s));
+    Arc::new(ExprX::Const(Constant::Real(Arc::new(s))))
 }
 
 pub fn mk_neg(e: &Expr) -> Expr {

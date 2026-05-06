@@ -777,6 +777,7 @@ fn scan_right(
         | Expr::Is(_)
         | Expr::IsNot(_)
         | Expr::Matches(_)
+        | Expr::Final(_)
 
         | Expr::While(_) => match fixup.next_operator {
             Precedence::Assign | Precedence::Range if precedence == Precedence::Range => Scan::Fail,

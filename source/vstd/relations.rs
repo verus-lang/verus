@@ -14,6 +14,11 @@ pub open spec fn injective<X, Y>(r: spec_fn(X) -> Y) -> bool {
     forall|x1: X, x2: X| #[trigger] r(x1) == #[trigger] r(x2) ==> x1 == x2
 }
 
+pub open spec fn injective_on<X, Y>(r: spec_fn(X) -> Y, dom: Set<X>) -> bool {
+    forall|x1: X, x2: X|
+        dom.contains(x1) && dom.contains(x2) && #[trigger] r(x1) == #[trigger] r(x2) ==> x1 == x2
+}
+
 pub open spec fn commutative<T, U>(r: spec_fn(T, T) -> U) -> bool {
     forall|x: T, y: T| #[trigger] r(x, y) == #[trigger] r(y, x)
 }
@@ -135,6 +140,23 @@ pub proof fn lemma_new_first_element_still_sorted_by<T>(
         assert forall|index: int| 0 < index < s.len() implies #[trigger] less_than(x, s[index]) by {
             assert(less_than(s[0], s[index]));
         };
+    }
+}
+
+/// If a function is injective on a set `s2`, then it is also injective on any subset `s1` of `s2`.
+pub proof fn lemma_injective_on_subset<X, Y>(r: spec_fn(X) -> Y, s1: Set<X>, s2: Set<X>)
+    requires
+        s1 <= s2,
+        injective_on(r, s2),
+    ensures
+        injective_on(r, s1),
+{
+    assert forall|x1: X, x2: X|
+        s1.contains(x1) && s1.contains(x2) && #[trigger] r(x1) == #[trigger] r(x2) implies x1
+        == x2 by {
+        assert(s2.contains(x1));
+        assert(s2.contains(x2));
+        assert(r(x1) == r(x2));
     }
 }
 

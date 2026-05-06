@@ -754,6 +754,7 @@ impl Debug for crate::Expr {
             crate::Expr::HasNot(v0) => v0.debug(formatter, "HasNot"),
             crate::Expr::Matches(v0) => v0.debug(formatter, "Matches"),
             crate::Expr::GetField(v0) => v0.debug(formatter, "GetField"),
+            crate::Expr::Final(v0) => v0.debug(formatter, "Final"),
             #[cfg(not(feature = "full"))]
             _ => unreachable!(),
         }
@@ -998,6 +999,22 @@ impl crate::ExprField {
         formatter.field("base", &self.base);
         formatter.field("dot_token", &self.dot_token);
         formatter.field("member", &self.member);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::ExprFinal {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        self.debug(formatter, "ExprFinal")
+    }
+}
+impl crate::ExprFinal {
+    fn debug(&self, formatter: &mut fmt::Formatter, name: &str) -> fmt::Result {
+        let mut formatter = formatter.debug_struct(name);
+        formatter.field("attrs", &self.attrs);
+        formatter.field("final_token", &self.final_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("arg", &self.arg);
         formatter.finish()
     }
 }

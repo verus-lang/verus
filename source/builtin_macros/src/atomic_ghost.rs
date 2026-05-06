@@ -1,4 +1,4 @@
-///! Helper proc-macro for the atomic_ghost lib
+//! Helper proc-macro for the atomic_ghost lib
 use crate::struct_decl_inv::keyword;
 use crate::struct_decl_inv::peek_keyword;
 use proc_macro2::TokenStream;
@@ -110,18 +110,14 @@ fn atomic_ghost_main(ag: AG) -> parse::Result<TokenStream> {
             Err(Error::new(
                 op_name.span(),
                 &format!(
-                    "atomic_with_ghost: `{:}` is not a recognized operation (valid operations are: {:})",
-                    op_name.to_string(),
-                    valid_ops
+                    "atomic_with_ghost: `{op_name}` is not a recognized operation (valid operations are: {valid_ops})",
                 ),
             ))
         }
         Some((_, num_args)) if *num_args != ag.operands.len() => Err(Error::new(
             op_name.span(),
             &format!(
-                "atomic_with_ghost: `{:}` expected {:} arguments (found {:})",
-                op_name.to_string(),
-                num_args,
+                "atomic_with_ghost: `{op_name}` expected {num_args} arguments (found {:})",
                 ag.operands.len()
             ),
         )),

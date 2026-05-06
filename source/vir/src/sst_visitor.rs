@@ -9,6 +9,7 @@ use crate::sst::{
     FunctionSst, FunctionSstX, LocalDecl, LocalDeclX, LoopInv, Par, ParX, PostConditionSst, Stm,
     StmX, Trigs, UniqueIdent, UnwindSst,
 };
+use crate::sst_vars::HavocSet;
 pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
 use air::ast::Binder;
 use air::scope_map::ScopeMap;
@@ -185,6 +186,23 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         Ok(typ_inv_vars2)
     }
 
+    fn visit_havoc_set(&mut self, hset: &Arc<HavocSet>) -> Result<R::Ret<Arc<HavocSet>>, Err> {
+        let mut typ_inv_vars2 = R::vec();
+        for (uid, (typ, hvar)) in hset.vars.iter() {
+            let typ = self.visit_typ(typ)?;
+            let hvar = *hvar;
+            R::push(&mut typ_inv_vars2, R::ret(|| (uid.clone(), (R::get(typ), hvar)))?);
+        }
+        R::ret(|| Arc::new(HavocSet { vars: R::get_vec(typ_inv_vars2).into_iter().collect() }))
+    }
+
+    fn visit_havoc_set_opt(
+        &mut self,
+        hset_opt: &Option<Arc<HavocSet>>,
+    ) -> Result<R::Opt<Arc<HavocSet>>, Err> {
+        R::map_opt(hset_opt, &mut |hset| self.visit_havoc_set(hset))
+    }
+
     fn visit_exp_rec(&mut self, exp: &Exp) -> Result<R::Ret<Exp>, Err> {
         let typ = self.visit_typ(&exp.typ)?;
         let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &R::get(typ), e);
@@ -279,10 +297,14 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         let t = self.visit_typ(t)?;
                         R::ret(|| UnaryOpr::HasResolved(R::get(t)))
                     }
+                    UnaryOpr::ToDyn(t) => {
+                        let t = self.visit_typ(t)?;
+                        R::ret(|| UnaryOpr::ToDyn(R::get(t)))
+                    }
                     UnaryOpr::IsVariant { .. }
                     | UnaryOpr::Field { .. }
                     | UnaryOpr::IntegerTypeBound(..)
-                    | UnaryOpr::CustomErr(..) => R::ret(|| op.clone()),
+                    | UnaryOpr::ProofNote(..) => R::ret(|| op.clone()),
                 }?;
                 R::ret(|| exp_new(ExpX::UnaryOpr(R::get(op), R::get(e1))))
             }
@@ -468,6 +490,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 decrease,
                 typ_inv_vars,
                 modified_vars,
+                pre_modified_params,
             } => {
                 let cond = R::map_opt(cond, &mut |(cond_stm, cond_exp)| {
                     let cond_stm = self.visit_stm(cond_stm)?;
@@ -478,6 +501,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let invs = R::map_vec(invs, &mut |inv| self.visit_loop_inv(inv))?;
                 let decrease = self.visit_exps(decrease)?;
                 let typ_inv_vars = self.visit_typ_inv_vars(typ_inv_vars)?;
+                let modified_vars = self.visit_havoc_set_opt(modified_vars)?;
+                let pre_modified_params = self.visit_havoc_set_opt(pre_modified_params)?;
                 R::ret(|| {
                     stm_new(StmX::Loop {
                         loop_isolation: *loop_isolation,
@@ -489,7 +514,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         invs: R::get_vec_a(invs),
                         decrease: R::get_vec_a(decrease),
                         typ_inv_vars: R::get_vec_a(typ_inv_vars),
-                        modified_vars: modified_vars.clone(),
+                        modified_vars: R::get_opt(modified_vars),
+                        pre_modified_params: R::get_opt(pre_modified_params),
                     })
                 })
             }
@@ -537,7 +563,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     name: par.x.name.clone(),
                     typ: R::get(t),
                     mode: par.x.mode,
-                    is_mut: par.x.is_mut,
                     purpose: par.x.purpose,
                 },
             )
@@ -618,8 +643,9 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             let es = self.visit_exps(es)?;
             R::push(&mut inv_masks, R::ret(|| R::get_vec_a(es))?);
         }
-        let unwind_condition =
+        let unwind_condition: <R as Returner>::Opt<Arc<SpannedTyped<ExpX>>> =
             R::map_opt(&func_decl.unwind_condition, &mut |exp| self.visit_exp(exp))?;
+
         R::ret(|| FuncDeclSst {
             req_inv_pars: R::get_vec_a(req_inv_pars),
             ens_pars: R::get_vec_a(ens_pars),
@@ -698,6 +724,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let recommends_check =
             R::map_opt(&f.x.recommends_check, &mut |c| self.visit_func_check(c))?;
         let safe_api_check = R::map_opt(&f.x.safe_api_check, &mut |c| self.visit_func_check(c))?;
+        let async_ret = R::map_opt(&f.x.async_ret, &mut |c| self.visit_par(c))?;
         R::ret(|| {
             Spanned::new(
                 f.span.clone(),
@@ -721,6 +748,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exec_proof_check: R::get_opt(exec_proof_check).map(|c| Arc::new(c)),
                     recommends_check: R::get_opt(recommends_check).map(|c| Arc::new(c)),
                     safe_api_check: R::get_opt(safe_api_check).map(|c| Arc::new(c)),
+                    async_ret: R::get_opt(async_ret),
                 },
             )
         })
@@ -799,7 +827,6 @@ where
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn stm_visitor_dfs<T, F>(stm: &Stm, f: &mut F) -> VisitorControlFlow<T>
 where
     F: FnMut(&Stm) -> VisitorControlFlow<T>,
@@ -808,6 +835,20 @@ where
     match visitor.visit_stm(stm) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(val) => VisitorControlFlow::Stop(val),
+    }
+}
+
+pub(crate) fn stm_visitor_check<E, MF>(stm: &Stm, mf: &mut MF) -> Result<(), E>
+where
+    MF: FnMut(&Stm) -> Result<(), E>,
+{
+    match stm_visitor_dfs(stm, &mut |stm| match mf(stm) {
+        Ok(()) => VisitorControlFlow::Recurse,
+        Err(e) => VisitorControlFlow::Stop(e),
+    }) {
+        VisitorControlFlow::Recurse => Ok(()),
+        VisitorControlFlow::Return => unreachable!(),
+        VisitorControlFlow::Stop(e) => Err(e),
     }
 }
 
@@ -1136,4 +1177,31 @@ where
         VisitorControlFlow::Return => unreachable!(),
         VisitorControlFlow::Stop(e) => Err(e),
     }
+}
+
+struct MapExpsInStmVisitor<'a, F> {
+    fe: &'a mut F,
+}
+
+impl<'a, F> Visitor<Rewrite, VirErr, NoScoper> for MapExpsInStmVisitor<'a, F>
+where
+    F: FnMut(&Exp) -> Exp,
+{
+    fn visit_stm(&mut self, stm: &Stm) -> Result<Stm, VirErr> {
+        let stm = self.visit_stm_rec(stm)?;
+        Ok(stm)
+    }
+
+    fn visit_exp(&mut self, exp: &Exp) -> Result<Exp, VirErr> {
+        let exp = self.visit_exp_rec(exp)?;
+        Ok((self.fe)(&exp))
+    }
+}
+
+pub(crate) fn map_exps_in_stm_visitor<F>(stm: &Stm, fe: &mut F) -> Stm
+where
+    F: FnMut(&Exp) -> Exp,
+{
+    let mut visitor = MapExpsInStmVisitor { fe };
+    visitor.visit_stm(stm).unwrap()
 }

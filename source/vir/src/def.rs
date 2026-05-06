@@ -1,11 +1,12 @@
-use crate::ast::{Dt, Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
+use crate::ast::{ClosureKind, CrateId, Dt, Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
 use crate::ast_util::air_unique_var;
 use crate::messages::Span;
 use crate::util::vec_map;
 use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /*
 In SMT-LIB format (used by Z3), symbols are built of letters, digits, and:
@@ -47,6 +48,7 @@ const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_ENSURES: &str = "ens%";
+const PREFIX_ENSURES_ASYNC_RET: &str = "VERUS_ASYNC_FUNC_RETURN_VALUE_";
 const PREFIX_OPEN_INV: &str = "openinv%";
 const PREFIX_NO_UNWIND_WHEN: &str = "no_unwind_when%";
 const PREFIX_RECURSIVE: &str = "rec%";
@@ -57,6 +59,7 @@ const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
 const PREFIX_TYPE_ID: &str = "TYPE%";
+const PREFIX_DYN_ID: &str = "DYN%";
 const PREFIX_DCR_ID: &str = "DCR%";
 const PREFIX_FNDEF_TYPE_ID: &str = "FNDEF%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
@@ -64,6 +67,8 @@ const PREFIX_CLOSURE_TYPE: &str = "anonymous_closure%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
+pub(crate) const PREFIX_IMPL_TUPLE: &str = "impl_tuple&%";
+pub(crate) const PREFIX_IMPL_CLOSURE: &str = "impl_closure&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 pub(crate) const PREFIX_DEFAULT_TYP_PARAM: &str = "def_typ_param%";
@@ -71,6 +76,7 @@ pub(crate) const PROJECT_POINTEE_METADATA: &str = "pointee_metadata%";
 pub(crate) const PROJECT_POINTEE_METADATA_DECORATION: &str = "pointee_metadata%%";
 const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
+const PREFIX_TO_DYN: &str = "to_dyn%";
 pub(crate) const SIZED_BOUND: &str = "sized";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
@@ -82,9 +88,11 @@ const GLOBAL_TYPE: &str = "allocator_global%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
+const RES_INF_TEMP_SEPARATOR: &str = "$$$$tempplace";
 const BITVEC_TMP_DECL_SEPARATOR: &str = "$$$$bitvectmp";
 const USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR: &str = "$$$$userdeftypeinvpass";
 const KRATE_SEPARATOR: &str = "!";
+const KRATE_RENAME_SEPARATOR: &str = "!!";
 const PATH_SEPARATOR: &str = ".";
 const PATHS_SEPARATOR: &str = "/";
 const VARIANT_SEPARATOR: &str = "/";
@@ -143,19 +151,27 @@ pub const SUB: &str = "Sub";
 pub const MUL: &str = "Mul";
 pub const EUC_DIV: &str = "EucDiv";
 pub const EUC_MOD: &str = "EucMod";
+pub const RADD: &str = "RAdd";
+pub const RSUB: &str = "RSub";
+pub const RMUL: &str = "RMul";
+pub const RDIV: &str = "RDiv";
 pub const SNAPSHOT_CALL: &str = "CALL";
 pub const SNAPSHOT_PRE: &str = "PRE";
 pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
+pub const SNAPSHOT_LOOP: &str = "LOOP";
 pub const T_HEIGHT: &str = "Height";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
+pub const BOX_REAL: &str = "R";
 pub const BOX_FNDEF: &str = "F";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
+pub const UNBOX_REAL: &str = "%R";
 pub const UNBOX_FNDEF: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
+pub const TYPE_ID_REAL: &str = "REAL";
 pub const TYPE_ID_INT: &str = "INT";
 pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_CHAR: &str = "CHAR";
@@ -169,9 +185,9 @@ pub const TYPE_ID_CONST_BOOL: &str = "CONST_BOOL";
 pub const DECORATION: &str = "Dcr";
 pub const DECORATE_NIL_SIZED: &str = "$";
 pub const DECORATE_NIL_SLICE: &str = "$slice"; // for 'str' and '[T]' types
+pub const DECORATE_NIL_DYN: &str = "$dyn"; // for 'dyn' types
 pub const DECORATE_DST_INHERIT: &str = "DST";
 pub const DECORATE_REF: &str = "REF";
-pub const DECORATE_MUT_REF: &str = "MUT_REF";
 pub const DECORATE_BOX: &str = "BOX";
 pub const DECORATE_RC: &str = "RC";
 pub const DECORATE_ARC: &str = "ARC";
@@ -190,7 +206,6 @@ pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
 pub const CONST_INT: &str = "const_int";
 pub const CONST_BOOL: &str = "const_bool";
-pub const CHECK_DECREASE_INT: &str = "check_decrease_int";
 pub const CHECK_DECREASE_HEIGHT: &str = "check_decrease_height";
 pub const HEIGHT: &str = "height";
 pub const HEIGHT_LT: &str = "height_lt";
@@ -232,14 +247,36 @@ pub const QID_OPAQUE_TYPE_BOUND: &str = "opaque_type_bound";
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
 
-pub const STRSLICE_IS_ASCII: &str = "str%strslice_is_ascii";
 pub const STRSLICE_LEN: &str = "str%strslice_len";
 pub const STRSLICE_GET_CHAR: &str = "str%strslice_get_char";
 pub const STRSLICE_NEW_STRLIT: &str = "str%new_strlit";
 // only used to prove that new_strlit is injective
 pub const STRSLICE_FROM_STRLIT: &str = "str%from_strlit";
 
-pub const VERUSLIB: &str = "vstd";
+pub const IEEE_FLOAT_CAST: &str = "ieee_float_cast";
+pub const IEEE_FLOAT_NEG: &str = "ieee_float_neg";
+pub const IEEE_FLOAT_FLOOR: &str = "ieee_float_floor";
+pub const IEEE_FLOAT_CEIL: &str = "ieee_float_ceil";
+pub const IEEE_FLOAT_ROUND: &str = "ieee_float_round";
+pub const IEEE_FLOAT_ROUND_TIES_EVEN: &str = "ieee_float_round_ties_even";
+pub const IEEE_FLOAT_TRUNC: &str = "ieee_float_trunc";
+pub const IEEE_FLOAT_IS_NORMAL: &str = "ieee_float_is_normal";
+pub const IEEE_FLOAT_IS_SUBNORMAL: &str = "ieee_float_is_subnormal";
+pub const IEEE_FLOAT_IS_ZERO: &str = "ieee_float_is_zero";
+pub const IEEE_FLOAT_IS_INFINITE: &str = "ieee_float_is_infinite";
+pub const IEEE_FLOAT_IS_NAN: &str = "ieee_float_is_nan";
+pub const IEEE_FLOAT_IS_NEGATIVE: &str = "ieee_float_is_negative";
+pub const IEEE_FLOAT_IS_POSITIVE: &str = "ieee_float_is_positive";
+pub const IEEE_FLOAT_ADD: &str = "ieee_float_add";
+pub const IEEE_FLOAT_SUB: &str = "ieee_float_sub";
+pub const IEEE_FLOAT_MUL: &str = "ieee_float_mul";
+pub const IEEE_FLOAT_DIV: &str = "ieee_float_div";
+pub const IEEE_FLOAT_EQ: &str = "ieee_float_eq";
+pub const IEEE_FLOAT_LE: &str = "ieee_float_le";
+pub const IEEE_FLOAT_GE: &str = "ieee_float_ge";
+pub const IEEE_FLOAT_LT: &str = "ieee_float_lt";
+pub const IEEE_FLOAT_GT: &str = "ieee_float_gt";
+
 pub const VERUSLIB_PREFIX: &str = "vstd::";
 pub const PERVASIVE_PREFIX: &str = "pervasive::";
 
@@ -266,7 +303,7 @@ pub const SPLIT_POST_FAILURE: &str = "split postcondition failure";
 
 pub const PERVASIVE_ASSERT: &[&str] = &["pervasive", "assert"];
 
-pub fn krate_to_string(krate: &Ident) -> String {
+fn krate_ident_to_string(krate: &str) -> String {
     // rustc allows crate names to begin with digits and to contain unicode
     // TODO: Rust identifiers can in general contain unicode; we should handle this in general
     let krate = krate.escape_default().to_string();
@@ -280,14 +317,86 @@ pub fn krate_to_string(krate: &Ident) -> String {
     }
 }
 
-pub fn path_to_string(path: &Path) -> String {
-    let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;
-    if let Some(krate) = &path.krate { krate_to_string(krate) + KRATE_SEPARATOR + &s } else { s }
+// Context for generating names in a single AIR file:
+// - names do not have to be consistent between different AIR files
+// - we omit the u64 id to keep the names in the AIR file stable across verifier runs,
+//   but if two crates have the same name, we have to disambiguate them
+// - for simplicity, we handle this disambiguation on demand so that we don't
+//   do any more renaming than necessary in each AIR file
+struct NameCtxtImpl {
+    duplicate_name_counter: HashMap<String, u32>,
+    stable_id_map: HashMap<u64, String>,
 }
 
-pub fn fun_to_string(fun: &Fun) -> String {
-    let FunX { path } = &(**fun);
-    path_to_string(path)
+impl NameCtxtImpl {
+    fn new() -> Self {
+        Self { duplicate_name_counter: HashMap::new(), stable_id_map: HashMap::new() }
+    }
+
+    fn krate_id_to_string(&mut self, id: u64, name: &str) -> String {
+        let stable = self.stable_id_map.entry(id).or_insert_with(|| {
+            let count = self.duplicate_name_counter.entry(name.to_string()).or_insert(0);
+            *count += 1;
+            let name = krate_ident_to_string(name);
+            if *count == 1 { name } else { format!("{}{}{}", name, KRATE_RENAME_SEPARATOR, count) }
+        });
+        stable.clone()
+    }
+}
+
+pub struct NameCtxt {
+    imp: std::rc::Rc<std::cell::RefCell<NameCtxtImpl>>,
+}
+
+impl NameCtxt {
+    // Warning: NameCtxt is meant to capture shared decisions about naming that should be
+    // consistent across an entire AIR file.
+    // Therefore, code generating AIR should use the existing NameCtxt from the Ctx struct
+    // for that AIR file, rather than allocating additional NameCtxt values.
+    pub(crate) fn new() -> Self {
+        Self { imp: std::rc::Rc::new(std::cell::RefCell::new(NameCtxtImpl::new())) }
+    }
+
+    fn krate_id_to_string(&self, id: u64, name: &str) -> String {
+        self.imp.borrow_mut().krate_id_to_string(id, name)
+    }
+}
+
+// Only use this for printing diagnostics
+// Do not use this to generate AIR -- it is unsound to ignore the id
+// (However, it's always ok to use this when the krate is not CrateId::Id)
+pub(crate) fn krate_to_string_ignore_stable_id(krate: &CrateId) -> String {
+    match krate {
+        CrateId::Internal => "crate".to_string(),
+        CrateId::Core => "core".to_string(),
+        CrateId::Alloc => "alloc".to_string(),
+        CrateId::Vstd => "vstd".to_string(),
+        CrateId::Id(ident, _) => krate_ident_to_string(ident),
+    }
+}
+
+impl NameCtxt {
+    pub fn krate_to_string(&self, krate: &CrateId) -> String {
+        match krate {
+            CrateId::Internal | CrateId::Core | CrateId::Alloc | CrateId::Vstd => {
+                krate_to_string_ignore_stable_id(krate)
+            }
+            CrateId::Id(ident, id) => self.krate_id_to_string(*id, ident),
+        }
+    }
+
+    pub fn path_to_string(&self, path: &Path) -> String {
+        let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;
+        match &path.krate {
+            CrateId::Internal => s,
+            krate => self.krate_to_string(krate) + KRATE_SEPARATOR + &s,
+        }
+    }
+
+    pub fn fun_to_string(&self, fun: &Fun) -> String {
+        let FunX { path } = &(**fun);
+        self.path_to_string(path)
+    }
 }
 
 pub fn decrease_at_entry(loop_id: Option<u64>, n: usize) -> VarIdent {
@@ -411,49 +520,103 @@ pub fn rename_rec_param(ident: &VarIdent, n: usize) -> VarIdent {
 
 pub fn slice_type() -> Path {
     let ident = Arc::new(SLICE_TYPE.to_string());
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+    Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })
 }
 
 pub fn strslice_type() -> Path {
     let ident = Arc::new(STRSLICE_TYPE.to_string());
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+    Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })
+}
+
+pub fn fn_slice_len() -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: CrateId::Vstd,
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_len".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_slice_index() -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: CrateId::Vstd,
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_index".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_slice_update() -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: CrateId::Vstd,
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_update".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_array_update() -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: CrateId::Vstd,
+            segments: Arc::new(vec![
+                Arc::new("array".to_string()),
+                Arc::new("spec_array_update".to_string()),
+            ]),
+        }),
+    })
 }
 
 pub fn array_type() -> Path {
     let ident = Arc::new(ARRAY_TYPE.to_string());
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+    Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })
 }
 
 pub fn ptr_type() -> Path {
     let ident = Arc::new(PTR_TYPE.to_string());
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+    Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })
 }
 
 pub fn global_type() -> Path {
     let ident = Arc::new(GLOBAL_TYPE.to_string());
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+    Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })
 }
 
-pub fn prefix_dcr_id(ident: &Path) -> Ident {
-    Arc::new(PREFIX_DCR_ID.to_string() + &path_to_string(ident))
-}
+impl NameCtxt {
+    pub fn prefix_dcr_id(&self, ident: &Path) -> Ident {
+        Arc::new(PREFIX_DCR_ID.to_string() + &self.path_to_string(ident))
+    }
 
-pub fn prefix_type_id(ident: &Path) -> Ident {
-    Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(ident))
-}
+    pub fn prefix_type_id(&self, ident: &Path) -> Ident {
+        Arc::new(PREFIX_TYPE_ID.to_string() + &self.path_to_string(ident))
+    }
 
-pub fn prefix_fndef_type_id(fun: &Fun) -> Ident {
-    Arc::new(PREFIX_FNDEF_TYPE_ID.to_string() + &fun_to_string(fun))
+    pub fn prefix_dyn_id(&self, ident: &Path) -> Ident {
+        Arc::new(PREFIX_DYN_ID.to_string() + &self.path_to_string(ident))
+    }
+
+    pub fn prefix_fndef_type_id(&self, fun: &Fun) -> Ident {
+        Arc::new(PREFIX_FNDEF_TYPE_ID.to_string() + &self.fun_to_string(fun))
+    }
 }
 
 pub fn prefix_tuple_type(i: usize) -> Path {
     let ident = Arc::new(format!("{}{}", PREFIX_TUPLE_TYPE, i));
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+    Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })
 }
 
 pub fn prefix_closure_type(i: usize) -> Path {
     let ident = Arc::new(format!("{}{}", PREFIX_CLOSURE_TYPE, i));
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+    Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })
 }
 
 pub fn prefix_tuple_variant(i: usize) -> Ident {
@@ -466,22 +629,32 @@ pub fn prefix_tuple_param(i: usize) -> Ident {
 
 pub fn prefix_spec_fn_type(i: usize) -> Path {
     let ident = Arc::new(format!("{}{}", PREFIX_SPEC_FN_TYPE, i));
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+    Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })
 }
 
 pub fn impl_ident(disambiguator: u32) -> Ident {
     Arc::new(format!("{}{}", PREFIX_IMPL_IDENT, disambiguator))
 }
 
-pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
-    let proj = if decoration { PREFIX_PROJECT_DECORATION } else { PREFIX_PROJECT };
-    Arc::new(format!(
-        "{}{}{}{}",
-        proj,
-        path_to_string(trait_path),
-        PROJECT_SEPARATOR,
-        name.to_string()
-    ))
+pub(crate) fn impl_tuple(trait_suffix: &str, arity: usize) -> Ident {
+    Arc::new(format!("{}{}{}", PREFIX_IMPL_TUPLE, trait_suffix, arity))
+}
+
+pub(crate) fn impl_closure(kind: ClosureKind, id: usize) -> Ident {
+    Arc::new(format!("{}{}{}", PREFIX_IMPL_CLOSURE, kind, id))
+}
+
+impl NameCtxt {
+    pub fn projection(&self, decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
+        let proj = if decoration { PREFIX_PROJECT_DECORATION } else { PREFIX_PROJECT };
+        Arc::new(format!(
+            "{}{}{}{}",
+            proj,
+            self.path_to_string(trait_path),
+            PROJECT_SEPARATOR,
+            name,
+        ))
+    }
 }
 
 pub fn projection_pointee_metadata(decoration: bool) -> Ident {
@@ -496,24 +669,32 @@ pub fn proj_param(i: usize) -> Ident {
     Arc::new(format!("{}{}", PREFIX_PROJECT_PARAM, i))
 }
 
-pub fn trait_bound(trait_path: &Path) -> Ident {
-    Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
+impl NameCtxt {
+    pub fn trait_bound(&self, trait_path: &Path) -> Ident {
+        Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, self.path_to_string(trait_path)))
+    }
+
+    pub fn to_dyn(&self, trait_path: &Path) -> Ident {
+        Arc::new(format!("{}{}", PREFIX_TO_DYN, self.path_to_string(trait_path)))
+    }
 }
 
 pub fn sized_bound() -> Ident {
     Arc::new(SIZED_BOUND.to_string())
 }
 
-pub fn prefix_type_id_fun(i: usize) -> Ident {
-    prefix_type_id(&prefix_spec_fn_type(i))
-}
+impl NameCtxt {
+    pub fn prefix_type_id_fun(&self, i: usize) -> Ident {
+        self.prefix_type_id(&prefix_spec_fn_type(i))
+    }
 
-pub fn prefix_box(ident: &Path) -> Ident {
-    Arc::new(PREFIX_BOX.to_string() + &path_to_string(ident))
-}
+    pub fn prefix_box(&self, ident: &Path) -> Ident {
+        Arc::new(PREFIX_BOX.to_string() + &self.path_to_string(ident))
+    }
 
-pub fn prefix_unbox(ident: &Path) -> Ident {
-    Arc::new(PREFIX_UNBOX.to_string() + &path_to_string(ident))
+    pub fn prefix_unbox(&self, ident: &Path) -> Ident {
+        Arc::new(PREFIX_UNBOX.to_string() + &self.path_to_string(ident))
+    }
 }
 
 pub fn prefix_fuel_id(ident: &Ident) -> Ident {
@@ -530,6 +711,10 @@ pub fn prefix_requires(ident: &Ident) -> Ident {
 
 pub fn prefix_ensures(ident: &Ident) -> Ident {
     Arc::new(PREFIX_ENSURES.to_string() + ident)
+}
+
+pub fn prefix_ensures_async_ret(ident: &Ident) -> Ident {
+    Arc::new(PREFIX_ENSURES_ASYNC_RET.to_string() + ident)
 }
 
 pub fn prefix_open_inv(ident: &Ident, i: usize) -> Ident {
@@ -585,33 +770,36 @@ pub fn encode_dt_as_path(dt: &Dt) -> Path {
     }
 }
 
-pub fn variant_ident(dt: &Dt, variant: &str) -> Ident {
-    let path = encode_dt_as_path(dt);
-    Arc::new(format!("{}{}{}", path_to_string(&path), VARIANT_SEPARATOR, variant))
-}
+impl NameCtxt {
+    pub fn variant_ident(&self, dt: &Dt, variant: &str) -> Ident {
+        let path = encode_dt_as_path(dt);
+        Arc::new(format!("{}{}{}", self.path_to_string(&path), VARIANT_SEPARATOR, variant))
+    }
 
-pub fn is_variant_ident(datatype: &Dt, variant: &str) -> Ident {
-    Arc::new(format!("is-{}", variant_ident(datatype, variant)))
-}
+    pub fn is_variant_ident(&self, datatype: &Dt, variant: &str) -> Ident {
+        Arc::new(format!("is-{}", self.variant_ident(datatype, variant)))
+    }
 
-pub fn variant_field_ident_internal(
-    path: &Path,
-    variant: &Ident,
-    field: &Ident,
-    internal: bool,
-) -> Ident {
-    Arc::new(format!(
-        "{}{}{}{}{}",
-        path_to_string(path),
-        VARIANT_SEPARATOR,
-        variant.as_str(),
-        if internal { VARIANT_FIELD_INTERNAL_SEPARATOR } else { VARIANT_FIELD_SEPARATOR },
-        field.as_str()
-    ))
-}
+    pub fn variant_field_ident_internal(
+        &self,
+        path: &Path,
+        variant: &Ident,
+        field: &Ident,
+        internal: bool,
+    ) -> Ident {
+        Arc::new(format!(
+            "{}{}{}{}{}",
+            self.path_to_string(path),
+            VARIANT_SEPARATOR,
+            variant.as_str(),
+            if internal { VARIANT_FIELD_INTERNAL_SEPARATOR } else { VARIANT_FIELD_SEPARATOR },
+            field.as_str()
+        ))
+    }
 
-pub fn variant_field_ident(datatype: &Path, variant: &Ident, field: &Ident) -> Ident {
-    variant_field_ident_internal(datatype, variant, field, false)
+    pub fn variant_field_ident(&self, datatype: &Path, variant: &Ident, field: &Ident) -> Ident {
+        self.variant_field_ident_internal(datatype, variant, field, false)
+    }
 }
 
 pub fn positional_field_ident(idx: usize) -> Ident {
@@ -622,46 +810,48 @@ pub fn field_ident_from_rust(s: &str) -> Ident {
     Arc::new(format!("{}", s))
 }
 
-pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
-    if args.len() == 0 {
-        datatype.clone()
-    } else {
-        let mut segments = (*datatype.segments).clone();
-        let last = segments.last_mut().expect("last path segment");
-        let ident = Arc::new(format!(
-            "{}{}{}{}",
-            last,
-            MONOTYPE_APP_BEGIN,
-            vec_map(args, |x| path_to_string(x)).join(PATHS_SEPARATOR),
-            MONOTYPE_APP_END,
-        ));
-        *last = ident;
-        Arc::new(PathX { krate: datatype.krate.clone(), segments: Arc::new(segments) })
+impl NameCtxt {
+    pub fn monotyp_apply(&self, datatype: &Path, args: &Vec<Path>) -> Path {
+        if args.len() == 0 {
+            datatype.clone()
+        } else {
+            let mut segments = (*datatype.segments).clone();
+            let last = segments.last_mut().expect("last path segment");
+            let ident = Arc::new(format!(
+                "{}{}{}{}",
+                last,
+                MONOTYPE_APP_BEGIN,
+                vec_map(args, |x| self.path_to_string(x)).join(PATHS_SEPARATOR),
+                MONOTYPE_APP_END,
+            ));
+            *last = ident;
+            Arc::new(PathX { krate: datatype.krate.clone(), segments: Arc::new(segments) })
+        }
     }
-}
 
-pub fn monotyp_decorate(dec: crate::ast::TypDecoration, path: &Path) -> Path {
-    let id = Arc::new(format!(
-        "{}{}{}{}{}",
-        MONOTYPE_DECORATE,
-        dec as u32,
-        MONOTYPE_APP_BEGIN,
-        path_to_string(path),
-        MONOTYPE_APP_END
-    ));
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
-}
+    pub fn monotyp_decorate(&self, dec: crate::ast::TypDecoration, path: &Path) -> Path {
+        let id = Arc::new(format!(
+            "{}{}{}{}{}",
+            MONOTYPE_DECORATE,
+            dec as u32,
+            MONOTYPE_APP_BEGIN,
+            self.path_to_string(path),
+            MONOTYPE_APP_END
+        ));
+        Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![id]) })
+    }
 
-pub fn monotyp_decorate2(dec: crate::ast::TypDecoration, args: &Vec<Path>) -> Path {
-    let id = Arc::new(format!(
-        "{}{}{}{}{}",
-        MONOTYPE_DECORATE,
-        dec as u32,
-        MONOTYPE_APP_BEGIN,
-        vec_map(args, |x| path_to_string(x)).join(PATHS_SEPARATOR),
-        MONOTYPE_APP_END
-    ));
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
+    pub fn monotyp_decorate2(&self, dec: crate::ast::TypDecoration, args: &Vec<Path>) -> Path {
+        let id = Arc::new(format!(
+            "{}{}{}{}{}",
+            MONOTYPE_DECORATE,
+            dec as u32,
+            MONOTYPE_APP_BEGIN,
+            vec_map(args, |x| self.path_to_string(x)).join(PATHS_SEPARATOR),
+            MONOTYPE_APP_END
+        ));
+        Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![id]) })
+    }
 }
 
 pub fn name_as_vstd_name(name: &String) -> Option<String> {
@@ -784,13 +974,12 @@ impl CommandContext {
 }
 
 #[derive(Debug)]
-#[derive(Clone)]
 pub struct CommandsWithContextX {
     pub context: CommandContext,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
-    pub hint_upon_failure: std::cell::RefCell<Option<crate::messages::Message>>,
+    pub hint_upon_failure: Mutex<Option<crate::messages::Message>>,
 }
 
 impl CommandsWithContextX {
@@ -807,8 +996,22 @@ impl CommandsWithContextX {
             commands,
             prover_choice,
             skip_recommends,
-            hint_upon_failure: std::cell::RefCell::new(None),
+            hint_upon_failure: Mutex::new(None),
         })
+    }
+}
+
+impl Clone for CommandsWithContextX {
+    fn clone(&self) -> Self {
+        CommandsWithContextX {
+            context: self.context.clone(),
+            commands: self.commands.clone(),
+            prover_choice: self.prover_choice.clone(),
+            skip_recommends: self.skip_recommends.clone(),
+            hint_upon_failure: Mutex::new(
+                self.hint_upon_failure.lock().expect("we abort on poisoning").clone(),
+            ),
+        }
     }
 }
 
@@ -821,10 +1024,10 @@ fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
     }
 }
 
-pub fn fn_inv_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fun {
+pub fn fn_inv_name(atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
-            krate: Some(vstd_crate_name.clone()),
+            krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("invariant".to_string()),
                 atomicity_type_name(atomicity),
@@ -834,9 +1037,9 @@ pub fn fn_inv_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fun {
     })
 }
 
-pub fn create_open_invariant_credit_path(vstd_crate_name: &Option<Ident>) -> Path {
+pub fn create_open_invariant_credit_path() -> Path {
     Arc::new(PathX {
-        krate: vstd_crate_name.clone(),
+        krate: CrateId::Vstd,
         segments: Arc::new(vec![
             Arc::new("invariant".to_string()),
             Arc::new("create_open_invariant_credit".to_string()),
@@ -844,9 +1047,9 @@ pub fn create_open_invariant_credit_path(vstd_crate_name: &Option<Ident>) -> Pat
     })
 }
 
-pub fn spend_open_invariant_credit_path(vstd_crate_name: &Option<Ident>) -> Path {
+pub fn spend_open_invariant_credit_path() -> Path {
     Arc::new(PathX {
-        krate: vstd_crate_name.clone(),
+        krate: CrateId::Vstd,
         segments: Arc::new(vec![
             Arc::new("invariant".to_string()),
             Arc::new("spend_open_invariant_credit".to_string()),
@@ -854,10 +1057,10 @@ pub fn spend_open_invariant_credit_path(vstd_crate_name: &Option<Ident>) -> Path
     })
 }
 
-pub fn fn_namespace_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fun {
+pub fn fn_namespace_name(atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
-            krate: Some(vstd_crate_name.clone()),
+            krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("invariant".to_string()),
                 atomicity_type_name(atomicity),
@@ -867,17 +1070,17 @@ pub fn fn_namespace_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fu
     })
 }
 
-pub fn set_type_path(vstd_crate_name: &Ident) -> Path {
+pub fn set_type_path() -> Path {
     Arc::new(PathX {
-        krate: Some(vstd_crate_name.clone()),
+        krate: CrateId::Vstd,
         segments: Arc::new(vec![Arc::new("set".to_string()), Arc::new("Set".to_string())]),
     })
 }
 
-pub fn fn_set_empty_name(vstd_crate_name: &Ident) -> Fun {
+pub fn fn_set_empty_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
-            krate: Some(vstd_crate_name.clone()),
+            krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("set".to_string()),
                 Arc::new("Set".to_string()),
@@ -887,10 +1090,10 @@ pub fn fn_set_empty_name(vstd_crate_name: &Ident) -> Fun {
     })
 }
 
-pub fn fn_set_full_name(vstd_crate_name: &Ident) -> Fun {
+pub fn fn_set_full_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
-            krate: Some(vstd_crate_name.clone()),
+            krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("set".to_string()),
                 Arc::new("Set".to_string()),
@@ -900,10 +1103,10 @@ pub fn fn_set_full_name(vstd_crate_name: &Ident) -> Fun {
     })
 }
 
-pub fn fn_set_subset_of_name(vstd_crate_name: &Ident) -> Fun {
+pub fn fn_set_subset_of_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
-            krate: Some(vstd_crate_name.clone()),
+            krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("set".to_string()),
                 Arc::new("Set".to_string()),
@@ -913,10 +1116,10 @@ pub fn fn_set_subset_of_name(vstd_crate_name: &Ident) -> Fun {
     })
 }
 
-pub fn fn_set_insert_name(vstd_crate_name: &Ident) -> Fun {
+pub fn fn_set_insert_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
-            krate: Some(vstd_crate_name.clone()),
+            krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("set".to_string()),
                 Arc::new("Set".to_string()),
@@ -926,10 +1129,10 @@ pub fn fn_set_insert_name(vstd_crate_name: &Ident) -> Fun {
     })
 }
 
-pub fn fn_set_remove_name(vstd_crate_name: &Ident) -> Fun {
+pub fn fn_set_remove_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
-            krate: Some(vstd_crate_name.clone()),
+            krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("set".to_string()),
                 Arc::new("Set".to_string()),
@@ -939,10 +1142,10 @@ pub fn fn_set_remove_name(vstd_crate_name: &Ident) -> Fun {
     })
 }
 
-pub fn fn_set_contains_name(vstd_crate_name: &Ident) -> Fun {
+pub fn fn_set_contains_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
-            krate: Some(vstd_crate_name.clone()),
+            krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("set".to_string()),
                 Arc::new("Set".to_string()),
@@ -952,9 +1155,9 @@ pub fn fn_set_contains_name(vstd_crate_name: &Ident) -> Fun {
     })
 }
 
-pub fn strslice_module_path(vstd_crate_name: &Ident) -> Path {
+pub fn strslice_module_path() -> Path {
     Arc::new(PathX {
-        krate: Some(vstd_crate_name.clone()),
+        krate: CrateId::Vstd,
         segments: Arc::new(vec![Arc::new("string".to_string())]),
     })
 }
@@ -1031,40 +1234,56 @@ pub fn unique_var_name(
             out.push_str(USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
+        VarIdentDisambiguate::ResInfTemp(id) => {
+            out.push_str(RES_INF_TEMP_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
     }
     out
 }
 
-pub fn nonstatic_call_fun(vstd_crate_name: &Ident, is_proof: bool) -> Fun {
-    Arc::new(FunX { path: nonstatic_call_path(&Some(vstd_crate_name.clone()), is_proof) })
+pub fn exec_await_path() -> Path {
+    Arc::new(PathX {
+        krate: CrateId::Vstd,
+        segments: Arc::new(vec![
+            Arc::new("future".to_string()),
+            Arc::new("exec_await".to_string()),
+        ]),
+    })
 }
 
-pub fn nonstatic_call_path(vstd_crate_name: &Option<Ident>, is_proof: bool) -> Path {
+pub fn nonstatic_call_fun(is_proof: bool) -> Fun {
+    Arc::new(FunX { path: nonstatic_call_path(is_proof) })
+}
+
+pub fn nonstatic_call_path(is_proof: bool) -> Path {
     let name = if is_proof { "proof_nonstatic_call" } else { "exec_nonstatic_call" };
     Arc::new(PathX {
-        krate: vstd_crate_name.clone(),
+        krate: CrateId::Vstd,
         segments: Arc::new(vec![Arc::new("pervasive".to_string()), Arc::new(name.to_string())]),
     })
 }
 
-pub fn static_name(fun: &Fun) -> Ident {
-    Arc::new(PREFIX_STATIC.to_string() + &fun_to_string(fun))
+impl NameCtxt {
+    pub fn static_name(&self, fun: &Fun) -> Ident {
+        Arc::new(PREFIX_STATIC.to_string() + &self.fun_to_string(fun))
+    }
 }
 
 pub fn break_label(i: u64) -> Ident {
     Arc::new(format!("{}{}", PREFIX_BREAK_LABEL, i))
 }
 
-pub fn array_new_path(vstd_crate_name: &Ident) -> Path {
+pub fn array_new_path() -> Path {
     Arc::new(PathX {
-        krate: Some(vstd_crate_name.clone()),
+        krate: CrateId::Vstd,
         segments: Arc::new(vec![Arc::new("array".to_string()), Arc::new("array_new".to_string())]),
     })
 }
 
 pub(crate) fn option_type_path() -> Path {
     Arc::new(PathX {
-        krate: Some(Arc::new("core".to_string())),
+        krate: CrateId::Core,
         segments: Arc::new(vec![Arc::new("option".to_string()), Arc::new("Option".to_string())]),
     })
 }

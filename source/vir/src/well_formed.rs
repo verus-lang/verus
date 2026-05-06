@@ -1,13 +1,13 @@
 use crate::ast::{
-    BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX,
-    FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
-    Pattern, PatternX, Place, PlaceX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent,
-    VirErr, VirErrAs, Visibility,
+    BodyVisibility, CallTarget, CallTargetKind, Constant, Datatype, DatatypeTransparency, Dt, Expr,
+    ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
+    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypDecoration, TypX, UnaryOp,
+    UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
-    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
-    path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
-    undecorate_typ,
+    ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name, get_field_or_err,
+    get_variant_or_err, is_body_visible_to, is_visible_to_opt, path_as_friendly_rust_name,
+    referenced_vars_expr, typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
@@ -21,19 +21,28 @@ struct Ctxt<'a> {
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) reveal_groups: HashSet<Fun>,
     pub(crate) dts: HashMap<Path, Datatype>,
+    pub(crate) traits: HashMap<Path, Trait>,
     pub(crate) krate: &'a Krate,
     unpruned_krate: &'a Krate,
     no_cheating: bool,
 }
 
+/// Details from well-formedness checking.
+pub struct CheckDetails {
+    /// For each function, collects proof notes that fail due to `--no-cheating`.
+    pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
+}
+
 trait EmitError {
     fn emit(&mut self, path: Option<Path>, err: VirErrAs);
     fn has_fatal_errors(&self) -> bool;
+    fn record_func_failed_proof_note(&mut self, func: Fun, note: String);
 }
 
 struct EmitErrorState {
     diags: Vec<VirErrAs>,
     diag_map: HashMap<Path, usize>,
+    func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
 }
 
 impl EmitError for EmitErrorState {
@@ -56,6 +65,10 @@ impl EmitError for EmitErrorState {
             _ => false,
         })
     }
+
+    fn record_func_failed_proof_note(&mut self, func: Fun, note: String) {
+        self.func_failed_proof_notes.entry(func).or_default().insert(note);
+    }
 }
 
 #[warn(unused_must_use)]
@@ -70,12 +83,57 @@ fn check_one_typ<Emit: EmitError>(
             let _ = check_path_and_get_datatype(ctxt, path, span, emit)?;
             Ok(())
         }
+        TypX::Dyn(path, _, _) => {
+            if let Some(tr) = ctxt.traits.get(path) {
+                use crate::ast::DynCompatible;
+                match &**tr.x.dyn_compatible.as_ref().expect("dyn_compatible should be Some") {
+                    DynCompatible::Accept => Ok(()),
+                    DynCompatible::Reject { reason } => {
+                        let msg = format!("Trait is not Verus dyn-compatible: {}", reason);
+                        Err(error(span, msg))
+                    }
+                    DynCompatible::RejectUnsizedBlanketImpl { trait_path } => {
+                        let name = path_as_friendly_rust_name(trait_path);
+                        let msg = format!(
+                            "Verus disallows dyn for trait {} because it has an unsized blanket impl (see https://github.com/rust-lang/rust/issues/57893 )",
+                            name,
+                        );
+                        Err(error(span, msg))
+                    }
+                }
+            } else {
+                Err(error(
+                    span,
+                    &format!("trait {} not declared to Verus", path_as_friendly_rust_name(path)),
+                ))
+            }
+        }
         TypX::FnDef(fun, _typs, opt_res_fun) => {
             check_function_access(ctxt, fun, None, span, emit)?;
             if let Some(res_fun) = opt_res_fun {
                 check_function_access(ctxt, res_fun, None, span, emit)?;
             }
             Ok(())
+        }
+        TypX::Projection { trait_typ_args: _, trait_path, name } => {
+            if let Some(tr) = ctxt.traits.get(trait_path) {
+                if tr.x.assoc_typs.iter().any(|n| n == name) {
+                    Ok(())
+                } else {
+                    Err(error(
+                        span,
+                        &format!("Verus does not recognize associated type `{}` of trait `{}`", name, path_as_friendly_rust_name(trait_path)),
+                    ).help("If this trait was declared to Verus via `external_trait_specification`, it may need the associated type declared"))
+                }
+            } else {
+                Err(error(
+                    span,
+                    &format!(
+                        "trait {} not declared to Verus",
+                        path_as_friendly_rust_name(trait_path)
+                    ),
+                ))
+            }
         }
         _ => Ok(()),
     }
@@ -382,13 +440,10 @@ fn check_one_expr<Emit: EmitError>(
     emit: &mut Emit,
 ) -> Result<(), VirErr> {
     match &expr.x {
-        ExprX::Var(x) => {
-            check_var(function, &expr.span, area, x)?;
-        }
         ExprX::ConstVar(x, _) => {
             check_function_access(ctxt, x, disallow_private_access, &expr.span, emit)?;
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), args, _post_args) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), _args, _post_args) => {
             if attrs.assume_external_allowed && !ctxt.funs.contains_key(x) {
                 if ctxt.no_cheating {
                     return Err(error(
@@ -437,34 +492,6 @@ fn check_one_expr<Emit: EmitError>(
                     "cannot call a broadcast_forall function with 0 arguments directly",
                 ));
             }
-            for (_param, arg) in f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut) {
-                fn is_ok(e: &Expr) -> bool {
-                    match &e.x {
-                        ExprX::VarLoc(_) => true,
-                        ExprX::Unary(UnaryOp::CoerceMode { .. }, e1) => is_ok(e1),
-                        ExprX::UnaryOpr(UnaryOpr::Field { .. }, base) => is_ok(base),
-                        ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => is_ok(e1),
-                        ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => is_ok(e1),
-                        _ => false,
-                    }
-                }
-                let arg_x = match &arg.x {
-                    // Tracked(&mut x) and Ghost(&mut x) arguments appear as
-                    // Expr::Ghost { ... Expr::Loc ... }
-                    ExprX::Ghost { alloc_wrapper: true, tracked: _, expr: e } => &e.x,
-                    e => e,
-                };
-                let is_ok = match &arg_x {
-                    ExprX::Loc(l) => is_ok(l),
-                    _ => false,
-                };
-                if !is_ok {
-                    return Err(error(
-                        &arg.span,
-                        "complex arguments to &mut parameters are currently unsupported",
-                    ));
-                }
-            }
         }
         ExprX::Ctor(Dt::Path(path), _variant, _fields, _update) => {
             check_datatype_access(
@@ -476,14 +503,6 @@ fn check_one_expr<Emit: EmitError>(
                 "constructor",
                 emit,
             )?;
-        }
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => {
-            if !crate::ast_util::type_is_bool(&e.typ) {
-                return Err(error(
-                    &expr.span,
-                    "`custom_err` attribute only makes sense for bool expressions",
-                ));
-            }
         }
         ExprX::UnaryOpr(
             UnaryOpr::Field(FieldOpr {
@@ -537,9 +556,7 @@ fn check_one_expr<Emit: EmitError>(
                 &mut crate::ast_visitor::VisitorScopeMap::new(),
                 &mut (),
                 &mut |_, scope_map, e| match &e.x {
-                    ExprX::Var(x) | ExprX::VarLoc(x)
-                        if !scope_map.contains_key(&x) && !referenced.contains(x) =>
-                    {
+                    ExprX::Var(x) if !scope_map.contains_key(&x) && !referenced.contains(x) => {
                         Err(error(
                             &e.span,
                             format!("variable {} not mentioned in requires/ensures", x).as_str(),
@@ -561,9 +578,20 @@ fn check_one_expr<Emit: EmitError>(
                 },
             )?;
         }
-        ExprX::AssertAssume { is_assume, .. } => {
+        ExprX::AssertAssume { is_assume, expr: inner_expr, .. } => {
             if ctxt.no_cheating && *is_assume {
-                return Err(error(&expr.span, "assume/admit not allowed with --no-cheating"));
+                let mut msg = error(&expr.span, "assume/admit not allowed with --no-cheating");
+                if let Some(label) = ast_expr_get_proof_note(inner_expr) {
+                    msg =
+                        msg.proof_note_label(&expr.span, label.text.as_str(), label.is_custom_err);
+                    if !label.is_custom_err {
+                        emit.record_func_failed_proof_note(
+                            function.x.name.clone(),
+                            label.text.to_string(),
+                        );
+                    }
+                }
+                emit.emit(None, VirErrAs::NonFatalError(msg, None));
             }
         }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
@@ -629,19 +657,11 @@ fn check_one_expr<Emit: EmitError>(
         ExprX::ExecFnByName(fun) => {
             let func =
                 check_path_and_get_function(ctxt, fun, disallow_private_access, &expr.span, emit)?;
-            let Ok(func) = func else {
+            let Ok(_func) = func else {
                 // Found an error resolving f; skip this and proceed to find more errors
                 assert!(emit.has_fatal_errors());
                 return Ok(());
             };
-            for param in func.x.params.iter() {
-                if param.x.is_mut {
-                    return Err(error(
-                        &expr.span,
-                        "not supported: using a function that takes '&mut' params as a value",
-                    ));
-                }
-            }
         }
         ExprX::ProofInSpec(_) => {
             // At the moment, spec termination checking is the only place set up to handle
@@ -664,10 +684,160 @@ fn check_one_expr<Emit: EmitError>(
             return Err(error(
                 &expr.span,
                 format!(
-                    "This kind of statement should go at the {:}",
+                    "This verus_builtin header should go at the {:} (this is probably a Verus bug, unless you are manually writing calls to Verus builtin headers, which is unusual)",
                     header.location_for_diagnostic()
                 ),
             ));
+        }
+        ExprX::Unary(UnaryOp::MutRefFinal(migrated), _) => {
+            return Err(error(
+                &expr.span,
+                if *migrated {
+                    "This `&mut` parameter must be dereferenced (either explicitly, as in `*x`, or implicitly, as in `x.field`). For more flexible mutable reference support, disable the backwards-compatability (add #[verifier::deprecated_postcondition_mut_ref_style(false)] to the function)"
+                } else {
+                    "The result of `final` must be dereferenced (either explicitly, as in `*final(x)`, or implicitly, as in `final(x).field`)"
+                },
+            ));
+        }
+        ExprX::Match(_place, arms) => {
+            for (i, arm) in arms.iter().enumerate() {
+                // Error if the arm contains more than 1 of these 3 nontrivial features:
+                let has_guard = !matches!(&arm.x.guard.x, ExprX::Const(Constant::Bool(true)));
+                let has_or = crate::patterns::pattern_has_or(&arm.x.pattern);
+                let has_ref_mut_binding = crate::patterns::pattern_find_mut_binding(&arm.x.pattern);
+
+                if has_guard && has_or {
+                    // This is nontrivial because we might need to evaluate the guard condition more than once
+                    return Err(error(
+                        &arm.x.pattern.span,
+                        "Not supported: match arm containing both an or-pattern (|) and a match-guard",
+                    ));
+                }
+                if let Some(span) = has_ref_mut_binding {
+                    if has_or {
+                        // This probably isn't that bad to support
+                        return Err(error(
+                            &span,
+                            "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
+                        ));
+                    }
+                    if has_guard {
+                        // This is complicated because we need to create a mutable borrow to evaluate
+                        // the test condition, but the mutable borrow is immutable until it ends
+                        return Err(error(
+                            &span,
+                            "Not supported: match arm containing both a match-guard and a binding by mutable reference",
+                        ));
+                    }
+                }
+
+                // Error if the last arm has a guard (this would just be a warning from Rust)
+                if i == arms.len() - 1 && has_guard {
+                    return Err(error(
+                        &arm.x.guard.span,
+                        "Not supported: match where the last arm has a match guard (this would necessarily mean the entire arm is unreachable)",
+                    ));
+                }
+            }
+        }
+        ExprX::Old(..) if function.x.mode == Mode::Spec => {
+            return Err(error(
+                &expr.span,
+                "`old` is meaningless in spec functions",
+            ).help("You can dereference the mutable reference normally to get the \"current\"/\"old\" value"));
+        }
+        ExprX::ShrRefStructWrap(_e1, _e2, t1, t2, variant_ident, field_ident) => {
+            let datatype_typ = undecorate_typ(&t2);
+            let (dt, typ_args) = match &*datatype_typ {
+                TypX::Datatype(dt, typ_args, ..) => (dt, typ_args),
+                _ => {
+                    return Err(error(
+                        &expr.span,
+                        "second argument to `shr_ref_struct_wrap` should be a datatype",
+                    ));
+                }
+            };
+            let Dt::Path(path) = dt else {
+                return Err(error(&expr.span, "shr_ref_struct_wrap not supported for tuples"));
+            };
+            check_datatype_access(
+                ctxt,
+                path,
+                disallow_private_access,
+                &function.x.owning_module,
+                &expr.span,
+                "`shr_ref_struct_wrap` operator",
+                emit,
+            )?;
+            let datatype = ctxt.dts.get(path).unwrap();
+            let variant = if datatype.x.variants.len() == 1 && **variant_ident == "" {
+                &datatype.x.variants[0]
+            } else {
+                get_variant_or_err(&expr.span, &datatype.x.variants, variant_ident)?
+            };
+            let field = get_field_or_err(&expr.span, &variant.fields, field_ident)?;
+            let field_typ = crate::sst_util::subst_typ_for_datatype(
+                &datatype.x.typ_params,
+                typ_args,
+                &field.a.0,
+            );
+            // REVIEW: not robust to normalization
+            if !types_equal(t1, &field_typ) {
+                return Err(error(
+                    &expr.span,
+                    format!(
+                        "shr_ref_struct_wrap: first argument of type `{:}` should match field type `{:}`",
+                        typ_to_diagnostic_str(t1),
+                        typ_to_diagnostic_str(&field_typ)
+                    ),
+                ));
+            }
+            if datatype.x.mode == Mode::Spec {
+                return Err(error(
+                    &expr.span,
+                    "shr_ref_struct_wrap cannot target ghost-mode datatype",
+                ));
+            };
+            if field.a.1 == Mode::Spec {
+                return Err(error(
+                    &expr.span,
+                    "shr_ref_struct_wrap cannot target ghost-mode field",
+                ));
+            }
+            for field in variant.fields.iter() {
+                if &field.name != field_ident {
+                    if field.a.1 != Mode::Spec
+                        && !matches!(&*field.a.0, TypX::Decorate(TypDecoration::Ghost, ..))
+                    {
+                        return Err(error(
+                            &expr.span,
+                            format!(
+                                "shr_ref_struct_wrap can only be applied when all other fields of the relevant variant are ghost-mode or of type Ghost (field `{:}` does not meet this requirement)",
+                                &field.name
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn check_one_stmt(_ctxt: &Ctxt, stmt: &Stmt) -> Result<(), VirErr> {
+    match &stmt.x {
+        StmtX::Decl { pattern, .. } => {
+            let has_ref_mut_binding = crate::patterns::pattern_find_mut_binding(&pattern);
+            if let Some(span) = has_ref_mut_binding {
+                let has_or = crate::patterns::pattern_has_or(&pattern);
+                if has_or {
+                    return Err(error(
+                        &span,
+                        "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
+                    ));
+                }
+            }
         }
         _ => {}
     }
@@ -679,13 +849,10 @@ fn check_one_place<Emit: EmitError>(
     function: &Function,
     place: &Place,
     disallow_private_access: Option<(&Visibility, &str)>,
-    area: Area,
+    _area: Area,
     emit: &mut Emit,
 ) -> Result<(), VirErr> {
     match &place.x {
-        PlaceX::Local(x) => {
-            check_var(function, &place.span, area, x)?;
-        }
         PlaceX::Field(
             FieldOpr { datatype: Dt::Path(path), variant: _, field: _, get_variant: _, check: _ },
             _,
@@ -701,24 +868,6 @@ fn check_one_place<Emit: EmitError>(
             )?;
         }
         _ => {}
-    }
-    Ok(())
-}
-
-fn check_var(function: &Function, span: &Span, area: Area, x: &VarIdent) -> Result<(), VirErr> {
-    if let Area::PreState(clause_name) = area {
-        for param in function.x.params.iter().filter(|p| p.x.is_mut) {
-            if *x == param.x.name {
-                return Err(error(
-                    span,
-                    format!(
-                        "in {}, use `old({})` to refer to the pre-state of an &mut variable",
-                        clause_name,
-                        crate::def::user_local_name(&param.x.name)
-                    ),
-                ));
-            }
-        }
     }
     Ok(())
 }
@@ -747,6 +896,7 @@ fn check_one_pattern<Emit: EmitError>(
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 enum Area {
     PreState(&'static str),
@@ -768,7 +918,7 @@ fn check_expr<Emit: EmitError>(
         &mut |emit, _scope_map, expr: &Arc<crate::ast::SpannedTyped<ExprX>>| {
             check_one_expr(ctxt, function, expr, disallow_private_access, area, emit)
         },
-        &mut |_emit, _scope_map, _stmt| Ok(()),
+        &mut |_emit, _scope_map, stmt| check_one_stmt(ctxt, stmt),
         &mut |emit, _scope_map, pattern: &Arc<crate::ast::SpannedTyped<PatternX>>| {
             check_one_pattern(ctxt, function, pattern, disallow_private_access, emit)
         },
@@ -961,12 +1111,6 @@ fn check_function<Emit: EmitError>(
             if param.x.mode != Mode::Spec {
                 return Err(error(&function.span, "broadcast function must have spec parameters"));
             }
-            if param.x.is_mut {
-                return Err(error(
-                    &function.span,
-                    "broadcast function cannot have &mut parameters",
-                ));
-            }
         }
     }
 
@@ -1025,10 +1169,9 @@ fn check_function<Emit: EmitError>(
     }
 
     if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
-        return Err(error(
-            &function.span,
-            "#[verifier::assume_termination] not allowed with --no-cheating",
-        ));
+        let msg =
+            error(&function.span, "#[verifier::assume_termination] not allowed with --no-cheating");
+        emit.emit(None, VirErrAs::NonFatalError(msg, None));
     }
 
     #[cfg(feature = "singular")]
@@ -1347,10 +1490,11 @@ fn check_function<Emit: EmitError>(
             // Allow external_body/assume_specification inside vstd
             Some(path) if path.is_vstd_path() => {}
             _ => {
-                return Err(error(
+                let msg = error(
                     &function.span,
                     "external_body/assume_specification not allowed with --no-cheating",
-                ));
+                );
+                emit.emit(None, VirErrAs::NonFatalError(msg, None));
             }
         }
     }
@@ -1569,7 +1713,7 @@ pub fn check_crate(
     diags: &mut Vec<VirErrAs>,
     no_verify: bool,
     no_cheating: bool,
-) -> Result<(), VirErr> {
+) -> Result<CheckDetails, VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
         match funs.get(&function.x.name) {
@@ -1818,8 +1962,9 @@ pub fn check_crate(
 
     let diag_map: HashMap<Path, usize> = HashMap::new();
     let new_diags: Vec<VirErrAs> = Vec::new();
-    let mut emit = EmitErrorState { diag_map, diags: new_diags };
-    let ctxt = Ctxt { funs, reveal_groups, dts, krate, unpruned_krate, no_cheating };
+    let mut emit =
+        EmitErrorState { diag_map, diags: new_diags, func_failed_proof_notes: HashMap::new() };
+    let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
         check_function(&ctxt, function, &mut emit, no_verify)?;
@@ -1842,8 +1987,8 @@ pub fn check_crate(
     diags.append(&mut emit.diags);
     // There is no point in checking for well-founded types if we already have a fatal error:
     if diags.iter().any(|x| matches!(x, VirErrAs::NonBlockingError(..))) {
-        return Ok(());
+        return Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes });
     }
     crate::recursive_types::check_recursive_types(krate)?;
-    Ok(())
+    Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes })
 }

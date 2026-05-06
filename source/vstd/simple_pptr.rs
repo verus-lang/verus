@@ -36,7 +36,7 @@ verus! {
 /// The `perm: PointsTo<V>` object tracks two pieces of data:
 ///  * [`perm.pptr()`](PointsTo::pptr) is the pointer that the permission is associated to.
 ///  * [`perm.mem_contents()`](PointsTo::mem_contents) is the memory contents, which is one of either:
-///     * [`MemContents::Uninit`](raw_ptr::MemContents::Uninit) if the memory pointed-to by
+///     * [`MemContents::Uninit`] if the memory pointed-to by
 ///       by the pointer is uninitialized.
 ///     * [`MemContents::Init(v)`](raw_ptr::MemContents::Init) if the memory points-to the
 ///       the value `v`.
@@ -284,21 +284,30 @@ impl<V> PointsTo<V> {
     /// Note that this is a `proof` function, i.e., it is operationally a no-op in executable code.
     pub proof fn leak_contents(tracked &mut self)
         ensures
-            self.pptr() == old(self).pptr(),
-            self.is_uninit(),
+            final(self).pptr() == old(self).pptr(),
+            final(self).is_uninit(),
     {
         use_type_invariant(&*self);
         self.points_to.leak_contents();
     }
 
-    /// Guarantees that two distinct `PointsTo<V>` objects point to disjoint ranges of memory.
-    /// If both S and V are non-zero-sized, then this also implies the pointers
+    /// Guarantees that two distinct, non-ZST `PointsTo<V>` objects point to disjoint ranges of memory.
+    /// Since both S and V are non-zero-sized, this also implies the pointers
     /// have distinct addresses.
+    ///
+    /// Note: If either S or T is zero-sized, we get disjointness "for free" without having to call this proof,
+    /// since the empty memory range corresponding to a ZST cannot possibly intersect with any other memory.
+    /// However, note that if one type is a ZST and the other is a non-ZST,
+    /// the disjointness definition as stated here here does not hold,
+    /// since the ZST pointer could be in the middle of the non-ZST's range.
     pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
+        requires
+            size_of::<V>() != 0,
+            size_of::<S>() != 0,
         ensures
-            *old(self) == *self,
-            self.addr() + size_of::<V>() <= other.addr() || other.addr() + size_of::<S>()
-                <= self.addr(),
+            *old(self) == *final(self),
+            final(self).addr() + size_of::<V>() <= other.addr() || other.addr() + size_of::<S>()
+                <= final(self).addr(),
     {
         use_type_invariant(&*self);
         self.points_to.is_disjoint(&other.points_to);
@@ -311,8 +320,8 @@ impl<V> PointsTo<V> {
             size_of::<V>() != 0,
             size_of::<S>() != 0,
         ensures
-            *old(self) == *self,
-            self.addr() != other.addr(),
+            *old(self) == *final(self),
+            final(self).addr() != other.addr(),
     {
         use_type_invariant(&*self);
         self.points_to.is_disjoint(&other.points_to);
@@ -444,8 +453,8 @@ impl<V> PPtr<V> {
             old(perm).pptr() == self,
             old(perm).mem_contents() == MemContents::Uninit::<V>,
         ensures
-            perm.pptr() == old(perm).pptr(),
-            perm.mem_contents() == MemContents::Init(v),
+            final(perm).pptr() == old(perm).pptr(),
+            final(perm).mem_contents() == MemContents::Init(v),
         opens_invariants none
         no_unwind
     {
@@ -469,8 +478,8 @@ impl<V> PPtr<V> {
             old(perm).pptr() == self,
             old(perm).is_init(),
         ensures
-            perm.pptr() == old(perm).pptr(),
-            perm.mem_contents() == MemContents::Uninit::<V>,
+            final(perm).pptr() == old(perm).pptr(),
+            final(perm).mem_contents() == MemContents::Uninit::<V>,
             v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -490,8 +499,8 @@ impl<V> PPtr<V> {
             old(perm).pptr() == self,
             old(perm).is_init(),
         ensures
-            perm.pptr() == old(perm).pptr(),
-            perm.mem_contents() == MemContents::Init(in_v),
+            final(perm).pptr() == old(perm).pptr(),
+            final(perm).mem_contents() == MemContents::Init(in_v),
             out_v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -523,13 +532,34 @@ impl<V> PPtr<V> {
         ptr_ref(ptr, Tracked(&perm.points_to))
     }
 
+    /// Given a shared borrow of the `PointsTo<V>`, obtain a shared borrow of `V`.
+    #[inline(always)]
+    pub fn borrow_mut<'a>(self, Tracked(perm): Tracked<&'a mut PointsTo<V>>) -> (v: &'a mut V)
+        requires
+            perm.pptr() == self,
+            perm.is_init(),
+        ensures
+            final(perm).pptr() == self,
+            final(perm).is_init(),
+            *v === old(perm).value(),
+            final(perm).value() == *final(v),
+        opens_invariants none
+        no_unwind
+    {
+        proof {
+            use_type_invariant(&*perm);
+        }
+        let ptr: *mut V = with_exposed_provenance(self.0, Tracked(perm.exposed));
+        ptr_mut_ref(ptr, Tracked(&mut perm.points_to))
+    }
+
     #[inline(always)]
     pub fn write(self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) where V: Copy
         requires
             old(perm).pptr() == self,
         ensures
-            perm.pptr() === old(perm).pptr(),
-            perm.mem_contents() === MemContents::Init(in_v),
+            final(perm).pptr() === old(perm).pptr(),
+            final(perm).mem_contents() === MemContents::Init(in_v),
         opens_invariants none
         no_unwind
     {

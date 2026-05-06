@@ -143,6 +143,14 @@ fn test_i32_checked_div() {
     runtime_assert(lhs.checked_div(47).unwrap() == -1);
 }
 
+fn test_u32_is_multiple_of() {
+    runtime_assert(28u32.is_multiple_of(4u32));
+    runtime_assert(!29u32.is_multiple_of(3u32));
+    runtime_assert(0u32.is_multiple_of(8u32));
+    runtime_assert(0u32.is_multiple_of(0u32));
+    runtime_assert(!4u32.is_multiple_of(0u32));
+}
+
 fn test_i32_checked_div_euclid() {
     let lhs: i32 = -97;
     runtime_assert(1i32.checked_div_euclid(0).is_none());

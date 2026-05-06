@@ -1,11 +1,11 @@
 use crate::ast::{
-    ArchWordBits, Datatype, Dt, Fun, Function, FunctionAttrs, GenericBounds, Ident, ImplPath,
-    IntRange, Krate, Mode, Module, OpaqueType, Path, Primitive, Trait, TypPositives, TypX,
-    Variants, VirErr,
+    ArchWordBits, CrateId, Datatype, Dt, Fun, Function, FunctionAttrs, GenericBounds, Ident,
+    ImplPath, IntRange, Krate, Mode, Module, OpaqueType, Path, Primitive, Trait, TraitImpl,
+    TypPositives, TypX, Variants, VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
-use crate::def::FUEL_ID;
+use crate::def::{FUEL_ID, NameCtxt};
 use crate::messages::{Span, error};
 use crate::poly::MonoTyp;
 use crate::recursion::Node;
@@ -48,18 +48,18 @@ pub struct GlobalCtx {
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     pub(crate) datatype_graph_span_infos: Vec<Span>,
     pub trait_impl_to_extensions: HashMap<Path, Vec<Path>>,
+    /// Map TSpec to T
+    pub(crate) extension_to_trait: HashMap<Path, Path>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
     pub(crate) func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
     pub arch: crate::ast::ArchWordBits,
-    pub crate_name: Ident,
-    pub vstd_crate_name: Ident,
+    pub crate_name: CrateId,
     pub solver: SmtSolver,
     pub check_api_safety: bool,
     pub axiom_usage_info: bool,
-    pub new_mut_ref: bool,
     pub no_bv_simplify: bool,
     pub report_long_running: bool,
 }
@@ -89,6 +89,7 @@ pub struct Ctx {
     pub(crate) datatypes_with_invariant: HashSet<Dt>,
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) spec_fn_types: Vec<usize>,
+    pub(crate) reached_dyn_traits: HashSet<Path>,
     pub(crate) used_builtins: crate::prune::UsedBuiltins,
     pub(crate) fndef_types: Vec<Fun>,
     pub(crate) resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
@@ -105,6 +106,8 @@ pub struct Ctx {
     pub(crate) funcs_with_ensure_predicate: HashMap<Fun, bool>,
     pub(crate) datatype_map: HashMap<Dt, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
+    pub(crate) impl_map: HashMap<Path, TraitImpl>,
+    pub name_ctxt: NameCtxt,
     pub fun: Option<FunctionCtx>,
     pub global: GlobalCtx,
     // In the very unlikely case where we get sha512 collisions
@@ -181,11 +184,13 @@ fn datatypes_invs(
                         // Should be kept in sync with vir::sst_to_air::typ_invariant
                         TypX::Int(IntRange::Int) => {}
                         TypX::Int(_)
+                        | TypX::Dyn(..)
                         | TypX::TypParam(_)
                         | TypX::Projection { .. }
                         | TypX::PointeeMetadata(_) => {
                             roots.insert(container_name.clone());
                         }
+                        TypX::Real => {}
                         TypX::SpecFn(..) => {
                             roots.insert(container_name.clone());
                         }
@@ -270,7 +275,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> GraphBuilder<T> {
 impl GlobalCtx {
     pub fn new(
         krate: &Krate,
-        crate_name: Ident,
+        crate_name: CrateId,
         no_span: Span,
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
@@ -279,7 +284,6 @@ impl GlobalCtx {
         after_simplify: bool,
         check_api_safety: bool,
         axiom_usage_info: bool,
-        new_mut_ref: bool,
         no_bv_simplify: bool,
         report_long_running: bool,
     ) -> Result<Self, VirErr> {
@@ -306,9 +310,16 @@ impl GlobalCtx {
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
 
+        let mut trait_map: HashMap<Path, Trait> = HashMap::new();
+        for tr in krate.traits.iter() {
+            assert!(!trait_map.contains_key(&tr.x.name));
+            trait_map.insert(tr.x.name.clone(), tr.clone());
+        }
+
         use crate::ast::TraitImpl;
         let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
         let mut trait_impl_to_extensions: HashMap<Path, Vec<Path>> = HashMap::new();
+        let mut trait_impl_from_extension: HashMap<Path, Path> = HashMap::new();
         let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
         let mut replace_with: HashMap<Node, Node> = HashMap::new();
         for t in &krate.traits {
@@ -351,6 +362,9 @@ impl GlobalCtx {
                     Node::TraitImpl(ImplPath::TraitImplPath(origin_impl.x.impl_path.clone()));
                 assert!(!replace_with.contains_key(&extension_node));
                 replace_with.insert(extension_node, origin_node);
+                assert!(!trait_impl_from_extension.contains_key(&trait_impl.x.impl_path));
+                trait_impl_from_extension
+                    .insert(trait_impl.x.impl_path.clone(), origin_impl.x.impl_path.clone());
                 trait_impl_to_extensions
                     .entry(origin_impl.x.impl_path.clone())
                     .or_default()
@@ -371,6 +385,19 @@ impl GlobalCtx {
         // For the moment, we have some legacy heuristics that used to be necessary,
         // should no longer be necessary, and may or may not make the ordering more stable.
 
+        for t in &krate.trait_impls {
+            if let Some(last) = &t.x.impl_path.segments.last() {
+                if last.starts_with(crate::def::PREFIX_IMPL_TUPLE) {
+                    // Our internally auto-generated tuple impls don't depend on any other impls,
+                    // so they can always appear first.
+                    // Furthermore, we currently lack the impl_path dependency edges that
+                    // should point to the impl, so the impl isn't ordered in the
+                    // strongly connected component graph, so we have to explicitly put them first.
+                    func_call_graph
+                        .add_node(Node::TraitImpl(ImplPath::TraitImplPath(t.x.impl_path.clone())));
+                }
+            }
+        }
         for t in &krate.traits {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
         }
@@ -436,7 +463,9 @@ impl GlobalCtx {
 
             crate::recursion::expand_call_graph(
                 &func_map,
+                &trait_map,
                 &trait_impl_map,
+                &trait_impl_from_extension,
                 &reveal_group_set,
                 &mut func_call_graph,
                 &mut span_infos,
@@ -462,7 +491,7 @@ impl GlobalCtx {
         for module in &krate.modules {
             let module_reveal_node = Node::ModuleReveal(module.x.path.clone());
             func_call_graph.add_node(module_reveal_node.clone());
-            if module.x.path.krate == Some(crate_name.clone()) {
+            if module.x.path.krate == crate_name {
                 func_call_graph.add_edge(module_reveal_node.clone(), crate_node.clone());
             }
             if let Some(ref reveals) = module.x.reveals {
@@ -515,6 +544,7 @@ impl GlobalCtx {
                         if let Some(trait_impl) = method_impl_map.get(f1) {
                             let impl_path = ImplPath::TraitImplPath(trait_impl.clone());
                             let trait_impl = Node::TraitImpl(impl_path);
+                            let trait_impl = func_call_graph.replace(trait_impl);
                             // Do we already have f4 --> trait_impl?
                             for ti in get_edges_from(&func_call_graph.graph, &node_f4) {
                                 if *ti == trait_impl {
@@ -583,9 +613,9 @@ impl GlobalCtx {
             }
 
             fn nostd_filter(n: &Node) -> (bool, bool) {
-                fn is_not_std_crate(crate_name: &Option<Ident>) -> bool {
-                    match crate_name.as_ref().map(|x| x.as_str()) {
-                        Some("vstd") | Some("core") | Some("alloc") => false,
+                fn is_not_std_crate(crate_name: &CrateId) -> bool {
+                    match crate_name {
+                        CrateId::Core | CrateId::Alloc | CrateId::Vstd => false,
                         _ => true,
                     }
                 }
@@ -602,7 +632,7 @@ impl GlobalCtx {
                     Node::TraitReqEns(ImplPath::TraitImplPath(path), _) => is_not_std(path),
                     Node::TraitReqEns(ImplPath::FnDefImplPath(fun), _) => is_not_std(&fun.path),
                     Node::ModuleReveal(path) => is_not_std(path),
-                    Node::Crate(c) => is_not_std_crate(&Some(c.clone())),
+                    Node::Crate(c) => is_not_std_crate(c),
                     Node::SpanInfo { .. } => true,
                 };
                 (render, render && !matches!(n, Node::SpanInfo { .. }))
@@ -645,7 +675,6 @@ impl GlobalCtx {
         let qid_map = RefCell::new(HashMap::new());
 
         let datatype_graph = crate::recursive_types::build_datatype_graph(krate, &mut span_infos);
-        let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
 
         Ok(GlobalCtx {
             chosen_triggers,
@@ -657,18 +686,17 @@ impl GlobalCtx {
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
             datatype_graph_span_infos: span_infos,
+            extension_to_trait,
             trait_impl_to_extensions,
             qid_map,
             rlimit,
             interpreter_log,
             arch: krate.arch.word_bits,
             crate_name,
-            vstd_crate_name,
             func_call_graph_log,
             solver,
             check_api_safety,
             axiom_usage_info,
-            new_mut_ref,
             no_bv_simplify,
             report_long_running,
         })
@@ -689,18 +717,17 @@ impl GlobalCtx {
             datatype_graph: self.datatype_graph.clone(),
             datatype_graph_span_infos: self.datatype_graph_span_infos.clone(),
             func_call_sccs: self.func_call_sccs.clone(),
+            extension_to_trait: self.extension_to_trait.clone(),
             trait_impl_to_extensions: self.trait_impl_to_extensions.clone(),
             qid_map,
             rlimit: self.rlimit,
             interpreter_log,
             arch: self.arch,
             crate_name: self.crate_name.clone(),
-            vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
             solver: self.solver.clone(),
             check_api_safety: self.check_api_safety,
             axiom_usage_info: self.axiom_usage_info,
-            new_mut_ref: self.new_mut_ref,
             no_bv_simplify: self.no_bv_simplify,
             report_long_running: self.report_long_running,
         }
@@ -731,11 +758,13 @@ impl Ctx {
         module: Module,
         mono_types: Vec<MonoTyp>,
         spec_fn_types: Vec<usize>,
+        reached_dyn_traits: HashSet<Path>,
         used_builtins: crate::prune::UsedBuiltins,
         fndef_types: Vec<Fun>,
         resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
         debug: bool,
     ) -> Result<Self, VirErr> {
+        let name_ctxt = NameCtxt::new();
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
             datatype_is_transparent
@@ -749,7 +778,8 @@ impl Ctx {
         let funcs_with_ensure_predicate: HashMap<Fun, bool> = HashMap::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
-            fun_ident_map.insert(fun_to_air_ident(&function.x.name), function.x.name.clone());
+            fun_ident_map
+                .insert(fun_to_air_ident(&name_ctxt, &function.x.name), function.x.name.clone());
             functions.push(function.clone());
         }
         let mut datatype_map: HashMap<Dt, Datatype> = HashMap::new();
@@ -760,9 +790,14 @@ impl Ctx {
         for tr in krate.traits.iter() {
             trait_map.insert(tr.x.name.clone(), tr.clone());
         }
+        let mut impl_map: HashMap<Path, TraitImpl> = HashMap::new();
+        for ti in krate.trait_impls.iter() {
+            impl_map.insert(ti.x.impl_path.clone(), ti.clone());
+        }
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
-        fun_ident_map.extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&g), g.clone())));
+        fun_ident_map
+            .extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&name_ctxt, &g), g.clone())));
         let quantifier_count = Cell::new(0);
         let string_hashes = RefCell::new(HashMap::new());
 
@@ -781,6 +816,7 @@ impl Ctx {
             datatypes_with_invariant,
             mono_types,
             spec_fn_types,
+            reached_dyn_traits,
             used_builtins,
             fndef_types,
             resolved_typs,
@@ -795,6 +831,8 @@ impl Ctx {
             funcs_with_ensure_predicate,
             datatype_map,
             trait_map,
+            impl_map,
+            name_ctxt,
             fun: None,
             global,
             string_hashes,
@@ -808,8 +846,8 @@ impl Ctx {
         self.global
     }
 
-    pub fn prelude(prelude_config: crate::prelude::PreludeConfig) -> Commands {
-        let nodes = crate::prelude::prelude_nodes(prelude_config);
+    pub fn prelude(&self, prelude_config: crate::prelude::PreludeConfig) -> Commands {
+        let nodes = crate::prelude::prelude_nodes(&self.name_ctxt, prelude_config);
         air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
             .nodes_to_commands(&nodes)
             .expect("internal error: malformed prelude")
@@ -835,7 +873,7 @@ impl Ctx {
             names.push(group.x.name.clone());
         }
         for name in names {
-            let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&name));
+            let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&self.name_ctxt, &name));
             ids.push(air::ast_util::ident_var(&id));
             let decl = Arc::new(DeclX::Const(id, str_typ(&FUEL_ID)));
             commands.push(Arc::new(CommandX::Global(decl)));

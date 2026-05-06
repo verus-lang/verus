@@ -47,12 +47,12 @@ pub fn internal_err_span<A>(
 #[macro_export]
 macro_rules! internal_err {
     ($span: expr, $msg: expr) => {{
-        crate::util::internal_err_span($span, $msg.to_string())?;
+        $crate::util::internal_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
     ($span: expr, $msg: expr, $info: expr) => {{
         dbg!($info);
-        crate::util::internal_err_span($span, $msg.to_string())?;
+        $crate::util::internal_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
 }

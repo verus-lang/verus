@@ -252,6 +252,9 @@ pub trait VisitMut {
     fn visit_expr_field_mut(&mut self, i: &mut crate::ExprField) {
         visit_expr_field_mut(self, i);
     }
+    fn visit_expr_final_mut(&mut self, i: &mut crate::ExprFinal) {
+        visit_expr_final_mut(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_expr_for_loop_mut(&mut self, i: &mut crate::ExprForLoop) {
@@ -1899,6 +1902,9 @@ where
         crate::Expr::GetField(_binding_0) => {
             v.visit_expr_get_field_mut(_binding_0);
         }
+        crate::Expr::Final(_binding_0) => {
+            v.visit_expr_final_mut(_binding_0);
+        }
     }
 }
 #[cfg(feature = "full")]
@@ -2076,6 +2082,15 @@ where
     v.visit_expr_mut(&mut *node.base);
     skip!(node.dot_token);
     v.visit_member_mut(&mut node.member);
+}
+pub fn visit_expr_final_mut<V>(v: &mut V, node: &mut crate::ExprFinal)
+where
+    V: VisitMut + ?Sized,
+{
+    v.visit_attributes_mut(&mut node.attrs);
+    skip!(node.final_token);
+    skip!(node.paren_token);
+    v.visit_expr_mut(&mut *node.arg);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]

@@ -19,14 +19,35 @@ pub assume_specification<T>[ Box::<T>::new ](t: T) -> (v: Box<T>)
         v == t,
 ;
 
+pub assume_specification<T: core::default::Default>[ <Box<
+    T,
+> as core::default::Default>::default ]() -> (res: Box<T>)
+    ensures
+        T::default.ensures((), *res),
+;
+
 pub assume_specification<T>[ Rc::<T>::new ](t: T) -> (v: Rc<T>)
     ensures
         v == t,
 ;
 
+pub assume_specification<T: core::default::Default>[ <Rc<
+    T,
+> as core::default::Default>::default ]() -> (res: Rc<T>)
+    ensures
+        T::default.ensures((), *res),
+;
+
 pub assume_specification<T>[ Arc::<T>::new ](t: T) -> (v: Arc<T>)
     ensures
         v == t,
+;
+
+pub assume_specification<T: core::default::Default>[ <Arc<
+    T,
+> as core::default::Default>::default ]() -> (res: Arc<T>)
+    ensures
+        T::default.ensures((), *res),
 ;
 
 pub assume_specification<T: Clone, A: Allocator + Clone>[ <Box<T, A> as Clone>::clone ](

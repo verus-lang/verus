@@ -54,12 +54,25 @@ pub fn extend_args_and_check_is_direct_rustc_call(
     } else {
         false
     };
+    // What cfg features are allowed
+    // For verifying vstd, we don't allow verus_only
+    // For verifying client crates, we allow verus_only
+    //
+    // NOTE: right now this code is unused while verifying verus because we verify via vargo,
+    // which calls rust_verify directly. If we support building verus with cargo-verus, then
+    // this would be "solved"
     if verus_crate {
+        const VERUS_CFGS: [&str; 4] =
+            ["verus_keep_ghost", "verus_keep_ghost_body", "verus_verify_core", "verus_no_vstd"];
+        // verus_crate ==> package_name is Some
+        let cfgs: Vec<&str> = if get_package_name(dep_tracker).unwrap() == "vstd" {
+            VERUS_CFGS.to_vec()
+        } else {
+            VERUS_CFGS.iter().copied().chain(std::iter::once("verus_only")).collect()
+        };
+
         rustc_args.push("--check-cfg".to_owned());
-        rustc_args.push(
-            "cfg(verus_keep_ghost, verus_keep_ghost_body, verus_verify_core, verus_no_vstd)"
-                .to_owned(),
-        );
+        rustc_args.push(format!("cfg({})", cfgs.join(", ")));
     }
     if !verus_crate {
         let mut is_span_crate = false;
@@ -136,6 +149,10 @@ pub(crate) fn handle_externs(
     Ok(imports)
 }
 
+fn get_package_name(dep_tracker: &mut DepTracker) -> Option<String> {
+    dep_tracker.get_env("CARGO_PKG_NAME")
+}
+
 fn get_package_id_from_env(dep_tracker: &mut DepTracker) -> Option<String> {
     match (
         dep_tracker.get_env("CARGO_PKG_NAME"),
@@ -169,9 +186,10 @@ fn unpack_verus_driver_args_for_env(val: &str) -> Vec<String> {
 }
 
 fn extend_rustc_args_for_builtin_and_builtin_macros(args: &mut Vec<String>) {
-    args.extend(["--cfg", "verus_keep_ghost"].map(ToOwned::to_owned));
+    args.extend(["--cfg", "verus_only", "--cfg", "verus_keep_ghost"].map(ToOwned::to_owned));
 }
 
 fn set_rustc_bootstrap() {
-    env::set_var("RUSTC_BOOTSTRAP", "1");
+    // TODO: Audit that the environment access only happens in single-threaded code.
+    unsafe { env::set_var("RUSTC_BOOTSTRAP", "1") };
 }

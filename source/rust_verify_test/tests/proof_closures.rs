@@ -473,6 +473,9 @@ test_verify_one_file_with_options! {
             let tracked mut t = t;
             let ret = t(3);
             assert(ret == 4);
+
+            let ret = t(1);
+            assert(ret == 2);
         }
 
         proof fn f2() {
@@ -486,16 +489,6 @@ test_verify_one_file_with_options! {
             f1(t);
         }
     } => Ok(())
-}
-
-test_verify_one_file_with_options! {
-    #[test] closure_does_not_support_mut_param_fail ["vstd"] => verus_code! {
-        use vstd::prelude::*;
-
-        proof fn testfn() {
-            let tracked t = proof_fn|mut a: u64| { };
-        }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support 'mut' params for closures")
 }
 
 test_verify_one_file_with_options! {
@@ -706,14 +699,14 @@ test_verify_one_file_with_options! {
     #[test] old_works_for_params_from_outside_the_closure ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
-        proof fn foo(b: &mut bool)
-            requires *old(b) == true,
+        proof fn foo(tracked b: &mut int)
+            requires *old(b) == 7,
         {
-            *b = false;
+            *b = 1;
 
             let tracked f = proof_fn|i: u64| {
-                assert(*b == false);
-                assert(*old(b) == true);
+                assert(*b == 1);
+                assert(*old(b) == 7);
             };
         }
     } => Ok(())
@@ -945,7 +938,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] disallowed_mut_capture2 ["vstd"] => verus_code! {
+    #[test] disallowed_mut_capture2_spec ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         proof fn takes_mut(u: &mut u64) { }
@@ -963,12 +956,46 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] disallowed_mut_capture3 ["vstd"] => verus_code! {
+    #[test] disallowed_mut_capture2_tracked ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn takes_mut(tracked u: &mut u64) { }
+
+        proof fn test1() {
+            let tracked mut a = 5;
+
+            let tracked f = proof_fn|t: u8| {
+                takes_mut(&mut a);
+            };
+
+            f(7);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support closures capturing a mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] capture_spec_mut_ref_ok ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         proof fn takes_mut(u: &mut u64) { }
 
         proof fn test1(a: &mut u64) {
+            let tracked f = proof_fn|t: u8| {
+                takes_mut(a);
+            };
+
+            f(7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] disallowed_mut_capture3 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn takes_mut(tracked u: &mut u64) { }
+
+        proof fn test1(tracked a: &mut u64) {
             let tracked f = proof_fn|t: u8| {
                 takes_mut(a);
             };
@@ -982,9 +1009,9 @@ test_verify_one_file_with_options! {
     #[test] disallowed_mut_capture4 ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
-        proof fn takes_mut(u: &mut u64) { }
+        proof fn takes_mut(tracked u: &mut u64) { }
 
-        proof fn test1(a: &mut u64) {
+        proof fn test1(tracked a: &mut u64) {
             let tracked f = proof_fn|t: u8| {
                 takes_mut(&mut *a);
             };
@@ -1807,4 +1834,34 @@ test_verify_one_file_with_options! {
             test(f);
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_fn_coerce_to_spec_issue2078 ["vstd"] => verus_code! {
+        proof fn test() {
+            let f = proof_fn|x: u32| { true };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_fn_call_spec ["vstd"] => verus_code! {
+        proof fn test() {
+            let f = proof_fn|x: u32| { true };
+            f(12u32);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_swap_cant_be_proof_fn [] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        proof fn q<V>(tracked f: proof_fn(tracked &mut V, tracked &mut V) -> ()) {
+        }
+        proof fn r() {
+            // future-proofing: this must not be allowed
+            q(tracked_swap);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }

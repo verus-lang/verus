@@ -93,6 +93,7 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
             };
             let attrs = crate::ast::CallTargetAttrs {
                 autospec: AutospecUsage::Final,
+                const_var: attrs.const_var,
                 assume_external_allowed: false,
             };
             let call = ExprX::Call(

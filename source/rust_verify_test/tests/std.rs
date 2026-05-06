@@ -57,7 +57,7 @@ test_verify_one_file! {
         fn foo(x: &X) {
             let y = x.clone();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
 }
 
 test_verify_one_file! {
@@ -163,18 +163,6 @@ test_verify_one_file! {
             let x = v[0];
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot move out of index of `std::vec::Vec<T>`")
-}
-
-test_verify_one_file! {
-    #[test] index_vec_mut_error verus_code! {
-        use vstd::*;
-
-        fn foo(t: &mut u8) { }
-
-        fn stuff(v: Vec<u8>) {
-            foo(&mut v[0]);
-        }
-    } => Err(err) => assert_vir_error_msg(err, "index for &mut not supported")
 }
 
 test_verify_one_file! {
@@ -578,7 +566,7 @@ test_verify_one_file_with_options! {
         fn test(x: X) {
             let a = x.clone();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
 }
 
 test_verify_one_file_with_options! {
@@ -592,7 +580,7 @@ test_verify_one_file_with_options! {
         fn test(x: X) {
             let a = x.clone();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
 }
 
 test_verify_one_file! {
@@ -661,4 +649,99 @@ test_verify_one_file! {
             assert(v@[3] == 12);
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] manually_drop verus_code! {
+        use vstd::prelude::*;
+        use std::mem::ManuallyDrop;
+
+        fn test() {
+            let x = ManuallyDrop::new(20u64);
+            assert(x@ == 20);
+
+            let z: &u64 = &x;
+            assert(z == 20);
+
+            let x1 = x.clone();
+            assert(x1@ == 20);
+
+            let y = ManuallyDrop::into_inner(x);
+            assert(y == 20);
+        }
+
+        #[derive(Debug)]
+        pub struct X {
+            pub u: u64
+        }
+
+        impl Clone for X {
+            fn clone(&self) -> (s: Self)
+                ensures s.u == (if self.u < 1000 { self.u + 1 } else { 1000 })
+            {
+                X { u: if self.u < 1000 { self.u + 1 } else { 1000 } }
+            }
+        }
+
+        fn test_clone() {
+            let x = ManuallyDrop::new(X { u: 20u64 });
+            let y = x.clone();
+            assert(y@.u == 20 || y@.u == 21);
+        }
+
+        fn test_clone2() {
+            let x = ManuallyDrop::new(X { u: 20u64 });
+            let y = x.clone();
+            assert(y@.u == 20); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] vec_deref_mut verus_code! {
+        use vstd::prelude::*;
+
+        fn test_implicit_via_adjustment() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut a;
+            b[0] = 10;
+            assert(a@ === seq![10, 2]);
+        }
+
+        fn test_overloaded_star_operator() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut *a;
+            b[0] = 10;
+            assert(a@ === seq![10, 2]);
+        }
+
+        fn test_overloaded_star_operator2() {
+            let mut a = vec![1, 2];
+            (*a)[1] = 20;
+            assert(a@ === seq![1, 20]);
+        }
+
+        fn fails_implicit_via_adjustment() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut a;
+            b[0] = 10;
+            assert(a@ === seq![10, 2]);
+            assert(false); // FAILS
+        }
+
+        fn fails_overloaded_star_operator() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut *a;
+            b[0] = 10;
+            assert(a@ === seq![10, 2]);
+            assert(false); // FAILS
+        }
+
+        fn fails_overloaded_star_operator2() {
+            let mut a = vec![1, 2];
+            (*a)[1] = 20;
+            assert(a@ === seq![1, 20]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }

@@ -101,25 +101,23 @@ impl<V> Node<V> {
         requires
             old(node).is_some() ==> old(node).unwrap().well_formed(),
         ensures
-            node.is_some() ==> node.unwrap().well_formed(),
-            Node::<V>::optional_as_map(*node) =~= Node::<V>::optional_as_map(*old(node)).insert(key, value),
+            final(node).is_some() ==> final(node).unwrap().well_formed(),
+            Node::<V>::optional_as_map(*final(node)) =~= Node::<V>::optional_as_map(*old(node)).insert(key, value),
         decreases *old(node),
     {
-        if node.is_none() {
-            *node = Some(Box::new(Node::<V> {
-                key: key,
-                value: value,
-                left: None,
-                right: None,
-            }));
-        } else {
-            let mut tmp = None;
-            std::mem::swap(&mut tmp, node);
-            let mut boxed_node = tmp.unwrap();
-
-            (&mut *boxed_node).insert(key, value);
-
-            *node = Some(boxed_node);
+        match node.take() {
+            None => {
+                *node = Some(Box::new(Node::<V> {
+                    key: key,
+                    value: value,
+                    left: None,
+                    right: None,
+                }));
+            }
+            Some(mut boxed_node) => {
+                (&mut *boxed_node).insert(key, value);
+                *node = Some(boxed_node);
+            }
         }
     }
 
@@ -127,8 +125,8 @@ impl<V> Node<V> {
         requires
             old(self).well_formed(),
         ensures
-            self.well_formed(),
-            self.as_map() =~= old(self).as_map().insert(key, value),
+            final(self).well_formed(),
+            final(self).as_map() =~= old(self).as_map().insert(key, value),
         decreases *old(self),
     {
         if key == self.key {
@@ -154,8 +152,8 @@ impl<V> TreeMap<V> {
         requires
             old(self).well_formed(),
         ensures
-            self.well_formed(),
-            self@ == old(self)@.insert(key, value),
+            final(self).well_formed(),
+            final(self)@ == old(self)@.insert(key, value),
 // ANCHOR_END: insert_signature
     {
         Node::<V>::insert_into_optional(&mut self.root, key, value);
@@ -169,14 +167,11 @@ impl<V> Node<V> {
         requires
             old(node).is_some() ==> old(node).unwrap().well_formed(),
         ensures
-            node.is_some() ==> node.unwrap().well_formed(),
-            Node::<V>::optional_as_map(*node) =~= Node::<V>::optional_as_map(*old(node)).remove(key),
+            final(node).is_some() ==> final(node).unwrap().well_formed(),
+            Node::<V>::optional_as_map(*final(node)) =~= Node::<V>::optional_as_map(*old(node)).remove(key),
         decreases *old(node),
     {
-        if node.is_some() {
-            let mut tmp = None;
-            std::mem::swap(&mut tmp, node);
-            let mut boxed_node = tmp.unwrap();
+        if let Some(mut boxed_node) = node.take() {
 
             if key == boxed_node.key {
                 assert(!Node::<V>::optional_as_map(boxed_node.left).dom().contains(key));
@@ -211,16 +206,14 @@ impl<V> Node<V> {
             old(node).is_some(),
             old(node).unwrap().well_formed(),
         ensures
-            node.is_some() ==> node.unwrap().well_formed(),
-            Node::<V>::optional_as_map(*node) =~= Node::<V>::optional_as_map(*old(node)).remove(popped.0),
+            final(node).is_some() ==> final(node).unwrap().well_formed(),
+            Node::<V>::optional_as_map(*final(node)) =~= Node::<V>::optional_as_map(*old(node)).remove(popped.0),
             Node::<V>::optional_as_map(*old(node)).dom().contains(popped.0),
             Node::<V>::optional_as_map(*old(node))[popped.0] == popped.1,
             forall |elem| Node::<V>::optional_as_map(*old(node)).dom().contains(elem) ==> popped.0 >= elem,
         decreases *old(node),
     {
-        let mut tmp = None;
-        std::mem::swap(&mut tmp, node);
-        let mut boxed_node = tmp.unwrap();
+        let mut boxed_node = node.take().unwrap();
 
         if boxed_node.right.is_none() {
             *node = boxed_node.left;
@@ -242,8 +235,8 @@ impl<V> TreeMap<V> {
         requires
             old(self).well_formed(),
         ensures
-            self.well_formed(),
-            self@ == old(self)@.remove(key),
+            final(self).well_formed(),
+            final(self)@ == old(self)@.remove(key),
 // ANCHOR_END: delete_signature
     {
         Node::<V>::delete_from_optional(&mut self.root, key);

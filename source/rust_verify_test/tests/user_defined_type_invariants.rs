@@ -458,7 +458,7 @@ test_verify_one_file! {
         }
 
         fn mutate_int2(i: &mut u8, j: &mut u8)
-            ensures *i == *j
+            ensures *final(i) == *final(j)
             no_unwind
         {
             *i = 100;
@@ -488,22 +488,22 @@ test_verify_one_file! {
         }
 
         fn mutate_int4_meet_all(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 10, *b == 30, *c == 10, *d == 10
+            ensures *final(a) == 10, *final(b) == 30, *final(c) == 10, *final(d) == 10
             no_unwind
         { assume(false); }
 
         fn mutate_int4_fail_x(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 20, *b == 30, *c == 20, *d == 20
+            ensures *final(a) == 20, *final(b) == 30, *final(c) == 20, *final(d) == 20
             no_unwind
         { assume(false); }
 
         fn mutate_int4_fail_y(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 10, *b == 30, *c == 10, *d == 11
+            ensures *final(a) == 10, *final(b) == 30, *final(c) == 10, *final(d) == 11
             no_unwind
         { assume(false); }
 
         fn mutate_int4_fail_z(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 10, *b == 30, *c == 11, *d == 11
+            ensures *final(a) == 10, *final(b) == 30, *final(c) == 11, *final(d) == 11
             no_unwind
         { assume(false); }
 
@@ -576,7 +576,7 @@ test_verify_one_file! {
         }
 
         fn mutate_int2(i: &mut u8, j: &mut u8)
-            ensures *i == *j
+            ensures *final(i) == *final(j)
             no_unwind
         {
             *i = 100;
@@ -594,17 +594,17 @@ test_verify_one_file! {
         }
 
         fn mutate_int4_meet_all(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 10, *b == 30, *c == 10, *d == 10
+            ensures *final(a) == 10, *final(b) == 30, *final(c) == 10, *final(d) == 10
             no_unwind
         { assume(false); }
 
         fn mutate_int4_fail_x(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 20, *b == 30, *c == 20, *d == 20
+            ensures *final(a) == 20, *final(b) == 30, *final(c) == 20, *final(d) == 20
             no_unwind
         { assume(false); }
 
         fn mutate_int4_fail_y(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
-            ensures *a == 10, *b == 30, *c == 10, *d == 11
+            ensures *final(a) == 10, *final(b) == 30, *final(c) == 10, *final(d) == 11
             no_unwind
         { assume(false); }
 
@@ -646,7 +646,7 @@ test_verify_one_file! {
         }
 
         fn set_to(i: &mut u8, x: u8, y: u8) -> (ret: u8)
-            ensures *i == x, ret == y
+            ensures *final(i) == x, ret == y
             no_unwind
         {
             *i = x;
@@ -700,7 +700,7 @@ test_verify_one_file! {
         }
 
         fn set_to(i: &mut u8, x: u8, y: u8) -> (ret: u8)
-            ensures *i == x, ret == y
+            ensures *final(i) == x, ret == y
             no_unwind
         {
             *i = x;
@@ -718,7 +718,7 @@ test_verify_one_file! {
                   assert(x.the_inv());
                  0 });
         }
-    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `(Verus spec x)` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file! {
@@ -736,7 +736,7 @@ test_verify_one_file! {
         }
 
         fn set_to(i: &mut u8, x: u8, y: u8) -> (ret: u8)
-            ensures *i == x, ret == y
+            ensures *final(i) == x, ret == y
             no_unwind
         {
             *i = x;
@@ -772,7 +772,7 @@ test_verify_one_file! {
 
         impl Y {
             fn set_to(&mut self, x: u8, y: u8) -> (ret: u8)
-                ensures self.0 == x, ret == y
+                ensures final(self).0 == x, ret == y
                 no_unwind
             {
                 self.0 = x;
@@ -811,7 +811,7 @@ test_verify_one_file! {
 
         impl Y {
             fn set_to(&mut self, x: u8, y: u8) -> (ret: u8)
-                ensures self.0 == x, ret == y
+                ensures final(self).0 == x, ret == y
                 no_unwind
             {
                 self.0 = x;
@@ -850,7 +850,7 @@ test_verify_one_file! {
 
         impl Y {
             fn set_to(&mut self, x: u8, y: u8) -> (ret: u8)
-                ensures self.0 == x, ret == y
+                ensures final(self).0 == x, ret == y
                 no_unwind
             {
                 self.0 = x;
@@ -975,7 +975,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_nested_compound verus_code! {
+    #[test] test_mut_ref_nested_compound1 verus_code! {
         struct X {
             i: u8,
             j: u8,
@@ -1002,13 +1002,68 @@ test_verify_one_file! {
         fn test_assign_op(y: &mut Y)
             requires old(y).x.i < 100
         {
+            proof {
+                use_type_invariant(&*y);
+                use_type_invariant(&y.x);
+            }
             y.x.i += 2; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_nested_compound2 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                20 <= self.x.j < 30
+            }
         }
 
         fn test2_assign_op(y: &mut Y)
             requires old(y).x.j < 100
         {
+            proof {
+                use_type_invariant(&*y);
+                use_type_invariant(&y.x);
+            }
             y.x.j += 2; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_nested_compound3 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
         }
 
         fn test3_assign_op(x: &mut X)
@@ -1016,9 +1071,7 @@ test_verify_one_file! {
         {
             x.i += 4; // FAILS
         }
-
-    } => Err(err) => assert_vir_error_msg(err, "not yet implemented: lhs of compound assignment")
-        //assert_fails_type_invariant_error(err, 3)
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
 }
 
 test_verify_one_file! {
@@ -1159,7 +1212,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_normal_var_nested_compound verus_code! {
+    #[test] test_normal_var_nested_compound1 verus_code! {
         struct X {
             i: u8,
             j: u8,
@@ -1185,17 +1238,7 @@ test_verify_one_file! {
 
         fn test_assign_op() {
             let mut y = Y { x: X { i: 12, j: 25 } };
-            y.x.i += 2; // FAILS
-        }
-
-        fn test2_assign_op() {
-            let mut y = Y { x: X { i: 12, j: 25 } };
-            y.x.j += 2; // FAILS
-        }
-
-        fn test3_assign_op() {
-            let mut x = X { i: 14, j: 123 };
-            x.i += 4; // FAILS
+            y.x.i += 4; // FAILS
         }
 
         fn test4_assign_op_ok() {
@@ -1203,28 +1246,171 @@ test_verify_one_file! {
             x.i += 4;
         }
 
+        fn tup_test4_assign_op_ok() {
+            let mut x = (X { i: 2, j: 123 }, 19);
+            x.0.i += 4;
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_normal_var_nested_compound2 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                20 <= self.x.j < 30
+            }
+        }
+
+        fn test2_assign_op() {
+            let mut y = Y { x: X { i: 12, j: 25 } };
+            y.x.j += 7; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_normal_var_nested_compound3 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                20 <= self.x.j < 30
+            }
+        }
+
+        fn test3_assign_op() {
+            let mut x = X { i: 14, j: 123 };
+            x.i += 4; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_normal_var_nested_compound4 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                20 <= self.x.j < 30
+            }
+        }
+
         fn tup_test_assign_op() {
             let mut y = (Y { x: X { i: 12, j: 25 } }, 19);
-            y.0.x.i += 2; // FAILS
+            y.0.x.i += 4; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_normal_var_nested_compound5 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                20 <= self.x.j < 30
+            }
         }
 
         fn tup_test2_assign_op() {
             let mut y = (Y { x: X { i: 12, j: 25 } }, 19);
-            y.0.x.j += 2; // FAILS
+            y.0.x.j += 7; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_normal_var_nested_compound6 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                20 <= self.x.j < 30
+            }
         }
 
         fn tup_test3_assign_op() {
             let mut x = (X { i: 14, j: 123 }, 19);
             x.0.i += 4; // FAILS
         }
-
-        fn tup_test4_assign_op_ok() {
-            let mut x = (X { i: 2, j: 123 }, 19);
-            x.0.i += 4;
-        }
-
-    } => Err(err) => assert_vir_error_msg(err, "not yet implemented: lhs of compound assignment")
-    //assert_fails_type_invariant_error(err, 3)
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
 }
 
 test_verify_one_file! {
@@ -1912,8 +2098,8 @@ test_verify_one_file! {
 
         fn mutate_int2(i: &mut u8, j: &mut u8)
             ensures
-                *i == 14,
-                *j == 16
+                *final(i) == 14,
+                *final(j) == 16
             no_unwind
         {
             *i = 14;
@@ -1939,8 +2125,8 @@ test_verify_one_file! {
 
         proof fn proof_mutate_int2(tracked i: &mut u8, tracked j: &mut u8)
             ensures
-                *i == 14,
-                *j == 16
+                *final(i) == 14,
+                *final(j) == 16
         {
             assume(false);
         }
@@ -2004,7 +2190,7 @@ test_verify_one_file! {
         }
 
         proof fn mutate_int2(tracked i: &mut u8, tracked j: &mut u8)
-            ensures *i == *j
+            ensures *final(i) == *final(j)
         {
             assume(false);
         }
@@ -2084,4 +2270,455 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "expected generics to match")
+}
+
+test_verify_one_file! {
+    #[test] struct_with_invariants_const_usage verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic_ghost::AtomicUsize;
+
+        const ONE: usize = 1;
+
+        struct_with_invariants!{
+            pub struct S {
+                x: AtomicUsize<_,(),_>,
+            }
+
+            closed spec fn wf(self) -> bool {
+                invariant on x is (v:usize,g:()) {
+                    v == ONE
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_not_supported [] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            let x = &mut a.i;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_not_supported2 [] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        struct Ctor<'a>(&'a mut u64, &'a mut u64);
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            let x = Ctor(&mut a.i, &mut a.j);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_not_supported_match1 [] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            match a.i {
+                ref mut x => {
+                    *x = 1;
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_not_supported_match2 [] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            match a {
+                A { i: ref mut x, j: _ } => {
+                    *x = 1;
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_not_supported_let1 [] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            let ref mut x = a.i;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_not_supported_let2 [] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            let A { i: ref mut x, j: _ } = a;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
+}
+
+test_verify_one_file_with_options! {
+    #[test] use_type_invariant_in_arg [] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn set_to_20(x: &mut u64, y: u64)
+            ensures *final(x) == 20
+            no_unwind
+        {
+            *x = 20;
+        }
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            set_to_20(&mut a.i, ({ proof { use_type_invariant(&a) } 0 }));
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `a` as immutable because it is also borrowed as mutable")
+}
+
+test_verify_one_file_with_options! {
+    #[test] use_type_invariant_in_arg_no_lifetime ["--no-lifetime"] => verus_code! {
+        struct A {
+            i: u64,
+            j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn set_to_20(x: &mut u64, y: u64)
+            ensures *final(x) == 20
+            no_unwind
+        {
+            *x = 20;
+        }
+
+        // This test uses --no-lifetime, so we don't really need it to fail.
+        // However, Verus (unlike Rust) treats the borrow as two-phase due to the way
+        // internal simplifications work, as a result the use_type_invariant is emitted
+        // pre-update. Thus, I do expect this code to be sound (i.e., to fail)
+        // even in the presence in --no-lifetime.
+
+        fn f() {
+            let mut a = A { i: 0, j: 10 };
+            set_to_20(&mut a.i, ({ proof { use_type_invariant(&a) } 0 })); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] array_of_structs [] => verus_code! {
+        use vstd::prelude::*;
+
+        pub(crate) struct A {
+            pub(crate) i: u64,
+            pub(crate) j: u64,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.i <= a.j
+        }
+
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b
+            no_unwind
+        {
+            *a = b;
+        }
+
+        fn test1() {
+            let mut x = [
+                A { i: 0, j: 10 },
+                A { i: 20, j: 30 },
+            ];
+            x[0].i = 1;
+        }
+
+        fn fails1() {
+            let mut x = [
+                A { i: 0, j: 10 },
+                A { i: 20, j: 30 },
+            ];
+            x[0].i = 15; // FAILS
+        }
+
+        fn test2() {
+            let mut x = [
+                A { i: 0, j: 10 },
+                A { i: 20, j: 30 },
+            ];
+            set_to(&mut x[0].i, 1);
+        }
+
+        fn fails2() {
+            let mut x = [
+                A { i: 0, j: 10 },
+                A { i: 20, j: 30 },
+            ];
+            set_to(&mut x[0].i, 15); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] struct_of_array [] => verus_code! {
+        use vstd::prelude::*;
+
+        pub(crate) struct A {
+            pub(crate) array: [u64; 2],
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.array[0] <= a.array[1]
+        }
+
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b
+            no_unwind
+        {
+            *a = b;
+        }
+
+        fn test1() {
+            let mut x = A { array: [0, 10] };
+            x.array[0] = 1;
+        }
+
+        fn fails1() {
+            let mut x = A { array: [0, 10] };
+            x.array[0] = 15; // FAILS
+        }
+
+        fn test2() {
+            let mut x = A { array: [0, 10] };
+            set_to(&mut x.array[0], 1);
+        }
+
+        fn fails2() {
+            let mut x = A { array: [0, 10] };
+            set_to(&mut x.array[0], 15); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+}
+
+// TODO(new_mut_ref): (low-pri) this is a bad user experience
+test_verify_one_file_with_options! {
+    #[test] struct_of_vec [] => verus_code! {
+        use vstd::prelude::*;
+
+        // this is currently unsupported since Vec doesn't get the same special treatment
+        // as slices/arrays do
+
+        pub(crate) struct A {
+            pub(crate) vec: Vec<u64>,
+        }
+
+        #[verifier::type_invariant]
+        spec fn wf(a: A) -> bool {
+            a.vec.len() == 2 &&
+                a.vec[0] <= a.vec[1]
+        }
+
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b
+            no_unwind
+        {
+            *a = b;
+        }
+
+        fn test1() {
+            let mut x = A { vec: vec![0, 10] };
+            x.vec[0] = 1; // FAILS
+        }
+
+        fn fails1() {
+            let mut x = A { vec: vec![0, 10] };
+            x.vec[0] = 15; // FAILS
+        }
+
+        fn test2() {
+            let mut x = A { vec: vec![0, 10] };
+            set_to(&mut x.vec[0], 1); // FAILS
+        }
+
+        fn fails2() {
+            let mut x = A { vec: vec![0, 10] };
+            set_to(&mut x.vec[0], 15); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] with_reborrow [] => verus_code! {
+        struct X {
+            i: (u64, u64),
+            j: (u64, u64),
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i.0
+                  <= self.i.1
+                  <= self.j.0
+                  <= self.j.1
+            }
+        }
+
+        fn set_to(a: &mut u64, b: u64)
+            ensures *final(a) == b
+            no_unwind
+        {
+            *a = b;
+        }
+
+        fn test() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            let x_ref = &mut x;
+            set_to(&mut x_ref.i.0, 5);
+        }
+
+        fn test_fails() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            let x_ref = &mut x;
+            set_to(&mut x_ref.i.0, 15); // FAILS
+        }
+
+        proof fn tra_set_to(tracked a: &mut u64, b: u64)
+            ensures *final(a) == b
+        {
+            assume(false);
+        }
+
+        proof fn tra_test() {
+            let tracked mut x = X { i: (0, 10), j: (20, 30) };
+            let tracked x_ref = &mut x;
+            tra_set_to(&mut x_ref.i.0, 5);
+        }
+
+        proof fn tra_test_fails() {
+            let tracked mut x = X { i: (0, 10), j: (20, 30) };
+            let tracked x_ref = &mut x;
+            tra_set_to(&mut x_ref.i.0, 15); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] with_tracked_wrapper [] => verus_code! {
+        struct X {
+            i: (u64, u64),
+            j: (u64, u64),
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i.0
+                  <= self.i.1
+                  <= self.j.0
+                  <= self.j.1
+            }
+        }
+
+        fn set_to(Tracked(a): Tracked<&mut u64>, b: u64)
+            ensures *final(a) == b
+            no_unwind
+        {
+            assume(false);
+        }
+
+        fn test() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            let x_ref = &mut x;
+            set_to(Tracked(&mut x_ref.i.0), 5);
+        }
+
+        fn test_fails() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            let x_ref = &mut x;
+            set_to(Tracked(&mut x_ref.i.0), 15); // FAILS
+        }
+
+        fn test2() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            set_to(Tracked(&mut x.i.0), 5);
+        }
+
+        fn test2_fails() {
+            let mut x = X { i: (0, 10), j: (20, 30) };
+            set_to(Tracked(&mut x.i.0), 15); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 2)
 }

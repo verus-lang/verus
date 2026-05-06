@@ -1,10 +1,22 @@
+# Support
+
+Verus provides first-tier support to relatively recent OS distributions (MacOS, Windows and Ubuntu).
+The general rule of thumb is that we lag Github's `<os>-latest` by one version.
+These are the architectures that have release artifacts prebuilt:
+- MacOS 14 (arm)
+- MacOS 15 (x86_64)
+- Windows 2022 (x86_64)
+- Ubuntu 22.04 (x86_64)
+
+Otherwise, you may have to build `verus` from source (see the [build instructions](./BUILD.md)).
+
+# Installing Verus
+
 These instructions are for installing Verus using the binary releases, intended for most people who plan to use Verus from the command line.
 
 If you'd rather use the **VSCode IDE**, you should instead read the instructions [here](https://verus-lang.github.io/verus/guide/getting_started_vscode.html).
 
 If you're a **Verus developer**, or if you're looking for a **specific commit version**, you'll need to install from source. See [BUILD.md](./BUILD.md).
-
-# Installing Verus
 
 ## 1. Download the binary release.
 
@@ -14,6 +26,7 @@ You can select from either:
 
  * The rolling release, which tracks the latest commit on `main`.
    This can be found on our [release page](https://github.com/verus-lang/verus/releases), marked "pre-release".
+
 
 After selecting the desired release, open the "Assets" drawer from the releases page and download the file appropriate to your platform.
 
@@ -46,7 +59,7 @@ To check if this step is necessary, run `./verus`.  It may print an error tellin
 For example, if `rustup` is not available, you'll see something like:
 
 ```
-$ ./verus 
+$ ./verus
 verus: rustup not found, or not executable
 verus needs a rustup installation
 run the following command (in a bash-compatible shell) to install rustup:

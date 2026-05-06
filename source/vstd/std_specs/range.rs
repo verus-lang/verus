@@ -84,7 +84,7 @@ pub uninterp spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
 pub assume_specification<A: core::iter::Step>[ Range::<A>::next ](range: &mut Range<A>) -> (r:
     Option<A>)
     ensures
-        (*range, r) == spec_range_next(*old(range)),
+        (*final(range), r) == spec_range_next(*old(range)),
 ;
 
 /// Range::contains method is valid and safe to use only when cmp operations are implemented to satisfy

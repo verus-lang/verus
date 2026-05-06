@@ -26,7 +26,6 @@ use verus_syn::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type}
 /// We also check if the user uses a field name as a variable so we can warn them
 /// that they need to use `pre.{field name}`. This isn't essential, but it's pretty
 /// helpful since otherwise the error message from type-checking is really awkward.
-
 pub fn validate_idents_transition(
     trans: &Transition,
     field_names: HashSet<String>,
@@ -56,7 +55,7 @@ fn validate_idents_transition_stmt(
         }
         TransitionStmt::Split(_, split_kind, es) => {
             let mut bound_names_per_arm = vec![];
-            match split_kind {
+            match &**split_kind {
                 SplitKind::Let(pat, _ty, _lk, e) => {
                     validate_idents_expr(e, kind, bound_names, field_names)?;
                     validate_idents_pat(pat, kind)?;
@@ -212,17 +211,17 @@ impl IdentVisitor {
 
 impl<'ast> Visit<'ast> for IdentVisitor {
     fn visit_ident(&mut self, node: &'ast Ident) {
-        if node.to_string() == "post" {
+        if node == "post" {
             self.errors.push(Error::new(
                 node.span(),
                 "cannot refer directly to `post` in a transition definition",
             ));
-        } else if node.to_string() == "pre" {
+        } else if node == "pre" {
             if self.kind == TransitionKind::Init {
                 self.errors.push(Error::new(node.span(),
                     "cannot refer to `pre` in an 'init' routine; there is no previous state to refer to"));
             }
-        } else if node.to_string() == "self" {
+        } else if node == "self" {
             self.errors.push(Error::new(node.span(),
                   "identifier `self` is meaningless in transition definition; use `pre` to refer to the previous state (in non-init transitions)"));
         } else {
@@ -277,8 +276,8 @@ impl<'ast> Visit<'ast> for IdentVisitor {
 
 /// Validate a single identifier.
 pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
-    for kw in vec!["post", "instance", "tmp_tuple", "tmp_e", "tmp_assert"] {
-        if ident.to_string() == kw {
+    for kw in ["post", "instance", "tmp_tuple", "tmp_e", "tmp_assert"] {
+        if ident == kw {
             return Err(Error::new(
                 ident.span(),
                 format!("'{kw:}' is a reserved identifier in state machine definitions"),
@@ -286,7 +285,7 @@ pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
         }
     }
 
-    for prefix in vec!["param_token_", "original_field_", UPDATE_TMP_PREFIX] {
+    for prefix in ["param_token_", "original_field_", UPDATE_TMP_PREFIX] {
         if ident.to_string().starts_with(prefix) {
             return Err(Error::new(
                 ident.span(),
@@ -301,7 +300,6 @@ pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
 }
 
 /// Get all identifiers bound by the pattern
-
 pub fn pattern_get_bound_idents(pat: &Pat) -> Vec<Ident> {
     let mut piv = PatIdentVisitor::new();
     piv.visit_pat(pat);
@@ -329,7 +327,6 @@ impl<'ast> Visit<'ast> for PatIdentVisitor {
 }
 
 /// Error if the type contains a `super::...` path.
-
 pub fn error_on_super_path(ty: &Type) -> parse::Result<()> {
     let mut sv = SuperVisitor { errors: Vec::new() };
     sv.visit_type(ty);
@@ -347,7 +344,7 @@ impl<'ast> Visit<'ast> for SuperVisitor {
     }
 
     fn visit_path(&mut self, node: &'ast Path) {
-        if node.segments[0].ident.to_string() == "super" {
+        if node.segments[0].ident == "super" {
             self.errors.push(Error::new(
                 node.span(),
                 format!("state machine error: `super::` path not allowed here"),

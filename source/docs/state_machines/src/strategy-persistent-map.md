@@ -64,7 +64,7 @@ In the following table, `k: K`, `v: v`, and `m: Map<K, V>`.
     </tr> <tr>
       <td><code>have field &gt;= (m);</code></td>
       <td><code style="white-space: pre">require m.<a href="https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html#method.submap_of">submap_of</a>(field);</code></td>
-      <td>Input <code>&amp;<a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.MapToken.html">MapToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</code></a></code></td>
+      <td>Input <code>&amp;<a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.MapToken.html">MapToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</a></code></td>
     </tr> <tr>
       <td><code>add field (union)= (m);</code></td>
       <td><code style="white-space: pre">assert field.<a href="https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html#method.agrees">agrees</a>(m);</code><br>

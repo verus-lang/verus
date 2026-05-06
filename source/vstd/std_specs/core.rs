@@ -6,6 +6,28 @@ use verus as verus_;
 verus_! {
 
 #[verifier::external_trait_specification]
+pub trait ExTuple {
+    type ExternalTraitSpecificationFor: core::marker::Tuple;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExFnOnce<Args: core::marker::Tuple> {
+    type ExternalTraitSpecificationFor: core::ops::FnOnce<Args>;
+
+    type Output;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExFnMut<Args: core::marker::Tuple>: FnOnce<Args> {
+    type ExternalTraitSpecificationFor: core::ops::FnMut<Args>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExFn<Args: core::marker::Tuple>: FnMut<Args> {
+    type ExternalTraitSpecificationFor: core::ops::Fn<Args>;
+}
+
+#[verifier::external_trait_specification]
 pub trait ExDeref: PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::Deref;
 
@@ -15,10 +37,24 @@ pub trait ExDeref: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
+pub trait ExDerefMut: core::ops::Deref + PointeeSized {
+    type ExternalTraitSpecificationFor: core::ops::DerefMut;
+
+    fn deref_mut(&mut self) -> &mut Self::Target;
+}
+
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(IndexSpec via IndexSpecImpl)]
 pub trait ExIndex<Idx> where Idx: ?Sized {
     type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
 
     type Output: ?Sized;
+
+    spec fn index_req(&self, index: &Idx) -> bool;
+
+    fn index(&self, index: Idx) -> (output: &Self::Output) where Idx: Sized
+        requires
+            self.index_req(&index);
 }
 
 #[verifier::external_trait_specification]
@@ -36,6 +72,7 @@ pub trait ExSpecOrd<Rhs> {
     type ExternalTraitSpecificationFor: SpecOrd<Rhs>;
 }
 
+#[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
 pub trait ExAllocator {
     type ExternalTraitSpecificationFor: core::alloc::Allocator;
@@ -55,25 +92,6 @@ pub trait ExDebug: PointeeSized {
 pub trait ExDisplay: PointeeSized {
     type ExternalTraitSpecificationFor: core::fmt::Display;
 }
-
-#[verifier::external_trait_specification]
-pub trait ExFrom<T>: Sized {
-    type ExternalTraitSpecificationFor: core::convert::From<T>;
-
-    fn from(v: T) -> (ret: Self);
-}
-
-#[verifier::external_trait_specification]
-pub trait ExInto<T>: Sized {
-    type ExternalTraitSpecificationFor: core::convert::Into<T>;
-
-    fn into(self) -> (ret: T);
-}
-
-pub assume_specification<T, U: From<T>>[ T::into ](a: T) -> (ret: U)
-    ensures
-        call_ensures(U::from, (a,), ret),
-;
 
 #[verifier::external_trait_specification]
 pub trait ExHash: PointeeSized {
@@ -117,6 +135,14 @@ pub trait ExStructural {
     type ExternalTraitSpecificationFor: Structural;
 }
 
+// Since this trait involves the unstable library feature `const_destruct`,
+// we only enable it when verifying core
+#[cfg(verus_verify_core)]
+#[verifier::external_trait_specification]
+trait ExDestruct: PointeeSized {
+    type ExternalTraitSpecificationFor: core::marker::Destruct;
+}
+
 #[verifier::external_trait_specification]
 pub trait ExMetaSized {
     type ExternalTraitSpecificationFor: core::marker::MetaSized;
@@ -124,8 +150,8 @@ pub trait ExMetaSized {
 
 pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
     ensures
-        *a == *old(b),
-        *b == *old(a),
+        *final(a) == *old(b),
+        *final(b) == *old(a),
     opens_invariants none
     no_unwind
 ;
@@ -148,7 +174,7 @@ pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
 }
 
 #[verifier::when_used_as_spec(iter_into_iter_spec)]
-pub assume_specification<I: Iterator>[ I::into_iter ](i: I) -> (r: I)
+pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) -> (r: I)
     ensures
         r == i,
 ;
@@ -184,11 +210,6 @@ pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (r
         },
 ;
 
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[verifier::reject_recursive_types_in_ground_variants(V)]
-pub struct ExManuallyDrop<V: ?Sized>(core::mem::ManuallyDrop<V>);
-
 // A private seal trait to prevent a trait from being implemented outside of vstd.
 pub(crate) trait TrustedSpecSealed {}
 
@@ -218,30 +239,13 @@ pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
     requires
         old(container).spec_index_set_requires(index),
     ensures
-        old(container).spec_index_set_ensures(container, index, val),
+        old(container).spec_index_set_ensures(final(container), index, val),
     no_unwind
 {
     container[index] = val;
 }
 
 } // verus!
-macro_rules! impl_from_spec {
-    ($from: ty => [$($to: ty)*]) => {
-        verus!{
-        $(
-        pub assume_specification[ <$to as core::convert::From<$from>>::from ](a: $from) -> (ret: $to)
-            ensures
-                ret == a as $to,
-        ;
-        )*
-        }
-    };
-}
-
-impl_from_spec! {u8 => [u16 u32 u64 usize u128]}
-impl_from_spec! {u16 => [u32 u64 usize u128]}
-impl_from_spec! {u32 => [u64 u128]}
-impl_from_spec! {u64 => [u128]}
 
 #[verifier::external_type_specification]
 #[verifier::external_body]

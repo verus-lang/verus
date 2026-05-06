@@ -445,7 +445,7 @@ test_verify_one_file! {
         pub open spec fn plus_three<T: Integer>(t: T) -> int {
             t as u64 + 3
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types, bool, enum (unit-only or field-less), `char`, and pointer types to integer types")
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from")
 }
 
 test_verify_one_file! {
@@ -472,8 +472,7 @@ test_verify_one_file! {
         proof fn test() {
             assert(plus_three(S) + 1 == 1 + plus_three(S));
         }
-    //} => Err(err) => assert_vir_error_msg(err, "cannot implement `sealed` trait")
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support const items in traits")
+    } => Err(err) => assert_vir_error_msg(err, "cannot implement `sealed` trait")
 }
 
 test_verify_one_file! {

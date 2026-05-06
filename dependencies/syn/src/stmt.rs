@@ -257,6 +257,15 @@ pub(crate) mod parsing {
             || input.peek(Token![impl])
             || input.peek(Token![macro])
             || input.peek(Token![broadcast]) && input.peek2(Token![use])
+            || input.peek(Token![broadcast])
+                && input.peek2(Token![proof])
+                && input.peek3(Token![fn])
+            || (input.peek(Token![spec]) || input.peek(Token![proof])) && input.peek2(Token![fn])
+            || (input.peek(Token![spec]) || input.peek(Token![exec])) && input.peek2(Token![const])
+            || (input.peek(Token![ghost]) || input.peek(Token![tracked]))
+                && input.peek2(Token![struct])
+            || (input.peek(Token![ghost]) || input.peek(Token![tracked]))
+                && input.peek2(Token![enum])
             || is_item_macro
         {
             let item = item::parsing::parse_rest_of_item(begin, attrs, input)?;
@@ -406,7 +415,8 @@ pub(crate) mod parsing {
                 | Expr::Has(_)
                 | Expr::HasNot(_)
                 | Expr::Matches(_)
-                | Expr::GetField(_) => break,
+                | Expr::GetField(_)
+                | Expr::Final(_) => break,
             };
         }
         attrs.extend(attr_target.replace_attrs(Vec::new()));

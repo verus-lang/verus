@@ -244,7 +244,7 @@ check_send!(cell_points_to_send, cell_points_to_send2, "<T: Send>", "vstd::cell:
 check_sync!(cell_points_to_sync, cell_points_to_sync2, "<T: Sync>", "vstd::cell::PointsTo<T>");
 check_none!(cell_points_none, cell_points_none2, "<T>", "vstd::cell::PointsTo<T>");
 
-check_send_sync!(pcell, "<T: Send + Sync>", "vstd::cell::PCell<T>");
+check_send_sync!(pcell, "<T: Send + Sync>", "vstd::cell::pcell::PCell<T>");
 
 check_covariant!(
     cell_points_to_covariant,
@@ -328,3 +328,17 @@ check_not_copy!(
     "<T: Copy>",
     "vstd::invariant::AtomicInvariant<(), T, Pred<(), T>>"
 );
+
+// Ghost and Tracked
+
+check_send_sync!(trk_send_sync, "<T: Send + Sync>", "vstd::prelude::Tracked<T>");
+check_send!(trk_send, trk_send2, "<T: Send>", "vstd::prelude::Tracked<T>");
+check_sync!(trk_sync, trk_sync2, "<T: Sync>", "vstd::prelude::Tracked<T>");
+check_none!(trk_none, trk_none2, "<T>", "vstd::prelude::Tracked<T>");
+check_not_copy!(trk_not_copy, trk_not_copy_2, "<T>", "vstd::prelude::Tracked<T>");
+
+check_send_sync!(gho, "<T>", "vstd::prelude::Ghost<T>");
+
+check_covariant!(trk_covariant, trk_covariant2, "", "vstd::prelude::Tracked<$P>");
+
+check_covariant!(gho_covariant, gho_covariant2, "", "vstd::prelude::Ghost<$P>");

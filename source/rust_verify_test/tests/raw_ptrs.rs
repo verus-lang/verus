@@ -231,6 +231,54 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] pointer_cast_slice_and_str verus_code! {
+        use vstd::prelude::*;
+
+        fn test1(a: *mut [u8]) {
+            let b = a as *mut [u16];
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test2(a: *const [u8]) {
+            let b = a as *const [u16];
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test3(a: *const [u8]) {
+            let b = a as *const str;
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test4(a: *const str) {
+            let b = a as *const [u8];
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test5(a: *const [u16]) {
+            let b = a as *const str;
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test6(a: *const str) {
+            let b = a as *const [u16];
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] pointer_exec_eq_is_not_spec_eq verus_code! {
         use vstd::prelude::*;
         fn test_const_eq(x: *const u8, y: *const u8) {
@@ -280,6 +328,26 @@ test_verify_one_file! {
             let z = *y;
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot move out of `pt` because it is borrowed")
+}
+
+test_verify_one_file! {
+    #[test] compare_const_mut_pointers verus_code! {
+        use vstd::prelude::*;
+
+        pub assume_specification<T: core::marker::PointeeSized>[ <*const T as core::cmp::PartialOrd>::lt ] (
+            p: &*const T,
+            q: &*const T,
+        ) -> (result: bool)
+        ensures
+            result == ((*p as usize) < (*q as usize)),
+        ;
+
+        fn compare_pointers(p1: *const u32, p2: *mut u32) -> (result: bool)
+            ensures result == ((p1 as usize) < (p2 as *const u32 as usize)),
+        {
+            p1 < p2
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

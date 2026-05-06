@@ -9,7 +9,7 @@ pub fn check_bind_stmts(sm: &SM, ts: &mut TransitionStmt, errors: &mut Vec<Error
             }
         }
         TransitionStmt::Split(span, kind, splits) => {
-            match kind {
+            match &**kind {
                 SplitKind::If(..) => {}
                 SplitKind::Match(..) => {}
                 SplitKind::Let(..) => {}

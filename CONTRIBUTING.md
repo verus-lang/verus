@@ -6,7 +6,7 @@ contributions.  Please report issues or start discussions here on GitHub.
 We use GitHub discussions for feature requests and more open-ended conversations about
 upcoming features, and we reserve GitHub issues for actionable issues (bugs) with
 existing features. Don't worry though: if we think an issue should be a discussion (or
-viceversa) we can always move it later.
+vice versa) we can always move it later.
 
 ## Reporting an issue
 
@@ -143,6 +143,23 @@ this for VS Code.
 
 ## Contributing to the standard library (`vstd`)
 
+### What to contribute
+
+Verus aims to curate `vstd` along similar lines to how Rust curates `std`.
+Ideally, `vstd` should contain a set of minimal shared abstractions (and proofs
+about them) to enable the larger Verus community to develop their own
+abstractions and proof techniques.  A particularly important use case for
+`vstd` is supporting the abstractions needed to provide specs for Rust's `std`,
+so that people developing with Verus can use standard Rust constructs without
+relying on external dependencies.   
+
+If your contribution doesn't fall into this minimal subset, it may
+be better off as an independent package published on [crates.io](https://crates.io), 
+which the community can then integrate via `cargo verus`.  See the
+[Best Practices](best-practices-for-publishing-verusverified-code-on-cratesio) below.
+
+### Tips for testing and verifying your contribution
+
 If you're contributing to the standard library, you should also test the
 standalone build of that library with
 ```
@@ -169,10 +186,54 @@ cd source/vstd
 ../target-verus/release/verus --crate-type=lib --is-vstd vstd.rs --cfg 'feature="std"' --cfg 'feature="alloc"'
 ```
 
-### Common Conventions
+### Common conventions
 Inside `vstd`:
 - We add a `lemma_` prefix to the name of a lemma (i.e., a `proof fn`) to make its purpose explicit.
 - We try to make lemmas associated functions when possible, e.g., `my_map.lemma_remove_keys_len(keys)`, not `lemma_remove_keys_len(my_map, keys)`.
+
+## Best practices for publishing Verus-verified code on crates.io
+
+[Publishing](https://doc.rust-lang.org/cargo/reference/publishing.html) 
+your Verus-verified crate on [crates.io](https://crates.io) is a great
+way to enable more people to build on your hard work.  If you do so, we encourage
+you to follow these best practices.
+1. If your crate is primarily for specification and proof purposes (i.e., a normal Rust developer
+   is unlikely to benefit from it), then please make this clear in your preamble (i.e., in the README.md
+   file that appears on the crates.io landing page.  For example, you might say:
+   "This crate contains formal specifications and proofs about Widgets,
+   primarily for use with [Verus](https://github.com/verus-lang/verus), a tool
+   for verifying the correctness of Rust code." 
+2. If your crate contains verified executable Rust code that could be used by both unverified
+   and verified projects, you might instead say something like: "This crate
+   implements Widgets with the following fun features: [Feature list].  The
+   code has been formally verified using [Verus](https://github.com/verus-lang/verus), 
+   which means [list of properties you proved, with suitable caveats for what
+   properties have not been proven]."  It's important to convey the limitations
+   of your proof (e.g., what you may have assumed about other libraries), so that
+   consumers of your crate are not disappointed when something breaks.  Err on the
+   side of under-promising and over-delivering.
+3. If your crate contains verified executable Rust code that uses any of
+   Verus's unsafe primitives ([raw
+   pointers](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html),
+   [PPtr](https://verus-lang.github.io/verus/verusdoc/vstd/simple_pptr/struct.PPtr.html),
+   or
+   [PCell](https://verus-lang.github.io/verus/verusdoc/vstd/cell/pcell/struct.PCell.html))
+   or uses explicit `unsafe` blocks, then we encourage you to run the [safe API
+   checker](https://verus-lang.github.io/verus/guide/calling-verified-from-unverified.html),
+   which can detect places where your external interface relies on
+   Verus-checked preconditions to ensure safety.   It's important to remember
+   that unverified consumers are not subject to these checks, so providing such
+   an interface may lead to undefined behavior.  The
+   [guide](https://verus-lang.github.io/verus/guide/calling-verified-from-unverified.html)
+   offers some tips on how to improve such an interface.
+4. We encourage you to apply [verusdoc](https://verus-lang.github.io/verus/guide/verusdoc.html)
+   to your crate.  Like `rustdoc`, `verusdoc` will automatically generate nice
+   HTML documentation, and it will also include Verus-related specifications.
+   Ideally, you should host this documentation online and provide a link to it
+   in the preamble of your package on crates.io.  In addition, adding a CI job
+   to your repository to automatically update your documentation site will
+   help keep it in sync as your package evolves.
+
 
 ## Other tips
 

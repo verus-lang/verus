@@ -20,6 +20,8 @@ elif [ `uname` == "Linux" ]; then
         echo "Unsupported architecture $(uname -m)"
         exit -1
     fi
+elif [[ $(uname) == "MINGW64_NT"* ]]; then
+    filename="z3-$z3_version-x64-win"
 fi
 
 URL="https://github.com/Z3Prover/z3/releases/download/z3-$z3_version/$filename.zip"
@@ -32,5 +34,6 @@ unzip "$filename.zip"
 rm -f z3
 
 cp "$filename/bin/z3" .
+echo "z3 located at $(pwd)"
 rm -r "$filename"
 rm "$filename.zip"

@@ -91,12 +91,14 @@ macro_rules! atomic_specs_bool {
 atomic_specs_int!(atomic_specs_u8, AtomicU8, u8);
 atomic_specs_int!(atomic_specs_u16, AtomicU16, u16);
 atomic_specs_int!(atomic_specs_u32, AtomicU32, u32);
+#[cfg(target_has_atomic = "64")]
 atomic_specs_int!(atomic_specs_u64, AtomicU64, u64);
 atomic_specs_int!(atomic_specs_usize, AtomicUsize, usize);
 
 atomic_specs_int!(atomic_specs_i8, AtomicI8, i8);
 atomic_specs_int!(atomic_specs_i16, AtomicI16, i16);
 atomic_specs_int!(atomic_specs_i32, AtomicI32, i32);
+#[cfg(target_has_atomic = "64")]
 atomic_specs_int!(atomic_specs_i64, AtomicI64, i64);
 atomic_specs_int!(atomic_specs_isize, AtomicIsize, isize);
 

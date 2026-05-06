@@ -72,7 +72,7 @@ pub fn main() {
             }
         }
         Err(f) => {
-            eprintln!("Error: {}", f.to_string());
+            eprintln!("Error: {f}");
             print_usage();
             std::process::exit(-1);
         }
@@ -87,7 +87,7 @@ pub fn main() {
     {
         File::open(in_filename)
             .and_then(|mut file| file.read_to_end(&mut in_bytes))
-            .expect(&format!("could not read file {}", in_filename));
+            .unwrap_or_else(|e| panic!("could not read file {}: {:?}", in_filename, e));
     }
     in_bytes.push(')' as u8);
 
@@ -200,9 +200,7 @@ pub fn main() {
             message_interface.clone(),
             std::path::Path::new(PROVER_LOG_FILE),
             None,
-            true,
             &reporter,
-            false,
         ) {
             Ok(profiler) => profiler.print_raw_stats(&reporter),
             Err(err) => eprintln!("profile: failed to parse z3 trace: {}", err),

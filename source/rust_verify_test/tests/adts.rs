@@ -236,6 +236,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_founded1 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List {
             Cons(int, Box<List>)
         }
@@ -244,6 +245,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_founded2 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List {
             Cons1(int, Box<List>),
             Cons2(int, Box<List>),
@@ -253,6 +255,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_founded3 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List1 {
             Cons(int, Box<List2>)
         }
@@ -264,6 +267,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_founded4 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List {
             Cons(int, (Box<List>, bool))
         }
@@ -272,6 +276,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_well_field_unbox verus_code! {
+        use vstd::std_specs::alloc::*;
         struct B { b: bool }
         fn foo(s1: Box<B>, s2: &Box<B>, s3: Box<&B>, s4: Box<(bool, bool)>) {
             let z1 = s1.b;
@@ -648,10 +653,10 @@ test_verify_one_file! {
     #[test] test_field_update_param_1_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
         fn test(t: &mut T)
             requires
-                old(t).s.a < 30,
-                old(t).s.b < 30,
+                t.s.a < 30,
+                t.s.b < 30,
             ensures
-                *t == (T { s: S { a: (old(t).s.a + 1) as usize, b: (old(t).s.b + 1) as i32 }, ..*old(t) })
+                *final(t) == (T { s: S { a: (old(t).s.a + 1) as usize, b: (old(t).s.b + 1) as i32 }, ..*old(t) })
         {
             t.s.a = t.s.a + 1;
             t.s.b = t.s.b + 1;
@@ -663,10 +668,10 @@ test_verify_one_file! {
     #[test] test_field_update_param_1_fail FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
         fn test(t: &mut T)
             requires
-                old(t).s.a < 30,
-                old(t).s.b < 30,
+                t.s.a < 30,
+                t.s.b < 30,
             ensures
-                *t == (T { s: S { a: (old(t).s.a + 1) as usize, b: (old(t).s.b + 1) as i32 }, ..*old(t) })
+                *final(t) == (T { s: S { a: (old(t).s.a + 1) as usize, b: (old(t).s.b + 1) as i32 }, ..*old(t) })
         {
             t.s.a = t.s.a + 1;
             t.s.b = t.s.b + 1;
@@ -678,8 +683,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_field_update_param_2_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
         fn test(t: &mut T, v: usize)
-            requires old(t).s.a < 30, v < 30
-            ensures *t == (T { s: S { a: (old(t).s.a + v) as usize, ..old(t).s }, ..*old(t) })
+            requires t.s.a < 30, v < 30
+            ensures *final(t) == (T { s: S { a: (old(t).s.a + v) as usize, ..old(t).s }, ..*old(t) })
         {
             t.s.a = t.s.a + v;
         }
@@ -689,8 +694,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_field_update_param_mut_ref_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + verus_code_str! {
         fn foo(s: &mut S, v: usize)
-            requires old(s).a < 30, v < 30
-            ensures *s == (S { a: (old(s).a + v) as usize, ..*old(s) })
+            requires s.a < 30, v < 30
+            ensures *final(s) == (S { a: (old(s).a + v) as usize, ..*old(s) })
         {
             s.a = s.a + v;
         }
@@ -743,7 +748,15 @@ test_verify_one_file! {
         fn test(t: T) {
             t.s.a = t.s.a;
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
+    } => Err(e) => assert_vir_error_msg(e, "cannot access proof-mode place in executable context")
+}
+
+test_verify_one_file! {
+    #[test] test_field_mut_update_field_mode_pass_1 FIELD_UPDATE_MODES.to_string() + verus_code_str! {
+        fn test(mut t: T) {
+            t.s.a = t.s.a;
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot access proof-mode place in executable context")
 }
 
 const ENUM_S: &str = verus_code_str! {
@@ -1311,10 +1324,10 @@ test_verify_one_file! {
         }
 
         proof fn test1(t: S<nat>)
-            requires ({
+            requires {
                 &&& t is That ==> t->v == 3
                 &&& t is This ==> t->0 == 2
-            })
+            },
         {
             match t {
                 S::This(a) => {
@@ -1338,10 +1351,10 @@ test_verify_one_file! {
         }
 
         proof fn test1(t: S<nat>)
-            requires ({
+            requires {
                 &&& t is That ==> t->v == 3
                 &&& t is This ==> t->0 == 2
-            })
+            },
         {
             match t {
                 S::This(a) => {
@@ -1431,10 +1444,10 @@ const MATCHES_SYNTAX_COMMON: &str = verus_code_str! {
 test_verify_one_file! {
     #[test] matches_syntax_1_pass MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
+            requires {
                 &&& t matches S::That { v: a } ==> a == 3
                 &&& t matches S::This(v) ==> v == 4
-            })
+            },
         {
             match t {
                 S::This(v) => assert(v == 4),
@@ -1448,10 +1461,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] matches_syntax_1_fails MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
+            requires {
                 &&& t matches S::That { v: a } ==> a == 3
                 &&& t matches S::This(v) ==> v == 4
-            })
+            },
         {
             match t {
                 S::This(v) => assert(v == 3), // FAILS
@@ -1464,9 +1477,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] matches_syntax_2 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
+            requires {
                 &&& t matches S::That { v: _ }
-            })
+            },
         {
             assert(t is That);
         }
@@ -1476,10 +1489,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] matches_syntax_3 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
+            requires {
                 && t matches S::That { v: a }
                 && a == 3
-            })
+            },
         {
             assert(t is That);
             assert(match t {
@@ -1493,11 +1506,11 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] matches_syntax_4 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn test1(t: S)
-            requires ({
+            requires {
                 &&& t matches S::That { v: a }
                 &&& a > 3
                 &&& a < 5
-            })
+            },
         {
             assert(t is That);
             assert(match t {
@@ -1801,7 +1814,7 @@ test_verify_one_file! {
 
         fn mutate_int_2(i: &mut u8)
             requires *old(i) == 19,
-            ensures *i == 30,
+            ensures *final(i) == 30,
         {
             *i = 30;
         }
@@ -1842,8 +1855,8 @@ test_verify_one_file! {
         }
 
         fn update_u64(a: &mut u64)
-            requires *old(a) == 5,
-            ensures *a == 19,
+            requires *a == 5,
+            ensures *final(a) == 19,
         {
             *a = 19;
         }
@@ -1852,14 +1865,14 @@ test_verify_one_file! {
             p.0 = 5;
             p.1 = 20;
             update_u64(&mut p.0);
-            assert(p == (19u64, 20u64));
+            assert(*p == (19u64, 20u64));
         }
 
         fn test_mut_ref_fails(p: &mut (u64, u64)) {
             p.0 = 5;
             p.1 = 20;
             update_u64(&mut p.0);
-            assert(p == (19u64, 20u64));
+            assert(*p == (19u64, 20u64));
             assert(false); // FAILS
         }
 
@@ -1942,6 +1955,36 @@ test_verify_one_file! {
             {
                 Self::Output {}
             }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trigger_on_unchanged_fields verus_code! {
+        use vstd::prelude::*;
+
+        struct S {
+            x1: usize,
+            x2: usize,
+            x3: usize,
+            x4: Vec<usize>,
+        }
+
+        fn foo(u: &mut usize) {
+        }
+
+        fn test1(s: &mut S) {
+            assume(forall|i: int| 0 <= i < s.x4.len() ==> #[trigger] s.x4[i] == 3);
+            s.x2 = 5;
+            // assert(s.x4 == old(s).x4); // not needed
+            assert(forall|i: int| 0 <= i < s.x4.len() ==> #[trigger] s.x4[i] == 3);
+        }
+
+        fn test2(s: &mut S) {
+            assume(forall|i: int| 0 <= i < s.x4.len() ==> #[trigger] s.x4[i] == 3);
+            foo(&mut s.x2);
+            // assert(s.x4 == old(s).x4); // not needed
+            assert(forall|i: int| 0 <= i < s.x4.len() ==> #[trigger] s.x4[i] == 3);
         }
     } => Ok(())
 }

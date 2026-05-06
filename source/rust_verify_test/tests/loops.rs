@@ -949,7 +949,7 @@ test_verify_one_file_with_options! {
 
         fn test_old_in_ensures(a: &mut u64)
             requires *old(a) < 2000,
-            ensures *a as int === *old(a) + 25,
+            ensures *final(a) as int === *old(a) + 25,
         {
             let mut i: u64 = 0;
             loop
@@ -967,7 +967,7 @@ test_verify_one_file_with_options! {
 
         fn test_old_in_ensures_fail(a: &mut u64)
             requires *old(a) < 2000,
-            ensures *a as int === *old(a) + 26,
+            ensures *final(a) as int === *old(a) + 26,
         {
             let mut i: u64 = 0;
             loop
@@ -1259,10 +1259,10 @@ test_verify_one_file_with_options! {
             type Item = T;
             fn next(&mut self) -> (item: Option<T>)
                 ensures
-                    self.vec == old(self).vec,
-                    old(self).cur < self.vec.len() ==> self.cur == old(self).cur + 1,
-                    old(self).cur < self.vec.len() ==> item == Some(self.vec[old(self).cur as int]),
-                    old(self).cur >= self.vec.len() ==> item.is_none() && self.cur == old(self).cur,
+                    final(self).vec == old(self).vec,
+                    old(self).cur < final(self).vec.len() ==> final(self).cur == old(self).cur + 1,
+                    old(self).cur < final(self).vec.len() ==> item == Some(final(self).vec[old(self).cur as int]),
+                    old(self).cur >= final(self).vec.len() ==> item.is_none() && final(self).cur == old(self).cur,
             {
                 if self.cur < self.vec.len() {
                     let item = self.vec[self.cur];
@@ -1550,8 +1550,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] recursive_call_in_loop_mut_ref verus_code! {
         fn test1(x: &mut usize)
-            ensures *x <= *old(x),
-            decreases old(x),
+            ensures *final(x) <= *old(x),
+            decreases *old(x),
         {
             if *x == 0 {
                 return;
@@ -1568,4 +1568,44 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] loop_via_subrange verus_code! {
+        use vstd::prelude::*;
+        fn test_subrange(src: &Vec<u32>, dst: &mut Vec<u32>, lo: usize, hi: usize)
+            requires
+                lo <= hi,
+                hi <= src.len(),
+                hi <= old(dst).len(),
+            ensures
+                src@.subrange(lo as int, hi as int) == final(dst)@.subrange(lo as int, hi as int),
+        {
+            for n in lo..hi
+                invariant
+                    lo <= hi,
+                    hi <= src.len(),
+                    hi <= dst.len(),
+                    src@.subrange(lo as int, n as int) =~= dst@.subrange(lo as int, n as int),
+            {
+                dst[n] = src[n];
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] loop_isolation_false_requires_allow_complex_invariants verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test1() {
+            let mut i = 0;
+            while i < 10
+                invariant_except_break i <= 9
+                invariant 0 <= i <= 10
+                decreases 10 - i
+            {
+                i = i + 1;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break or ensures, unless #[verifier::allow_complex_invariants] is used")
 }

@@ -59,12 +59,16 @@ pub broadcast proof fn axiom_spec_len<T, A: Allocator>(v: &VecDeque<T, A>)
     admit();
 }
 
+impl<T, A: Allocator> super::core::IndexSpecImpl<usize> for VecDeque<T, A> {
+    open spec fn index_req(&self, index: &usize) -> bool {
+        index < self.len()
+    }
+}
+
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::index ](
     v: &VecDeque<T, A>,
     i: usize,
 ) -> (result: &T)
-    requires
-        i < v.len(),
     ensures
         result == v.spec_index(i as int),
 ;
@@ -81,6 +85,13 @@ pub assume_specification<T>[ VecDeque::<T>::new ]() -> (v: VecDeque<T>)
         v@ == Seq::<T>::empty(),
 ;
 
+pub assume_specification<T>[ <VecDeque<T> as core::default::Default>::default ]() -> (v: VecDeque<
+    T,
+>)
+    ensures
+        v@ == Seq::<T>::empty(),
+;
+
 pub assume_specification<T>[ VecDeque::<T>::with_capacity ](capacity: usize) -> (v: VecDeque<T>)
     ensures
         v@ == Seq::<T>::empty(),
@@ -91,7 +102,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::reserve ](
     additional: usize,
 )
     ensures
-        v@ == old(v)@,
+        final(v)@ == old(v)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::push_back ](
@@ -99,7 +110,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::push_back ](
     value: T,
 )
     ensures
-        v@ == old(v)@.push(value),
+        final(v)@ == old(v)@.push(value),
 ;
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::push_front ](
@@ -107,7 +118,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::push_front ](
     value: T,
 )
     ensures
-        v@ == seq![value] + old(v)@,
+        final(v)@ == seq![value] + old(v)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::pop_back ](
@@ -118,11 +129,11 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::pop_back ](
             Some(x) => {
                 &&& old(v)@.len() > 0
                 &&& x == old(v)@[old(v)@.len() - 1]
-                &&& v@ == old(v)@.subrange(0, old(v)@.len() as int - 1)
+                &&& final(v)@ == old(v)@.subrange(0, old(v)@.len() as int - 1)
             },
             None => {
                 &&& old(v)@.len() == 0
-                &&& v@ == old(v)@
+                &&& final(v)@ == old(v)@
             },
         },
 ;
@@ -135,11 +146,11 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::pop_front ](
             Some(x) => {
                 &&& old(v)@.len() > 0
                 &&& x == old(v)@[0]
-                &&& v@ == old(v)@.subrange(1, old(v)@.len() as int)
+                &&& final(v)@ == old(v)@.subrange(1, old(v)@.len() as int)
             },
             None => {
                 &&& old(v)@.len() == 0
-                &&& v@ == old(v)@
+                &&& final(v)@ == old(v)@
             },
         },
 ;
@@ -149,8 +160,8 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::append ](
     other: &mut VecDeque<T, A>,
 )
     ensures
-        v@ == old(v)@ + old(other)@,
-        other@ == Seq::<T>::empty(),
+        final(v)@ == old(v)@ + old(other)@,
+        final(other)@ == Seq::<T>::empty(),
 ;
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::insert ](
@@ -161,7 +172,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::insert ](
     requires
         i <= old(v).len(),
     ensures
-        v@ == old(v)@.insert(i as int, element),
+        final(v)@ == old(v)@.insert(i as int, element),
 ;
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::remove ](
@@ -173,18 +184,18 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::remove ](
             Some(x) => {
                 &&& i < old(v)@.len()
                 &&& x == old(v)@[i as int]
-                &&& v@ == old(v)@.remove(i as int)
+                &&& final(v)@ == old(v)@.remove(i as int)
             },
             None => {
                 &&& old(v)@.len() <= i
-                &&& v@ == old(v)@
+                &&& final(v)@ == old(v)@
             },
         },
 ;
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::clear ](v: &mut VecDeque<T, A>)
     ensures
-        v.view() == Seq::<T>::empty(),
+        final(v).view() == Seq::<T>::empty(),
 ;
 
 pub assume_specification<T, A: Allocator + core::clone::Clone>[ VecDeque::<T, A>::split_off ](
@@ -194,7 +205,7 @@ pub assume_specification<T, A: Allocator + core::clone::Clone>[ VecDeque::<T, A>
     requires
         at <= old(v)@.len(),
     ensures
-        v@ == old(v)@.subrange(0, at as int),
+        final(v)@ == old(v)@.subrange(0, at as int),
         return_value@ == old(v)@.subrange(at as int, old(v)@.len() as int),
 ;
 
@@ -220,8 +231,8 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::truncate ](
     len: usize,
 )
     ensures
-        len <= old(v).len() ==> v@ == old(v)@.subrange(0, len as int),
-        len > old(v).len() ==> v@ == old(v)@,
+        len <= old(v).len() ==> final(v)@ == old(v)@.subrange(0, len as int),
+        len > old(v).len() ==> final(v)@ == old(v)@,
 ;
 
 pub assume_specification<T: Clone, A: Allocator>[ VecDeque::<T, A>::resize ](
@@ -230,11 +241,13 @@ pub assume_specification<T: Clone, A: Allocator>[ VecDeque::<T, A>::resize ](
     value: T,
 )
     ensures
-        len <= old(v).len() ==> v@ == old(v)@.subrange(0, len as int),
+        len <= old(v).len() ==> final(v)@ == old(v)@.subrange(0, len as int),
         len > old(v).len() ==> {
-            &&& v@.len() == len
-            &&& v@.subrange(0, old(v).len() as int) == old(v)@
-            &&& forall|i| #![all_triggers] old(v).len() <= i < len ==> cloned::<T>(value, v@[i])
+            &&& final(v)@.len() == len
+            &&& final(v)@.subrange(0, old(v).len() as int) == old(v)@
+            &&& forall|i|
+                #![all_triggers]
+                old(v).len() <= i < len ==> cloned::<T>(value, final(v)@[i])
         },
 ;
 
@@ -268,11 +281,11 @@ pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T
             let (old_index, old_seq) = old(elements)@;
             match r {
                 None => {
-                    &&& elements@ == old(elements)@
+                    &&& final(elements)@ == old(elements)@
                     &&& old_index >= old_seq.len()
                 },
                 Some(element) => {
-                    let (new_index, new_seq) = elements@;
+                    let (new_index, new_seq) = final(elements)@;
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1

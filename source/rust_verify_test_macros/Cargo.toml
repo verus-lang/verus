@@ -13,3 +13,5 @@ quote = "*"
 syn = "*"
 proc-macro2 = "*"
 
+[lints]
+workspace = true

@@ -1,10 +1,16 @@
-use std::{collections::{HashMap, HashSet}, fs, path::Path, process::Stdio, sync::LazyLock};
-use toml_edit::DocumentMut;
-use regex::Regex;
 use clap::Parser as ClapParser;
-use petgraph::graph::DiGraph;
-use petgraph::algo::toposort;
 use crates_io_api::SyncClient;
+use petgraph::algo::toposort;
+use petgraph::graph::DiGraph;
+use regex::Regex;
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::Path,
+    process::Stdio,
+    sync::LazyLock,
+};
+use toml_edit::DocumentMut;
 //use petgraph::dot::{Dot, Config}; // Used for debugging graphs
 
 const LINE_COUNT_DIR: &str = "source/tools/line_count";
@@ -38,13 +44,13 @@ struct Args {
 
 // Path to cargo-verus's main file, where we have a static string
 // indicating which version of vstd to use
-const CARGO_VERUS_MAIN: &str = "source/cargo-verus/src/main.rs";
+const CARGO_VERUS_TEMPLATE_FILE: &str = "source/cargo-verus/src/subcommands.rs";
 
 // Generates a fresh version string of the form "0.0.0-year-month-day-time",
 // which we'll assign to any updated crate.  Using a const + LazyLock ensures
 // we only compute this once and then use it consistently throughout.
 static NEW_VERSION: LazyLock<String> = LazyLock::new(|| {
-    use chrono::{Datelike,Timelike,Utc};
+    use chrono::{Datelike, Timelike, Utc};
 
     let now = Utc::now();
     format!(
@@ -56,8 +62,7 @@ static NEW_VERSION: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
-
-#[derive(Clone,Debug,PartialEq,Eq,Hash,PartialOrd,Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct Crate {
     // Crate's official name
     name: String,
@@ -72,14 +77,20 @@ fn compute_immediate_deps(crates: &Vec<Crate>) -> HashMap<Crate, Vec<Crate>> {
         let cargo_toml_path = Path::new(&krate.path).join("Cargo.toml");
 
         // Read the Cargo.toml file
-        let content = fs::read_to_string(&cargo_toml_path).expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+        let content = fs::read_to_string(&cargo_toml_path)
+            .expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
         let doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
         for maybe_dep in crates {
-            if doc.contains_key("dependencies") && doc["dependencies"].get(&maybe_dep.name).is_some() {
+            if doc.contains_key("dependencies")
+                && doc["dependencies"].get(&maybe_dep.name).is_some()
+            {
                 // krate depends on maybe_dep, so add an edge: maybe_dep -> krate,
                 // so if maybe_dep is updated, we know that krate needs to be updated too
-                dep_map.entry(maybe_dep.clone()).and_modify(|v: &mut Vec<Crate>| v.push(krate.clone())).or_insert(vec![krate.clone()]);
+                dep_map
+                    .entry(maybe_dep.clone())
+                    .and_modify(|v: &mut Vec<Crate>| v.push(krate.clone()))
+                    .or_insert(vec![krate.clone()]);
             }
         }
     }
@@ -162,14 +173,15 @@ fn src_modified(dir: &Path, commit: &str) -> bool {
         .status()
         .expect("Failed to execute git command");
 
-    !status.success()   // A successful exit code of 0 means no changes
+    !status.success() // A successful exit code of 0 means no changes
 }
 
 fn read_toml_version(dir: &Path) -> String {
     let cargo_toml_path = dir.join("Cargo.toml");
 
     // Read the Cargo.toml file
-    let content = fs::read_to_string(&cargo_toml_path).expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+    let content = fs::read_to_string(&cargo_toml_path)
+        .expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
     let doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
     doc["package"]["version"].as_str().expect("Version must be a string").to_string()
@@ -179,7 +191,8 @@ fn update_toml_version(dir: &Path) {
     let cargo_toml_path = dir.join("Cargo.toml");
 
     // Read the Cargo.toml file
-    let content = fs::read_to_string(&cargo_toml_path).expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+    let content = fs::read_to_string(&cargo_toml_path)
+        .expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
     let mut doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
     // Replace the version line
@@ -194,16 +207,21 @@ fn update_toml_dependencies(dir: &Path, dependencies: &Vec<&Crate>) {
     let cargo_toml_path = dir.join("Cargo.toml");
 
     // Read the Cargo.toml file
-    let content = fs::read_to_string(&cargo_toml_path).expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+    let content = fs::read_to_string(&cargo_toml_path)
+        .expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
     let mut doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
     // Update dependencies with the new version
     for krate in dependencies {
         if doc.contains_key("dependencies") && doc["dependencies"].get(&krate.name).is_some() {
-            doc["dependencies"][&krate.name]["version"] = toml_edit::value(format!("={}", *NEW_VERSION));
+            doc["dependencies"][&krate.name]["version"] =
+                toml_edit::value(format!("={}", *NEW_VERSION));
         }
-        if doc.contains_key("dev-dependencies") && doc["dev-dependencies"].get(&krate.name).is_some() {
-            doc["dev-dependencies"][&krate.name]["version"] = toml_edit::value(format!("={}", *NEW_VERSION));
+        if doc.contains_key("dev-dependencies")
+            && doc["dev-dependencies"].get(&krate.name).is_some()
+        {
+            doc["dev-dependencies"][&krate.name]["version"] =
+                toml_edit::value(format!("={}", *NEW_VERSION));
         }
     }
 
@@ -220,13 +238,11 @@ fn publish(dir: &Path, dry_run: bool) {
     if dry_run {
         cmd.arg("--dry-run");
     }
-    let status = cmd
-        .current_dir(dir)
-        .status()
-        .expect("Failed to execute cargo publish");
+    let status = cmd.current_dir(dir).status().expect("Failed to execute cargo publish");
 
     if !status.success() {
-        panic!("cargo publish{} failed for {}", 
+        panic!(
+            "cargo publish{} failed for {}",
             if dry_run { " --dry-run" } else { "" },
             dir.display()
         );
@@ -234,14 +250,17 @@ fn publish(dir: &Path, dry_run: bool) {
 }
 
 fn update_cargo_verus_template() {
-    let main = Path::new(CARGO_VERUS_MAIN);
+    let main = Path::new(CARGO_VERUS_TEMPLATE_FILE);
     let content = fs::read_to_string(main).expect("Failed to read cargo-verus main.rs");
 
     // Replace the version in the template
     let re = Regex::new("(?m)^vstd =.*$").expect("Failed to create regex");
     let count = re.find_iter(&content).count();
     if count != 1 {
-        panic!("Expected to find exactly one occurence of 'vstd = ' in {}.  Found {}.", CARGO_VERUS_MAIN, count);
+        panic!(
+            "Expected to find exactly one occurence of 'vstd = ' in {}.  Found {}.",
+            CARGO_VERUS_TEMPLATE_FILE, count
+        );
     }
     let updated_content = re.replace(&content, format!("vstd = \"={}\"", *NEW_VERSION).as_str());
     //println!("Updated cargo-verus main.rs:\n{}", updated_content);
@@ -261,7 +280,10 @@ fn update_crates(crates: Vec<Crate>) {
                 println!("\t{}:\n\t\tHAS been modified since commit {}.\n", krate.name, commit);
                 modified_crates.insert(&krate);
             } else {
-                println!("\t{}:\n\t\t has NOT been modified since commit {}.\n", krate.name, commit);
+                println!(
+                    "\t{}:\n\t\t has NOT been modified since commit {}.\n",
+                    krate.name, commit
+                );
             }
         } else {
             println!("{}: Could not find last commit for {}", krate.name, krate.path);
@@ -283,7 +305,10 @@ fn update_crates(crates: Vec<Crate>) {
                     // if it hasn't already been marked for modification, mark it now.
                     if !modified_crates.contains(&dependent) {
                         new_modifications.insert(dependent);
-                        println!("\t\t{}: depends on modified crate {}", dependent.name, krate.name);
+                        println!(
+                            "\t\t{}: depends on modified crate {}",
+                            dependent.name, krate.name
+                        );
                     }
                 }
             }
@@ -298,7 +323,10 @@ fn update_crates(crates: Vec<Crate>) {
 
     // Do the modifications
     if modified_crates.len() > 0 {
-        println!("\nModifying each of the following crates to version {} and updating their dependencies ...", *NEW_VERSION);
+        println!(
+            "\nModifying each of the following crates to version {} and updating their dependencies ...",
+            *NEW_VERSION
+        );
         let mut modified_crates: Vec<&Crate> = modified_crates.into_iter().collect();
         modified_crates.sort();
         for krate in &modified_crates {
@@ -316,11 +344,12 @@ fn update_crates(crates: Vec<Crate>) {
     }
 }
 
-fn publish_crates(crate_graph: DiGraph<Crate, ()>, dry_run: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let crates_io_client = SyncClient::new(
-        "verus-version-bumper",
-        std::time::Duration::from_secs(1),
-    )?;
+fn publish_crates(
+    crate_graph: DiGraph<Crate, ()>,
+    dry_run: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let crates_io_client =
+        SyncClient::new("verus-version-bumper", std::time::Duration::from_secs(1))?;
     let sorted_nodes = toposort(&crate_graph, None).expect("Dependency graph has cycles");
     //println!("{:?}", Dot::with_config(&crate_graph, &[Config::EdgeNoLabel]));
     for node_index in sorted_nodes {
@@ -330,7 +359,10 @@ fn publish_crates(crate_graph: DiGraph<Crate, ()>, dry_run: bool) -> Result<(), 
         let metadata = crates_io_client.get_crate(&krate.name)?;
         let version_exists = metadata.versions.iter().any(|v| v.num == crate_version && !v.yanked);
         if version_exists {
-            println!("Crate {} version {} already exists on crates.io, skipping publish.", krate.name, crate_version);
+            println!(
+                "Crate {} version {} already exists on crates.io, skipping publish.",
+                krate.name, crate_version
+            );
             continue;
         }
 
@@ -345,17 +377,11 @@ fn publish_crates(crate_graph: DiGraph<Crate, ()>, dry_run: bool) -> Result<(), 
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let  args = Args::parse();
+    let args = Args::parse();
 
     let crates = vec![
-        Crate {
-            name: "vstd".to_string(),
-            path: "source/vstd".to_string(),
-        },
-        Crate {
-            name: "verus_builtin".to_string(),
-            path: "source/builtin".to_string(),
-        },
+        Crate { name: "vstd".to_string(), path: "source/vstd".to_string() },
+        Crate { name: "verus_builtin".to_string(), path: "source/builtin".to_string() },
         Crate {
             name: "verus_builtin_macros".to_string(),
             path: "source/builtin_macros".to_string(),
@@ -368,10 +394,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: "verus_prettyplease".to_string(),
             path: "dependencies/prettyplease".to_string(),
         },
-        Crate {
-            name: "verus_syn".to_string(),
-            path: "dependencies/syn".to_string(),
-        },
+        Crate { name: "verus_syn".to_string(), path: "dependencies/syn".to_string() },
     ];
 
     let test_path = Path::new(&crates[0].path);

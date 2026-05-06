@@ -1,10 +1,14 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use rustc_span::Span;
 use vir::ast::VirErr;
 
 pub(crate) fn err_span<A, S: Into<String>>(span: Span, msg: S) -> Result<A, VirErr> {
     Err(vir::messages::error(&crate::spans::err_air_span(span), msg))
+}
+
+pub(crate) fn err_span_vec<A, S: Into<String>>(span: Span, msg: S) -> Result<A, Vec<VirErr>> {
+    Err(vec![vir::messages::error(&crate::spans::err_air_span(span), msg)])
 }
 
 pub(crate) fn err_span_bare<S: Into<String>>(span: Span, msg: S) -> VirErr {
@@ -30,12 +34,25 @@ pub(crate) fn internal_err_span<A>(span: Span, msg: String) -> Result<A, VirErr>
 #[macro_export]
 macro_rules! unsupported_err {
     ($span: expr, $msg: expr) => {{
-        crate::util::unsupported_err_span($span, $msg.to_string())?;
+        $crate::util::unsupported_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
     ($span: expr, $msg: expr, $info: expr) => {{
         dbg!($info);
-        crate::util::unsupported_err_span($span, $msg.to_string())?;
+        $crate::util::unsupported_err_span($span, $msg.to_string())?;
+        unreachable!()
+    }};
+}
+
+#[macro_export]
+macro_rules! unsupported_err_vec {
+    ($span: expr, $msg: expr) => {{
+        $crate::util::unsupported_err_span($span, $msg.to_string()).map_err(|e| vec![e])?;
+        unreachable!()
+    }};
+    ($span: expr, $msg: expr, $info: expr) => {{
+        dbg!($info);
+        $crate::util::unsupported_err_span($span, $msg.to_string()).map_err(|e| vec![e])?;
         unreachable!()
     }};
 }
@@ -43,12 +60,12 @@ macro_rules! unsupported_err {
 #[macro_export]
 macro_rules! internal_err {
     ($span: expr, $msg: expr) => {{
-        crate::util::internal_err_span($span, $msg.to_string())?;
+        $crate::util::internal_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
     ($span: expr, $msg: expr, $info: expr) => {{
         dbg!($info);
-        crate::util::internal_err_span($span, $msg.to_string())?;
+        $crate::util::internal_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
 }
@@ -57,13 +74,28 @@ macro_rules! internal_err {
 macro_rules! unsupported_err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
-            crate::util::unsupported_err_span($span, $msg.to_string())?;
+            $crate::util::unsupported_err_span($span, $msg.to_string())?;
         }
     };
     ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
         if (!$assertion) {
             dbg!($info);
-            crate::util::unsupported_err_span($span, $msg.to_string())?;
+            $crate::util::unsupported_err_span($span, $msg.to_string())?;
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! unsupported_err_vec_unless {
+    ($assertion: expr, $span: expr, $msg: expr) => {
+        if (!$assertion) {
+            $crate::util::unsupported_err_span($span, $msg.to_string()).map_err(|e| vec![e])?;
+        }
+    };
+    ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
+        if (!$assertion) {
+            dbg!($info);
+            $crate::util::unsupported_err_span($span, $msg.to_string()).map_err(|e| vec![e])?;
         }
     };
 }
@@ -72,13 +104,13 @@ macro_rules! unsupported_err_unless {
 macro_rules! err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
-            crate::util::err_span($span, $msg)?;
+            $crate::util::err_span($span, $msg)?;
         }
     };
     ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
         if (!$assertion) {
             dbg!($info);
-            crate::util::err_span($span, $msg)?;
+            $crate::util::err_span($span, $msg)?;
         }
     };
 }
@@ -301,3 +333,37 @@ macro_rules! backtrace {
 
 #[allow(unused_imports)]
 pub(crate) use backtrace;
+
+pub trait HashMapAbsorbWith<K, V> {
+    fn absorb_with<F>(&mut self, other: HashMap<K, V>, absorb_value: F)
+    where
+        F: Fn(&mut V, V);
+}
+
+impl<K, V> HashMapAbsorbWith<K, V> for HashMap<K, V>
+where
+    K: Eq + std::hash::Hash,
+{
+    fn absorb_with<F>(&mut self, other: HashMap<K, V>, absorb_value: F)
+    where
+        F: Fn(&mut V, V),
+    {
+        use std::collections::hash_map::Entry;
+        for (key, rhs) in other {
+            match self.entry(key) {
+                Entry::Vacant(vacant_entry) => {
+                    vacant_entry.insert(rhs);
+                }
+                Entry::Occupied(mut occupied_entry) => {
+                    absorb_value(occupied_entry.get_mut(), rhs);
+                }
+            }
+        }
+    }
+}
+
+pub(crate) fn no_builtin_err(span: &vir::messages::Span) -> VirErr {
+    vir::messages::error(span,
+        "Error: The verus_builtin crate was not imported. This is usually imported via `vstd`, and it is necessary to run Verus.")
+    .help("For getting started with Verus, see: https://verus-lang.github.io/verus/guide/getting_started.html")
+}

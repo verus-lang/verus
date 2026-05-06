@@ -349,7 +349,7 @@ test_verify_one_file! {
             }
             f();
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot call function `crate::f` with mode exec")
+    } => Err(e) => assert_vir_error_msg(e, "cannot call function `test_crate::f` with mode exec")
 }
 
 test_verify_one_file! {
@@ -367,20 +367,20 @@ test_verify_one_file! {
     #[test] test_with code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 -> z: Ghost<u32>
             requires
                 x < 100,
                 *old(y) < 100,
             ensures
-                *y == x,
+                *final(y) == x,
                 ret == x,
                 z@ == x,
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             #[verus_spec(with |= Ghost(x))]
             x
@@ -389,7 +389,7 @@ test_verify_one_file! {
         #[verus_spec]
         fn test_call_mut_tracked(x: u32) {
             proof_decl!{
-                let tracked mut y = 0u32;
+                let tracked mut y = 0;
             }
             {#[verus_spec(with Tracked(&mut y), Ghost(0) => _)]
             test_mut_tracked(1);
@@ -428,13 +428,13 @@ test_verify_one_file! {
     #[test] test_unverified_code_signature code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 -> z: Ghost<u32>
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             #[verus_spec(with |= Ghost(x))]
             x
@@ -457,13 +457,13 @@ test_verify_one_file! {
     #[test] test_verified_call_unverified_signature code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 -> z: Ghost<u32>
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             #[verus_spec(with |= Ghost(x))]
             x
@@ -483,20 +483,20 @@ test_verify_one_file! {
     #[test] test_with2 code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 ->  z: Ghost<u32>
             requires
                 x < 100,
                 *old(y) < 100,
             ensures
-                *y == x,
+                *final(y) == x,
                 ret == x,
                 z@ == x,
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             #[verus_spec(with |= Ghost(x))]
             x
@@ -506,7 +506,7 @@ test_verify_one_file! {
         fn test_cal_mut_tracked(x: u32) {
             proof_decl!{
                 let ghost mut z = 0u32;
-                let tracked mut y = 0u32;
+                let tracked mut y = 0;
             }
             if #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))] test_mut_tracked(1) == 0 {
                 proof!{
@@ -526,20 +526,20 @@ test_verify_one_file! {
     #[test] test_proof_with code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 ->  z: Ghost<u32>
             requires
                 x < 100,
                 *old(y) < 100,
             ensures
-                *y == x,
+                *final(y) == x,
                 ret == x,
                 z@ == x,
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             proof_with!{|= Ghost(x)}
             x
@@ -549,7 +549,7 @@ test_verify_one_file! {
         fn test_cal_mut_tracked(x: u32) {
             proof_decl!{
                 let ghost mut z = 0u32;
-                let tracked mut y = 0u32;
+                let tracked mut y = 0;
             }
             if {
                 proof_with!{Tracked(&mut y), Ghost(0) => Ghost(z)} test_mut_tracked(1)
@@ -676,7 +676,7 @@ test_verify_one_file! {
         #[verus_verify(dual_spec(spec_f))]
         #[verus_spec(
             requires
-                x < 100,
+                *x < 100,
                 y < 100,
             returns
                 f(x, y),
@@ -685,7 +685,7 @@ test_verify_one_file! {
             *x = *x + y;
             *x
         }
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature")
+    } => Err(e) => assert_vir_error_msg(e, "when_used_as_spec not supported for function with &mut param")
 }
 
 test_verify_one_file! {
@@ -1186,4 +1186,426 @@ test_verify_one_file! {
             (x + 1)
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_external_type_specification code!{
+        #[verus_verify(external)]
+        struct MyExtStruct<T> { t: T }
+
+        #[verus_verify(external_type_specification)]
+        struct ExMyExtStruct<U>(MyExtStruct<U>);
+
+        verus! {
+        fn test_ext_type_spec() {
+            let s = MyExtStruct::<u64> { t: 5 };
+            assert(s.t == 5);
+        }
+        } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_ext_equal code!{
+        #[verus_verify(ext_equal)]
+        struct MyStruct {
+            x: u32,
+            y: u64
+        }
+
+        verus! {
+        fn test_ext_equal(s1: MyStruct, s2: MyStruct)
+            requires
+                s1.x == s2.x,
+                s1.y == s2.y,
+            ensures
+                s1 == s2,
+        {
+            assert(s1 =~= s2);
+        }
+        } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_reject_recursive_types code!{
+        #[verus_verify(reject_recursive_types(T))]
+        enum X<T> {
+            ZZ(T),
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_external_type_spec_with_reject_recursive code!{
+        #[verus_verify(external)]
+        struct MyExtBody<T> { t: T }
+
+        #[verus_verify(external_type_specification, external_body, reject_recursive_types(U))]
+        struct ExMyExtBody<U>(MyExtBody<U>);
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Check that a postcondition failure in #[verus_spec] points at the specific
+    // failing ensures clause, not at the `ensures` keyword.
+    #[test] test_verus_spec_ensures_span_on_failure code!{
+        #[verus_spec(ret =>
+            ensures
+                ret > 0,
+                ret < 0, // FAILS
+        )]
+        fn returns_one() -> i8 {
+            1
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_erase_unverified_code code!{
+        use vstd::prelude::*;
+        #[verus_spec(
+            with Tracked(x): Tracked<()>,
+            ensures true,
+        )]
+        fn foo() {
+            proof!{
+                let abcd = Tracked(x);
+                let y = x;
+            }
+            #[cfg_attr(not(customized_cfg), verus_spec(
+                invariant x == (),
+            ))]
+            for i in 0..10 {
+            }
+        }
+    } => Ok(())
+}
+
+// test forloop without verus_spec invariant, which should be allowed with exec_allows_no_decreases_clause
+test_verify_one_file! {
+    #[test] test_for_loop_without_loop_spec code!{
+        use vstd::prelude::*;
+        #[verus_spec]
+        fn test_for_loop()
+        {
+            for i in 0..10
+            {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_skip_desugar_loop_with_external_body code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        struct A;
+
+        impl Iterator for A {
+            type Item = u32;
+            fn next(&mut self) -> Option<Self::Item> {
+                None
+            }
+        }
+
+        #[verus_verify(external_body)]
+        #[verus_spec(ensures false)]
+        fn test_for_loop()
+        {
+            let a = A;
+            for i in a
+            {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_struct code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::PointsToRaw;
+
+        #[verus_verify]
+        pub struct STest {
+            pub u: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub p: Tracked<PointsToRaw>,
+        }
+
+        // Test with trailing comma in struct literal
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_trailing(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            STest {
+                u,
+            }
+        }
+
+        // Test without trailing comma in struct literal
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_no_trailing(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            STest { u }
+        }
+
+        // Test with let binding
+        #[verus_spec(result =>
+            with
+                Tracked(p): Tracked<PointsToRaw>,
+            ensures
+                result.u == u,
+        )]
+        pub fn make_s_test_let(u: u32) -> STest
+        {
+            proof_with!{ p: Tracked(p) }
+            let s = STest { u };
+            s
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_struct_and_follows code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        pub struct TestStruct {
+            pub x: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub y: Ghost<int>,
+        }
+
+        // Test combined struct fields and |= follow output in a single proof_with!
+        #[verus_spec(s =>
+            with
+                -> g: Ghost<int>
+            requires
+                x < u32::MAX,
+            ensures
+                s.x == x + 1,
+                s.y == 2 * s.x,
+                g == 3 * x,
+        )]
+        fn make_struct_with_follows(x: u32) -> TestStruct
+        {
+            proof_decl! {
+                let ghost g = 3 * x;
+            }
+            proof_with! {
+                y: Ghost(2 * (x + 1)),
+                |= Ghost(g)
+            }
+            TestStruct{
+                x: x + 1,
+            }
+        }
+
+        // Test combined struct fields and |= follow output with let binding
+        #[verus_spec(s =>
+            with
+                -> g: Ghost<int>
+            requires
+                x < u32::MAX,
+            ensures
+                s.x == x + 1,
+                s.y == 2 * s.x,
+                g == 3 * x,
+        )]
+        fn make_struct_with_follows_let(x: u32) -> TestStruct
+        {
+            proof_decl! {
+                let ghost g = 3 * x;
+            }
+            proof_with! { y: Ghost(2 * (x + 1))}
+            let s = TestStruct{
+                x: x + 1,
+            };
+            proof_with! { |= Ghost(g) }
+            s
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_invalid_ghost_with_struct code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        pub struct TestStruct {
+            pub x: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub y: int,
+        }
+
+        #[verus_spec]
+        fn make_struct_with_follows_let(x: u32) -> TestStruct
+        {
+            proof_with! { y: 1 }
+            let s = TestStruct{
+                x: x + 1,
+            };
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "A ghost/tracked field must be a tracked/ghost expression" )
+}
+
+test_verify_one_file! {
+    // Regression test for https://github.com/verus-lang/verus/issues/2283
+    // proof_with! with only |= follow output before a struct constructor
+    // should not attempt to parse the follow as struct fields.
+    #[test] test_proof_with_follows_only_before_struct code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        pub struct S {}
+
+        #[verus_spec(
+            with
+                -> res: Ghost<int>
+            ensures
+                res == 0,
+        )]
+        pub fn f() -> S {
+            proof_with!(|= Ghost(0int));
+            S {}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Test that `|` in a struct field expression inside proof_with! doesn't
+    // get confused with `|=` follow syntax. Uses bitwise OR on integers.
+    #[test] test_proof_with_struct_field_with_bitor code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        pub struct TestInt {
+            pub x: u32,
+            #[cfg(verus_keep_ghost_body)]
+            pub g: Ghost<u32>,
+        }
+
+        #[verus_spec(s =>
+            requires
+                x < u32::MAX,
+            ensures
+                s.x == x + 1,
+                s.g == (x | 1u32),
+        )]
+        fn make_with_bitor(x: u32) -> TestInt
+        {
+            proof_with! { g: Ghost(x | 1u32) }
+            TestInt {
+                x: x + 1,
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_const code! {
+        #[verus_verify]
+        const MY_CONST1: u64 = 1u64;
+
+        #[verus_verify(external_body)]
+        #[verus_spec(
+            ensures MY_CONST2 == 1
+        )]
+        const MY_CONST2: u64 = 0;
+
+        #[verus_verify]
+        #[verus_spec]
+        const MY_CONST3: u64 = 0;
+
+        #[verus_verify]
+        #[cfg_attr(not(customized_cfg), verus_spec(
+            ensures MY_CONST4 == 0
+        ))]
+        const MY_CONST4: u64 = 0;
+
+        #[verus_spec]
+        fn test_use_const() {
+            let x = MY_CONST1;
+            let y = MY_CONST2;
+            let z = MY_CONST3;
+            let w = MY_CONST4;
+            proof!{
+                assert(x == 1);
+                assert(y == 1);
+                assert(z == 0);
+                assert(w == 0);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_static code! {
+        #[verus_verify]
+        static MY_STATIC1: u64 = 1u64;
+
+        #[verus_verify]
+        #[verus_spec]
+        static MY_STATIC3: u64 = 0;
+
+        #[verus_verify]
+        #[cfg_attr(not(customized_cfg), verus_spec(
+            ensures MY_STATIC4 == 0
+        ))]
+        static MY_STATIC4: u64 = 0;
+
+        #[verus_spec]
+        fn test_use_static() {
+            let x = MY_STATIC1;
+            let y = MY_STATIC3;
+            let z = MY_STATIC4;
+            proof!{
+                assert(u64::MIN <= x <= u64::MAX);
+                assert(u64::MIN <= y <= u64::MAX);
+                assert(z == 0);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_static_failed code! {
+        #[verus_spec]
+        static MY_STATIC1: u64 = 0;
+
+        #[verus_spec(ensures
+            MY_STATIC2 == 1 // FAILS
+        )]
+        static MY_STATIC2: u64 = 0;
+
+        #[verus_spec]
+        fn test_use_static_failed() {
+            let x = MY_STATIC1;
+            proof!{
+                assert(x == 0); // FAILS
+            }
+        }
+
+
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_static_with_external_body code! {
+        #[verus_verify(external_body)]
+        static MY_STATIC2: u64 = 0;
+    } => Err(e) => assert_any_vir_error_msg(e, "#[verifier::external_body] doesn't make sense for this item type -- it is only applicable to functions and datatype declarations" )
 }
