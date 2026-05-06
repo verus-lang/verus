@@ -62,13 +62,17 @@ pub trait ExHash: PointeeSized {
     type ExternalTraitSpecificationFor: core::hash::Hash;
 }
 
-#[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
 pub trait ExPtrPointee: PointeeSized {
     type ExternalTraitSpecificationFor: core::ptr::Pointee;
 
     type Metadata:
         Copy + Send + Sync + Ord + core::hash::Hash + Unpin + core::fmt::Debug + Sized + core::marker::Freeze;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExThin: core::ptr::Pointee<Metadata = ()> + PointeeSized {
+    type ExternalTraitSpecificationFor: core::ptr::Thin;
 }
 
 #[verifier::external_trait_specification]
