@@ -1035,6 +1035,7 @@ pub enum ExprX {
     /// Constant
     Const(Constant),
     /// Local variable as a right-hand side
+    /// Note: mostly unused; use PlaceX::Local instead.
     Var(VarIdent),
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(VarIdent, VarAt),
