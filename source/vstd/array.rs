@@ -36,6 +36,7 @@ pub trait ArrayAdditionalSpecFns<T>: View<V = Seq<T>> {
 
 #[verifier::external]
 pub trait ArrayAdditionalExecFns<T> {
+    #[cfg_attr(not(verus_verify_core), deprecated = "use `array[i] = value` instead")]
     fn set(&mut self, idx: usize, t: T);
 }
 
