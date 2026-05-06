@@ -3755,12 +3755,6 @@ impl Visitor {
             TokenStream::new()
         };
 
-        // This is a cryptographically secure way to prevent users
-        // from guessing the name of this function
-        let unique_id = rand::random::<u64>();
-        let name = format!("ghost_atomic_update_internal_{unique_id:x}");
-        let ghost_au_binder = Ident::new(&name, span);
-
         use verus_syn::ReturnPat as RP;
         let mut au_eq_assume = TokenStream::new();
         let au_binder = match spec_au_binder {
@@ -3768,7 +3762,7 @@ impl Visitor {
                 au_eq_assume = quote_spanned_builtin!(builtin, span =>
                     #builtin::assume_(#builtin::spec_eq(
                         (#pat),
-                        #builtin::Ghost::view(#ghost_au_binder)
+                        #builtin::Ghost::view(_verus_internal_ghost_atomic_update)
                     ));
                 );
 
@@ -3798,10 +3792,10 @@ impl Visitor {
         let extra_arg = quote_spanned_builtin_builtin_macros_vstd!(builtin, _macros, vstd, span =>
             #vstd::atomic::atomically({
                 let _verus_internal_identifier_for_closures = #vstd::prelude::dummy_capture_new();
-                |#update_fn_binder, #ghost_au_binder| {
+                |#update_fn_binder, _verus_internal_ghost_atomic_update| {
                     #builtin::dummy_capture_consume(_verus_internal_identifier_for_closures);
                     #[verus::internal(spec)]
-                    let #au_binder = #builtin::Ghost::view(#ghost_au_binder);
+                    let #au_binder = #builtin::Ghost::view(_verus_internal_ghost_atomic_update);
                     #inner
                 }
             })

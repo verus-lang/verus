@@ -1,12 +1,9 @@
-// rust_verify/tests/example.rs ignore --- broken
-
 #![verifier::exec_allows_no_decreases_clause]
 #![verifier::loop_isolation(false)]
 
 use vstd::atomic::*;
 use vstd::invariant::*;
 use vstd::prelude::*;
-use vstd::simple_pptr::*;
 
 verus! {
 
