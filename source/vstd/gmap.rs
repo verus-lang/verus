@@ -1132,7 +1132,7 @@ pub use imap;
 #[macro_export]
 macro_rules! assert_maps_equal {
     [$($tail:tt)*] => {
-        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::vstd::map::assert_maps_equal_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::map::assert_maps_equal_internal!($($tail)*))
     };
 }
 
@@ -1140,13 +1140,31 @@ macro_rules! assert_maps_equal {
 #[doc(hidden)]
 macro_rules! assert_maps_equal_internal {
     (::verus_builtin::spec_eq($m1:expr, $m2:expr)) => {
-        assert_maps_equal_internal!($m1, $m2)
+        $crate::vstd::map::assert_maps_equal_internal!($m1, $m2)
     };
     (::verus_builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
-        assert_maps_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
+        $crate::vstd::map::assert_maps_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
+    };
+    (::vstd::prelude::spec_eq($m1:expr, $m2:expr)) => {
+        $crate::vstd::map::assert_maps_equal_internal!($m1, $m2)
+    };
+    (::vstd::prelude::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
+        $crate::vstd::map::assert_maps_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
+    };
+    (crate::prelude::spec_eq($m1:expr, $m2:expr)) => {
+        $crate::vstd::map::assert_maps_equal_internal!($m1, $m2)
+    };
+    (crate::prelude::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
+        $crate::vstd::map::assert_maps_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
+    };
+    (crate::verus_builtin::spec_eq($m1:expr, $m2:expr)) => {
+        $crate::vstd::map::assert_maps_equal_internal!($m1, $m2)
+    };
+    (crate::verus_builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
+        $crate::vstd::map::assert_maps_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
     };
     ($m1:expr, $m2:expr $(,)?) => {
-        assert_maps_equal_internal!($m1, $m2, key => { })
+        $crate::vstd::map::assert_maps_equal_internal!($m1, $m2, key => { })
     };
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
         #[verifier::spec] let m1 = $crate::vstd::map::check_argument_is_map($m1);

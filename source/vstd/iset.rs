@@ -252,6 +252,58 @@ pub broadcast proof fn lemma_iset_new<A>(f: spec_fn(A) -> bool, a: A)
     reveal(ISet::new);
 }
 
+pub broadcast proof fn lemma_iset_new_subset<A>(sub: spec_fn(A) -> bool, sup: spec_fn(A) -> bool)
+    requires
+        forall|a: A| #[trigger] sub(a) ==> sup(a),
+    ensures
+        #[trigger] ISet::new(sub).subset_of(ISet::new(sup)),
+{
+    assert forall|a: A| ISet::new(sub).contains(a) implies ISet::new(sup).contains(a) by {
+        if ISet::new(sub).contains(a) {
+            lemma_iset_new(sub, a);
+            lemma_iset_new(sup, a);
+            assert(sub(a));
+            assert(sup(a));
+        }
+    }
+}
+
+pub broadcast proof fn lemma_iset_new_strict_subset_witness<A>(
+    sub: spec_fn(A) -> bool,
+    sup: spec_fn(A) -> bool,
+)
+    requires
+        forall|a: A| #[trigger] sub(a) ==> sup(a),
+        !(ISet::new(sub) =~= ISet::new(sup)),
+    ensures
+        exists|a: A| #[trigger] ISet::new(sup).contains(a) && !ISet::new(sub).contains(a),
+{
+    if !(exists|a: A| ISet::new(sup).contains(a) && !ISet::new(sub).contains(a)) {
+        assert forall|a: A| #[trigger] ISet::new(sup).contains(a) == ISet::new(sub).contains(a) by {
+            if ISet::new(sup).contains(a) {
+                if !ISet::new(sub).contains(a) {
+                    assert(exists|x: A| ISet::new(sup).contains(x) && !ISet::new(sub).contains(x));
+                    assert(false);
+                }
+            } else {
+                assert(!ISet::new(sub).contains(a)) by {
+                    if ISet::new(sub).contains(a) {
+                        lemma_iset_new(sub, a);
+                        lemma_iset_new(sup, a);
+                        assert(sub(a));
+                        assert(sup(a));
+                        assert(ISet::new(sup).contains(a));
+                        assert(false);
+                    }
+                }
+            }
+        }
+        lemma_iset_ext_equal(ISet::new(sub), ISet::new(sup));
+        assert(ISet::new(sub) =~= ISet::new(sup));
+        assert(false);
+    }
+}
+
 /// The result of inserting element `a` into set `s` must contains `a`.
 pub broadcast proof fn lemma_iset_insert_same<A>(s: ISet<A>, a: A)
     ensures
@@ -380,6 +432,45 @@ pub broadcast proof fn lemma_iset_difference_eq<A>(s1: ISet<A>, s2: ISet<A>)
         lemma_gset_generic_difference(s1.to_gset(), s2.to_gset(), a);
     }
     lemma_iset_ext_equal_eq(s1.difference(s2), s1.generic_difference(s2.to_gset()));
+}
+
+pub broadcast proof fn lemma_iset_union_empty<A>(s: ISet<A>)
+    ensures
+        #[trigger] s.union(ISet::empty()) == s,
+{
+    assert forall|a: A| s.union(ISet::empty()).contains(a) == s.contains(a) by {
+        lemma_iset_union(s, ISet::empty(), a);
+        lemma_iset_empty(a);
+    }
+    lemma_iset_ext_equal(s.union(ISet::empty()), s);
+    assert(s.union(ISet::empty()) =~= s);
+    lemma_iset_ext_equal_eq(s.union(ISet::empty()), s);
+}
+
+pub broadcast proof fn lemma_iset_union_empty_left<A>(s: ISet<A>)
+    ensures
+        #[trigger] ISet::empty().union(s) == s,
+{
+    assert forall|a: A| ISet::empty().union(s).contains(a) == s.contains(a) by {
+        lemma_iset_union(ISet::empty(), s, a);
+        lemma_iset_empty(a);
+    }
+    lemma_iset_ext_equal(ISet::empty().union(s), s);
+    assert(ISet::empty().union(s) =~= s);
+    lemma_iset_ext_equal_eq(ISet::empty().union(s), s);
+}
+
+pub broadcast proof fn lemma_iset_difference_empty<A>(s: ISet<A>)
+    ensures
+        #[trigger] s.difference(ISet::empty()) == s,
+{
+    assert forall|a: A| s.difference(ISet::empty()).contains(a) == s.contains(a) by {
+        lemma_iset_difference(s, ISet::empty(), a);
+        lemma_iset_empty(a);
+    }
+    lemma_iset_ext_equal(s.difference(ISet::empty()), s);
+    assert(s.difference(ISet::empty()) =~= s);
+    lemma_iset_ext_equal_eq(s.difference(ISet::empty()), s);
 }
 
 /// The complement of set `s` contains element `a` if and only if `s` does not contain `a`.

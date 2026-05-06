@@ -467,7 +467,7 @@ impl<Key, Value, Token> IMapToken<Key, Value, Token>
                 && map[key].key() == key
                 && map[key].value() == self.map()[key] by {
             super::map::lemma_imap_dom_contains_field_bridge(map, key);
-            super::map::lemma_imap_index_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
             super::map::lemma_imap_dom_contains_bridge(self.map(), key);
             assert(map.0.dom().contains(key));
             assert(mm.dom().contains(key));
@@ -499,15 +499,13 @@ impl<Key, Value, Token> IMapToken<Key, Value, Token>
         super::map::lemma_imap_to_from_gmap(map.0);
         assert forall |key| #[trigger] map.0.dom().contains(key) implies map.0[key].instance_id() == instance_id by {
             super::map::lemma_imap_dom_contains_field_bridge(map, key);
-            super::map::lemma_imap_index_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
             assert(map.dom().contains(key));
-            assert(map[key] == map.0[key]);
         }
         assert forall |key| #[trigger] map.0.dom().contains(key) implies map.0[key].key() == key by {
             super::map::lemma_imap_dom_contains_field_bridge(map, key);
-            super::map::lemma_imap_index_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
             assert(map.dom().contains(key));
-            assert(map[key] == map.0[key]);
         }
         let tracked m = GMapToken::from_map(instance_id, map.0);
         let tracked s = Self { m };
@@ -525,7 +523,7 @@ impl<Key, Value, Token> IMapToken<Key, Value, Token>
         assert forall|key: Key| map.dom().contains(key) implies s.map()[key] == map[key].value() by {
             super::map::lemma_imap_dom_contains_bridge(s.map(), key);
             super::map::lemma_imap_dom_contains_field_bridge(map, key);
-            super::map::lemma_imap_index_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
             assert(map.0.dom().contains(key));
             assert(s.map().dom().contains(key));
             assert(s.map().to_gmap().dom().contains(key));
@@ -889,7 +887,7 @@ impl<Element, Token> ISetToken<Element, Token>
         assert forall|key: Element| map.dom().contains(key) implies
             map[key].instance_id() == self.instance_id() && map[key].element() == key by {
             super::map::lemma_imap_dom_contains_field_bridge(map, key);
-            super::map::lemma_imap_index_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
             assert(map.0.dom().contains(key));
             assert(mm.dom().contains(key));
             assert(mm[key].instance_id() == self.instance_id());
@@ -911,15 +909,13 @@ impl<Element, Token> ISetToken<Element, Token>
         reveal(ISetToken::set);
         assert forall |key| #[trigger] map.0.dom().contains(key) implies map.0[key].instance_id() == instance_id by {
             super::map::lemma_imap_dom_contains_field_bridge(map, key);
-            super::map::lemma_imap_index_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
             assert(map.dom().contains(key));
-            assert(map[key] == map.0[key]);
         }
         assert forall |key| #[trigger] map.0.dom().contains(key) implies map.0[key].element() == key by {
             super::map::lemma_imap_dom_contains_field_bridge(map, key);
-            super::map::lemma_imap_index_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
             assert(map.dom().contains(key));
-            assert(map[key] == map.0[key]);
         }
         let tracked m = GSetToken::from_map(instance_id, map.0);
         let tracked s = Self { m };

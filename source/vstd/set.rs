@@ -8,6 +8,7 @@ use super::pervasive::*;
 use super::prelude::*;
 use core::marker::PhantomData;
 use super::gset::*;
+pub use super::iset::ISet;
 #[allow(unused_imports)]
 use super::iset::{
     lemma_set_insert_finite,
@@ -37,6 +38,15 @@ impl<A> Set<A> {
     #[doc(hidden)]
     pub closed spec fn from_gset(s: GSet<A, Finite>) -> Set<A> {
         Set(s)
+    }
+
+    /// Compatibility constructor for finite sets described by a predicate.
+    #[verifier::inline]
+    pub open spec fn new(f: spec_fn(A) -> bool) -> Set<A>
+        recommends
+            ISet::<A>::new(f).finite(),
+    {
+        ISet::<A>::new(f).to_finite()
     }
 
     /// Returns the set that contains an element `f(x)` for every element `x` in `self`.
@@ -505,6 +515,53 @@ pub broadcast proof fn lemma_set_difference<A>( s1: Set<A>, s2: Set<A>, a: A,)
     reveal(Set::difference);
 }
 
+pub broadcast proof fn lemma_set_subset_of_difference_union_component<A>(
+    kept: Set<A>,
+    sibling: Set<A>,
+    base: Set<A>,
+    removed: Set<A>,
+    new_removed: Set<A>,
+    added: Set<A>,
+    added_sup: Set<A>,
+)
+    requires
+        kept.subset_of(base.difference(removed)),
+        new_removed =~= removed.union(added),
+        added.subset_of(added_sup),
+        added_sup.disjoint(kept.union(sibling)),
+    ensures
+        kept.subset_of(base.difference(new_removed)),
+{
+    lemma_set_ext_equal(new_removed, removed.union(added));
+    assert(kept.to_gset().subset_of(base.difference(new_removed).to_gset())) by {
+        assert forall |a: A| #[trigger] kept.to_gset().contains(a)
+            implies base.difference(new_removed).to_gset().contains(a)
+        by {
+            assert(kept.contains(a));
+            assert(base.difference(removed).contains(a));
+            lemma_set_difference(base, removed, a);
+            assert(base.contains(a));
+            if new_removed.contains(a) {
+                assert(removed.union(added).contains(a));
+                lemma_set_union(removed, added, a);
+                if removed.contains(a) {
+                    assert(false);
+                } else {
+                    assert(added.contains(a));
+                    assert(added_sup.contains(a));
+                    lemma_set_union(kept, sibling, a);
+                    assert(kept.union(sibling).contains(a));
+                    assert(!added_sup.contains(a));
+                    assert(false);
+                }
+            }
+            lemma_set_difference(base, new_removed, a);
+            assert(base.difference(new_removed).contains(a));
+        }
+    }
+    assert(kept.subset_of(base.difference(new_removed)));
+}
+
 pub broadcast proof fn lemma_set_ext_equal<A>( s1: Set<A>, s2: Set<A>,)
     ensures
         #[trigger] (s1 =~= s2) <==> (forall|a: A| s1.contains(a) == s2.contains(a))
@@ -654,11 +711,17 @@ pub broadcast proof fn lemma_set_choose_len<A>(s: Set<A>)
 //////////////////////////////////////////////////////////////////////////////
 
 pub broadcast proof fn lemma_set_new<A>(f: spec_fn(A) -> bool, a: A)
+    requires
+        ISet::<A>::new(f).finite(),
     ensures
-        #[trigger] ISet::new(f).contains(a) == f(a),
-        #[trigger] ISet::new(f).to_gset().contains(a) == f(a),
+        #[trigger] Set::<A>::new(f).contains(a) == f(a),
+        #[trigger] Set::<A>::new(f).to_gset().contains(a) == f(a),
 {
     super::iset::lemma_iset_new(f, a);
+    super::iset::lemma_iset_to_finite_contains(ISet::<A>::new(f), a);
+    assert(Set::<A>::new(f).contains(a) == ISet::<A>::new(f).to_finite().contains(a));
+    assert(ISet::<A>::new(f).to_finite().contains(a) == ISet::<A>::new(f).contains(a));
+    assert(Set::<A>::new(f).to_gset().contains(a) == Set::<A>::new(f).contains(a));
 }
 
 pub broadcast proof fn lemma_set_generic_union<A, FINITE: Finiteness, FINITE2: Finiteness>(
@@ -862,6 +925,13 @@ impl<A: FiniteRange> Set<A> {
     }
 }
 
+impl Set<int> {
+    #[verifier::inline]
+    pub open spec fn int_range(lo: int, hi: int) -> Set<int> {
+        Set::<int>::range(lo, hi)
+    }
+}
+
 pub broadcast proof fn lemma_set_range_int_contains(lo: int, hi: int, a: int)
     ensures
         #[trigger] Set::<int>::range(lo, hi).contains(a) <==> lo <= a < hi,
@@ -1059,8 +1129,97 @@ full_impls!([
 
 //////////////////////////////////////////////////////////////////////////////
 #[deprecated = "Use `Set::range` instead"]
+#[verifier::inline]
 pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
     Set::<int>::range(lo, hi)
+}
+
+pub broadcast proof fn lemma_set_range_int_subset_of(lo1: int, hi1: int, lo2: int, hi2: int)
+    requires
+        lo2 <= lo1,
+        hi1 <= hi2,
+    ensures
+        #[trigger] Set::<int>::range(lo1, hi1).subset_of(Set::<int>::range(lo2, hi2)),
+{
+    let s1 = Set::<int>::range(lo1, hi1).to_gset();
+    let s2 = Set::<int>::range(lo2, hi2).to_gset();
+    assert(s1.subset_of(s2)) by {
+        assert forall|a: int| #[trigger] s1.contains(a) implies s2.contains(a) by {
+            lemma_set_range_int_contains(lo1, hi1, a);
+            lemma_set_range_int_contains(lo2, hi2, a);
+            assert(lo2 <= a);
+            assert(a < hi2);
+        }
+    }
+    assert(Set::<int>::range(lo1, hi1).subset_of(Set::<int>::range(lo2, hi2)));
+}
+
+pub broadcast proof fn lemma_set_range_int_difference_prefix(lo: int, mid: int, hi: int)
+    requires
+        lo <= mid,
+        mid <= hi,
+    ensures
+        #[trigger] Set::<int>::range(lo, hi).difference(Set::<int>::range(lo, mid))
+            == Set::<int>::range(mid, hi),
+{
+    let prefix = Set::<int>::range(lo, mid);
+    let full = Set::<int>::range(lo, hi);
+    let suffix = Set::<int>::range(mid, hi);
+    assert forall|a: int| #[trigger] full.difference(prefix).contains(a) == suffix.contains(a) by {
+        lemma_set_difference(full, prefix, a);
+        lemma_set_range_int_contains(lo, hi, a);
+        lemma_set_range_int_contains(lo, mid, a);
+        lemma_set_range_int_contains(mid, hi, a);
+        if full.difference(prefix).contains(a) {
+            assert(lo <= a < hi);
+            assert(!(lo <= a < mid));
+            assert(mid <= a);
+        }
+        if suffix.contains(a) {
+            assert(mid <= a < hi);
+            assert(lo <= a);
+            assert(!(lo <= a < mid));
+        }
+    }
+    lemma_set_ext_equal(full.difference(prefix), suffix);
+    lemma_set_ext_equal_eq(full.difference(prefix), suffix);
+}
+
+pub broadcast proof fn lemma_set_range_int_union_adjacent(lo: int, mid: int, hi: int)
+    requires
+        lo <= mid,
+        mid <= hi,
+    ensures
+        #![trigger Set::<int>::range(lo, mid), Set::<int>::range(mid, hi)]
+        Set::<int>::range(lo, mid) + Set::<int>::range(mid, hi) == Set::<int>::range(lo, hi),
+{
+    let left = Set::<int>::range(lo, mid);
+    let right = Set::<int>::range(mid, hi);
+    let full = Set::<int>::range(lo, hi);
+    assert forall|a: int| #[trigger] (left + right).contains(a) == full.contains(a) by {
+        lemma_set_union(left, right, a);
+        lemma_set_range_int_contains(lo, mid, a);
+        lemma_set_range_int_contains(mid, hi, a);
+        lemma_set_range_int_contains(lo, hi, a);
+        if (left + right).contains(a) {
+            if left.contains(a) {
+                assert(lo <= a < hi);
+            } else {
+                assert(mid <= a < hi);
+                assert(lo <= a);
+            }
+        }
+        if full.contains(a) {
+            assert(lo <= a < hi);
+            if a < mid {
+                assert(left.contains(a));
+            } else {
+                assert(right.contains(a));
+            }
+        }
+    }
+    lemma_set_ext_equal(left + right, full);
+    lemma_set_ext_equal_eq(left + right, full);
 }
 
 // filter definition is closed now, so we expose its meaning through this lemma
@@ -1173,6 +1332,8 @@ pub broadcast group group_set_lemmas {
     lemma_set_empty,
     lemma_set_new,
     super::iset::lemma_iset_new,
+    super::iset::lemma_iset_new_subset,
+    super::iset::lemma_iset_new_strict_subset_witness,
     super::iset::lemma_iset_empty,
     super::iset::lemma_iset_insert_same,
     super::iset::lemma_iset_insert_different,
@@ -1180,11 +1341,16 @@ pub broadcast group group_set_lemmas {
     super::iset::lemma_iset_remove_different,
     super::iset::lemma_iset_union,
     super::iset::lemma_iset_union_eq,
+    super::iset::lemma_iset_union_empty,
+    super::iset::lemma_iset_union_empty_left,
     super::iset::lemma_iset_intersect,
     super::iset::lemma_iset_intersect_eq,
     super::iset::lemma_iset_difference,
     super::iset::lemma_iset_difference_eq,
+    super::iset::lemma_iset_difference_empty,
     super::iset::lemma_iset_complement,
+    super::iset::lemma_iset_ext_equal,
+    super::iset::lemma_iset_ext_equal_eq,
     super::iset::lemma_iset_congruent_eq,
     lemma_set_insert_same,
     lemma_set_insert_different,
@@ -1197,6 +1363,7 @@ pub broadcast group group_set_lemmas {
     lemma_set_intersect,
     lemma_set_generic_difference,
     lemma_set_difference,
+    lemma_set_subset_of_difference_union_component,
     lemma_set_complement,
     lemma_set_ext_equal,
     lemma_set_ext_equal_eq,
@@ -1230,6 +1397,9 @@ pub broadcast group group_set_lemmas {
     lemma_set_choose_len,
     lemma_set_filter_is_intersect,
     range_set_properties,
+    lemma_set_range_int_subset_of,
+    lemma_set_range_int_difference_prefix,
+    lemma_set_range_int_union_adjacent,
     lemma_to_finite_len,
     lemma_map_by,
     full_set_properties,

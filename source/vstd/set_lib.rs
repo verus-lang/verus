@@ -21,6 +21,45 @@ broadcast use {
     GSet::congruent_len,
 };
 
+#[deprecated = "Use `Set::range` instead"]
+#[verifier::inline]
+pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
+    super::set::set_int_range(lo, hi)
+}
+
+pub trait SetLike<A> {
+    type FiniteView: Finiteness;
+
+    spec fn as_gset(self) -> GSet<A, Self::FiniteView>;
+}
+
+impl<A> SetLike<A> for Set<A> {
+    type FiniteView = Finite;
+
+    #[verifier::inline]
+    open spec fn as_gset(self) -> GSet<A, Finite> {
+        self.to_gset()
+    }
+}
+
+impl<A> SetLike<A> for ISet<A> {
+    type FiniteView = Infinite;
+
+    #[verifier::inline]
+    open spec fn as_gset(self) -> GSet<A, Infinite> {
+        self.to_gset()
+    }
+}
+
+impl<A, FINITE: Finiteness> SetLike<A> for GSet<A, FINITE> {
+    type FiniteView = FINITE;
+
+    #[verifier::inline]
+    open spec fn as_gset(self) -> GSet<A, FINITE> {
+        self
+    }
+}
+
 //////////////////////////////////////////////////////////////////////////////
 // Some general set properties
 //////////////////////////////////////////////////////////////////////////////
@@ -141,30 +180,30 @@ impl<A> Set<A> {
         self.to_gset().castable::<NEWFINITE>()
     }
 
-    pub broadcast proof fn congruent_infiniteness<FINITE2: Finiteness>(
+    pub broadcast proof fn congruent_infiniteness<S2: SetLike<A>>(
         self,
-        s2: GSet<A, FINITE2>,
+        s2: S2,
     )
         requires
-            #[trigger] self.to_gset().congruent(s2),
+            #[trigger] self.to_gset().congruent(s2.as_gset()),
         ensures
-            self.finite() <==> s2.finite(),
+            self.finite() <==> s2.as_gset().finite(),
     {
-        self.to_gset().congruent_infiniteness(s2);
+        self.to_gset().congruent_infiniteness(s2.as_gset());
     }
 
-    pub broadcast proof fn congruent_len<FINITE2: Finiteness>(
+    pub broadcast proof fn congruent_len<S2: SetLike<A>>(
         self,
-        s2: GSet<A, FINITE2>,
+        s2: S2,
     )
         requires
-            #[trigger] self.to_gset().congruent(s2),
+            #[trigger] self.to_gset().congruent(s2.as_gset()),
             self.finite(),
         ensures
-            self.len() == s2.len(),
+            self.len() == s2.as_gset().len(),
         decreases self.len(),
     {
-        self.to_gset().congruent_len(s2);
+        self.to_gset().congruent_len(s2.as_gset());
     }
 }
 
@@ -223,30 +262,30 @@ impl<A> ISet<A> {
         self.to_gset().castable::<NEWFINITE>()
     }
 
-    pub broadcast proof fn congruent_infiniteness<FINITE2: Finiteness>(
+    pub broadcast proof fn congruent_infiniteness<S2: SetLike<A>>(
         self,
-        s2: GSet<A, FINITE2>,
+        s2: S2,
     )
         requires
-            #[trigger] self.to_gset().congruent(s2),
+            #[trigger] self.to_gset().congruent(s2.as_gset()),
         ensures
-            self.finite() <==> s2.finite(),
+            self.finite() <==> s2.as_gset().finite(),
     {
-        self.to_gset().congruent_infiniteness(s2);
+        self.to_gset().congruent_infiniteness(s2.as_gset());
     }
 
-    pub broadcast proof fn congruent_len<FINITE2: Finiteness>(
+    pub broadcast proof fn congruent_len<S2: SetLike<A>>(
         self,
-        s2: GSet<A, FINITE2>,
+        s2: S2,
     )
         requires
-            #[trigger] self.to_gset().congruent(s2),
+            #[trigger] self.to_gset().congruent(s2.as_gset()),
             self.finite(),
         ensures
-            self.len() == s2.len(),
+            self.len() == s2.as_gset().len(),
         decreases self.len(),
     {
-        self.to_gset().congruent_len(s2);
+        self.to_gset().congruent_len(s2.as_gset());
     }
 }
 
@@ -2494,6 +2533,55 @@ pub broadcast proof fn lemma_is_empty<A>(s: Set<A>)
     assert(s.contains(s.choose()));
 }
 
+pub broadcast proof fn lemma_iset_not_empty<A>(s: ISet<A>)
+    requires
+        !(#[trigger] s.is_empty()),
+    ensures
+        exists|a: A| s.contains(a),
+{
+    if !(exists|a: A| s.contains(a)) {
+        assert forall|a: A| #[trigger] s.contains(a) == ISet::<A>::empty().contains(a) by {
+            if s.contains(a) {
+                assert(false);
+            }
+            super::iset::lemma_iset_empty(a);
+        }
+        super::iset::lemma_iset_ext_equal(s, ISet::empty());
+        assert(s =~= ISet::empty());
+        assert(false);
+    }
+}
+
+pub broadcast proof fn lemma_iset_strict_subset_witness<A>(sub: ISet<A>, sup: ISet<A>)
+    requires
+        #[trigger] sub.subset_of(sup),
+        !(#[trigger] (sub =~= sup)),
+    ensures
+        exists|a: A| sup.contains(a) && !sub.contains(a),
+{
+    if !(exists|a: A| sup.contains(a) && !sub.contains(a)) {
+        assert forall|a: A| #[trigger] sup.contains(a) == sub.contains(a) by {
+            if sup.contains(a) {
+                if !sub.contains(a) {
+                    assert(exists|x: A| sup.contains(x) && !sub.contains(x));
+                    assert(false);
+                }
+            } else {
+                assert(!sub.contains(a)) by {
+                    if sub.contains(a) {
+                        assert(sub.subset_of(sup));
+                        assert(sup.contains(a));
+                        assert(false);
+                    }
+                }
+            }
+        }
+        super::iset::lemma_iset_ext_equal(sub, sup);
+        assert(sub =~= sup);
+        assert(false);
+    }
+}
+
 pub broadcast proof fn lemma_is_empty_len0<A>(s: Set<A>)
     ensures
         #[trigger] s.is_empty() <==> (s.finite() && s.len() == 0),
@@ -2502,11 +2590,22 @@ pub broadcast proof fn lemma_is_empty_len0<A>(s: Set<A>)
 
 #[doc(hidden)]
 #[verifier::inline]
-pub open spec fn check_argument_is_set<A, FINITE: Finiteness>(s: GSet<A, FINITE>) -> GSet<
-    A,
-    FINITE,
-> {
+pub open spec fn check_argument_is_set<A, S: SetLike<A>>(s: S) -> S {
     s
+}
+
+pub proof fn lemma_set_argument_ext_equal_eq<A, S: SetLike<A>>(
+    s1: S,
+    s2: S,
+)
+    ensures
+        #[trigger] (s1 =~= s2) ==> s1 == s2,
+{
+    if s1 =~= s2 {
+        assert(s1.as_gset() =~= s2.as_gset());
+        super::gset::lemma_gset_ext_equal_eq(s1.as_gset(), s2.as_gset());
+        assert(s1.as_gset() == s2.as_gset());
+    }
 }
 
 
@@ -2567,7 +2666,7 @@ macro_rules! assert_sets_equal_internal {
                 { $bblock }
             });
             $crate::vstd::prelude::assert_($crate::vstd::prelude::ext_equal(s1, s2));
-            $crate::vstd::gset::lemma_gset_ext_equal_eq(s1, s2);
+            $crate::vstd::set_lib::lemma_set_argument_ext_equal_eq(s1, s2);
         });
     }
 }
@@ -2639,6 +2738,8 @@ pub broadcast proof fn lemma_map_flatten_by<A, B>(
 
 pub broadcast group group_set_lib_default {
     lemma_is_empty,
+    lemma_iset_not_empty,
+    lemma_iset_strict_subset_witness,
     lemma_is_empty_len0,
     lemma_set_subset_finite,
     lemma_map_flatten_by,

@@ -572,6 +572,7 @@ pub broadcast group group_raw_ptr_axioms {
     axiom_ptr_mut_from_data,
     ptrs_mut_eq,
     ptrs_mut_eq_sized,
+    PointsToRaw::lemma_is_range_subset,
 }
 
 /// Tracked object that indicates a given provenance has been exposed.
@@ -667,6 +668,29 @@ impl PointsToRaw {
     /// Returns `true` if the domain of this permission contains the range `[start, start + len)`.
     pub open spec fn contains_range(self, start: int, len: int) -> bool {
         super::set::Set::range(start, start + len) <= self.dom()
+    }
+
+    pub broadcast proof fn lemma_is_range_subset(self, start: int, len: int, sub_start: int, sub_end: int)
+        requires
+            self.is_range(start, len),
+            start <= sub_start,
+            sub_start <= sub_end,
+            sub_end <= start + len,
+        ensures
+            #![trigger self.is_range(start, len), super::set::Set::<int>::range(sub_start, sub_end)]
+            super::set::Set::<int>::range(sub_start, sub_end).subset_of(self.dom()),
+    {
+        let sub = super::set::Set::<int>::range(sub_start, sub_end);
+        let full = super::set::Set::<int>::range(start, start + len);
+        super::set::lemma_set_range_int_subset_of(
+            sub_start,
+            sub_end,
+            start,
+            start + len,
+        );
+        super::set::lemma_set_ext_equal_eq(full, self.dom());
+        assert(full == self.dom());
+        assert(sub.subset_of(self.dom()));
     }
 
     /// Constructs a `PointsToRaw` permission over an empty domain with the given provenance.

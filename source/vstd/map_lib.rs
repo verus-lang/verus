@@ -635,7 +635,12 @@ impl Map<int, int> {
 }
 
 // Proven lemmas
-pub broadcast proof fn lemma_union_insert_left<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K, v: V)
+pub broadcast proof fn lemma_union_insert_left<K, V, FINITE: Finiteness>(
+    m1: super::gmap::GMap<K, V, FINITE>,
+    m2: super::gmap::GMap<K, V, FINITE>,
+    k: K,
+    v: V,
+)
     requires
         !m2.contains_key(k),
     ensures
@@ -644,14 +649,77 @@ pub broadcast proof fn lemma_union_insert_left<K, V>(m1: Map<K, V>, m2: Map<K, V
     assert(m1.insert(k, v).union_prefer_right(m2) =~= m1.union_prefer_right(m2).insert(k, v));  // issue #1534
 }
 
-pub broadcast proof fn lemma_union_insert_right<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K, v: V)
+pub broadcast proof fn lemma_union_insert_right<K, V, FINITE: Finiteness>(
+    m1: super::gmap::GMap<K, V, FINITE>,
+    m2: super::gmap::GMap<K, V, FINITE>,
+    k: K,
+    v: V,
+)
     ensures
         #[trigger] m1.union_prefer_right(m2.insert(k, v)) == m1.union_prefer_right(m2).insert(k, v),
 {
     assert(m1.union_prefer_right(m2.insert(k, v)) =~= m1.union_prefer_right(m2).insert(k, v));  // issue #1534
 }
 
-pub broadcast proof fn lemma_union_remove_left<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K)
+pub broadcast proof fn lemma_iunion_insert_left<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, k: K, v: V)
+    requires
+        !m2.contains_key(k),
+    ensures
+        #[trigger] m1.insert(k, v).union_prefer_right(m2) == m1.union_prefer_right(m2).insert(k, v),
+{
+    lemma_union_insert_left(m1.to_gmap(), m2.to_gmap(), k, v);
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().insert(k, v));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().insert(k, v).union_prefer_right(m2.to_gmap()));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().union_prefer_right(m2.to_gmap()).insert(k, v));
+    super::map::lemma_imap_from_to_gmap(m1.insert(k, v).union_prefer_right(m2));
+    super::map::lemma_imap_from_to_gmap(m1.union_prefer_right(m2).insert(k, v));
+    assert(m1.insert(k, v).to_gmap() == m1.to_gmap().insert(k, v));
+    assert(
+        m1.insert(k, v).union_prefer_right(m2).to_gmap()
+            == m1.to_gmap().insert(k, v).union_prefer_right(m2.to_gmap())
+    );
+    assert(
+        m1.union_prefer_right(m2).insert(k, v).to_gmap()
+            == m1.to_gmap().union_prefer_right(m2.to_gmap()).insert(k, v)
+    );
+    assert(
+        IMap::from_gmap(m1.insert(k, v).union_prefer_right(m2).to_gmap())
+            == IMap::from_gmap(m1.union_prefer_right(m2).insert(k, v).to_gmap())
+    );
+    assert(m1.insert(k, v).union_prefer_right(m2) == m1.union_prefer_right(m2).insert(k, v));
+}
+
+pub broadcast proof fn lemma_iunion_insert_right<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, k: K, v: V)
+    ensures
+        #[trigger] m1.union_prefer_right(m2.insert(k, v)) == m1.union_prefer_right(m2).insert(k, v),
+{
+    lemma_union_insert_right(m1.to_gmap(), m2.to_gmap(), k, v);
+    super::map::lemma_imap_to_from_gmap(m2.to_gmap().insert(k, v));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().union_prefer_right(m2.to_gmap().insert(k, v)));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().union_prefer_right(m2.to_gmap()).insert(k, v));
+    super::map::lemma_imap_from_to_gmap(m1.union_prefer_right(m2.insert(k, v)));
+    super::map::lemma_imap_from_to_gmap(m1.union_prefer_right(m2).insert(k, v));
+    assert(m2.insert(k, v).to_gmap() == m2.to_gmap().insert(k, v));
+    assert(
+        m1.union_prefer_right(m2.insert(k, v)).to_gmap()
+            == m1.to_gmap().union_prefer_right(m2.to_gmap().insert(k, v))
+    );
+    assert(
+        m1.union_prefer_right(m2).insert(k, v).to_gmap()
+            == m1.to_gmap().union_prefer_right(m2.to_gmap()).insert(k, v)
+    );
+    assert(
+        IMap::from_gmap(m1.union_prefer_right(m2.insert(k, v)).to_gmap())
+            == IMap::from_gmap(m1.union_prefer_right(m2).insert(k, v).to_gmap())
+    );
+    assert(m1.union_prefer_right(m2.insert(k, v)) == m1.union_prefer_right(m2).insert(k, v));
+}
+
+pub broadcast proof fn lemma_union_remove_left<K, V, FINITE: Finiteness>(
+    m1: super::gmap::GMap<K, V, FINITE>,
+    m2: super::gmap::GMap<K, V, FINITE>,
+    k: K,
+)
     requires
         m1.contains_key(k),
         !m2.contains_key(k),
@@ -661,7 +729,11 @@ pub broadcast proof fn lemma_union_remove_left<K, V>(m1: Map<K, V>, m2: Map<K, V
     assert(m1.remove(k).union_prefer_right(m2) =~= m1.union_prefer_right(m2).remove(k));  // issue #1534
 }
 
-pub broadcast proof fn lemma_union_remove_right<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K)
+pub broadcast proof fn lemma_union_remove_right<K, V, FINITE: Finiteness>(
+    m1: super::gmap::GMap<K, V, FINITE>,
+    m2: super::gmap::GMap<K, V, FINITE>,
+    k: K,
+)
     requires
         !m1.contains_key(k),
         m2.contains_key(k),
@@ -669,6 +741,64 @@ pub broadcast proof fn lemma_union_remove_right<K, V>(m1: Map<K, V>, m2: Map<K, 
         #[trigger] m1.union_prefer_right(m2).remove(k) == m1.union_prefer_right(m2.remove(k)),
 {
     assert(m1.union_prefer_right(m2.remove(k)) =~= m1.union_prefer_right(m2).remove(k));  // issue #1534
+}
+
+pub broadcast proof fn lemma_iunion_remove_left<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, k: K)
+    requires
+        m1.contains_key(k),
+        !m2.contains_key(k),
+    ensures
+        #[trigger] m1.union_prefer_right(m2).remove(k) == m1.remove(k).union_prefer_right(m2),
+{
+    lemma_union_remove_left(m1.to_gmap(), m2.to_gmap(), k);
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().remove(k));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().remove(k).union_prefer_right(m2.to_gmap()));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().union_prefer_right(m2.to_gmap()).remove(k));
+    super::map::lemma_imap_from_to_gmap(m1.remove(k).union_prefer_right(m2));
+    super::map::lemma_imap_from_to_gmap(m1.union_prefer_right(m2).remove(k));
+    assert(m1.remove(k).to_gmap() == m1.to_gmap().remove(k));
+    assert(
+        m1.remove(k).union_prefer_right(m2).to_gmap()
+            == m1.to_gmap().remove(k).union_prefer_right(m2.to_gmap())
+    );
+    assert(
+        m1.union_prefer_right(m2).remove(k).to_gmap()
+            == m1.to_gmap().union_prefer_right(m2.to_gmap()).remove(k)
+    );
+    assert(
+        IMap::from_gmap(m1.remove(k).union_prefer_right(m2).to_gmap())
+            == IMap::from_gmap(m1.union_prefer_right(m2).remove(k).to_gmap())
+    );
+    assert(m1.union_prefer_right(m2).remove(k) == m1.remove(k).union_prefer_right(m2));
+}
+
+pub broadcast proof fn lemma_iunion_remove_right<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, k: K)
+    requires
+        !m1.contains_key(k),
+        m2.contains_key(k),
+    ensures
+        #[trigger] m1.union_prefer_right(m2).remove(k) == m1.union_prefer_right(m2.remove(k)),
+{
+    lemma_union_remove_right(m1.to_gmap(), m2.to_gmap(), k);
+    super::map::lemma_imap_to_from_gmap(m2.to_gmap().remove(k));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().union_prefer_right(m2.to_gmap().remove(k)));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().union_prefer_right(m2.to_gmap()).remove(k));
+    super::map::lemma_imap_from_to_gmap(m1.union_prefer_right(m2.remove(k)));
+    super::map::lemma_imap_from_to_gmap(m1.union_prefer_right(m2).remove(k));
+    assert(m2.remove(k).to_gmap() == m2.to_gmap().remove(k));
+    assert(
+        m1.union_prefer_right(m2.remove(k)).to_gmap()
+            == m1.to_gmap().union_prefer_right(m2.to_gmap().remove(k))
+    );
+    assert(
+        m1.union_prefer_right(m2).remove(k).to_gmap()
+            == m1.to_gmap().union_prefer_right(m2.to_gmap()).remove(k)
+    );
+    assert(
+        IMap::from_gmap(m1.union_prefer_right(m2.remove(k)).to_gmap())
+            == IMap::from_gmap(m1.union_prefer_right(m2).remove(k).to_gmap())
+    );
+    assert(m1.union_prefer_right(m2).remove(k) == m1.union_prefer_right(m2.remove(k)));
 }
 
 pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
@@ -713,6 +843,8 @@ pub broadcast group group_map_union {
     lemma_union_dom,
     lemma_union_remove_left,
     lemma_union_remove_right,
+    lemma_iunion_remove_left,
+    lemma_iunion_remove_right,
     lemma_union_insert_left,
     lemma_union_insert_right,
     lemma_disjoint_union_size,
@@ -775,11 +907,14 @@ pub broadcast proof fn lemma_imap_new_values<K, V>(fk: spec_fn(K) -> bool, fv: s
     let map = IMap::<K, V>::new(fk, fv);
     let target = ISet::<V>::new(|v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v));
     lemma_imap_new_domain(fk, fv);
-    super::iset::lemma_iset_map_contains(map.dom(), |k: K| map[k]);
     assert forall|v: V| values.contains(v) == target.contains(v) by {
+        super::map::lemma_imap_values_contains(map, v);
         super::iset::lemma_iset_new(|vv: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == vv), v);
         if values.contains(v) {
-            let k = choose|k: K| map.dom().contains(k) && map[k] == v;
+            assert(map.contains_value(v));
+            let k = choose|k: K| map.to_gmap().dom().contains(k) && map.to_gmap()[k] == v;
+            super::map::lemma_imap_dom_contains_bridge(map, k);
+            super::map::lemma_imap_index_field_bridge(map, k);
             assert(map.dom().contains(k));
             assert(map[k] == v);
             assert(keys.contains(k));
@@ -794,6 +929,11 @@ pub broadcast proof fn lemma_imap_new_values<K, V>(fk: spec_fn(K) -> bool, fv: s
             assert(map.dom().contains(k));
             assert(map[k] == fv(k));
             assert(map[k] == v);
+            super::map::lemma_imap_dom_contains_bridge(map, k);
+            super::map::lemma_imap_index_field_bridge(map, k);
+            assert(map.to_gmap().dom().contains(k));
+            assert(map.to_gmap()[k] == v);
+            assert(map.contains_value(v));
             assert(values.contains(v));
         }
     }
