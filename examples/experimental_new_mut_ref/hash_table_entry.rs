@@ -14,6 +14,8 @@ use std::alloc::Allocator;
 verus!{
 
 // Specs for OccupiedEntry, VacantEntry, and the Entry enum
+// OccupiedEntry and VacantEntry are both opaque;
+// Entry is just an enum wrapper around the other 2, so we leave it transparent.
 
 #[verifier::reject_recursive_types_in_ground_variants(K)]
 #[verifier::reject_recursive_types_in_ground_variants(V)]
@@ -33,38 +35,45 @@ pub struct ExVacantEntry<'a, K: 'a, V: 'a, A: Allocator>(VacantEntry<'a, K, V, A
 #[verifier::reject_recursive_types(A)]
 pub struct ExEntry<'a, K: 'a, V: 'a, A: Allocator>(Entry<'a, K, V, A>);
 
-/// Specification for an 'OccupiedEntry'.
+/// Specification for an [`OccupiedEntry`].
 /// Contains the current key and value in the entry,
 /// and prophesies the final value after this instantiation of the entry API is complete.
 /// The final value is optional, since the user might choose to remove the entry.
 pub trait OccupiedEntrySpecFns<K, V, A> : Sized {
-    spec fn key(self) -> K;
+    spec fn spec_key(self) -> K;
     spec fn value(self) -> V;
     #[verifier::prophetic]
     spec fn final_value(self) -> Option<V>;
 }
 
 impl<'a, K, V, A: Allocator> OccupiedEntrySpecFns<K, V, A> for OccupiedEntry<'a, K, V, A> {
-    uninterp spec fn key(self) -> K;
+    uninterp spec fn spec_key(self) -> K;
     uninterp spec fn value(self) -> V;
     #[verifier::prophetic]
     uninterp spec fn final_value(self) -> Option<V>;
 }
 
+/// Specification for a [`VacantEntry`].
+/// Contains the current key for the entry,
+/// and prophesies the final value after this instantiation of the entry API is complete.
+/// The final value is optional, since the user may or may not choose to insert a value.
 pub trait VacantEntrySpecFns<K, V, A> : Sized {
-    spec fn key(self) -> K;
+    spec fn spec_key(self) -> K;
     #[verifier::prophetic]
     spec fn final_value(self) -> Option<V>;
 }
 
 impl<'a, K, V, A: Allocator> VacantEntrySpecFns<K, V, A> for VacantEntry<'a, K, V, A> {
-    uninterp spec fn key(self) -> K;
+    uninterp spec fn spec_key(self) -> K;
     #[verifier::prophetic]
     uninterp spec fn final_value(self) -> Option<V>;
 }
 
+/// Specification for an [`Entry`].
+/// Contains the current key for the entry,
+/// and prophesies the final value after this instantiation of the entry API is complete.
 pub trait EntrySpecFns<K, V, A> : Sized {
-    spec fn key(self) -> K;
+    spec fn spec_key(self) -> K;
     spec fn value(self) -> Option<V>;
 
     #[verifier::prophetic]
@@ -72,10 +81,10 @@ pub trait EntrySpecFns<K, V, A> : Sized {
 }
 
 impl<'a, K, V, A: Allocator> EntrySpecFns<K, V, A> for Entry<'a, K, V, A> {
-    open spec fn key(self) -> K {
+    open spec fn spec_key(self) -> K {
         match self {
-            Entry::Occupied(occupied_entry) => occupied_entry.key(),
-            Entry::Vacant(vacant_entry) => vacant_entry.key(),
+            Entry::Occupied(occupied_entry) => occupied_entry.spec_key(),
+            Entry::Vacant(vacant_entry) => vacant_entry.spec_key(),
         }
     }
 
@@ -127,6 +136,12 @@ ensures
 
 //// Entry
 
+#[verifier::allow_in_spec]
+pub assume_specification<'a, 'b, K, V, A: Allocator> [ Entry::key ]
+    (entry: &'b Entry::<'a, K, V, A>) -> (key: &'b K)
+returns
+    &entry.spec_key();
+
 pub assume_specification<'a, K, V, A: Allocator> [ Entry::or_insert ]
     (entry: Entry::<'a, K, V, A>, default: V) -> (value: &'a mut V)
 ensures
@@ -145,12 +160,22 @@ ensures
 
 //// OccupiedEntry
 
+// This module works around a bug with `allow_in_spec` that creates duplicate spec fn names
+mod m_occ {
+    use super::*;
+    #[verifier::allow_in_spec]
+    pub assume_specification<'a, 'b, K, V, A: Allocator> [ OccupiedEntry::key ]
+        (entry: &'b OccupiedEntry::<'a, K, V, A>) -> (key: &'b K)
+    returns
+        &entry.spec_key();
+}
+
 pub assume_specification<'a, K, V, A: Allocator> [ OccupiedEntry::remove_entry ]
     (entry: OccupiedEntry::<'a, K, V, A>) -> (kv: (K, V))
 ensures
     entry.final_value() === None,
 returns
-    (entry.key(), entry.value());
+    (*entry.key(), entry.value());
 
 pub assume_specification<'a, 'b, K, V, A: Allocator> [ OccupiedEntry::get ]
     (entry: &'b OccupiedEntry::<'a, K, V, A>) -> (value: &'b V)
@@ -186,6 +211,16 @@ ensures
     entry.final_value() === None;
 
 //// VacantEntry
+
+// This module works around a bug with `allow_in_spec` that creates duplicate spec fn names
+mod m_vac {
+    use super::*;
+    #[verifier::allow_in_spec]
+    pub assume_specification<'a, 'b, K: 'a, V: 'a, A: Allocator> [ VacantEntry::key ]
+        (entry: &'b VacantEntry::<'a, K, V, A>) -> (key: &'b K)
+    returns
+        &entry.spec_key();
+}
 
 pub assume_specification<'a, K: 'a, V: 'a, A: Allocator> [ VacantEntry::into_key ]
     (entry: VacantEntry::<'a, K, V, A>) -> (key: K)
