@@ -288,10 +288,10 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         requires
             old(self).loc() == x.loc(),
         ensures
-            *self == *old(self),
+            *final(self) == *old(self),
             ({
                 let (q, t) = res;
-                { P::rel(P::op(P::op(self.value(), x.value()), q), t) }
+                { P::rel(P::op(P::op(final(self).value(), x.value()), q), t) }
             }),
     ;
 

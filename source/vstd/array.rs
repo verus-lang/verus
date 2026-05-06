@@ -62,7 +62,7 @@ impl<T, const N: usize> ArrayAdditionalExecFns<T> for [T; N] {
         requires
             0 <= idx < N,
         ensures
-            self@ == old(self)@.update(idx as int, t),
+            final(self)@ == old(self)@.update(idx as int, t),
     {
         self[idx] = t;
     }
@@ -154,7 +154,6 @@ pub broadcast axiom fn axiom_array_has_resolved<T, const N: usize>(array: [T; N]
 
 #[doc(hidden)]
 #[verifier::external_body]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::ref_mut_array_unsizing_coercion")]
 pub fn ref_mut_array_unsizing_coercion<T, const N: usize>(r: &mut [T; N]) -> (out: &mut [T])
     ensures

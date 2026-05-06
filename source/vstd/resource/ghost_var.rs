@@ -98,11 +98,11 @@ impl<T> GhostVarAuth<T> {
         requires
             old(self).id() == old(v).id(),
         ensures
-            self.id() == old(self).id(),
-            v.id() == old(v).id(),
+            final(self).id() == old(self).id(),
+            final(v).id() == old(v).id(),
             old(self)@ == old(v)@,
-            self@ == new_val,
-            v@ == new_val,
+            final(self)@ == new_val,
+            final(v)@ == new_val,
     {
         let tracked (mut ms, mut mv) = Self::new(new_val);
         tracked_swap(self, &mut ms);

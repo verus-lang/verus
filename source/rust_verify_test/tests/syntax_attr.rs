@@ -1551,3 +1551,61 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_static code! {
+        #[verus_verify]
+        static MY_STATIC1: u64 = 1u64;
+
+        #[verus_verify]
+        #[verus_spec]
+        static MY_STATIC3: u64 = 0;
+
+        #[verus_verify]
+        #[cfg_attr(not(customized_cfg), verus_spec(
+            ensures MY_STATIC4 == 0
+        ))]
+        static MY_STATIC4: u64 = 0;
+
+        #[verus_spec]
+        fn test_use_static() {
+            let x = MY_STATIC1;
+            let y = MY_STATIC3;
+            let z = MY_STATIC4;
+            proof!{
+                assert(u64::MIN <= x <= u64::MAX);
+                assert(u64::MIN <= y <= u64::MAX);
+                assert(z == 0);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_static_failed code! {
+        #[verus_spec]
+        static MY_STATIC1: u64 = 0;
+
+        #[verus_spec(ensures
+            MY_STATIC2 == 1 // FAILS
+        )]
+        static MY_STATIC2: u64 = 0;
+
+        #[verus_spec]
+        fn test_use_static_failed() {
+            let x = MY_STATIC1;
+            proof!{
+                assert(x == 0); // FAILS
+            }
+        }
+
+
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_static_with_external_body code! {
+        #[verus_verify(external_body)]
+        static MY_STATIC2: u64 = 0;
+    } => Err(e) => assert_any_vir_error_msg(e, "#[verifier::external_body] doesn't make sense for this item type -- it is only applicable to functions and datatype declarations" )
+}

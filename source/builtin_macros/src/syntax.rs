@@ -5244,7 +5244,14 @@ pub(crate) fn rewrite_items(
 ) -> proc_macro::TokenStream {
     let stream = rejoin_tokens(stream);
     let mut items: Items = parse_macro_input!(stream as Items);
-    let mut new_stream = TokenStream::new();
+    rewrite_items_inner(&mut items.items, erase_ghost, use_spec_traits)
+}
+
+pub(crate) fn rewrite_items_inner(
+    items: &mut Vec<Item>,
+    erase_ghost: EraseGhost,
+    use_spec_traits: bool,
+) -> proc_macro::TokenStream {
     let mut visitor = Visitor {
         erase_ghost,
         use_spec_traits,
@@ -5258,19 +5265,20 @@ pub(crate) fn rewrite_items(
         inside_impl: None,
         additional_items: Vec::new(),
     };
-    visitor.visit_items_prefilter(&mut items.items);
+    visitor.visit_items_prefilter(items);
     let mut index = 0;
-    while index < items.items.len() {
-        let item = &mut items.items[index];
+    while index < items.len() {
+        let item = &mut items[index];
         visitor.visit_item_mut(item);
         visitor.inside_ghost = 0;
         visitor.inside_const = false;
         visitor.inside_arith = InsideArith::None;
-        items.items.append(&mut visitor.additional_items);
+        items.append(&mut visitor.additional_items);
         index += 1;
     }
-    visitor.visit_items_post(&mut items.items);
-    for item in items.items {
+    visitor.visit_items_post(items);
+    let mut new_stream = TokenStream::new();
+    for item in items {
         item.to_tokens(&mut new_stream);
     }
     proc_macro::TokenStream::from(new_stream)

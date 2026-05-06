@@ -284,8 +284,8 @@ impl<V> PointsTo<V> {
     /// Note that this is a `proof` function, i.e., it is operationally a no-op in executable code.
     pub proof fn leak_contents(tracked &mut self)
         ensures
-            self.pptr() == old(self).pptr(),
-            self.is_uninit(),
+            final(self).pptr() == old(self).pptr(),
+            final(self).is_uninit(),
     {
         use_type_invariant(&*self);
         self.points_to.leak_contents();
@@ -305,9 +305,9 @@ impl<V> PointsTo<V> {
             size_of::<V>() != 0,
             size_of::<S>() != 0,
         ensures
-            *old(self) == *self,
-            self.addr() + size_of::<V>() <= other.addr() || other.addr() + size_of::<S>()
-                <= self.addr(),
+            *old(self) == *final(self),
+            final(self).addr() + size_of::<V>() <= other.addr() || other.addr() + size_of::<S>()
+                <= final(self).addr(),
     {
         use_type_invariant(&*self);
         self.points_to.is_disjoint(&other.points_to);
@@ -320,8 +320,8 @@ impl<V> PointsTo<V> {
             size_of::<V>() != 0,
             size_of::<S>() != 0,
         ensures
-            *old(self) == *self,
-            self.addr() != other.addr(),
+            *old(self) == *final(self),
+            final(self).addr() != other.addr(),
     {
         use_type_invariant(&*self);
         self.points_to.is_disjoint(&other.points_to);
@@ -453,8 +453,8 @@ impl<V> PPtr<V> {
             old(perm).pptr() == self,
             old(perm).mem_contents() == MemContents::Uninit::<V>,
         ensures
-            perm.pptr() == old(perm).pptr(),
-            perm.mem_contents() == MemContents::Init(v),
+            final(perm).pptr() == old(perm).pptr(),
+            final(perm).mem_contents() == MemContents::Init(v),
         opens_invariants none
         no_unwind
     {
@@ -478,8 +478,8 @@ impl<V> PPtr<V> {
             old(perm).pptr() == self,
             old(perm).is_init(),
         ensures
-            perm.pptr() == old(perm).pptr(),
-            perm.mem_contents() == MemContents::Uninit::<V>,
+            final(perm).pptr() == old(perm).pptr(),
+            final(perm).mem_contents() == MemContents::Uninit::<V>,
             v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -499,8 +499,8 @@ impl<V> PPtr<V> {
             old(perm).pptr() == self,
             old(perm).is_init(),
         ensures
-            perm.pptr() == old(perm).pptr(),
-            perm.mem_contents() == MemContents::Init(in_v),
+            final(perm).pptr() == old(perm).pptr(),
+            final(perm).mem_contents() == MemContents::Init(in_v),
             out_v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -532,13 +532,34 @@ impl<V> PPtr<V> {
         ptr_ref(ptr, Tracked(&perm.points_to))
     }
 
+    /// Given a shared borrow of the `PointsTo<V>`, obtain a shared borrow of `V`.
+    #[inline(always)]
+    pub fn borrow_mut<'a>(self, Tracked(perm): Tracked<&'a mut PointsTo<V>>) -> (v: &'a mut V)
+        requires
+            perm.pptr() == self,
+            perm.is_init(),
+        ensures
+            final(perm).pptr() == self,
+            final(perm).is_init(),
+            *v === old(perm).value(),
+            final(perm).value() == *final(v),
+        opens_invariants none
+        no_unwind
+    {
+        proof {
+            use_type_invariant(&*perm);
+        }
+        let ptr: *mut V = with_exposed_provenance(self.0, Tracked(perm.exposed));
+        ptr_mut_ref(ptr, Tracked(&mut perm.points_to))
+    }
+
     #[inline(always)]
     pub fn write(self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) where V: Copy
         requires
             old(perm).pptr() == self,
         ensures
-            perm.pptr() === old(perm).pptr(),
-            perm.mem_contents() === MemContents::Init(in_v),
+            final(perm).pptr() === old(perm).pptr(),
+            final(perm).mem_contents() === MemContents::Init(in_v),
         opens_invariants none
         no_unwind
     {

@@ -181,7 +181,7 @@ macro_rules! atomic_common_methods {
         pub fn store(&self, Tracked(perm): Tracked<&mut $p_ident>, v: $value_ty)
             requires
                 equal(self.id(), old(perm).view().patomic),
-            ensures equal(perm.view().value, v) && equal(self.id(), perm.view().patomic),
+            ensures equal(final(perm).view().value, v) && equal(self.id(), final(perm).view().patomic),
             opens_invariants none
             no_unwind
         {
@@ -195,15 +195,15 @@ macro_rules! atomic_common_methods {
             requires
                 equal(self.id(), old(perm).view().patomic),
             ensures
-                equal(self.id(), perm.view().patomic)
+                equal(self.id(), final(perm).view().patomic)
                 && match ret {
                     Result::Ok(r) =>
                            current $($addr)* == old(perm).view().value $($addr)*
-                        && equal(perm.view().value, new)
+                        && equal(final(perm).view().value, new)
                         && equal(r, old(perm).view().value),
                     Result::Err(r) =>
                            current $($addr)* != old(perm).view().value $($addr)*
-                        && equal(perm.view().value, old(perm).view().value)
+                        && equal(final(perm).view().value, old(perm).view().value)
                         && equal(r, old(perm).view().value),
                 },
             opens_invariants none
@@ -222,14 +222,14 @@ macro_rules! atomic_common_methods {
             requires
                 equal(self.id(), old(perm).view().patomic),
             ensures
-                equal(self.id(), perm.view().patomic)
+                equal(self.id(), final(perm).view().patomic)
                 && match ret {
                     Result::Ok(r) =>
                            current $($addr)* == old(perm).view().value $($addr)*
-                        && equal(perm.view().value, new)
+                        && equal(final(perm).view().value, new)
                         && equal(r, old(perm).view().value),
                     Result::Err(r) =>
-                           equal(perm.view().value, old(perm).view().value)
+                           equal(final(perm).view().value, old(perm).view().value)
                         && equal(r, old(perm).view().value),
                 },
             opens_invariants none
@@ -248,9 +248,9 @@ macro_rules! atomic_common_methods {
             requires
                 equal(self.id(), old(perm).view().patomic),
             ensures
-                   equal(perm.view().value, v)
+                   equal(final(perm).view().value, v)
                 && equal(old(perm).view().value, ret)
-                && equal(self.id(), perm.view().patomic),
+                && equal(self.id(), final(perm).view().patomic),
             opens_invariants none
             no_unwind
         {
@@ -287,8 +287,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value as int == $modname::wrapping_add(old(perm).view().value, n),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value as int == $modname::wrapping_add(old(perm).view().value, n),
             opens_invariants none
             no_unwind
         {
@@ -302,8 +302,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value as int == $modname::wrapping_sub(old(perm).view().value, n),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value as int == $modname::wrapping_sub(old(perm).view().value, n),
             opens_invariants none
             no_unwind
         {
@@ -322,8 +322,8 @@ macro_rules! atomic_integer_methods {
                 old(perm).view().value + n <= (<$value_ty>::MAX as int),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == old(perm).view().value + n,
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == old(perm).view().value + n,
             opens_invariants none
             no_unwind
         {
@@ -339,8 +339,8 @@ macro_rules! atomic_integer_methods {
                 old(perm).view().value - n <= <$value_ty>::MAX as int,
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == old(perm).view().value - n,
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == old(perm).view().value - n,
             opens_invariants none
             no_unwind
         {
@@ -354,8 +354,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (old(perm).view().value & n),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == (old(perm).view().value & n),
             opens_invariants none
             no_unwind
         {
@@ -369,8 +369,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (old(perm).view().value | n),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == (old(perm).view().value | n),
             opens_invariants none
             no_unwind
         {
@@ -384,8 +384,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (old(perm).view().value ^ n),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == (old(perm).view().value ^ n),
             opens_invariants none
             no_unwind
         {
@@ -399,8 +399,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == !(old(perm).view().value & n),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == !(old(perm).view().value & n),
             opens_invariants none
             no_unwind
         {
@@ -414,8 +414,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (if old(perm).view().value > n { old(perm).view().value } else { n }),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == (if old(perm).view().value > n { old(perm).view().value } else { n }),
             opens_invariants none
             no_unwind
         {
@@ -429,8 +429,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (if old(perm).view().value < n { old(perm).view().value } else { n }),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == (if old(perm).view().value < n { old(perm).view().value } else { n }),
             opens_invariants none
             no_unwind
         {
@@ -453,8 +453,8 @@ macro_rules! atomic_bool_methods {
                 equal(self.id(), old(perm).view().patomic),
             ensures
                    equal(old(perm).view().value, ret)
-                && perm.view().patomic == old(perm).view().patomic
-                && perm.view().value == (old(perm).view().value && n),
+                && final(perm).view().patomic == old(perm).view().patomic
+                && final(perm).view().value == (old(perm).view().value && n),
             opens_invariants none
             no_unwind
         {
@@ -469,8 +469,8 @@ macro_rules! atomic_bool_methods {
                 equal(self.id(), old(perm).view().patomic),
             ensures
                   equal(old(perm).view().value, ret)
-                && perm.view().patomic == old(perm).view().patomic
-                && perm.view().value == (old(perm).view().value || n),
+                && final(perm).view().patomic == old(perm).view().patomic
+                && final(perm).view().value == (old(perm).view().value || n),
             opens_invariants none
             no_unwind
         {
@@ -485,8 +485,8 @@ macro_rules! atomic_bool_methods {
                 equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret)
-                && perm.view().patomic == old(perm).view().patomic
-                && perm.view().value == ((old(perm).view().value && !n) || (!old(perm).view().value && n)),
+                && final(perm).view().patomic == old(perm).view().patomic
+                && final(perm).view().value == ((old(perm).view().value && !n) || (!old(perm).view().value && n)),
             opens_invariants none
             no_unwind
         {
@@ -501,8 +501,8 @@ macro_rules! atomic_bool_methods {
                 equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret)
-                && perm.view().patomic == old(perm).view().patomic
-                && perm.view().value == !(old(perm).view().value && n),
+                && final(perm).view().patomic == old(perm).view().patomic
+                && final(perm).view().value == !(old(perm).view().value && n),
             opens_invariants none
             no_unwind
         {
@@ -1157,10 +1157,10 @@ impl<T> PAtomicPtr<T> {
             equal(self.id(), old(perm).view().patomic),
         ensures
             equal(old(perm).view().value, ret),
-            perm.view().patomic == old(perm).view().patomic,
-            perm.view().value@.addr == (old(perm).view().value@.addr & n),
-            perm.view().value@.provenance == old(perm).view().value@.provenance,
-            perm.view().value@.metadata == old(perm).view().value@.metadata,
+            final(perm).view().patomic == old(perm).view().patomic,
+            final(perm).view().value@.addr == (old(perm).view().value@.addr & n),
+            final(perm).view().value@.provenance == old(perm).view().value@.provenance,
+            final(perm).view().value@.metadata == old(perm).view().value@.metadata,
         opens_invariants none
         no_unwind
     {
@@ -1177,10 +1177,10 @@ impl<T> PAtomicPtr<T> {
             equal(self.id(), old(perm).view().patomic),
         ensures
             equal(old(perm).view().value, ret),
-            perm.view().patomic == old(perm).view().patomic,
-            perm.view().value@.addr == (old(perm).view().value@.addr ^ n),
-            perm.view().value@.provenance == old(perm).view().value@.provenance,
-            perm.view().value@.metadata == old(perm).view().value@.metadata,
+            final(perm).view().patomic == old(perm).view().patomic,
+            final(perm).view().value@.addr == (old(perm).view().value@.addr ^ n),
+            final(perm).view().value@.provenance == old(perm).view().value@.provenance,
+            final(perm).view().value@.metadata == old(perm).view().value@.metadata,
         opens_invariants none
         no_unwind
     {
@@ -1196,10 +1196,10 @@ impl<T> PAtomicPtr<T> {
             equal(self.id(), old(perm).view().patomic),
         ensures
             equal(old(perm).view().value, ret),
-            perm.view().patomic == old(perm).view().patomic,
-            perm.view().value@.addr == (old(perm).view().value@.addr | n),
-            perm.view().value@.provenance == old(perm).view().value@.provenance,
-            perm.view().value@.metadata == old(perm).view().value@.metadata,
+            final(perm).view().patomic == old(perm).view().patomic,
+            final(perm).view().value@.addr == (old(perm).view().value@.addr | n),
+            final(perm).view().value@.provenance == old(perm).view().value@.provenance,
+            final(perm).view().value@.metadata == old(perm).view().value@.metadata,
         opens_invariants none
         no_unwind
     {

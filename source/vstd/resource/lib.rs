@@ -98,8 +98,8 @@ pub proof fn incorporate<P: PCM>(tracked r1: &mut Resource<P>, tracked r2: Resou
     requires
         old(r1).loc() == r2.loc(),
     ensures
-        r1.loc() == old(r1).loc(),
-        r1.value() == P::op(old(r1).value(), r2.value()),
+        final(r1).loc() == old(r1).loc(),
+        final(r1).value() == P::op(old(r1).value(), r2.value()),
 {
     let tracked mut r = r1.extract();
     let tracked mut joined_r = r.join(r2);
@@ -114,9 +114,9 @@ pub proof fn split_mut<P: PCM>(tracked r: &mut Resource<P>, left: P, right: P) -
     requires
         old(r).value() == P::op(left, right),
     ensures
-        r.loc() == old(r).loc(),
+        final(r).loc() == old(r).loc(),
         other.loc() == old(r).loc(),
-        r.value() == left,
+        final(r).value() == left,
         other.value() == right,
 {
     let tracked mut r_value = r.extract();
@@ -132,8 +132,8 @@ pub proof fn update_mut<P: PCM>(tracked r: &mut Resource<P>, new_value: P)
     requires
         frame_preserving_update(old(r).value(), new_value),
     ensures
-        r.loc() == old(r).loc(),
-        r.value() == new_value,
+        final(r).loc() == old(r).loc(),
+        final(r).value() == new_value,
 {
     let tracked mut r_value = r.extract();
     let tracked mut r_upd = r_value.update(new_value);
@@ -153,10 +153,10 @@ pub proof fn redistribute<P: PCM>(
         old(r1).loc() == old(r2).loc(),
         P::op(old(r1).value(), old(r2).value()) == P::op(v1, v2),
     ensures
-        r1.loc() == old(r1).loc(),
-        r2.loc() == old(r1).loc(),
-        r1.value() == v1,
-        r2.value() == v2,
+        final(r1).loc() == old(r1).loc(),
+        final(r2).loc() == old(r1).loc(),
+        final(r1).value() == v1,
+        final(r2).value() == v2,
 {
     lemma_pcm_properties::<P>();
     let tracked r2_extracted = r2.extract();
@@ -180,10 +180,10 @@ pub proof fn update_and_redistribute<P: PCM>(
         old(r1).loc() == old(r2).loc(),
         frame_preserving_update(P::op(old(r1).value(), old(r2).value()), P::op(v1, v2)),
     ensures
-        r1.loc() == old(r1).loc(),
-        r2.loc() == old(r1).loc(),
-        r1.value() == v1,
-        r2.value() == v2,
+        final(r1).loc() == old(r1).loc(),
+        final(r2).loc() == old(r1).loc(),
+        final(r1).value() == v1,
+        final(r2).value() == v2,
 {
     lemma_pcm_properties::<P>();
     let tracked r2_extracted = r2.extract();
@@ -216,7 +216,9 @@ proof fn aggregate_resources_from_map_starting_at_offset<P: PCM>(
             #![trigger old(m)[i]]
             offset <= i < values.len() ==> old(m)[i].loc() == loc && old(m)[i].value() == values[i],
     ensures
-        forall|i| #![trigger m.dom().contains(i)] 0 <= i < values.len() ==> !m.dom().contains(i),
+        forall|i|
+            #![trigger final(m).dom().contains(i)]
+            0 <= i < values.len() ==> !final(m).dom().contains(i),
         all.loc() == loc,
         all.value() == combine_values::<P>(values.skip(offset)),
     decreases values.len() - offset,
@@ -282,10 +284,13 @@ proof fn store_resources_into_map_starting_at_offset<P: PCM>(
             offset <= i < values.len() ==> !old(m).dom().contains(i),
         p.value() == combine_values::<P>(values.skip(offset)),
     ensures
-        forall|i| #![trigger m.dom().contains(i)] 0 <= i < values.len() ==> m.dom().contains(i),
         forall|i|
-            #![trigger m[i]]
-            0 <= i < values.len() ==> m[i].loc() == p.loc() && m[i].value() == values[i],
+            #![trigger final(m).dom().contains(i)]
+            0 <= i < values.len() ==> final(m).dom().contains(i),
+        forall|i|
+            #![trigger final(m)[i]]
+            0 <= i < values.len() ==> final(m)[i].loc() == p.loc() && final(m)[i].value()
+                == values[i],
     decreases values.len() - offset,
 {
     assert(combine_values::<P>(values.skip(offset)) == P::op(
@@ -337,10 +342,13 @@ pub proof fn validate_multiple<P: PCM>(
             0 <= i < values.len() ==> old(m)[i].loc() == shared.loc() && old(m)[i].value()
                 == values[i],
     ensures
-        forall|i| #![trigger m.dom().contains(i)] 0 <= i < values.len() ==> m.dom().contains(i),
         forall|i|
-            #![trigger m[i]]
-            0 <= i < values.len() ==> m[i].loc() == shared.loc() && m[i].value() == values[i],
+            #![trigger final(m).dom().contains(i)]
+            0 <= i < values.len() ==> final(m).dom().contains(i),
+        forall|i|
+            #![trigger final(m)[i]]
+            0 <= i < values.len() ==> final(m)[i].loc() == shared.loc() && final(m)[i].value()
+                == values[i],
         P::op(combine_values::<P>(values), shared.value()).valid(),
 {
     let tracked mut agg = aggregate_resources_from_map_starting_at_offset(
@@ -368,11 +376,11 @@ pub proof fn validate_3<P: PCM>(
         old(r1).loc() == r3.loc(),
         old(r2).loc() == r3.loc(),
     ensures
-        r1.loc() == r3.loc(),
-        r2.loc() == r3.loc(),
-        r1.value() == old(r1).value(),
-        r2.value() == old(r2).value(),
-        P::op(r1.value(), P::op(r2.value(), r3.value())).valid(),
+        final(r1).loc() == r3.loc(),
+        final(r2).loc() == r3.loc(),
+        final(r1).value() == old(r1).value(),
+        final(r2).value() == old(r2).value(),
+        P::op(final(r1).value(), P::op(final(r2).value(), r3.value())).valid(),
 {
     lemma_pcm_properties::<P>();
     let tracked mut m: Map<int, Resource<P>> = Map::<int, Resource<P>>::tracked_empty();
@@ -407,13 +415,16 @@ pub proof fn validate_4<P: PCM>(
         old(r2).loc() == r4.loc(),
         old(r3).loc() == r4.loc(),
     ensures
-        r1.loc() == r4.loc(),
-        r2.loc() == r4.loc(),
-        r3.loc() == r4.loc(),
-        r1.value() == old(r1).value(),
-        r2.value() == old(r2).value(),
-        r3.value() == old(r3).value(),
-        P::op(r1.value(), P::op(r2.value(), P::op(r3.value(), r4.value()))).valid(),
+        final(r1).loc() == r4.loc(),
+        final(r2).loc() == r4.loc(),
+        final(r3).loc() == r4.loc(),
+        final(r1).value() == old(r1).value(),
+        final(r2).value() == old(r2).value(),
+        final(r3).value() == old(r3).value(),
+        P::op(
+            final(r1).value(),
+            P::op(final(r2).value(), P::op(final(r3).value(), r4.value())),
+        ).valid(),
 {
     lemma_pcm_properties::<P>();
     let tracked mut m: Map<int, Resource<P>> = Map::<int, Resource<P>>::tracked_empty();
@@ -456,17 +467,20 @@ pub proof fn validate_5<P: PCM>(
         old(r3).loc() == r5.loc(),
         old(r4).loc() == r5.loc(),
     ensures
-        r1.loc() == r5.loc(),
-        r2.loc() == r5.loc(),
-        r3.loc() == r5.loc(),
-        r4.loc() == r5.loc(),
-        r1.value() == old(r1).value(),
-        r2.value() == old(r2).value(),
-        r3.value() == old(r3).value(),
-        r4.value() == old(r4).value(),
+        final(r1).loc() == r5.loc(),
+        final(r2).loc() == r5.loc(),
+        final(r3).loc() == r5.loc(),
+        final(r4).loc() == r5.loc(),
+        final(r1).value() == old(r1).value(),
+        final(r2).value() == old(r2).value(),
+        final(r3).value() == old(r3).value(),
+        final(r4).value() == old(r4).value(),
         P::op(
-            r1.value(),
-            P::op(r2.value(), P::op(r3.value(), P::op(r4.value(), r5.value()))),
+            final(r1).value(),
+            P::op(
+                final(r2).value(),
+                P::op(final(r3).value(), P::op(final(r4).value(), r5.value())),
+            ),
         ).valid(),
 {
     lemma_pcm_properties::<P>();

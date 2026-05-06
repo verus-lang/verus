@@ -169,21 +169,16 @@ impl<V> DListXor<V> {
             }
             let tail_ptr = PPtr::<Node<V>>::from_usize(tail_ptr_u64 as usize);
             let ghost idx = (self.ptrs@.len() - 1) as nat;
-            let tracked mut tail_perm: MemPerms<V> = self.perms.borrow_mut().tracked_remove(idx);
-            let mut tail_node = tail_ptr.take(Tracked(&mut tail_perm));
+            let mut tail_node: &mut Node<V> = tail_ptr.borrow_mut(Tracked(self.perms.tracked_borrow_mut(idx)));
             let second_to_last_ptr = tail_node.xored;
-            let (ptr, Tracked(perm)) = PPtr::new(
-                Node::<V> { xored: tail_ptr_u64, v },
-            );
+            let (ptr, Tracked(perm)) = PPtr::new(Node::<V> { xored: tail_ptr_u64, v });
             proof {
                 perm.is_nonnull();
             }
             let new_ptr_u64 = ptr.addr() as u64;
             tail_node.xored = second_to_last_ptr ^ new_ptr_u64;
-            tail_ptr.put(Tracked(&mut tail_perm), tail_node);
             proof {
                 let ghost idx = (self.ptrs@.len() - 1) as nat;
-                self.perms.borrow_mut().tracked_insert(idx, tail_perm);
                 self.perms.borrow_mut().tracked_insert(idx+1, perm);
                 self.ptrs@ = self.ptrs@.push(ptr);
             }
@@ -264,17 +259,11 @@ impl<V> DListXor<V> {
             }
             let penult_ptr = PPtr::<Node<V>>::from_usize(penult_u64 as usize);
             let ghost idx = (self.ptrs@.len() - 2) as nat;
-            let tracked mut penult_perm = self.perms.borrow_mut().tracked_remove(idx);
-            let mut penult_node = penult_ptr.take(Tracked(&mut penult_perm));
+            let mut penult_node = penult_ptr.borrow_mut(Tracked(self.perms.tracked_borrow_mut(idx)));
             let t: Ghost<u64> = Ghost(self.prev_of((self.ptrs@.len() - 2) as nat));
             assert((t@ ^ last_u64) ^ last_u64 == t@ ^ 0) by (bit_vector);
             penult_node.xored = penult_node.xored ^ last_u64;
             assert(penult_node.xored == t@ ^ 0);
-            penult_ptr.put(Tracked(&mut penult_perm), penult_node);
-            proof {
-                let ghost idx = (self.ptrs@.len() - 2) as nat;
-                self.perms.borrow_mut().tracked_insert(idx, penult_perm);
-            }
         }
         proof {
             self.ptrs@ = self.ptrs@.drop_last();
@@ -352,15 +341,12 @@ impl<V> DListXor<V> {
                 lemma_usize_u64(second_u64);
             }
             let second_ptr = PPtr::<Node<V>>::from_usize(second_u64 as usize);
-            let tracked mut second_perm = (self.perms.borrow_mut()).tracked_remove(1);
-            let mut second_node = second_ptr.take(Tracked(&mut second_perm));
+            let second_node = second_ptr.borrow_mut(Tracked(self.perms.tracked_borrow_mut(1)));
             let t: Ghost<u64> = Ghost(self.next_of(1));
             assert((first_u64 ^ t@) ^ first_u64 == 0 ^ t@) by (bit_vector);
             second_node.xored = second_node.xored ^ first_u64;
             assert(second_node.xored == 0 ^ t@);
-            second_ptr.put(Tracked(&mut second_perm), second_node);
             proof {
-                self.perms.borrow_mut().tracked_insert(1, second_perm);
                 assert forall|j: nat| 1 <= j < old(self)@.len() implies self.perms@.dom().contains(
                     j,
                 ) by {
@@ -419,10 +405,7 @@ impl<V> DListXor<V> {
                 lemma_usize_u64(head_ptr_u64);
             }
             let head_ptr = PPtr::<Node<V>>::from_usize(head_ptr_u64 as usize);
-            let tracked mut head_perm: MemPerms<V> = (self.perms.borrow_mut()).tracked_remove(
-                0,
-            );
-            let mut head_node = head_ptr.take(Tracked(&mut head_perm));
+            let mut head_node: &mut Node<V> = head_ptr.borrow_mut(Tracked(self.perms.tracked_borrow_mut(0)));
             let second_ptr = head_node.xored;
             let (ptr, Tracked(perm)) = PPtr::new(
                 Node::<V> { xored: head_ptr_u64, v },
@@ -432,9 +415,7 @@ impl<V> DListXor<V> {
             }
             let new_ptr_u64 = ptr.addr() as u64;
             head_node.xored = new_ptr_u64 ^ second_ptr;
-            head_ptr.put(Tracked(&mut head_perm), head_node);
             proof {
-                self.perms.borrow_mut().tracked_insert(0, head_perm);
                 assert forall|j: nat| 0 <= j < old(self)@.len() implies self.perms@.dom().contains(
                     j,
                 ) by {

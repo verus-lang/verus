@@ -56,7 +56,7 @@ pub trait OptionAdditionalFns<T>: Sized {
             old(self).is_Some(),
         ensures
             t == old(self)->0,
-            self.is_None(),
+            final(self).is_None(),
     ;
 }
 
@@ -197,7 +197,7 @@ pub assume_specification<T>[ Option::<T>::expect ](option: Option<T>, msg: &str)
 pub assume_specification<T>[ Option::<T>::take ](option: &mut Option<T>) -> (t: Option<T>)
     ensures
         t == *old(option),
-        *option is None,
+        *final(option) is None,
 ;
 
 // map
@@ -355,7 +355,6 @@ pub assume_specification<T, E>[ Option::ok_or ](option: Option<T>, err: E) -> (r
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::as_mut ](option: &mut Option<T>) -> (res: Option<&mut T>)
     ensures
         (match *old(option) {
@@ -374,7 +373,6 @@ pub assume_specification<T>[ Option::as_slice ](option: &Option<T>) -> (res: &[T
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::as_mut_slice ](option: &mut Option<T>) -> (res: &mut [T])
     ensures
         res@ == (match *old(option) {
@@ -389,7 +387,6 @@ pub assume_specification<T>[ Option::as_mut_slice ](option: &mut Option<T>) -> (
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::insert ](option: &mut Option<T>, value: T) -> (res: &mut T)
     ensures
         *res == value,
@@ -397,7 +394,6 @@ pub assume_specification<T>[ Option::insert ](option: &mut Option<T>, value: T) 
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::get_or_insert ](option: &mut Option<T>, value: T) -> (res:
     &mut T)
     ensures

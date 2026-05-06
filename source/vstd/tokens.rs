@@ -58,8 +58,8 @@ pub trait UniqueValueToken<Value> : ValueToken<Value> {
     /// this is only used to ensure unique ownership of the argument.
     proof fn unique(tracked &mut self, tracked other: &Self)
         ensures
-            self.instance_id() != other.instance_id(),
-            *self == *old(self);
+            final(self).instance_id() != other.instance_id(),
+            *final(self) == *old(self);
 }
 
 /// Interface for VerusSync tokens created for a field marked with the
@@ -103,8 +103,8 @@ pub trait UniqueKeyValueToken<Key, Value> : KeyValueToken<Key, Value> {
     /// this is only used to ensure unique ownership of the argument.
     proof fn unique(tracked &mut self, tracked other: &Self)
         ensures
-            self.instance_id() != other.instance_id() || self.key() != other.key(),
-            *self == *old(self);
+            final(self).instance_id() != other.instance_id() || final(self).key() != other.key(),
+            *final(self) == *old(self);
 }
 
 /// Interface for VerusSync tokens created for a field marked with the `count` strategy.
@@ -125,15 +125,15 @@ pub trait CountToken : Sized {
         requires
             old(self).instance_id() == other.instance_id(),
         ensures
-            self.instance_id() == old(self).instance_id(),
-            self.count() == old(self).count() + other.count();
+            final(self).instance_id() == old(self).instance_id(),
+            final(self).count() == old(self).count() + other.count();
 
     proof fn split(tracked &mut self, count: nat) -> (tracked token: Self)
         requires
             count <= old(self).count()
         ensures
-            self.instance_id() == old(self).instance_id(),
-            self.count() == old(self).count() - count,
+            final(self).instance_id() == old(self).instance_id(),
+            final(self).count() == old(self).count() - count,
             token.instance_id() == old(self).instance_id(),
             token.count() == count;
 
@@ -206,8 +206,8 @@ pub trait UniqueElementToken<Element> : ElementToken<Element> {
     /// this is only used to ensure unique ownership of the argument.
     proof fn unique(tracked &mut self, tracked other: &Self)
         ensures
-            self.instance_id() == other.instance_id() ==> self.element() != other.element(),
-            *self == *old(self);
+            final(self).instance_id() == other.instance_id() ==> final(self).element() != other.element(),
+            *final(self) == *old(self);
 }
 
 /// Interface for VerusSync tokens created for a field marked with the `bool` or
@@ -238,8 +238,8 @@ pub trait UniqueSimpleToken : SimpleToken {
     /// this is only used to ensure unique ownership of the argument.
     proof fn unique(tracked &mut self, tracked other: &Self)
         ensures
-            self.instance_id() != other.instance_id(),
-            *self == *old(self);
+            final(self).instance_id() != other.instance_id(),
+            *final(self) == *old(self);
 }
 
 #[verifier::reject_recursive_types(Key)]
@@ -300,8 +300,8 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
         requires
             old(self).instance_id() == token.instance_id(),
         ensures
-            self.instance_id() == old(self).instance_id(),
-            self.map() == old(self).map().insert(token.key(), token.value()),
+            final(self).instance_id() == old(self).instance_id(),
+            final(self).map() == old(self).map().insert(token.key(), token.value()),
     {
         use_type_invariant(&*self);
         self.m.tracked_insert(token.key(), token);
@@ -312,9 +312,9 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
         requires
             old(self).map().dom().contains(key)
         ensures
-            self.instance_id() == old(self).instance_id(),
-            self.map() == old(self).map().remove(key),
-            token.instance_id() == self.instance_id(),
+            final(self).instance_id() == old(self).instance_id(),
+            final(self).map() == old(self).map().remove(key),
+            token.instance_id() == final(self).instance_id(),
             token.key() == key,
             token.value() == old(self).map()[key]
     {
@@ -403,8 +403,8 @@ impl<Element, Token> SetToken<Element, Token>
         requires
             old(self).instance_id() == token.instance_id(),
         ensures
-            self.instance_id() == old(self).instance_id(),
-            self.set() == old(self).set().insert(token.element()),
+            final(self).instance_id() == old(self).instance_id(),
+            final(self).set() == old(self).set().insert(token.element()),
     {
         use_type_invariant(&*self);
         self.m.tracked_insert(token.element(), token);
@@ -415,9 +415,9 @@ impl<Element, Token> SetToken<Element, Token>
         requires
             old(self).set().contains(element)
         ensures
-            self.instance_id() == old(self).instance_id(),
-            self.set() == old(self).set().remove(element),
-            token.instance_id() == self.instance_id(),
+            final(self).instance_id() == old(self).instance_id(),
+            final(self).set() == old(self).set().remove(element),
+            token.instance_id() == final(self).instance_id(),
             token.element() == element,
     {
         use_type_invariant(&*self);
@@ -545,8 +545,8 @@ impl<Element, Token> MultisetToken<Element, Token>
         requires
             old(self).instance_id() == token.instance_id(),
         ensures
-            self.instance_id() == old(self).instance_id(),
-            self.multiset() == old(self).multiset().insert(token.element()),
+            final(self).instance_id() == old(self).instance_id(),
+            final(self).multiset() == old(self).multiset().insert(token.element()),
     {
         use_type_invariant(&*self);
         let f = fresh(self.m.dom());
@@ -565,9 +565,9 @@ impl<Element, Token> MultisetToken<Element, Token>
         requires
             old(self).multiset().contains(element)
         ensures
-            self.instance_id() == old(self).instance_id(),
-            self.multiset() == old(self).multiset().remove(element),
-            token.instance_id() == self.instance_id(),
+            final(self).instance_id() == old(self).instance_id(),
+            final(self).multiset() == old(self).multiset().remove(element),
+            token.instance_id() == final(self).instance_id(),
             token.element() == element,
     {
         use_type_invariant(&*self);
