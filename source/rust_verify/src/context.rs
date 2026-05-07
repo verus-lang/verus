@@ -14,7 +14,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::Sender;
-use vir::ast::{AtomicCallInfo, CrateId, Mode, Path, Pattern, VirErr};
+use vir::ast::{CrateId, Mode, Path, Pattern, VirErr};
 use vir::messages::AstId;
 
 pub struct ErasureInfo {
@@ -99,7 +99,6 @@ pub(crate) struct BodyCtxt<'tcx> {
 pub(crate) struct AtomicallyCtxt {
     pub(crate) update_binder: HirId,
     pub(crate) call_spans: Sender<vir::messages::Span>,
-    pub(crate) info: AtomicCallInfo,
 }
 
 impl<'tcx> ContextX<'tcx> {

@@ -1,10 +1,10 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitshiftBehavior,
-    BitwiseOp, BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr,
-    ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec,
-    Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
-    Typ, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders,
-    VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
+    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck,
+    ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr, Fun,
+    Function, Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode, OverflowBehavior,
+    PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
+    VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_typ};
@@ -114,9 +114,6 @@ pub(crate) struct State<'a> {
     /// Function arguments to be used in the construction of the update
     /// predicate for the atomic update by the atomic function call.
     pub au_pred_args: Vec<crate::sst::Exp>,
-    /// This is the atomic update bound in the atomic spec,
-    /// we must assert `au.resolves()` at the end of the function.
-    pub au_var_exp_to_resolve: Option<crate::sst::Exp>,
     /// This variable is bound by the `atomically |update| { ... }` block
     /// and read by the corresponding `update` function.
     pub au_var_exp: Option<crate::sst::Exp>,
@@ -125,6 +122,10 @@ pub(crate) struct State<'a> {
     /// - `Commit` (i.e. `true`) forces the loop to `break`, and
     /// - `Abort` (i.e. `false`) forces the loop to `continue`.
     pub branch_bool_var: Option<(VarIdent, crate::sst::Exp)>,
+
+    /// This is the atomic update bound in the atomic spec,
+    /// we must assert `au.resolves()` at the end of the function.
+    pub au_var_exp_to_resolve: Option<crate::sst::Exp>,
 }
 
 pub(crate) struct FinalState {
@@ -3070,7 +3071,7 @@ pub(crate) fn expr_to_stm_opt(
 
             Ok((stms, Maybe::Some(Value::Exp(au_var_exp))))
         }
-        ExprX::Atomically(info, ghost_au_var_id, body_expr, is_loop) => {
+        ExprX::Atomically(ghost_au_var_id, body_expr, is_loop) => {
             // ```
             // let pred = $pred_expr;
             // let au = new existential;
@@ -3083,7 +3084,11 @@ pub(crate) fn expr_to_stm_opt(
             // au
             // ```
 
-            let AtomicCallInfoX { au_typ, au_typ_args, call_span, .. } = info.as_ref();
+            let au_typ = undecorate_typ(&expr.typ);
+            let TypX::Datatype(_, au_typ_args, _) = au_typ.as_ref() else {
+                panic!("atomic update should be a datatype")
+            };
+
             let mut stms = Vec::<Stm>::new();
 
             // rebind atomic update
@@ -3099,7 +3104,7 @@ pub(crate) fn expr_to_stm_opt(
 
             stms.push(init_var(&expr.span, &ghost_au_var_id, temp_au_var_exp));
             let au_var_exp =
-                SpannedTyped::new(&expr.span, au_typ, ExpX::Var(ghost_au_var_id.clone()));
+                SpannedTyped::new(&expr.span, &au_typ, ExpX::Var(ghost_au_var_id.clone()));
             state.au_var_exp = Some(au_var_exp.clone());
 
             // check invariant mask
@@ -3149,7 +3154,7 @@ pub(crate) fn expr_to_stm_opt(
             if !state.checking_recommends(ctx)
                 && let Some(exp) = branch_bool_exp
             {
-                let msg = error(call_span, "cannot show atomic update was committed").help(
+                let msg = error(&expr.span, "cannot show atomic update was committed").help(
                     "if the atomic update has an abort case, please use `atomically loop` instead",
                 );
                 stms.push(Spanned::new(
@@ -3161,7 +3166,7 @@ pub(crate) fn expr_to_stm_opt(
             // return atomic update
             Ok((stms, Maybe::Some(Value::Exp(au_var_exp))))
         }
-        ExprX::Update(info, x_expr) => {
+        ExprX::Update(x_expr) => {
             // ```
             // let x = $x_expr;
             // let y = new existential;
@@ -3181,9 +3186,16 @@ pub(crate) fn expr_to_stm_opt(
             // y
             // ```
 
-            let AtomicCallInfoX { au_typ_args, x_typ, y_typ, call_span, .. } = info.as_ref();
             let Some(au_var_exp) = state.au_var_exp.clone() else {
                 panic!("update function outside of atomically block");
+            };
+
+            let TypX::Datatype(_, au_typ_args, _) = au_var_exp.typ.as_ref() else {
+                panic!("atomic update should be a datatype")
+            };
+
+            let [x_typ, y_typ, _pred_typ] = au_typ_args.as_slice() else {
+                panic!("atomic update type should have exactly three type arguments")
             };
 
             let (mut stms, x_raw_exp) = expr_to_stm_opt(ctx, state, x_expr)?;
@@ -3231,7 +3243,7 @@ pub(crate) fn expr_to_stm_opt(
                 for assertion in inner_mask.subset_of(
                     ctx,
                     &outer_mask,
-                    &call_span,
+                    &au_var_exp.span,
                     MaskQueryKind::AtomicUpdateWellFormed,
                 ) {
                     stms.push(Spanned::new(

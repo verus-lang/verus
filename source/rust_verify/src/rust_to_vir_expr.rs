@@ -2208,7 +2208,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                     Some(bctx.spanned_typed_new(
                                         fun.span,
                                         &expr_typ()?,
-                                        ExprX::Update(actx.info.clone(), arg),
+                                        ExprX::Update(arg),
                                     ))
                                 }
 

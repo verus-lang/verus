@@ -3152,7 +3152,7 @@ fn check_expr(
             // Nothing to do here.
             Ok((outer_mode, outer_proph.clone()))
         }
-        ExprX::Atomically(_info, au, e, _b) => {
+        ExprX::Atomically(au, e, _b) => {
             // REVIEW: This is rather complicated since the atomic function call is encoded
             // using a loop in proof mode, which is currently not allowed in Verus.
             // We get around this by partially destructing the body of the atomic function call,
@@ -3225,7 +3225,7 @@ fn check_expr(
 
             Ok((Mode::Proof, Proph::No))
         }
-        ExprX::Update(_info, e) => {
+        ExprX::Update(e) => {
             if outer_mode != Mode::Proof {
                 return Err(error(&expr.span, "update function must be called in proof mode"));
             }

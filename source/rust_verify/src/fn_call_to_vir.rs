@@ -958,15 +958,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                     assert!(bctx.atomically.is_none());
                     let bctx = BodyCtxt { mode: Mode::Proof, ..bctx.clone() };
 
-                    let au_typ = expr_typ()?;
-                    let TypX::Datatype(_, au_typ_args, _) = au_typ.as_ref() else {
-                        panic!("`vstd::atomic::atomically` should return an atomic update")
-                    };
-
-                    let [x_typ, y_typ, pred_typ] = au_typ_args.as_slice() else {
-                        panic!("`vstd::atomic::AtomicUpdate` should take three type arguments")
-                    };
-
                     let [
                         Expr {
                             kind: ExprKind::Block(Block { expr: Some(inner), .. }, None), ..
@@ -992,22 +983,10 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                     let is_loop = matches!(inner.kind, ExprKind::Loop(..));
                     let ghost_au_var = pat_to_var(ghost_au_param.pat)?;
-
-                    let expr_span = bctx.ctxt.spans.to_air_span(expr.span);
-                    let info = Arc::new(vir::ast::AtomicCallInfoX {
-                        au_typ: au_typ.clone(),
-                        au_typ_args: au_typ_args.clone(),
-                        x_typ: x_typ.clone(),
-                        y_typ: y_typ.clone(),
-                        pred_typ: pred_typ.clone(),
-                        call_span: expr_span,
-                    });
-
                     let (tx, rx) = std::sync::mpsc::channel();
                     let actx = Arc::new(AtomicallyCtxt {
                         update_binder: update_param.pat.hir_id,
                         call_spans: tx,
-                        info: info.clone(),
                     });
 
                     let atomically = Some(actx.clone());
@@ -1018,7 +997,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let call_spans = rx.try_iter().collect::<Vec<_>>();
                     match call_spans.len() {
                         0 => err_span(update_span, "function must be called in `atomically` block"),
-                        1 => mk_expr(ExprX::Atomically(info, ghost_au_var, value, is_loop)),
+                        1 => mk_expr(ExprX::Atomically(ghost_au_var, value, is_loop)),
                         _ => Err(Arc::new(vir::messages::MessageX {
                             level: air::messages::MessageLevel::Error,
                             note: "function must be called exactly once in `atomically` block"
