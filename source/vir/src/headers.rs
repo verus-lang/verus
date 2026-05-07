@@ -274,7 +274,10 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
     *block = block[n..].to_vec();
     let require = require.unwrap_or(Arc::new(vec![]));
     let recommend = recommend.unwrap_or(Arc::new(vec![]));
-    let (ensure_id_typ, ensure) = ensure.unwrap_or_default();
+    let (ensure_id_typ, ensure) = match ensure {
+        None => (None, (Arc::new(vec![]), Arc::new(vec![]))),
+        Some((id_typ, es)) => (id_typ, es),
+    };
     let invariant_except_break = invariant_except_break.unwrap_or(Arc::new(vec![]));
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
     let decrease = decrease.unwrap_or(Arc::new(vec![]));
