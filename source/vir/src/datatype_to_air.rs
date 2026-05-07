@@ -61,7 +61,6 @@ fn field_to_par(span: &Span, f: &Field) -> Par {
             name: crate::ast_util::str_unique_var(&("_".to_string() + &f.name), dis),
             typ: f.a.0.clone(),
             mode: f.a.1,
-            is_mut: false,
             purpose: ParPurpose::Regular,
         },
     )
@@ -185,7 +184,6 @@ fn datatype_or_fun_to_air_commands(
                 name: x.clone(),
                 typ: typ.clone(),
                 mode: Mode::Exec,
-                is_mut: false,
                 purpose: ParPurpose::Regular,
             },
         )
@@ -243,7 +241,6 @@ fn datatype_or_fun_to_air_commands(
                 name,
                 typ: vpolytyp.clone(),
                 mode: Mode::Exec,
-                is_mut: false,
                 purpose: ParPurpose::Regular,
             };
             params.push(Spanned::new(span.clone(), parx));

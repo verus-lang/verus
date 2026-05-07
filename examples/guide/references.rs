@@ -26,7 +26,7 @@ fn immutable_references_example() {
 
 // ANCHOR: mut
 fn modify_y(a: &mut u32)
-    ensures *a == 2
+    ensures *final(a) == 2
 {
     *a = 2;
 }
@@ -43,7 +43,7 @@ fn mutable_example()
 // ANCHOR: requires
 fn increment(a: &mut u32)
     requires *old(a) < u32::MAX,
-    ensures *a == *old(a) + 1,
+    ensures *final(a) == *old(a) + 1,
 {
     *a = *a + 1;
 }
@@ -80,7 +80,7 @@ fn decrease(b: &mut u32)
     requires
         *old(b) == 10,
     ensures
-        *b == 0,
+        *final(b) == 0,
 {
     let mut i: u32 = 0;
     while (*b > 0) 

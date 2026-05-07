@@ -198,7 +198,7 @@ fn check_decrease_call(
         let decreases_exp = expr_to_exp_skip_checks(
             ctxt.ctx,
             diagnostics,
-            &params_to_pars(&function.x.params, true),
+            &params_to_pars(&function.x.params),
             expr,
         )?;
         let dec_exp = exp_rename_vars(&decreases_exp, &renames);
@@ -376,7 +376,7 @@ fn check_termination<'a>(
 
     // use expr_to_exp_skip_checks here because checks in decreases done by func_def_to_air
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp_skip_checks(ctx, diagnostics, &params_to_pars(&function.x.params, true), e)
+        expr_to_exp_skip_checks(ctx, diagnostics, &params_to_pars(&function.x.params), e)
     })?;
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
     let caller_decreases_typs: Vec<Typ> =

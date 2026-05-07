@@ -406,7 +406,7 @@ impl StringExecFns for String {
     #[verifier::external_body]
     fn append<'a, 'b>(&'a mut self, other: &'b str)
         ensures
-            self@ == old(self)@ + other@,
+            final(self)@ == old(self)@ + other@,
     {
         *self += other;
     }

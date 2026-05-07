@@ -1,5 +1,5 @@
 //! This code adds specifications for the standard-library types
-//! `std::collections::BTreeMap` and `std::collections::BTreeSet`.
+//! `alloc::collections::BTreeMap` and `alloc::collections::BTreeSet`.
 //!
 //! The specification is only meaningful when the `Key` obeys our [`Ord`] model,
 //! as specified by [`super::super::laws_cmp::obeys_cmp_spec`].
@@ -14,13 +14,14 @@ use super::cmp::OrdSpec;
 use super::iter::IteratorSpec;
 
 use alloc::alloc::Allocator;
+use alloc::boxed::Box;
+use alloc::collections::btree_map;
+use alloc::collections::btree_map::{Keys, Values};
+use alloc::collections::btree_set;
+use alloc::collections::{BTreeMap, BTreeSet};
 use core::borrow::Borrow;
 use core::marker::PhantomData;
 use core::option::Option;
-use std::collections::btree_map;
-use std::collections::btree_map::{Keys, Values};
-use std::collections::btree_set;
-use std::collections::{BTreeMap, BTreeSet};
 
 verus! {
 
@@ -56,7 +57,7 @@ pub broadcast axiom fn axiom_increasing_seq_meaning<K: Ord>(s: Seq<K>)
 ;
 
 /// Specifications for the behavior of
-/// [`std::collections::btree_map::Keys`](https://doc.rust-lang.org/std/collections/btree_map/struct.Keys.html).
+/// [`alloc::collections::btree_map::Keys`](https://doc.rust-lang.org/alloc/collections/btree_map/struct.Keys.html).
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
@@ -94,7 +95,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
 }
 
 /// Specifications for the behavior of
-/// [`std::collections::btree_map::Values`](https://doc.rust-lang.org/std/collections/btree_map/struct.Values.html).
+/// [`alloc::collections::btree_map::Values`](https://doc.rust-lang.org/alloc/collections/btree_map/struct.Values.html).
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
@@ -213,7 +214,7 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
         },
 ;
 
-/// Specifications for the behavior of [`std::collections::BTreeMap`](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html).
+/// Specifications for the behavior of [`alloc::collections::BTreeMap`](https://doc.rust-lang.org/alloc/collections/struct.BTreeMap.html).
 ///
 /// We model a `BTreeMap` as having a view of type `Map<Key, Value>`, which reflects the current state of the map.
 ///
@@ -420,7 +421,7 @@ pub assume_specification<Key: Ord, Value, A: Allocator + Clone>[ BTreeMap::<
 >::insert ](m: &mut BTreeMap<Key, Value, A>, k: Key, v: Value) -> (result: Option<Value>)
     ensures
         obeys_cmp::<Key>() ==> {
-            &&& m@ == old(m)@.insert(k, v)
+            &&& final(m)@ == old(m)@.insert(k, v)
             &&& match result {
                 Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
                 None => !old(m)@.contains_key(k),
@@ -574,7 +575,7 @@ pub assume_specification<
     Option<Value>)
     ensures
         obeys_cmp::<Key>() ==> {
-            &&& borrowed_key_removed(old(m)@, m@, k)
+            &&& borrowed_key_removed(old(m)@, final(m)@, k)
             &&& match result {
                 Some(v) => maps_borrowed_key_to_value(old(m)@, k, v),
                 None => !contains_borrowed_key(old(m)@, k),
@@ -586,7 +587,7 @@ pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Valu
     m: &mut BTreeMap<Key, Value, A>,
 )
     ensures
-        m@ == Map::<Key, Value>::empty(),
+        final(m)@ == Map::<Key, Value>::empty(),
 ;
 
 // To allow reasoning about the ghost Keys iterator when the executable
@@ -706,7 +707,7 @@ impl<'a, T> super::iter::IteratorSpecImpl for btree_set::Iter::<'a, T> {
     }
 }
 
-/// Specifications for the behavior of [`std::collections::BTreeSet`](https://doc.rust-lang.org/std/collections/struct.BTreeSet.html).
+/// Specifications for the behavior of [`alloc::collections::BTreeSet`](https://doc.rust-lang.org/alloc/collections/struct.BTreeSet.html).
 ///
 /// We model a `BTreeSet` as having a view of type `Set<Key>`, which reflects the current state of the set.
 ///
@@ -781,7 +782,7 @@ pub assume_specification<Key: Ord, A: Allocator + Clone>[ BTreeSet::<Key, A>::in
 ) -> (result: bool)
     ensures
         obeys_cmp::<Key>() ==> {
-            &&& m@ == old(m)@.insert(k)
+            &&& final(m)@ == old(m)@.insert(k)
             &&& result == !old(m)@.contains(k)
         },
 ;
@@ -902,7 +903,7 @@ pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?S
 >::remove::<Q> ](m: &mut BTreeSet<Key, A>, k: &Q) -> (result: bool)
     ensures
         obeys_cmp::<Key>() ==> {
-            &&& sets_differ_by_borrowed_key(old(m)@, m@, k)
+            &&& sets_differ_by_borrowed_key(old(m)@, final(m)@, k)
             &&& result == set_contains_borrowed_key(old(m)@, k)
         },
 ;
@@ -911,7 +912,7 @@ pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::clear ]
     m: &mut BTreeSet<Key, A>,
 ) where A: Clone
     ensures
-        m@ == Set::<Key>::empty(),
+        final(m)@ == Set::<Key>::empty(),
 ;
 
 // To allow reasoning about the ghost keys in the BtreeSet iterator when the executable

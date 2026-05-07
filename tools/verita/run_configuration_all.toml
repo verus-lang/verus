@@ -109,25 +109,25 @@ rustup target add x86_64-unknown-none --toolchain 1.95.0
 name = "anvil"
 git_url = "https://github.com/anvil-verifier/anvil"
 refspec = "main"
-# Fails with "variable shadowing not yet supported" in vstd/std_specs/option.rs
-#   and with "function body check: Resource limit (rlimit) exceeded on newly_added_msg_have_different_id_from_existing_ones
-ignore= true
-crate_roots = ["src/vdeployment_admission_controller.rs"]
+crate_roots = ["src/esr_composition.rs"]
 extra_verus_args = ["--crate-type=lib", 
               "-L", "dependency=src/deps_hack/target/debug/deps",
-              "--extern=deps_hack=\"src/deps_hack/target/debug/libdeps_hack.rlib\"",
+              "--extern=deps_hack=src/deps_hack/target/debug/libdeps_hack.rlib",
+              "--rlimit", "50",
+              "--verify-module", "vdeployment_controller", # remove this line to run full verification on all 4 controllers
               "-A", "warnings"]
 prepare_script = """
 pushd src/deps_hack
 cargo clean
-cargo +1.95.0 build
+cargo build
 popd
 """
 prepare_script_windows = """
 $ErrorActionPreference = 'Stop'
 Push-Location src/deps_hack
 cargo clean
-cargo +1.95.0 build
+cargo build
 Pop-Location
 """
 
+# Fails 

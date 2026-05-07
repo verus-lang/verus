@@ -8,6 +8,7 @@ and publishing for the Verus project.
 ### 1. CI Workflow (`ci.yml`)
 
 **Triggers:**
+
 - Push to `main` branch
 - Pull requests (opened, synchronized, reopened)
 - Manual dispatch
@@ -25,7 +26,7 @@ and publishing for the Verus project.
 
 3. **`cargo-verus-test`** (linux)
    - Only runs on changes to `source/cargo-verus/**`
-   - Runs `cargo-verus` integration tests
+   - Runs `cargo-verus` tests (unit- and package-level)
    - Runs after `fmt` and `clippy` pass
 
 4. **`full-test`** (macOS ARM64)
@@ -59,6 +60,7 @@ and publishing for the Verus project.
    - Publishes the updated rolling release
 
 **Output:**
+
 - Continuous binary distribution via the Rolling Release
 - Documentation artifacts for GitHub Pages deployment
 - Platform artifacts available for download from the workflow run
@@ -68,6 +70,7 @@ and publishing for the Verus project.
 ### 2. Release Workflow (`release.yml`)
 
 **Triggers:**
+
 - Schedule: Weekly on Mondays at midnight UTC
 
 **Purpose:** Promote a Rolling Release to a permanent versioned release
@@ -124,6 +127,7 @@ and publishing for the Verus project.
 ```
 
 **Key Distinction:**
+
 - **Rolling Release**: Ephemeral, continuously updated with latest main
 - **Permanent Release**: Immutable snapshot at a point in time
 - Users tracking development use the rolling release
@@ -134,6 +138,7 @@ and publishing for the Verus project.
 ### 3. Pages Workflow (`pages.yml`)
 
 **Triggers:**
+
 - Workflow run completion (after `ci.yml` completes successfully on `main`)
 
 **Purpose:** Build and deploy project documentation to GitHub Pages
@@ -154,6 +159,7 @@ and publishing for the Verus project.
    - Makes documentation available at the GitHub Pages URL
 
 **Output:**
+
 - User-facing documentation at the project's GitHub Pages site
 - API documentation (verusdoc)
 - Tutorial guides
@@ -164,15 +170,16 @@ and publishing for the Verus project.
 ### 4. Crate Updates Workflow (`crate-updates.yml`)
 
 **Triggers:**
+
 - Manual dispatch
 - Schedule: Weekly on Sundays at midnight UTC
-    - This way, the updated versions are incorporated into the Monday release
+  - This way, the updated versions are incorporated into the Monday release
 
 **Purpose:** Automated maintenance of published crates on crates.io
 
 **Assumptions:**
-1. Assumes that `main` is in a building and verifying state.
 
+1. Assumes that `main` is in a building and verifying state.
 
 **Jobs:**
 
@@ -206,6 +213,7 @@ crate-updates.yml (weekly/manual) → Updates crate versions → Publishes to cr
 ## Platform Support
 
 All workflows build and test Verus on:
+
 - **Linux**: `x86_64` (ubuntu-22.04)
 - **macOS**: ARM64 (macOS 14) and `x86_64` (macOS 15)
 - **Windows**: `x86_64` (2022)

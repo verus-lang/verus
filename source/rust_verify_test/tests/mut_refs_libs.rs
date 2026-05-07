@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] test_option_as_mut_spec ["new-mut-ref"] => verus_code! {
+    #[test] test_option_as_mut_spec [] => verus_code! {
         use vstd::prelude::*;
 
         fn test1() {
@@ -42,7 +42,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_vec_index_assign ["new-mut-ref"] => verus_code! {
+    #[test] test_vec_index_assign [] => verus_code! {
         use vstd::prelude::*;
 
         fn test() {
@@ -117,7 +117,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_vec_index_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] test_vec_index_mut_ref [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_mut_ref() {
@@ -198,7 +198,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_index_out_of_bounds ["new-mut-ref"] => verus_code! {
+    #[test] test_index_out_of_bounds [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_out_of_bounds1() {
@@ -242,7 +242,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_vec_of_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] test_vec_of_mut_refs [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_vec() {
@@ -340,7 +340,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_options_as_mut_slice ["new-mut-ref"] => verus_code! {
+    #[test] test_options_as_mut_slice [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_as_slice_none() {
@@ -404,7 +404,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_option_insert_and_get_or_insert ["new-mut-ref"] => verus_code! {
+    #[test] test_option_insert_and_get_or_insert [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_insert_none() {

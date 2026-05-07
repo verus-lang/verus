@@ -391,7 +391,7 @@ impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
         requires
             i < old(self).len(),
         ensures
-            self@ == old(self)@.update(i as int, value),
+            final(self)@ == old(self)@.update(i as int, value),
     {
         self[i] = value;
     }
@@ -402,8 +402,8 @@ impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
         requires
             i < old(self).len(),
         ensures
-            self@ == old(self)@.update(i as int, *old(value)),
-            *value == old(self)@.index(i as int),
+            final(self)@ == old(self)@.update(i as int, *old(value)),
+            *final(value) == old(self)@.index(i as int),
     {
         core::mem::swap(&mut self[i], value);
     }

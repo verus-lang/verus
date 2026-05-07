@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] slice_basic ["new-mut-ref"] => verus_code! {
+    #[test] slice_basic [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_assign_slice_box(x: Box<[u64]>)
@@ -178,7 +178,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] array_basic ["new-mut-ref"] => verus_code! {
+    #[test] array_basic [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_assign_array() {
@@ -361,7 +361,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] slice_overflow ["new-mut-ref"] => verus_code! {
+    #[test] slice_overflow [] => verus_code! {
         use vstd::prelude::*;
 
         fn overflow_assign_slice_box(x: Box<[u64]>)
@@ -421,7 +421,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] array_overflow ["new-mut-ref"] => verus_code! {
+    #[test] array_overflow [] => verus_code! {
         use vstd::prelude::*;
 
         fn overflow_assign_array() {
@@ -496,7 +496,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] idx_nonproph ["new-mut-ref"] => verus_code! {
+    #[test] idx_nonproph [] => verus_code! {
         use vstd::prelude::*;
 
         #[verifier::prophetic]
@@ -514,7 +514,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_ordering ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_ordering [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_mut_ref_1() {
@@ -754,7 +754,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_ordering2 ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_ordering2 [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_mut_ref() {
@@ -877,7 +877,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_ordering3 ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_ordering3 [] => verus_code! {
         use vstd::prelude::*;
 
         // Assignments and primtive-compound-assignments are evaluated RHS first!
@@ -915,7 +915,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_ordering4 ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_ordering4 [] => verus_code! {
         use vstd::prelude::*;
 
         fn test() {
@@ -951,7 +951,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_ordering5 ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_ordering5 [] => verus_code! {
         #[allow(unreachable_code)]
         #[verifier::exec_allows_no_decreases_clause]
         fn test() {
@@ -1020,7 +1020,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_ordering6 ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_ordering6 [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         #[allow(unreachable_code)]
         fn test1_fails_access2() {
@@ -1032,7 +1032,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_ordering_overflow_error ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_ordering_overflow_error [] => verus_code! {
         use vstd::prelude::*;
 
         fn test() {
@@ -1046,7 +1046,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_ordering_rhs_first_resolution_inf ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_ordering_rhs_first_resolution_inf [] => verus_code! {
         use vstd::prelude::*;
 
         fn test() {
@@ -1112,7 +1112,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_ordering_rhs_first_resolution_inf_compound ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_ordering_rhs_first_resolution_inf_compound [] => verus_code! {
         use vstd::prelude::*;
 
         fn test() {
@@ -1178,7 +1178,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] array_of_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] array_of_mut_refs [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_array() {
@@ -1210,7 +1210,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] slice_of_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] slice_of_mut_refs [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_slice(x: Box<[&mut u64]>)
@@ -1247,7 +1247,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] slices_lib_first_last_mut ["new-mut-ref"] => verus_code! {
+    #[test] slices_lib_first_last_mut [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_emp() {
@@ -1359,7 +1359,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] slices_lib_split_at ["new-mut-ref"] => verus_code! {
+    #[test] slices_lib_split_at [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_split_at() {
@@ -1445,7 +1445,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] slices_assign_resolving_basic ["new-mut-ref"] => verus_code! {
+    #[test] slices_assign_resolving_basic [] => verus_code! {
         use vstd::prelude::*;
 
         spec fn id<A>(a: A) -> A { a }
@@ -1526,7 +1526,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] new_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_to_slice_len_comparison [] => verus_code! {
         use vstd::prelude::*;
 
         fn consume<A>(a: A) { }
@@ -1548,7 +1548,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_unsizing_coercion ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_unsizing_coercion [] => verus_code! {
         use vstd::prelude::*;
 
         fn test() {
@@ -1575,7 +1575,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] slice_index_then_field_1 ["new-mut-ref"] => verus_code! {
+    #[test] slice_index_then_field_1 [] => verus_code! {
         use vstd::prelude::*;
 
         fn upd(a: &mut u64, b: &mut u64)
@@ -1628,7 +1628,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] slice_index_then_field_2 ["new-mut-ref", "--no-lifetime"] => verus_code! {
+    #[test] slice_index_then_field_2 ["--no-lifetime"] => verus_code! {
         // disallowed by borrow checker, but it could theoretically be allowed
 
         use vstd::prelude::*;
@@ -1666,7 +1666,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] slice_index_then_field_3 ["new-mut-ref"] => verus_code! {
+    #[test] slice_index_then_field_3 [] => verus_code! {
         use vstd::prelude::*;
 
         fn upd(a: &mut u64, b: &mut u64) { }
@@ -1682,9 +1682,10 @@ test_verify_one_file_with_options! {
     ])
 }
 
-// TODO(new_mut_ref): (blocking) fix this issue with mutable temporaries
 test_verify_one_file_with_options! {
-    #[ignore] #[test] mut_ref_temporary_cant_be_elided ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_temporary_cant_be_elided [] => verus_code! {
+        use vstd::prelude::*;
+
         // This test demonstrates that `* &mut P -> P` is not always a valid simplification.
         // Observe that test1/test2 have different desired behaviors than test3/test4.
 
@@ -1745,7 +1746,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] assignment_to_mut_ref_in_index ["new-mut-ref"] => verus_code! {
+    #[test] assignment_to_mut_ref_in_index [] => verus_code! {
         use vstd::prelude::*;
 
         fn test1() {
@@ -1763,6 +1764,206 @@ test_verify_one_file_with_options! {
             y[({ *x_ref = 30; 0 })] = 30;
             assert(x == 30);
             assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] has_resolved_in_idx_expr [] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test1() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+            let mut b = [0, 1];
+            b[({ *a_ref = 20; assert(has_resolved(a_ref)); 0 })] = 10;
+            assert(a == 20);
+        }
+
+        fn fails1() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+            let mut b = [0, 1];
+            b[({ *a_ref = 20; assert(has_resolved(a_ref)); 0 })] = 10;
+            assert(a == 20);
+            assert(false); // FAILS
+        }
+
+        fn fails2() {
+            let mut a = 0;
+            let mut a_ref = &mut a;
+            let mut b = [0, 1];
+            b[({
+                assert(has_resolved(a_ref)); // FAILS
+                *a_ref = 20; assert(has_resolved(a_ref)); 0 })] = 10;
+            assert(a == 20);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] temporary_and_index_resolve_points1 [] => verus_code! {
+        use vstd::prelude::*;
+
+        fn fst<A, B>(a: &mut (A, B)) -> (ret: &mut A)
+            ensures *ret == old(a).0 && *final(a) == (*final(ret), old(a).1)
+        {
+            &mut a.0
+        }
+
+        fn test1() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a.0)[({
+                0
+            })] = 20;
+            assert(a.0.0[0] == 20);
+            assert(a.0.0[1] == 1);
+            assert(a.0.1 == 2);
+            assert(a.1 == 3);
+        }
+
+        fn test1_fails() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a.0)[({
+                0
+            })] = 20;
+            assert(a.0.0[0] == 20);
+            assert(a.0.0[1] == 1);
+            assert(a.0.1 == 2);
+            assert(a.1 == 3);
+            assert(false); // FAILS
+        }
+
+        fn test2() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a.0)[({
+                assert(after_borrow(a).0.1 == 2);
+                assert(after_borrow(a).1 == 3);
+                0
+            })] = 20;
+
+            assert(after_borrow(a).0.0[1] == 1);
+            assert(a.0.0[0] == 20);
+        }
+
+        fn test3() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a.0)[({
+                // this fails because our analysis doesn't descend into indices
+                assert(after_borrow(a).0.0[1] == 1); // FAILS
+                0
+            })] = 20;
+
+            assert(a.0.0[0] == 20);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] temporary_and_index_resolve_points2 [] => verus_code! {
+        use vstd::prelude::*;
+
+        fn fst<A, B>(a: &mut (A, B)) -> (ret: &mut A)
+            ensures *ret == old(a).0 && *final(a) == (*final(ret), old(a).1)
+        {
+            &mut a.0
+        }
+
+        fn test4() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a).0[({
+                assert(after_borrow(a).1 == 3);
+                0
+            })] = 20;
+
+            assert(a.0.1 == 2);
+            assert(a.1 == 3);
+            assert(a.0.0[1] == 1);
+            assert(a.0.0[0] == 20);
+        }
+
+        fn test4_fails() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a).0[({
+                assert(after_borrow(a).1 == 3);
+                0
+            })] = 20;
+
+            assert(a.0.1 == 2);
+            assert(a.1 == 3);
+            assert(a.0.0[1] == 1);
+            assert(a.0.0[0] == 20);
+            assert(false); // FAILS
+        }
+
+        fn test5() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a).0[({
+                // resolution on the granularity of &mut ([u62; 2], u64)
+                assert(after_borrow(a).0.1 == 2); // FAILS
+                0
+            })] = 20;
+
+            assert(after_borrow(a).0.0[1] == 1);
+            assert(a.0.0[0] == 20);
+        }
+
+        fn test6() {
+            let mut a = (([0, 1], 2), 3);
+            fst(&mut a).0[({
+                assert(after_borrow(a).0.0[1] == 1); // FAILS
+                0
+            })] = 20;
+
+            assert(after_borrow(a).0.1 == 2);
+            assert(after_borrow(a).1 == 3);
+            assert(a.0.0[0] == 20);
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] temporary_and_index_resolve_points3 [] => verus_code! {
+        use vstd::prelude::*;
+
+        fn fst<A, B>(a: &mut (A, B)) -> (ret: (&mut A, &mut B))
+            ensures
+                *ret.0 == old(a).0,
+                *ret.1 == old(a).1,
+                *final(a) == (*final(ret.0), *final(ret.1)),
+        {
+            (&mut a.0, &mut a.1)
+        }
+
+        fn test1() {
+            let mut a = ([0, 1], 2);
+            fst(&mut a).0[({
+                0
+            })] = 20;
+            assert(a.0[0] == 20);
+            assert(a.0[1] == 1);
+            assert(a.1 == 2);
+        }
+
+        fn test1_fails() {
+            let mut a = ([0, 1], 2);
+            fst(&mut a).0[({
+                0
+            })] = 20;
+            assert(a.0[0] == 20);
+            assert(a.0[1] == 1);
+            assert(a.1 == 2);
+            assert(false); // FAILS
+        }
+
+        fn test2() {
+            let mut a = ([0, 1], 2);
+            fst(&mut a).0[({
+                assert(after_borrow(a).1 == 2);
+                0
+            })] = 20;
+            assert(a.0[0] == 20);
+            assert(a.0[1] == 1);
         }
     } => Err(err) => assert_fails(err, 1)
 }

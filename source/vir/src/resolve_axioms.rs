@@ -75,7 +75,6 @@ impl ResolvedTypeCollection {
             TypX::Decorate(dec, _, t) => {
                 match dec {
                     TypDecoration::Ref
-                    | TypDecoration::MutRef
                     | TypDecoration::Rc
                     | TypDecoration::Arc
                     | TypDecoration::Ghost

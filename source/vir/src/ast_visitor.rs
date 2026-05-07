@@ -308,7 +308,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         match &expr.x {
             ExprX::Const(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Var(_) => R::ret(|| expr_new(expr.x.clone())),
-            ExprX::VarLoc(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::VarAt(_, _) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::ConstVar(_, _) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::StaticVar(_) => R::ret(|| expr_new(expr.x.clone())),
@@ -318,10 +317,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::BreakOrContinue { label: _, is_break: _ } => R::ret(|| expr_new(expr.x.clone())),
             ExprX::AirStmt(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Nondeterministic => R::ret(|| expr_new(expr.x.clone())),
-            ExprX::Loc(e) => {
-                let e1 = self.visit_expr(e)?;
-                R::ret(|| expr_new(ExprX::Loc(R::get(e1))))
-            }
             ExprX::Call(call_target, exprs, opt_e) => {
                 let ct = self.visit_call_target(call_target)?;
                 let es = self.visit_exprs(exprs)?;
@@ -461,11 +456,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         body: R::get(body),
                     })
                 })
-            }
-            ExprX::Assign { lhs, rhs, op } => {
-                let lhs = self.visit_expr(lhs)?;
-                let rhs = self.visit_expr(rhs)?;
-                R::ret(|| expr_new(ExprX::Assign { lhs: R::get(lhs), rhs: R::get(rhs), op: *op }))
             }
             ExprX::AssignToPlace { place, rhs, op, resolve, typ } => {
                 let place = self.visit_place(place)?;
@@ -680,6 +670,27 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::Await(e) => {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Await(R::get(e))))
+            }
+            ExprX::MatchGuardFreeze(p, e) => {
+                let p = self.visit_place(p)?;
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::MatchGuardFreeze(R::get(p), R::get(e))))
+            }
+            ExprX::ShrRefStructWrap(e1, e2, t1, t2, variant, field) => {
+                let e1 = self.visit_expr(e1)?;
+                let e2 = self.visit_expr(e2)?;
+                let t1 = self.visit_typ(t1)?;
+                let t2 = self.visit_typ(t2)?;
+                R::ret(|| {
+                    expr_new(ExprX::ShrRefStructWrap(
+                        R::get(e1),
+                        R::get(e2),
+                        R::get(t1),
+                        R::get(t2),
+                        variant.clone(),
+                        field.clone(),
+                    ))
+                })
             }
         }
     }
@@ -979,14 +990,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
     }
 
     fn visit_param(&mut self, param: &Param) -> Result<R::Ret<Param>, Err> {
-        let ParamX { name, typ, mode, is_mut, user_mut, unwrapped_info } = &param.x;
+        let ParamX { name, typ, mode, user_mut, unwrapped_info } = &param.x;
         let typ = self.visit_typ(typ)?;
         R::ret(|| {
             param.new_x(ParamX {
                 name: name.clone(),
                 typ: R::get(typ),
                 mode: *mode,
-                is_mut: *is_mut,
                 user_mut: *user_mut,
                 unwrapped_info: unwrapped_info.clone(),
             })

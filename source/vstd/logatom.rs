@@ -122,7 +122,7 @@ pub trait MutLinearizer<Op: MutOperation>: Sized {
             self.pre(op),
             op.requires(*old(r), new_state, *e),
         ensures
-            op.ensures(*old(r), *r, new_state),
+            op.ensures(*old(r), *final(r), new_state),
             self.post(op, *e, out),
         opens_invariants self.namespaces()
     ;

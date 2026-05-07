@@ -75,7 +75,7 @@ pub assume_specification[ DefaultHasher::new ]() -> (result: DefaultHasher)
 // This is the specification of behavior for `DefaultHasher::write(&[u8])`.
 pub assume_specification[ DefaultHasher::write ](state: &mut DefaultHasher, bytes: &[u8])
     ensures
-        state@ == old(state)@.push(bytes@),
+        final(state)@ == old(state)@.push(bytes@),
 ;
 
 // This is the specification of behavior for `DefaultHasher::finish()`.
@@ -644,7 +644,7 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ H
     A,
 >::reserve ](m: &mut HashMap<Key, Value, S, A>, additional: usize)
     ensures
-        m@ == old(m)@,
+        final(m)@ == old(m)@,
 ;
 
 pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ HashMap::<
@@ -655,7 +655,7 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ H
 >::insert ](m: &mut HashMap<Key, Value, S, A>, k: Key, v: Value) -> (result: Option<Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& m@ == old(m)@.insert(k, v)
+            &&& final(m)@ == old(m)@.insert(k, v)
             &&& match result {
                 Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
                 None => !old(m)@.contains_key(k),
@@ -828,7 +828,7 @@ pub assume_specification<
     Option<Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& borrowed_key_removed(old(m)@, m@, k)
+            &&& borrowed_key_removed(old(m)@, final(m)@, k)
             &&& match result {
                 Some(v) => maps_borrowed_key_to_value(old(m)@, k, v),
                 None => !contains_borrowed_key(old(m)@, k),
@@ -840,7 +840,7 @@ pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, 
     m: &mut HashMap<Key, Value, S, A>,
 )
     ensures
-        m@ == Map::<Key, Value>::empty(),
+        final(m)@ == Map::<Key, Value>::empty(),
 ;
 
 // To allow reasoning about the ghost Keys iterator when the executable
@@ -1022,7 +1022,7 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet:
     A,
 >::reserve ](m: &mut HashSet<Key, S, A>, additional: usize)
     ensures
-        m@ == old(m)@,
+        final(m)@ == old(m)@,
 ;
 
 pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<
@@ -1032,7 +1032,7 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet:
 >::insert ](m: &mut HashSet<Key, S, A>, k: Key) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& m@ == old(m)@.insert(k)
+            &&& final(m)@ == old(m)@.insert(k)
             &&& result == !old(m)@.contains(k)
         },
 ;
@@ -1171,7 +1171,7 @@ pub assume_specification<
 >[ HashSet::<Key, S, A>::remove::<Q> ](m: &mut HashSet<Key, S, A>, k: &Q) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& sets_differ_by_borrowed_key(old(m)@, m@, k)
+            &&& sets_differ_by_borrowed_key(old(m)@, final(m)@, k)
             &&& result == set_contains_borrowed_key(old(m)@, k)
         },
 ;
@@ -1180,7 +1180,7 @@ pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::clear ](
     m: &mut HashSet<Key, S, A>,
 )
     ensures
-        m@ == Set::<Key>::empty(),
+        final(m)@ == Set::<Key>::empty(),
 ;
 
 // To allow reasoning about the ghost keys in the HashSet iterator when the executable

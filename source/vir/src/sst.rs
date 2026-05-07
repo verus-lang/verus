@@ -133,7 +133,6 @@ pub struct ParX {
     pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
-    pub is_mut: bool,
     pub purpose: ParPurpose,
 }
 

@@ -117,7 +117,6 @@ pub struct ArgsX {
     pub solver: SmtSolver,
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
-    pub new_mut_ref: bool,
     pub no_bv_simplify: bool,
 }
 
@@ -165,7 +164,6 @@ impl ArgsX {
             solver: Default::default(),
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
-            new_mut_ref: Default::default(),
             no_bv_simplify: Default::default(),
         }
     }
@@ -409,7 +407,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
-    const EXTENDED_NEW_MUT_REF: &str = "new-mut-ref";
     const EXTENDED_NO_BV_SIMPLIFY: &str = "no-bv-simplify";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
@@ -434,7 +431,6 @@ pub fn parse_args_with_imports(
             EXTENDED_CHECK_API_SAFETY,
             "Check that the API is memory-safe when called from unverified, safe Rust code. Experimental.",
         ),
-        (EXTENDED_NEW_MUT_REF, "experimental support for extended mutable references"),
         (
             EXTENDED_NO_BV_SIMPLIFY,
             "internal option to disable simplification of bit-vector assertions before sending to the SMT solver",
@@ -831,7 +827,6 @@ pub fn parse_args_with_imports(
         solver: if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         axiom_usage_info: extended.contains_key(EXTENDED_AXIOM_USAGE_INFO),
         check_api_safety: extended.contains_key(EXTENDED_CHECK_API_SAFETY),
-        new_mut_ref: extended.contains_key(EXTENDED_NEW_MUT_REF),
         no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
     };
 
@@ -839,16 +834,5 @@ pub fn parse_args_with_imports(
         error("--compile and --no-erasure-check are mutually exclusive".to_string())
     }
 
-    if args.new_mut_ref {
-        NEW_MUT_REF.store(true, std::sync::atomic::Ordering::SeqCst);
-    }
-
     (Arc::new(args), unmatched)
-}
-
-pub(crate) static NEW_MUT_REF: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-pub(crate) fn new_mut_ref() -> bool {
-    NEW_MUT_REF.load(std::sync::atomic::Ordering::SeqCst)
 }

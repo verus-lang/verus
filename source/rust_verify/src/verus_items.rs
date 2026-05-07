@@ -149,6 +149,7 @@ pub(crate) enum ExprItem {
     IsSmallerThanRecursiveFunctionField,
     DefaultEnsures,
     InferSpecForLoopIter,
+    ShrRefStructWrap,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -444,6 +445,7 @@ pub(crate) enum VerusItem {
     ErasedGhostValue,
     ShadowGhostValue,
     MutableReferenceTie,
+    GetFirst,
     DummyCapture(DummyCaptureItem),
     MutRefTracked,
 }
@@ -511,6 +513,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::is_smaller_than_recursive_function_field", VerusItem::Expr(ExprItem::IsSmallerThanRecursiveFunctionField)),
         ("verus::verus_builtin::default_ensures",         VerusItem::Expr(ExprItem::DefaultEnsures)),
         ("verus::verus_builtin::infer_spec_for_loop_iter", VerusItem::Expr(ExprItem::InferSpecForLoopIter)),
+        ("verus::verus_builtin::shr_ref_struct_wrap",     VerusItem::Expr(ExprItem::ShrRefStructWrap)),
 
         ("verus::verus_builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),
         // TODO ("verus::verus_builtin::smartptr_new",    VerusItem::CompilableOpr(CompilableOprItem::SmartPtrNew)),
@@ -617,6 +620,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::erased_ghost_value",      VerusItem::ErasedGhostValue),
         ("verus::verus_builtin::shadow_ghost_value",      VerusItem::ShadowGhostValue),
         ("verus::verus_builtin::mutable_reference_tie",   VerusItem::MutableReferenceTie),
+        ("verus::verus_builtin::verus_erasure_get_first", VerusItem::GetFirst),
         ("verus::verus_builtin::DummyCapture",            VerusItem::DummyCapture(DummyCaptureItem::Struct)),
         ("verus::verus_builtin::dummy_capture_new",       VerusItem::DummyCapture(DummyCaptureItem::New)),
         ("verus::verus_builtin::dummy_capture_consume",   VerusItem::DummyCapture(DummyCaptureItem::Consume)),

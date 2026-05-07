@@ -50,7 +50,7 @@ impl<T> SliceAdditionalExecFns<T> for [T] {
         requires
             0 <= idx < old(self)@.len(),
         ensures
-            self@ == old(self)@.update(idx as int, t),
+            final(self)@ == old(self)@.update(idx as int, t),
     {
         self[idx] = t;
     }
