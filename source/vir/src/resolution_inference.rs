@@ -1033,7 +1033,7 @@ impl<'a> Builder<'a> {
                 Ok(post_bb)
             }
             ExprX::OpenInvariant(arg, binder, body, _)
-            | ExprX::TryOpenAtomicUpdate(arg, binder, _, body) => {
+            | ExprX::TryOpenAtomicUpdate(arg, binder, body) => {
                 bb = self.build(arg, bb)?;
 
                 let local = FlattenedPlaceTyped {
@@ -1068,7 +1068,7 @@ impl<'a> Builder<'a> {
                 Ok(bb)
             }
             ExprX::AtomicUpdateInitDummy => Ok(bb),
-            ExprX::Atomically(_v, e, _b) => {
+            ExprX::Atomically(_k, _v, e) => {
                 bb = self.build(e, bb)?;
                 Ok(bb)
             }

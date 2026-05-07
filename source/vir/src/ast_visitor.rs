@@ -595,33 +595,28 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     expr_new(ExprX::OpenInvariant(R::get(e), R::get(binder), R::get(body), *ato))
                 })
             }
-            ExprX::TryOpenAtomicUpdate(e, b, is_mut, body) => {
+            ExprX::TryOpenAtomicUpdate(e, b, body) => {
                 let e = self.visit_expr(e)?;
 
                 let binder = self.visit_binder_typ(b)?;
 
                 self.push_scope();
                 let b = R::get_or(&binder, b);
-                self.insert_binding(&b.name, ScopeEntry::new(&b.a, Some(*is_mut), true));
+                self.insert_binding(&b.name, ScopeEntry::new(&b.a, None, true));
 
                 let body = self.visit_expr(body)?;
 
                 self.pop_scope();
 
                 R::ret(|| {
-                    expr_new(ExprX::TryOpenAtomicUpdate(
-                        R::get(e),
-                        R::get(binder),
-                        *is_mut,
-                        R::get(body),
-                    ))
+                    expr_new(ExprX::TryOpenAtomicUpdate(R::get(e), R::get(binder), R::get(body)))
                 })
             }
             ExprX::AtomicUpdateInitDummy => R::ret(|| expr_new(ExprX::AtomicUpdateInitDummy)),
-            ExprX::Atomically(v, e, b) => {
+            ExprX::Atomically(k, v, e) => {
                 let v = v.clone();
                 let e = self.visit_expr(e)?;
-                R::ret(|| expr_new(ExprX::Atomically(v, R::get(e), *b)))
+                R::ret(|| expr_new(ExprX::Atomically(*k, v, R::get(e))))
             }
             ExprX::Update(e) => {
                 let e = self.visit_expr(e)?;

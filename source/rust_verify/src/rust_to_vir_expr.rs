@@ -1246,7 +1246,7 @@ fn open_au_block_to_vir<'tcx>(
     let StmtKind::Let(LetStmt {
         pat:
             x_pat @ Pat {
-                kind: PatKind::Binding(BindingMode(ByRef::No, x_mut), x_bind, _, None),
+                kind: PatKind::Binding(BindingMode(ByRef::No, _), x_bind, _, None),
                 default_binding_modes: true,
                 ..
             },
@@ -1392,7 +1392,7 @@ fn open_au_block_to_vir<'tcx>(
     let mid_exp = bctx.spanned_typed_new(
         mid_stmt.span,
         &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
-        ExprX::TryOpenAtomicUpdate(au_vir_arg, au_vir_binder, x_mut.is_mut(), vir_body),
+        ExprX::TryOpenAtomicUpdate(au_vir_arg, au_vir_binder, vir_body),
     );
 
     Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(

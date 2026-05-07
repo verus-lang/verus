@@ -1,10 +1,10 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck,
-    ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr, Fun,
-    Function, Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode, OverflowBehavior,
-    PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
-    VariantCheck, VirErr,
+    ArithOp, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
+    BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr,
+    Fun, Function, Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode,
+    OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ,
+    TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
+    VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_typ};
@@ -2759,7 +2759,7 @@ pub(crate) fn expr_to_stm_opt(
             stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(block_stm)));
             return Ok((stms0, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))));
         }
-        ExprX::TryOpenAtomicUpdate(au_expr, x_bind, _x_is_mut, body) => {
+        ExprX::TryOpenAtomicUpdate(au_expr, x_bind, body) => {
             // This is roughtly what the generated SST looks like:
             //
             // ```
@@ -3071,7 +3071,7 @@ pub(crate) fn expr_to_stm_opt(
 
             Ok((stms, Maybe::Some(Value::Exp(au_var_exp))))
         }
-        ExprX::Atomically(ghost_au_var_id, body_expr, is_loop) => {
+        ExprX::Atomically(kind, ghost_au_var_id, body_expr) => {
             // ```
             // let pred = $pred_expr;
             // let au = new existential;
@@ -3127,7 +3127,7 @@ pub(crate) fn expr_to_stm_opt(
 
             // generate branch bool
             let mut branch_bool_exp = None;
-            if !*is_loop {
+            if let AtomicallyKind::Simple = kind {
                 let bool_typ = Arc::new(TypX::Bool);
                 let (var_id, var_exp) = state.declare_temp_var_stm(
                     &expr.span,

@@ -29,8 +29,8 @@ use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArrayKind, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
-    BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
+    ArithOp, ArrayKind, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior,
+    BitwiseOp, BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
     Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
     IntegerTypeBoundKind, MaskSpec, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior,
     Place, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX,
@@ -892,7 +892,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let x_pat @ rustc_hir::Pat {
                         kind:
                             rustc_hir::PatKind::Binding(
-                                rustc_ast::BindingMode(rustc_ast::ByRef::No, x_mut),
+                                rustc_ast::BindingMode(rustc_ast::ByRef::No, _),
                                 x_bind,
                                 _,
                                 None,
@@ -918,12 +918,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                     let vir_body = expr_to_vir_consume(bctx, body_expr)?;
 
-                    mk_expr(ExprX::TryOpenAtomicUpdate(
-                        au_vir_arg,
-                        au_vir_binder,
-                        x_mut.is_mut(),
-                        vir_body,
-                    ))
+                    mk_expr(ExprX::TryOpenAtomicUpdate(au_vir_arg, au_vir_binder, vir_body))
                 }
                 SpecItem::Atomically => {
                     // The atomic function call expands as follows:
@@ -981,7 +976,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                         return malformed_err(expr);
                     };
 
-                    let is_loop = matches!(inner.kind, ExprKind::Loop(..));
+                    let kind = match &inner.kind {
+                        ExprKind::Loop(..) => AtomicallyKind::Loop,
+                        _ => AtomicallyKind::Simple,
+                    };
+
                     let ghost_au_var = pat_to_var(ghost_au_param.pat)?;
                     let (tx, rx) = std::sync::mpsc::channel();
                     let actx = Arc::new(AtomicallyCtxt {
@@ -997,7 +996,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let call_spans = rx.try_iter().collect::<Vec<_>>();
                     match call_spans.len() {
                         0 => err_span(update_span, "function must be called in `atomically` block"),
-                        1 => mk_expr(ExprX::Atomically(ghost_au_var, value, is_loop)),
+                        1 => mk_expr(ExprX::Atomically(kind, ghost_au_var, value)),
                         _ => Err(Arc::new(vir::messages::MessageX {
                             level: air::messages::MessageLevel::Error,
                             note: "function must be called exactly once in `atomically` block"

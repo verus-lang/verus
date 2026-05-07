@@ -3098,7 +3098,7 @@ fn check_expr(
 
             Ok((Mode::Exec, Proph::No))
         }
-        ExprX::TryOpenAtomicUpdate(au, x_bind, _x_mut, body) => {
+        ExprX::TryOpenAtomicUpdate(au, x_bind, body) => {
             if outer_mode == Mode::Spec {
                 return Err(error(&expr.span, "cannot open atomic update in spec mode"));
             }
@@ -3159,7 +3159,7 @@ fn check_expr(
             // Nothing to do here.
             Ok((outer_mode, outer_proph.clone()))
         }
-        ExprX::Atomically(au, e, _b) => {
+        ExprX::Atomically(_kind, au, e) => {
             // REVIEW: This is rather complicated since the atomic function call is encoded
             // using a loop in proof mode, which is currently not allowed in Verus.
             // We get around this by partially destructing the body of the atomic function call,
