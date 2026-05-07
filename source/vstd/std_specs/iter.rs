@@ -43,22 +43,22 @@ pub trait ExIterator {
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            self.obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            self.obeys_prophetic_iter_laws() ==> self.will_return_none() == old(self).will_return_none(),
-            self.obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
             // `next` pops the head of the prophesized remaining(), or returns None
-            self.obeys_prophetic_iter_laws() ==>
+            final(self).obeys_prophetic_iter_laws() ==>
             ({
                 if old(self).remaining().len() > 0 {
-                    &&& self.remaining() == old(self).remaining().drop_first()
+                    &&& final(self).remaining() == old(self).remaining().drop_first()
                     &&& ret == Some(old(self).remaining()[0])
                 } else {
-                    self.remaining() === old(self).remaining() && ret === None && self.will_return_none()
+                    final(self).remaining() === old(self).remaining() && ret === None && final(self).will_return_none()
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
-            self.obeys_prophetic_iter_laws() && old(self).remaining().len() > 0 && self.decrease() is Some ==>
-                decreases_to!(old(self).decrease()->0 => self.decrease()->0),
+            final(self).obeys_prophetic_iter_laws() && old(self).remaining().len() > 0 && final(self).decrease() is Some ==>
+                decreases_to!(old(self).decrease()->0 => final(self).decrease()->0),
     ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
@@ -103,22 +103,22 @@ pub trait ExDoubleEndedIterator : Iterator {
     fn next_back(&mut self) -> (ret: Option<<Self as core::iter::Iterator>::Item>)
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            (&*self).obeys_prophetic_iter_laws() == (&*old(self)).obeys_prophetic_iter_laws(),
-            (&*self).obeys_prophetic_iter_laws() ==> (&*self).will_return_none() == (&*old(self)).will_return_none(),
-            (&*self).obeys_prophetic_iter_laws() ==> ((&*old(self)).decrease() is Some <==> (&*self).decrease() is Some),
+            (*final(self)).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            (*final(self)).obeys_prophetic_iter_laws() ==> (*final(self)).will_return_none() == old(self).will_return_none(),
+            (*final(self)).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> (*final(self)).decrease() is Some),
             // `next` pops the tail of the prophesized remaining(), or returns None
-            (&*self).obeys_prophetic_iter_laws() ==>
+            (*final(self)).obeys_prophetic_iter_laws() ==>
             ({
-                if (&*old(self)).remaining().len() > 0 {
-                    (&*self).remaining() == (&*old(self)).remaining().drop_last()
-                        && ret == Some((&*old(self)).remaining().last())
+                if old(self).remaining().len() > 0 {
+                    (*final(self)).remaining() == old(self).remaining().drop_last()
+                        && ret == Some(old(self).remaining().last())
                 } else {
-                    (&*self).remaining() === (&*old(self)).remaining() && ret === None && (&*self).will_return_none()
+                    (*final(self)).remaining() === old(self).remaining() && ret === None && (*final(self)).will_return_none()
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
-            (&*self).obeys_prophetic_iter_laws() && (&*old(self)).remaining().len() > 0 && (&*self).decrease() is Some ==>
-                (&*old(self)).decrease()->0 > (&*self).decrease()->0,
+            (*final(self)).obeys_prophetic_iter_laws() && old(self).remaining().len() > 0 && (*final(self)).decrease() is Some ==>
+                old(self).decrease()->0 > (*final(self)).decrease()->0,
     ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
@@ -280,34 +280,34 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
         requires
             old(self).wf(),
         ensures
-            self.seq() == old(self).seq(),
-            self.index() == old(self).index() + if ret is Some { 1int } else { 0 },
-            self.snapshot == old(self).snapshot,
-            self.init == old(self).init,
-            self.iter.obeys_prophetic_iter_laws() ==> self.wf(),
-            self.iter.obeys_prophetic_iter_laws() && ret is None ==>
-                self.snapshot@.will_return_none() && self.index() == self.seq().len(),
-            self.iter.obeys_prophetic_iter_laws() ==> (ret matches Some(r) ==>
+            final(self).seq() == old(self).seq(),
+            final(self).index() == old(self).index() + if ret is Some { 1int } else { 0 },
+            final(self).snapshot == old(self).snapshot,
+            final(self).init == old(self).init,
+            final(self).iter.obeys_prophetic_iter_laws() ==> final(self).wf(),
+            final(self).iter.obeys_prophetic_iter_laws() && ret is None ==>
+                final(self).snapshot@.will_return_none() && final(self).index() == final(self).seq().len(),
+            final(self).iter.obeys_prophetic_iter_laws() ==> (ret matches Some(r) ==>
                 r == old(self).seq()[old(self).index()]),
             // History updates always hold
-            ret matches Some(i) ==> self.history@ == old(self).history@.push(i),
-            ret is None ==> self.history@ == old(self).history@,
+            ret matches Some(i) ==> final(self).history@ == old(self).history@.push(i),
+            ret is None ==> final(self).history@ == old(self).history@,
             // TODO: Uncomment this line to replace everything below, once general mutable refs are supported
-            // call_ensures(I::next, (&mut old(self).iter,), ret),
-            self.iter.obeys_prophetic_iter_laws() == old(self).iter.obeys_prophetic_iter_laws(),
-            self.iter.obeys_prophetic_iter_laws() ==> self.iter.will_return_none() == old(self).iter.will_return_none(),
-            self.iter.obeys_prophetic_iter_laws() ==> (old(self).iter.decrease() is Some <==> self.iter.decrease() is Some),
-            self.iter.obeys_prophetic_iter_laws() ==>
+            //call_ensures(I::next, (old(self).iter,), ret),
+            final(self).iter.obeys_prophetic_iter_laws() == old(self).iter.obeys_prophetic_iter_laws(),
+            final(self).iter.obeys_prophetic_iter_laws() ==> final(self).iter.will_return_none() == old(self).iter.will_return_none(),
+            final(self).iter.obeys_prophetic_iter_laws() ==> (old(self).iter.decrease() is Some <==> final(self).iter.decrease() is Some),
+            final(self).iter.obeys_prophetic_iter_laws() ==>
             ({
                 if old(self).iter.remaining().len() > 0 {
-                    &&& self.iter.remaining() == old(self).iter.remaining().drop_first()
+                    &&& final(self).iter.remaining() == old(self).iter.remaining().drop_first()
                     &&& ret == Some(old(self).iter.remaining()[0])
                 } else {
-                    self.iter.remaining() === old(self).iter.remaining() && ret === None && self.iter.will_return_none()
+                    final(self).iter.remaining() === old(self).iter.remaining() && ret === None && final(self).iter.will_return_none()
                 }
             }),
-            self.iter.obeys_prophetic_iter_laws() && old(self).iter.remaining().len() > 0 && self.iter.decrease() is Some ==>
-                decreases_to!(old(self).iter.decrease()->0 => self.iter.decrease()->0),
+            final(self).iter.obeys_prophetic_iter_laws() && old(self).iter.remaining().len() > 0 && final(self).iter.decrease() is Some ==>
+                decreases_to!(old(self).iter.decrease()->0 => final(self).iter.decrease()->0),
     {
         let ghost old_history = self.history@;
         let ret = self.iter.next();

@@ -2177,7 +2177,7 @@ fn check_expr(
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1)
         | ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1)
         | ExprX::UnaryOpr(UnaryOpr::AutoDecreases | UnaryOpr::AutoLoopEnsures, e1) => {
-            let p =
+            let proph =
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
             Ok((Mode::Spec, proph))
         }

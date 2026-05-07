@@ -537,7 +537,7 @@ pub broadcast axiom fn next_postcondition<'a>(
 #[cfg(feature = "alloc")]
 pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (ret: Option<char>)
     ensures
-        next_post(old(chars), chars, ret),
+        next_post(old(chars), final(chars), ret),
 ;
 
 pub use super::view::View;
