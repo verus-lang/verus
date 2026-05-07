@@ -1223,6 +1223,8 @@ pub enum ExprX {
     /// Used to check that match guards don't mutate the scrutinee, these are used between
     /// ast_simplify and ast_to_sst
     MatchGuardFreeze(Place, Expr),
+    /// Turn tracked &A into &B where B has A as a field
+    ShrRefStructWrap(Expr, Expr, Typ, Typ, Ident, Ident),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]

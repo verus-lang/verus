@@ -83,6 +83,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Old(..)
             | ExprX::Block(..)
             | ExprX::MatchGuardFreeze(..)
+            | ExprX::ShrRefStructWrap(..)
             | ExprX::Await(_) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)

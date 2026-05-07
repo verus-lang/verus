@@ -207,6 +207,26 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+test_verify_one_file! {
+    #[test] wrapping_shift verus_code! {
+        use vstd::wrapping::{u32_specs, i32_specs, u16_specs, i8_specs};
+        proof fn test() by (bit_vector)
+            ensures
+                u16_specs::wrapping_shr(u16::MAX, 1) == 0x7fffu16,
+                u16_specs::wrapping_shr(42u16, 16) == 42u16,
+                u16_specs::wrapping_shr(u16_specs::wrapping_shr(42u16, 1), 15) == 0u16,
+                u16_specs::wrapping_shr(10u16, 1025) == 5u16,
+                i32_specs::wrapping_shr(-1i32, 5) == -1i32,
+                i32_specs::wrapping_shl(1i32, 31) == i32::MIN,
+                i8_specs::wrapping_shl(i8::MIN, 1) == 0i8,
+                i8_specs::wrapping_shl(-1i8, 7) == i8::MIN,
+                forall|x: u32, k: u32| #[trigger] u32_specs::wrapping_shl(x, k) == u32_specs::wrapping_shl(x, k % 32),
+                forall|x: u32| #[trigger] u32_specs::wrapping_shl(x, 0) == x,
+                forall|k: u32| #[trigger] i32_specs::wrapping_shr(-1i32, k) == -1i32,
+        {}
+    } => Ok(())
+}
+
 test_verify_one_file_with_options! {
     #[test] question_mark_option ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::*;

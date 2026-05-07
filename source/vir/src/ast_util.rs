@@ -771,6 +771,28 @@ pub fn get_field<'a, A: Clone>(variant: &'a Binders<A>, field: &Ident) -> &'a Bi
     }
 }
 
+pub fn get_variant_or_err<'a>(
+    span: &Span,
+    variants: &'a Variants,
+    variant: &Ident,
+) -> Result<&'a Variant, VirErr> {
+    match variants.iter().find(|v| v.name == *variant) {
+        Some(variant) => Ok(variant),
+        None => Err(crate::messages::error(span, format!("no variant named `{:}`", variant))),
+    }
+}
+
+pub fn get_field_or_err<'a, A: Clone>(
+    span: &Span,
+    variant: &'a Binders<A>,
+    field: &Ident,
+) -> Result<&'a Binder<A>, VirErr> {
+    match variant.iter().find(|f| f.name == *field) {
+        Some(field) => Ok(field),
+        None => Err(crate::messages::error(span, format!("no field named `{:}`", field))),
+    }
+}
+
 impl DatatypeX {
     pub fn get_only_variant(&self) -> &Variant {
         assert_eq!(self.variants.len(), 1);
