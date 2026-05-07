@@ -1072,8 +1072,7 @@ test_verify_one_file_with_options! {
 
             *z = 20;
         }
-    //} => Err(err) => assert_spec_borrowed(err, "a")
-    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+    } => Err(err) => assert_spec_borrowed(err, "a")
 }
 
 test_verify_one_file_with_options! {
@@ -1181,7 +1180,7 @@ test_verify_one_file_with_options! {
 
             *z = 20;
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
