@@ -11,7 +11,8 @@ use core::sync::atomic::{AtomicI64, AtomicU64};
 use super::pervasive::*;
 use super::prelude::*;
 use super::cell::CellId;
-use super::resource::pcm::{PCM, Resource};
+use super::resource::pcm;
+use super::resource::algebra;
 
 verus! {
 
@@ -304,7 +305,10 @@ pub unsafe trait Objective {
 
 // GHOST-OBJ
 // todo: what other ghost state can be marked Objective?
-unsafe impl<P: PCM> Objective for Resource<P> {
+unsafe impl<P: pcm::PCM> Objective for pcm::Resource<P> {
+
+}
+unsafe impl<RA: algebra::ResourceAlgebra> Objective for algebra::Resource<RA> {
 
 }
 
