@@ -61,7 +61,6 @@ pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
 
 /// This is a specification for the indexing operator `vec[i]` when it expands to the `IndexMut` trait
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::vec::vec_index_mut")]
 pub fn vec_index_mut<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element: &mut T)
@@ -127,7 +126,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::reserve ](
     additional: usize,
 )
     ensures
-        vec@ == old(vec)@,
+        final(vec)@ == old(vec)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve ](
@@ -135,21 +134,20 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve ](
     additional: usize,
 ) -> (result: Result<(), TryReserveError>)
     ensures
-        vec@ == old(vec)@,
+        final(vec)@ == old(vec)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::push ](vec: &mut Vec<T, A>, value: T)
     ensures
-        vec@ == old(vec)@.push(value),
+        final(vec)@ == old(vec)@.push(value),
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::pop ](vec: &mut Vec<T, A>) -> (value:
     Option<T>)
     ensures
-        old(vec)@.len() > 0 ==> value == Some(old(vec)@[old(vec)@.len() - 1]) && vec@ == old(
-            vec,
-        )@.subrange(0, old(vec)@.len() - 1),
-        old(vec)@.len() == 0 ==> value == None::<T> && vec@ == old(vec)@,
+        old(vec)@.len() > 0 ==> value == Some(old(vec)@[old(vec)@.len() - 1])
+            && final(vec)@ == old(vec)@.subrange(0, old(vec)@.len() - 1),
+        old(vec)@.len() == 0 ==> value == None::<T> && final(vec)@ == old(vec)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::append ](
@@ -157,8 +155,8 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::append ](
     other: &mut Vec<T, A>,
 )
     ensures
-        vec@ == old(vec)@ + old(other)@,
-        other@ == Seq::<T>::empty(),
+        final(vec)@ == old(vec)@ + old(other)@,
+        final(other)@ == Seq::<T>::empty(),
 ;
 
 pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::extend_from_slice ](
@@ -166,13 +164,13 @@ pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::exte
     other: &[T],
 )
     ensures
-        vec@.len() == old(vec)@.len() + other@.len(),
+        final(vec)@.len() == old(vec)@.len() + other@.len(),
         forall|i: int|
-            #![trigger vec@[i]]
-            0 <= i < vec@.len() ==> if i < old(vec)@.len() {
-                vec@[i] == old(vec)@[i]
+            #![trigger final(vec)@[i]]
+            0 <= i < final(vec)@.len() ==> if i < old(vec)@.len() {
+                final(vec)@[i] == old(vec)@[i]
             } else {
-                cloned::<T>(other@[i - old(vec)@.len()], vec@[i])
+                cloned::<T>(other@[i - old(vec)@.len()], final(vec)@[i])
             },
 ;
 
@@ -198,7 +196,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::swap_remove ](
         i < old(vec).len(),
     ensures
         element == old(vec)[i as int],
-        vec@ == old(vec)@.update(i as int, old(vec)@.last()).drop_last(),
+        final(vec)@ == old(vec)@.update(i as int, old(vec)@.last()).drop_last(),
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::insert ](
@@ -209,7 +207,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::insert ](
     requires
         i <= old(vec).len(),
     ensures
-        vec@ == old(vec)@.insert(i as int, element),
+        final(vec)@ == old(vec)@.insert(i as int, element),
 ;
 
 pub assume_specification<T, A: Allocator> [ <Vec<T, A>>::is_empty ](
@@ -226,12 +224,12 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::remove ](
         i < old(vec).len(),
     ensures
         element == old(vec)[i as int],
-        vec@ == old(vec)@.remove(i as int),
+        final(vec)@ == old(vec)@.remove(i as int),
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::clear ](vec: &mut Vec<T, A>)
     ensures
-        vec.view() == Seq::<T>::empty(),
+        final(vec).view() == Seq::<T>::empty(),
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, A>) -> (slice: &[T])
@@ -240,7 +238,6 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, 
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut Vec<T, A>) -> (slice: &mut [T])
     ensures
         slice@ == old(vec)@,
@@ -254,6 +251,14 @@ pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::dere
         slice@ == vec@,
 ;
 
+pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::DerefMut>::deref_mut ](
+    vec: &mut Vec<T, A>,
+) -> (slice: &mut [T])
+    ensures
+        slice@ == old(vec)@,
+        final(slice)@ == final(vec)@,
+;
+
 pub assume_specification<T, A: Allocator + core::clone::Clone>[ Vec::<T, A>::split_off ](
     vec: &mut Vec<T, A>,
     at: usize,
@@ -261,7 +266,7 @@ pub assume_specification<T, A: Allocator + core::clone::Clone>[ Vec::<T, A>::spl
     requires
         at <= old(vec)@.len(),
     ensures
-        vec@ == old(vec)@.subrange(0, at as int),
+        final(vec)@ == old(vec)@.subrange(0, at as int),
         return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),
 ;
 
@@ -293,8 +298,8 @@ pub broadcast proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::truncate ](vec: &mut Vec<T, A>, len: usize)
     ensures
-        len <= old(vec).len() ==> vec@ == old(vec)@.subrange(0, len as int),
-        len > old(vec).len() ==> vec@ == old(vec)@,
+        len <= old(vec).len() ==> final(vec)@ == old(vec)@.subrange(0, len as int),
+        len > old(vec).len() ==> final(vec)@ == old(vec)@,
 ;
 
 pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
@@ -303,11 +308,11 @@ pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
     value: T,
 )
     ensures
-        len <= old(vec).len() ==> vec@ == old(vec)@.subrange(0, len as int),
+        len <= old(vec).len() ==> final(vec)@ == old(vec)@.subrange(0, len as int),
         len > old(vec).len() ==> {
-            &&& vec@.len() == len
-            &&& vec@.subrange(0, old(vec).len() as int) == old(vec)@
-            &&& forall|i| #![all_triggers] old(vec).len() <= i < len ==> cloned::<T>(value, vec@[i])
+            &&& final(vec)@.len() == len
+            &&& final(vec)@.subrange(0, old(vec).len() as int) == old(vec)@
+            &&& forall|i| #![all_triggers] old(vec).len() <= i < len ==> cloned::<T>(value, final(vec)@[i])
         },
 ;
 
@@ -373,11 +378,11 @@ pub assume_specification<T, A: Allocator>[ IntoIter::<T, A>::next ](
             let (old_index, old_seq) = old(elements)@;
             match r {
                 None => {
-                    &&& elements@ == old(elements)@
+                    &&& final(elements)@ == old(elements)@
                     &&& old_index >= old_seq.len()
                 },
                 Some(element) => {
-                    let (new_index, new_seq) = elements@;
+                    let (new_index, new_seq) = final(elements)@;
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1

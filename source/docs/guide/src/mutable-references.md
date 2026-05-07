@@ -1,12 +1,3 @@
-# Feature status
-
-The content in this document applies only to Verus's **experimental**
-new mutable reference support,
-which can be enabled with the Verus command line option `-V new-mut-ref`.
-
-If you're familiar with the old design, see [migration-mut-ref.md](./migration-mut-ref.md)
-for more information on the transition and breaking changes.
-
 # Mutable references
 
 For simple uses of mutable references—i.e., within a single function, and without involving
@@ -471,7 +462,7 @@ Here, for example, we depict the state of the program at the beginning and throu
 the first two iterations:
 
 <center>
-<img src="mut-ref-cons-example-1.png" alt="At step 1, we have list = Nil, where cur points to Nil. At step 2, we have list = Cons, which points to Nil, and cur points to Nil. At step 3, we have list = Cons, which points to Cons, which points to Nil, and cur points to Nil. And so on.">
+<img src="graphics/mut-ref-cons-example-1.png" alt="At step 1, we have list = Nil, where cur points to Nil. At step 2, we have list = Cons, which points to Nil, and cur points to Nil. At step 3, we have list = Cons, which points to Cons, which points to Nil, and cur points to Nil. And so on.">
 </center>
 
 Now, let's verify this program; in particular, let us prove that the list at the end
@@ -493,7 +484,7 @@ becomes more and more "concrete".
  * And so on.
 
 <center>
-<img src="mut-ref-cons-example-2.png" alt="At step 1, we have after_borrow(list) = the unknown final(cur),. At step 2, we have list = Cons, which points to the unknown final(cur). At step 3, we have list = Cons, which points to Cons, which points to the unknown final(cur). And so on.">
+<img src="graphics/mut-ref-cons-example-2.png" alt="At step 1, we have after_borrow(list) = the unknown final(cur),. At step 2, we have list = Cons, which points to the unknown final(cur). At step 3, we have list = Cons, which points to Cons, which points to the unknown final(cur). And so on.">
 </center>
 
 Only when the last iteration finishes and `cur` expires for good, do we learn that the

@@ -50,17 +50,19 @@ macro_rules! declare_atomic_type {
             pub atomic_inv: Tracked<AtomicInvariant<(K, int), ($perm_ty, G), $atomic_pred_ty<Pred>>>,
         }
 
-        impl<K, G, Pred> $at_ident<K, G, Pred>
-            where Pred: AtomicInvariantPredicate<K, $value_ty, G>
-        {
-            pub open spec fn well_formed(&self) -> bool {
-                self.atomic_inv@.constant().1 == self.patomic.id()
-            }
-
+        impl<K, G, Pred> $at_ident<K, G, Pred> {
             pub open spec fn constant(&self) -> K {
                 self.atomic_inv@.constant().0
             }
 
+            pub open spec fn well_formed(&self) -> bool {
+                self.atomic_inv@.constant().1 == self.patomic.id()
+            }
+        }
+
+        impl<K, G, Pred> $at_ident<K, G, Pred>
+            where Pred: AtomicInvariantPredicate<K, $value_ty, G>
+        {
             #[inline(always)]
             pub const fn new(Ghost(k): Ghost<K>, u: $value_ty, Tracked(g): Tracked<G>) -> (t: Self)
                 requires Pred::atomic_inv(k, u, g),

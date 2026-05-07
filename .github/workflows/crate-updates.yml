@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   bump-crate-versions:
@@ -24,17 +25,23 @@ jobs:
         with:
           toolchain: 1.95.0
 
+      - name: Configure git
+        run: |
+          git config --global user.name 'Version Bumper Bot'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          BRANCH="bot/crate-updates-$(date +%Y%m%d)-${{ github.run_number }}"
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+          git checkout -b $BRANCH
+
       - name: Update crate versions, if needed
         run: |
           cargo run --manifest-path source/tools/bump_crate_versions/Cargo.toml update
 
-      - name: Commit and push version updates
+      - name: Commit version updates
         run: |
-          git config --global user.name 'Version Bumper Bot'
-          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
           if ! git diff-index --quiet HEAD; then
             git commit -am "Update crate version numbers"
-            git push
+            echo "CHANGED=true" >> $GITHUB_ENV
           else
             echo "No version updates needed"
           fi
@@ -49,14 +56,23 @@ jobs:
         run: |
           pushd source; cargo update verus_builtin verus_builtin_macros verus_prettyplease verus_state_machines_macros verus_syn; popd
 
-      - name: Commit and push updated lock file
+      - name: Commit updated lock file
         run: |
-          git config --global user.name 'Version Bumper Bot'
-          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
           if ! git diff-index --quiet HEAD; then
             git commit -am "Update Cargo.lock"
-            git push
+            echo "CHANGED=true" >> $GITHUB_ENV
           else
             echo "No Cargo.lock update needed"
           fi
 
+      - name: Push branch and open PR
+        if: env.CHANGED == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push origin $BRANCH
+          gh pr create \
+            --title "Update crate version numbers" \
+            --body "Automated weekly crate version and Cargo.lock updates." \
+            --base main
+          gh pr merge --auto --merge

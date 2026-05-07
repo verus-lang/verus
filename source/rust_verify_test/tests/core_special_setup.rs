@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] test_is_core ["--is-core", "no-auto-import-verus_builtin", "new-mut-ref"] => code! {
+    #[test] test_is_core ["--is-core", "no-auto-import-verus_builtin"] => code! {
         #![allow(unused_parens)]
         #![allow(unused_imports)]
         #![allow(dead_code)]
@@ -27,7 +27,6 @@ test_verify_one_file_with_options! {
             feature(fn_traits),
         )]
         #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
-        #![cfg_attr(verus_keep_ghost, verifier::deprecated_postcondition_mut_ref_style(true))]
 
         #[verifier::external]
         #[path="../../../../builtin/src/lib.rs"]

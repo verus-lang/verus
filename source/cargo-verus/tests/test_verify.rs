@@ -1,52 +1,54 @@
-#[path = "src/utils.rs"]
-mod utils;
-
-use utils::*;
+use cargo_verus::{
+    BIN_NAME, ExecutionPlan,
+    test_utils::{
+        CARGO_DEFAULT_LIB_METADATA, MockDep, MockPackage, MockWorkspace, RUSTC_WRAPPER,
+        VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
+    },
+};
 
 #[test]
 fn crate_optin_workdir() {
     let package_name = "foo";
-    let verify_crate_prefix = format!("__VERUS_DRIVER_VERIFY_{package_name}-0.1.0-");
+    let verify_crate_prefix = format!("{VERUS_DRIVER_VERIFY}{package_name}-0.1.0-");
     let project_dir = MockPackage::new(package_name).lib().verify(true).materialize();
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.current_dir(&project_dir).arg("verify");
-    });
+    let args = [BIN_NAME, "verify"];
 
-    assert!(status.success());
+    let plan = cargo_verus::plan_execution(Some(project_dir.path()), args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
-    assert_eq!(data.args, vec!["check"]);
+    assert_eq!(cargo_plan.args, ["check"]);
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
-    data.assert_env_sets_key_prefix(&verify_crate_prefix, "1");
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
+    cargo_plan.assert_env_sets_key_prefix(&verify_crate_prefix, "1");
 }
 
 #[test]
 fn crate_optin_manifest() {
     let package_name = "foo";
-    let verify_crate_prefix = format!("__VERUS_DRIVER_VERIFY_{package_name}-0.1.0-");
+    let verify_crate_prefix = format!("{VERUS_DRIVER_VERIFY}{package_name}-0.1.0-");
     let package_dir = MockPackage::new(package_name).lib().verify(true).materialize();
 
     let manifest_path = package_dir.path().join("Cargo.toml");
+    let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.arg("verify");
-        cmd.arg("--manifest-path").arg(&manifest_path);
-    });
+    let args = [BIN_NAME, "verify", "--manifest-path", manifest_path];
 
-    assert!(status.success());
+    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
-    assert_eq!(
-        data.args,
-        vec!["check", "--manifest-path", manifest_path.to_str().expect("manifest path to string")]
-    );
+    assert_eq!(cargo_plan.args, ["check", "--manifest-path", manifest_path]);
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
-    data.assert_env_sets_key_prefix(&verify_crate_prefix, "1");
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
+    cargo_plan.assert_env_sets_key_prefix(&verify_crate_prefix, "1");
 }
 
 #[test]
@@ -54,18 +56,19 @@ fn crate_optout_workdir() {
     let package_name = "foo";
     let package_dir = MockPackage::new(package_name).lib().verify(false).materialize();
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.current_dir(&package_dir).arg("verify");
-    });
+    let args = [BIN_NAME, "verify"];
 
-    assert!(status.success());
+    let plan = cargo_verus::plan_execution(Some(package_dir.path()), args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
-    assert_eq!(data.args, vec!["check"]);
+    assert_eq!(cargo_plan.args, ["check"]);
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
-    data.assert_env_has_no_key_prefix("__VERUS_DRIVER_VERIFY_");
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
+    cargo_plan.assert_env_has_no_key_prefix(VERUS_DRIVER_VERIFY);
 }
 
 #[test]
@@ -73,23 +76,21 @@ fn crate_optout_manifest() {
     let package_name = "foo";
     let package_dir = MockPackage::new(package_name).lib().verify(false).materialize();
     let manifest_path = package_dir.path().join("Cargo.toml");
+    let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.arg("verify");
-        cmd.arg("--manifest-path").arg(&manifest_path);
-    });
+    let args = [BIN_NAME, "verify", "--manifest-path", manifest_path];
 
-    assert!(status.success());
+    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
-    assert_eq!(
-        data.args,
-        vec!["check", "--manifest-path", manifest_path.to_str().expect("manifest path to string")]
-    );
+    assert_eq!(cargo_plan.args, ["check", "--manifest-path", manifest_path]);
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
-    data.assert_env_has_no_key_prefix("__VERUS_DRIVER_VERIFY_");
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
+    cargo_plan.assert_env_has_no_key_prefix(VERUS_DRIVER_VERIFY);
 }
 
 #[test]
@@ -97,18 +98,19 @@ fn crate_unset_workdir() {
     let package_name = "foo";
     let package_dir = MockPackage::new(package_name).lib().materialize();
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.current_dir(&package_dir).arg("verify");
-    });
+    let args = [BIN_NAME, "verify"];
 
-    assert!(status.success());
+    let plan = cargo_verus::plan_execution(Some(package_dir.path()), args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
-    assert_eq!(data.args, vec!["check"]);
+    assert_eq!(cargo_plan.args, ["check"]);
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
-    data.assert_env_has_no_key_prefix("__VERUS_DRIVER_VERIFY_");
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
+    cargo_plan.assert_env_has_no_key_prefix(VERUS_DRIVER_VERIFY);
 }
 
 #[test]
@@ -117,23 +119,21 @@ fn crate_unset_manifest() {
     let package_dir = MockPackage::new(package_name).lib().materialize();
 
     let manifest_path = package_dir.path().join("Cargo.toml");
+    let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.arg("verify");
-        cmd.arg("--manifest-path").arg(&manifest_path);
-    });
+    let args = [BIN_NAME, "verify", "--manifest-path", manifest_path];
 
-    assert!(status.success());
+    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
-    assert_eq!(
-        data.args,
-        vec!["check", "--manifest-path", manifest_path.to_str().expect("manifest path to string")]
-    );
+    assert_eq!(cargo_plan.args, ["check", "--manifest-path", manifest_path]);
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
-    data.assert_env_has_no_key_prefix("__VERUS_DRIVER_VERIFY_");
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
+    cargo_plan.assert_env_has_no_key_prefix(VERUS_DRIVER_VERIFY);
 }
 
 #[test]
@@ -152,25 +152,27 @@ fn workspace_workdir() {
         ])
         .materialize();
 
-    let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");
-    let verify_optout_prefix = format!("__VERUS_DRIVER_VERIFY_{optout}-0.1.0-");
-    let verify_unset_prefix = format!("__VERUS_DRIVER_VERIFY_{unset}-0.1.0-");
-    let verify_hasdeps_prefix = format!("__VERUS_DRIVER_VERIFY_{hasdeps}-0.1.0-");
+    let verify_optin_prefix = format!("{VERUS_DRIVER_VERIFY}{optin}-0.1.0-");
+    let verify_optout_prefix = format!("{VERUS_DRIVER_VERIFY}{optout}-0.1.0-");
+    let verify_unset_prefix = format!("{VERUS_DRIVER_VERIFY}{unset}-0.1.0-");
+    let verify_hasdeps_prefix = format!("{VERUS_DRIVER_VERIFY}{hasdeps}-0.1.0-");
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.current_dir(&workspace_dir).arg("verify");
-    });
+    let args = [BIN_NAME, "verify"];
 
-    assert!(status.success());
-    assert_eq!(data.args, vec!["check"]);
+    let plan = cargo_verus::plan_execution(Some(workspace_dir.path()), args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
-    data.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
-    data.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
-    data.assert_env_has_no_key_prefix(&verify_optout_prefix);
-    data.assert_env_has_no_key_prefix(&verify_unset_prefix);
+    assert_eq!(cargo_plan.args, ["check"]);
+
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
+    cargo_plan.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
+    cargo_plan.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
+    cargo_plan.assert_env_has_no_key_prefix(&verify_optout_prefix);
+    cargo_plan.assert_env_has_no_key_prefix(&verify_unset_prefix);
 }
 
 #[test]
@@ -189,31 +191,30 @@ fn workspace_manifest() {
         ])
         .materialize();
 
-    let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");
-    let verify_optout_prefix = format!("__VERUS_DRIVER_VERIFY_{optout}-0.1.0-");
-    let verify_unset_prefix = format!("__VERUS_DRIVER_VERIFY_{unset}-0.1.0-");
-    let verify_hasdeps_prefix = format!("__VERUS_DRIVER_VERIFY_{hasdeps}-0.1.0-");
+    let verify_optin_prefix = format!("{VERUS_DRIVER_VERIFY}{optin}-0.1.0-");
+    let verify_optout_prefix = format!("{VERUS_DRIVER_VERIFY}{optout}-0.1.0-");
+    let verify_unset_prefix = format!("{VERUS_DRIVER_VERIFY}{unset}-0.1.0-");
+    let verify_hasdeps_prefix = format!("{VERUS_DRIVER_VERIFY}{hasdeps}-0.1.0-");
 
     let manifest_path = workspace_dir.path().join("Cargo.toml");
+    let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.arg("verify");
-        cmd.arg("--manifest-path").arg(&manifest_path);
-    });
+    let args = [BIN_NAME, "verify", "--manifest-path", manifest_path];
 
-    assert!(status.success());
-    assert_eq!(
-        data.args,
-        vec!["check", "--manifest-path", manifest_path.to_str().expect("manifest path to string")]
-    );
+    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
-    data.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
-    data.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
-    data.assert_env_has_no_key_prefix(&verify_optout_prefix);
-    data.assert_env_has_no_key_prefix(&verify_unset_prefix);
+    assert_eq!(cargo_plan.args, ["check", "--manifest-path", manifest_path]);
+
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
+    cargo_plan.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
+    cargo_plan.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
+    cargo_plan.assert_env_has_no_key_prefix(&verify_optout_prefix);
+    cargo_plan.assert_env_has_no_key_prefix(&verify_unset_prefix);
 }
 
 #[test]
@@ -232,38 +233,30 @@ fn workspace_manifest_package_optin() {
         ])
         .materialize();
 
-    let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");
-    let verify_optout_prefix = format!("__VERUS_DRIVER_VERIFY_{optout}-0.1.0-");
-    let verify_unset_prefix = format!("__VERUS_DRIVER_VERIFY_{unset}-0.1.0-");
-    let verify_hasdeps_prefix = format!("__VERUS_DRIVER_VERIFY_{hasdeps}-0.1.0-");
+    let verify_optin_prefix = format!("{VERUS_DRIVER_VERIFY}{optin}-0.1.0-");
+    let verify_optout_prefix = format!("{VERUS_DRIVER_VERIFY}{optout}-0.1.0-");
+    let verify_unset_prefix = format!("{VERUS_DRIVER_VERIFY}{unset}-0.1.0-");
+    let verify_hasdeps_prefix = format!("{VERUS_DRIVER_VERIFY}{hasdeps}-0.1.0-");
 
     let manifest_path = workspace_dir.path().join("Cargo.toml");
+    let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.arg("verify");
-        cmd.arg("--manifest-path").arg(&manifest_path);
-        cmd.arg("--package").arg(optin);
-    });
+    let args = [BIN_NAME, "verify", "--manifest-path", manifest_path, "--package", optin];
 
-    assert!(status.success());
-    assert_eq!(
-        data.args,
-        vec![
-            "check",
-            "--manifest-path",
-            manifest_path.to_str().expect("manifest path to string"),
-            "--package",
-            optin,
-        ]
-    );
+    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
-    data.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
-    data.assert_env_has_no_key_prefix(&verify_optout_prefix);
-    data.assert_env_has_no_key_prefix(&verify_unset_prefix);
-    data.assert_env_has_no_key_prefix(&verify_hasdeps_prefix);
+    assert_eq!(cargo_plan.args, ["check", "--manifest-path", manifest_path, "--package", optin]);
+
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
+    cargo_plan.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
+    cargo_plan.assert_env_has_no_key_prefix(&verify_optout_prefix);
+    cargo_plan.assert_env_has_no_key_prefix(&verify_unset_prefix);
+    cargo_plan.assert_env_has_no_key_prefix(&verify_hasdeps_prefix);
 }
 
 #[test]
@@ -282,36 +275,28 @@ fn workspace_manifest_package_hasdeps() {
         ])
         .materialize();
 
-    let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");
-    let verify_optout_prefix = format!("__VERUS_DRIVER_VERIFY_{optout}-0.1.0-");
-    let verify_unset_prefix = format!("__VERUS_DRIVER_VERIFY_{unset}-0.1.0-");
-    let verify_hasdeps_prefix = format!("__VERUS_DRIVER_VERIFY_{hasdeps}-0.1.0-");
+    let verify_optin_prefix = format!("{VERUS_DRIVER_VERIFY}{optin}-0.1.0-");
+    let verify_optout_prefix = format!("{VERUS_DRIVER_VERIFY}{optout}-0.1.0-");
+    let verify_unset_prefix = format!("{VERUS_DRIVER_VERIFY}{unset}-0.1.0-");
+    let verify_hasdeps_prefix = format!("{VERUS_DRIVER_VERIFY}{hasdeps}-0.1.0-");
 
     let manifest_path = workspace_dir.path().join("Cargo.toml");
+    let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
-    let (status, data) = run_cargo_verus(|cmd| {
-        cmd.arg("verify");
-        cmd.arg("--manifest-path").arg(&manifest_path);
-        cmd.arg("--package").arg(hasdeps);
-    });
+    let args = [BIN_NAME, "verify", "--manifest-path", manifest_path, "--package", hasdeps];
 
-    assert!(status.success());
-    assert_eq!(
-        data.args,
-        vec![
-            "check",
-            "--manifest-path",
-            manifest_path.to_str().expect("manifest path to string"),
-            "--package",
-            hasdeps,
-        ]
-    );
+    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
 
-    data.assert_env_has("RUSTC_WRAPPER");
-    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
-    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
-    data.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
-    data.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
-    data.assert_env_has_no_key_prefix(&verify_optout_prefix);
-    data.assert_env_has_no_key_prefix(&verify_unset_prefix);
+    assert_eq!(cargo_plan.args, ["check", "--manifest-path", manifest_path, "--package", hasdeps],);
+
+    cargo_plan.assert_env_has(RUSTC_WRAPPER);
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
+    cargo_plan.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
+    cargo_plan.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
+    cargo_plan.assert_env_has_no_key_prefix(&verify_optout_prefix);
+    cargo_plan.assert_env_has_no_key_prefix(&verify_unset_prefix);
 }

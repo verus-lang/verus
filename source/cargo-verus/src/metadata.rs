@@ -133,7 +133,7 @@ pub fn fetch_metadata(metadata_args: Vec<String>, current_dir: PathBuf) -> Resul
     Ok(metadata)
 }
 
-#[cfg(all(test, not(feature = "integration-tests")))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_utils::{MockDep, MockPackage, MockWorkspace};
@@ -158,7 +158,7 @@ mod tests {
             workspace.path().join("Cargo.toml").to_string_lossy().to_string();
 
         let metadata = fetch_metadata(
-            vec!["--manifest-path".to_string(), manifest_path],
+            vec!["--offline".to_string(), "--manifest-path".to_string(), manifest_path],
             workspace.path().to_path_buf(),
         )
         .unwrap();

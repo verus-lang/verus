@@ -1,5 +1,6 @@
 use super::super::modes::*;
 use super::super::prelude::*;
+use super::Loc;
 use super::map::*;
 
 verus! {
@@ -79,7 +80,7 @@ impl<V> GhostSeqAuth<V> {
         &&& self.auth@.dom() =~= Set::new(|i: int| self.off <= i < self.off + self.len)
     }
 
-    pub closed spec fn id(self) -> int {
+    pub closed spec fn id(self) -> Loc {
         self.auth.id()
     }
 
@@ -155,13 +156,13 @@ impl<V> GhostSeqAuth<V> {
             old(frac).off() <= off,
             off + v.len() <= old(frac).off() + old(frac)@.len(),
         ensures
-            self.id() == old(self).id(),
-            frac.id() == old(frac).id(),
-            frac.off() == old(frac).off(),
-            self@ =~= old(self)@.update_subrange_with(off - self.off(), v),
-            frac@ =~= old(frac)@.update_subrange_with(off - frac.off(), v),
-            self.off() == old(self).off(),
-            frac.off() == old(frac).off(),
+            final(self).id() == old(self).id(),
+            final(frac).id() == old(frac).id(),
+            final(frac).off() == old(frac).off(),
+            final(self)@ =~= old(self)@.update_subrange_with(off - final(self).off(), v),
+            final(frac)@ =~= old(frac)@.update_subrange_with(off - final(frac).off(), v),
+            final(self).off() == old(self).off(),
+            final(frac).off() == old(frac).off(),
     {
         let tracked mut mid = frac.split(off - frac.off());
         let tracked mut end = mid.split(v.len() as int);
@@ -203,7 +204,7 @@ impl<V> GhostSubseq<V> {
         self.off
     }
 
-    pub closed spec fn id(self) -> int {
+    pub closed spec fn id(self) -> Loc {
         self.frac.id()
     }
 
@@ -268,13 +269,16 @@ impl<V> GhostSubseq<V> {
             old(self).id() == old(auth).id(),
             v.len() == old(self)@.len(),
         ensures
-            self.id() == auth.id(),
-            self.off() == old(self).off(),
-            auth.id() == old(auth).id(),
-            self@ =~= v,
-            auth@ =~= old(auth)@.update_subrange_with(self.off() - auth.off(), v),
-            self.off() == old(self).off(),
-            auth.off() == old(auth).off(),
+            final(self).id() == final(auth).id(),
+            final(self).off() == old(self).off(),
+            final(auth).id() == old(auth).id(),
+            final(self)@ =~= v,
+            final(auth)@ =~= old(auth)@.update_subrange_with(
+                final(self).off() - final(auth).off(),
+                v,
+            ),
+            final(self).off() == old(self).off(),
+            final(auth).off() == old(auth).off(),
     {
         use_type_invariant(&*self);
         use_type_invariant(&*auth);
@@ -291,15 +295,15 @@ impl<V> GhostSubseq<V> {
             old(self).id() == old(auth).id(),
             v.len() == old(self)@.len(),
         ensures
-            self.id() == auth.id(),
-            self.off() == old(self).off(),
-            auth.id() == old(auth).id(),
-            self@ =~= v,
-            auth@ =~= Map::new(
+            final(self).id() == final(auth).id(),
+            final(self).off() == old(self).off(),
+            final(auth).id() == old(auth).id(),
+            final(self)@ =~= v,
+            final(auth)@ =~= Map::new(
                 |i: int| old(auth)@.contains_key(i),
                 |i: int|
-                    if self.off() <= i < self.off() + v.len() {
-                        v[i - self.off()]
+                    if final(self).off() <= i < final(self).off() + v.len() {
+                        v[i - final(self).off()]
                     } else {
                         old(auth)@[i]
                     },
@@ -319,11 +323,11 @@ impl<V> GhostSubseq<V> {
         requires
             0 <= n <= old(self)@.len(),
         ensures
-            self.id() == old(self).id(),
-            self.off() == old(self).off(),
-            result.id() == self.id(),
+            final(self).id() == old(self).id(),
+            final(self).off() == old(self).off(),
+            result.id() == final(self).id(),
             result.off() == old(self).off() + n,
-            self@ =~= old(self)@.subrange(0, n),
+            final(self)@ =~= old(self)@.subrange(0, n),
             result@ =~= old(self)@.subrange(n, old(self)@.len() as int),
     {
         let tracked mut mself = Self::dummy();
@@ -350,9 +354,9 @@ impl<V> GhostSubseq<V> {
             r.id() == old(self).id(),
             r.off() == old(self).off() + old(self)@.len(),
         ensures
-            self.id() == old(self).id(),
-            self@ =~= old(self)@ + r@,
-            self.off() == old(self).off(),
+            final(self).id() == old(self).id(),
+            final(self)@ =~= old(self)@ + r@,
+            final(self).off() == old(self).off(),
     {
         let tracked mut mself = Self::dummy();
         tracked_swap(self, &mut mself);
@@ -369,11 +373,11 @@ impl<V> GhostSubseq<V> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self.off() == old(self).off(),
-            self@ == old(self)@,
-            self@.len() == 0 || other@.len() == 0 || self.off() + self@.len() <= other.off()
-                || other.off() + other@.len() <= self.off(),
+            final(self).id() == old(self).id(),
+            final(self).off() == old(self).off(),
+            final(self)@ == old(self)@,
+            final(self)@.len() == 0 || other@.len() == 0 || final(self).off() + final(self)@.len()
+                <= other.off() || other.off() + other@.len() <= final(self).off(),
     {
         use_type_invariant(&*self);
         use_type_invariant(other);

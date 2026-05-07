@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Clone, Debug, Parser)]
@@ -181,8 +181,7 @@ impl CargoVerusCli {
 
         if parsed_cli.has_inadvisable_verus_arg() {
             eprintln!("Args forwarded to Cargo must precede args forwarded to Verus");
-            // TODO: Consider replacing this with `return Err(anyhow!("message above^"))`.
-            std::process::exit(2);
+            return Err(anyhow!("Args forwarded to Cargo must precede args forwarded to Verus"));
         }
 
         parsed_cli.set_fwd_verus_args_to_default();

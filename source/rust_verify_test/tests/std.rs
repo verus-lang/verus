@@ -166,18 +166,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] index_vec_mut_error verus_code! {
-        use vstd::*;
-
-        fn foo(t: &mut u8) { }
-
-        fn stuff(v: Vec<u8>) {
-            foo(&mut v[0]);
-        }
-    } => Err(err) => assert_vir_error_msg(err, "index for &mut not supported")
-}
-
-test_verify_one_file! {
     #[test] unsigned_wrapping_mul verus_code! {
         use vstd::*;
 
@@ -217,6 +205,26 @@ test_verify_one_file! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] wrapping_shift verus_code! {
+        use vstd::wrapping::{u32_specs, i32_specs, u16_specs, i8_specs};
+        proof fn test() by (bit_vector)
+            ensures
+                u16_specs::wrapping_shr(u16::MAX, 1) == 0x7fffu16,
+                u16_specs::wrapping_shr(42u16, 16) == 42u16,
+                u16_specs::wrapping_shr(u16_specs::wrapping_shr(42u16, 1), 15) == 0u16,
+                u16_specs::wrapping_shr(10u16, 1025) == 5u16,
+                i32_specs::wrapping_shr(-1i32, 5) == -1i32,
+                i32_specs::wrapping_shl(1i32, 31) == i32::MIN,
+                i8_specs::wrapping_shl(i8::MIN, 1) == 0i8,
+                i8_specs::wrapping_shl(-1i8, 7) == i8::MIN,
+                forall|x: u32, k: u32| #[trigger] u32_specs::wrapping_shl(x, k) == u32_specs::wrapping_shl(x, k % 32),
+                forall|x: u32| #[trigger] u32_specs::wrapping_shl(x, 0) == x,
+                forall|k: u32| #[trigger] i32_specs::wrapping_shr(-1i32, k) == -1i32,
+        {}
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -707,4 +715,53 @@ test_verify_one_file! {
             assert(y@.u == 20); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] vec_deref_mut verus_code! {
+        use vstd::prelude::*;
+
+        fn test_implicit_via_adjustment() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut a;
+            b[0] = 10;
+            assert(a@ === seq![10, 2]);
+        }
+
+        fn test_overloaded_star_operator() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut *a;
+            b[0] = 10;
+            assert(a@ === seq![10, 2]);
+        }
+
+        fn test_overloaded_star_operator2() {
+            let mut a = vec![1, 2];
+            (*a)[1] = 20;
+            assert(a@ === seq![1, 20]);
+        }
+
+        fn fails_implicit_via_adjustment() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut a;
+            b[0] = 10;
+            assert(a@ === seq![10, 2]);
+            assert(false); // FAILS
+        }
+
+        fn fails_overloaded_star_operator() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut *a;
+            b[0] = 10;
+            assert(a@ === seq![10, 2]);
+            assert(false); // FAILS
+        }
+
+        fn fails_overloaded_star_operator2() {
+            let mut a = vec![1, 2];
+            (*a)[1] = 20;
+            assert(a@ === seq![1, 20]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }

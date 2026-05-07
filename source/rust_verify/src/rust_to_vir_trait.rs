@@ -363,7 +363,7 @@ pub(crate) fn translate_trait<'tcx>(
                     None => (CheckItemFnEither::ParamNames(param_names.as_slice()), false),
                 };
                 let mid_ty = ctxt.tcx.type_of(owner_id.to_def_id()).skip_binder();
-                let typ = ctxt.mid_ty_to_vir(owner_id.to_def_id(), *span, &mid_ty, false, None)?;
+                let typ = ctxt.mid_ty_to_vir(owner_id.to_def_id(), *span, &mid_ty, None)?;
                 let fun = crate::rust_to_vir_func::check_item_fn(
                     ctxt,
                     &mut methods,

@@ -61,10 +61,9 @@ use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::fn_call_to_vir::{const_var_to_vir, fn_call_to_vir};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
-    auto_deref_supported_for_ty, bitwidth_and_signedness_of_integer_type,
-    get_impl_paths_for_clauses, get_range, is_smt_arith, is_smt_equality, local_to_var,
-    mid_ty_simplify, mk_range, ty_is_vec, typ_of_expr_adjusted, typ_of_node_unadjusted,
-    typ_of_node_unadjusted_expect_mut_ref,
+    bitwidth_and_signedness_of_integer_type, get_impl_paths_for_clauses, get_range, is_smt_arith,
+    is_smt_equality, local_to_var, mid_ty_simplify, mk_range, ty_is_vec, typ_of_expr_adjusted,
+    typ_of_node_unadjusted,
 };
 use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
 use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
@@ -173,7 +172,7 @@ impl ExprOrPlace {
     ) -> Result<Place, VirErr> {
         match self {
             ExprOrPlace::Expr(e) => {
-                let typ = bctx.mid_ty_to_vir(span, &ty, false)?;
+                let typ = bctx.mid_ty_to_vir(span, &ty)?;
                 Ok(SpannedTyped::new(&e.span, &typ, PlaceX::Temporary(e.clone())))
             }
             ExprOrPlace::Place(p) => Ok(p.clone()),
@@ -227,12 +226,6 @@ impl ExprOrPlace {
         span: Span,
         inner_ty: rustc_middle::ty::Ty<'tcx>,
     ) -> Result<vir::ast::Expr, VirErr> {
-        if let ExprOrPlace::Expr(e) = self {
-            if !bctx.new_mut_ref {
-                return Ok(add_vir_ref_decoration(e.clone()));
-            }
-        }
-
         // We always need to create a Temporary here,
         // since the expression might require resolution.
         let p = self.to_place(bctx, span, inner_ty)?;
@@ -251,7 +244,7 @@ impl ExprOrPlace {
     ) -> Result<vir::ast::Expr, VirErr> {
         // Try to avoid cluttering the VIR with Unused nodes when they aren't necessary
         if let ExprOrPlace::Expr(e) = self {
-            if !bctx.new_mut_ref || vir::ast_util::is_unit(&e.typ) {
+            if vir::ast_util::is_unit(&e.typ) {
                 return Ok(e.clone());
             }
         }
@@ -344,7 +337,7 @@ pub(crate) fn closure_param_typs<'tcx>(
             let mut args: Vec<Typ> = Vec::new();
             // REVIEW: rustc docs refer to skip_binder as "dangerous"
             for t in sig.inputs().skip_binder().iter() {
-                args.push(bctx.mid_ty_to_vir(expr.span, t, /* allow_mut_ref */ false)?);
+                args.push(bctx.mid_ty_to_vir(expr.span, t)?);
             }
             assert!(args.len() == 1);
             match &*args[0] {
@@ -362,7 +355,7 @@ fn closure_ret_typ<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<Typ
         TyKind::Closure(_def, substs) => {
             let sig = substs.as_closure().sig();
             let t = sig.output().skip_binder();
-            bctx.mid_ty_to_vir(expr.span, &t, /* allow_mut_ref */ false)
+            bctx.mid_ty_to_vir(expr.span, &t)
         }
         _ => panic!("closure_param_types expected Closure type"),
     }
@@ -435,7 +428,6 @@ pub(crate) fn check_lit_int(
 pub(crate) fn expr_to_vir_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    modifier: ExprModifier,
 ) -> Result<ExprOrPlace, VirErr> {
     let expr = expr.peel_drop_temps();
 
@@ -455,35 +447,28 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
 
     let adjustments = bctx.types.expr_adjustments(expr);
 
-    expr_to_vir_with_adjustments(bctx, expr, modifier, adjustments, adjustments.len())
+    expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustments.len())
 }
 
 pub(crate) fn expr_to_vir_consume<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
-    Ok(expr_to_vir(bctx, expr, modifier)?.consume(bctx, bctx.types.expr_ty_adjusted(expr)))
+    Ok(expr_to_vir(bctx, expr)?.consume(bctx, bctx.types.expr_ty_adjusted(expr)))
 }
 
 pub(crate) fn expr_to_vir_place<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    modifier: ExprModifier,
 ) -> Result<vir::ast::Place, VirErr> {
-    Ok(expr_to_vir(bctx, expr, modifier)?.to_place(
-        bctx,
-        expr.span,
-        bctx.types.expr_ty_adjusted(expr),
-    )?)
+    Ok(expr_to_vir(bctx, expr)?.to_place(bctx, expr.span, bctx.types.expr_ty_adjusted(expr))?)
 }
 
 pub(crate) fn expr_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    modifier: ExprModifier,
 ) -> Result<ExprOrPlace, VirErr> {
-    let mut vir_expr_or_place = expr_to_vir_inner(bctx, expr, modifier)?;
+    let mut vir_expr_or_place = expr_to_vir_inner(bctx, expr)?;
     let attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
     for group in get_trigger(attrs)? {
         let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
@@ -572,10 +557,9 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     ctor: crate::rust_to_vir_ctor::Ctor,
     args_slice: &[Expr<'tcx>],
     fun_span: Span,
-    modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let expr_typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)?;
+    let expr_typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?;
 
     let variant_name = str_ident(&ctor.variant_def.ident(tcx).as_str());
     let vir_path = bctx.ctxt.def_id_to_vir_path(ctor.adt_def_id);
@@ -585,7 +569,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
             .iter()
             .enumerate()
             .map(|(i, e)| -> Result<_, VirErr> {
-                let vir = expr_to_vir_consume(bctx, e, modifier)?;
+                let vir = expr_to_vir_consume(bctx, e)?;
                 Ok(ident_binder(&positional_field_ident(i), &vir))
             })
             .collect::<Result<Vec<_>, _>>()?,
@@ -631,35 +615,33 @@ pub(crate) fn pattern_to_vir<'tcx>(
         bctx.types.pat_adjustments().get(pat.hir_id).map_or(&[], |v| &**v);
     let mut vir_pat = unadjusted_pat;
 
-    if bctx.new_mut_ref {
-        for adjust in adjustments.iter().rev() {
-            match adjust.kind {
-                PatAdjust::BuiltinDeref => {
-                    let is_mut = match adjust.source.kind() {
-                        TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => true,
-                        TyKind::Ref(_, _, rustc_ast::Mutability::Not) => false,
-                        _ => {
-                            crate::internal_err!(pat.span, "expected reference type")
-                        }
-                    };
+    for adjust in adjustments.iter().rev() {
+        match adjust.kind {
+            PatAdjust::BuiltinDeref => {
+                let is_mut = match adjust.source.kind() {
+                    TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => true,
+                    TyKind::Ref(_, _, rustc_ast::Mutability::Not) => false,
+                    _ => {
+                        crate::internal_err!(pat.span, "expected reference type")
+                    }
+                };
 
-                    if is_mut {
-                        let typ = Arc::new(TypX::MutRef(vir_pat.typ.clone()));
-                        let x = PatternX::MutRef(vir_pat);
-                        vir_pat = bctx.spanned_typed_new(pat.span, &typ, x);
-                    } else {
-                        let typ =
-                            Arc::new(TypX::Decorate(TypDecoration::Ref, None, vir_pat.typ.clone()));
-                        let x = PatternX::ImmutRef(vir_pat);
-                        vir_pat = bctx.spanned_typed_new(pat.span, &typ, x);
-                    };
-                }
-                PatAdjust::OverloadedDeref => {
-                    unsupported_err!(pat.span, "overloaded deref in pattern");
-                }
-                PatAdjust::PinDeref => {
-                    unsupported_err!(pat.span, "pin deref in pattern");
-                }
+                if is_mut {
+                    let typ = Arc::new(TypX::MutRef(vir_pat.typ.clone()));
+                    let x = PatternX::MutRef(vir_pat);
+                    vir_pat = bctx.spanned_typed_new(pat.span, &typ, x);
+                } else {
+                    let typ =
+                        Arc::new(TypX::Decorate(TypDecoration::Ref, None, vir_pat.typ.clone()));
+                    let x = PatternX::ImmutRef(vir_pat);
+                    vir_pat = bctx.spanned_typed_new(pat.span, &typ, x);
+                };
+            }
+            PatAdjust::OverloadedDeref => {
+                unsupported_err!(pat.span, "overloaded deref in pattern");
+            }
+            PatAdjust::PinDeref => {
+                unsupported_err!(pat.span, "pin deref in pattern");
             }
         }
     }
@@ -672,7 +654,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
     pat: &Pat<'tcx>,
 ) -> Result<vir::ast::Pattern, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let mut pat_typ = typ_of_node_unadjusted(bctx, pat.span, &pat.hir_id, false)?;
+    let mut pat_typ = typ_of_node_unadjusted(bctx, pat.span, &pat.hir_id)?;
     unsupported_err_unless!(pat.default_binding_modes, pat.span, "destructuring assignment");
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard(false),
@@ -689,12 +671,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
 
             let vir_by_ref = match by_ref {
                 ByRef::No => vir::ast::ByRef::No,
-                ByRef::Yes(_pinnedness, Mutability::Mut) => {
-                    if !bctx.new_mut_ref {
-                        unsupported_err!(pat.span, "'ref mut' binding in pattern");
-                    }
-                    vir::ast::ByRef::MutRef
-                }
+                ByRef::Yes(_pinnedness, Mutability::Mut) => vir::ast::ByRef::MutRef,
                 ByRef::Yes(_pinnedness, Mutability::Not) => vir::ast::ByRef::ImmutRef,
             };
 
@@ -883,17 +860,13 @@ pub(crate) fn block_to_vir<'tcx>(
     block: &Block<'tcx>,
     span: &Span,
     ty: &Typ,
-    mut modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut vir_stmts: Vec<vir::ast::Stmt> = Vec::new();
     let mut stmts_iter = block.stmts.iter();
     while let Some(mut some_stmts) = stmts_to_vir(bctx, &mut stmts_iter)? {
         vir_stmts.append(&mut some_stmts);
     }
-    if block.stmts.len() != 0 {
-        modifier = ExprModifier { deref_mut: false, ..modifier };
-    }
-    let vir_expr = block.expr.map(|expr| expr_to_vir_consume(bctx, &expr, modifier)).transpose()?;
+    let vir_expr = block.expr.map(|expr| expr_to_vir_consume(bctx, &expr)).transpose()?;
 
     let x = ExprX::Block(Arc::new(vir_stmts), vir_expr);
     Ok(bctx.spanned_typed_new(span.clone(), ty, x))
@@ -1081,7 +1054,6 @@ pub(crate) fn invariant_block_close(close_stmt: &Stmt) -> Option<(HirId, HirId, 
 fn invariant_block_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    modifier: ExprModifier,
 ) -> Result<ExprOrPlace, VirErr> {
     // The open_atomic_invariant! macro produces code that looks like this
     // (and similarly for open_local_invariant!)
@@ -1153,9 +1125,8 @@ fn invariant_block_to_vir<'tcx>(
                     .flatten()
                     .collect(),
             );
-            let vir_expr =
-                body.expr.map(|expr| expr_to_vir_consume(bctx, &expr, modifier)).transpose()?;
-            let ty = typ_of_node_unadjusted(bctx, e.span, &e.hir_id, false)?;
+            let vir_expr = body.expr.map(|expr| expr_to_vir_consume(bctx, &expr)).transpose()?;
+            let ty = typ_of_node_unadjusted(bctx, e.span, &e.hir_id)?;
             // NOTE: we use body.span here instead of e.span
             // body.span leads to better error messages
             // (e.g., the "Cannot show invariant holds at end of block" error)
@@ -1167,58 +1138,29 @@ fn invariant_block_to_vir<'tcx>(
         }
     };
 
-    let vir_arg = expr_to_vir_consume(bctx, &inv_arg, modifier)?;
+    let vir_arg = expr_to_vir_consume(bctx, &inv_arg)?;
 
     let name = pat_to_var(inner_pat)?;
-    let inner_ty = typ_of_node_unadjusted(bctx, inner_pat.span, &inner_hir, false)?;
+    let inner_ty = typ_of_node_unadjusted(bctx, inner_pat.span, &inner_hir)?;
     let vir_binder = Arc::new(VarBinderX { name, a: inner_ty });
 
     let mid_exp = bctx.spanned_typed_new(
         mid_stmt.span,
-        &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)?,
+        &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
         ExprX::OpenInvariant(vir_arg, vir_binder, vir_body, atomicity),
     );
     let spend_stmt_vir = stmt_to_vir(&bctx, spend_stmt)
         .expect("could not convert spend_open_invariant_credit call to vir");
     Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
         expr.span,
-        &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)?,
+        &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
         ExprX::Block(Arc::new(spend_stmt_vir), Some(mid_exp)),
     )))
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
-pub(crate) struct ExprModifier {
-    /// dereferencing a mutable reference
-    pub(crate) deref_mut: bool,
-    /// taking a mutable reference
-    pub(crate) addr_of_mut: bool,
-}
-
-impl ExprModifier {
-    pub(crate) const REGULAR: Self = Self { deref_mut: false, addr_of_mut: false };
-
-    pub(crate) const DEREF_MUT: Self = Self { deref_mut: true, addr_of_mut: false };
-
-    pub(crate) const ADDR_OF_MUT: Self = Self { deref_mut: false, addr_of_mut: true };
-}
-
-pub(crate) fn is_expr_typ_mut_ref<'tcx>(
-    ty: rustc_middle::ty::Ty<'tcx>,
-    modifier: ExprModifier,
-) -> Result<ExprModifier, VirErr> {
-    match ty.kind() {
-        TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) => {
-            Ok(ExprModifier { deref_mut: true, ..modifier })
-        }
-        _ => Ok(modifier),
-    }
 }
 
 pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    current_modifier: ExprModifier,
     adjustments: &[Adjustment<'tcx>],
     adjustment_idx: usize,
 ) -> Result<ExprOrPlace, VirErr> {
@@ -1248,10 +1190,10 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     // peeling off the adjustment (i-1).
     // Whereas the node (expr, 0) is just expr by itself.
 
-    let expr_typ = || bctx.mid_ty_to_vir(expr.span, &adjustments[adjustment_idx - 1].target, false);
+    let expr_typ = || bctx.mid_ty_to_vir(expr.span, &adjustments[adjustment_idx - 1].target);
 
     if adjustment_idx == 0 {
-        let vir_expr = expr_to_vir_innermost(bctx, expr, current_modifier)?;
+        let vir_expr = expr_to_vir_innermost(bctx, expr)?;
 
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
         erasure_info.hir_vir_ids.push((expr.hir_id, vir_expr.span().id));
@@ -1283,48 +1225,30 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
 
     match &adjustment.kind {
         Adjust::NeverToAny => {
-            let e = expr_to_vir_with_adjustments(
-                bctx,
-                expr,
-                current_modifier,
-                adjustments,
-                adjustment_idx - 1,
-            )?
-            .consume(bctx, get_inner_ty());
+            let e = expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?
+                .consume(bctx, get_inner_ty());
             let x = ExprX::NeverToAny(e);
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ()?, x)))
         }
         Adjust::Deref(DerefAdjustKind::Builtin) => {
             // handle same way as the UnOp::Deref case
-            let new_modifier = is_expr_typ_mut_ref(get_inner_ty(), current_modifier)?;
-            let inner_expr = expr_to_vir_with_adjustments(
-                bctx,
-                expr,
-                new_modifier,
-                adjustments,
-                adjustment_idx - 1,
-            )?;
+            let inner_expr =
+                expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?;
             let inner_ty = get_inner_ty();
-            if bctx.new_mut_ref {
-                let inner_place = inner_expr.to_place(bctx, expr.span, inner_ty)?;
-                let p = deref_primitive(bctx, expr.span, inner_ty, &inner_place)?;
-                Ok(ExprOrPlace::Place(p))
-            } else {
-                Ok(strip_vir_ref_decoration(inner_expr))
-            }
+            let inner_place = inner_expr.to_place(bctx, expr.span, inner_ty)?;
+            let p = deref_primitive(bctx, expr.span, inner_ty, &inner_place)?;
+            Ok(ExprOrPlace::Place(p))
         }
         Adjust::Deref(DerefAdjustKind::Overloaded(deref)) => {
             // note: deref has signature (&self) -> &Self::Target
             // and deref_mut has signature (&mut self) -> &mut Self::Target
             // The adjustment, though, goes from self -> Self::Target
             // without the refs.
-            let inner = expr_to_vir_with_adjustments(
-                bctx,
-                expr,
-                current_modifier,
-                adjustments,
-                adjustment_idx - 1,
-            )?;
+            // We thus produce 3 operations in total:
+            //  - Initial borrow (T -> &T) or (T -> &mut T)
+            //  - Call to deref or deref_mut (gives us &Self::Target or &mut Self::Target)
+            //  - A final dereference (giving us Self::Target)
+            let inner = expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?;
             let mutbl = matches!(deref.mutbl, Mutability::Mut);
 
             let inner_ty = get_inner_ty();
@@ -1332,171 +1256,93 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             if let Some((ty, is_tracked)) =
                 crate::rust_to_vir_base::is_tracked_or_ghost_ty(&bctx.ctxt.verus_items, inner_ty)
             {
-                if bctx.new_mut_ref {
-                    let mwm = if is_tracked {
-                        vir::ast::ModeWrapperMode::Proof
-                    } else {
-                        vir::ast::ModeWrapperMode::Spec
-                    };
-                    let typ = bctx.mid_ty_to_vir(expr.span, &ty, false)?;
-                    return Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
-                        expr.span,
-                        &typ,
-                        PlaceX::ModeUnwrap(inner.to_place(bctx, expr.span, inner_ty)?, mwm),
-                    )));
+                let mwm = if is_tracked {
+                    vir::ast::ModeWrapperMode::Proof
                 } else {
-                    let inner = inner.consume(bctx, inner_ty);
-                    let op = UnaryOp::CoerceMode {
-                        op_mode: if mutbl { Mode::Proof } else { Mode::Spec },
-                        from_mode: Mode::Proof,
-                        to_mode: if is_tracked { Mode::Proof } else { Mode::Spec },
-                        kind: if mutbl {
-                            vir::ast::ModeCoercion::BorrowMut
-                        } else {
-                            vir::ast::ModeCoercion::Field
-                        },
-                    };
-                    let typ = bctx.mid_ty_to_vir(expr.span, &ty, false)?;
-                    return Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
-                        expr.span,
-                        &typ,
-                        ExprX::Unary(op, inner),
-                    )));
-                }
+                    vir::ast::ModeWrapperMode::Spec
+                };
+                let typ = bctx.mid_ty_to_vir(expr.span, &ty)?;
+                return Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
+                    expr.span,
+                    &typ,
+                    PlaceX::ModeUnwrap(inner.to_place(bctx, expr.span, inner_ty)?, mwm),
+                )));
             }
 
-            if bctx.new_mut_ref {
-                let ref_inner = if mutbl {
-                    let inner_place = inner.to_place(bctx, expr.span, inner_ty)?;
-                    borrow_mut_vir(bctx, expr.span, &inner_place, AllowTwoPhase::No)
-                } else {
-                    inner.immut_bor(bctx, expr.span, inner_ty)?
-                };
-                let ref_inner_ty = bctx.ctxt.tcx.mk_ty_from_kind(TyKind::Ref(
-                    bctx.ctxt.tcx.lifetimes.re_erased,
-                    inner_ty,
-                    deref.mutbl,
-                ));
-                let out_ty = adjustment.target;
-                let p = deref_overloaded(
-                    bctx,
-                    expr.span,
-                    deref.method_call(bctx.ctxt.tcx),
-                    ref_inner_ty,
-                    out_ty,
-                    &ref_inner,
-                )?;
-                Ok(ExprOrPlace::Place(p))
-            } else if auto_deref_supported_for_ty(bctx.ctxt.tcx, &inner_ty) {
-                Ok(inner)
+            let ref_inner = if mutbl {
+                let inner_place = inner.to_place(bctx, expr.span, inner_ty)?;
+                borrow_mut_vir(bctx, expr.span, &inner_place, AllowTwoPhase::No)
             } else {
-                let inner = inner.consume(bctx, inner_ty);
-                Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::deref_to_vir(
-                    bctx,
-                    deref.method_call(bctx.ctxt.tcx),
-                    inner,
-                    expr_typ()?,
-                    inner_ty,
-                    expr.span,
-                )?))
-            }
+                inner.immut_bor(bctx, expr.span, inner_ty)?
+            };
+            let ref_inner_ty = bctx.ctxt.tcx.mk_ty_from_kind(TyKind::Ref(
+                bctx.ctxt.tcx.lifetimes.re_erased,
+                inner_ty,
+                deref.mutbl,
+            ));
+            let out_ty = adjustment.target;
+            let p = deref_overloaded(
+                bctx,
+                expr.span,
+                deref.method_call(bctx.ctxt.tcx),
+                ref_inner_ty,
+                out_ty,
+                &ref_inner,
+            )?;
+            Ok(ExprOrPlace::Place(p))
         }
         Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Not)) => {
             // Similar to ExprKind::AddrOf
-            let new_expr = expr_to_vir_with_adjustments(
-                bctx,
-                expr,
-                ExprModifier::REGULAR,
-                adjustments,
-                adjustment_idx - 1,
-            )?
-            .immut_bor(bctx, expr.span, get_inner_ty())?;
+            let new_expr =
+                expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?
+                    .immut_bor(bctx, expr.span, get_inner_ty())?;
             Ok(ExprOrPlace::Expr(new_expr))
         }
         Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Mut { allow_two_phase_borrow })) => {
-            if bctx.new_mut_ref {
-                // Rust often inserts &mut* adjustments in argument positions.
-                // e.g., `foo(a)` where `a: &mut T` really becomes `foo(&mut *a)`.
-                // (This is done to force a reborrow.)
-                // We actually don't want this in spec contexts, but we *do* want it in
-                // exec/tracked contexts. So we need to handle this case specially.
-                if bctx.in_ghost
-                    && adjustment_idx >= 2
-                    && matches!(
-                        &adjustments[adjustment_idx - 2].kind,
-                        Adjust::Deref(DerefAdjustKind::Builtin)
-                    )
-                {
-                    let inner_inner_ty = get_inner2_ty();
-                    if matches!(
-                        inner_inner_ty.kind(),
-                        TyKind::Ref(_, _, rustc_ast::Mutability::Mut)
-                    ) {
-                        if inner_inner_ty != adjustment.target {
-                            panic!("Verus Internal Error: Implicit &mut * expected the same type");
-                        }
-                        let inner_inner = expr_to_vir_with_adjustments(
-                            bctx,
-                            expr,
-                            current_modifier,
-                            adjustments,
-                            adjustment_idx - 2,
-                        )?;
-                        if bctx.in_fn_sig || bctx.in_old {
-                            // In some cases, we already know we can elide the reborrow
-                            return Ok(inner_inner);
-                        } else {
-                            // In other cases, we need to delay the decision until mode checking
-                            let p = inner_inner.to_place(bctx, expr.span, inner_inner_ty)?;
-                            let b = match allow_two_phase_borrow {
-                                AllowTwoPhase::Yes => true,
-                                AllowTwoPhase::No => false,
-                            };
-                            let x = ExprX::ImplicitReborrowOrSpecRead(
-                                p.clone(),
-                                b,
-                                bctx.ctxt.spans.to_air_span(expr.span),
-                            );
-                            let typ = bctx.mid_ty_to_vir(expr.span, &adjustment.target, false)?;
-                            let e = bctx.spanned_typed_new(expr.span, &typ, x);
-                            return Ok(ExprOrPlace::Expr(e));
-                        }
+            // Rust often inserts &mut* adjustments in argument positions.
+            // e.g., `foo(a)` where `a: &mut T` really becomes `foo(&mut *a)`.
+            // (This is done to force a reborrow.)
+            // We actually don't want this in spec contexts, but we *do* want it in
+            // exec/tracked contexts. So we need to handle this case specially.
+            if bctx.in_ghost
+                && adjustment_idx >= 2
+                && matches!(
+                    &adjustments[adjustment_idx - 2].kind,
+                    Adjust::Deref(DerefAdjustKind::Builtin)
+                )
+            {
+                let inner_inner_ty = get_inner2_ty();
+                if matches!(inner_inner_ty.kind(), TyKind::Ref(_, _, rustc_ast::Mutability::Mut)) {
+                    if inner_inner_ty != adjustment.target {
+                        panic!("Verus Internal Error: Implicit &mut * expected the same type");
+                    }
+                    let inner_inner =
+                        expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 2)?;
+                    if bctx.in_fn_sig || bctx.in_old {
+                        // In some cases, we already know we can elide the reborrow
+                        return Ok(inner_inner);
+                    } else {
+                        // In other cases, we need to delay the decision until mode checking
+                        let p = inner_inner.to_place(bctx, expr.span, inner_inner_ty)?;
+                        let b = match allow_two_phase_borrow {
+                            AllowTwoPhase::Yes => true,
+                            AllowTwoPhase::No => false,
+                        };
+                        let x = ExprX::ImplicitReborrowOrSpecRead(
+                            p.clone(),
+                            b,
+                            bctx.ctxt.spans.to_air_span(expr.span),
+                        );
+                        let typ = bctx.mid_ty_to_vir(expr.span, &adjustment.target)?;
+                        let e = bctx.spanned_typed_new(expr.span, &typ, x);
+                        return Ok(ExprOrPlace::Expr(e));
                     }
                 }
-
-                let place = expr_to_vir_with_adjustments(
-                    bctx,
-                    expr,
-                    current_modifier,
-                    adjustments,
-                    adjustment_idx - 1,
-                )?
-                .to_place(bctx, expr.span, get_inner_ty())?;
-                Ok(ExprOrPlace::Expr(borrow_mut_vir(
-                    bctx,
-                    expr.span,
-                    &place,
-                    *allow_two_phase_borrow,
-                )))
-            } else if current_modifier.deref_mut {
-                // * &mut cancels out
-                let mut new_modifier = current_modifier;
-                new_modifier.deref_mut = false;
-                expr_to_vir_with_adjustments(
-                    bctx,
-                    expr,
-                    new_modifier,
-                    adjustments,
-                    adjustment_idx - 1,
-                )
-            } else {
-                unsupported_err!(
-                    expr.span,
-                    format!(
-                        "&mut dereference in this position (note: &mut dereference is implicit here)"
-                    )
-                )
             }
+
+            let place = expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?
+                .to_place(bctx, expr.span, get_inner_ty())?;
+            Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place, *allow_two_phase_borrow)))
         }
         Adjust::Borrow(AutoBorrow::RawPtr(_)) => {
             // Despite the name 'borrow', the docs seem to indicate this is a dereference
@@ -1509,25 +1355,12 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             let ty1 = get_inner_ty();
             let ty2 = adjustment.target;
 
-            if current_modifier.deref_mut != false || current_modifier.addr_of_mut != false {
-                unsupported_err!(
-                    expr.span,
-                    format!("unsizing operation from `{ty1:}` to `{ty2:}`")
-                );
-            }
-
-            let arg = expr_to_vir_with_adjustments(
-                bctx,
-                expr,
-                current_modifier,
-                adjustments,
-                adjustment_idx - 1,
-            )?;
+            let arg = expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?;
 
             let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
             let op = match (tyr1.kind(), tyr2.kind()) {
                 (_, TyKind::Dynamic(_, _)) => {
-                    let vir_ty = bctx.mid_ty_to_vir(expr.span, &tyr1, false)?;
+                    let vir_ty = bctx.mid_ty_to_vir(expr.span, &tyr1)?;
                     Some(UnaryOpr::ToDyn(vir_ty))
                 }
                 _ => None,
@@ -1535,7 +1368,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             if let Some(op) = op {
                 let arg = arg.consume(bctx, get_inner_ty());
                 let x = ExprX::UnaryOpr(op, arg);
-                let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2, false)?;
+                let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2)?;
                 return Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ, x)));
             }
 
@@ -1578,7 +1411,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 (TyKind::Ref(_, t1, Mutability::Mut), TyKind::Ref(_, t2, Mutability::Mut)) => {
                     match (t1.kind(), t2.kind()) {
                         (TyKind::Array(el_ty1, _const_len), TyKind::Slice(el_ty2))
-                            if bctx.new_mut_ref && el_ty1 == el_ty2 =>
+                            if el_ty1 == el_ty2 =>
                         {
                             let fun = vir::fun!(CrateId::Vstd => "array", "ref_mut_array_unsizing_coercion");
                             let array_typ = match &**arg.typ() {
@@ -1640,7 +1473,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 let arg = arg.consume(bctx, get_inner_ty());
                 let args = Arc::new(vec![arg.clone()]);
                 let x = ExprX::Call(call_target, args, None);
-                let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2, false)?;
+                let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2)?;
                 Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ, x)))
             } else {
                 unsupported_err!(
@@ -1650,13 +1483,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             }
         }
         Adjust::Pointer(PointerCoercion::MutToConstPointer) => {
-            let new_expr = expr_to_vir_with_adjustments(
-                bctx,
-                expr,
-                ExprModifier::REGULAR,
-                adjustments,
-                adjustment_idx - 1,
-            )?;
+            let new_expr =
+                expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?;
             let mut new_expr = new_expr.consume(bctx, get_inner_ty());
             let typ = Arc::new(TypX::Decorate(
                 vir::ast::TypDecoration::ConstPtr,
@@ -1750,7 +1578,6 @@ fn lang_item_for_op(
 fn operator_overload_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    current_modifier: ExprModifier,
 ) -> Result<Option<vir::ast::Expr>, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let span = expr.span;
@@ -1853,16 +1680,7 @@ fn operator_overload_to_vir<'tcx>(
         panic!("could not find function");
     };
     let fun_def_id = assoc_fn.def_id;
-    Ok(Some(fn_call_to_vir(
-        bctx,
-        expr,
-        fun_def_id,
-        substs,
-        expr.span,
-        args,
-        current_modifier,
-        true,
-    )?))
+    Ok(Some(fn_call_to_vir(bctx, expr, fun_def_id, substs, expr.span, args, true)?))
 }
 
 /// Callers must guarantee that expr_vir is a vir representation of expr.
@@ -2005,27 +1823,18 @@ fn resolve_index_call<'tcx>(
 pub(crate) fn expr_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    current_modifier: ExprModifier,
 ) -> Result<ExprOrPlace, VirErr> {
     let bctx = if matches!(&expr.kind, ExprKind::Loop(..)) {
-        &bctx.set_header_setting(HeaderSetting::Loop)
+        &bctx.set_header_setting(HeaderSetting::Loop(expr.hir_id))
     } else {
         bctx
     };
 
     let tcx = bctx.ctxt.tcx;
     let tc = bctx.types;
-    let expr_typ = || {
-        if current_modifier.deref_mut && !bctx.new_mut_ref {
-            typ_of_node_unadjusted_expect_mut_ref(bctx, expr.span, &expr.hir_id)
-        } else {
-            typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)
-        }
-    };
+    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id);
     let mk_expr =
         move |x: ExprX| Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ()?, x)));
-
-    let modifier = ExprModifier { deref_mut: false, ..current_modifier };
 
     let mk_lit_int = |in_negative_literal: bool, i: u128, typ: Typ| {
         check_lit_int(&bctx.ctxt, expr.span, in_negative_literal, i, &typ)?;
@@ -2082,10 +1891,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Block(body, label) => {
             unsupported_err_unless!(label.is_none(), expr.span, "block with label");
             if is_invariant_block(bctx, expr)? {
-                invariant_block_to_vir(bctx, expr, modifier)
+                invariant_block_to_vir(bctx, expr)
             } else if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
                 let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
-                let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?, current_modifier)?;
+                let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?)?;
                 let tracked = match g_attr {
                     GhostBlockAttr::Proof => false,
                     GhostBlockAttr::Tracked => true,
@@ -2098,7 +1907,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 };
                 mk_expr(ExprX::Ghost { alloc_wrapper: false, tracked, expr: block })
             } else {
-                let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?, modifier)?;
+                let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?)?;
                 if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
                     mk_expr(ExprX::ProofInSpec(block))
                 } else {
@@ -2118,7 +1927,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             ctor,
                             *args_slice,
                             fun.span,
-                            modifier,
                         )?),
                         // a statically resolved function
                         (rustc_hir::def::Res::Def(_, def_id), _) => {
@@ -2134,7 +1942,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 bctx.types.node_args(fun.hir_id),
                                 fun.span,
                                 args,
-                                modifier,
                                 false,
                             )?)
                         }
@@ -2166,18 +1973,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     // We currently don't encode this as a mutation on the caller's side, though.
                     // So here, we pretend to dereference the object if it's a mut reference.
                     let fun_ty = bctx.types.expr_ty_adjusted(fun);
-                    let is_mut = match fun_ty.kind() {
-                        TyKind::Ref(_, _, Mutability::Mut) => true,
-                        _ => false,
-                    };
-                    let fun_modifier =
-                        if is_mut { ExprModifier::DEREF_MUT } else { ExprModifier::REGULAR };
-                    let vir_fun = expr_to_vir_consume(bctx, fun, fun_modifier)?;
+                    let vir_fun = expr_to_vir_consume(bctx, fun)?;
 
                     let args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
-                    let vir_args =
-                        vec_map_result(&args, |arg| expr_to_vir_consume(bctx, arg, modifier))?;
-                    let expr_typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)?;
+                    let vir_args = vec_map_result(&args, |arg| expr_to_vir_consume(bctx, arg))?;
+                    let expr_typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?;
 
                     let proof_fn = crate::rust_to_vir_base::try_get_proof_fn_modes(
                         &bctx.ctxt, expr.span, &fun_ty,
@@ -2210,11 +2010,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // Compute `tup_typ` with the correct decoration:
                         let mut arg_typs = vec![];
                         for arg in args.iter() {
-                            arg_typs.push(bctx.mid_ty_to_vir(
-                                arg.span,
-                                &bctx.types.expr_ty_adjusted(arg),
-                                false,
-                            )?);
+                            arg_typs.push(
+                                bctx.mid_ty_to_vir(arg.span, &bctx.types.expr_ty_adjusted(arg))?,
+                            );
                         }
                         let tup_typ = mk_tuple_typ(&Arc::new(arg_typs));
 
@@ -2223,7 +2021,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // ignored later, but for consistency with other typ_args I
                         // decided to get the decorated version)
                         // Also, allow &mut refs here since that can happen for FnMut.
-                        let fun_typ = bctx.mid_ty_to_vir(fun.span, &fun_ty, true)?;
+                        let fun_typ = bctx.mid_ty_to_vir(fun.span, &fun_ty)?;
 
                         let (kind, rcall) = if let Some((arg_modes, ret_mode)) = proof_fn {
                             if arg_modes.len() != args.len() {
@@ -2306,7 +2104,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Tup(exprs) => {
             let args: Result<Vec<vir::ast::Expr>, VirErr> =
-                exprs.iter().map(|e| expr_to_vir_consume(bctx, e, modifier)).collect();
+                exprs.iter().map(|e| expr_to_vir_consume(bctx, e)).collect();
             mk_expr(mk_tuple_x(&Arc::new(args?)))
         }
         ExprKind::Array(exprs) => {
@@ -2314,7 +2112,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 return err_span(expr.span, "Array literals are not supported with --no-vstd");
             }
             let args: Result<Vec<vir::ast::Expr>, VirErr> =
-                exprs.iter().map(|e| expr_to_vir_consume(bctx, e, modifier)).collect();
+                exprs.iter().map(|e| expr_to_vir_consume(bctx, e)).collect();
             mk_expr(ExprX::ArrayLiteral(Arc::new(args?)))
         }
         ExprKind::Repeat(e, _array_len) => {
@@ -2325,10 +2123,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let is_copy =
                 tcx.type_is_copy_modulo_regions(TypingEnv::post_analysis(tcx, bctx.fun_id), ty);
             if is_copy {
-                let arg_vir = expr_to_vir_consume(bctx, e, modifier)?;
+                let arg_vir = expr_to_vir_consume(bctx, e)?;
                 let fun = vir::fun!(CrateId::Vstd => "array", "array_fill_for_copy_types");
-                let array_vir_typ =
-                    bctx.mid_ty_to_vir(expr.span, &bctx.types.expr_ty(expr), false)?;
+                let array_vir_typ = bctx.mid_ty_to_vir(expr.span, &bctx.types.expr_ty(expr))?;
                 let typ_args = match &*array_vir_typ {
                     TypX::Primitive(Primitive::Array, typs) => typs.clone(),
                     _ => {
@@ -2358,11 +2155,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             expr.span,
             *lit,
             false,
-            &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)?,
+            &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
             Some(bctx.types.node_type(expr.hir_id)),
         )?)),
         ExprKind::Cast(source, _) => {
-            let source_vir = expr_to_vir(bctx, source, modifier)?;
+            let source_vir = expr_to_vir(bctx, source)?;
 
             let source_ty = bctx.types.expr_ty_adjusted(source);
             let source_vir_expr = source_vir.consume(bctx, source_ty);
@@ -2390,12 +2187,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 (_, TypX::Int(_)) if bctx.types.expr_ty_adjusted(source).is_enum() => {
                     let mk_expr =
                         move |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
-                    let cast_to = expr_cast_enum_int_to_vir(
-                        bctx,
-                        source,
-                        source_vir.to_place(bctx, expr.span, source_ty)?,
-                        mk_expr,
-                    )?;
+                    let place = source_vir.to_place(bctx, expr.span, source_ty)?;
+                    let place = simplify_place_by_cancelling(&place);
+                    let cast_to = expr_cast_enum_int_to_vir(bctx, source, place, mk_expr)?;
                     Ok(ExprOrPlace::Expr(mk_ty_clip(
                         bctx,
                         &to_vir_ty,
@@ -2462,22 +2256,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
             let inner_ty = bctx.types.expr_ty_adjusted(e);
-            let new_expr = expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)?
-                .immut_bor(bctx, expr.span, inner_ty)?;
+            let new_expr = expr_to_vir_inner(bctx, e)?.immut_bor(bctx, expr.span, inner_ty)?;
             Ok(ExprOrPlace::Expr(new_expr))
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
-            if bctx.new_mut_ref {
-                let place = expr_to_vir_place(bctx, e, modifier)?;
-                Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place, AllowTwoPhase::No)))
-            } else if current_modifier.deref_mut {
-                // * &mut cancels out
-                let mut new_modifier = current_modifier;
-                new_modifier.deref_mut = false;
-                expr_to_vir_inner(bctx, e, new_modifier)
-            } else {
-                unsupported_err!(expr.span, format!("&mut dereference in this position"))
-            }
+            let place = expr_to_vir_place(bctx, e)?;
+            Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place, AllowTwoPhase::No)))
         }
         ExprKind::AddrOf(BorrowKind::Raw, _, _) => {
             unsupported_err!(expr.span, format!("raw borrows"))
@@ -2503,7 +2287,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     }
                     TyKind::Bool => UnaryOp::Not,
                     _ => {
-                        let ret = operator_overload_to_vir(bctx, expr, modifier)?;
+                        let ret = operator_overload_to_vir(bctx, expr)?;
                         if let Some(r) = ret {
                             return Ok(ExprOrPlace::Expr(r));
                         }
@@ -2513,7 +2297,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         )
                     }
                 };
-                let varg = expr_to_vir_consume(bctx, arg, modifier)?;
+                let varg = expr_to_vir_consume(bctx, arg)?;
                 mk_expr(ExprX::Unary(not_op, varg))
             }
             UnOp::Neg => {
@@ -2524,7 +2308,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         mk_lit_int(
                             true,
                             i.get(),
-                            typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false)?,
+                            typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
                         )?
                     } else if let ExprKind::Lit(lit @ Spanned { node: LitKind::Float(..), .. }) =
                         &arg.kind
@@ -2542,11 +2326,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             expr.span,
                             *lit,
                             true,
-                            &typ_of_expr_adjusted(bctx, expr.span, &arg.hir_id, false)?,
+                            &typ_of_expr_adjusted(bctx, expr.span, &arg.hir_id)?,
                             Some(arg_ty),
                         )?));
                     } else {
-                        expr_to_vir(bctx, arg, modifier)?
+                        expr_to_vir(bctx, arg)?
                     };
                 let varg = varg.consume(bctx, bctx.types.expr_ty_adjusted(arg));
                 let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
@@ -2575,80 +2359,55 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         &bctx.ctxt.verus_items,
                         *inner_ty,
                     ) {
-                        if bctx.new_mut_ref {
-                            // &(mut?) Tracked<T>  -->  Tracked<T>  -->  T
-                            //                     (*)           ModeUnwrap
+                        // &(mut?) Tracked<T>  -->  Tracked<T>  -->  T
+                        //                     (*)           ModeUnwrap
 
-                            let inner = expr_to_vir_place(bctx, arg, modifier)?;
-                            let inner = if mutbl {
-                                deref_mut(bctx, expr.span, &inner)?
-                            } else {
-                                // Implicit immut-deref
-                                inner
-                            };
-
-                            let mwm = if is_tracked {
-                                vir::ast::ModeWrapperMode::Proof
-                            } else {
-                                vir::ast::ModeWrapperMode::Spec
-                            };
-                            let typ = bctx.mid_ty_to_vir(expr.span, &ty, false)?;
-                            return Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
-                                expr.span,
-                                &typ,
-                                PlaceX::ModeUnwrap(inner, mwm),
-                            )));
+                        let inner = expr_to_vir_place(bctx, arg)?;
+                        let inner = if mutbl {
+                            deref_mut(bctx, expr.span, &inner)?
                         } else {
-                            let new_modifier = is_expr_typ_mut_ref(ref_ty, current_modifier)?;
-                            let inner = expr_to_vir_consume(bctx, arg, new_modifier)?;
-                            let op = UnaryOp::CoerceMode {
-                                op_mode: if mutbl { Mode::Proof } else { Mode::Spec },
-                                from_mode: Mode::Proof,
-                                to_mode: if is_tracked { Mode::Proof } else { Mode::Spec },
-                                kind: if mutbl {
-                                    vir::ast::ModeCoercion::BorrowMut
-                                } else {
-                                    vir::ast::ModeCoercion::Field
-                                },
-                            };
-                            let typ = bctx.mid_ty_to_vir(expr.span, &ty, false)?;
-                            return Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
-                                expr.span,
-                                &typ,
-                                ExprX::Unary(op, inner),
-                            )));
-                        }
+                            // Implicit immut-deref
+                            inner
+                        };
+
+                        let mwm = if is_tracked {
+                            vir::ast::ModeWrapperMode::Proof
+                        } else {
+                            vir::ast::ModeWrapperMode::Spec
+                        };
+                        let typ = bctx.mid_ty_to_vir(expr.span, &ty)?;
+                        return Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
+                            expr.span,
+                            &typ,
+                            PlaceX::ModeUnwrap(inner, mwm),
+                        )));
                     }
 
-                    if bctx.new_mut_ref {
-                        let inner_ty = bctx.types.expr_ty_adjusted(arg);
-                        let inner = expr_to_vir_consume(bctx, arg, modifier)?;
-                        let out_ty = bctx.types.expr_ty(expr);
-                        let fn_def_id = bctx
-                            .types
-                            .type_dependent_def_id(expr.hir_id)
-                            .expect("cannot get the function definition id for a deref");
-                        let p =
-                            deref_overloaded(bctx, expr.span, fn_def_id, inner_ty, out_ty, &inner)?;
-                        return Ok(ExprOrPlace::Place(p));
-                    }
-                } else if bctx.new_mut_ref {
                     let inner_ty = bctx.types.expr_ty_adjusted(arg);
-                    let inner = expr_to_vir_place(bctx, arg, modifier)?;
+                    let inner = expr_to_vir_consume(bctx, arg)?;
+                    let out_ty = bctx.types.expr_ty(expr);
+                    let fn_def_id = bctx
+                        .types
+                        .type_dependent_def_id(expr.hir_id)
+                        .expect("cannot get the function definition id for a deref");
+                    let p = deref_overloaded(bctx, expr.span, fn_def_id, inner_ty, out_ty, &inner)?;
+                    return Ok(ExprOrPlace::Place(p));
+                } else {
+                    let inner_ty = bctx.types.expr_ty_adjusted(arg);
+                    let inner = expr_to_vir_place(bctx, arg)?;
                     let p = deref_primitive(bctx, expr.span, inner_ty, &inner)?;
                     return Ok(ExprOrPlace::Place(p));
                 }
-
-                deref_expr_to_vir(bctx, expr, arg, modifier)
             }
         },
         ExprKind::Binary(op, lhs, rhs) => {
-            let vlhs = expr_to_vir_consume(bctx, lhs, modifier)?;
-            let vrhs = expr_to_vir_consume(bctx, rhs, modifier)?;
-            let ret = operator_overload_to_vir(bctx, expr, modifier)?;
+            let ret = operator_overload_to_vir(bctx, expr)?;
             if let Some(r) = ret {
                 return Ok(ExprOrPlace::Expr(r));
             }
+
+            let vlhs = expr_to_vir_consume(bctx, lhs)?;
+            let vrhs = expr_to_vir_consume(bctx, rhs)?;
             let vop = binopkind_to_binaryop(bctx, op, lhs, rhs)?;
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?.expect_expr();
             match op.node {
@@ -2687,8 +2446,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
                         // Does this var need the shadow check?
                         // (See verus_time_travel_prevention.rs)
-                        let shadow_check =
-                            bctx.new_mut_ref && !(bctx.in_old || bctx.in_explicit_prophecy_node);
+                        let shadow_check = !(bctx.in_old || bctx.in_explicit_prophecy_node);
                         if shadow_check {
                             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                             erasure_info.shadow_check.push(expr.hir_id);
@@ -2704,8 +2462,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             let e = bctx.spanned_typed_new(expr.span, typ, x);
                             Ok(ExprOrPlace::Expr(e))
                         } else if bctx.in_old {
-                            // bctx.in_old implies new_mut_ref
-                            //
                             // old(x) should create a VarAt(Pre) if we're in the body of a function
                             // with x as a param.
                             // If we're in the signature of the function that declares x,
@@ -2745,7 +2501,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         ctor,
                         &[],
                         expr.span,
-                        modifier,
                     )?))
                 }
                 (Res::Def(DefKind::AssocConst, id), _) => {
@@ -2833,24 +2588,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::Assign(lhs, rhs, _) => {
-            expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, modifier, None)
+            expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, None)
         }
         ExprKind::Field(lhs, name) => {
-            let lhs_ty = bctx.types.expr_ty_adjusted(lhs);
-            let lhs_modifier = is_expr_typ_mut_ref(lhs_ty, modifier)?;
-            let vir_lhs = expr_to_vir_place(bctx, lhs, lhs_modifier)?;
+            let vir_lhs = expr_to_vir_place(bctx, lhs)?;
 
             let lhs_ty = tc.expr_ty_adjusted(lhs);
-            let lhs_ty = mid_ty_simplify(tcx, &bctx.ctxt.verus_items, &lhs_ty, true);
+            // REVIEW: this call to mid_ty_simplify seems unneeded?
+            let lhs_ty = mid_ty_simplify(tcx, &bctx.ctxt.verus_items, &lhs_ty);
             let field_opr = if let Some(adt_def) = lhs_ty.ty_adt_def() {
-                unsupported_err_unless!(
-                    bctx.new_mut_ref
-                        || current_modifier == ExprModifier::REGULAR
-                        || !adt_def.is_union(),
-                    expr.span,
-                    "assigning to or taking &mut of a union field",
-                    expr
-                );
                 unsupported_err_unless!(
                     adt_def.variants().len() == 1,
                     expr.span,
@@ -2899,7 +2645,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             match cond.kind {
                 ExprKind::Let(LetExpr { pat, init: expr, ty: _, span: _, recovered: _ }) => {
                     // if let
-                    let vir_place = expr_to_vir_place(bctx, expr, modifier)?;
+                    let vir_place = expr_to_vir_place(bctx, expr)?;
+                    let vir_place = simplify_place_by_cancelling(&vir_place);
                     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
                     /* lhs */
                     {
@@ -2909,7 +2656,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             &bool_typ(),
                             ExprX::Const(Constant::Bool(true)),
                         );
-                        let body = expr_to_vir_consume(bctx, &lhs, modifier)?;
+                        let body = expr_to_vir_consume(bctx, &lhs)?;
                         let vir_arm = ArmX { pattern, guard, body };
                         vir_arms.push(bctx.spanned_new(lhs.span, vir_arm));
                     }
@@ -2928,7 +2675,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             ExprX::Const(Constant::Bool(true)),
                         );
                         let body = if let Some(rhs) = rhs {
-                            expr_to_vir_consume(bctx, &rhs, modifier)?
+                            expr_to_vir_consume(bctx, &rhs)?
                         } else {
                             mk_expr(ExprX::Block(Arc::new(Vec::new()), None))?.expect_expr()
                         };
@@ -2938,10 +2685,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     mk_expr(ExprX::Match(vir_place, Arc::new(vir_arms)))
                 }
                 _ => {
-                    let vir_cond = expr_to_vir_consume(bctx, cond, modifier)?;
-                    let vir_lhs = expr_to_vir_consume(bctx, lhs, modifier)?;
-                    let vir_rhs =
-                        rhs.map(|e| expr_to_vir_consume(bctx, e, modifier)).transpose()?;
+                    let vir_cond = expr_to_vir_consume(bctx, cond)?;
+                    let vir_lhs = expr_to_vir_consume(bctx, lhs)?;
+                    let vir_rhs = rhs.map(|e| expr_to_vir_consume(bctx, e)).transpose()?;
                     mk_expr(ExprX::If(vir_cond, vir_lhs, vir_rhs))
                 }
             }
@@ -2952,11 +2698,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             _arms,
             rustc_hir::MatchSource::AwaitDesugar,
         ) => {
-            let vir_expr = expr_to_vir_consume(bctx, &call_args[0], modifier)?;
+            let vir_expr = expr_to_vir_consume(bctx, &call_args[0])?;
             mk_expr(ExprX::Await(vir_expr))
         }
         ExprKind::Match(expr, arms, _match_source) => {
-            let vir_place = expr_to_vir_place(bctx, expr, modifier)?;
+            let vir_place = expr_to_vir_place(bctx, expr)?;
+            let vir_place = simplify_place_by_cancelling(&vir_place);
             let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
             for arm in arms.iter() {
                 let pattern = pattern_to_vir(bctx, &arm.pat)?;
@@ -2966,9 +2713,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         &bool_typ(),
                         ExprX::Const(Constant::Bool(true)),
                     ),
-                    Some(guard_expr) => expr_to_vir_consume(bctx, guard_expr, modifier)?,
+                    Some(guard_expr) => expr_to_vir_consume(bctx, guard_expr)?,
                 };
-                let body = expr_to_vir_consume(bctx, &arm.body, modifier)?;
+                let body = expr_to_vir_consume(bctx, &arm.body)?;
                 let vir_arm = ArmX { pattern, guard, body };
                 vir_arms.push(bctx.spanned_new(arm.span, vir_arm));
             }
@@ -2977,8 +2724,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
             let allow_complex_invariants = allow_complex_invariants();
             let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
-            let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id, false)?;
-            let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
+            let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id)?;
+            let mut body = block_to_vir(bctx, block, &expr.span, &typ)?;
             let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
             let label = label.map(|l| l.ident.to_string());
             use crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents;
@@ -3051,9 +2798,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             } else {
                 unsupported_err!(expr.span, "loop else");
             }
-            assert!(modifier == ExprModifier::REGULAR);
-            let cond = Some(expr_to_vir_consume(bctx, cond, ExprModifier::REGULAR)?);
-            let mut body = expr_to_vir_consume(bctx, body, ExprModifier::REGULAR)?;
+            let cond = Some(expr_to_vir_consume(bctx, cond)?);
+            let mut body = expr_to_vir_consume(bctx, body)?;
             let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
             let label = label.map(|l| l.ident.to_string());
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
@@ -3074,7 +2820,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Ret(expr) => {
             let expr = match expr {
                 None => None,
-                Some(expr) => Some(expr_to_vir_consume(bctx, expr, modifier)?),
+                Some(expr) => Some(expr_to_vir_consume(bctx, expr)?),
             };
             mk_expr(ExprX::Return(expr))
         }
@@ -3088,9 +2834,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Struct(qpath, fields, struct_tail) => {
             let update = match struct_tail {
-                // Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
                 StructTailExpr::Base(tail_expr) => {
-                    let place = expr_to_vir_place(bctx, tail_expr, modifier)?;
+                    let place = expr_to_vir_place(bctx, tail_expr)?;
+                    let place = simplify_place_by_cancelling(&place);
                     let tf = ctor_tail_get_taken_fields(bctx, expr)?;
                     Some(vir::ast::CtorUpdateTail { place: place, taken_fields: tf })
                 }
@@ -3113,7 +2859,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 fields
                     .iter()
                     .map(|f| -> Result<_, VirErr> {
-                        let vir = expr_to_vir_consume(bctx, f.expr, modifier)?;
+                        let vir = expr_to_vir_consume(bctx, f.expr)?;
                         let ident = field_ident_from_rust(f.ident.as_str());
                         Ok(ident_binder(&ident, &vir))
                     })
@@ -3144,14 +2890,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 bctx.types.node_args(expr.hir_id),
                 *fn_span,
                 all_args,
-                modifier,
                 true,
             )?))
         }
         ExprKind::Closure(Closure { fn_decl: _, .. }) => {
-            Ok(ExprOrPlace::Expr(closure_to_vir(bctx, expr, expr_typ()?, false, None, modifier)?))
+            Ok(ExprOrPlace::Expr(closure_to_vir(bctx, expr, expr_typ()?, false, None)?))
         }
-        ExprKind::Index(tgt_expr, idx_expr, _span) if bctx.new_mut_ref => {
+        ExprKind::Index(tgt_expr, idx_expr, _span) => {
             if bctx.in_ghost {
                 crate::internal_err!(
                     expr.span,
@@ -3170,8 +2915,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     TyKind::Slice(..) => vir::ast::ArrayKind::Slice,
                     _ => panic!("expected array or slice, found {tgt_expr_ty}"),
                 };
-                let tgt_vir = expr_to_vir_place(bctx, tgt_expr, modifier)?;
-                let idx_vir = expr_to_vir(bctx, idx_expr, modifier)?.consume(bctx, idx_ty);
+                let tgt_vir = expr_to_vir_place(bctx, tgt_expr)?;
+                let idx_vir = expr_to_vir(bctx, idx_expr)?.consume(bctx, idx_ty);
                 let placex = PlaceX::Index(tgt_vir, idx_vir, kind, BoundsCheck::Error);
                 let vir = bctx.spanned_typed_new(expr.span, &expr_typ()?, placex);
                 Ok(ExprOrPlace::Place(vir))
@@ -3193,8 +2938,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     Mutability::Mut => true,
                 };
 
-                let tgt_vir = expr_to_vir_consume(bctx, tgt_expr, modifier)?;
-                let idx_vir = expr_to_vir_consume(bctx, idx_expr, ExprModifier::REGULAR)?;
+                let tgt_vir = expr_to_vir_consume(bctx, tgt_expr)?;
+                let idx_vir = expr_to_vir_consume(bctx, idx_expr)?;
 
                 let fun_typ_args = if ty_is_vec(bctx.ctxt.tcx, *tgt_ty) && idx_ty.is_usize() {
                     let fun = if mutbl {
@@ -3279,93 +3024,18 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 Ok(ExprOrPlace::Place(p))
             }
         }
-        ExprKind::Index(tgt_expr, idx_expr, _span) => {
-            // Determine if this is Index or IndexMut
-            // Based on ./rustc_mir_build/src/thir/cx/expr.rs in rustc
-            // this is determined by the (adjusted) type of the receiver
-            let tgt_ty = bctx.types.expr_ty_adjusted(tgt_expr);
-            let idx_ty = bctx.types.expr_ty_adjusted(idx_expr);
-            let is_index_mut = match tgt_ty.kind() {
-                TyKind::Array(_, _) => false,
-                TyKind::Slice(_) => false,
-                TyKind::Ref(_, _, Mutability::Not) => false,
-                TyKind::Ref(_, _, Mutability::Mut) => true,
-                _ => {
-                    crate::internal_err!(expr.span, "index operator expected & or &mut")
-                }
-            };
-            if is_index_mut || current_modifier != ExprModifier::REGULAR {
-                unsupported_err!(expr.span, "index for &mut not supported")
-            }
-
-            let tgt_vir = expr_to_vir_consume(bctx, tgt_expr, modifier)?;
-            let idx_vir = expr_to_vir_consume(bctx, idx_expr, ExprModifier::REGULAR)?;
-
-            let t1 = &tgt_vir.typ;
-            let t1 = match &**t1 {
-                TypX::Decorate(_, _, t) => t,
-                _ => t1,
-            };
-            // Fast-path special cases for ((Vec | Array | Slice), usize)
-            // (other cases go through full Index trait machinery)
-            let is_usize = matches!(&*idx_vir.typ, TypX::Int(IntRange::USize));
-            let fun_typ_args = match (&**t1, is_usize) {
-                (TypX::Datatype(Dt::Path(p), typ_args, _impl_paths), true)
-                    if p == &vir::path!(CrateId::Alloc => "vec", "Vec") =>
-                {
-                    let fun = vir::fun!(CrateId::Vstd => "std_specs", "vec", "vec_index");
-                    Some((fun, typ_args.clone()))
-                }
-                (TypX::Primitive(vir::ast::Primitive::Array, typ_args), true) => {
-                    let fun = vir::fun!(CrateId::Vstd => "array", "array_index_get");
-                    Some((fun, typ_args.clone()))
-                }
-                (TypX::Primitive(vir::ast::Primitive::Slice, typ_args), true) => {
-                    let fun = vir::fun!(CrateId::Vstd => "slice", "slice_index_get");
-                    Some((fun, typ_args.clone()))
-                }
-                _ => None,
-            };
-
-            if let Some((fun, typ_args)) = fun_typ_args {
-                // special fast path
-                let call_target = CallTarget::Fun(
-                    vir::ast::CallTargetKind::Static,
-                    fun,
-                    typ_args,
-                    // arbitrary impl_path
-                    // REVIEW: why is this needed?
-                    Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_spec_fn_type(0))]),
-                    AutospecUsage::Final,
-                    false,
-                );
-                let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
-                mk_expr(ExprX::Call(call_target, args, None))
-            } else {
-                // general Index trait case
-                let rustc_middle::ty::Ref(_, tgt_ty, _) = tgt_ty.kind() else {
-                    crate::internal_err!(expr.span, "index: receiver is not a reference");
-                };
-                let (impl_paths, target_kind) =
-                    resolve_index_call(bctx, *tgt_ty, idx_ty, false, expr.span)?;
-                let t1 = undecorate_typ(&t1);
-                let typ_args = Arc::new(vec![t1.clone(), idx_vir.typ.clone()]);
-                let fun = vir::fun!(CrateId::Core => "ops", "index", "Index", "index");
-                let call_target = CallTarget::Fun(
-                    target_kind,
-                    fun,
-                    typ_args,
-                    impl_paths,
-                    AutospecUsage::Final,
-                    false,
-                );
-                let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
-                mk_expr(ExprX::Call(call_target, args, None))
-            }
-        }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
         ExprKind::AssignOp(op, lhs, rhs) => {
+            // Note: The semantics are VERY DIFFERENT for method_call vs !method_call cases.
+            // The 2 cases MUST be handled separately.
+            //
+            // In particular:
+            //  - For !method_call, evaluation order is RHS FIRST, so the op must be lowered
+            //    to a VIR operation which is RHS FIRST, like AssignToPlace
+            //  - For method_call, evaluation order is LHS FIRST, so the op must be lowered
+            //    to something that evaluates in the appropriate order.
+
             if bctx.types.is_method_call(expr) {
                 unsupported_err!(expr.span, "overloaded op-assignment operator");
             }
@@ -3377,7 +3047,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     unsupported_err!(expr.span, "div/mod on signed finite-width integers");
                 }
             }
-            expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, modifier, Some(op))
+            expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, Some(op))
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
         ExprKind::Type(..) => unsupported_err!(expr.span, format!("type expressions")),
@@ -3474,6 +3144,7 @@ fn assignop_kind_to_binaryop<'tcx>(
     };
     binopkind_to_binaryop_inner(bctx, bop, lhs, rhs)
 }
+
 fn binopkind_to_binaryop_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     op: BinOpKind,
@@ -3496,7 +3167,7 @@ fn binopkind_to_binaryop_inner<'tcx>(
         BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
         BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
         BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
-            let ty = bctx.mid_ty_to_vir(lhs.span, &tc.expr_ty_adjusted(lhs), false)?;
+            let ty = bctx.mid_ty_to_vir(lhs.span, &tc.expr_ty_adjusted(lhs))?;
             let range = get_range(&ty);
             let ob = if bctx.in_ghost {
                 OverflowBehavior::Truncate(range)
@@ -3595,94 +3266,24 @@ fn expr_assign_to_vir_innermost<'tcx>(
     lhs: &Expr<'tcx>,
     mk_expr: impl Fn(ExprX) -> Result<ExprOrPlace, vir::messages::Message>,
     rhs: &Expr<'tcx>,
-    modifier: ExprModifier,
     op_kind: Option<&Spanned<AssignOpKind>>,
 ) -> Result<ExprOrPlace, vir::messages::Message> {
-    if bctx.new_mut_ref {
-        let vir_lhs = expr_to_vir_place(bctx, lhs, modifier)?;
-        let vir_rhs = expr_to_vir_consume(bctx, rhs, modifier)?;
+    let vir_lhs = expr_to_vir_place(bctx, lhs)?;
+    let vir_lhs = simplify_place_by_cancelling(&vir_lhs);
 
-        let op = match op_kind {
-            Some(op) => Some(assignop_kind_to_binaryop(bctx, op, lhs, rhs)?),
-            None => None,
-        };
-
-        return mk_expr(ExprX::AssignToPlace {
-            place: vir_lhs,
-            rhs: vir_rhs,
-            op: op,
-            resolve: false,
-            typ: bctx.mid_ty_to_vir(lhs.span, &bctx.types.expr_ty_adjusted(lhs), false)?,
-        });
-    }
+    let vir_rhs = expr_to_vir_consume(bctx, rhs)?;
 
     let op = match op_kind {
         Some(op) => Some(assignop_kind_to_binaryop(bctx, op, lhs, rhs)?),
         None => None,
     };
 
-    // NOTE: A temparary solution for index_mut until mutable reference support lands.
-    if let ExprKind::Index(tgt_expr, idx_expr, _span) = &lhs.kind {
-        if bctx.in_ghost {
-            unsupported_err!(lhs.span, "index_mut in spec/proof", lhs);
-        }
-        let tgt_modifier =
-            is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&tgt_expr), ExprModifier::ADDR_OF_MUT)?;
-        let tgt_vir = expr_to_vir_place(bctx, tgt_expr, tgt_modifier)?;
-        let idx_vir = expr_to_vir_consume(bctx, idx_expr, ExprModifier::REGULAR)?;
-
-        let mut rhs_vir = expr_to_vir_consume(bctx, rhs, modifier)?;
-        let fun = vir::fun!(CrateId::Vstd => "std_specs", "core", "index_set");
-        let typ_args =
-            Arc::new(vec![undecorate_typ(&tgt_vir.typ), idx_vir.typ.clone(), rhs_vir.typ.clone()]);
-        let tgt_vir = place_to_loc(&tgt_vir)?;
-        let tgt_vir =
-            bctx.spanned_typed_new(tgt_expr.span, &tgt_vir.typ.clone(), ExprX::Loc(tgt_vir));
-        let call_target = CallTarget::Fun(
-            vir::ast::CallTargetKind::Static,
-            fun,
-            typ_args,
-            Arc::new(vec![]),
-            AutospecUsage::Final,
-            false,
-        );
-        if let Some(op) = op {
-            // Evaluate tgt and idx twice may have side effects.
-            unsupported_err_unless!(
-                !tgt_expr.can_have_side_effects() && !idx_expr.can_have_side_effects(),
-                lhs.span,
-                "assign op to index_mut with tgt/idx that could have side effects",
-                lhs
-            );
-            unsupported_err_unless!(
-                is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)?,
-                lhs.span,
-                "assign op to index_mut for non smt arithmetic types",
-                lhs
-            );
-            let lhs_vir = expr_to_vir_consume(bctx, lhs, ExprModifier::REGULAR)?;
-            let rhs_ty = &rhs_vir.typ.clone();
-            rhs_vir =
-                bctx.spanned_typed_new(rhs.span, &rhs_ty, ExprX::Binary(op, lhs_vir, rhs_vir));
-        }
-
-        let args = Arc::new(vec![tgt_vir, idx_vir, rhs_vir]);
-        let index_set = bctx.spanned_typed_new(
-            lhs.span,
-            &mk_tuple_typ(&Arc::new(vec![])),
-            ExprX::Call(call_target, args, None),
-        );
-        // lhs is not recorded and so explicitly add it here.
-        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-        erasure_info.direct_var_modes.push((lhs.hir_id, Mode::Exec));
-        return Ok(ExprOrPlace::Expr(index_set));
-    }
-
-    let lhs = expr_to_vir_place(bctx, lhs, ExprModifier::ADDR_OF_MUT)?;
-    mk_expr(ExprX::Assign {
-        lhs: place_to_loc(&lhs)?,
-        rhs: expr_to_vir_consume(bctx, rhs, modifier)?,
+    mk_expr(ExprX::AssignToPlace {
+        place: vir_lhs,
+        rhs: vir_rhs,
         op: op,
+        resolve: false,
+        typ: bctx.mid_ty_to_vir(lhs.span, &bctx.types.expr_ty_adjusted(lhs))?,
     })
 }
 
@@ -3702,15 +3303,15 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
             unsupported_err!(els.span, "let-else in spec/proof", els);
         }
         let init = initializer.unwrap();
-        let init_type = typ_of_expr_adjusted(bctx, els.span, &init.hir_id, false)?;
-        let els_typ = typ_of_node_unadjusted(bctx, els.span, &els.hir_id, false)?;
-        let els_block = block_to_vir(bctx, els, &els.span, &els_typ, ExprModifier::REGULAR)?;
+        let init_type = typ_of_expr_adjusted(bctx, els.span, &init.hir_id)?;
+        let els_typ = typ_of_node_unadjusted(bctx, els.span, &els.hir_id)?;
+        let els_block = block_to_vir(bctx, els, &els.span, &els_typ)?;
         Some(bctx.spanned_typed_new(els.span, &init_type, ExprX::NeverToAny(els_block)))
     } else {
         None
     };
     let init = match initializer {
-        Some(e) => Some(expr_to_vir_place(bctx, e, ExprModifier::REGULAR)?),
+        Some(e) => Some(simplify_place_by_cancelling(&expr_to_vir_place(bctx, e)?)),
         None => None,
     };
 
@@ -3882,7 +3483,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 return Ok(vec![]);
             }
 
-            let ep = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
+            let ep = expr_to_vir(bctx, expr)?;
             let vir_expr = match &ep {
                 ExprOrPlace::Expr(expr) if matches!(&expr.x, ExprX::Header(..)) => expr.clone(),
                 _ => {
@@ -3930,10 +3531,24 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 Ok(vec![bctx.spanned_new(stmt.span, StmtX::Expr(vir_expr))])
             } else {
                 let item = bctx.ctxt.tcx.hir_item(*item_id);
-                if matches!(&item.kind, ItemKind::Use(..) | ItemKind::Macro(..)) {
-                    return Ok(vec![]);
+                match &item.kind {
+                    ItemKind::Use(..) | ItemKind::Macro(..) => {
+                        return Ok(vec![]);
+                    }
+                    ItemKind::Struct(..) | ItemKind::Enum(..) => {
+                        // Nested datatypes are handled elsewhere as standalone items
+                        // It doesn't matter that they also appear here as statements
+                        return Ok(vec![]);
+                    }
+                    ItemKind::Fn { .. } | ItemKind::Const(..) => {
+                        // Nested functions and constants are handled elsewhere as standalone items
+                        // It doesn't matter that they also appear here as statements
+                        return Ok(vec![]);
+                    }
+                    _ => {
+                        unsupported_err!(stmt.span, "internal item statements", stmt)
+                    }
                 }
-                unsupported_err!(stmt.span, "internal item statements", stmt)
             }
         }
         StmtKind::Let(LetStmt { pat, ty: _, init, els, .. }) => {
@@ -4005,7 +3620,6 @@ pub(crate) fn closure_to_vir<'tcx>(
     closure_vir_typ: Typ,
     is_spec_fn: bool,
     proof_fn_modes: Option<(Arc<Vec<Mode>>, Mode)>,
-    modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     if let ExprKind::Closure(Closure { fn_decl, body: body_id, def_id, .. }) = &closure_expr.kind {
         unsupported_err_unless!(!fn_decl.c_variadic, closure_expr.span, "c_variadic");
@@ -4043,7 +3657,7 @@ pub(crate) fn closure_to_vir<'tcx>(
             &BodyCtxt { params: std::rc::Rc::new(all_params), ..bctx }
         };
 
-        let mut body = expr_to_vir_consume(body_bctx, &body.value, modifier)?;
+        let mut body = expr_to_vir_consume(body_bctx, &body.value)?;
 
         let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
         let vir::headers::Header { require, ensure, ensure_id_typ, .. } = header;
@@ -4150,30 +3764,30 @@ fn is_ptr_cast<'tcx>(
             } else if ty2
                 .is_sized(bctx.ctxt.tcx, TypingEnv::post_analysis(bctx.ctxt.tcx, bctx.fun_id))
             {
-                let src_ty = bctx.mid_ty_to_vir(span, ty1, false)?;
-                let dst_ty = bctx.mid_ty_to_vir(span, ty2, false)?;
+                let src_ty = bctx.mid_ty_to_vir(span, ty1)?;
+                let dst_ty = bctx.mid_ty_to_vir(span, ty2)?;
                 let fun = vir::fun!(CrateId::Vstd => "raw_ptr", "cast_ptr_to_thin_ptr");
                 let typs = Arc::new(vec![src_ty, dst_ty]);
                 return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
             } else {
                 match (ty1.kind(), ty2.kind()) {
                     (TyKind::Slice(s1), TyKind::Slice(s2)) => {
-                        let arg1 = bctx.mid_ty_to_vir(span, s1, false)?;
-                        let arg2 = bctx.mid_ty_to_vir(span, s2, false)?;
+                        let arg1 = bctx.mid_ty_to_vir(span, s1)?;
+                        let arg2 = bctx.mid_ty_to_vir(span, s2)?;
                         let fun =
                             vir::fun!(CrateId::Vstd => "raw_ptr", "cast_slice_ptr_to_slice_ptr");
                         let typs = Arc::new(vec![arg1, arg2]);
                         return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
                     }
                     (TyKind::Slice(s1), TyKind::Str) => {
-                        let arg = bctx.mid_ty_to_vir(span, s1, false)?;
+                        let arg = bctx.mid_ty_to_vir(span, s1)?;
                         let fun =
                             vir::fun!(CrateId::Vstd => "raw_ptr", "cast_slice_ptr_to_str_ptr");
                         let typs = Arc::new(vec![arg]);
                         return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
                     }
                     (TyKind::Str, TyKind::Slice(s2)) => {
-                        let arg = bctx.mid_ty_to_vir(span, s2, false)?;
+                        let arg = bctx.mid_ty_to_vir(span, s2)?;
                         let fun =
                             vir::fun!(CrateId::Vstd => "raw_ptr", "cast_str_ptr_to_slice_ptr");
                         let typs = Arc::new(vec![arg]);
@@ -4187,7 +3801,7 @@ fn is_ptr_cast<'tcx>(
         (TyKind::RawPtr(ty1, _), _ty2)
             if crate::rust_to_vir_base::is_integer_ty(&bctx.ctxt.verus_items, &dst) =>
         {
-            let src_ty = bctx.mid_ty_to_vir(span, ty1, false)?;
+            let src_ty = bctx.mid_ty_to_vir(span, ty1)?;
             let typs = Arc::new(vec![src_ty]);
             let fun = vir::fun!(CrateId::Vstd => "raw_ptr", "cast_ptr_to_usize");
 
@@ -4224,7 +3838,7 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
             );
             let args = Arc::new(vec![src_vir.clone()]);
             let x = ExprX::Call(call_target, args, None);
-            let expr_typ = typ_of_node_unadjusted(bctx, dst_expr.span, &dst_expr.hir_id, false)?;
+            let expr_typ = typ_of_node_unadjusted(bctx, dst_expr.span, &dst_expr.hir_id)?;
 
             if clip {
                 let expr_attrs = bctx.ctxt.tcx.hir_attrs(dst_expr.hir_id);
@@ -4240,145 +3854,6 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
         }
         None => Ok(None),
     }
-}
-
-/// outside new-mut-ref
-fn deref_expr_to_vir<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    expr: &Expr<'tcx>,
-    arg: &Expr<'tcx>,
-    modifier: ExprModifier,
-) -> Result<ExprOrPlace, VirErr> {
-    let arg_ty = bctx.types.expr_ty_adjusted(arg);
-
-    match arg_ty.kind() {
-        TyKind::RawPtr(..) => {
-            unsupported_err!(
-                expr.span,
-                format!(
-                    "dereferencing a raw pointer. Currently, Verus only supports raw pointers through the permissioned raw_ptr interface: https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html"
-                )
-            );
-        }
-        _ => { /* report errors for dereferencing other types later */ }
-    }
-
-    let modifier = is_expr_typ_mut_ref(arg_ty, modifier)?;
-    let inner_expr = expr_to_vir_inner(bctx, arg, modifier)?;
-
-    if !bctx.types.is_method_call(expr) || auto_deref_supported_for_ty(bctx.ctxt.tcx, &arg_ty) {
-        // Normal dereference, just strip the inner expression.
-        Ok(strip_vir_ref_decoration(inner_expr))
-    } else {
-        // Overloaded dereference other than internally implemented ones.
-        // Insert a function call to the overloaded method.
-        let fn_def_id = bctx
-            .types
-            .type_dependent_def_id(expr.hir_id)
-            .expect("cannot get the function definition id for a deref");
-        let res_ty = bctx.types.node_type(expr.hir_id);
-        let inner_ty = bctx.mid_ty_to_vir(expr.span, &res_ty, false)?;
-        let inner_expr = inner_expr.consume(bctx, bctx.types.expr_ty_adjusted(arg));
-        Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::deref_to_vir(
-            bctx, fn_def_id, inner_expr, inner_ty, arg_ty, expr.span,
-        )?))
-    }
-}
-
-fn strip_vir_ref_decoration<'tcx>(mut inner_expr: ExprOrPlace) -> ExprOrPlace {
-    let typ = match &mut inner_expr {
-        ExprOrPlace::Expr(e) => &mut Arc::make_mut(e).typ,
-        ExprOrPlace::Place(p) => &mut Arc::make_mut(p).typ,
-    };
-    if let TypX::Decorate(
-        vir::ast::TypDecoration::MutRef
-        | vir::ast::TypDecoration::Ref
-        | vir::ast::TypDecoration::Box
-        | vir::ast::TypDecoration::Rc
-        | vir::ast::TypDecoration::Arc,
-        _,
-        inner_typ,
-    ) = &**typ
-    {
-        *typ = inner_typ.clone();
-    }
-    inner_expr
-}
-
-fn add_vir_ref_decoration<'tcx>(mut inner_expr: vir::ast::Expr) -> vir::ast::Expr {
-    let typ = &mut Arc::make_mut(&mut inner_expr).typ;
-    *typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, typ.clone()));
-    inner_expr
-}
-
-/// This is only for use outside new-mut-ref and will eventually be deleted
-pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
-    let x = match &place.x {
-        PlaceX::Local(var_ident) => ExprX::VarLoc(var_ident.clone()),
-        PlaceX::DerefMut(p) => {
-            return place_to_loc(p);
-        }
-        PlaceX::Field(opr, p) => {
-            let e = place_to_loc(p)?;
-            ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
-        }
-        PlaceX::ModeUnwrap(p, m) => {
-            let e = place_to_loc(p)?;
-            let op = UnaryOp::CoerceMode {
-                op_mode: Mode::Proof,
-                from_mode: Mode::Proof,
-                to_mode: m.to_mode(),
-                kind: vir::ast::ModeCoercion::BorrowMut,
-            };
-            ExprX::Unary(op, e)
-        }
-        PlaceX::Temporary(expr) => {
-            return expr_to_loc_coerce_modes(expr);
-        }
-        PlaceX::WithExpr(..) => {
-            panic!("Verus Internal Error: unexpected PlaceX::WithExpr")
-        }
-        PlaceX::Index(..) => {
-            panic!("Verus Internal Error: PlaceX::Index should not be created outside new-mut-ref")
-        }
-        PlaceX::UserDefinedTypInvariantObligation(..) => {
-            panic!("Verus Internal Error: unexpected PlaceX::UserDefinedTypInvariantObligation")
-        }
-    };
-    Ok(SpannedTyped::new(&place.span, &place.typ, x))
-}
-
-pub(crate) fn expr_to_loc_coerce_modes(expr: &vir::ast::Expr) -> Result<vir::ast::Expr, VirErr> {
-    let x = match &expr.x {
-        ExprX::ReadPlace(
-            p,
-            UnfinalizedReadKind {
-                preliminary_kind: vir::ast::ReadKind::Move | vir::ast::ReadKind::Copy,
-                id: _,
-            },
-        ) => {
-            return place_to_loc(p);
-        }
-        ExprX::Unary(
-            cm @ UnaryOp::CoerceMode {
-                op_mode: _,
-                from_mode: _,
-                to_mode: _,
-                kind: vir::ast::ModeCoercion::BorrowMut,
-            },
-            e,
-        ) => {
-            let e = expr_to_loc_coerce_modes(e)?;
-            ExprX::Unary(*cm, e)
-        }
-        _ => {
-            return Err(vir::messages::error(
-                &expr.span,
-                "complex arguments to &mut parameters are currently unsupported",
-            ));
-        }
-    };
-    Ok(SpannedTyped::new(&expr.span, &expr.typ, x))
 }
 
 /// Handle deref for "primitive" deref operations:
@@ -4458,7 +3933,7 @@ pub(crate) fn deref_overloaded<'tcx>(
                 target_ty,
                 Mutability::Not,
             ));
-            let ref_of_target_typ = bctx.mid_ty_to_vir(span, &ref_of_target_ty, false)?;
+            let ref_of_target_typ = bctx.mid_ty_to_vir(span, &ref_of_target_ty)?;
 
             // Method call first:
             let call_expr = match inner_ty.kind() {
@@ -4490,9 +3965,30 @@ pub(crate) fn deref_overloaded<'tcx>(
             // Immutable dereference is implicit
             Ok(temp_place)
         }
-        TyKind::Ref(_, inner_ty, rustc_ast::Mutability::Mut) => {
-            // deref_mut
-            unsupported_err!(span, format!("deref_mut for {inner_ty:?} not yet supported"))
+        TyKind::Ref(_, _inner_ty, rustc_ast::Mutability::Mut) => {
+            let ref_of_target_ty = bctx.ctxt.tcx.mk_ty_from_kind(TyKind::Ref(
+                bctx.ctxt.tcx.lifetimes.re_erased,
+                target_ty,
+                Mutability::Mut,
+            ));
+            let ref_of_target_typ = bctx.mid_ty_to_vir(span, &ref_of_target_ty)?;
+
+            let call_expr = crate::fn_call_to_vir::deref_to_vir(
+                bctx,
+                fn_def_id,
+                expr.clone(),
+                ref_of_target_typ.clone(),
+                ty,
+                span,
+            )?;
+
+            let temp_place = bctx.spanned_typed_new(
+                span,
+                &ref_of_target_typ,
+                PlaceX::Temporary(call_expr.clone()),
+            );
+
+            deref_mut(bctx, span, &temp_place)
         }
         _ => {
             crate::internal_err!(span, format!("overloaded deref expected ref or mut ref"))
@@ -4528,27 +4024,10 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Result<Pl
         }
     }
 
-    // `* &mut x` cancels out and we can just use x
-    // This shows up a lot (in part due to adjustments) so we make the simplification
-    // to avoid cluttering the encoding.
-
     // *final(x) is equivalent to mut_ref_future(x)
 
     match &place.x {
         PlaceX::Temporary(e) => match &e.x {
-            ExprX::ImplicitReborrowOrSpecRead(inner_place, false, _inner_span) => {
-                // There's the case where the ImplicitReborrowOrSpecRead is ignored, and the
-                // case where it's not ignored.
-                // If it's not ignored, then
-                //      ImplicitReborrow(x) --> &mut *x
-                // and,
-                //      * &mut *x --> *x
-                // So this is a convenient way to remove unneeded ImplicitReborrowOrSpecRead nodes
-                return deref_mut(bctx, span, inner_place);
-            }
-            ExprX::BorrowMut(place) => {
-                return Ok(place.clone());
-            }
             ExprX::Unary(UnaryOp::MutRefFinal(_), arg) => {
                 let t = match &*undecorate_typ(&place.typ) {
                     TypX::MutRef(t) => t.clone(),
@@ -4571,42 +4050,14 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Result<Pl
     Ok(bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone())))
 }
 
-/// Like the above, but also cancels with two-phase borrows
-/// It's _probably_ okay to always call this, but it's good to be cautious about two-phase
-pub(crate) fn deref_mut_allow_cancelling_two_phase(
-    bctx: &BodyCtxt,
-    span: Span,
-    place: &Place,
-) -> Result<Place, VirErr> {
-    match &place.x {
-        PlaceX::Temporary(e) => match &e.x {
-            ExprX::ImplicitReborrowOrSpecRead(inner_place, false | true, _inner_span) => {
-                return deref_mut(bctx, span, inner_place);
-            }
-            ExprX::BorrowMut(place) => {
-                return Ok(place.clone());
-            }
-            ExprX::TwoPhaseBorrowMut(place) => {
-                return Ok(place.clone());
-            }
-            _ => {}
-        },
-        _ => {}
-    }
-
-    let t = match &*place.typ {
-        TypX::MutRef(t) => t.clone(),
-        _ => panic!("expected mut ref"),
-    };
-    Ok(bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone())))
-}
-
 pub(crate) fn borrow_mut_vir(
     bctx: &BodyCtxt,
     span: Span,
     place: &Place,
     allow_two_phase: AllowTwoPhase,
 ) -> vir::ast::Expr {
+    let place = simplify_place_by_cancelling(place);
+
     // In general, `&mut *x` does NOT cancel itself out;
     // this is a reborrow which has nontrivial semantics.
     // However, if x is a temporary, then it's ok.
@@ -4674,4 +4125,105 @@ fn ctor_tail_get_taken_fields<'tcx>(
     }
 
     Ok(Arc::new(taken_fields))
+}
+
+/**
+This performs the simplification `*&mut P  -->  P` throughout a given Place.
+
+This is needed mainly because our handling of Ghost::borrow_mut and Tracked::borrow_mut
+requires it (see the explanation in fn_call_to_vir).
+It also has the side-benefit of simplifying the VCs in some cases, though the cases
+where it matters are not very common, I think.
+
+However, we need to be careful, because this simplification is not always semantics-preserving.
+The tricky cases are (see the mut_ref_temporary_cant_be_elided test case):
+
+```rust
+fn test1() {
+    let mut a: [u64; 2] = [0, 1];
+    let mut b: [u64; 2] = [2, 3];
+    let mut x = &mut a;
+
+    let z = x[ ({ x = &mut b; 0 }) ];
+    assert(z == 2);
+}
+```
+
+vs.
+
+```rust
+fn test2() {
+    let mut a: [u64; 2] = [0, 1];
+    let mut b: [u64; 2] = [2, 3];
+    let mut x = &mut a;
+
+    let z = (&mut *x)[ ({ x = &mut b; 0 }) ];
+    assert(z == 0);
+}
+```
+
+The difference is in the evaluation order. In the first case, there is effectively one
+place expression, `(*x)[_]`. This means the `*x` is not evaluated until AFTER the index expression.
+In the second case, the explicit mutable reference "splits" the place expression, forcing the
+evaluation of `*x` early.
+
+Therefore, this should only be called on a place when you know how that place is being used.
+For example, when constructing an expression like `&mut P` or `P = rhs`, you can go ahead
+and call `simplify_place_by_cancelling` on P. But if P is only partially constructed
+might be composed with an Index place later, it's not safe to call this yet.
+*/
+pub(crate) fn simplify_place_by_cancelling(place: &Place) -> Place {
+    match &place.x {
+        PlaceX::Field(opr, p) => {
+            let p = simplify_place_by_cancelling(p);
+            SpannedTyped::new(&place.span, &place.typ, PlaceX::Field(opr.clone(), p))
+        }
+        PlaceX::ModeUnwrap(p, mwm) => {
+            let p = simplify_place_by_cancelling(p);
+            SpannedTyped::new(&place.span, &place.typ, PlaceX::ModeUnwrap(p, *mwm))
+        }
+        PlaceX::DerefMut(p) => {
+            match &p.x {
+                PlaceX::Temporary(e) => {
+                    match &e.x {
+                        ExprX::BorrowMut(p) => {
+                            return p.clone();
+                        }
+                        ExprX::TwoPhaseBorrowMut(p) => {
+                            return p.clone();
+                        }
+                        ExprX::ImplicitReborrowOrSpecRead(inner_place, _, _inner_span) => {
+                            // There's the case where the ImplicitReborrowOrSpecRead is ignored,
+                            // and the case where it's not ignored.
+                            // If it's not ignored, then:
+                            //      * ImplicitReborrow(x) --> * &mut *x --> *x
+                            // If it IS ignored, then we just immediately have:
+                            //      * ImplicitReborrow(x) --> * x
+                            //
+                            // Also note that in this case, we won't have called
+                            // `simplify_place_by_cancelling` on the inner_place yet,
+                            // so do so now.
+                            let p = SpannedTyped::new(
+                                &place.span,
+                                &place.typ,
+                                PlaceX::DerefMut(inner_place.clone()),
+                            );
+                            return simplify_place_by_cancelling(&p);
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+            let p = simplify_place_by_cancelling(p);
+            SpannedTyped::new(&place.span, &place.typ, PlaceX::DerefMut(p))
+        }
+        PlaceX::Local(..) => place.clone(),
+        // For the reasons above, we stop if we encounter an Index place.
+        PlaceX::Index(..) => place.clone(),
+        PlaceX::Temporary(..) => place.clone(),
+        PlaceX::WithExpr(..) | PlaceX::UserDefinedTypInvariantObligation(..) => {
+            panic!("simplify_place_by_cancelling got unexpected place kind");
+        }
+    }
 }

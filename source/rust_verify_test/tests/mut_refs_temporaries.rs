@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_in_assign ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_in_assign [] => verus_code! {
         fn mut_ref_pairs<'a, 'b>(a: &'a mut u64, b: &'b mut u64) -> ((ret_a, ret_b): (&'a mut u64, &'b mut u64))
             ensures
                 mut_ref_current(ret_a) == mut_ref_current(a),
@@ -207,7 +207,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_in_assign_op ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_in_assign_op [] => verus_code! {
         fn mut_ref_pairs<'a, 'b>(a: &'a mut u64, b: &'b mut u64) -> (ret: (&'a mut u64, &'b mut u64))
             ensures
                 mut_ref_current(ret.0) == mut_ref_current(a),
@@ -410,7 +410,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_in_assign_op_with_overflow ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_in_assign_op_with_overflow [] => verus_code! {
         fn mut_ref_pairs<'a, 'b>(a: &'a mut u8, b: &'b mut u8) -> (ret: (&'a mut u8, &'b mut u8))
             ensures
                 mut_ref_current(ret.0) == mut_ref_current(a),
@@ -493,7 +493,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_in_move ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_in_move [] => verus_code! {
         fn mut_ref_pairs<'a, 'b>(a: &'a mut u64, b: &'b mut u64) -> (ret: (&'a mut u64, &'b mut u64))
             ensures
                 mut_ref_current(ret.0) == mut_ref_current(a),
@@ -688,7 +688,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_ctor_update_tail ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_ctor_update_tail [] => verus_code! {
         broadcast proof fn stronger_resolver_axiom<A, B>(pair: TGPair<A, B>) // TODO(new_mut_ref) (triggers)
             ensures #[trigger] has_resolved(pair) ==> has_resolved(pair.t)
         {
@@ -1019,7 +1019,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_in_let_stmt ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_in_let_stmt [] => verus_code! {
         broadcast proof fn stronger_resolver_axiom<A, B>(pair: (A, B)) // TODO(new_mut_ref) (triggers)
             ensures #[trigger] has_resolved(pair) ==> has_resolved(pair.0) && has_resolved(pair.1)
         { }
@@ -1247,7 +1247,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_in_let_stmt_with_pattern ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_in_let_stmt_with_pattern [] => verus_code! {
         broadcast proof fn stronger_resolver_axiom<A, B>(pair: TGPair<A, B>) // TODO(new_mut_ref) (triggers)
             ensures #[trigger] has_resolved(pair) ==> has_resolved(pair.t)
         {
@@ -1527,7 +1527,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_let_stmt_with_mut_pat ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_let_stmt_with_mut_pat [] => verus_code! {
         fn mut_ref_pairs<'a, 'b, A, B>(a: &'a mut A, b: &'b mut B) -> (ret: (&'a mut A, &'b mut B))
             ensures
                 mut_ref_current(ret.0) == mut_ref_current(a),
@@ -1771,7 +1771,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_in_match ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_in_match [] => verus_code! {
         broadcast proof fn stronger_resolver_axiom<A, B>(pair: TGPair<A, B>) // TODO(new_mut_ref) (triggers)
             ensures #[trigger] has_resolved(pair) ==> has_resolved(pair.t)
         {
@@ -2134,7 +2134,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_in_match_with_mut ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_in_match_with_mut [] => verus_code! {
         fn mut_ref_pairs<'a, 'b, A, B>(a: &'a mut A, b: &'b mut B) -> (ret: (&'a mut A, &'b mut B))
             ensures
                 mut_ref_current(ret.0) == mut_ref_current(a),
@@ -2427,7 +2427,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_in_match_with_mut_and_option ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_in_match_with_mut_and_option [] => verus_code! {
         enum Option<V> {
             Some(V), None
         }
@@ -2741,7 +2741,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_in_match_with_option ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_in_match_with_option [] => verus_code! {
         enum Option<V> {
             Some(V), None
         }
@@ -3146,7 +3146,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_in_mut_borrow ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_in_mut_borrow [] => verus_code! {
         fn mut_ref_pairs<'a, 'b>(a: &'a mut (u64, u64), b: &'b mut (u64, u64)) -> (ret: (&'a mut (u64, u64), &'b mut (u64, u64)))
             ensures
                 mut_ref_current(ret.0) == mut_ref_current(a),
@@ -3392,7 +3392,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_refs_of_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] mut_refs_of_mut_refs [] => verus_code! {
         fn test1() {
             let mut a = 0;
             let x = &mut &mut a;
@@ -3469,7 +3469,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_in_shared_borrow ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_in_shared_borrow [] => verus_code! {
         broadcast axiom fn stronger_resolver_axiom<A, B>(pair: (A, B)) // TODO(new_mut_ref) (triggers)
             ensures #[trigger] has_resolved(pair) ==> has_resolved(pair.0) && has_resolved(pair.1);
 
@@ -3687,7 +3687,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_unused ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_unused [] => verus_code! {
         broadcast axiom fn stronger_resolver_axiom<A, B>(pair: (A, B)) // TODO(new_mut_ref) (triggers)
             ensures #[trigger] has_resolved(pair) ==> has_resolved(pair.0) && has_resolved(pair.1);
 
@@ -3831,7 +3831,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] resolving_and_side_effects_in_ghost_temporary ["new-mut-ref"] => verus_code! {
+    #[test] resolving_and_side_effects_in_ghost_temporary [] => verus_code! {
         spec fn some_int() -> int { 0 }
 
         fn test() {
@@ -3875,7 +3875,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] assign_eval_ordering_with_temporary ["new-mut-ref"] => verus_code! {
+    #[test] assign_eval_ordering_with_temporary [] => verus_code! {
         fn mut_ref_id(a: &mut u64) -> (ret: &mut u64)
             ensures
                 mut_ref_current(ret) == 30,
@@ -3914,7 +3914,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_is_never ["new-mut-ref"] => verus_code! {
+    #[test] temporary_is_never [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn never_return() -> (!, !) {
             loop {}

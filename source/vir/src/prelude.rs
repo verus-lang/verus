@@ -117,7 +117,6 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
     let decorate_nil_slice = str_to_node(DECORATE_NIL_SLICE);
     let decorate_nil_dyn = str_to_node(DECORATE_NIL_DYN);
     let decorate_ref = str_to_node(DECORATE_REF);
-    let decorate_mut_ref = str_to_node(DECORATE_MUT_REF);
     let decorate_box = str_to_node(DECORATE_BOX);
     let decorate_rc = str_to_node(DECORATE_RC);
     let decorate_arc = str_to_node(DECORATE_ARC);
@@ -207,7 +206,6 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-const [decorate_nil_dyn] [decoration])
         (declare-fun [decorate_dst_inherit] ([decoration]) [decoration])
         (declare-fun [decorate_ref] ([decoration]) [decoration])
-        (declare-fun [decorate_mut_ref] ([decoration]) [decoration])
         (declare-fun [decorate_box] ([decoration] [typ] [decoration]) [decoration])
         (declare-fun [decorate_rc] ([decoration] [typ] [decoration]) [decoration])
         (declare-fun [decorate_arc] ([decoration] [typ] [decoration]) [decoration])
@@ -303,12 +301,6 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
             :pattern (([sized] ([decorate_ref] d)))
             :qid prelude_sized_decorate_ref
             :skolemid skolem_prelude_sized_decorate_ref
-        )))
-        (axiom (forall ((d [decoration])) (!
-            ([sized] ([decorate_mut_ref] d))
-            :pattern (([sized] ([decorate_mut_ref] d)))
-            :qid prelude_sized_decorate_mut_ref
-            :skolemid skolem_prelude_sized_decorate_mut_ref
         )))
         (axiom (forall ((d [decoration]) (t [typ]) (d2 [decoration])) (!
             ([sized] ([decorate_box] d t d2))

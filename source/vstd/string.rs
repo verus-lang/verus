@@ -403,7 +403,7 @@ impl StringExecFns for String {
     #[verifier::external_body]
     fn append<'a, 'b>(&'a mut self, other: &'b str)
         ensures
-            self@ == old(self)@ + other@,
+            final(self)@ == old(self)@ + other@,
     {
         *self += other;
     }
@@ -457,11 +457,11 @@ pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (r: 
             let (old_index, old_seq) = old(chars)@;
             match r {
                 None => {
-                    &&& chars@ == old(chars)@
+                    &&& final(chars)@ == old(chars)@
                     &&& old_index >= old_seq.len()
                 },
                 Some(k) => {
-                    let (new_index, new_seq) = chars@;
+                    let (new_index, new_seq) = final(chars)@;
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1

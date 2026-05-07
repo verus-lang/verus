@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_loops ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_loops [] => verus_code! {
         fn some_bool() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -159,7 +159,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_loops_nested ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_loops_nested [] => verus_code! {
         fn some_bool() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -384,7 +384,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_while_loops ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_while_loops [] => verus_code! {
         fn some_bool() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -525,7 +525,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop_vs_while_loop ["new-mut-ref"] => verus_code! {
+    #[test] loop_vs_while_loop [] => verus_code! {
         fn some_bool() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -556,7 +556,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loops_resolve_depends_on_condition_branch ["new-mut-ref"] => verus_code! {
+    #[test] loops_resolve_depends_on_condition_branch [] => verus_code! {
         fn some_bool() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -602,7 +602,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loops_resolve_depends_on_condition_branch2 ["new-mut-ref"] => verus_code! {
+    #[test] loops_resolve_depends_on_condition_branch2 [] => verus_code! {
         fn some_bool() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -684,7 +684,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_while_loops_nested ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_while_loops_nested [] => verus_code! {
         fn some_bool() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -886,7 +886,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] for_loops ["new-mut-ref"] => verus_code! {
+    #[test] for_loops [] => verus_code! {
         use vstd::prelude::*;
 
         fn some_bool() -> bool { true }
@@ -958,7 +958,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] for_loops_loop_isolation_false ["new-mut-ref"] => verus_code! {
+    #[test] for_loops_loop_isolation_false [] => verus_code! {
         use vstd::prelude::*;
 
         fn some_bool() -> bool { true }
@@ -1092,7 +1092,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] while_loops_with_mutation_in_condition ["new-mut-ref"] => verus_code! {
+    #[test] while_loops_with_mutation_in_condition [] => verus_code! {
         fn some_bool(x: &mut u64) -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1172,7 +1172,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] future_preserved_in_loop ["new-mut-ref"] => verus_code! {
+    #[test] future_preserved_in_loop [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test(a: &mut u64)
@@ -1216,7 +1216,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] future_preserved_in_loop_nested ["new-mut-ref"] => verus_code! {
+    #[test] future_preserved_in_loop_nested [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test(a: (&mut u64, &mut u64))
@@ -1232,7 +1232,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] future_preserved_in_loop_fails1 ["new-mut-ref"] => verus_code! {
+    #[test] future_preserved_in_loop_fails1 [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn leak_ref<'a>() -> &'a mut u64 { loop{} }
 
@@ -1281,7 +1281,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] future_preserved_in_loop_needs_inv ["new-mut-ref"] => verus_code! {
+    #[test] future_preserved_in_loop_needs_inv [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn leak_ref<'a>() -> &'a mut u64 { loop{} }
 
@@ -1303,7 +1303,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] future_preserved_in_loop_fails2 ["new-mut-ref"] => verus_code! {
+    #[test] future_preserved_in_loop_fails2 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1371,7 +1371,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] future_preserved_in_loop_fails3 ["new-mut-ref"] => verus_code! {
+    #[test] future_preserved_in_loop_fails3 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1456,7 +1456,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] future_preserved_in_loop_fails4 ["new-mut-ref"] => verus_code! {
+    #[test] future_preserved_in_loop_fails4 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1541,7 +1541,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_iso_future_preserved_in_loop_nested ["new-mut-ref"] => verus_code! {
+    #[test] no_iso_future_preserved_in_loop_nested [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test(a: (&mut u64, &mut u64))
@@ -1557,7 +1557,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_iso_future_preserved_in_loop_fails1 ["new-mut-ref"] => verus_code! {
+    #[test] no_iso_future_preserved_in_loop_fails1 [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn leak_ref<'a>() -> &'a mut u64 { loop{} }
 
@@ -1588,7 +1588,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_iso_future_preserved_in_loop_needs_inv ["new-mut-ref"] => verus_code! {
+    #[test] no_iso_future_preserved_in_loop_needs_inv [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn leak_ref<'a>() -> &'a mut u64 { loop{} }
 
@@ -1610,7 +1610,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_iso_future_preserved_in_loop_fails2 ["new-mut-ref"] => verus_code! {
+    #[test] no_iso_future_preserved_in_loop_fails2 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1678,7 +1678,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_iso_future_preserved_in_loop_fails3 ["new-mut-ref"] => verus_code! {
+    #[test] no_iso_future_preserved_in_loop_fails3 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1763,7 +1763,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_iso_future_preserved_in_loop_fails4 ["new-mut-ref"] => verus_code! {
+    #[test] no_iso_future_preserved_in_loop_fails4 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1848,7 +1848,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_future_preserved_in_loop ["new-mut-ref"] => verus_code! {
+    #[test] closure_future_preserved_in_loop [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test() {
@@ -1898,7 +1898,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_future_preserved_in_loop_fails1 ["new-mut-ref"] => verus_code! {
+    #[test] closure_future_preserved_in_loop_fails1 [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn leak_ref<'a>() -> &'a mut u64 { loop{} }
 
@@ -1954,7 +1954,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_future_preserved_in_loop_fails2 ["new-mut-ref"] => verus_code! {
+    #[test] closure_future_preserved_in_loop_fails2 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -2030,7 +2030,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_iso_closure_future_preserved_in_loop ["new-mut-ref"] => verus_code! {
+    #[test] no_iso_closure_future_preserved_in_loop [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(false)]
         fn test() {
@@ -2080,7 +2080,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_iso_closure_future_preserved_in_loop_fails1 ["new-mut-ref"] => verus_code! {
+    #[test] no_iso_closure_future_preserved_in_loop_fails1 [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn leak_ref<'a>() -> &'a mut u64 { loop{} }
 
@@ -2136,7 +2136,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_iso_closure_future_preserved_in_loop_fails2 ["new-mut-ref"] => verus_code! {
+    #[test] no_iso_closure_future_preserved_in_loop_fails2 [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]

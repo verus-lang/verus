@@ -4021,7 +4021,34 @@ impl VisitMut for Visitor {
     }
 
     fn visit_block_mut(&mut self, block: &mut Block) {
+        fn visit_items_in_block(stmts: &mut Vec<Stmt>, mut f: impl FnMut(&mut Vec<Item>)) {
+            let block_stmts = std::mem::replace(stmts, vec![]);
+            for stmt in block_stmts {
+                match stmt {
+                    stmt @ Stmt::Item(Item::BroadcastUse(_)) => {
+                        stmts.push(stmt);
+                    }
+                    Stmt::Item(item) => {
+                        let mut items = vec![item];
+                        f(&mut items);
+                        stmts.extend(items.into_iter().map(Stmt::Item));
+                    }
+                    stmt => {
+                        stmts.push(stmt);
+                    }
+                }
+            }
+        }
+
         let mut stmts: Vec<Stmt> = Vec::new();
+        let has_pre_post_items = block.stmts.iter().any(|s| match s {
+            Stmt::Item(Item::BroadcastUse(_)) => false,
+            Stmt::Item(_) => true,
+            _ => false,
+        });
+        if has_pre_post_items {
+            visit_items_in_block(&mut block.stmts, |items| self.visit_items_prefilter(items));
+        }
         let block_stmts = std::mem::replace(&mut block.stmts, vec![]);
         for mut stmt in block_stmts {
             let (skip, extra_stmts) = self.visit_stmt_extend(&mut stmt);
@@ -4032,6 +4059,9 @@ impl VisitMut for Visitor {
         }
         block.stmts = stmts;
         visit_block_mut(self, block);
+        if has_pre_post_items {
+            visit_items_in_block(&mut block.stmts, |items| self.visit_items_post(items));
+        }
     }
 
     fn visit_type_param_mut(&mut self, p: &mut verus_syn::TypeParam) {
@@ -4696,7 +4726,14 @@ pub(crate) fn rewrite_items(
 ) -> proc_macro::TokenStream {
     let stream = rejoin_tokens(stream);
     let mut items: Items = parse_macro_input!(stream as Items);
-    let mut new_stream = TokenStream::new();
+    rewrite_items_inner(&mut items.items, erase_ghost, use_spec_traits)
+}
+
+pub(crate) fn rewrite_items_inner(
+    items: &mut Vec<Item>,
+    erase_ghost: EraseGhost,
+    use_spec_traits: bool,
+) -> proc_macro::TokenStream {
     let mut visitor = Visitor {
         erase_ghost,
         use_spec_traits,
@@ -4708,15 +4745,16 @@ pub(crate) fn rewrite_items(
         assign_to: false,
         rustdoc: env_rustdoc(),
     };
-    visitor.visit_items_prefilter(&mut items.items);
-    for mut item in &mut items.items {
+    visitor.visit_items_prefilter(items);
+    for mut item in &mut *items {
         visitor.visit_item_mut(&mut item);
         visitor.inside_ghost = 0;
         visitor.inside_const = false;
         visitor.inside_arith = InsideArith::None;
     }
-    visitor.visit_items_post(&mut items.items);
-    for item in items.items {
+    visitor.visit_items_post(items);
+    let mut new_stream = TokenStream::new();
+    for item in items {
         item.to_tokens(&mut new_stream);
     }
     proc_macro::TokenStream::from(new_stream)

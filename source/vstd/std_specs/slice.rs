@@ -122,11 +122,11 @@ pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T
             let (old_index, old_seq) = old(elements)@;
             match r {
                 None => {
-                    &&& elements@ == old(elements)@
+                    &&& final(elements)@ == old(elements)@
                     &&& old_index >= old_seq.len()
                 },
                 Some(element) => {
-                    let (new_index, new_seq) = elements@;
+                    let (new_index, new_seq) = final(elements)@;
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1
@@ -237,7 +237,6 @@ pub assume_specification<T> [ <[T]>::last ](slice: &[T]) -> (res: Option<&T>)
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T> [ <[T]>::first_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
     ensures
         old(slice).len() == 0 ==> res.is_none() && final(slice)@ === seq![],
@@ -246,7 +245,6 @@ pub assume_specification<T> [ <[T]>::first_mut ](slice: &mut [T]) -> (res: Optio
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T> [ <[T]>::last_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
     ensures
         old(slice).len() == 0 ==> res.is_none() && final(slice)@ === seq![],
@@ -263,7 +261,6 @@ pub assume_specification<T> [ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T> [ <[T]>::split_at_mut ](slice: &mut [T], mid: usize) -> (ret: (&mut [T], &mut [T]))
     requires
         0 <= mid <= slice.len(),

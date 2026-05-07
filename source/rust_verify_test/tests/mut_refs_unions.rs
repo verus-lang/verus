@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] test_basic ["new-mut-ref"] => verus_code! {
+    #[test] test_basic [] => verus_code! {
         union X { a: u64, b: (bool, bool) }
 
         fn test_mut_ref() {
@@ -97,7 +97,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_wrong_variant_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] test_wrong_variant_mut_ref [] => verus_code! {
         union X { a: u64, b: (bool, bool) }
 
         fn test_mut_ref() {
@@ -117,7 +117,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_wrong_variant_assign ["new-mut-ref"] => verus_code! {
+    #[test] test_wrong_variant_assign [] => verus_code! {
         union X { a: u64, b: (bool, bool) }
         fn test_assign() {
             let mut x = X { b: (true, false) };
@@ -129,7 +129,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_wrong_variant_assign_nested ["new-mut-ref"] => verus_code! {
+    #[test] test_wrong_variant_assign_nested [] => verus_code! {
         union X { a: u64, b: (bool, bool) }
         fn test_assign_nested() {
             let mut x = X { a: 0 };
@@ -140,7 +140,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ctor_update_tail ["new-mut-ref"] => verus_code! {
+    #[test] ctor_update_tail [] => verus_code! {
         use vstd::prelude::*;
 
         #[derive(Clone, Copy)]
@@ -175,7 +175,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_match ["new-mut-ref"] => verus_code! {
+    #[test] test_match [] => verus_code! {
         union X { a: u64, b: (bool, bool) }
 
         fn test_match() {
@@ -238,7 +238,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_temporary ["new-mut-ref"] => verus_code! {
+    #[test] test_temporary [] => verus_code! {
         union X { a: u64, b: (bool, bool) }
 
         fn test1() {
@@ -312,7 +312,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] array_plus_union_field ["new-mut-ref"] => verus_code! {
+    #[test] array_plus_union_field [] => verus_code! {
         use vstd::prelude::*;
 
         union X { a: u64, b: (bool, bool) }
@@ -349,7 +349,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] union_has_resolved ["new-mut-ref"] => verus_code! {
+    #[test] union_has_resolved [] => verus_code! {
         use vstd::prelude::*;
         use std::mem::ManuallyDrop;
 
@@ -374,7 +374,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] union_with_mut_ref_in_fields ["new-mut-ref"] => verus_code! {
+    #[test] union_with_mut_ref_in_fields [] => verus_code! {
         use vstd::prelude::*;
         use std::mem::ManuallyDrop;
         use std::ops::DerefMut;
@@ -492,12 +492,11 @@ test_verify_one_file_with_options! {
     } => Err(e) => assert_fails(e, 5)
 }
 
-// TODO(new_mut_ref): (blocking) fix (false negative)
 test_verify_one_file_with_options! {
-    #[ignore] #[test] eval_order_union_array_issue1 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_array_issue1 [] => verus_code! {
         union U { a: [u64; 2], b: bool }
 
-        // fails
+        // fails, field access UB
         fn test_union_array_issue() {
             unsafe {
                 let mut u = U { a: [0, 1] };
@@ -507,12 +506,11 @@ test_verify_one_file_with_options! {
                 }];
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "some error")
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
 }
 
-// TODO(new_mut_ref): (blocking) fix (shouldn't error)
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_array_issue2 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_array_issue2 [] => verus_code! {
         union U { a: [u64; 2], b: bool }
 
         // ok
@@ -525,11 +523,11 @@ test_verify_one_file_with_options! {
                 }];
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_array_issue3 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_array_issue3 [] => verus_code! {
         use vstd::prelude::*;
         union U { a: [u64; 2], b: bool }
 
@@ -547,9 +545,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
 }
 
-// TODO(new_mut_ref): (blocking) wrong error message, should error about the bounds-check instead
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_array_issue4 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_array_issue4 [] => verus_code! {
         use vstd::prelude::*;
         union U { a: [u64; 2], b: bool }
 
@@ -561,19 +558,18 @@ test_verify_one_file_with_options! {
                 let x = u.a[3];
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+    } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
 }
 
-// TODO(new_mut_ref): (blocking) fix (false negative)
 test_verify_one_file_with_options! {
-    #[ignore] #[test] eval_order_union_slice_issue1 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_slice_issue1 [] => verus_code! {
         use vstd::prelude::*;
         union V { a: &'static [u64], b: bool }
 
         #[verifier::external_body]
         fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
 
-        // fails
+        // fails, field access UB
         fn test_union_slice_issue() {
             let r: &'static [u64] = leak(Box::new([0, 1]));
 
@@ -585,12 +581,11 @@ test_verify_one_file_with_options! {
                 }];
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "some error")
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
 }
 
-// TODO(new_mut_ref): (blocking) fix (shouldn't error)
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_slice_issue2 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_slice_issue2 [] => verus_code! {
         use vstd::prelude::*;
         union V { a: &'static [u64], b: bool }
 
@@ -609,12 +604,11 @@ test_verify_one_file_with_options! {
                 }];
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+    } => Ok(())
 }
 
-// TODO(new_mut_ref): (blocking) wrong error message, should error about the union instead
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_slice_issue3 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_slice_issue3 [] => verus_code! {
         use vstd::prelude::*;
         union V { a: &'static [u64], b: bool }
 
@@ -634,11 +628,11 @@ test_verify_one_file_with_options! {
                 }];
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_slice_issue4 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_slice_issue4 [] => verus_code! {
         use vstd::prelude::*;
         union V { a: &'static [u64], b: bool }
 
@@ -658,9 +652,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
 }
 
-// TODO(new_mut_ref): (blocking) fix (false negative)
 test_verify_one_file_with_options! {
-    #[ignore] #[test] eval_order_union_pattern_array_issue1 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_array_issue1 [] => verus_code! {
         use vstd::prelude::*;
         union W { a: [(u64, u64); 2], b: bool }
 
@@ -674,12 +667,11 @@ test_verify_one_file_with_options! {
                 }];
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "some error")
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
 }
 
-// TODO(new_mut_ref): (blocking) fix (shouldn't error)
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_array_issue2 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_array_issue2 [] => verus_code! {
         use vstd::prelude::*;
         union W { a: [(u64, u64); 2], b: bool }
 
@@ -693,11 +685,11 @@ test_verify_one_file_with_options! {
                 }];
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_array_issue3 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_array_issue3 [] => verus_code! {
         use vstd::prelude::*;
         union W { a: [(u64, u64); 2], b: bool }
 
@@ -715,9 +707,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
 }
 
-// TODO(new_mut_ref): (blocking) wrong error message, should error about the bounds-check instead
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_array_issue4 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_array_issue4 [] => verus_code! {
         use vstd::prelude::*;
         union W { a: [(u64, u64); 2], b: bool }
 
@@ -729,12 +720,11 @@ test_verify_one_file_with_options! {
                 let (x, y) = u.a[3];
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+    } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
 }
 
-// TODO(new_mut_ref): (blocking) fix (false negative)
 test_verify_one_file_with_options! {
-    #[ignore] #[test] eval_order_union_pattern_slice_issue1 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_slice_issue1 [] => verus_code! {
         use vstd::prelude::*;
         union Y { a: &'static [(u64, u64)], b: bool }
 
@@ -753,12 +743,11 @@ test_verify_one_file_with_options! {
                 }];
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "some error")
+    } => Err(err) => assert_vir_error_msg(err, "requirement not met: to access this field, the union must be in the correct variant")
 }
 
-// TODO(new_mut_ref): (blocking) fix (shouldn't error)
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_slice_issue2 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_slice_issue2 [] => verus_code! {
         use vstd::prelude::*;
         union Y { a: &'static [(u64, u64)], b: bool }
 
@@ -777,12 +766,11 @@ test_verify_one_file_with_options! {
                 }];
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
+    } => Ok(())
 }
 
-// TODO(new_mut_ref): (blocking) wrong error message, should error about the union instead
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_slice_issue3 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_slice_issue3 [] => verus_code! {
         use vstd::prelude::*;
         union Y { a: &'static [(u64, u64)], b: bool }
 
@@ -802,11 +790,11 @@ test_verify_one_file_with_options! {
                 }];
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "precondition not met: index in bounds for this access")
+    } => Err(err) => assert_vir_error_msg(err, "to access this field, the union must be in the correct variant")
 }
 
 test_verify_one_file_with_options! {
-    #[test] eval_order_union_pattern_slice_issue4 ["new-mut-ref"] => verus_code! {
+    #[test] eval_order_union_pattern_slice_issue4 [] => verus_code! {
         use vstd::prelude::*;
         union Y { a: &'static [(u64, u64)], b: bool }
 
@@ -827,7 +815,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_borrows_to_union_fields ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_borrows_to_union_fields [] => verus_code! {
         union X {
             a: u64,
             b: u64,
@@ -896,7 +884,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_borrows_to_union_fields2 ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_borrows_to_union_fields2 [] => verus_code! {
         use vstd::prelude::*;
 
         #[derive(Clone, Copy)]
@@ -954,4 +942,48 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] evil_match_mutate_scrutinee_in_guard_pattern [] => verus_code! {
+        union Q {
+            a: (u64, u64),
+            b: bool,
+        }
+
+        fn match_test() {
+            unsafe {
+                let mut q = Q { a: (0, 1) };
+                match q.a {
+                    _ if ({
+                        q = Q { b: false };
+                        false
+                    }) => { }
+                    (x, y) => { }
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning to scrutinee during match guard")
+}
+
+test_verify_one_file_with_options! {
+    #[test] evil_match_mutate_scrutinee_in_guard_pattern2 [] => verus_code! {
+        union Q {
+            a: (u64, u64),
+            b: bool,
+        }
+
+        fn match_test() {
+            unsafe {
+                let mut q = Q { a: (0, 1) };
+                match q.a {
+                    (_, _) if ({
+                        q = Q { b: false };
+                        false
+                    }) => { }
+                    (x, y) => { }
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning to scrutinee during match guard")
 }
