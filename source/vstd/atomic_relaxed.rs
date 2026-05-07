@@ -8,11 +8,10 @@ use core::sync::atomic::{
 #[cfg(target_has_atomic = "64")]
 use core::sync::atomic::{AtomicI64, AtomicU64};
 
-//use super::verus_builtin::*;
 use super::pervasive::*;
 use super::prelude::*;
 use super::cell::CellId;
-use super::pcm::*;
+use super::resource::pcm::{PCM, Resource};
 
 verus! {
 
@@ -721,7 +720,7 @@ impl<T> AtomicPointsTo<T> {
     // AT-EXCL
     pub axiom fn excl(tracked &mut self, tracked other: &Self)
         ensures
-            self.loc() != other.loc(),
+            final(self).loc() != other.loc(),
     ;
 }
 
@@ -930,8 +929,8 @@ impl PWeakAtomicU8 {
             order matches Ordering::Acquire || order matches Ordering::Relaxed
         ensures
             match order {
-                Ordering::Acquire => load_acquire(*pt, old(v_sn)@, v_sn@, out.0, out.2@.timestamp, out.2@.message_view),
-                Ordering::Relaxed => load_relaxed(*pt, old(v_sn)@, v_sn@, out.1@@, out.0, out.2@.timestamp, out.2@.message_view)
+                Ordering::Acquire => load_acquire(*pt, old(v_sn)@, final(v_sn)@, out.0, out.2@.timestamp, out.2@.message_view),
+                Ordering::Relaxed => load_relaxed(*pt, old(v_sn)@, final(v_sn)@, out.1@@, out.0, out.2@.timestamp, out.2@.message_view)
             }
         opens_invariants none
         no_unwind
@@ -955,8 +954,8 @@ impl PWeakAtomicU8 {
             order matches Ordering::Release || order matches Ordering::Relaxed
         ensures
             match order {
-                Ordering::Release => store_release(*old(pt), *pt, old(v_sn)@, v_sn@, v, out@.timestamp, out@.message_view),
-                Ordering::Relaxed => store_relaxed(*old(pt), *pt, old(v_sn)@, v_sn@, rel_v_sn@, v, out@.timestamp, out@.message_view)
+                Ordering::Release => store_release(*old(pt), *final(pt), old(v_sn)@, final(v_sn)@, v, out@.timestamp, out@.message_view),
+                Ordering::Relaxed => store_relaxed(*old(pt), *final(pt), old(v_sn)@, final(v_sn)@, rel_v_sn@, v, out@.timestamp, out@.message_view)
             }
         opens_invariants none
         no_unwind
@@ -982,10 +981,10 @@ impl PWeakAtomicU8 {
             order matches Ordering::Release || order matches Ordering::Relaxed
         ensures
             match order {
-                Ordering::Release => store_mut_release(*old(pt), *pt, old(v_sn)@, v_sn@, v, out@.timestamp, out@.message_view),
-                Ordering::Relaxed => store_mut_relaxed(*old(pt), *pt, old(v_sn)@, v_sn@, rel_v_sn@, v, out@.timestamp, out@.message_view)
+                Ordering::Release => store_mut_release(*old(pt), *final(pt), old(v_sn)@, final(v_sn)@, v, out@.timestamp, out@.message_view),
+                Ordering::Relaxed => store_mut_relaxed(*old(pt), *final(pt), old(v_sn)@, final(v_sn)@, rel_v_sn@, v, out@.timestamp, out@.message_view)
             },
-            self.loc() == old(self).loc()
+            final(self).loc() == old(self).loc()
         opens_invariants none
         no_unwind
     {
@@ -1001,10 +1000,10 @@ impl PWeakAtomicU8 {
         requires
             old(self).loc() == old(pt).loc()
         ensures
-            *self == *old(self),
-            pt.loc() == old(pt).loc(),
+            *final(self) == *old(self),
+            final(pt).loc() == old(pt).loc(),
             old(pt).hist().is_max_timestamp(ts@),
-            pt.hist().is_singleton(ts@, old(pt).hist().get(ts@).unwrap())
+            final(pt).hist().is_singleton(ts@, old(pt).hist().get(ts@).unwrap())
         opens_invariants none
         no_unwind
     {
@@ -1036,28 +1035,28 @@ impl PWeakAtomicU8 {
                     &&& match success {
                         Ordering::AcqRel => {
                             &&& load_acquire(*old(pt), old(v_sn)@, out.2@.intermediate_thread_view, current, out.2@.load_timestamp, out.2@.load_message_view)
-                            &&& store_release(*old(pt), *pt, out.2@.intermediate_thread_view, v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
+                            &&& store_release(*old(pt), *final(pt), out.2@.intermediate_thread_view, final(v_sn)@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
                         },
                         Ordering::Acquire => {
                             &&& load_acquire(*old(pt), old(v_sn)@, out.2@.intermediate_thread_view, current, out.2@.load_timestamp, out.2@.load_message_view)
-                            &&& store_relaxed(*old(pt), *pt, out.2@.intermediate_thread_view, v_sn@, rel_v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
+                            &&& store_relaxed(*old(pt), *final(pt), out.2@.intermediate_thread_view, final(v_sn)@, rel_v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
                         },
                         Ordering::Release => {
                             &&& load_relaxed(*old(pt), old(v_sn)@, out.2@.intermediate_thread_view, out.1@@, v, out.2@.load_timestamp, out.2@.load_message_view)
-                            &&& store_release(*old(pt), *pt, out.2@.intermediate_thread_view, v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
+                            &&& store_release(*old(pt), *final(pt), out.2@.intermediate_thread_view, final(v_sn)@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
                         },
                         Ordering::Relaxed => {
                             &&& load_relaxed(*old(pt), old(v_sn)@, out.2@.intermediate_thread_view, out.1@@, v, out.2@.load_timestamp, out.2@.load_message_view)
-                            &&& store_relaxed(*old(pt), *pt, out.2@.intermediate_thread_view, v_sn@, rel_v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
+                            &&& store_relaxed(*old(pt), *final(pt), out.2@.intermediate_thread_view, final(v_sn)@, rel_v_sn@, new, out.2@.load_timestamp + 1, out.2@.store_message_view)
                         }
                     }
                 },
                 Err(v) => {
                     &&& current != v
-                    &&& *pt == *old(pt)
+                    &&& *final(pt) == *old(pt)
                     &&& match failure {
-                        Ordering::Acquire => load_acquire(*old(pt), old(v_sn)@, v_sn@, v, out.2@.load_timestamp, out.2@.load_message_view),
-                        Ordering::Relaxed => load_relaxed(*old(pt), old(v_sn)@, v_sn@, out.1@@, v, out.2@.load_timestamp, out.2@.load_message_view)
+                        Ordering::Acquire => load_acquire(*old(pt), old(v_sn)@, final(v_sn)@, v, out.2@.load_timestamp, out.2@.load_message_view),
+                        Ordering::Relaxed => load_relaxed(*old(pt), old(v_sn)@, final(v_sn)@, out.1@@, v, out.2@.load_timestamp, out.2@.load_message_view)
                     }
                 }
             }
@@ -1158,51 +1157,5 @@ impl<K, G, Pred> WeakAtomicU8<K, G, Pred>
         (v, Ghost(hist), Tracked(g))
     }
 }*/
-
-/// Excl PCM
-pub enum ExclCarrier {
-    Excl,
-    Empty,
-    Invalid,
-}
-
-impl PCM for ExclCarrier {
-    closed spec fn valid(self) -> bool {
-        match self {
-            ExclCarrier::Invalid => false,
-            ExclCarrier::Empty | ExclCarrier::Excl => true,
-        }
-    }
-
-    closed spec fn op(self, other: Self) -> Self {
-        match self {
-            ExclCarrier::Invalid => ExclCarrier::Invalid,
-            ExclCarrier::Empty => other,
-            ExclCarrier::Excl => match other {
-                ExclCarrier::Invalid | ExclCarrier::Excl => ExclCarrier::Invalid,
-                ExclCarrier::Empty => self,
-            },
-        }
-    }
-
-    closed spec fn unit() -> Self {
-        ExclCarrier::Empty
-    }
-
-    proof fn closed_under_incl(a: Self, b: Self) {
-    }
-
-    proof fn commutative(a: Self, b: Self) {
-    }
-
-    proof fn associative(a: Self, b: Self, c: Self) {
-    }
-
-    proof fn op_unit(a: Self) {
-    }
-
-    proof fn unit_valid() {
-    }
-}
 
 } // verus!
