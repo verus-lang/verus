@@ -111,6 +111,8 @@ enum OuterProphReason {
     Break,
     Continue,
     OpenInvariant,
+    OpenAtomicUpdate,
+    Update,
     NonSpecClosure,
     LetElse,
 }
@@ -192,9 +194,11 @@ impl Proph {
             OuterProphReason::Break => "break",
             OuterProphReason::Continue => "continue",
             OuterProphReason::OpenInvariant => "opening an invariant",
+            OuterProphReason::OpenAtomicUpdate => "opening an atomic update",
+            OuterProphReason::Update => "update function call",
             OuterProphReason::NonSpecClosure => "closure",
             OuterProphReason::LetElse => "let-else statement",
-        };
+                    };
         let mut err = error_with_label(
             span,
             format!("{:} cannot occur in prophecy-conditional context", reason_str),
@@ -272,6 +276,9 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::BorrowMut(..)
             | ExprX::BorrowMutTracked(..)
             | ExprX::TwoPhaseBorrowMut(..)
+            | ExprX::AtomicUpdateInitDummy
+            | ExprX::Atomically(..)
+            | ExprX::InvMask(..)
             | ExprX::Old(..)
             | ExprX::Await(..)
         => None,
@@ -281,13 +288,8 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
         ExprX::Return(..) => Some(OuterProphReason::Return),
         ExprX::BreakOrContinue { is_break: true, .. } => Some(OuterProphReason::Break),
         ExprX::BreakOrContinue { is_break: false, .. } => Some(OuterProphReason::Continue),
-
-        // todo
-        ExprX::TryOpenAtomicUpdate(..) |
-        ExprX::AtomicUpdateInitDummy |
-        ExprX::Atomically(..) |
-        ExprX::Update(..) |
-        ExprX::InvMask(..) => None,
+        ExprX::TryOpenAtomicUpdate(..) => Some(OuterProphReason::OpenAtomicUpdate),
+        ExprX::Update(..) => Some(OuterProphReason::Update),
     }
 }
 
