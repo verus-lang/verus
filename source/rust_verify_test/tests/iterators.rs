@@ -44,11 +44,11 @@ test_verify_one_file! {
                     !old(self).has_resolved(i),
                     old(self).pred().pred(i, t),
                 ensures
-                    self.pred() == old(self).pred(),
-                    forall |j| self.proph_elem(j) == old(self).proph_elem(j),
-                    forall |j| i != j ==> self.has_resolved(j) == old(self).has_resolved(j),
-                    self.has_resolved(i),
-                    self.proph_elem(i) == Some(t);
+                    final(self).pred() == old(self).pred(),
+                    forall |j| final(self).proph_elem(j) == old(self).proph_elem(j),
+                    forall |j| i != j ==> final(self).has_resolved(j) == old(self).has_resolved(j),
+                    final(self).has_resolved(i),
+                    final(self).proph_elem(i) == Some(t);
         }
 
 

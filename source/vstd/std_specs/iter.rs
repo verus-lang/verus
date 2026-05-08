@@ -98,27 +98,35 @@ pub trait ExIterator {
 pub trait ExDoubleEndedIterator : Iterator {
     type ExternalTraitSpecificationFor: DoubleEndedIterator;
 
-    // TODO: Remove the `(&*self)` notation once the new support for `&mut` lands
-    //       At present, without it, we get "The verifier does not yet support the following Rust feature: &mut types, except in special cases"
+    // In the specs below, we write out the type parameters explicitly, rather than using the more concise form,
+    // e.g., `final(self).obeys_prophetic_iter_laws()`.  If we use the latter, then Rust elaborates it to
+    // `(&final(self)).obeys_prophetic_iter_laws()`, which means the type of the argument is `& &mut Self`,
+    // which means the type argument inferred for `obeys_prophetic_iter_laws` is `&mut Self`.
+    // This happens because of the existing Rust [trait impl](https://doc.rust-lang.org/std/iter/trait.Iterator.html#impl-Iterator-for-%26mut+I):
+    // ```
+    // impl<I> Iterator for &mut I
+    // where
+    //     I: Iterator + ?Sized,[4:21 AM]
+    // ```
     fn next_back(&mut self) -> (ret: Option<<Self as core::iter::Iterator>::Item>)
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            (*final(self)).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            (*final(self)).obeys_prophetic_iter_laws() ==> (*final(self)).will_return_none() == old(self).will_return_none(),
-            (*final(self)).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> (*final(self)).decrease() is Some),
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) == <Self as IteratorSpec>::obeys_prophetic_iter_laws(old(self)),
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==> <Self as IteratorSpec>::will_return_none(final(self)) == <Self as IteratorSpec>::will_return_none(old(self)),
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==> (<Self as IteratorSpec>::decrease(old(self)) is Some <==> <Self as IteratorSpec>::decrease(final(self)) is Some),
             // `next` pops the tail of the prophesized remaining(), or returns None
-            (*final(self)).obeys_prophetic_iter_laws() ==>
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==>
             ({
-                if old(self).remaining().len() > 0 {
-                    (*final(self)).remaining() == old(self).remaining().drop_last()
-                        && ret == Some(old(self).remaining().last())
+                if <Self as IteratorSpec>::remaining(old(self)).len() > 0 {
+                    <Self as IteratorSpec>::remaining(final(self)) == <Self as IteratorSpec>::remaining(old(self)).drop_last()
+                        && ret == Some(<Self as IteratorSpec>::remaining(old(self)).last())
                 } else {
-                    (*final(self)).remaining() === old(self).remaining() && ret === None && (*final(self)).will_return_none()
+                    <Self as IteratorSpec>::remaining(final(self)) === <Self as IteratorSpec>::remaining(old(self)) && ret === None && <Self as IteratorSpec>::will_return_none(final(self))
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
-            (*final(self)).obeys_prophetic_iter_laws() && old(self).remaining().len() > 0 && (*final(self)).decrease() is Some ==>
-                old(self).decrease()->0 > (*final(self)).decrease()->0,
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) && <Self as IteratorSpec>::remaining(old(self)).len() > 0 && <Self as IteratorSpec>::decrease(final(self)) is Some ==>
+                <Self as IteratorSpec>::decrease(old(self))->0 > <Self as IteratorSpec>::decrease(final(self))->0,
     ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
