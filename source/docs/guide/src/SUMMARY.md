@@ -40,12 +40,16 @@
     - [Executable libraries: Vec](exec_lib.md)
 - [Spec closures](spec_closures.md)
 
-# Tutorial: Understanding the prover
+# Tutorial: Best Practices
 
 - [Developing proofs](develop_proofs.md)
     - [Using assert and assume](assert_assume.md)
     - [Devising loop invariants](invariants.md)
     - [Proving absence of overflow](overflow.md)
+- [Using LLM assistants](llms.md)
+    - [Using LLMs to develop proofs](llmforverusproof.md)
+    - [Using LLMs to develop specifications]
+    - [Datasets and Benchmarks]
 - [Quantifiers](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
