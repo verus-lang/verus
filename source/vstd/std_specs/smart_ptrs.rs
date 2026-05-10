@@ -19,6 +19,11 @@ pub assume_specification<T>[ Box::<T>::new ](t: T) -> (v: Box<T>)
         v == t,
 ;
 
+pub assume_specification<'a, T>[ Box::<T>::leak ](box: Box<T, A>) -> (result &'a mut T)
+    ensures
+        *result == *box,
+;
+
 pub assume_specification<T: core::default::Default>[ <Box<
     T,
 > as core::default::Default>::default ]() -> (res: Box<T>)
@@ -73,6 +78,22 @@ pub assume_specification<T, A: Allocator>[ Rc::<T, A>::into_inner ](v: Rc<T, A>)
 >)
     ensures
         result matches Some(t) ==> t == v,
+;
+
+pub assume_specification<T: ?Sized, A: Allocator>[ Rc::<T, A>::get_mut ](this: &mut Rc<T, A>) -> (result: Option<&mut T>)
+    ensures
+        (match result {
+            None => &*final(this) == &*old(this),
+            Some(r) => &*r == &*old(this) && &*final(r) == &*final(this),
+        }),
+;
+
+pub assume_specification<T: ?Sized, A: Allocator>[ Arc::<T, A>::get_mut ](this: &mut Arc<T, A>) -> (result: Option<&mut T>)
+    ensures
+        (match result {
+            None => &*final(this) == &*old(this),
+            Some(r) => &*r == &*old(this) && &*final(r) == &*final(this),
+        }),
 ;
 
 } // verus!

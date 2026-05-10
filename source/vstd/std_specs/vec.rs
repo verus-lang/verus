@@ -140,6 +140,11 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve ](
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::push ](vec: &mut Vec<T, A>, value: T)
     ensures
         final(vec)@ == old(vec)@.push(value),
+
+pub assume_specification<'a, T, A: Allocator>[ Vec::<T, A>::push_mut ](vec: &'a mut Vec<T, A>, value: T) -> (result: &'a mut T)
+    ensures
+        *result == value,
+        final(vec)@ == old(vec)@.push(*final(result)),
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::pop ](vec: &mut Vec<T, A>) -> (value:
@@ -208,6 +213,18 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::insert ](
         i <= old(vec).len(),
     ensures
         final(vec)@ == old(vec)@.insert(i as int, element),
+;
+
+pub assume_specification<'a T, A: Allocator>[ Vec::<T, A>::insert_mut ](
+    vec: &'a mut Vec<T, A>,
+    i: usize,
+    element: T,
+) -> (result: &'a mut T)
+    requires
+        i <= old(vec).len(),
+    ensures
+        *result == element,
+        final(vec)@ == old(vec)@.insert(i as int, *final(result)),
 ;
 
 pub assume_specification<T, A: Allocator> [ <Vec<T, A>>::is_empty ](
