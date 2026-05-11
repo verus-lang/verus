@@ -1322,17 +1322,21 @@ impl<'a, K, V, A: Allocator> EntrySpecFns<K, V, A> for Entry<'a, K, V, A> {
     }
 }
 
-pub broadcast axiom fn axiom_has_resolved_occupied_entry<K, V>(entry: OccupiedEntry<K, V>)
+pub broadcast axiom fn axiom_has_resolved_occupied_entry<K, V, A: Allocator>(
+    entry: OccupiedEntry<K, V, A>,
+)
     ensures
         #[trigger] has_resolved(entry) ==> entry.final_value() == Some(entry.value()),
 ;
 
-pub broadcast axiom fn axiom_has_resolved_vacant_entry<K, V>(entry: VacantEntry<K, V>)
+pub broadcast axiom fn axiom_has_resolved_vacant_entry<K, V, A: Allocator>(
+    entry: VacantEntry<K, V, A>,
+)
     ensures
         #[trigger] has_resolved(entry) ==> entry.final_value() == None::<V>,
 ;
 
-pub broadcast proof fn axiom_has_resolved_entry<K, V>(entry: Entry<K, V>)
+pub broadcast proof fn axiom_has_resolved_entry<K, V, A: Allocator>(entry: Entry<K, V, A>)
     ensures
         #[trigger] has_resolved(entry) ==> entry.final_value() == entry.value(),
 {
