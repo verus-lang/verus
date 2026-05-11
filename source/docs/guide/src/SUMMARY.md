@@ -98,6 +98,7 @@
   - [Encapsulating well-formedness with type invariants](./container_bst_type_invariant.md)
   - [Making it generic](./container_bst_generic.md)
   - [Implementing `Clone`](./container_bst_clone.md)
+  - [Mutable references in a container](./container_bst_mut_refs.md)
   - [Full source for the examples](./container_bst_all_source.md)
 
 - [Interacting with unverified code](./interacting-with-unverified-code.md)
