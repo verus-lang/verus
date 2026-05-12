@@ -1,4 +1,4 @@
-//! Lifetime checking for proof_with / declare_with_tracked / declare_with_ghost.
+//! Lifetime checking for proof_with / declare_with.
 //!
 //! These functions erase tracked/ghost parameters from fn signatures before the borrow
 //! checker runs, so Rust's NLL cannot enforce lifetime constraints on those parameters.
@@ -15,7 +15,7 @@ use vir::ast::VirErr;
 
 /// Check that a proof_with argument's lifetime is compatible with the callee's expected lifetime.
 ///
-/// The expected type (from `lower_ty` on the callee's `declare_with_tracked` HIR type) has
+/// The expected type (from `lower_ty` on the callee's `declare_with` HIR type) has
 /// `ReLateParam(callee, 'a)` regions. We need to:
 /// 1. Map callee's late-bound `'a` to the caller's corresponding lifetime via the call args
 /// 2. Get the proof_with arg's lifetime from its declaration

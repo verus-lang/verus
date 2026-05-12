@@ -14,9 +14,7 @@ test_verify_one_file! {
         }
 
         fn call_test() {
-            proof_with(Tracked(1u64));
-            proof_with(Ghost(2u32));
-            test(0);
+            proof_with((Tracked(1u64), Ghost(2u32)), test(0));
         }
 
         #[verifier(external)]
@@ -42,9 +40,7 @@ test_verify_one_file! {
         }
         fn call_test() {
             let a = A { a: 0 };
-            proof_with(Tracked(1u64));
-            proof_with(Ghost(2u32));
-            a.test();
+            proof_with((Tracked(1u64), Ghost(2u32)), a.test());
         }
 
         #[verifier(external)]
@@ -80,9 +76,7 @@ test_verify_one_file! {
         }
         fn call_test() {
             let a = A { a: 0 };
-            proof_with(Tracked(1u64));
-            proof_with(Ghost(2u32));
-            a.test();
+            proof_with((Tracked(1u64), Ghost(2u32)), a.test());
         }
 
         #[verifier(external)]
@@ -111,8 +105,7 @@ test_verify_one_file! {
         }
 
         fn call_test() {
-            proof_with(Tracked(1u8));
-            negate_bool(true, 1);
+            proof_with(Tracked(1u8), negate_bool(true, 1));
         }
 
         #[verifier(external)]
@@ -156,9 +149,7 @@ test_verify_one_file! {
         }
 
         fn call_test() {
-            proof_with(Tracked(0u64));
-            proof_with(Ghost(2u32));
-            test(0); // FAILS
+            proof_with((Tracked(0u64), Ghost(2u32)), test(0)); // FAILS
         }
      } => Err(e) => assert_one_fails(e)
 }
@@ -173,10 +164,9 @@ test_verify_one_file! {
         }
 
         fn call_test() {
-            proof_with(0u64);
-            test(0);
+            proof_with(0u64, test(0));
         }
-     } => Err(e) => assert_vir_error_msg(e, "proof_with expects an argument of type Tracked<T> or Ghost<T>")
+     } => Err(e) => assert_vir_error_msg(e, "proof_with expects arguments of type Tracked<T> or Ghost<T>")
 }
 
 test_verify_one_file! {
@@ -189,8 +179,7 @@ test_verify_one_file! {
         }
 
         fn call_test() {
-            proof_with(Ghost(0u64));
-            test(0);
+            proof_with(Ghost(0u64), test(0));
         }
      } => Err(e) => assert_vir_error_msg(e, "proof_with argument 1 has wrong mode: expected Tracked, got Ghost")
 }
@@ -198,27 +187,18 @@ test_verify_one_file! {
 // ---- Lifetime soundness tests ----
 // These tests verify that lifetime constraints on tracked/ghost params are properly checked.
 
-// BUG: This should fail with a lifetime error but currently passes.
-// The tracked param Tracked<&'b u64> is passed where Tracked<&'a u64> is expected,
-// but 'b may not outlive 'a. This is unsound.
-// Once the fix is in place, change this to:
-//   } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
 test_verify_one_file! {
     #[test] test_proof_with_lifetime_mismatch verus_code!{
         use vstd::prelude::*;
-        // test expects a Tracked<&'a u64> where 'a is tied to param `a`
         fn test<'a>(a: &'a u64, b: u64) -> u64
         {
             let c: Tracked<&'a u64> = declare_with();
             1
         }
 
-        // test2 has independent lifetimes 'a and 'b
-        // Passing Tracked<&'b u64> where Tracked<&'a u64> is expected should fail
         fn test2<'a, 'b>(a: &'a u64, b: u64, c: Tracked<&'b u64>) -> u64
         {
-            proof_with(c);
-            test(a, b)
+            proof_with(c, test(a, b))
         }
     } => Err(err) => assert_vir_error_msg(err, "proof_with argument 1 has incompatible lifetime")
 }
@@ -226,7 +206,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_proof_with_lifetime_compatible verus_code!{
         use vstd::prelude::*;
-        // Same as above, but 'b: 'a so the lifetime is compatible
         fn test<'a>(a: &'a u64, b: u64) -> u64
         {
             let c: Tracked<&'a u64> = declare_with();
@@ -235,8 +214,7 @@ test_verify_one_file! {
 
         fn test2<'a, 'b: 'a>(a: &'a u64, b: u64, c: Tracked<&'b u64>) -> u64
         {
-            proof_with(c);
-            test(a, b)
+            proof_with(c, test(a, b))
         }
     } => Ok(())
 }
@@ -253,8 +231,7 @@ test_verify_one_file! {
 
         fn test2<'a, 'b>(a: &'a u64, c: Ghost<&'b u64>) -> u64
         {
-            proof_with(c);
-            test(a)
+            proof_with(c, test(a))
         }
     } => Err(err) => assert_vir_error_msg(err, "proof_with argument 1 has incompatible lifetime")
 }
@@ -270,9 +247,7 @@ test_verify_one_file! {
         }
 
         fn call_test() {
-            proof_with(Tracked(0u64));
-            proof_with(Ghost(2u32));
-            test(0u64);
+            proof_with((Tracked(0u64), Ghost(2u32)), test(0u64));
         }
 
         #[verifier(external)]
@@ -293,9 +268,7 @@ test_verify_one_file! {
         }
 
         fn call_test() {
-            proof_with(Tracked(0u8));
-            proof_with(Ghost(2u32));
-            test(0u64);
+            proof_with((Tracked(0u8), Ghost(2u32)), test(0u64));
         }
 
         #[verifier(external)]
@@ -303,4 +276,22 @@ test_verify_one_file! {
             test(0u64);
         }
      } => Err(e) => assert_vir_error_msg(e, "proof_with argument 1 has wrong type")
+}
+
+test_verify_one_file! {
+     #[test] test_proof_with_ownership verus_code!{
+        use vstd::prelude::*;
+
+        struct A;
+
+        fn test<'a>(a: &'a mut A)
+        {
+            let b: Tracked<&'a mut A> = declare_with();
+            let c: Ghost<u32> = declare_with();
+        }
+
+        fn call_test(mut a: A, mut b: A) {
+            proof_with((Tracked(&mut a), Ghost(2u32)), test(&mut a));
+        }
+     } => Err(e) => assert_rust_error_msg_skip_spec_msgs(e, "cannot borrow `a` as mutable more than once at a time")
 }

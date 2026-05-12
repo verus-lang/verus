@@ -25,11 +25,14 @@ pub fn admit() {
 
 /// Pass tracked or ghost values to the immediately following external function call.
 /// Used with `external_fn_specification` functions that have extra tracked/ghost parameters.
-/// The argument must be of type `Tracked<T>` or `Ghost<T>`.
+/// Pass ghost/tracked arguments to a function call with proper borrow checking.
+/// `_a` is a tuple of `Tracked<T>` or `Ghost<T>` values.
+/// `_b` is the function call expression whose result is returned.
+/// Usage: `proof_with((Tracked(&mut x), Ghost(y)), f(a))`
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::proof_with"]
 #[verifier::proof]
-pub fn proof_with<A>(_a: A) {
+pub fn proof_with<A, B>(_a: A, _b: B) -> B {
     unimplemented!();
 }
 

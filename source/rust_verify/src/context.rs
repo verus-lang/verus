@@ -107,11 +107,10 @@ pub(crate) struct BodyCtxt<'tcx> {
     /// Assume specification defines a new opaque type for each opaque type in the external function.
     /// We use this map to resolve them later.
     pub(crate) external_opaque_type_map: Option<HashMap<Path, Path>>,
-    /// Pending tracked/ghost args from proof_with() calls, to be appended to the next function call.
-    pub(crate) pending_tracked_args: Rc<RefCell<Vec<PendingTrackedArg>>>,
-    /// Depth counter: >0 means we're inside argument processing, so don't consume pending_tracked_args.
-    pub(crate) in_args_depth: Rc<RefCell<u32>>,
-    /// HirIds of declare_with_tracked()/declare_with_ghost() let-stmts to skip during body conversion
+    /// Pending tracked/ghost args from proof_with() calls, to be consumed by the next function call.
+    /// Set to Some(...) by ProofWith handler, taken (consumed) by fn_call_to_vir.
+    pub(crate) pending_tracked_args: Rc<RefCell<Option<Vec<PendingTrackedArg>>>>,
+    /// HirIds of declare_with() let-stmts to skip during body conversion
     pub(crate) declare_with_hir_ids: Rc<HashSet<HirId>>,
 }
 
