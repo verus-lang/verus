@@ -680,7 +680,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                         }
                     }
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                    let vir_args = vec_map_result(&subargs, |arg| expr_to_vir_consume(&bctx, arg))?;
+                    let vir_args = vec_map_result(&subargs, |arg| {
+                        let mut vir_expr = expr_to_vir_consume(&bctx, arg)?;
+                        // Wrap expressions with #[verus::internal(auto_decreases)] attribute
+                        let arg_attrs = bctx.ctxt.tcx.hir_attrs(arg.hir_id);
+                        if crate::attributes::has_auto_decreases_attr(arg_attrs) {
+                            vir_expr = vir_expr.new_x(vir::ast::ExprX::UnaryOpr(
+                                vir::ast::UnaryOpr::AutoDecreases,
+                                vir_expr.clone(),
+                            ));
+                        }
+                        Ok::<vir::ast::Expr, VirErr>(vir_expr)
+                    })?;
                     let header = match spec_item {
                         SpecItem::InvariantExceptBreak => {
                             Arc::new(HeaderExprX::InvariantExceptBreak(Arc::new(vir_args)))
@@ -2312,7 +2323,16 @@ fn get_ensures_arg<'tcx>(
                 }
             }
         }
-        Ok((default_ensures, expr_to_vir_consume(bctx, expr)?))
+        let mut vir_expr = expr_to_vir_consume(bctx, expr)?;
+        // Wrap expressions with #[verus::internal(auto_loop_ensures)] attribute
+        let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
+        if crate::attributes::has_auto_loop_ensures_attr(expr_attrs) {
+            vir_expr = vir_expr.new_x(vir::ast::ExprX::UnaryOpr(
+                vir::ast::UnaryOpr::AutoLoopEnsures,
+                vir_expr.clone(),
+            ));
+        }
+        Ok((default_ensures, vir_expr))
     } else {
         err_span(expr.span, "ensures needs a bool expression")
     }

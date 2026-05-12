@@ -568,6 +568,12 @@ impl ExpX {
                     Field(field) => {
                         (format!("{}.{}", exp.x.to_user_string(global), field.field), 99)
                     }
+                    CustomErr(_msg) => {
+                        (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
+                    }
+                    AutoDecreases | AutoLoopEnsures => {
+                        return exp.x.to_string_prec(global, precedence);
+                    }
                     ProofNote(_label) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }

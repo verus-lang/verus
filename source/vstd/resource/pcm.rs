@@ -142,13 +142,29 @@ impl<P: PCM> Resource<P> {
 
     /// This is a more general version of [`update`](Self::update).
     // GHOST-UPDATE rule
-    pub axiom fn update_nondeterministic(tracked self, new_values: Set<P>) -> (tracked out: Self)
+    pub proof fn update_nondeterministic(tracked self, new_values: Set<P>) -> (tracked out: Self)
         requires
             frame_preserving_update_nondeterministic(self.value(), new_values),
         ensures
             out.loc() == self.loc(),
             new_values.contains(out.value()),
-    ;
+    {
+        let tracked u = Self::create_unit(self.loc());
+        PCM::op_unit(self.value());
+        assert(set_op(new_values, u.value()) =~= new_values) by {
+            assert forall|x|
+                set_op(new_values, u.value()).contains(x) <==> #[trigger] new_values.contains(
+                    x,
+                ) by {
+                PCM::op_unit(x);
+                if set_op(new_values, u.value()).contains(x) {
+                    let q = choose|q| #[trigger] new_values.contains(q) && x == P::op(q, u.value());
+                    PCM::op_unit(q);
+                }
+            }
+        };
+        self.update_nondeterministic_with_shared(&u, new_values)
+    }
 
     // VERIFIED
     /// Update a resource to a new value. This can only be done if the update is frame preserving

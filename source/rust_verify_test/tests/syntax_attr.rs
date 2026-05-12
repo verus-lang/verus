@@ -82,7 +82,7 @@ test_verify_one_file_with_options! {
             let mut v: Vec<u32> = Vec::new();
             #[verus_spec(iter =>
                 invariant
-                    v@ =~= Seq::new(iter.cur as nat, |k| 0u32),
+                    v@ =~= Seq::new(iter.index() as nat, |k| 0u32),
             )]
             for _ in 0..n
             {

@@ -1118,16 +1118,55 @@ test_verify_one_file_with_options! {
     } => Err(e) => assert_one_fails(e)
 }
 
+test_verify_one_file! {
+    #[test] for_loop_history verus_code! {
+        use vstd::prelude::*;
+        fn test_basic() {
+            let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
+            let mut w: Vec<u8> = Vec::new();
+
+            for x in y: v
+                invariant
+                    w@ == y.history(),
+            {
+                w.push(x);
+            }
+            assert(w.len() == v.len());
+            assert(w@ == v@);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] for_loop_slice verus_code! {
+        use vstd::prelude::*;
+        fn all_positive(v: &Vec<u8>) -> (b: bool)
+            ensures
+                b <==> (forall|i: int| 0 <= i < v.len() ==> v[i] > 0),
+        {
+            let mut b: bool = true;
+
+            for x in iter: v
+                invariant
+                    b <==> (forall|i: int| 0 <= i < iter.index() ==> v[i] > 0),
+            {
+                b = b && *x > 0;
+            }
+            b
+        }
+    } => Ok(())
+}
+
 test_verify_one_file_with_options! {
     #[test] for_loop1 ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
         fn test_loop() {
             let mut n: u64 = 0;
             for x in iter: 0..10
-                invariant n == iter.cur * 3,
+                invariant n == x * 3,
             {
                 assert(x < 10);
-                assert(x == iter.cur);
+                assert(x == iter.index());
                 n += 3;
             }
             assert(n == 30);
@@ -1147,10 +1186,10 @@ test_verify_one_file_with_options! {
         fn test_loop_fail() {
             let mut n: u64 = 0;
             for x in iter: 0..10
-                invariant n == iter.cur * 3,
+                invariant n == x * 3,
             {
                 assert(x < 9); // FAILS
-                assert(x == iter.cur);
+                assert(x == iter.index());
                 n += 3;
             }
             assert(n == 30);
@@ -1166,26 +1205,26 @@ test_verify_one_file_with_options! {
             let mut end = 10;
             for x in iter: 0..end
                 invariant
-                    n == iter.cur * 3,
+                    n == x * 3,
                     end == 10,
             {
                 assert(x < 10);
-                assert(x == iter.cur);
+                assert(x == iter.index());
                 n += 3;
             }
             assert(n == 30);
         }
 
+        // With the modification of end, we lose all info about the initial state of iter
         fn test_loop_fail() {
             let mut n: u64 = 0;
             let mut end = 10;
             for x in iter: 0..end
                 invariant
-                    n == iter.cur * 3,
+                    n == x * 3, // FAILS
                     end == 10,
             {
                 assert(x < 10); // FAILS
-                assert(x == iter.cur);
                 n += 3;
                 end = end + 0; // causes end to be non-constant, so loop needs more invariants
             }
@@ -1193,20 +1232,21 @@ test_verify_one_file_with_options! {
 
         fn non_spec() {}
 
+        // With the modification of end, we lose all info about the initial state of iter
         fn test_loop_modes_transient_state() {
             let mut n: u64 = 0;
             let mut end = 10;
             // test Typing::snapshot_transient_state
             for x in iter: 0..({let z = end; non_spec(); z})
                 invariant
-                    n == iter.cur * 3,
+                    n == x * 3, // FAILS
                     end == 10,
             {
                 n += 3;
                 end = end + 0; // causes end to be non-constant
             }
         }
-    } => Err(e) => assert_one_fails(e)
+    } => Err(e) => assert_fails(e, 3)
 }
 
 test_verify_one_file_with_options! {
@@ -1220,7 +1260,8 @@ test_verify_one_file_with_options! {
             let mut v: Vec<u32> = Vec::new();
             for i in iter: 0..n
                 invariant
-                    v@ =~= iter@,
+                    v.len() == iter.index(),
+                    forall |i| 0 <= i < v.len() ==> v[i] == iter.seq()[i],
             {
                 v.push(i);
             }
@@ -1235,138 +1276,14 @@ test_verify_one_file_with_options! {
             let mut v: Vec<u32> = Vec::new();
             for i in iter: 0..n
                 invariant
-                    v@ =~= iter@, // FAILS
+                    v.len() == iter.index(),
+                    forall |i| 0 <= i < v.len() ==> v[i] == iter.seq()[i],  // FAILS
             {
                 v.push(0);
             }
             v
         }
     } => Err(e) => assert_one_fails(e)
-}
-
-test_verify_one_file_with_options! {
-    #[test] for_loop_vec_custom_iterator ["exec_allows_no_decreases_clause"] => verus_code! {
-        use vstd::prelude::*;
-
-        pub uninterp spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V>;
-
-        pub struct VecIterCopy<'a, T: 'a> {
-            pub vec: &'a Vec<T>,
-            pub cur: usize,
-        }
-
-        impl<'a, T: Copy> Iterator for VecIterCopy<'a, T> {
-            type Item = T;
-            fn next(&mut self) -> (item: Option<T>)
-                ensures
-                    final(self).vec == old(self).vec,
-                    old(self).cur < final(self).vec.len() ==> final(self).cur == old(self).cur + 1,
-                    old(self).cur < final(self).vec.len() ==> item == Some(final(self).vec[old(self).cur as int]),
-                    old(self).cur >= final(self).vec.len() ==> item.is_none() && final(self).cur == old(self).cur,
-            {
-                if self.cur < self.vec.len() {
-                    let item = self.vec[self.cur];
-                    self.cur = self.cur + 1;
-                    Some(item)
-                } else {
-                    None
-                }
-            }
-        }
-
-        pub struct VecGhostIterCopy<'a, T> {
-            pub seq: Seq<T>,
-            pub cur: int,
-            pub phantom: core::marker::PhantomData<&'a T>,
-        }
-
-        impl<'a, T: 'a> vstd::pervasive::ForLoopGhostIteratorNew for VecIterCopy<'a, T> {
-            type GhostIter = VecGhostIterCopy<'a, T>;
-
-            open spec fn ghost_iter(&self) -> VecGhostIterCopy<'a, T> {
-                VecGhostIterCopy {
-                    seq: self.vec@,
-                    cur: 0,
-                    phantom: spec_phantom_data(),
-                }
-            }
-        }
-
-        impl<'a, T: 'a> vstd::pervasive::ForLoopGhostIterator for VecGhostIterCopy<'a, T> {
-            type ExecIter = VecIterCopy<'a, T>;
-            type Item = T;
-            type Decrease = int;
-
-            open spec fn exec_invariant(&self, exec_iter: &VecIterCopy<'a, T>) -> bool {
-                &&& self.seq == exec_iter.vec@
-                &&& self.cur == exec_iter.cur
-            }
-
-            open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-                &&& 0 <= self.cur <= self.seq.len()
-                &&& if let Some(init) = init {
-                        init.seq == self.seq
-                    } else {
-                        true
-                    }
-            }
-
-            open spec fn ghost_ensures(&self) -> bool {
-                self.cur >= self.seq.len()
-            }
-
-            open spec fn ghost_decrease(&self) -> Option<int> {
-                Some(self.seq.len() - self.cur)
-            }
-
-            open spec fn ghost_peek_next(&self) -> Option<T> {
-                if 0 <= self.cur < self.seq.len() {
-                    Some(self.seq[self.cur])
-                } else {
-                    None
-                }
-            }
-
-            open spec fn ghost_advance(&self, _exec_iter: &VecIterCopy<T>) -> VecGhostIterCopy<'a, T> {
-                VecGhostIterCopy { cur: self.cur + 1, ..*self }
-            }
-        }
-
-        impl<'a, T: 'a> vstd::view::View for VecGhostIterCopy<'a, T> {
-            type V = Seq<T>;
-
-            open spec fn view(&self) -> Seq<T> {
-                self.seq.subrange(0, self.cur)
-            }
-        }
-
-        spec fn vec_iter_copy_spec<'a, T: 'a>(vec: &'a Vec<T>) -> VecIterCopy<'a, T> {
-            VecIterCopy { vec, cur: 0 }
-        }
-
-        #[verifier::when_used_as_spec(vec_iter_copy_spec)]
-        fn vec_iter_copy<'a, T: 'a>(vec: &'a Vec<T>) -> (iter: VecIterCopy<'a, T>)
-            ensures
-                iter == (VecIterCopy { vec, cur: 0 }),
-        {
-            VecIterCopy { vec, cur: 0 }
-        }
-
-        fn all_positive(v: &Vec<u8>) -> (b: bool)
-            ensures
-                b <==> (forall|i: int| 0 <= i < v.len() ==> v[i] > 0),
-        {
-            let mut b: bool = true;
-
-            for x in iter: vec_iter_copy(v)
-                invariant
-                    b <==> (forall|i: int| 0 <= i < iter.cur ==> v[i] > 0),
-            {
-                b = b && x > 0;
-            }
-            b
-        }
-    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -1608,4 +1525,322 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break or ensures, unless #[verifier::allow_complex_invariants] is used")
+}
+
+test_verify_one_file! {
+    #[test] for_loop_after_pushes verus_code! {
+        use vstd::prelude::*;
+        fn test() {
+            let mut v1: Vec<u32> = Vec::new();
+            let mut v2: Vec<u32> = Vec::new();
+            v1.push(3);
+            v1.push(4);
+            assert(v1@ == seq![3u32, 4u32]);
+
+            v2.push(5);
+            assert(v2.len() == 1);
+            v2.push(7);
+            assert(v2@.len() == 2);
+            v2.insert(1, 6);
+            assert(v2@ == seq![5u32, 6u32, 7u32]);
+
+            v1.append(&mut v2);
+            assert(v2@.len() == 0);
+            assert(v1@.len() == 5);
+            assert(v1@ == seq![3u32, 4u32, 5u32, 6u32, 7u32]);
+            v1.remove(2);
+            assert(v1@ == seq![3u32, 4u32, 6u32, 7u32]);
+
+            v1.push(8u32);
+            v1.push(9u32);
+            assert(v1@ == seq![3u32, 4u32, 6u32, 7u32, 8u32, 9u32]);
+
+            v1.swap_remove(5);
+            assert(v1@ == seq![3u32, 4u32, 6u32, 7u32, 8u32]);
+
+            let mut i: usize = 0;
+            for x in it: v1
+                invariant
+                    i == it.index(),
+                    it.seq() == seq![3u32, 4u32, 6u32, 7u32, 8u32],
+            {
+                assert(x > 2);
+                assert(x < 10);
+                i = i + 1;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] for_loop_with_break verus_code! {
+        use vstd::prelude::*;
+        spec fn sum_u8(s: Seq<u8>) -> nat
+            decreases s.len(),
+        {
+            if s.len() == 0 {
+                0
+            } else {
+                (sum_u8(s.drop_last()) + s.last()) as nat
+            }
+        }
+
+        proof fn sum_u8_monotonic(s: Seq<u8>, i: int, j: int)
+            requires
+                0 <= i <= j < s.len(),
+            ensures
+                sum_u8(s.take(i)) <= sum_u8(s.take(j)),
+            decreases j - i,
+        {
+            if i == j {
+            } else {
+                sum_u8_monotonic(s, i, j - 1);
+                assert(sum_u8(s.take(i)) <= sum_u8(s.take(j - 1)));
+                assert(sum_u8(s.take(j - 1)) <= sum_u8(s.take(j))) by {
+                    assert(s.take(j).drop_last() == s.take(j - 1)); // OBSERVE
+                }
+            }
+        }
+
+        proof fn sum_u8_monotonic_forall()
+            ensures
+                forall |s: Seq<u8>, i, j| #![auto]
+                    0 <= i <= j < s.len() ==>
+                    sum_u8(s.take(i)) <= sum_u8(s.take(j)),
+        {
+            assert forall |s: Seq<u8>, i, j| #![auto] 0 <= i <= j < s.len() implies
+                sum_u8(s.take(i)) <= sum_u8(s.take(j)) by {
+                sum_u8_monotonic(s, i, j);
+            }
+        }
+
+        // Test user-supplied break
+        fn for_loop_test_skip(v: Vec<u8>) {
+            let mut sum: u8 = 0;
+
+            for x in y: v
+              invariant_except_break
+                 sum == sum_u8(v@.take(y.index()))
+              ensures
+                  (y.index() == y.seq().len() && sum == sum_u8(y.seq().take(y.index()))) ||
+                      (sum == u8::MAX && sum_u8(v@.take(y.index())) > u8::MAX),
+            {
+                assert(v@.take(y.index() + 1).drop_last() == v@.take(y.index() as int)); // OBSERVE
+                if x <= u8::MAX - sum {
+                    sum += x;
+                } else {
+                    sum = u8::MAX;
+                    break;
+                }
+            }
+
+            // Prove that we accomplished our goal
+            assert(v@.take(v@.len() as int) == v@); // OBSERVE
+            proof {
+                // PAPER CUT: Can't call a lemma on the prophetic sequence
+                sum_u8_monotonic_forall();
+            }
+            assert(sum == sum_u8(v@) || (sum == u8::MAX && sum_u8(v@) > u8::MAX));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] rev_iter verus_code! {
+        use vstd::prelude::*;
+        fn test() {
+            let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
+            let mut w: Vec<u8> = vec![];
+
+            for x in iter: v.iter().rev()
+                invariant
+                    w.len() == iter.index(),
+                    forall |i| 0 <= i < w.len() ==> w[i] == iter.seq()[i],
+            {
+                w.push(*x);
+            }
+
+            assert(w@ == v@.reverse());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore]
+    #[test] map_iter verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::to_map;
+
+        #[verifier::loop_isolation(false)]
+        fn test() {
+            let v = vec![0u8, 2u8, 4u8];
+
+            let f = |i: &u8| -> (out: u8)
+                requires i < 255,
+                ensures out == i + 1,
+            {
+                *i + 1
+            };
+
+            let mut w = vec![];
+
+            for x in it: to_map(v.iter(), f)
+                invariant
+                    w.len() == it.index(),
+                    forall |i| 0 <= i < w.len() ==> #[trigger] w[i] == v[i] + 1,
+            {
+                w.push(x);
+            }
+
+            assert(w@ == seq![1u8, 3u8, 5u8]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+  #[test] test_vecdeque_for_loop verus_code! {
+      use vstd::prelude::*;
+      use vstd::std_specs::vecdeque::*;
+      use std::collections::VecDeque;
+      spec fn sum(s: Seq<u32>) -> nat
+          decreases s.len(),
+      {
+          if s.len() == 0 {
+              0
+          } else {
+              sum(s.drop_last()) + s.last() as nat
+          }
+      }
+
+      broadcast proof fn sum_monotonic(s: Seq<u32>, i: nat, j: nat)
+          requires
+              i <= j,
+              j <= s.len(),
+          ensures
+              #[trigger] sum(s.take(i as int)) <= #[trigger] sum(s.take(j as int)),
+          decreases j,
+      {
+          if j == 0 {
+          } else if i == j {
+          } else {
+              sum_monotonic(s, i, (j - 1) as nat);
+              assert(s.take(j as int).drop_last() == s.take((j - 1) as int));
+          }
+      }
+
+
+      fn test() {
+          let mut vd = VecDeque::<u32>::new();
+          vd.push_back(10);
+          vd.push_back(20);
+          vd.push_back(30);
+
+
+          let mut s: u32 = 0;
+          for x in it: vd.iter()
+              invariant
+                  vd@ == seq![10u32, 20u32, 30u32],
+                  s as nat == sum(vd@.take(it.index())),
+          {
+              // Prove that we don't overflow
+              broadcast use sum_monotonic;
+              assert(sum(vd@.take(it.index() + 1)) <= sum(vd@.take(vd@.len() as int)));
+              assert(sum(vd@.take(vd@.len() as int)) == sum(vd@)) by {
+                  assert(vd@.take(vd@.len() as int) == vd@);
+              };
+              assert(sum(seq![10u32, 20u32, 30u32]) < u32::MAX) by (compute);
+              s = s + *x;
+              // Prove the invariant
+              assert(s as nat == sum(vd@.take(it.index() + 1))) by {
+                  assert(vd@.take(it.index() + 1).drop_last() == vd@.take(it.index())); // OBSERVE
+              };
+          }
+          assert(sum(seq![10u32, 20u32, 30u32]) == 60) by (compute);
+          assert(vd@.take(vd@.len() as int) == vd@);  // OBSERVE
+          assert(s == 60);
+      }
+  } => Ok(())
+}
+
+test_verify_one_file! {
+  #[test] test_vecdeque_rev_for_loop verus_code! {
+      use vstd::prelude::*;
+      use vstd::std_specs::vecdeque::*;
+      use std::collections::VecDeque;
+
+      fn test() {
+          let mut vd = VecDeque::<u32>::new();
+          vd.push_back(1);
+          vd.push_back(2);
+          vd.push_back(3);
+
+          let mut w: Vec<u32> = Vec::new();
+          for x in it: vd.iter().rev()
+              invariant
+                  w.len() == it.index(),
+                  forall |i| 0 <= i < w.len() ==> w[i] == *it.seq()[i],
+          {
+              w.push(*x);
+          }
+          assert(w@ == vd@.reverse());
+      }
+  } => Ok(())
+}
+
+test_verify_one_file! {
+  #[test] test_nested_for_loops verus_code! {
+      use vstd::prelude::*;
+
+      fn test() {
+          let mut count: u64 = 0;
+          #[verifier::loop_isolation(false)]
+          for i in 0u64..3u64
+              invariant count == i * 4,
+          {
+              for j in 0u64..4u64
+                  invariant
+                      count == i * 4 + j,
+                      i < 3
+              {
+                  count += 1;
+              }
+          }
+          assert(count == 12);
+      }
+  } => Ok(())
+}
+
+test_verify_one_file! {
+  #[test] test_for_loop_search verus_code! {
+      use vstd::prelude::*;
+      fn find_value(v: &Vec<u32>, target: u32) -> (result: Option<usize>)
+          ensures
+              match result {
+                  Some(idx) => idx < v.len() && v[idx as int] == target,
+                  None => forall |i: int| 0 <= i < v.len() ==> v[i] != target,
+              },
+      {
+          let mut result: Option<usize> = None;
+          let mut index: usize = 0;
+          for x in it: v
+              invariant_except_break
+                  index as int == it.index(),
+                  result is None,
+              invariant
+                  index <= v.len(),
+                  result is None ==> forall |i: int| 0 <= i < it.index() ==> v[i] != target,
+                  result matches Some(idx) ==> idx < v.len() && v[idx as int] == target,
+              ensures
+                  result is None ==> forall |i: int| 0 <= i < v.len() ==> v[i] != target,
+                  result matches Some(idx) ==> idx < v.len() && v[idx as int] == target,
+          {
+              if *x == target {
+                  result = Some(index);
+                  break;
+              }
+              index += 1;
+          }
+          result
+      }
+  } => Ok(())
 }

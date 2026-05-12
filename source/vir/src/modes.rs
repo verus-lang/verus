@@ -2065,14 +2065,17 @@ fn check_expr(
                 if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
                     return Err(error(
                         &expr.span,
-                        format!("cannot perform operation with mode {}", op_mode),
+                        format!(
+                            "cannot perform operation with mode {}, {:?},\n{:?}",
+                            op_mode, &expr.x, &e1
+                        ),
                     ));
                 }
             }
             if !mode_le(outer_mode, *op_mode) {
                 return Err(error(
                     &expr.span,
-                    format!("cannot perform operation with mode {}", op_mode),
+                    format!("cannot perform operation with mode {}, {:?}", op_mode, &expr.x),
                 ));
             }
             let param_mode = mode_join(outer_mode, *from_mode);
@@ -2192,7 +2195,9 @@ fn check_expr(
                 check_expr(ctxt, record, typing, joined_mode, Expect(*min_mode), e1, outer_proph)?;
             Ok((mode_join(*min_mode, mode), proph))
         }
-        ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1) => {
+        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1)
+        | ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1)
+        | ExprX::UnaryOpr(UnaryOpr::AutoDecreases | UnaryOpr::AutoLoopEnsures, e1) => {
             let proph =
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
             Ok((Mode::Spec, proph))

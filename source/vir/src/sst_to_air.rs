@@ -1226,8 +1226,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     Arc::new(exprs),
                 ))
             }
-            UnaryOpr::ProofNote(_) => {
+            UnaryOpr::ProofNote(_) | UnaryOpr::CustomErr(_) => {
                 // A `proof_note` label is metadata and has no effect otherwise.
+                return exp_to_expr(ctx, e, expr_ctxt);
+            }
+            UnaryOpr::AutoDecreases | UnaryOpr::AutoLoopEnsures => {
+                // AutoDecreases and AutoLoopEnsures are just markers for filtering
+                // invariants and ensures during loop construction. Unwrap and process
+                // the inner expression.
                 return exp_to_expr(ctx, e, expr_ctxt);
             }
             UnaryOpr::HasResolved(t) => {
