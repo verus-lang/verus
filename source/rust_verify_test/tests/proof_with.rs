@@ -258,3 +258,49 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "proof_with argument 1 has incompatible lifetime")
 }
+
+test_verify_one_file! {
+     #[test] test_proof_with_generic_type verus_code!{
+        use vstd::prelude::*;
+        fn test<T>(a: T)
+        {
+            let b: Tracked<T> = declare_with();
+            let c: Ghost<u32> = declare_with();
+            requires(a === b@ && c@ == 2);
+        }
+
+        fn call_test() {
+            proof_with(Tracked(0u64));
+            proof_with(Ghost(2u32));
+            test(0u64);
+        }
+
+        #[verifier(external)]
+        fn unverified_call_test() {
+            test(0u64);
+        }
+     } => Ok(())
+}
+
+test_verify_one_file! {
+     #[test] test_proof_with_generic_type_wrong_type verus_code!{
+        use vstd::prelude::*;
+        fn test<T>(a: T)
+        {
+            let b: Tracked<T> = declare_with();
+            let c: Ghost<u32> = declare_with();
+            requires(a === b@ && c@ == 2);
+        }
+
+        fn call_test() {
+            proof_with(Tracked(0u8));
+            proof_with(Ghost(2u32));
+            test(0u64);
+        }
+
+        #[verifier(external)]
+        fn unverified_call_test() {
+            test(0u64);
+        }
+     } => Err(e) => assert_vir_error_msg(e, "proof_with argument 1 has wrong type")
+}
