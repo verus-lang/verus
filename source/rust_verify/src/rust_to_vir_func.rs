@@ -312,13 +312,12 @@ fn mk_bctx<'tcx>(
         header_setting: HeaderSetting::Fn,
         unwrap_param_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
         external_opaque_type_map,
-        pending_tracked_args: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
-        in_args_depth: std::rc::Rc::new(std::cell::RefCell::new(0)),
+        pending_tracked_args: std::rc::Rc::new(std::cell::RefCell::new(None)),
         declare_with_hir_ids: std::rc::Rc::new(declare_with_hir_ids),
     }
 }
 
-/// Pre-scan the HIR body for `declare_with_tracked()`/`declare_with_ghost()` let-stmts.
+/// Pre-scan the HIR body for `declare_with()` let-stmts.
 /// Returns (extra_vir_params, hir_ids_to_skip) so that:
 /// 1. Extra params can be appended to `vir_params` before body conversion
 /// 2. `stmt_to_vir` can skip these let-stmts during body conversion
@@ -349,7 +348,7 @@ fn pre_scan_declare_with_params<'tcx>(
             ..
         }) = &stmt.kind
         {
-            // Check if init is a call to declare_with_tracked() or declare_with_ghost()
+            // Check if init is a call to declare_with()
             let verus_item = match &init.kind {
                 ExprKind::Call(fun, _) => match &fun.kind {
                     ExprKind::Path(rustc_hir::QPath::Resolved(
@@ -1865,7 +1864,7 @@ pub(crate) fn check_item_fn<'tcx>(
             };
             let body = find_body(ctxt, body_id);
 
-            // Pre-scan for declare_with_tracked()/declare_with_ghost() calls
+            // Pre-scan for declare_with() calls
             let (declare_with_extra_params, declare_with_hir_ids) =
                 pre_scan_declare_with_params(ctxt, id, body, body_id)?;
             let declare_with_modes: Vec<(bool, rustc_middle::ty::Ty<'tcx>)> =

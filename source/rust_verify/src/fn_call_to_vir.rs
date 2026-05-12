@@ -312,28 +312,22 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
     record_call(bctx, expr, resolved_call);
 
     let vir_args = if let Some(args) = args {
-        *bctx.in_args_depth.borrow_mut() += 1;
-        let result = mk_vir_args(bctx, &args);
-        *bctx.in_args_depth.borrow_mut() -= 1;
-        result?
+        mk_vir_args(bctx, &args)?
     } else {
         vec![]
     };
 
-    // Append any pending tracked args from proof_with() calls.
-    // If the function has extra tracked params but no proof_with was used, error.
-    // Skip consumption if we're inside argument processing (nested call) AND the callee
-    // doesn't expect extra params. If the callee does expect extra params (e.g., f() in
-    // f()? where ? desugars to Try::branch(f())), we must consume them here.
+    // Consume pending tracked args from proof_with() if present.
+    // Only consume when callee expects extra params (has declare_with entries).
     let vir_args = {
         let mut args = vir_args;
-        let in_args = *bctx.in_args_depth.borrow() > 0;
         let extra_params = bctx.ctxt.external_fn_extra_tracked_params.borrow().get(&f).cloned();
-        if !in_args || extra_params.is_some() {
-            let mut pending = bctx.pending_tracked_args.borrow_mut();
-            if let Some(ref expected_params) = extra_params {
-                let extra_count = expected_params.len();
-                if pending.is_empty() {
+        if let Some(ref expected_params) = extra_params {
+            let extra_count = expected_params.len();
+            let mut pending_opt = bctx.pending_tracked_args.borrow_mut();
+            let pending = match pending_opt.take() {
+                Some(p) => p,
+                None => {
                     return err_span(
                         expr.span,
                         format!(
@@ -342,81 +336,75 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                         ),
                     );
                 }
-                if pending.len() != extra_count {
+            };
+            if pending.len() != extra_count {
+                return err_span(
+                    expr.span,
+                    format!(
+                        "expected {} tracked/ghost argument(s) via proof_with(), got {}",
+                        extra_count,
+                        pending.len()
+                    ),
+                );
+            }
+            // Check mode and type for each pending arg
+            for (i, (pending_arg, (expected_is_tracked, expected_ty))) in
+                pending.iter().zip(expected_params.iter()).enumerate()
+            {
+                // Mode check
+                if pending_arg.is_tracked != *expected_is_tracked {
+                    let expected_mode = if *expected_is_tracked { "Tracked" } else { "Ghost" };
+                    let actual_mode = if pending_arg.is_tracked { "Tracked" } else { "Ghost" };
                     return err_span(
                         expr.span,
                         format!(
-                            "expected {} tracked/ghost argument(s) via proof_with(), got {}",
-                            extra_count,
-                            pending.len()
+                            "proof_with argument {} has wrong mode: expected {}, got {}",
+                            i + 1,
+                            expected_mode,
+                            actual_mode,
                         ),
                     );
                 }
-                // Check mode and type for each pending arg
-                for (i, (pending_arg, (expected_is_tracked, expected_ty))) in
-                    pending.iter().zip(expected_params.iter()).enumerate()
+                // Type check: compare rustc types with regions erased.
                 {
-                    // Mode check
-                    if pending_arg.is_tracked != *expected_is_tracked {
-                        let expected_mode = if *expected_is_tracked { "Tracked" } else { "Ghost" };
-                        let actual_mode = if pending_arg.is_tracked { "Tracked" } else { "Ghost" };
+                    let tcx = bctx.ctxt.tcx;
+                    let expected_ty_instantiated =
+                        rustc_middle::ty::EarlyBinder::bind(*expected_ty)
+                            .instantiate(tcx, node_substs);
+                    let actual_ty = bctx.types.node_type(pending_arg.arg_hir_id);
+                    use rustc_middle::ty::TypeFoldable;
+                    let expected_erased = expected_ty_instantiated.fold_with(
+                        &mut rustc_middle::ty::RegionFolder::new(tcx, &mut |_, _| {
+                            tcx.lifetimes.re_erased
+                        }),
+                    );
+                    if actual_ty != expected_erased {
                         return err_span(
                             expr.span,
                             format!(
-                                "proof_with argument {} has wrong mode: expected {}, got {}",
+                                "proof_with argument {} has wrong type: expected `{}`, got `{}`",
                                 i + 1,
-                                expected_mode,
-                                actual_mode,
+                                expected_ty_instantiated,
+                                actual_ty,
                             ),
                         );
                     }
-                    // Type check: compare rustc types with regions erased.
-                    {
-                        let tcx = bctx.ctxt.tcx;
-                        let expected_ty_instantiated =
-                            rustc_middle::ty::EarlyBinder::bind(*expected_ty)
-                                .instantiate(tcx, node_substs);
-                        let actual_ty = bctx.types.node_type(pending_arg.arg_hir_id);
-                        use rustc_middle::ty::TypeFoldable;
-                        let expected_erased = expected_ty_instantiated.fold_with(
-                            &mut rustc_middle::ty::RegionFolder::new(tcx, &mut |_, _| {
-                                tcx.lifetimes.re_erased
-                            }),
-                        );
-                        if actual_ty != expected_erased {
-                            return err_span(
-                                expr.span,
-                                format!(
-                                    "proof_with argument {} has wrong type: expected `{}`, got `{}`",
-                                    i + 1,
-                                    expected_ty_instantiated,
-                                    actual_ty,
-                                ),
-                            );
-                        }
-                        check_proof_with_lifetime(
-                            bctx,
-                            tcx,
-                            f,
-                            expr.hir_id,
-                            node_substs,
-                            pending_arg.arg_hir_id,
-                            *expected_ty,
-                            expected_ty_instantiated,
-                            expr.span,
-                            i,
-                        )?;
-                    }
+                    check_proof_with_lifetime(
+                        bctx,
+                        tcx,
+                        f,
+                        expr.hir_id,
+                        node_substs,
+                        pending_arg.arg_hir_id,
+                        *expected_ty,
+                        expected_ty_instantiated,
+                        expr.span,
+                        i,
+                    )?;
                 }
-                let exprs: Vec<_> = pending.drain(..).map(|a| a.expr).collect();
-                args.extend(exprs);
-            } else if !pending.is_empty() {
-                pending.drain(..);
-                return err_span(
-                    expr.span,
-                    "proof_with was used but this function does not expect extra tracked/ghost arguments",
-                );
             }
+            let exprs: Vec<_> = pending.into_iter().map(|a| a.expr).collect();
+            args.extend(exprs);
         }
         args
     };
@@ -2234,32 +2222,63 @@ fn verus_item_to_vir<'tcx, 'a>(
             mk_expr(ExprX::BorrowMutTracked(p))
         }
         VerusItem::ProofWith => {
-            // proof_with(expr) stores the tracked/ghost arg to be appended to the next call
-            unsupported_err_unless!(args_len == 1, expr.span, "expected proof_with(expr)", &args);
-            let arg_typ = typ_of_expr_adjusted(bctx, args[0].span, &args[0].hir_id)?;
-            let is_tracked = match &*arg_typ {
-                TypX::Decorate(TypDecoration::Tracked, _, _) => true,
-                TypX::Decorate(TypDecoration::Ghost, _, _) => false,
-                _ => {
-                    return err_span(
-                        args[0].span,
-                        "proof_with expects an argument of type Tracked<T> or Ghost<T>",
-                    );
-                }
+            // proof_with(ghost_args, call) — ghost args and call in one expression.
+            // First arg: single Tracked/Ghost or tuple of them.
+            // Second arg: the actual function call, whose result is returned.
+            unsupported_err_unless!(
+                args_len == 2,
+                expr.span,
+                "expected proof_with(ghost_args, call)",
+                &args
+            );
+
+            // Extract individual ghost/tracked items from the first arg.
+            let ghost_arg = &args[0];
+            let ghost_items: Vec<&rustc_hir::Expr> = match &ghost_arg.kind {
+                rustc_hir::ExprKind::Tup(elems) => elems.iter().collect(),
+                _ => vec![ghost_arg],
             };
+
             let bctx_ghost = &BodyCtxt { in_ghost: true, ..bctx.clone() };
-            // Increment in_args_depth so nested function calls within the proof_with
-            // argument don't try to consume pending_tracked_args
-            *bctx.in_args_depth.borrow_mut() += 1;
-            let arg_expr = expr_to_vir_consume(bctx_ghost, &args[0])?;
-            *bctx.in_args_depth.borrow_mut() -= 1;
-            bctx.pending_tracked_args.borrow_mut().push(crate::context::PendingTrackedArg {
-                expr: arg_expr,
-                is_tracked,
-                arg_hir_id: args[0].hir_id,
-            });
-            // Return a unit expression (no-op)
-            mk_expr(ExprX::Block(Arc::new(vec![]), None))
+            let mut pending_args = Vec::new();
+            for item in &ghost_items {
+                let arg_typ = typ_of_expr_adjusted(bctx, item.span, &item.hir_id)?;
+                let is_tracked = match &*arg_typ {
+                    TypX::Decorate(TypDecoration::Tracked, _, _) => true,
+                    TypX::Decorate(TypDecoration::Ghost, _, _) => false,
+                    _ => {
+                        return err_span(
+                            item.span,
+                            "proof_with expects arguments of type Tracked<T> or Ghost<T>",
+                        );
+                    }
+                };
+                let arg_expr = expr_to_vir_consume(bctx_ghost, item)?;
+                pending_args.push(crate::context::PendingTrackedArg {
+                    expr: arg_expr,
+                    is_tracked,
+                    arg_hir_id: item.hir_id,
+                });
+            }
+
+            // Set pending args for consumption by the inner fn_call_to_vir
+            *bctx.pending_tracked_args.borrow_mut() = Some(pending_args);
+
+            // Record erasure: replace proof_with(A, B) with just B (arg index 1)
+            record_call(bctx, expr, ResolvedCall::SpecAllowProofArgs);
+
+            // Process second arg (the function call) — this will consume pending args
+            let call_expr = expr_to_vir_consume(bctx, &args[1])?;
+
+            // Assert pending args were consumed
+            if bctx.pending_tracked_args.borrow().is_some() {
+                return err_span(
+                    expr.span,
+                    "proof_with second argument must be a function call that accepts extra tracked/ghost arguments",
+                );
+            }
+
+            Ok(call_expr)
         }
         VerusItem::BuiltinDeref(d) => {
             // This would be easy to support (similar to handling borrow_mut etc.) but their usage
