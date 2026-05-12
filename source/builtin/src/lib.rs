@@ -23,6 +23,26 @@ pub fn admit() {
     unimplemented!();
 }
 
+/// Pass tracked or ghost values to the immediately following external function call.
+/// Used with `external_fn_specification` functions that have extra tracked/ghost parameters.
+/// The argument must be of type `Tracked<T>` or `Ghost<T>`.
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::proof_with"]
+#[verifier::proof]
+pub fn proof_with<A>(_a: A) {
+    unimplemented!();
+}
+
+/// Zero-arg version of proof_with for output parameters.
+/// The type parameter indicates the output container type.
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::declare_with"]
+#[verifier::proof]
+pub fn declare_with<A>() -> A {
+    unimplemented!();
+}
+
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::no_method_body"]
