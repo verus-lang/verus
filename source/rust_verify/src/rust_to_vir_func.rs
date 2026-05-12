@@ -291,6 +291,7 @@ fn mk_bctx<'tcx>(
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     param_names: Vec<VarIdent>,
     external_opaque_type_map: Option<HashMap<Path, Path>>,
+    declare_with_hir_ids: HashSet<HirId>,
 ) -> BodyCtxt<'tcx> {
     BodyCtxt {
         ctxt: ctxt.clone(),
@@ -310,7 +311,134 @@ fn mk_bctx<'tcx>(
         header_setting: HeaderSetting::Fn,
         unwrap_param_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
         external_opaque_type_map,
+        pending_tracked_args: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+        in_args_depth: std::rc::Rc::new(std::cell::RefCell::new(0)),
+        declare_with_hir_ids: std::rc::Rc::new(declare_with_hir_ids),
     }
+}
+
+/// Pre-scan the HIR body for `declare_with_tracked()`/`declare_with_ghost()` let-stmts.
+/// Returns (extra_vir_params, hir_ids_to_skip) so that:
+/// 1. Extra params can be appended to `vir_params` before body conversion
+/// 2. `stmt_to_vir` can skip these let-stmts during body conversion
+fn pre_scan_declare_with_params<'tcx>(
+    ctxt: &Context<'tcx>,
+    id: DefId,
+    body: &Body<'tcx>,
+    body_id: &BodyId,
+) -> Result<
+    (Vec<(vir::ast::Param, Option<Mode>, rustc_middle::ty::Ty<'tcx>)>, HashSet<HirId>),
+    VirErr,
+> {
+    let mut extra_params = Vec::new();
+    let mut hir_ids = HashSet::new();
+    let types = body_id_to_types(ctxt.tcx, body_id);
+
+    // Navigate into the body's top-level block
+    let stmts = match &body.value.kind {
+        ExprKind::Block(block, _) => block.stmts,
+        _ => return Ok((extra_params, hir_ids)),
+    };
+
+    for stmt in stmts {
+        if let rustc_hir::StmtKind::Let(rustc_hir::LetStmt {
+            pat,
+            init: Some(init),
+            ty: hir_ty,
+            ..
+        }) = &stmt.kind
+        {
+            // Check if init is a call to declare_with_tracked() or declare_with_ghost()
+            let verus_item = match &init.kind {
+                ExprKind::Call(fun, _) => match &fun.kind {
+                    ExprKind::Path(rustc_hir::QPath::Resolved(
+                        None,
+                        rustc_hir::Path { res: rustc_hir::def::Res::Def(_, fun_id), .. },
+                    )) => ctxt.get_verus_item(*fun_id).cloned(),
+                    _ => None,
+                },
+                _ => None,
+            };
+
+            let is_declare_with = match verus_item {
+                Some(VerusItem::DeclareWith) => true,
+                _ => false,
+            };
+            if !is_declare_with {
+                continue;
+            }
+
+            // Require simple binding pattern
+            let (is_mut_var, name) = pat_to_mut_var(pat)?;
+
+            // Get the resolved type. Use lower_ty on the HIR type annotation if available,
+            // because it preserves early-bound regions (ReEarlyParam) which are needed for
+            // lifetime checking. typeck's node_type() returns types with erased regions.
+            let ty = if let Some(hir_ty) = hir_ty {
+                rustc_hir_analysis::lower_ty(ctxt.tcx, hir_ty)
+            } else {
+                types.node_type(init.hir_id)
+            };
+
+            // Derive is_tracked from the type (Tracked<T> vs Ghost<T>) via ADT DefId
+            let is_tracked = match ty.kind() {
+                rustc_middle::ty::TyKind::Adt(adt_def, _) => {
+                    match ctxt.get_verus_item(adt_def.did()) {
+                        Some(VerusItem::BuiltinType(
+                            crate::verus_items::BuiltinTypeItem::Tracked,
+                        )) => true,
+                        Some(VerusItem::BuiltinType(
+                            crate::verus_items::BuiltinTypeItem::Ghost,
+                        )) => false,
+                        _ => {
+                            return err_span(
+                                init.span,
+                                "declare_with() must be assigned to a Tracked<T> or Ghost<T> type",
+                            );
+                        }
+                    }
+                }
+                _ => {
+                    return err_span(
+                        init.span,
+                        "declare_with() must be assigned to a Tracked<T> or Ghost<T> type",
+                    );
+                }
+            };
+            let inner_mode = if is_tracked { Mode::Proof } else { Mode::Spec };
+
+            // Handle &mut types - check if the type contains a mutable reference
+            let is_ref_mut = is_mut_ty(ctxt, ty);
+            let is_mut = is_ref_mut.is_some();
+            // Use mid_ty_to_vir on the FULL type (matching normal param processing in
+            // check_fn_decl). Don't manually unwrap the MutRef — it must be preserved
+            // in the typ so that VIR can properly generate mut_ref_current% / update% AIR.
+            let typ = ctxt.mid_ty_to_vir(id, pat.span, &ty, None)?;
+
+            // All declare_with params are inputs — unwrap Ghost/Tracked as usual
+            let outer_name = vir::ast_util::air_unique_var(&format!(
+                "declare_with_{}",
+                vir::def::user_local_name(&name)
+            ));
+            let unwrapped_info = Some((inner_mode, outer_name));
+            let param_mode = Mode::Exec;
+            let vir_param = ctxt.spanned_new(
+                pat.span,
+                ParamX {
+                    name: name.clone(),
+                    typ,
+                    mode: param_mode,
+                    unwrapped_info,
+                    user_mut: is_mut_var || is_mut,
+                },
+            );
+
+            extra_params.push((vir_param, None, ty));
+            hir_ids.insert(stmt.hir_id);
+        }
+    }
+
+    Ok((extra_params, hir_ids))
 }
 
 fn body_to_vir<'tcx>(
@@ -325,6 +453,7 @@ fn body_to_vir<'tcx>(
     param_names: Vec<VarIdent>,
     external_opaque_type_map: Option<HashMap<Path, Path>>,
     is_async: bool,
+    declare_with_hir_ids: HashSet<HirId>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let bctx = mk_bctx(
         ctxt,
@@ -336,6 +465,7 @@ fn body_to_vir<'tcx>(
         migrate_postcondition_vars,
         param_names,
         external_opaque_type_map,
+        declare_with_hir_ids,
     );
     let body_expr =
         if is_async { extract_desugared_async_body(&bctx.ctxt, body)? } else { &body.value };
@@ -1088,7 +1218,9 @@ fn equalize_substs<'tcx>(
     let mut l1 = vec![];
     let mut l2 = vec![];
 
-    if substs1_early.len() + num_late1 != substs2_early.len() + num_late2 {
+    // Allow proxy (sig1) to have more total generics than external (sig2),
+    // since extra ghost/tracked params may introduce additional late-bound lifetimes.
+    if substs1_early.len() + num_late1 < substs2_early.len() + num_late2 {
         return None;
     }
 
@@ -1724,6 +1856,55 @@ pub(crate) fn check_item_fn<'tcx>(
                 rustc_hir::IsAsync::Async(..) => true,
             };
             let body = find_body(ctxt, body_id);
+
+            // Pre-scan for declare_with_tracked()/declare_with_ghost() calls
+            let (declare_with_extra_params, declare_with_hir_ids) =
+                pre_scan_declare_with_params(ctxt, id, body, body_id)?;
+            let declare_with_modes: Vec<(bool, rustc_middle::ty::Ty<'tcx>)> =
+                declare_with_extra_params
+                    .iter()
+                    .map(|(p, _, ty)| {
+                        // unwrapped_info mode: Proof = Tracked, Spec = Ghost
+                        (matches!(p.x.unwrapped_info, Some((Mode::Proof, _))), *ty)
+                    })
+                    .collect();
+            for (p, _mode, _) in declare_with_extra_params {
+                vir_params.push(p);
+            }
+
+            // Register declare_with extra param modes early so callers can find them
+            // even if body_to_vir fails for this function.
+            if !declare_with_modes.is_empty() {
+                let target_id = proxy_id.unwrap_or(id);
+                ctxt.external_fn_extra_tracked_params
+                    .borrow_mut()
+                    .insert(target_id, declare_with_modes.clone());
+
+                // For unerased_proxy functions (const fn proxies), also register under
+                // the original function's DefId, since call sites resolve to the original.
+                if vattrs.unerased_proxy {
+                    let proxy_name = ctxt.tcx.item_name(id).as_str().to_string();
+                    let prefix = "VERUS_UNERASED_PROXY__";
+                    if let Some(original_name) = proxy_name.strip_prefix(prefix) {
+                        let parent = ctxt.tcx.parent(id);
+                        // Find sibling with matching name by iterating HIR items in the parent
+                        for item_id in ctxt.tcx.hir_free_items() {
+                            let child_def_id = item_id.owner_id.to_def_id();
+                            if let Some(name) = ctxt.tcx.opt_item_name(child_def_id) {
+                                if name.as_str() == original_name
+                                    && child_def_id != id
+                                    && ctxt.tcx.parent(child_def_id) == parent
+                                {
+                                    ctxt.external_fn_extra_tracked_params
+                                        .borrow_mut()
+                                        .insert(child_def_id, declare_with_modes.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
             let param_names = vir_params.iter().map(|p| p.x.name.clone()).collect::<Vec<_>>();
             let mut vir_body = body_to_vir(
@@ -1738,6 +1919,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 param_names,
                 assume_specification_opaque_type_map.clone(),
                 is_async,
+                declare_with_hir_ids,
             )?;
             let header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
@@ -2821,6 +3003,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         vec![],
         None,
         false,
+        HashSet::new(),
     )?;
     let header = vir::headers::read_header(
         &mut vir_body,

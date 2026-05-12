@@ -3572,6 +3572,10 @@ pub(crate) fn stmt_to_vir<'tcx>(
                     return Ok(vec![]);
                 }
             }
+            // Skip declare_with() stmts (handled as extra params)
+            if bctx.declare_with_hir_ids.contains(&stmt.hir_id) {
+                return Ok(vec![]);
+            }
 
             let_stmt_to_vir(bctx, pat, init, els, bctx.ctxt.tcx.hir_attrs(stmt.hir_id))
         }
