@@ -449,13 +449,74 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 }
             }
             ExprKind::Call { ty: _, fun, ref args, from_hir_call, fn_span } => {
+                // VERUS: If any argument is to the function `two_phase_mutable_reference_tie`
+                // we need to reorder things, see the explanation in verus_time_travel_prevention.rs
+                // For `foo(two_phase_mutable_reference_tie(e1, e2), e3)` the evaluation order is:
+                // 1. e1
+                // 2. e2
+                // 3. e3
+                // 4. two_phase_mutable_reference_tie(_, _)
+                // 5. foo(_, _, _)
                 let fun = unpack!(block = this.as_local_operand(block, fun));
                 let args: Box<[_]> = args
                     .into_iter()
                     .copied()
-                    .map(|arg| Spanned {
-                        node: unpack!(block = this.as_local_call_operand(block, arg)),
-                        span: this.thir.exprs[arg].span,
+                    .map(|arg| {
+                        if let Some((fun, arg0, arg1, ty)) =
+                            crate::verus_time_travel_prevention::is_two_phase_mutable_reference_tie(
+                                &this.thir, arg,
+                            )
+                        {
+                            let fun = unpack!(block = this.as_local_operand(block, fun));
+                            let a0 = Spanned {
+                                node: unpack!(block = this.as_local_call_operand(block, arg0)),
+                                span: this.thir.exprs[arg].span,
+                            };
+                            let a1 = Spanned {
+                                node: unpack!(block = this.as_local_call_operand(block, arg1)),
+                                span: this.thir.exprs[arg].span,
+                            };
+                            (a0, Some((a1, fun, ty)))
+                        } else {
+                            // Normal arg
+                            let a = Spanned {
+                                node: unpack!(block = this.as_local_call_operand(block, arg)),
+                                span: this.thir.exprs[arg].span,
+                            };
+                            (a, None)
+                        }
+                    })
+                    .collect();
+
+                let args: Box<[_]> = args
+                    .into_iter()
+                    .map(|(arg0, arg1)| {
+                        if let Some((arg1, fun, ty)) = arg1 {
+                            // emit the call to `two_phase_mutable_reference_tie`
+                            let span = arg0.span;
+                            let success = this.cfg.start_new_block();
+                            let args = Box::new([arg0, arg1]);
+                            let temp_destination = this.temp(ty, span);
+                            this.record_operands_moved(&*args);
+                            this.cfg.terminate(
+                                block,
+                                source_info,
+                                TerminatorKind::Call {
+                                    func: fun,
+                                    args,
+                                    unwind: UnwindAction::Unreachable,
+                                    destination: temp_destination,
+                                    target: Some(success),
+                                    call_source: CallSource::Normal,
+                                    fn_span,
+                                },
+                            );
+                            this.diverge_from(block);
+                            block = success;
+                            Spanned { node: Operand::Move(temp_destination), span: span }
+                        } else {
+                            arg0
+                        }
                     })
                     .collect();
 
@@ -570,6 +631,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 ref fields,
                 ref base,
             }) => {
+                // VERUS: If any argument is to the function `two_phase_mutable_reference_tie`
+                // we need to reorder things, see the explanation in verus_time_travel_prevention.rs
+
                 // See the notes for `ExprKind::Array` in `as_rvalue` and for
                 // `ExprKind::Borrow` above.
                 let is_union = adt_def.is_union();
@@ -579,21 +643,77 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
                 // first process the set of fields that were provided
                 // (evaluating them in order given by user)
-                let fields_map: FxHashMap<_, _> = fields
+                let fields0: Box<[_]> = fields
                     .into_iter()
                     .map(|f| {
                         (
                             f.name,
-                            unpack!(
-                                block = this.as_operand(
-                                    block,
-                                    scope,
-                                    f.expr,
-                                    LocalInfo::AggregateTemp,
-                                    NeedsTemporary::Maybe,
-                                )
-                            ),
+                            if let Some((fun, arg0, arg1, ty)) = crate::verus_time_travel_prevention::is_two_phase_mutable_reference_tie(&this.thir, f.expr) {
+                                let fun = unpack!(block = this.as_local_operand(block, fun));
+                                let a0 = unpack!(block = this.as_operand(
+                                        block,
+                                        scope,
+                                        arg0,
+                                        LocalInfo::AggregateTemp,
+                                        NeedsTemporary::Maybe,
+                                    ));
+                                let a1 = unpack!(block = this.as_operand(
+                                        block,
+                                        scope,
+                                        arg1,
+                                        LocalInfo::AggregateTemp,
+                                        NeedsTemporary::Maybe,
+                                    ));
+                                let span = this.thir[f.expr].span;
+                                (a0, Some((a1, fun, ty, span)))
+                            } else {
+                                let a = unpack!(
+                                    block = this.as_operand(
+                                        block,
+                                        scope,
+                                        f.expr,
+                                        LocalInfo::AggregateTemp,
+                                        NeedsTemporary::Maybe,
+                                    )
+                                );
+                                (a, None)
+                            },
                         )
+                    })
+                    .collect();
+
+                let fields_map: FxHashMap<_, _> = fields0
+                    .into_iter()
+                    .map(|(field_name, (arg0, arg1))| {
+                        let arg = if let Some((arg1, fun, ty, span)) = arg1 {
+                            // emit the call to `two_phase_mutable_reference_tie`
+                            let success = this.cfg.start_new_block();
+                            let args = Box::new([
+                                Spanned { node: arg0, span: span },
+                                Spanned { node: arg1, span: span },
+                            ]);
+                            let temp_destination = this.temp(ty, span);
+                            this.record_operands_moved(&*args);
+                            this.cfg.terminate(
+                                block,
+                                source_info,
+                                TerminatorKind::Call {
+                                    func: fun,
+                                    args,
+                                    unwind: UnwindAction::Unreachable,
+                                    destination: temp_destination,
+                                    target: Some(success),
+                                    call_source: CallSource::Normal,
+                                    fn_span: span,
+                                },
+                            );
+                            this.diverge_from(block);
+                            block = success;
+                            Operand::Move(temp_destination)
+                        } else {
+                            arg0
+                        };
+                        (field_name, arg)
                     })
                     .collect();
 

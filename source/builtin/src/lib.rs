@@ -2356,6 +2356,15 @@ pub fn mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(_a: &'a mut T, _b: &'a mu
     unimplemented!()
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::two_phase_mutable_reference_tie"]
+pub fn two_phase_mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(
+    _a: &'a mut T,
+    _b: &'a mut U,
+) -> &'a mut T {
+    unimplemented!()
+}
+
 /// Directives and spec functions related to &mut references
 
 #[cfg(verus_keep_ghost)]
