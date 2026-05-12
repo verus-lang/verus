@@ -36,7 +36,7 @@ jobs:
         run: |
           . ../tools/activate
           ./tools/get-z3.sh
-          ./tools/docs.sh
+          ./tools/docs.sh --strict
 
       - name: setup dir structure
         run: |
@@ -76,7 +76,6 @@ jobs:
 
   deploy:
     needs: build
-    if: github.repository == 'verus-lang/verus'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

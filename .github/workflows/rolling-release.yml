@@ -9,8 +9,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: rolling-release-${{ github.sha }}
-  cancel-in-progress: false
+  group: rolling-release
+  cancel-in-progress: true
 
 jobs:
   # build the release artifacts
@@ -83,7 +83,6 @@ jobs:
   # publish the release artifacts to the rolling pre-release
   publish:
     needs: [build]
-    if: github.repository == 'verus-lang/verus'
     runs-on: ubuntu-22.04
     steps:
       - name: download all artifacts
