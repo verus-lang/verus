@@ -1072,7 +1072,6 @@ fn visit_func_decl_sst(
 }
 
 fn update_temp_locals(
-    ctx: &Ctx,
     state: &mut State,
     locals: &mut Vec<LocalDecl>,
     updated_temps: &mut HashSet<VarIdent>,
@@ -1083,12 +1082,6 @@ fn update_temp_locals(
                 let typ = state.temp_types[&l.ident].clone();
                 Arc::make_mut(l).typ = typ;
                 updated_temps.insert(l.ident.clone());
-            } else if state.remaining_temps.contains(&l.ident) {
-                // Orphan temp: declared but never assigned to in the visited body.
-                // We still need to give it a valid native (or boxed) AIR type,
-                // matching the default coercion used for other locals.
-                let typ = coerce_typ_to_native(ctx, &l.typ);
-                Arc::make_mut(l).typ = typ;
             }
         }
     }
@@ -1187,7 +1180,7 @@ fn visit_func_check_sst(
 
     let local_decls_decreases_init = visit_stms(ctx, state, local_decls_decreases_init);
 
-    update_temp_locals(ctx, state, &mut locals, &mut updated_temps);
+    update_temp_locals(state, &mut locals, &mut updated_temps);
     state.remaining_temps.clear();
     state.types.pop_scope();
 
