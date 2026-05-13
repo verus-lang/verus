@@ -59,9 +59,9 @@ pub struct ContextX<'tcx> {
     pub(crate) crate_name: CrateId,
     pub(crate) name_def_id_map: Rc<RefCell<std::collections::HashMap<Path, DefId>>>,
     pub(crate) next_read_kind_id: AtomicU64,
-    /// For external_fn_specification functions with extra ghost/tracked params:
-    /// maps the external function's DefId to a Vec of (is_tracked, expected_ty) pairs
-    pub(crate) external_fn_extra_tracked_params:
+    /// For functions with extra ghost/tracked params (from declare_with() stmts):
+    /// maps the function's DefId to a Vec of (is_tracked, expected_ty) pairs
+    pub(crate) declare_with_params:
         Rc<RefCell<std::collections::HashMap<DefId, Vec<(bool, rustc_middle::ty::Ty<'tcx>)>>>>,
 }
 
@@ -137,7 +137,7 @@ impl<'tcx> ContextX<'tcx> {
             crate_name,
             name_def_id_map: Rc::new(RefCell::new(HashMap::new())),
             next_read_kind_id: AtomicU64::new(0),
-            external_fn_extra_tracked_params: Rc::new(RefCell::new(HashMap::new())),
+            declare_with_params: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 

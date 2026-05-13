@@ -219,6 +219,22 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] test_proof_with_lifetime_bound_mismatch verus_code!{
+        use vstd::prelude::*;
+        fn test<'a, 'b: 'a>(a: &'a u64, b: u64) -> &'a u64
+        {
+            let c: Tracked<&'b u64> = declare_with();
+            a
+        }
+
+        fn test2<'a, 'b>(a: &'a u64, b: u64, c: Tracked<&'b u64>) -> &'a u64
+        {
+            proof_with(c, test(a, b))
+        }
+    } => Err(err) => assert_vir_error_msg(err, "proof_with argument 1 has incompatible lifetime")
+}
+
 // Same as test_proof_with_lifetime_mismatch but for Ghost.
 test_verify_one_file! {
     #[test] test_declare_with_ghost_lifetime_mismatch verus_code!{
@@ -253,6 +269,22 @@ test_verify_one_file! {
         #[verifier(external)]
         fn unverified_call_test() {
             test(0u64);
+        }
+     } => Ok(())
+}
+
+test_verify_one_file! {
+     #[test] test_proof_with_generic_type2 verus_code!{
+        use vstd::prelude::*;
+        trait X {}
+        fn test<T1: X, T2>(a: T1, b: T2)
+        {
+            let c: Tracked<T2> = declare_with();
+            let d: Ghost<u32> = declare_with();
+        }
+
+        fn call_test<T1: X, T2>(a: T1, b: T2, c: Tracked<T2>, d: Ghost<u32>) {
+            proof_with((c, d), test(a, b));
         }
      } => Ok(())
 }
