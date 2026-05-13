@@ -8,7 +8,7 @@ use super::super::modes::tracked_swap;
 
 verus! {
 
-broadcast use super::super::set::group_set_axioms;
+broadcast use super::super::set::group_set_lemmas;
 
 /// Interface for PCM / Resource Algebra ghost state.
 ///
@@ -142,7 +142,7 @@ impl<P: PCM> Resource<P> {
 
     /// This is a more general version of [`update`](Self::update).
     // GHOST-UPDATE rule
-    pub axiom fn update_nondeterministic(tracked self, new_values: Set<P>) -> (tracked out: Self)
+    pub axiom fn update_nondeterministic(tracked self, new_values: ISet<P>) -> (tracked out: Self)
         requires
             frame_preserving_update_nondeterministic(self.value(), new_values),
         ensures
@@ -219,7 +219,7 @@ impl<P: PCM> Resource<P> {
     pub axiom fn update_nondeterministic_with_shared(
         tracked self,
         tracked other: &Self,
-        new_values: Set<P>,
+        new_values: ISet<P>,
     ) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),

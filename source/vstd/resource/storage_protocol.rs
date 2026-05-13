@@ -250,10 +250,12 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             if new_values.contains(v) {
                 assert(new_values0.contains(v));
             }
-            super::iset::lemma_iset_ext_equal(new_values0, new_values);
-        }
-        super::iset::lemma_iset_ext_equal_eq(new_values0, new_values);
-        assert(new_values0 == new_values);
+            if new_values0.contains(v) {
+                let q = choose |q| new_values.contains((q, v.1)) && v.0 == #[trigger] P::op(q, P::unit());
+                P::op_unit(q);
+                assert(new_values.contains(v));
+            }
+        });
         Self::exchange_nondeterministic_with_shared(selff, &unit, s, new_values)
     }
 

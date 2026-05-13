@@ -12,7 +12,8 @@ use super::set::*;
 #[cfg(verus_keep_ghost)]
 use super::set_lib::*;
 
-verus! {
+use verus as verus_; // skip verusfmt due to unhandled return-value-pattern
+verus_! {
 
 broadcast use {
     super::map::group_map_axioms,
@@ -547,8 +548,6 @@ impl<K, V> IMap<Seq<K>, V> {
         broadcast use super::seq_lib::group_seq_properties, super::seq_lib::lemma_seq_skip_of_skip;
         broadcast use Map::lemma_prefixed_entries_contains, Map::lemma_prefixed_entries_get;
 
-        #[allow(deprecated)]
-        super::seq_lib::lemma_seq_properties::<K>();  // new broadcast group not working here
         broadcast use {
             lemma_prefixed_entries_contains_generic,
             lemma_prefixed_entries_get_generic,

@@ -35,27 +35,6 @@ pub struct Set<A>(pub(crate) GSet<A, Finite>);
 
 
 impl<A> Set<A> {
-    /// The "empty" set.
-    ///
-    /// Usage Example: <br>
-    /// ```rust
-    /// let empty_set = Set::<A>::empty();
-    ///
-    /// assert(empty_set.is_empty());
-    /// assert(empty_set.complement() =~= Set::<A>::full());
-    /// assert(Set::<A>::empty().finite());
-    /// assert(Set::<A>::empty().len() == 0);
-    /// assert(forall |x: A| !Set::<A>::empty().contains(x));
-    /// ```
-    /// Axioms around the empty set are: <br>
-    /// * [`axiom_set_empty_finite`]
-    /// * [`axiom_set_empty_len`] <br>
-    /// * [`axiom_set_empty`]
-    #[rustc_diagnostic_item = "verus::vstd::set::Set::empty"]
-    pub closed spec fn empty() -> Set<A> {
-        GSet::<A, true>::empty()
-    }
-
     #[doc(hidden)]
     pub closed spec fn from_gset(s: GSet<A, Finite>) -> Set<A> {
         Set(s)

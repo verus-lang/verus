@@ -1077,11 +1077,10 @@ pub fn set_type_path() -> Path {
     })
 }
 
-pub fn set_finite_type_path(vstd_crate_name: &Ident) -> Path {
+pub fn set_finite_type_path() -> Path {
     Arc::new(PathX {
-        krate: Some(vstd_crate_name.clone()),
+        krate: CrateId::Vstd,
         segments: Arc::new(vec![Arc::new("set".to_string()), Arc::new("Finite".to_string())]),
->>>>>>> upstream/jonh/sets-typed-finite
     })
 }
 

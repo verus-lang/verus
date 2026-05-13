@@ -22,8 +22,7 @@ pub use super::gmap::{
     assert_maps_equal_internal,
 };
 
-use verus as verus_; // skip verusfmt due to unhandled return-value-pattern
-verus_! {
+verus! {
 
 pub trait MapLike<K, V> {
     type FiniteView: Finiteness;
@@ -305,7 +304,7 @@ impl<K, V> Map<K, V> {
     /// by the new value.
     pub axiom fn tracked_insert(tracked &mut self, key: K, tracked value: V)
         ensures
-            *final(self) == *old(self).insert(key, value),
+            *self == old(self).insert(key, value),
     ;
 
     /// Removes the given key and its associated _tracked_ value from the map.
@@ -315,7 +314,7 @@ impl<K, V> Map<K, V> {
         requires
             old(self).dom().contains(key),
         ensures
-            *final(self) == *old(self).remove(key),
+            *self == old(self).remove(key),
             v == old(self)[key],
     ;
 
@@ -327,42 +326,42 @@ impl<K, V> Map<K, V> {
             *v === self.index(key),
     ;
 
-    /// Index into a tracked map, getting a tracked mutable borrow of the value
-    pub axiom fn tracked_borrow_mut(tracked &mut self, key: K) -> (tracked v: &mut V)
+    /// Extract a set of keys (and their corresponding values) out of the map.
+    ///
+    /// This allows us to split a map based on a subset of the domain.
+    pub axiom fn tracked_remove_keys(tracked &mut self, keys: Set<K>) -> (tracked out_map: Self)
         requires
-            self.dom().contains(key),
+            keys.subset_of(old(self).dom()),
         ensures
-            *v === old(self).index(key),
-            *final(self) === old(self).insert(key, *final(v))
+            *self == old(self).remove_keys(keys),
+            out_map == old(self).restrict(keys),
     ;
 
-    /// Split a mutable borrow of a map into two.
-    pub axiom fn tracked_borrow_mut_split(tracked &mut self, keys: Set<K>)
-        -> (tracked (m1, m2): (&mut Self, &mut Self))
-        requires
-            keys <= self.dom(),
+
+    /// Merge a map into a tracked map.
+    ///
+    /// The new (key, value) pairs take precedence.
+    pub axiom fn tracked_union_prefer_right(tracked &mut self, right: Self)
         ensures
-            *m1 == old(self).restrict(keys),
-            *m2 == old(self).remove_keys(keys),
-            *final(self) == final(m1).union_prefer_right(*final(m2)),
+            *final(self) == old(self).union_prefer_right(right),
     ;
 
     /// Change the keys of a map, by reverse lookup in a different map.
     ///
     /// For each `(old_key, new_key)` pair in `key_map`, the new map will have `(new_key, old_map[old_key])`.
     /// Note the new map may be smaller than the old map if the `key_map` omits mappings for some of the old keys.
-    pub axiom fn tracked_map_keys<J>(
-        tracked old_map: Map<K, V>,
-        key_map: Map<J, K>,
-    ) -> (tracked new_map: Map<J, V>)
+    pub proof fn tracked_map_keys<J>(tracked old_map: Self, key_map: Map<J, K>) -> (tracked new_map:
+        Map<J, V>)
         requires
-            forall|j| #![auto] key_map.contains_key(j) ==> old_map.contains_key(key_map[j]),
+            forall|j|
+                #![auto]
+                key_map.dom().contains(j) ==> old_map.dom().contains(key_map.index(j)),
             forall|j1, j2|
                 #![auto]
-                j1 != j2 && key_map.contains_key(j1) && key_map.contains_key(j2) ==> key_map[j1]
-                    != key_map[j2],
+                !equal(j1, j2) && key_map.dom().contains(j1) && key_map.dom().contains(j2)
+                    ==> !equal(key_map.index(j1), key_map.index(j2)),
         ensures
-            new_map.dom() == key_map.dom(),
+            forall|j| #[trigger] new_map.dom().contains(j) <==> key_map.dom().contains(j),
             forall|j|
                 key_map.dom().contains(j) ==> new_map.dom().contains(j) && #[trigger] new_map.index(
                     j,
@@ -410,302 +409,7 @@ impl<K, V> Map<K, V> {
         new_map
     }
 
-    pub axiom fn tracked_remove_keys(tracked &mut self, keys: Set<K>) -> (tracked out_map: Self)
-        requires
-            keys.subset_of(old(self).dom()),
-        ensures
-            *self == old(self).remove_keys(keys),
-            out_map == old(self).restrict(keys),
-    ;
-
-    pub axiom fn tracked_union_prefer_right(tracked &mut self, right: Self)
-        ensures
-            *self == old(self).union_prefer_right(right),
-    ;
-
-    /// Extract a set of keys (and their corresponding values) out of the map.
-    ///
-    /// This allows us to split a map based on a subset of the domain.
-    pub axiom fn tracked_remove_keys(tracked &mut self, keys: Set<K>) -> (tracked out_map: Map<
-        K,
-        V,
-    >)
-        requires
-            keys.subset_of(old(self).dom()),
-        ensures
-            *final(self) == old(self).remove_keys(keys),
-            out_map == old(self).restrict(keys),
-    ;
-
-    /// Merge a map into a tracked map.
-    ///
-    /// The new (key, value) pairs take precendece.
-    pub axiom fn tracked_union_prefer_right(tracked &mut self, right: Self)
-        ensures
-            *final(self) == old(self).union_prefer_right(right),
-    ;
-}
-
-// Trusted axioms
-/* REVIEW: this is simpler than the two separate axioms below -- would this be ok?
-pub broadcast axiom fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
-    requires
-        m.dom().contains(key),
-    ensures
-        #[trigger](decreases_to!(m => m[key]));
-*/
-
-pub broadcast axiom fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key: K)
-    requires
-        m.dom().finite(),
-        m.dom().contains(key),
-    ensures
-        #[trigger] (decreases_to!(m => m[key])),
-;
-
-// REVIEW: this is currently a special case that is hard-wired into the verifier
-// It implements a version of https://github.com/FStarLang/FStar/pull/2954 .
-pub broadcast axiom fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
-    requires
-        m.dom().contains(key),
-    ensures
-        #[trigger] is_smaller_than_recursive_function_field(m[key], m),
-;
-
-/// The domain of the empty map is the empty set
-pub broadcast proof fn axiom_map_empty<K, V>()
-    ensures
-        #[trigger] Map::<K, V>::empty().dom() == Set::<K>::empty(),
-{
-    broadcast use super::set::group_set_axioms;
-
-    assert(Set::new(|k: K| (|k| None::<V>)(k) is Some) == Set::<K>::empty());
-}
-
-/// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
-/// the original map's domain set.
-pub broadcast proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
-    ensures
-        #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
-{
-    broadcast use super::set::group_set_axioms;
-
-    assert(m.insert(key, value).dom() =~= m.dom().insert(key));
-}
-
-/// Inserting `value` at `key` in `m` results in a map that maps `key` to `value`
-pub broadcast proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
-    ensures
-        #[trigger] m.insert(key, value)[key] == value,
-{
-}
-
-/// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`
-pub broadcast proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
-    requires
-        key1 != key2,
-    ensures
-        #[trigger] m.insert(key2, value)[key1] == m[key1],
-{
-}
-
-/// The domain of a map after removing a key-value pair is equivalent to removing the key from
-/// the original map's domain set.
-pub broadcast proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
-    ensures
-        #[trigger] m.remove(key).dom() == m.dom().remove(key),
-{
-    broadcast use super::set::group_set_axioms;
-
-    assert(m.remove(key).dom() =~= m.dom().remove(key));
-}
-
-/// Removing a key-value pair from a map does not change the value mapped to by
-/// any other keys in the map.
-pub broadcast proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
-    requires
-        key1 != key2,
-    ensures
-        #[trigger] m.remove(key2)[key1] == m[key1],
-{
-}
-
-/// Two maps are equivalent if their domains are equivalent and every key in their domains map to the same value.
-pub broadcast proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
-    ensures
-        #[trigger] (m1 =~= m2) <==> {
-            &&& m1.dom() =~= m2.dom()
-            &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
-        },
-{
-    broadcast use super::set::group_set_axioms;
-
-    if m1 =~= m2 {
-        assert(m1.dom() =~= m2.dom());
-        assert(forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]);
-    }
-    if ({
-        &&& m1.dom() =~= m2.dom()
-        &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
-    }) {
-        if m1.mapping != m2.mapping {
-            assert(exists|k| #[trigger] (m1.mapping)(k) != (m2.mapping)(k));
-            let k = choose|k| #[trigger] (m1.mapping)(k) != (m2.mapping)(k);
-            if m1.dom().contains(k) {
-                assert(m1[k] == m2[k]);
-            }
-            assert(false);
-
-pub broadcast proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, V>)
-    ensures
-        #[trigger] (m1 =~~= m2) <==> {
-            &&& m1.dom() =~~= m2.dom()
-            &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] =~~= m2[k]
-        },
-{
-    axiom_map_ext_equal(m1, m2);
-}
-
-pub broadcast group group_map_axioms {
-    axiom_map_index_decreases_finite,
-    axiom_map_index_decreases_infinite,
-    axiom_map_empty,
-    axiom_map_insert_domain,
-    axiom_map_insert_same,
-    axiom_map_insert_different,
-    axiom_map_remove_domain,
-    axiom_map_remove_different,
-    axiom_map_ext_equal,
-    axiom_map_ext_equal_deep,
-}
-
-// Macros
-#[doc(hidden)]
-#[macro_export]
-macro_rules! map_internal {
-    [$($key:expr => $value:expr),* $(,)?] => {
-        $crate::vstd::map::Map::empty()
-            $(.insert($key, $value))*
-    }
-}
-
-/// Create a map using syntax like `map![key1 => val1, key2 => val, ...]`.
-///
-/// This is equivalent to `Map::empty().insert(key1, val1).insert(key2, val2)...`.
-///
-/// Note that this does _not_ require all keys to be distinct. In the case that two
-/// or more keys are equal, the resulting map uses the value of the rightmost entry.
-#[macro_export]
-macro_rules! map {
-    [$($tail:tt)*] => {
-        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::map::map_internal!($($tail)*))
-    };
-}
-
-#[doc(hidden)]
-#[verifier::inline]
-pub open spec fn check_argument_is_map<K, V>(m: Map<K, V>) -> Map<K, V> {
-    m
-}
-
-#[doc(hidden)]
-pub use map_internal;
-pub use map;
-
-/// Prove two maps `map1` and `map2` are equal by proving that their values are equal at each key.
-///
-/// More precisely, `assert_maps_equal!` requires that for each key `k`:
-///  * `map1` contains `k` in its domain if and only if `map2` does (`map1.dom().contains(k) <==> map2.dom().contains(k)`)
-///  * If they contain `k` in their domains, then their values are equal (`map1.dom().contains(k) && map2.dom().contains(k) ==> map1[k] == map2[k]`)
-///
-/// The property that equality follows from these facts is often called _extensionality_.
-///
-/// `assert_maps_equal!` can handle many trivial-looking
-/// identities without any additional help:
-///
-/// ```rust
-/// proof fn insert_remove(m: Map<int, int>, k: int, v: int)
-///     requires !m.dom().contains(k)
-///     ensures m.insert(k, v).remove(k) == m
-/// {
-///     let m2 = m.insert(k, v).remove(k);
-///     assert_maps_equal!(m == m2);
-///     assert(m == m2);
-/// }
-/// ```
-///
-/// For more complex cases, a proof may be required for each key:
-///
-/// ```rust
-/// proof fn bitvector_maps() {
-///     let m1 = Map::<u64, u64>::new(
-///         |key: u64| key & 31 == key,
-///         |key: u64| key | 5);
-///
-///     let m2 = Map::<u64, u64>::new(
-///         |key: u64| key < 32,
-///         |key: u64| 5 | key);
-///
-///     assert_maps_equal!(m1 == m2, key => {
-///         // Show that the domains of m1 and m2 are the same by showing their predicates
-///         // are equivalent.
-///         assert_bit_vector((key & 31 == key) <==> (key < 32));
-///
-///         // Show that the values are the same by showing that these expressions
-///         // are equivalent.
-///         assert_bit_vector(key | 5 == 5 | key);
-///     });
-/// }
-/// ```
-#[macro_export]
-macro_rules! assert_maps_equal {
-    [$($tail:tt)*] => {
-        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::map::assert_maps_equal_internal!($($tail)*))
-    };
-}
-
-#[macro_export]
-#[doc(hidden)]
-macro_rules! assert_maps_equal_internal {
-    (::verus_builtin::spec_eq($m1:expr, $m2:expr)) => {
-        assert_maps_equal_internal!($m1, $m2)
-    };
-    (::verus_builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
-        assert_maps_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
-    };
-    ($m1:expr, $m2:expr $(,)?) => {
-        assert_maps_equal_internal!($m1, $m2, key => { })
-    };
-    ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
-        #[verifier::spec] let m1 = $crate::vstd::map::check_argument_is_map($m1);
-        #[verifier::spec] let m2 = $crate::vstd::map::check_argument_is_map($m2);
-        $crate::vstd::prelude::assert_by($crate::vstd::prelude::equal(m1, m2), {
-            $crate::vstd::prelude::assert_forall_by(|$k $( : $t )?| {
-                // TODO better error message here: show the individual conjunct that fails,
-                // and maybe give an error message in english as well
-                $crate::vstd::prelude::ensures([
-                    $crate::vstd::prelude::imply(#[verifier::trigger] m1.dom().contains($k), m2.dom().contains($k))
-                    && $crate::vstd::prelude::imply(m2.dom().contains($k), m1.dom().contains($k))
-                    && $crate::vstd::prelude::imply(m1.dom().contains($k) && m2.dom().contains($k),
-                        $crate::vstd::prelude::equal(m1.index($k), m2.index($k)))
-                ]);
-                { $bblock }
-            });
-            $crate::vstd::prelude::assert_($crate::vstd::prelude::ext_equal(m1, m2));
-        });
-    }
-}
-
-#[doc(hidden)]
-pub use assert_maps_equal_internal;
-pub use assert_maps_equal;
-
-} // verus!
-
-verus_! { // skip verusfmt, issue with 'final'
-
-impl<K, V> Map<K, V> {
-    pub proof fn tracked_map_keys_in_place(tracked &mut self, key_map: Map<K, K>)
+    pub axiom fn tracked_map_keys_in_place(tracked &mut self, key_map: Map<K, K>)
         requires
             forall|j|
                 #![auto]
@@ -715,9 +419,9 @@ impl<K, V> Map<K, V> {
                 j1 != j2 && key_map.dom().contains(j1) && key_map.dom().contains(j2)
                     ==> key_map.index(j1) != key_map.index(j2),
         ensures
-            forall|j| #[trigger] final(self).dom().contains(j) == key_map.dom().contains(j),
+            forall|j| #[trigger] self.dom().contains(j) == key_map.dom().contains(j),
             forall|j|
-                key_map.dom().contains(j) ==> final(self).dom().contains(j) && #[trigger] final(self).index(j)
+                key_map.dom().contains(j) ==> self.dom().contains(j) && #[trigger] self.index(j)
                     == old(self).index(key_map.index(j)),
     ;
 
@@ -928,6 +632,26 @@ impl<K, V> IMap<K, V> {
     {
         self.0.tracked_insert(key, value);
     }
+
+    /// Index into a tracked map, getting a tracked mutable borrow of the value
+    pub axiom fn tracked_borrow_mut(tracked &mut self, key: K) -> (tracked v: &mut V)
+        requires
+            self.dom().contains(key),
+        ensures
+            *v === old(self).index(key),
+            *final(self) === old(self).insert(key, *final(v))
+    ;
+
+    /// Split a mutable borrow of a map into two.
+    pub axiom fn tracked_borrow_mut_split(tracked &mut self, keys: Set<K>)
+        -> (tracked (m1, m2): (&mut Self, &mut Self))
+        requires
+            keys <= self.dom(),
+        ensures
+            *m1 == old(self).restrict(keys),
+            *m2 == old(self).remove_keys(keys),
+            *final(self) == final(m1).union_prefer_right(*final(m2)),
+    ;
 
     pub proof fn tracked_remove(tracked &mut self, key: K) -> (tracked v: V)
         requires
