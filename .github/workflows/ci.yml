@@ -13,10 +13,10 @@ on:
 # How:
 #   - This creates a concurrency group for workflow runs;
 #   - When the workflow runs, it cancels in-progress runs if the concurrency group is the same
-#   - The group names are ci-<pr number> (in the case of PRs) and ci-<SHA> for main
-#   - This means that we still run CI for every commit on main (but those runs don't get updated anyway)
+#   - The group names are ci-refs/pull/<PR #>/merge (in the case of PRs) and 
+#     ci-refs/heads/gh-readonly-queue/main/pr-<N>-<sha> for merge queue executions
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.push.after }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
