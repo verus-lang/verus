@@ -967,6 +967,8 @@ pub fn func_def_to_sst(
             )?;
             req_stms.extend(body_stms);
         }
+    }
+    if ctx.checking_spec_preconditions() {
         req_stms.push(stm);
         stm = stms_to_one_stm(&body.span, req_stms);
     }
