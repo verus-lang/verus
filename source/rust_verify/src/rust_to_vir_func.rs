@@ -382,21 +382,21 @@ fn pre_scan_declare_with_params<'tcx>(
 
             // Derive is_tracked from the type (Tracked<T> vs Ghost<T>) via ADT DefId
             let is_tracked = match ty.kind() {
-                rustc_middle::ty::TyKind::Adt(adt_def, _) => {
-                    match ctxt.get_verus_item(adt_def.did()) {
-                        Some(VerusItem::BuiltinType(
-                            crate::verus_items::BuiltinTypeItem::Tracked,
-                        )) => true,
-                        Some(VerusItem::BuiltinType(
-                            crate::verus_items::BuiltinTypeItem::Ghost,
-                        )) => false,
-                        _ => {
-                            return err_span(
-                                init.span,
-                                "declare_with() must be assigned to a Tracked<T> or Ghost<T> type",
-                            );
-                        }
-                    }
+                rustc_middle::ty::TyKind::Adt(adt_def, _)
+                    if matches!(
+                        ctxt.get_verus_item(adt_def.did()),
+                        Some(VerusItem::BuiltinType(crate::verus_items::BuiltinTypeItem::Tracked))
+                    ) =>
+                {
+                    true
+                }
+                rustc_middle::ty::TyKind::Adt(adt_def, _)
+                    if matches!(
+                        ctxt.get_verus_item(adt_def.did()),
+                        Some(VerusItem::BuiltinType(crate::verus_items::BuiltinTypeItem::Ghost))
+                    ) =>
+                {
+                    false
                 }
                 _ => {
                     return err_span(
@@ -1872,7 +1872,11 @@ pub(crate) fn check_item_fn<'tcx>(
                     .iter()
                     .map(|(p, _, ty)| {
                         // unwrapped_info mode: Proof = Tracked, Spec = Ghost
-                        (matches!(p.x.unwrapped_info, Some((Mode::Proof, _))), *ty)
+                        match p.x.unwrapped_info {
+                            Some((Mode::Proof, _)) => (true, *ty),
+                            Some((Mode::Spec, _)) => (false, *ty),
+                            _ => unreachable!(),
+                        }
                     })
                     .collect();
             for (p, _mode, _) in declare_with_extra_params {
@@ -1883,9 +1887,7 @@ pub(crate) fn check_item_fn<'tcx>(
             // even if body_to_vir fails for this function.
             if !declare_with_modes.is_empty() {
                 let target_id = proxy_id.unwrap_or(id);
-                ctxt.external_fn_extra_tracked_params
-                    .borrow_mut()
-                    .insert(target_id, declare_with_modes.clone());
+                ctxt.declare_with_params.borrow_mut().insert(target_id, declare_with_modes.clone());
 
                 // For unerased_proxy functions (const fn proxies), also register under
                 // the original function's DefId, since call sites resolve to the original.
@@ -1902,7 +1904,7 @@ pub(crate) fn check_item_fn<'tcx>(
                                     && child_def_id != id
                                     && ctxt.tcx.parent(child_def_id) == parent
                                 {
-                                    ctxt.external_fn_extra_tracked_params
+                                    ctxt.declare_with_params
                                         .borrow_mut()
                                         .insert(child_def_id, declare_with_modes.clone());
                                 }
