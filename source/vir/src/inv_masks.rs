@@ -31,8 +31,20 @@ pub fn namespace_id_typ() -> Typ {
     Arc::new(TypX::Int(IntRange::Int))
 }
 
-pub fn namespace_set_typs() -> Typs {
-    Arc::new(vec![namespace_id_typ()])
+pub fn set_finite_type(ctx: &Ctx) -> Typ {
+    Arc::new(TypX::Datatype(
+        Dt::Path(crate::def::set_finite_type_path(&ctx.global.vstd_crate_name)),
+        Arc::new(vec![]),
+        Arc::new(vec![]),
+    ))
+}
+
+pub fn namespace_set_typs(ctx: &Ctx) -> Typs {
+    Arc::new(vec![namespace_id_typ(), set_finite_type(ctx)])
+}
+
+pub fn namespace_set_typs2(ctx: &Ctx) -> Typs {
+    Arc::new(vec![namespace_id_typ(), set_finite_type(ctx), set_finite_type(ctx)])
 }
 
 pub fn namespace_set_typ(_ctx: &Ctx) -> Typ {
@@ -62,7 +74,7 @@ impl MaskSet {
                 let insert_fun = CallFun::Fun(crate::def::fn_set_insert_name(), None);
                 let insert_expx = ExpX::Call(
                     insert_fun,
-                    namespace_set_typs(),
+                    namespace_set_typs(ctx),
                     Arc::new(vec![base.to_exp(ctx), elem.clone()]),
                 );
                 let insert_exp =
@@ -73,7 +85,7 @@ impl MaskSet {
                 let remove_fun = CallFun::Fun(crate::def::fn_set_remove_name(), None);
                 let remove_expx = ExpX::Call(
                     remove_fun,
-                    namespace_set_typs(),
+                    namespace_set_typs(ctx),
                     Arc::new(vec![base.to_exp(ctx), elem.clone()]),
                 );
                 let remove_exp =
@@ -158,7 +170,7 @@ impl MaskSet {
                 let contains_fun = CallFun::Fun(crate::def::fn_set_contains_name(), None);
                 let contains_expx = ExpX::Call(
                     contains_fun,
-                    namespace_set_typs(),
+                    namespace_set_typs(ctx),
                     Arc::new(vec![self.to_exp(ctx), elem.clone()]),
                 );
                 let contains_exp =
@@ -234,7 +246,7 @@ impl MaskSet {
                     let other_exp = other.to_exp(ctx);
                     let subset_of_expx = ExpX::Call(
                         subset_of_fun,
-                        namespace_set_typs(),
+                        namespace_set_typs2(ctx),
                         Arc::new(vec![self_exp.clone(), other_exp.clone()]),
                     );
                     let subset_of_exp =

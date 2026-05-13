@@ -34,12 +34,12 @@ pub use verus_builtin_macros::verus_spec;
 pub use verus_builtin_macros::verus_trait_impl;
 pub use verus_builtin_macros::verus_verify;
 
-pub use super::map::Map;
-pub use super::map::map;
+pub use super::map::{IMap, Map};
+pub use super::map::{imap, map};
 pub use super::seq::Seq;
 pub use super::seq::seq;
-pub use super::set::Set;
-pub use super::set::set;
+pub use super::set::{ISet, Set};
+pub use super::set::{iset, set};
 pub use super::view::*;
 
 #[cfg(verus_keep_ghost)]

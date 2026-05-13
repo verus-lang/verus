@@ -572,11 +572,11 @@ test_verify_one_file! {
         }
 
         proof fn set_comprehension() {
-            let modest_evens = Set::new(|x: int| 0 <= x < 10 && is_even(x));
-            assert(modest_evens =~= set![0, 2, 4, 6, 8]);
+            let modest_evens = ISet::new(|x: int| 0 <= x < 10 && is_even(x));
+            assert(modest_evens =~= iset![0, 2, 4, 6, 8]);
 
             /* This is beyond summer school, but shows a verus-preferred style */
-            let equivalent_evens = set_int_range(0, 10).filter(|x: int| is_even(x));
+            let equivalent_evens = Set::range(0, 10int).filter(|x: int| is_even(x)).to_infinite();
             assert(modest_evens =~= equivalent_evens);
         }
 
@@ -591,12 +591,12 @@ test_verify_one_file! {
             assert(replace_map[3] == 7);
 
             /* This is beyond summer school, but shows a verus-preferred style */
-            let equivalent_double_map = set_int_range(1, 5).mk_map(|x: int| x * 2);
+            let equivalent_double_map = Set::range(1, 5int).mk_map(|x: int| x * 2);
             assert(equivalent_double_map =~= double_map);
         }
 
         proof fn map_comprehension() {
-            let doubly_map = set_int_range(0, 5).mk_map(|x: int| 2 * x);
+            let doubly_map = Set::range(0, 5int).mk_map(|x: int| 2 * x);
             assert(doubly_map[1] == 2);
             assert(doubly_map[4] == 8);
         }
@@ -621,8 +621,8 @@ test_verify_one_file! {
         }
 
         proof fn set_comprehension() {
-            let modest_evens = Set::new(|x: int| 0 <= x < 10 && is_even(x));
-            assert(modest_evens =~= set![0, 2, 4, 8]);   // FAILS
+            let modest_evens = ISet::new(|x: int| 0 <= x < 10 && is_even(x));
+            assert(modest_evens =~= iset![0, 2, 4, 8]);   // FAILS
         }
 
         proof fn maps() {
@@ -637,7 +637,7 @@ test_verify_one_file! {
         }
 
         proof fn map_comprehension() {
-            let doubly_map = set_int_range(0, 5).mk_map(|x: int| 2 * x);
+            let doubly_map = Set::range(0, 5int).mk_map(|x: int| 2 * x);
             assert(doubly_map[1] == 2);
             assert(doubly_map[4] == 4);   // FAILS
         }
@@ -664,16 +664,14 @@ test_verify_one_file! {
         }
 
         proof fn is_this_set_finite() {
-            let modest_evens = Set::new(|x: int| is_modest(x) && is_even(x));
+            let modest_evens = ISet::new(|x: int| is_modest(x) && is_even(x));
             // In verus, unlike Dafny, it's fine to have infinite sets, but you may want a finite
             // one (say because you're using it as a decreases to well-found an induction).
-            let modest_numbers = set_int_range(0, 10);
-            // TODO(chris): we need ambient automation for lemmes. lemma_int_range shoud be in a
-            // low-risk kit.
-            lemma_int_range(0, 10);
+            let modest_numbers = Set::range(0, 10int).to_infinite();
+            assert( modest_numbers.finite() );
             // TODO(chris): don't want to have type annotation on this lemma, but there's an
             // erasure bug.
-            lemma_len_subset::<int>(modest_evens, modest_numbers);
+            lemma_len_subset::<int, _, _>(modest_evens, modest_numbers);
             assert(modest_evens.finite());
         }
     } => Ok(())
@@ -692,7 +690,7 @@ test_verify_one_file! {
         }
 
         proof fn is_this_set_finite() {
-            let modest_evens = Set::new(|x: int| is_modest(x) && is_even(x));
+            let modest_evens = ISet::new(|x: int| is_modest(x) && is_even(x));
             // Need additional proof to show that this construction is finite.
             assert(modest_evens.finite());  // FAILS
         }

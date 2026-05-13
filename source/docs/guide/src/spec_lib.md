@@ -12,10 +12,18 @@ returns a length of type `usize`,
 which is bounded,
 the `len()` methods of `Seq` and `Set` return
 lengths of type `nat`, which is unbounded.
-Furthermore, `Set` and `Map` can represent infinite sets and maps.
-(Sequences, on the other hand, are always finite.)
+
+`Set` and `Map` represent finite sets and maps.
+`ISet` and `IMap` represent possibly-infinite sets and maps.
 This allows specifications to talk about collections that
 are larger than could be contained in the physical memory of a computer.
+
+Everything you can do with the finite version can also be done
+with the infinite version; the key benefit of the finite version
+is that Verus knows the finite property at type time,
+which can prevent some SMT-time proof failure surprises.
+
+Sequences are always finite.
 
 ## Constructing and using Seq, Set, Map
 
@@ -25,10 +33,16 @@ with particular contents:
 ```rust
 {{#include ../../../../examples/guide/lib_examples.rs:macro}}
 ```
+The `iset!` and `imap!` macros connstruct finite values of the possibly-infinite
+types `ISet` and `IMap`.
 
-The macros above can only construct finite sequences, sets, and maps.
-There are also functions `Seq::new`, `Set::new`, and `Map::new`,
-which can allocate both finite values and (for sets and maps) infinite values:
+The macros above can only construct finite (literal) sequences, sets, and maps.
+Sequences can be constructed with `Seq::new`.
+Infinite-type sets and maps can be constructed with `ISet::new` and `IMap::new`.
+
+Finite-typed `Set`s can be constructed with `Set::int_range` or `Set::nat_range`,
+then modified as desired with `Set::map` and `Set::filter`.
+Finite-typed `Map::new` accepts any finite-type set as its domain.
 
 ```rust
 {{#include ../../../../examples/guide/lib_examples.rs:new}}
@@ -37,6 +51,7 @@ which can allocate both finite values and (for sets and maps) infinite values:
 Each `Map<Key, Value>` value has a domain of type `Set<Key>` given by `.dom()`.
 In the `test_map2` example above, `m`'s domain is the finite set `{0, 10, 20, 30, 40}`,
 while `m_infinite`'s domain is the infinite set `{..., -20, 10, 0, 10, 20, ...}`.
+Likewise, each `IMap<Key, Value>` has a domain of type `ISet<Key>`.
 
 For more operations, including sequence contenation (`.add` or `+`),
 sequence update,
@@ -97,7 +112,12 @@ inside `assert`, `ensures`, and `invariant`,
 so that, for example, `assert(s1 == s2)` actually means `assert(s1 =~= s2)`.
 See the [Equality via extensionality](extensional_equality.md) section for more details.)
 
-Proofs about set cardinality (`Set::len`) and set finiteness (`Set::finite`)
+An `ISet` and a `Set` can never be equal because their types disagree;
+should you find yourself needing to relate them, consider the `GSet::congruent`
+predicate. (In non-library code, it is best practice to use exclusively the finite
+or infinite variant, if feasible.)
+
+Proofs about set cardinality (`Set::len`) and set finiteness (`ISet::finite`)
 often require inductive proofs.
 For example, the exact cardinality of the intersection of two sets
 depends on which elements the two sets have in common.

@@ -1073,7 +1073,15 @@ pub fn fn_namespace_name(atomicity: InvAtomicity) -> Fun {
 pub fn set_type_path() -> Path {
     Arc::new(PathX {
         krate: CrateId::Vstd,
-        segments: Arc::new(vec![Arc::new("set".to_string()), Arc::new("Set".to_string())]),
+        segments: Arc::new(vec![Arc::new("set".to_string()), Arc::new("GSet".to_string())]),
+    })
+}
+
+pub fn set_finite_type_path(vstd_crate_name: &Ident) -> Path {
+    Arc::new(PathX {
+        krate: Some(vstd_crate_name.clone()),
+        segments: Arc::new(vec![Arc::new("set".to_string()), Arc::new("Finite".to_string())]),
+>>>>>>> upstream/jonh/sets-typed-finite
     })
 }
 
@@ -1083,7 +1091,7 @@ pub fn fn_set_empty_name() -> Fun {
             krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
+                Arc::new("GSet".to_string()),
                 Arc::new("empty".to_string()),
             ]),
         }),
@@ -1096,7 +1104,7 @@ pub fn fn_set_full_name() -> Fun {
             krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
+                Arc::new("GSet".to_string()),
                 Arc::new("full".to_string()),
             ]),
         }),
@@ -1109,7 +1117,7 @@ pub fn fn_set_subset_of_name() -> Fun {
             krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
+                Arc::new("GSet".to_string()),
                 Arc::new("subset_of".to_string()),
             ]),
         }),
@@ -1122,7 +1130,7 @@ pub fn fn_set_insert_name() -> Fun {
             krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
+                Arc::new("GSet".to_string()),
                 Arc::new("insert".to_string()),
             ]),
         }),
@@ -1135,7 +1143,7 @@ pub fn fn_set_remove_name() -> Fun {
             krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
+                Arc::new("GSet".to_string()),
                 Arc::new("remove".to_string()),
             ]),
         }),
@@ -1148,7 +1156,7 @@ pub fn fn_set_contains_name() -> Fun {
             krate: CrateId::Vstd,
             segments: Arc::new(vec![
                 Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
+                Arc::new("GSet".to_string()),
                 Arc::new("contains".to_string()),
             ]),
         }),

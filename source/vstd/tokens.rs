@@ -1,5 +1,10 @@
+use super::map::GenericMap;
+use super::map::{IMap, Map};
 use super::multiset::*;
 use super::prelude::*;
+use super::gset::{Finite, Finiteness, GSet, Infinite};
+use super::iset::ISet;
+use super::set::Set;
 use core::marker::PhantomData;
 
 use verus as verus_;
@@ -13,8 +18,10 @@ verus_! {
 #[verusfmt::skip]
 broadcast use {
     super::set_lib::group_set_lib_default,
-    super::set::group_set_axioms,
-    super::map::group_map_axioms };
+    super::set::group_set_lemmas,
+    super::map::group_map_axioms,
+    super::map::group_map_internal_axioms,
+    super::gmap::group_map_axioms };
 
 /// Unique identifier for every VerusSync instance.
 /// Every "Token" and "Instance" object has an `InstanceId`. These ID values must agree
@@ -174,8 +181,8 @@ pub trait MonotonicCountToken : Sized {
 ///
 /// | VerusSync Strategy  | Field type  | Token trait            |
 /// |---------------------|-------------|------------------------|
-/// | `set`               | `Set<V>`    | [`UniqueElementToken<V>`](`UniqueElementToken`) |
-/// | `persistent_set`    | `Set<V>`    | `ElementToken<V> + Copy` |
+/// | `set`               | `ISet<V>`    | [`UniqueElementToken<V>`](`UniqueElementToken`) |
+/// | `persistent_set`    | `ISet<V>`    | `ElementToken<V> + Copy` |
 /// | `multiset`          | `Multiset<V>` | `ElementToken<V>`      |
 ///
 /// Each token represents a single element of the set or multiset.
@@ -243,15 +250,15 @@ pub trait UniqueSimpleToken : SimpleToken {
 }
 
 #[verifier::reject_recursive_types(Key)]
-pub tracked struct MapToken<Key, Value, Token>
+tracked struct GMapToken<Key, Value, Token, FINITE: Finiteness>
     where Token: KeyValueToken<Key, Value>
 {
     ghost _v: PhantomData<Value>,
     ghost inst: InstanceId,
-    tracked m: Map<Key, Token>,
+    tracked m: GenericMap<Key, Token, FINITE>,
 }
 
-impl<Key, Value, Token> MapToken<Key, Value, Token>
+impl<Key, Value, Token, FINITE: Finiteness> GMapToken<Key, Value, Token, FINITE>
     where Token: KeyValueToken<Key, Value>
 {
     #[verifier::type_invariant]
@@ -264,15 +271,12 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
         self.inst
     }
 
-    pub closed spec fn map(self) -> Map<Key, Value> {
-        Map::new(
-            |k: Key| self.m.dom().contains(k),
-            |k: Key| self.m[k].value(),
-        )
+    pub closed spec fn map(self) -> GenericMap<Key, Value, FINITE> {
+        self.m.map_values(|t: Token| t.value())
     }
 
     #[verifier::inline]
-    pub open spec fn dom(self) -> Set<Key> {
+    pub open spec fn dom(self) -> GSet<Key, FINITE> {
         self.map().dom()
     }
 
@@ -289,10 +293,10 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
     pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
             s.instance_id() == instance_id,
-            s.map() === Map::empty(),
+            s.map() === GenericMap::empty(),
     {
-        let tracked s = Self { inst: instance_id, m: Map::tracked_empty(), _v: PhantomData };
-        assert(s.map() =~= Map::empty());
+        let tracked s = Self { inst: instance_id, m: GenericMap::tracked_empty(), _v: PhantomData };
+        assert(s.map() =~= GenericMap::empty());
         return s;
     }
 
@@ -324,7 +328,7 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
         t
     }
 
-    pub proof fn into_map(tracked self) -> (tracked map: Map<Key, Token>)
+    pub proof fn into_map(tracked self) -> (tracked map: GenericMap<Key, Token, FINITE>)
         ensures
             map.dom() == self.map().dom(),
             forall |key|
@@ -336,9 +340,313 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
                  && map[key].value() == self.map()[key]
     {
         use_type_invariant(&self);
-        let tracked MapToken { inst, m, _v } = self;
+        let tracked GMapToken { inst, m, _v } = self;
         assert(m.dom() =~= self.map().dom());
         return m;
+    }
+
+    pub proof fn from_map(instance_id: InstanceId, tracked map: GenericMap<Key, Token, FINITE>) -> (tracked s: Self)
+        requires
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].key() == key,
+        ensures
+            s.instance_id() == instance_id,
+            s.map().dom() == map.dom(),
+            forall |key| #[trigger] map.dom().contains(key)
+                ==> s.map()[key] == map[key].value()
+    {
+        let tracked s = GMapToken { inst: instance_id, m: map, _v: PhantomData };
+        assert(map.dom() == s.map().dom());
+        s
+    }
+}
+
+#[verifier::reject_recursive_types(Key)]
+pub tracked struct IMapToken<Key, Value, Token>
+    where Token: KeyValueToken<Key, Value>
+{
+    tracked m: GMapToken<Key, Value, Token, Infinite>,
+}
+
+impl<Key, Value, Token> IMapToken<Key, Value, Token>
+    where Token: KeyValueToken<Key, Value>
+{
+    pub closed spec fn instance_id(self) -> InstanceId {
+        self.m.instance_id()
+    }
+
+    pub closed spec fn map(self) -> IMap<Key, Value> {
+        IMap::from_gmap(self.m.map())
+    }
+
+    #[verifier::inline]
+    pub open spec fn dom(self) -> ISet<Key> {
+        self.map().dom()
+    }
+
+    #[verifier::inline]
+    pub open spec fn spec_index(self, k: Key) -> Value {
+        self.map()[k]
+    }
+
+    #[verifier::inline]
+    pub open spec fn index(self, k: Key) -> Value {
+        self.map()[k]
+    }
+
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
+        ensures
+            s.instance_id() == instance_id,
+            s.map() === IMap::empty(),
+    {
+        reveal(IMapToken::map);
+        let tracked m = GMapToken::empty(instance_id);
+        let tracked s = Self { m };
+        assert(s.map() =~= IMap::empty());
+        s
+    }
+
+    pub proof fn insert(tracked &mut self, tracked token: Token)
+        requires
+            old(self).instance_id() == token.instance_id(),
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.map() == old(self).map().insert(token.key(), token.value()),
+    {
+        reveal(IMapToken::map);
+        self.m.insert(token);
+    }
+
+    pub proof fn remove(tracked &mut self, key: Key) -> (tracked token: Token)
+        requires
+            old(self).map().dom().contains(key)
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.map() == old(self).map().remove(key),
+            token.instance_id() == self.instance_id(),
+            token.key() == key,
+            token.value() == old(self).map()[key]
+    {
+        reveal(IMapToken::map);
+        self.m.remove(key)
+    }
+
+    pub proof fn into_map(tracked self) -> (tracked map: IMap<Key, Token>)
+        ensures
+            map.dom() == self.map().dom(),
+            forall |key|
+                #![trigger(map.dom().contains(key))]
+                #![trigger(map.index(key))]
+              map.dom().contains(key)
+                ==> map[key].instance_id() == self.instance_id()
+                 && map[key].key() == key
+                 && map[key].value() == self.map()[key]
+    {
+        reveal(IMapToken::map);
+        let tracked mm = self.m.into_map();
+        let tracked map = IMap(mm);
+        super::map::lemma_imap_to_from_gmap(self.m.map());
+        assert(self.map().to_gmap() == self.m.map());
+        assert forall|key: Key| map.dom().contains(key) == self.map().dom().contains(key) by {
+            super::map::lemma_imap_dom_contains_field_bridge(map, key);
+            super::map::lemma_imap_dom_contains_bridge(self.map(), key);
+            assert(map.0.dom().contains(key) == mm.dom().contains(key));
+            assert(mm.dom().contains(key) == self.m.map().dom().contains(key));
+            assert(self.map().to_gmap().dom().contains(key) == self.m.map().dom().contains(key));
+        }
+        super::iset::lemma_iset_ext_equal(map.dom(), self.map().dom());
+        assert(map.dom() =~= self.map().dom());
+        super::iset::lemma_iset_ext_equal_eq(map.dom(), self.map().dom());
+        assert(map.dom() == self.map().dom());
+        assert forall|key: Key| map.dom().contains(key) implies
+            map[key].instance_id() == self.instance_id()
+                && map[key].key() == key
+                && map[key].value() == self.map()[key] by {
+            super::map::lemma_imap_dom_contains_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
+            super::map::lemma_imap_dom_contains_bridge(self.map(), key);
+            assert(map.0.dom().contains(key));
+            assert(mm.dom().contains(key));
+            assert(self.m.map().dom().contains(key));
+            assert(mm[key].instance_id() == self.instance_id());
+            assert(mm[key].key() == key);
+            assert(mm[key].value() == self.m.map()[key]);
+            assert(map[key] == map.0[key]);
+            assert(map.0[key] == mm[key]);
+            assert(self.map().dom().contains(key));
+            assert(self.map().to_gmap().dom().contains(key));
+            assert(self.map()[key] == self.map().to_gmap()[key]);
+            assert(self.map().to_gmap()[key] == self.m.map()[key]);
+        }
+        map
+    }
+
+    pub proof fn from_map(instance_id: InstanceId, tracked map: IMap<Key, Token>) -> (tracked s: Self)
+        requires
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].key() == key,
+        ensures
+            s.instance_id() == instance_id,
+            s.map().dom() == map.dom(),
+            forall |key| #[trigger] map.dom().contains(key)
+                ==> s.map()[key] == map[key].value()
+    {
+        reveal(IMapToken::map);
+        super::map::lemma_imap_to_from_gmap(map.0);
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map.0[key].instance_id() == instance_id by {
+            super::map::lemma_imap_dom_contains_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
+            assert(map.dom().contains(key));
+        }
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map.0[key].key() == key by {
+            super::map::lemma_imap_dom_contains_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
+            assert(map.dom().contains(key));
+        }
+        let tracked m = GMapToken::from_map(instance_id, map.0);
+        let tracked s = Self { m };
+        super::map::lemma_imap_to_from_gmap(s.m.map());
+        assert(s.map().to_gmap() == s.m.map());
+        assert forall|key: Key| s.map().dom().contains(key) == map.dom().contains(key) by {
+            super::map::lemma_imap_dom_contains_bridge(s.map(), key);
+            super::map::lemma_imap_dom_contains_field_bridge(map, key);
+            assert(s.map().to_gmap().dom().contains(key) == map.0.dom().contains(key));
+        }
+        super::iset::lemma_iset_ext_equal(s.map().dom(), map.dom());
+        assert(s.map().dom() =~= map.dom());
+        super::iset::lemma_iset_ext_equal_eq(s.map().dom(), map.dom());
+        assert(s.map().dom() == map.dom());
+        assert forall|key: Key| map.dom().contains(key) implies s.map()[key] == map[key].value() by {
+            super::map::lemma_imap_dom_contains_bridge(s.map(), key);
+            super::map::lemma_imap_dom_contains_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
+            assert(map.0.dom().contains(key));
+            assert(s.map().dom().contains(key));
+            assert(s.map().to_gmap().dom().contains(key));
+            assert(s.map()[key] == s.map().to_gmap()[key]);
+            assert(s.map().to_gmap()[key] == map.0[key].value());
+            assert(map[key] == map.0[key]);
+        }
+        s
+    }
+}
+
+#[verifier::reject_recursive_types(Key)]
+pub tracked struct MapToken<Key, Value, Token>
+    where Token: KeyValueToken<Key, Value>
+{
+    tracked m: GMapToken<Key, Value, Token, Finite>,
+}
+
+impl<Key, Value, Token> MapToken<Key, Value, Token>
+    where Token: KeyValueToken<Key, Value>
+{
+    pub closed spec fn instance_id(self) -> InstanceId {
+        self.m.instance_id()
+    }
+
+    pub closed spec fn map(self) -> Map<Key, Value> {
+        Map::from_gmap(self.m.map())
+    }
+
+    #[verifier::inline]
+    pub open spec fn dom(self) -> Set<Key> {
+        self.map().dom()
+    }
+
+    #[verifier::inline]
+    pub open spec fn spec_index(self, k: Key) -> Value {
+        self.map()[k]
+    }
+
+    #[verifier::inline]
+    pub open spec fn index(self, k: Key) -> Value {
+        self.map()[k]
+    }
+
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
+        ensures
+            s.instance_id() == instance_id,
+            s.map() === Map::empty(),
+    {
+        reveal(MapToken::map);
+        let tracked m = GMapToken::empty(instance_id);
+        let tracked s = Self { m };
+        assert(s.map() =~= Map::empty());
+        s
+    }
+
+    pub proof fn insert(tracked &mut self, tracked token: Token)
+        requires
+            old(self).instance_id() == token.instance_id(),
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.map() == old(self).map().insert(token.key(), token.value()),
+    {
+        reveal(MapToken::map);
+        self.m.insert(token);
+    }
+
+    pub proof fn remove(tracked &mut self, key: Key) -> (tracked token: Token)
+        requires
+            old(self).map().dom().contains(key)
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.map() == old(self).map().remove(key),
+            token.instance_id() == self.instance_id(),
+            token.key() == key,
+            token.value() == old(self).map()[key]
+    {
+        reveal(MapToken::map);
+        self.m.remove(key)
+    }
+
+    pub proof fn into_map(tracked self) -> (tracked map: Map<Key, Token>)
+        ensures
+            map.dom() == self.map().dom(),
+            forall |key|
+                #![trigger(map.dom().contains(key))]
+                #![trigger(map.index(key))]
+              map.dom().contains(key)
+                ==> map[key].instance_id() == self.instance_id()
+                 && map[key].key() == key
+                 && map[key].value() == self.map()[key]
+    {
+        reveal(MapToken::map);
+        let tracked mm = self.m.into_map();
+        let tracked map = Map(mm);
+        super::map::lemma_map_to_from_gmap(self.m.map());
+        assert(self.map().to_gmap() == self.m.map());
+        assert forall|key: Key| map.dom().contains(key) == self.map().dom().contains(key) by {
+            super::map::lemma_map_dom_contains_field_bridge(map, key);
+            super::map::lemma_map_dom_contains_bridge(self.map(), key);
+            assert(map.0.dom().contains(key) == mm.dom().contains(key));
+            assert(mm.dom().contains(key) == self.m.map().dom().contains(key));
+            assert(self.map().to_gmap().dom().contains(key) == self.m.map().dom().contains(key));
+        }
+        super::set::lemma_set_ext_equal_eq(map.dom(), self.map().dom());
+        assert(map.dom() == self.map().dom());
+        assert forall|key: Key| map.dom().contains(key) implies
+            map[key].instance_id() == self.instance_id()
+                && map[key].key() == key
+                && map[key].value() == self.map()[key] by {
+            super::map::lemma_map_dom_contains_field_bridge(map, key);
+            super::map::lemma_map_index_field_bridge(map, key);
+            super::map::lemma_map_dom_contains_bridge(self.map(), key);
+            assert(map.0.dom().contains(key));
+            assert(mm.dom().contains(key));
+            assert(self.m.map().dom().contains(key));
+            assert(mm[key].instance_id() == self.instance_id());
+            assert(mm[key].key() == key);
+            assert(mm[key].value() == self.m.map()[key]);
+            assert(map[key] == map.0[key]);
+            assert(map.0[key] == mm[key]);
+            assert(self.map().dom().contains(key));
+            assert(self.map().to_gmap().dom().contains(key));
+            assert(self.map()[key] == self.map().to_gmap()[key]);
+            assert(self.map().to_gmap()[key] == self.m.map()[key]);
+        }
+        map
     }
 
     pub proof fn from_map(instance_id: InstanceId, tracked map: Map<Key, Token>) -> (tracked s: Self)
@@ -351,21 +659,55 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
             forall |key| #[trigger] map.dom().contains(key)
                 ==> s.map()[key] == map[key].value()
     {
-        let tracked s = MapToken { inst: instance_id, m: map, _v: PhantomData };
-        assert(map.dom() == s.map().dom());
+        reveal(MapToken::map);
+        super::map::lemma_map_to_from_gmap(map.0);
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map.0[key].instance_id() == instance_id by {
+            super::map::lemma_map_dom_contains_field_bridge(map, key);
+            super::map::lemma_map_index_field_bridge(map, key);
+            assert(map.dom().contains(key));
+            assert(map[key] == map.0[key]);
+        }
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map.0[key].key() == key by {
+            super::map::lemma_map_dom_contains_field_bridge(map, key);
+            super::map::lemma_map_index_field_bridge(map, key);
+            assert(map.dom().contains(key));
+            assert(map[key] == map.0[key]);
+        }
+        let tracked m = GMapToken::from_map(instance_id, map.0);
+        let tracked s = Self { m };
+        super::map::lemma_map_to_from_gmap(s.m.map());
+        assert(s.map().to_gmap() == s.m.map());
+        assert forall|key: Key| s.map().dom().contains(key) == map.dom().contains(key) by {
+            super::map::lemma_map_dom_contains_bridge(s.map(), key);
+            super::map::lemma_map_dom_contains_field_bridge(map, key);
+            assert(s.map().to_gmap().dom().contains(key) == map.0.dom().contains(key));
+        }
+        super::set::lemma_set_ext_equal_eq(s.map().dom(), map.dom());
+        assert(s.map().dom() == map.dom());
+        assert forall|key: Key| map.dom().contains(key) implies s.map()[key] == map[key].value() by {
+            super::map::lemma_map_dom_contains_bridge(s.map(), key);
+            super::map::lemma_map_dom_contains_field_bridge(map, key);
+            super::map::lemma_map_index_field_bridge(map, key);
+            assert(map.0.dom().contains(key));
+            assert(s.map().dom().contains(key));
+            assert(s.map().to_gmap().dom().contains(key));
+            assert(s.map()[key] == s.map().to_gmap()[key]);
+            assert(s.map().to_gmap()[key] == map.0[key].value());
+            assert(map[key] == map.0[key]);
+        }
         s
     }
 }
 
 #[verifier::reject_recursive_types(Element)]
-pub tracked struct SetToken<Element, Token>
+tracked struct GSetToken<Element, Token, FINITE: Finiteness>
     where Token: ElementToken<Element>
 {
     ghost inst: InstanceId,
-    tracked m: Map<Element, Token>,
+    tracked m: GenericMap<Element, Token, FINITE>,
 }
 
-impl<Element, Token> SetToken<Element, Token>
+impl<Element, Token, FINITE: Finiteness> GSetToken<Element, Token, FINITE>
     where Token: ElementToken<Element>
 {
     #[verifier::type_invariant]
@@ -378,10 +720,8 @@ impl<Element, Token> SetToken<Element, Token>
         self.inst
     }
 
-    pub closed spec fn set(self) -> Set<Element> {
-        Set::new(
-            |e: Element| self.m.dom().contains(e),
-        )
+    pub closed spec fn set(self) -> GSet<Element, FINITE> {
+        self.m.dom()
     }
 
     #[verifier::inline]
@@ -392,10 +732,10 @@ impl<Element, Token> SetToken<Element, Token>
     pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
             s.instance_id() == instance_id,
-            s.set() === Set::empty(),
+            s.set() === GSet::empty(),
     {
-        let tracked s = Self { inst: instance_id, m: Map::tracked_empty() };
-        assert(s.set() =~= Set::empty());
+        let tracked s = Self { inst: instance_id, m: GenericMap::tracked_empty() };
+        assert(s.set() =~= GSet::empty());
         return s;
     }
 
@@ -426,7 +766,7 @@ impl<Element, Token> SetToken<Element, Token>
         t
     }
 
-    pub proof fn into_map(tracked self) -> (tracked map: Map<Element, Token>)
+    pub proof fn into_map(tracked self) -> (tracked map: GenericMap<Element, Token, FINITE>)
         ensures
             map.dom() == self.set(),
             forall |key|
@@ -437,9 +777,252 @@ impl<Element, Token> SetToken<Element, Token>
                      && map[key].element() == key
     {
         use_type_invariant(&self);
-        let tracked SetToken { inst, m } = self;
+        let tracked GSetToken { inst, m } = self;
         assert(m.dom() =~= self.set());
         return m;
+    }
+
+    pub proof fn from_map(instance_id: InstanceId, tracked map: GenericMap<Element, Token, FINITE>) -> (tracked s: Self)
+        requires
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].element() == key,
+        ensures
+            s.instance_id() == instance_id,
+            s.set() == map.dom(),
+    {
+        let tracked s = GSetToken { inst: instance_id, m: map };
+        assert(s.set() =~= map.dom());
+        s
+    }
+}
+
+#[verifier::reject_recursive_types(Element)]
+pub tracked struct ISetToken<Element, Token>
+    where Token: ElementToken<Element>
+{
+    tracked m: GSetToken<Element, Token, Infinite>,
+}
+
+impl<Element, Token> ISetToken<Element, Token>
+    where Token: ElementToken<Element>
+{
+    pub closed spec fn instance_id(self) -> InstanceId {
+        self.m.instance_id()
+    }
+
+    pub closed spec fn set(self) -> ISet<Element> {
+        ISet::from_gset(self.m.set())
+    }
+
+    #[verifier::inline]
+    pub open spec fn contains(self, element: Element) -> bool {
+        self.set().contains(element)
+    }
+
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
+        ensures
+            s.instance_id() == instance_id,
+            s.set() === ISet::empty(),
+    {
+        reveal(ISetToken::set);
+        let tracked m = GSetToken::empty(instance_id);
+        let tracked s = Self { m };
+        assert(s.set() =~= ISet::empty());
+        s
+    }
+
+    pub proof fn insert(tracked &mut self, tracked token: Token)
+        requires
+            old(self).instance_id() == token.instance_id(),
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.set() == old(self).set().insert(token.element()),
+    {
+        reveal(ISetToken::set);
+        self.m.insert(token);
+    }
+
+    pub proof fn remove(tracked &mut self, element: Element) -> (tracked token: Token)
+        requires
+            old(self).set().contains(element)
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.set() == old(self).set().remove(element),
+            token.instance_id() == self.instance_id(),
+            token.element() == element,
+    {
+        reveal(ISetToken::set);
+        self.m.remove(element)
+    }
+
+    pub proof fn into_map(tracked self) -> (tracked map: IMap<Element, Token>)
+        ensures
+            map.dom() == self.set(),
+            forall |key|
+                #![trigger(map.dom().contains(key))]
+                #![trigger(map.index(key))]
+                map.dom().contains(key)
+                    ==> map[key].instance_id() == self.instance_id()
+                     && map[key].element() == key
+    {
+        reveal(ISetToken::set);
+        let tracked mm = self.m.into_map();
+        let tracked map = IMap(mm);
+        super::iset::lemma_iset_to_from_gset(self.m.set());
+        assert(self.set().to_gset() == self.m.set());
+        assert forall|key: Element| map.dom().contains(key) == self.set().contains(key) by {
+            super::map::lemma_imap_dom_contains_field_bridge(map, key);
+            assert(map.0.dom().contains(key) == mm.dom().contains(key));
+            assert(mm.dom().contains(key) == self.m.set().contains(key));
+            assert(self.set().to_gset().contains(key) == self.m.set().contains(key));
+        }
+        super::iset::lemma_iset_ext_equal(map.dom(), self.set());
+        assert(map.dom() =~= self.set());
+        super::iset::lemma_iset_ext_equal_eq(map.dom(), self.set());
+        assert(map.dom() == self.set());
+        assert forall|key: Element| map.dom().contains(key) implies
+            map[key].instance_id() == self.instance_id() && map[key].element() == key by {
+            super::map::lemma_imap_dom_contains_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
+            assert(map.0.dom().contains(key));
+            assert(mm.dom().contains(key));
+            assert(mm[key].instance_id() == self.instance_id());
+            assert(mm[key].element() == key);
+            assert(map[key] == map.0[key]);
+            assert(map.0[key] == mm[key]);
+        }
+        map
+    }
+
+    pub proof fn from_map(instance_id: InstanceId, tracked map: IMap<Element, Token>) -> (tracked s: Self)
+        requires
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].element() == key,
+        ensures
+            s.instance_id() == instance_id,
+            s.set() == map.dom(),
+    {
+        reveal(ISetToken::set);
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map.0[key].instance_id() == instance_id by {
+            super::map::lemma_imap_dom_contains_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
+            assert(map.dom().contains(key));
+        }
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map.0[key].element() == key by {
+            super::map::lemma_imap_dom_contains_field_bridge(map, key);
+            assert(map[key] == map.0[key]) by (compute_only);
+            assert(map.dom().contains(key));
+        }
+        let tracked m = GSetToken::from_map(instance_id, map.0);
+        let tracked s = Self { m };
+        super::iset::lemma_iset_to_from_gset(s.m.set());
+        assert(s.set().to_gset() == s.m.set());
+        assert forall|key: Element| s.set().contains(key) == map.dom().contains(key) by {
+            super::map::lemma_imap_dom_contains_field_bridge(map, key);
+            assert(s.set().to_gset().contains(key) == s.m.set().contains(key));
+            assert(s.m.set().contains(key) == map.0.dom().contains(key));
+        }
+        super::iset::lemma_iset_ext_equal(s.set(), map.dom());
+        assert(s.set() =~= map.dom());
+        super::iset::lemma_iset_ext_equal_eq(s.set(), map.dom());
+        assert(s.set() == map.dom());
+        s
+    }
+}
+
+#[verifier::reject_recursive_types(Element)]
+pub tracked struct SetToken<Element, Token>
+    where Token: ElementToken<Element>
+{
+    tracked m: GSetToken<Element, Token, Finite>,
+}
+
+impl<Element, Token> SetToken<Element, Token>
+    where Token: ElementToken<Element>
+{
+    pub closed spec fn instance_id(self) -> InstanceId {
+        self.m.instance_id()
+    }
+
+    pub closed spec fn set(self) -> Set<Element> {
+        Set::from_gset(self.m.set())
+    }
+
+    #[verifier::inline]
+    pub open spec fn contains(self, element: Element) -> bool {
+        self.set().contains(element)
+    }
+
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
+        ensures
+            s.instance_id() == instance_id,
+            s.set() === Set::empty(),
+    {
+        reveal(SetToken::set);
+        let tracked m = GSetToken::empty(instance_id);
+        let tracked s = Self { m };
+        assert(s.set() =~= Set::empty());
+        s
+    }
+
+    pub proof fn insert(tracked &mut self, tracked token: Token)
+        requires
+            old(self).instance_id() == token.instance_id(),
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.set() == old(self).set().insert(token.element()),
+    {
+        reveal(SetToken::set);
+        self.m.insert(token);
+    }
+
+    pub proof fn remove(tracked &mut self, element: Element) -> (tracked token: Token)
+        requires
+            old(self).set().contains(element)
+        ensures
+            self.instance_id() == old(self).instance_id(),
+            self.set() == old(self).set().remove(element),
+            token.instance_id() == self.instance_id(),
+            token.element() == element,
+    {
+        reveal(SetToken::set);
+        self.m.remove(element)
+    }
+
+    pub proof fn into_map(tracked self) -> (tracked map: Map<Element, Token>)
+        ensures
+            map.dom() == self.set(),
+            forall |key|
+                #![trigger(map.dom().contains(key))]
+                #![trigger(map.index(key))]
+                map.dom().contains(key)
+                    ==> map[key].instance_id() == self.instance_id()
+                     && map[key].element() == key
+    {
+        reveal(SetToken::set);
+        let tracked mm = self.m.into_map();
+        let tracked map = Map(mm);
+        super::set::lemma_set_to_from_gset(self.m.set());
+        assert(self.set().to_gset() == self.m.set());
+        assert forall|key: Element| map.dom().contains(key) == self.set().contains(key) by {
+            super::map::lemma_map_dom_contains_field_bridge(map, key);
+            assert(map.0.dom().contains(key) == mm.dom().contains(key));
+            assert(mm.dom().contains(key) == self.m.set().contains(key));
+            assert(self.set().to_gset().contains(key) == self.m.set().contains(key));
+        }
+        super::set::lemma_set_ext_equal_eq(map.dom(), self.set());
+        assert forall|key: Element| map.dom().contains(key) implies
+            map[key].instance_id() == self.instance_id() && map[key].element() == key by {
+            super::map::lemma_map_dom_contains_field_bridge(map, key);
+            super::map::lemma_map_index_field_bridge(map, key);
+            assert(map.0.dom().contains(key));
+            assert(mm.dom().contains(key));
+            assert(mm[key].instance_id() == self.instance_id());
+            assert(mm[key].element() == key);
+            assert(map[key] == map.0[key]);
+            assert(map.0[key] == mm[key]);
+        }
+        map
     }
 
     pub proof fn from_map(instance_id: InstanceId, tracked map: Map<Element, Token>) -> (tracked s: Self)
@@ -450,8 +1033,29 @@ impl<Element, Token> SetToken<Element, Token>
             s.instance_id() == instance_id,
             s.set() == map.dom(),
     {
-        let tracked s = SetToken { inst: instance_id, m: map };
-        assert(s.set() =~= map.dom());
+        reveal(SetToken::set);
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map.0[key].instance_id() == instance_id by {
+            super::map::lemma_map_dom_contains_field_bridge(map, key);
+            super::map::lemma_map_index_field_bridge(map, key);
+            assert(map.dom().contains(key));
+            assert(map[key] == map.0[key]);
+        }
+        assert forall |key| #[trigger] map.0.dom().contains(key) implies map.0[key].element() == key by {
+            super::map::lemma_map_dom_contains_field_bridge(map, key);
+            super::map::lemma_map_index_field_bridge(map, key);
+            assert(map.dom().contains(key));
+            assert(map[key] == map.0[key]);
+        }
+        let tracked m = GSetToken::from_map(instance_id, map.0);
+        let tracked s = Self { m };
+        super::set::lemma_set_to_from_gset(s.m.set());
+        assert(s.set().to_gset() == s.m.set());
+        assert forall|key: Element| s.set().contains(key) == map.dom().contains(key) by {
+            super::map::lemma_map_dom_contains_field_bridge(map, key);
+            assert(s.set().to_gset().contains(key) == s.m.set().contains(key));
+            assert(s.m.set().contains(key) == map.0.dom().contains(key));
+        }
+        super::set::lemma_set_ext_equal_eq(s.set(), map.dom());
         s
     }
 }
@@ -536,7 +1140,7 @@ impl<Element, Token> MultisetToken<Element, Token>
             s.multiset() === Multiset::empty(),
     {
         let tracked s = Self { inst: instance_id, m: Map::tracked_empty(), _v: PhantomData, };
-        broadcast use super::set::fold::lemma_fold_empty;
+        broadcast use super::gset::fold::lemma_fold_empty;
         assert(Self::map_elems(Map::empty()) =~= Map::empty());
         return s;
     }

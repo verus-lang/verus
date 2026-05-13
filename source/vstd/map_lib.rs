@@ -1,20 +1,26 @@
+use super::map::GenericMap;
 #[macro_use]
-use super::map::{Map, assert_maps_equal, assert_maps_equal_internal};
+use super::map::{Map, IMap, assert_maps_equal, assert_maps_equal_internal};
 #[allow(unused_imports)]
 use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
 #[allow(unused_imports)]
 use super::relations::*;
+use super::gset::*;
 use super::set::*;
 #[cfg(verus_keep_ghost)]
 use super::set_lib::*;
 
 verus! {
 
-broadcast use {super::map::group_map_axioms, super::set::group_set_axioms};
+broadcast use {
+    super::map::group_map_axioms,
+    super::map::group_map_internal_axioms,
+    super::set::group_set_lemmas,
+};
 
-impl<K, V> Map<K, V> {
+impl<K, V, FINITE: Finiteness> GenericMap<K, V, FINITE> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
     #[verifier::inline]
     pub open spec fn is_full(self) -> bool {
@@ -25,17 +31,6 @@ impl<K, V> Map<K, V> {
     #[verifier::inline]
     pub open spec fn is_empty(self) -> (b: bool) {
         self.dom().is_empty()
-    }
-
-    /// Returns true if the key `k` is in the domain of `self`.
-    #[verifier::inline]
-    pub open spec fn contains_key(self, k: K) -> bool {
-        self.dom().contains(k)
-    }
-
-    /// Returns true if the value `v` is in the range of `self`.
-    pub open spec fn contains_value(self, v: V) -> bool {
-        exists|i: K| #[trigger] self.dom().contains(i) && self[i] == v
     }
 
     /// Returns `Some(v)` if the key `k` is in the domain of `self` and maps to `v`,
@@ -61,8 +56,8 @@ impl<K, V> Map<K, V> {
     ///     assert(m.values() =~= set![10int, 11int]);
     /// }
     /// ```
-    pub open spec fn values(self) -> Set<V> {
-        Set::<V>::new(|v: V| self.contains_value(v))
+    pub open spec fn values(self) -> GSet<V, FINITE> {
+        self.dom().map(|k: K| self.index(k))
     }
 
     ///
@@ -78,13 +73,8 @@ impl<K, V> Map<K, V> {
     ///     assert(m.kv_pairs() =~= set![(1int, 10int), (2int, 11int)]);
     /// }
     /// ```
-    pub open spec fn kv_pairs(self) -> Set<(K, V)> {
-        Set::<(K, V)>::new(|kv: (K, V)| self.dom().contains(kv.0) && self[kv.0] == kv.1)
-    }
-
-    /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
-    pub open spec fn contains_pair(self, k: K, v: V) -> bool {
-        self.dom().contains(k) && self[k] == v
+    pub open spec fn kv_pairs(self) -> GSet<(K, V), FINITE> {
+        self.dom().map(|k: K| (k, self[k]))
     }
 
     /// Returns true if `m1` is _contained in_ `m2`, i.e., the domain of `m1` is a subset
@@ -107,61 +97,6 @@ impl<K, V> Map<K, V> {
         self.submap_of(m2)
     }
 
-    /// Gives the union of two maps, defined as:
-    ///  * The domain is the union of the two input maps.
-    ///  * For a given key in _both_ input maps, it maps to the same value that it maps to in the _right_ map (`m2`).
-    ///  * For any other key in either input map (but not both), it maps to the same value
-    ///    as it does in that map.
-    ///
-    /// ## Example
-    ///
-    /// ```rust
-    /// assert(
-    ///    map![1 => 10, 2 => 11].union_prefer_right(map![1 => 20, 3 => 13])
-    ///    =~= map![1 => 20, 2 => 11, 3 => 13]);
-    /// ```
-    pub open spec fn union_prefer_right(self, m2: Self) -> Self {
-        Self::new(
-            |k: K| self.dom().contains(k) || m2.dom().contains(k),
-            |k: K|
-                if m2.dom().contains(k) {
-                    m2[k]
-                } else {
-                    self[k]
-                },
-        )
-    }
-
-    /// Removes the given keys and their associated values from the map.
-    ///
-    /// Ignores any key in `keys` which is not in the domain of `self`.
-    ///
-    /// ## Example
-    ///
-    /// ```rust
-    /// assert(
-    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4})
-    ///    =~= map![1 => 10]);
-    /// ```
-    pub open spec fn remove_keys(self, keys: Set<K>) -> Self {
-        Self::new(|k: K| self.dom().contains(k) && !keys.contains(k), |k: K| self[k])
-    }
-
-    /// Complement to `remove_keys`. Restricts the map to (key, value) pairs
-    /// for keys that are _in_ the given set; that is, it removes any keys
-    /// _not_ in the set.
-    ///
-    /// ## Example
-    ///
-    /// ```rust
-    /// assert(
-    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4})
-    ///    =~= map![2 => 11, 3 => 12]);
-    /// ```
-    pub open spec fn restrict(self, keys: Set<K>) -> Self {
-        Self::new(|k: K| self.dom().contains(k) && keys.contains(k), |k: K| self[k])
-    }
-
     /// Returns `true` if and only if the given key maps to the same value or does not exist in self and m2.
     pub open spec fn is_equal_on_key(self, m2: Self, key: K) -> bool {
         ||| (!self.dom().contains(key) && !m2.dom().contains(key))
@@ -173,30 +108,11 @@ impl<K, V> Map<K, V> {
         forall|k| #![auto] self.dom().contains(k) && m2.dom().contains(k) ==> self[k] == m2[k]
     }
 
-    /// Map a function `f` over all (k, v) pairs in `self`.
-    pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> Map<K, W> {
-        Map::new(|k: K| self.contains_key(k), |k: K| f(k, self[k]))
-    }
-
-    /// Map a function `f` over the values in `self`.
-    pub open spec fn map_values<W>(self, f: spec_fn(V) -> W) -> Map<K, W> {
-        Map::new(|k: K| self.contains_key(k), |k: K| f(self[k]))
-    }
-
     /// Returns `true` if and only if a map is injective
     pub open spec fn is_injective(self) -> bool {
         forall|x: K, y: K|
             x != y && self.dom().contains(x) && self.dom().contains(y) ==> #[trigger] self[x]
                 != #[trigger] self[y]
-    }
-
-    /// Swaps map keys and values. Values are not required to be unique; no
-    /// promises on which key is chosen on the intersection.
-    pub open spec fn invert(self) -> Map<V, K> {
-        Map::<V, K>::new(
-            |v: V| self.contains_value(v),
-            |v: V| choose|k: K| self.contains_pair(k, v),
-        )
     }
 
     // Proven lemmas
@@ -209,6 +125,8 @@ impl<K, V> Map<K, V> {
         ensures
             self.dom().len() == 1 + self.remove(key).dom().len(),
     {
+        broadcast use group_set_properties;
+        lemma_gset_remove_len(self.dom(), key);
     }
 
     /// The domain of a map after removing a key is equivalent to removing the key from
@@ -221,10 +139,10 @@ impl<K, V> Map<K, V> {
 
     /// Removing a set of n keys from a map that previously contained all n keys
     /// results in a domain of size n less than the original domain.
-    pub proof fn lemma_remove_keys_len(self, keys: Set<K>)
+    pub proof fn lemma_remove_keys_len(self, keys: GSet<K, FINITE>)
         requires
-            forall|k: K| #[trigger] keys.contains(k) ==> self.contains_key(k),
-            keys.finite(),
+            keys <= self.dom(),
+            keys.finite(),  // not clear why this is necessary
             self.dom().finite(),
         ensures
             self.remove_keys(keys).dom().len() == self.dom().len() - keys.len(),
@@ -234,11 +152,18 @@ impl<K, V> Map<K, V> {
 
         if keys.len() > 0 {
             let key = keys.choose();
-            let val = self[key];
-            self.remove(key).lemma_remove_keys_len(keys.remove(key));
-            assert(self.remove(key).remove_keys(keys.remove(key)) =~= self.remove_keys(keys));
+            lemma_gset_choose_len(keys);
+            lemma_gset_remove_len(keys, key);
+            assert(keys.remove(key).len() < keys.len());
+            self.remove(key).lemma_remove_keys_len(keys.remove(key));  // recurse
+
+            // trigger extensionality
+            assert(self.remove_keys(keys).dom() == self.remove(key).remove_keys(
+                keys.remove(key),
+            ).dom());
         } else {
-            assert(self.remove_keys(keys) =~= self);
+            // keys is empty, so remove_keys is a noop
+            self.remove_keys(keys).dom().to_infinite().congruent_len(self.remove_keys(keys).dom());
         }
     }
 
@@ -364,7 +289,7 @@ impl<K, V> Map<K, V> {
     ///     assert(m.insert(2, 25).remove_keys(to_remove) == m.remove_keys(to_remove));
     /// }
     /// ```
-    pub broadcast proof fn lemma_map_remove_keys_insert(self, r: Set<K>, k: K, v: V)
+    pub broadcast proof fn lemma_map_remove_keys_insert(self, r: GSet<K, FINITE>, k: K, v: V)
         ensures
             #[trigger] self.insert(k, v).remove_keys(r) == if r.contains(k) {
                 self.remove_keys(r)
@@ -496,7 +421,26 @@ impl<K, V> Map<K, V> {
     }
 }
 
-impl<K, V> Map<Seq<K>, V> {
+impl<K, V> IMap<Seq<K>, V> {
+    proof fn lemma_seq_add_left_cancel(prefix: Seq<K>, s1: Seq<K>, s2: Seq<K>)
+        ensures
+            #[trigger] (prefix + s1 == prefix + s2) ==> s1 == s2,
+    {
+        broadcast use super::seq::group_seq_axioms;
+        if prefix + s1 == prefix + s2 {
+            assert((prefix + s1).len() == (prefix + s2).len());
+            assert(s1.len() == s2.len());
+            assert forall|i: int| 0 <= i < s1.len() implies s1[i] == s2[i] by {
+                assert(0 <= prefix.len() + i < (prefix + s1).len());
+                assert((prefix + s1)[prefix.len() + i] == s1[i]);
+                assert((prefix + s2)[prefix.len() + i] == s2[i]);
+                assert((prefix + s1)[prefix.len() + i] == (prefix + s2)[prefix.len() + i]);
+            }
+            assert(s1 =~= s2);
+            assert(s1 == s2);
+        }
+    }
+
     /// Returns a sub-map of all entries whose key begins with `prefix`,
     /// re-indexed so that the stored keys have that prefix removed.
     ///
@@ -516,7 +460,7 @@ impl<K, V> Map<Seq<K>, V> {
     /// }
     /// ```
     pub open spec fn prefixed_entries(self, prefix: Seq<K>) -> Self {
-        Map::new(|k: Seq<K>| self.contains_key(prefix + k), |k: Seq<K>| self[prefix + k])
+        IMap::new(|k: Seq<K>| self.contains_key(prefix + k), |k: Seq<K>| self[prefix + k])
     }
 
     /// For every key `k` kept by `prefixed_entries(prefix)`,
@@ -540,7 +484,10 @@ impl<K, V> Map<Seq<K>, V> {
             self.prefixed_entries(prefix)[k] == #[trigger] self[prefix + k],
     {
         broadcast use group_map_properties;
-
+        let fk = |kk: Seq<K>| self.contains_key(prefix + kk);
+        let fv = |kk: Seq<K>| self[prefix + kk];
+        super::gmap::lemma_infinite_new_ensures(fk, fv);
+        assert(self.prefixed_entries(prefix)[k] == fv(k));
     }
 
     /// A key `k` is in `prefixed_entries(prefix)` exactly when the original map
@@ -569,8 +516,9 @@ impl<K, V> Map<Seq<K>, V> {
     {
         broadcast use group_map_properties;
 
-        let lhs = self.prefixed_entries(prefix);
-        let rhs = self;
+        let fk = |kk: Seq<K>| self.contains_key(prefix + kk);
+        lemma_imap_new_domain(fk, |kk: Seq<K>| self[prefix + kk]);
+        super::iset::lemma_iset_new(fk, k);
     }
 
     /// Inserting `(prefix + k, v)` before taking `prefixed_entries(prefix)`
@@ -599,11 +547,78 @@ impl<K, V> Map<Seq<K>, V> {
         broadcast use super::seq_lib::group_seq_properties, super::seq_lib::lemma_seq_skip_of_skip;
         broadcast use Map::lemma_prefixed_entries_contains, Map::lemma_prefixed_entries_get;
 
+        #[allow(deprecated)]
+        super::seq_lib::lemma_seq_properties::<K>();  // new broadcast group not working here
+        broadcast use {
+            lemma_prefixed_entries_contains_generic,
+            lemma_prefixed_entries_get_generic,
+        };
+
         let lhs = self.insert(prefix + k, v).prefixed_entries(prefix);
         let rhs = self.prefixed_entries(prefix).insert(k, v);
-        assert(lhs =~= rhs) by {
-            assert(forall|key| key != k ==> prefix.is_prefix_of(#[trigger] (prefix + key)));
+        super::gmap::lemma_map_insert_domain(self.prefixed_entries(prefix).to_gmap(), k, v);
+        super::gmap::lemma_map_insert_domain(self.to_gmap(), prefix + k, v);
+        assert forall|key: Seq<K>| lhs.contains_key(key) <==> rhs.contains_key(key) by {
+            self.insert(prefix + k, v).lemma_prefixed_entries_contains(prefix, key);
+            self.lemma_prefixed_entries_contains(prefix, key);
+            if lhs.contains_key(key) {
+                assert(self.insert(prefix + k, v).contains_key(prefix + key));
+                if prefix + key == prefix + k {
+                    Self::lemma_seq_add_left_cancel(prefix, key, k);
+                    assert(key == k);
+                } else {
+                    super::gset::lemma_gset_insert_different(self.dom().to_gset(), prefix + key, prefix + k);
+                    assert(self.dom().to_gset().insert(prefix + k).contains(prefix + key));
+                    assert(self.contains_key(prefix + key));
+                }
+                assert(rhs.contains_key(key));
+            } else {
+                assert(!self.insert(prefix + k, v).contains_key(prefix + key));
+                assert(!rhs.contains_key(key));
+            }
         }
+        assert forall|key: Seq<K>| lhs.contains_key(key) implies lhs[key] == rhs[key] by {
+            assert(lhs.contains_key(key));
+            if key == k {
+                self.insert(prefix + k, v).lemma_prefixed_entries_contains(prefix, key);
+                self.insert(prefix + k, v).lemma_prefixed_entries_get(prefix, key);
+                super::gmap::lemma_map_insert_same(self.to_gmap(), prefix + k, v);
+                super::gmap::lemma_map_insert_same(self.prefixed_entries(prefix).to_gmap(), k, v);
+            } else {
+                assert(prefix + key != prefix + k) by {
+                    if prefix + key == prefix + k {
+                        Self::lemma_seq_add_left_cancel(prefix, key, k);
+                        assert(key == k);
+                        assert(false);
+                    }
+                }
+                self.insert(prefix + k, v).lemma_prefixed_entries_get(prefix, key);
+                self.lemma_prefixed_entries_get(prefix, key);
+                super::gmap::lemma_map_insert_different(self.to_gmap(), prefix + key, prefix + k, v);
+                super::gmap::lemma_map_insert_different(self.prefixed_entries(prefix).to_gmap(), key, k, v);
+            }
+        }
+        super::map::lemma_imap_ext_equal(lhs, rhs);
+        assert(lhs.to_gmap().congruent(rhs.to_gmap())) by {
+            assert forall|key: Seq<K>| lhs.to_gmap().contains_key(key) <==> rhs.to_gmap().contains_key(key) by {
+                super::map::lemma_imap_dom_contains_bridge(lhs, key);
+                super::map::lemma_imap_dom_contains_bridge(rhs, key);
+                assert(lhs.to_gmap().contains_key(key) == lhs.contains_key(key));
+                assert(rhs.to_gmap().contains_key(key) == rhs.contains_key(key));
+            }
+            assert forall|key: Seq<K>| lhs.to_gmap().contains_key(key) implies lhs.to_gmap()[key] == rhs.to_gmap()[key] by {
+                if lhs.to_gmap().contains_key(key) {
+                    super::map::lemma_imap_dom_contains_bridge(lhs, key);
+                    super::map::lemma_imap_dom_contains_bridge(rhs, key);
+                    assert(lhs.contains_key(key));
+                    assert(lhs[key] == rhs[key]);
+                    assert(lhs[key] == lhs.to_gmap()[key]);
+                    assert(rhs[key] == rhs.to_gmap()[key]);
+                }
+            }
+        }
+        super::gmap::lemma_congruence_extensionality(lhs.to_gmap(), rhs.to_gmap());
+        assert(lhs == rhs);
     }
 
     /// Taking the entries that share `prefix` commutes with `union_prefer_right`:
@@ -631,13 +646,55 @@ impl<K, V> Map<Seq<K>, V> {
     {
         broadcast use group_map_properties;
         broadcast use
-            Map::lemma_prefixed_entries_contains,
-            Map::lemma_prefixed_entries_get,
-            Map::lemma_prefixed_entries_insert,
+            lemma_prefixed_entries_contains_generic,
+            lemma_prefixed_entries_get_generic,
+            lemma_prefixed_entries_insert_generic,
         ;
 
         let lhs = self.union_prefer_right(m).prefixed_entries(prefix);
         let rhs = self.prefixed_entries(prefix).union_prefer_right(m.prefixed_entries(prefix));
+        self.0.lemma_union_prefer_right(m.0);
+        self.prefixed_entries(prefix).0.lemma_union_prefer_right(m.prefixed_entries(prefix).0);
+
+        assert forall|key: Seq<K>| lhs.contains_key(key) <==> rhs.contains_key(key) by {
+            self.union_prefer_right(m).lemma_prefixed_entries_contains(prefix, key);
+            self.lemma_prefixed_entries_contains(prefix, key);
+            m.lemma_prefixed_entries_contains(prefix, key);
+            super::iset::lemma_iset_union(
+                self.prefixed_entries(prefix).dom(),
+                m.prefixed_entries(prefix).dom(),
+                key,
+            );
+        }
+        assert forall|key: Seq<K>| lhs.contains_key(key) implies lhs[key] == rhs[key] by {
+            assert(lhs.contains_key(key));
+            self.union_prefer_right(m).lemma_prefixed_entries_get(prefix, key);
+            if m.prefixed_entries(prefix).contains_key(key) {
+                m.lemma_prefixed_entries_get(prefix, key);
+            } else {
+                self.lemma_prefixed_entries_get(prefix, key);
+            }
+        }
+        super::map::lemma_imap_ext_equal(lhs, rhs);
+        assert(lhs.to_gmap().congruent(rhs.to_gmap())) by {
+            assert forall|key: Seq<K>| lhs.to_gmap().contains_key(key) <==> rhs.to_gmap().contains_key(key) by {
+                super::map::lemma_imap_dom_contains_bridge(lhs, key);
+                super::map::lemma_imap_dom_contains_bridge(rhs, key);
+                assert(lhs.to_gmap().contains_key(key) == lhs.contains_key(key));
+                assert(rhs.to_gmap().contains_key(key) == rhs.contains_key(key));
+            }
+            assert forall|key: Seq<K>| lhs.to_gmap().contains_key(key) implies lhs.to_gmap()[key] == rhs.to_gmap()[key] by {
+                if lhs.to_gmap().contains_key(key) {
+                    super::map::lemma_imap_dom_contains_bridge(lhs, key);
+                    super::map::lemma_imap_dom_contains_bridge(rhs, key);
+                    assert(lhs.contains_key(key));
+                    assert(lhs[key] == rhs[key]);
+                    assert(lhs[key] == lhs.to_gmap()[key]);
+                    assert(rhs[key] == rhs.to_gmap()[key]);
+                }
+            }
+        }
+        super::gmap::lemma_congruence_extensionality(lhs.to_gmap(), rhs.to_gmap());
         assert(lhs == rhs);
     }
 }
@@ -661,47 +718,190 @@ impl Map<int, int> {
 }
 
 // Proven lemmas
-pub broadcast proof fn lemma_union_insert_left<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K, v: V)
+pub broadcast proof fn lemma_union_insert_left<K, V, FINITE: Finiteness>(
+    m1: super::gmap::GMap<K, V, FINITE>,
+    m2: super::gmap::GMap<K, V, FINITE>,
+    k: K,
+    v: V,
+)
     requires
         !m2.contains_key(k),
     ensures
         #[trigger] m1.insert(k, v).union_prefer_right(m2) == m1.union_prefer_right(m2).insert(k, v),
 {
-    assert(m1.insert(k, v).union_prefer_right(m2) =~= m1.union_prefer_right(m2).insert(k, v));
+    assert(m1.insert(k, v).union_prefer_right(m2) =~= m1.union_prefer_right(m2).insert(k, v));  // issue #1534
 }
 
-pub broadcast proof fn lemma_union_insert_right<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K, v: V)
+pub broadcast proof fn lemma_union_insert_right<K, V, FINITE: Finiteness>(
+    m1: super::gmap::GMap<K, V, FINITE>,
+    m2: super::gmap::GMap<K, V, FINITE>,
+    k: K,
+    v: V,
+)
     ensures
         #[trigger] m1.union_prefer_right(m2.insert(k, v)) == m1.union_prefer_right(m2).insert(k, v),
 {
-    assert(m1.union_prefer_right(m2.insert(k, v)) =~= m1.union_prefer_right(m2).insert(k, v));
+    assert(m1.union_prefer_right(m2.insert(k, v)) =~= m1.union_prefer_right(m2).insert(k, v));  // issue #1534
 }
 
-pub broadcast proof fn lemma_union_remove_left<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K)
+pub broadcast proof fn lemma_iunion_insert_left<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, k: K, v: V)
+    requires
+        !m2.contains_key(k),
+    ensures
+        #[trigger] m1.insert(k, v).union_prefer_right(m2) == m1.union_prefer_right(m2).insert(k, v),
+{
+    lemma_union_insert_left(m1.to_gmap(), m2.to_gmap(), k, v);
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().insert(k, v));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().insert(k, v).union_prefer_right(m2.to_gmap()));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().union_prefer_right(m2.to_gmap()).insert(k, v));
+    super::map::lemma_imap_from_to_gmap(m1.insert(k, v).union_prefer_right(m2));
+    super::map::lemma_imap_from_to_gmap(m1.union_prefer_right(m2).insert(k, v));
+    assert(m1.insert(k, v).to_gmap() == m1.to_gmap().insert(k, v));
+    assert(
+        m1.insert(k, v).union_prefer_right(m2).to_gmap()
+            == m1.to_gmap().insert(k, v).union_prefer_right(m2.to_gmap())
+    );
+    assert(
+        m1.union_prefer_right(m2).insert(k, v).to_gmap()
+            == m1.to_gmap().union_prefer_right(m2.to_gmap()).insert(k, v)
+    );
+    assert(
+        IMap::from_gmap(m1.insert(k, v).union_prefer_right(m2).to_gmap())
+            == IMap::from_gmap(m1.union_prefer_right(m2).insert(k, v).to_gmap())
+    );
+    assert(m1.insert(k, v).union_prefer_right(m2) == m1.union_prefer_right(m2).insert(k, v));
+}
+
+pub broadcast proof fn lemma_iunion_insert_right<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, k: K, v: V)
+    ensures
+        #[trigger] m1.union_prefer_right(m2.insert(k, v)) == m1.union_prefer_right(m2).insert(k, v),
+{
+    lemma_union_insert_right(m1.to_gmap(), m2.to_gmap(), k, v);
+    super::map::lemma_imap_to_from_gmap(m2.to_gmap().insert(k, v));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().union_prefer_right(m2.to_gmap().insert(k, v)));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().union_prefer_right(m2.to_gmap()).insert(k, v));
+    super::map::lemma_imap_from_to_gmap(m1.union_prefer_right(m2.insert(k, v)));
+    super::map::lemma_imap_from_to_gmap(m1.union_prefer_right(m2).insert(k, v));
+    assert(m2.insert(k, v).to_gmap() == m2.to_gmap().insert(k, v));
+    assert(
+        m1.union_prefer_right(m2.insert(k, v)).to_gmap()
+            == m1.to_gmap().union_prefer_right(m2.to_gmap().insert(k, v))
+    );
+    assert(
+        m1.union_prefer_right(m2).insert(k, v).to_gmap()
+            == m1.to_gmap().union_prefer_right(m2.to_gmap()).insert(k, v)
+    );
+    assert(
+        IMap::from_gmap(m1.union_prefer_right(m2.insert(k, v)).to_gmap())
+            == IMap::from_gmap(m1.union_prefer_right(m2).insert(k, v).to_gmap())
+    );
+    assert(m1.union_prefer_right(m2.insert(k, v)) == m1.union_prefer_right(m2).insert(k, v));
+}
+
+pub broadcast proof fn lemma_union_remove_left<K, V, FINITE: Finiteness>(
+    m1: super::gmap::GMap<K, V, FINITE>,
+    m2: super::gmap::GMap<K, V, FINITE>,
+    k: K,
+)
     requires
         m1.contains_key(k),
         !m2.contains_key(k),
     ensures
         #[trigger] m1.union_prefer_right(m2).remove(k) == m1.remove(k).union_prefer_right(m2),
 {
-    assert(m1.remove(k).union_prefer_right(m2) =~= m1.union_prefer_right(m2).remove(k));
+    assert(m1.remove(k).union_prefer_right(m2) =~= m1.union_prefer_right(m2).remove(k));  // issue #1534
 }
 
-pub broadcast proof fn lemma_union_remove_right<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K)
+pub broadcast proof fn lemma_union_remove_right<K, V, FINITE: Finiteness>(
+    m1: super::gmap::GMap<K, V, FINITE>,
+    m2: super::gmap::GMap<K, V, FINITE>,
+    k: K,
+)
     requires
         !m1.contains_key(k),
         m2.contains_key(k),
     ensures
         #[trigger] m1.union_prefer_right(m2).remove(k) == m1.union_prefer_right(m2.remove(k)),
 {
-    assert(m1.union_prefer_right(m2.remove(k)) =~= m1.union_prefer_right(m2).remove(k));
+    assert(m1.union_prefer_right(m2.remove(k)) =~= m1.union_prefer_right(m2).remove(k));  // issue #1534
+}
+
+pub broadcast proof fn lemma_iunion_remove_left<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, k: K)
+    requires
+        m1.contains_key(k),
+        !m2.contains_key(k),
+    ensures
+        #[trigger] m1.union_prefer_right(m2).remove(k) == m1.remove(k).union_prefer_right(m2),
+{
+    lemma_union_remove_left(m1.to_gmap(), m2.to_gmap(), k);
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().remove(k));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().remove(k).union_prefer_right(m2.to_gmap()));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().union_prefer_right(m2.to_gmap()).remove(k));
+    super::map::lemma_imap_from_to_gmap(m1.remove(k).union_prefer_right(m2));
+    super::map::lemma_imap_from_to_gmap(m1.union_prefer_right(m2).remove(k));
+    assert(m1.remove(k).to_gmap() == m1.to_gmap().remove(k));
+    assert(
+        m1.remove(k).union_prefer_right(m2).to_gmap()
+            == m1.to_gmap().remove(k).union_prefer_right(m2.to_gmap())
+    );
+    assert(
+        m1.union_prefer_right(m2).remove(k).to_gmap()
+            == m1.to_gmap().union_prefer_right(m2.to_gmap()).remove(k)
+    );
+    assert(
+        IMap::from_gmap(m1.remove(k).union_prefer_right(m2).to_gmap())
+            == IMap::from_gmap(m1.union_prefer_right(m2).remove(k).to_gmap())
+    );
+    assert(m1.union_prefer_right(m2).remove(k) == m1.remove(k).union_prefer_right(m2));
+}
+
+pub broadcast proof fn lemma_iunion_remove_right<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, k: K)
+    requires
+        !m1.contains_key(k),
+        m2.contains_key(k),
+    ensures
+        #[trigger] m1.union_prefer_right(m2).remove(k) == m1.union_prefer_right(m2.remove(k)),
+{
+    lemma_union_remove_right(m1.to_gmap(), m2.to_gmap(), k);
+    super::map::lemma_imap_to_from_gmap(m2.to_gmap().remove(k));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().union_prefer_right(m2.to_gmap().remove(k)));
+    super::map::lemma_imap_to_from_gmap(m1.to_gmap().union_prefer_right(m2.to_gmap()).remove(k));
+    super::map::lemma_imap_from_to_gmap(m1.union_prefer_right(m2.remove(k)));
+    super::map::lemma_imap_from_to_gmap(m1.union_prefer_right(m2).remove(k));
+    assert(m2.remove(k).to_gmap() == m2.to_gmap().remove(k));
+    assert(
+        m1.union_prefer_right(m2.remove(k)).to_gmap()
+            == m1.to_gmap().union_prefer_right(m2.to_gmap().remove(k))
+    );
+    assert(
+        m1.union_prefer_right(m2).remove(k).to_gmap()
+            == m1.to_gmap().union_prefer_right(m2.to_gmap()).remove(k)
+    );
+    assert(
+        IMap::from_gmap(m1.union_prefer_right(m2.remove(k)).to_gmap())
+            == IMap::from_gmap(m1.union_prefer_right(m2).remove(k).to_gmap())
+    );
+    assert(m1.union_prefer_right(m2).remove(k) == m1.union_prefer_right(m2.remove(k)));
 }
 
 pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
-        #[trigger] m1.union_prefer_right(m2).dom() == m1.dom().union(m2.dom()),
+        #[trigger] m1.union_prefer_right(m2).dom() == (m1.dom() + m2.dom()),
 {
-    assert(m1.dom().union(m2.dom()) =~= m1.union_prefer_right(m2).dom());
+    let lhs = m1.union_prefer_right(m2).dom();
+    let rhs = (m1.dom() + m2.dom());
+    m1.lemma_union_prefer_right(m2);
+    assert(lhs =~= rhs) by {
+        assert forall|k: K| #[trigger] lhs.contains(k) == rhs.contains(k) by {
+            super::set::lemma_set_to_infinite_contains(lhs, k);
+            super::set::lemma_set_to_infinite_contains(m1.dom(), k);
+            super::set::lemma_set_to_infinite_contains(m2.dom(), k);
+            super::iset::lemma_iset_union(m1.dom().to_infinite(), m2.dom().to_infinite(), k);
+            lemma_set_union(m1.dom(), m2.dom(), k);
+        }
+    }
+    lemma_set_ext_equal_eq(lhs, rhs);
+    assert(lhs == rhs);
 }
 
 /// The size of the union of two disjoint maps is equal to the sum of the sizes of the individual maps
@@ -714,7 +914,8 @@ pub broadcast proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K,
         #[trigger] m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
 {
     let u = m1.union_prefer_right(m2);
-    assert(u.dom() =~= m1.dom() + m2.dom());  //proves u.dom() is finite
+    lemma_union_dom(m1, m2);
+    assert(u.dom() == (m1.dom() + m2.dom()));  //proves u.dom() is finite
     assert(u.remove_keys(m1.dom()).dom() =~= m2.dom());
     assert(u.remove_keys(m1.dom()).dom().len() == u.dom().len() - m1.dom().len()) by {
         u.lemma_remove_keys_len(m1.dom());
@@ -725,13 +926,19 @@ pub broadcast group group_map_union {
     lemma_union_dom,
     lemma_union_remove_left,
     lemma_union_remove_right,
+    lemma_iunion_remove_left,
+    lemma_iunion_remove_right,
     lemma_union_insert_left,
     lemma_union_insert_right,
     lemma_disjoint_union_size,
 }
 
 /// submap_of (<=) is transitive.
-pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: Map<K, V>, m2: Map<K, V>, m3: Map<K, V>)
+pub broadcast proof fn lemma_submap_of_trans<K, V, FINITE: Finiteness>(
+    m1: GenericMap<K, V, FINITE>,
+    m2: GenericMap<K, V, FINITE>,
+    m3: GenericMap<K, V, FINITE>,
+)
     requires
         #[trigger] m1.submap_of(m2),
         #[trigger] m2.submap_of(m3),
@@ -745,37 +952,179 @@ pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: Map<K, V>, m2: Map<K, V>,
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
-/// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `Set::new(fk)`.
-pub broadcast proof fn lemma_map_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+/// The domain of a map constructed with `IMap::new(fk, fv)` is equivalent to the set constructed with `ISet::new(fk)`.
+pub broadcast proof fn lemma_imap_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(fk, fv).dom() == Set::<K>::new(|k: K| fk(k)),
+        #[trigger] IMap::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)),
 {
-    assert(Set::new(fk) =~= Set::<K>::new(|k: K| fk(k)));
+    let map = IMap::<K, V>::new(fk, fv);
+    let keys = ISet::<K>::new(|k: K| fk(k));
+    super::gmap::lemma_infinite_new_ensures(fk, fv);
+    assert forall|k: K| map.dom().contains(k) == keys.contains(k) by {
+        super::iset::lemma_iset_new(|x| fk(x), k);
+    }
+    super::iset::lemma_iset_ext_equal(map.dom(), keys);
+    super::iset::lemma_iset_ext_equal_eq(map.dom(), keys);
+}
+
+/// The domain of a map constructed with `Map::new(key_set, fv)` is equivalent to `key_set`.
+pub broadcast proof fn lemma_map_new_domain<K, V>(key_set: Set<K>, fv: spec_fn(K) -> V)
+    ensures
+        #[trigger] Map::<K, V>::new(key_set, fv).dom() == key_set,
+{
+    assert(Map::<K, V>::new(key_set, fv).dom() =~= key_set);  // issue #1534
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to
-/// the set constructed with `Set::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
+/// the set constructed with `ISet::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
 /// the set of all values fv(k) where fk(k) is true.
-pub broadcast proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_imap_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(fk, fv).values() == Set::<V>::new(
+        #[trigger] IMap::<K, V>::new(fk, fv).values() == ISet::<V>::new(
             |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
         ),
 {
-    let keys = Set::<K>::new(fk);
-    let values = Map::<K, V>::new(fk, fv).values();
-    let map = Map::<K, V>::new(fk, fv);
-    assert(map.dom() =~= keys);
-    assert(forall|k: K| #[trigger] fk(k) ==> keys.contains(k));
-    assert(values =~= Set::<V>::new(
-        |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
-    ));
+    let keys = ISet::<K>::new(fk);
+    let values = IMap::<K, V>::new(fk, fv).values();
+    let map = IMap::<K, V>::new(fk, fv);
+    let target = ISet::<V>::new(|v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v));
+    lemma_imap_new_domain(fk, fv);
+    assert forall|v: V| values.contains(v) == target.contains(v) by {
+        super::map::lemma_imap_values_contains(map, v);
+        super::iset::lemma_iset_new(|vv: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == vv), v);
+        if values.contains(v) {
+            assert(map.contains_value(v));
+            let k = choose|k: K| map.to_gmap().dom().contains(k) && map.to_gmap()[k] == v;
+            super::map::lemma_imap_dom_contains_bridge(map, k);
+            super::map::lemma_imap_index_field_bridge(map, k);
+            assert(map.dom().contains(k));
+            assert(map[k] == v);
+            assert(keys.contains(k));
+            super::iset::lemma_iset_new(fk, k);
+            assert(fk(k));
+            assert(fv(k) == map[k]);
+        }
+        if target.contains(v) {
+            let k = choose|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v;
+            super::iset::lemma_iset_new(fk, k);
+            assert(keys.contains(k));
+            assert(map.dom().contains(k));
+            assert(map[k] == fv(k));
+            assert(map[k] == v);
+            super::map::lemma_imap_dom_contains_bridge(map, k);
+            super::map::lemma_imap_index_field_bridge(map, k);
+            assert(map.to_gmap().dom().contains(k));
+            assert(map.to_gmap()[k] == v);
+            assert(map.contains_value(v));
+            assert(values.contains(v));
+        }
+    }
+    super::iset::lemma_iset_ext_equal(values, target);
+    assert(values =~= target);
+    super::iset::lemma_iset_ext_equal_eq(values, target);
+}
+
+/// Properties of maps from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
+#[deprecated = "Use `broadcast use group_map_properties` instead"]
+pub proof fn lemma_map_properties<K, V>()
+    ensures
+        forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
+            IMap::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)),  //from lemma_imap_new_domain
+        forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
+            IMap::<K, V>::new(fk, fv).values() == ISet::<V>::new(
+                |v: V| exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v,
+            ),  //from lemma_imap_new_values
+{
+    broadcast use group_map_properties;
 }
 
 pub broadcast group group_map_properties {
-    lemma_map_new_domain,
-    lemma_map_new_values,
+    lemma_imap_new_domain,
+    lemma_imap_new_values,
+}
+
+pub broadcast proof fn lemma_map_remove_keys_insert_generic<K, V, FINITE: Finiteness>(
+    m: GenericMap<K, V, FINITE>,
+    r: GSet<K, FINITE>,
+    k: K,
+    v: V,
+)
+    ensures
+        #[trigger] m.insert(k, v).remove_keys(r) == if r.contains(k) {
+            m.remove_keys(r)
+        } else {
+            m.remove_keys(r).insert(k, v)
+        },
+{
+    m.lemma_map_remove_keys_insert(r, k, v);
+}
+
+pub broadcast proof fn lemma_filter_keys_insert_generic<K, V, FINITE: Finiteness>(
+    m: GenericMap<K, V, FINITE>,
+    p: spec_fn(K) -> bool,
+    k: K,
+    v: V,
+)
+    ensures
+        #[trigger] m.insert(k, v).filter_keys(p) == (if p(k) {
+            m.filter_keys(p).insert(k, v)
+        } else {
+            m.filter_keys(p)
+        }),
+{
+    m.lemma_filter_keys_insert(p, k, v);
+}
+
+pub broadcast proof fn lemma_prefixed_entries_get_generic<K, V>(
+    m: IMap<Seq<K>, V>,
+    prefix: Seq<K>,
+    k: Seq<K>,
+)
+    requires
+        m.prefixed_entries(prefix).contains_key(k),
+    ensures
+        m.prefixed_entries(prefix)[k] == #[trigger] m[prefix + k],
+{
+    m.lemma_prefixed_entries_get(prefix, k);
+}
+
+pub broadcast proof fn lemma_prefixed_entries_contains_generic<K, V>(
+    m: IMap<Seq<K>, V>,
+    prefix: Seq<K>,
+    k: Seq<K>,
+)
+    ensures
+        #[trigger] m.prefixed_entries(prefix).contains_key(k) <==> m.contains_key(prefix + k),
+{
+    m.lemma_prefixed_entries_contains(prefix, k);
+}
+
+pub broadcast proof fn lemma_prefixed_entries_insert_generic<K, V>(
+    m: IMap<Seq<K>, V>,
+    prefix: Seq<K>,
+    k: Seq<K>,
+    v: V,
+)
+    ensures
+        #[trigger] m.insert(prefix + k, v).prefixed_entries(prefix) == m.prefixed_entries(
+            prefix,
+        ).insert(k, v),
+{
+    m.lemma_prefixed_entries_insert(prefix, k, v);
+}
+
+pub broadcast proof fn lemma_prefixed_entries_union_generic<K, V>(
+    m1: IMap<Seq<K>, V>,
+    m2: IMap<Seq<K>, V>,
+    prefix: Seq<K>,
+)
+    ensures
+        #[trigger] m1.union_prefer_right(m2).prefixed_entries(prefix) == m1.prefixed_entries(
+            prefix,
+        ).union_prefer_right(m2.prefixed_entries(prefix)),
+{
+    m1.lemma_prefixed_entries_union(m2, prefix);
 }
 
 pub broadcast group group_map_extra {
@@ -787,6 +1136,14 @@ pub broadcast group group_map_extra {
     Map::lemma_prefixed_entries_contains,
     Map::lemma_prefixed_entries_insert,
     Map::lemma_prefixed_entries_union,
+    IMap::lemma_map_remove_keys_insert,
+    IMap::lemma_filter_keys_insert,
+    IMap::lemma_insert_contains_value,
+    IMap::lemma_insert_invariant_contains,
+    IMap::lemma_prefixed_entries_get,
+    IMap::lemma_prefixed_entries_contains,
+    IMap::lemma_prefixed_entries_insert,
+    IMap::lemma_prefixed_entries_union,
 }
 
 pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
@@ -794,33 +1151,8 @@ pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
         m.dom().finite(),
     ensures
         m.values().finite(),
-    decreases m.len(),
 {
-    if m.len() > 0 {
-        let k = m.dom().choose();
-        let v = m[k];
-        let m1 = m.remove(k);
-        assert(m.contains_key(k));
-        assert(m.contains_value(v));
-        let mv = m.values();
-        let m1v = m1.values();
-        assert_sets_equal!(mv == m1v.insert(v), v0 => {
-            if m.contains_value(v0) {
-                if v0 != v {
-                    let k0 = choose|k0| #![auto] m.contains_key(k0) && m[k0] == v0;
-                    assert(k0 != k);
-                    assert(m1.contains_key(k0));
-                    assert(mv.contains(v0) ==> m1v.insert(v).contains(v0));
-                    assert(mv.contains(v0) <== m1v.insert(v).contains(v0));
-                }
-            }
-        });
-        assert(m1.len() < m.len());
-        lemma_values_finite(m1);
-        axiom_set_insert_finite(m1.values(), v);
-    } else {
-        assert(m.values() =~= Set::<V>::empty());
-    }
+    // This proof is trivial now, since values() is defined as the map() of a finite source map.
 }
 
 } // verus!

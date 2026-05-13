@@ -21,7 +21,7 @@ pub mod pcell_maybe_uninit;
 
 verus! {
 
-broadcast use {super::map::group_map_axioms, super::set::group_set_axioms};
+broadcast use {super::map::group_map_axioms, super::set::group_set_lemmas};
 
 /// **Now deprecated** See [`pcell::PCell`] or [`pcell_maybe_uninit::PCell`] instead
 ///
@@ -310,8 +310,8 @@ impl<V: Copy> PCell<V> {
 
 struct InvCellPred {}
 
-impl<T> InvariantPredicate<(Set<T>, PCell<T>), PointsTo<T>> for InvCellPred {
-    closed spec fn inv(k: (Set<T>, PCell<T>), perm: PointsTo<T>) -> bool {
+impl<T> InvariantPredicate<(ISet<T>, PCell<T>), PointsTo<T>> for InvCellPred {
+    closed spec fn inv(k: (ISet<T>, PCell<T>), perm: PointsTo<T>) -> bool {
         let (possible_values, pcell) = k;
         {
             &&& perm.is_init()
@@ -325,9 +325,9 @@ impl<T> InvariantPredicate<(Set<T>, PCell<T>), PointsTo<T>> for InvCellPred {
 #[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::invcell::InvCell` instead")]
 #[verifier::reject_recursive_types(T)]
 pub struct InvCell<T> {
-    possible_values: Ghost<Set<T>>,
+    possible_values: Ghost<ISet<T>>,
     pcell: PCell<T>,
-    perm_inv: Tracked<LocalInvariant<(Set<T>, PCell<T>), PointsTo<T>, InvCellPred>>,
+    perm_inv: Tracked<LocalInvariant<(ISet<T>, PCell<T>), PointsTo<T>, InvCellPred>>,
 }
 
 #[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::invcell::InvCell` instead")]
@@ -348,7 +348,7 @@ impl<T> InvCell<T> {
             forall|v| f(v) <==> cell.inv(v),
     {
         let (pcell, Tracked(perm)) = PCell::new(val);
-        let ghost possible_values = Set::new(f);
+        let ghost possible_values = ISet::new(f);
         let tracked perm_inv = LocalInvariant::new((possible_values, pcell), perm, 0);
         InvCell { possible_values: Ghost(possible_values), pcell, perm_inv: Tracked(perm_inv) }
     }

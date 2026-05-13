@@ -57,19 +57,23 @@ fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
 fn stored_object_type(field: &Field) -> Type {
     match &field.stype {
         ShardableType::StorageOption(ty) => ty.clone(),
-        ShardableType::StorageMap(_key, ty) => ty.clone(),
+        ShardableType::StorageMap(_key, ty) | ShardableType::StorageIMap(_key, ty) => ty.clone(),
         ShardableType::Variable(_)
         | ShardableType::Constant(_)
         | ShardableType::NotTokenized(_)
         | ShardableType::Option(_)
         | ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::PersistentOption(_)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentIMap(_, _)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::PersistentCount
         | ShardableType::PersistentBool
         | ShardableType::Multiset(_)
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::Bool
         | ShardableType::Count => {
             panic!("stored_object_type");
@@ -250,6 +254,16 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
                 pub type #name#gen1 #genwhere = #vstd::tokens::MapToken<#key, #val, #tok>;
             }
         }
+        ShardableType::IMap(key, val) | ShardableType::PersistentIMap(key, val) => {
+            let name = Ident::new(&format!("{:}_map", field.name.to_string()), field.name.span());
+            let (gen1, genwhere) = generics_for_decl(&sm.generics);
+            let tok = field_token_type(sm, field);
+            quote_vstd! { vstd =>
+                #[allow(type_alias_bounds)]
+                #[allow(non_camel_case_types)]
+                pub type #name#gen1 #genwhere = #vstd::tokens::IMapToken<#key, #val, #tok>;
+            }
+        }
         ShardableType::Set(elem) | ShardableType::PersistentSet(elem) => {
             let name = Ident::new(&format!("{}_set", field.name), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
@@ -258,6 +272,16 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[allow(type_alias_bounds)]
                 #[allow(non_camel_case_types)]
                 pub type #name#gen1 #genwhere = #vstd::tokens::SetToken<#elem, #tok>;
+            }
+        }
+        ShardableType::ISet(elem) | ShardableType::PersistentISet(elem) => {
+            let name = Ident::new(&format!("{:}_set", field.name.to_string()), field.name.span());
+            let (gen1, genwhere) = generics_for_decl(&sm.generics);
+            let tok = field_token_type(sm, field);
+            quote_vstd! { vstd =>
+                #[allow(type_alias_bounds)]
+                #[allow(non_camel_case_types)]
+                pub type #name#gen1 #genwhere = #vstd::tokens::ISetToken<#elem, #tok>;
             }
         }
         ShardableType::Multiset(elem) => {
@@ -345,7 +369,9 @@ pub fn output_token_types_and_fns(
             ShardableType::NotTokenized(_) => {
                 // don't need to add a struct in this case
             }
-            ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
+            ShardableType::StorageOption(_)
+            | ShardableType::StorageMap(_, _)
+            | ShardableType::StorageIMap(_, _) => {
                 // storage types don't have tokens; the 'token type' is just the
                 // the type of the field
             }
@@ -353,10 +379,14 @@ pub fn output_token_types_and_fns(
             | ShardableType::Option(_)
             | ShardableType::PersistentOption(_)
             | ShardableType::Map(..)
+            | ShardableType::IMap(..)
             | ShardableType::PersistentMap(..)
+            | ShardableType::PersistentIMap(..)
             | ShardableType::Multiset(_)
             | ShardableType::Set(_)
+            | ShardableType::ISet(_)
             | ShardableType::PersistentSet(_)
+            | ShardableType::PersistentISet(_)
             | ShardableType::Count
             | ShardableType::PersistentCount
             | ShardableType::Bool
@@ -512,16 +542,21 @@ pub fn exchange_stream(
                 ShardableType::Multiset(_)
                 | ShardableType::Option(_)
                 | ShardableType::Map(_, _)
+                | ShardableType::IMap(_, _)
                 | ShardableType::PersistentOption(_)
                 | ShardableType::PersistentMap(_, _)
+                | ShardableType::PersistentIMap(_, _)
                 | ShardableType::Count
                 | ShardableType::PersistentCount
                 | ShardableType::Bool
                 | ShardableType::PersistentBool
                 | ShardableType::Set(_)
+                | ShardableType::ISet(_)
                 | ShardableType::PersistentSet(_)
+                | ShardableType::PersistentISet(_)
                 | ShardableType::StorageOption(_)
-                | ShardableType::StorageMap(_, _) => {
+                | ShardableType::StorageMap(_, _)
+                | ShardableType::StorageIMap(_, _) => {
                     params.insert(field.name.to_string(), Vec::new());
                 }
                 ShardableType::Variable(_)
@@ -856,17 +891,22 @@ pub fn exchange_stream(
                 }
                 ShardableType::Option(_)
                 | ShardableType::Map(_, _)
+                | ShardableType::IMap(_, _)
                 | ShardableType::Set(_)
+                | ShardableType::ISet(_)
                 | ShardableType::Multiset(_)
                 | ShardableType::Count
                 | ShardableType::Bool
                 | ShardableType::PersistentOption(_)
                 | ShardableType::PersistentSet(_)
+                | ShardableType::PersistentISet(_)
                 | ShardableType::PersistentMap(_, _)
+                | ShardableType::PersistentIMap(_, _)
                 | ShardableType::PersistentCount
                 | ShardableType::PersistentBool
                 | ShardableType::StorageOption(_)
-                | ShardableType::StorageMap(_, _) => {
+                | ShardableType::StorageMap(_, _)
+                | ShardableType::StorageIMap(_, _) => {
                     // These sharding types all use the SpecialOps. The earlier translation
                     // phase has already processed those and established all the necessary
                     // pre-conditions and post-conditions, and it has also established
@@ -1035,12 +1075,16 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::NotTokenized(_) => None,
         ShardableType::Multiset(_) => None,
         ShardableType::Set(_) => None,
+        ShardableType::ISet(_) => None,
         ShardableType::Bool => None,
         ShardableType::Option(_) => None,
         ShardableType::Map(_, _) => None,
+        ShardableType::IMap(_, _) => None,
         ShardableType::PersistentOption(_) => None,
         ShardableType::PersistentSet(_) => None,
+        ShardableType::PersistentISet(_) => None,
         ShardableType::PersistentMap(_, _) => None,
+        ShardableType::PersistentIMap(_, _) => None,
         ShardableType::PersistentCount => None,
         ShardableType::PersistentBool => None,
         ShardableType::Count => None,
@@ -1049,6 +1093,9 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         })),
         ShardableType::StorageMap(key, val) => Some(Type::Verbatim(quote_vstd! { vstd =>
             #vstd::map::Map<#key, #val>
+        })),
+        ShardableType::StorageIMap(key, val) => Some(Type::Verbatim(quote_vstd! { vstd =>
+            #vstd::map::IMap<#key, #val>
         })),
     }
 }
@@ -1060,7 +1107,9 @@ fn add_initialization_input_conditions(
     param_value: Expr,
 ) {
     match &field.stype {
-        ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
+        ShardableType::StorageOption(_)
+        | ShardableType::StorageMap(_, _)
+        | ShardableType::StorageIMap(_, _) => {
             requires.push(mk_eq(param_value.span(), &param_value, &init_value));
         }
         _ => {
@@ -1081,12 +1130,17 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
         | ShardableType::Bool
         | ShardableType::PersistentBool
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::Map(..)
-        | ShardableType::PersistentMap(..) => Some(field_token_collection_type(sm, field)),
+        | ShardableType::IMap(..)
+        | ShardableType::PersistentMap(..)
+        | ShardableType::PersistentIMap(..) => Some(field_token_collection_type(sm, field)),
 
         ShardableType::StorageOption(_) => None, // no output tokens for storage
         ShardableType::StorageMap(_, _) => None,
+        ShardableType::StorageIMap(_, _) => None,
     }
 }
 
@@ -1121,9 +1175,13 @@ fn add_initialization_output_conditions(
         | ShardableType::Bool
         | ShardableType::PersistentBool
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentIMap(_, _)
         | ShardableType::Multiset(_) => {
             ensures.push(relation_for_collection_of_internal_tokens(
                 sm,
@@ -1186,11 +1244,33 @@ fn relation_for_collection_of_internal_tokens(
                   && #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
             })
         }
+        ShardableType::ISet(_) | ShardableType::PersistentISet(_) => {
+            let fncall = if strict {
+                quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
+            } else {
+                quote_spanned_vstd! { vstd, span => #vstd::set::ISet::spec_le }
+            };
+            Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
+                #fncall(#given_value, (#param_value).set())
+                  && #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
+            })
+        }
         ShardableType::Map(_, _) | ShardableType::PersistentMap(_, _) => {
             let fncall = if strict {
                 quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
             } else {
                 quote_spanned_vstd! { vstd, span => #vstd::map::Map::spec_le }
+            };
+            Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
+                #fncall(#given_value, (#param_value).map())
+                  && #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
+            })
+        }
+        ShardableType::IMap(_, _) | ShardableType::PersistentIMap(_, _) => {
+            let fncall = if strict {
+                quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
+            } else {
+                quote_spanned_vstd! { vstd, span => #vstd::map::IMap::spec_le }
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
                 #fncall(#given_value, (#param_value).map())
@@ -1238,6 +1318,15 @@ fn traits_stream(sm: &SM, field: &Field) -> TokenStream {
                 matches!(&field.stype, ShardableType::Set(_)),
             )
         }
+        ShardableType::ISet(ty) | ShardableType::PersistentISet(ty) => {
+            let token_ty = field_token_type(sm, field);
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::Element(ty),
+                matches!(&field.stype, ShardableType::ISet(_)),
+            )
+        }
         ShardableType::Bool | ShardableType::PersistentBool => {
             let token_ty = field_token_type(sm, field);
             token_trait_impls(
@@ -1254,6 +1343,15 @@ fn traits_stream(sm: &SM, field: &Field) -> TokenStream {
                 &sm.generics,
                 MainTrait::KeyValue(key, val),
                 matches!(&field.stype, ShardableType::Map(_, _)),
+            )
+        }
+        ShardableType::IMap(key, val) | ShardableType::PersistentIMap(key, val) => {
+            let token_ty = field_token_type(sm, field);
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::KeyValue(key, val),
+                matches!(&field.stype, ShardableType::IMap(_, _)),
             )
         }
         ShardableType::Multiset(ty) => {
@@ -1804,9 +1902,15 @@ fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
         ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
             Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::MapToken<#key, #val, #tok> })
         }
+        ShardableType::IMap(key, val) | ShardableType::PersistentIMap(key, val) => {
+            Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::IMapToken<#key, #val, #tok> })
+        }
 
         ShardableType::Set(t) | ShardableType::PersistentSet(t) => {
             Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::SetToken<#t, #tok> })
+        }
+        ShardableType::ISet(t) | ShardableType::PersistentISet(t) => {
+            Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::ISetToken<#t, #tok> })
         }
 
         ShardableType::Multiset(t) => {

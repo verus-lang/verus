@@ -679,8 +679,7 @@ pub open spec fn hash_map_deep_view_impl<
     A: core::alloc::Allocator,
 >(m: HashMap<Key, Value, S, A>) -> Map<Key::V, Value::V> {
     Map::new(
-        |k: Key::V|
-            exists|orig_k: Key| #[trigger] m@.contains_key(orig_k) && k == orig_k.deep_view(),
+        m@.dom().map(|orig_k: Key| orig_k.deep_view()),
         |dk: Key::V|
             {
                 let k = choose|k: Key| m@.contains_key(k) && #[trigger] k.deep_view() == dk;
@@ -695,6 +694,7 @@ pub broadcast proof fn lemma_hashmap_deepview_dom<K: DeepView, V: DeepView>(m: H
 {
     reveal(hash_map_deep_view_impl);
     broadcast use group_hash_axioms;
+    broadcast use crate::map::group_map_internal_axioms;
     broadcast use crate::vstd::group_vstd_default;
 
     assert(m.deep_view().dom() =~= m@.dom().map(|k: K| k.deep_view()));
@@ -716,18 +716,32 @@ pub broadcast proof fn lemma_hashmap_deepview_properties<K: DeepView, V: DeepVie
 {
     reveal(hash_map_deep_view_impl);
     broadcast use group_hash_axioms;
+    broadcast use crate::map::group_map_internal_axioms;
     broadcast use crate::vstd::group_vstd_default;
 
+    lemma_hashmap_deepview_dom(m);
     assert(m.deep_view().dom() == m@.dom().map(|k: K| k.deep_view()));
     assert forall|k: K| #[trigger] m@.contains_key(k) implies m.deep_view().contains_key(
         k.deep_view(),
     ) && m.deep_view()[k.deep_view()] == m@[k].deep_view() by {
+        assert(m@.dom().contains(k));
+        assert(m@.dom().map(|k: K| k.deep_view()).contains(k.deep_view()));
+        assert(m.deep_view().dom().contains(k.deep_view()));
+        let k2 = choose|k2: K| m@.contains_key(k2) && #[trigger] k2.deep_view() == k.deep_view();
         assert forall|k1: K, k2: K| #[trigger]
             k1.deep_view() == #[trigger] k2.deep_view() implies k1 == k2 by {
             let ghost k_deepview = |k: K| k.deep_view();
             assert(crate::relations::injective(k_deepview));
             assert(k_deepview(k1) == k_deepview(k2));
         }
+        assert(k2 == k);
+    }
+    assert forall|dk: K::V| #[trigger] m.deep_view().contains_key(dk) implies exists|k: K|
+        k.deep_view() == dk && #[trigger] m@.contains_key(k) by {
+        assert(m.deep_view().dom().contains(dk));
+        assert(m@.dom().map(|k: K| k.deep_view()).contains(dk));
+        let k = choose|k: K| #[trigger] m@.dom().contains(k) && k.deep_view() == dk;
+        assert(m@.contains_key(k));
     }
 }
 
@@ -740,17 +754,36 @@ pub broadcast proof fn lemma_hashmap_deepview_values<K: DeepView, V: DeepView>(m
     reveal(hash_map_deep_view_impl);
     broadcast use group_hash_axioms;
     broadcast use lemma_hashmap_deepview_properties;
+    broadcast use crate::map::group_map_internal_axioms;
     broadcast use crate::vstd::group_vstd_default;
 
+    lemma_hashmap_deepview_properties(m);
     let lhs = m.deep_view().values();
     let rhs = m@.values().map(|v: V| v.deep_view());
     assert forall|v: V::V| #[trigger] lhs.contains(v) implies rhs.contains(v) by {
-        let dk = choose|dk: K::V| #[trigger]
-            m.deep_view().contains_key(dk) && m.deep_view()[dk] == v;
+        crate::set::lemma_set_to_from_gset(m.deep_view().to_gmap().values());
+        assert(lhs.contains(v) == m.deep_view().to_gmap().values().contains(v));
+        let dk = choose|dk: K::V|
+            m.deep_view().to_gmap().dom().contains(dk) && m.deep_view().to_gmap()[dk] == v;
+        assert(m.deep_view().contains_key(dk));
+        assert(m.deep_view()[dk] == v);
+        assert(exists|k: K| #[trigger] m@.contains_key(k) && k.deep_view() == dk);
         let k = choose|k: K| #[trigger] m@.contains_key(k) && k.deep_view() == dk;
+        assert(exists|ov: V| #[trigger] m@.contains_key(k) && m@[k] == ov && ov.deep_view() == v);
         let ov = choose|ov: V| #[trigger] m@.contains_key(k) && m@[k] == ov && ov.deep_view() == v;
         assert(v == ov.deep_view());
         assert(m@.values().contains(ov));
+    }
+    assert forall|v: V::V| #[trigger] rhs.contains(v) implies lhs.contains(v) by {
+        let ov = choose|ov: V| m@.values().contains(ov) && ov.deep_view() == v;
+        crate::set::lemma_set_to_from_gset(m@.to_gmap().values());
+        assert(m@.values().contains(ov) == m@.to_gmap().values().contains(ov));
+        let k = choose|k: K| m@.to_gmap().dom().contains(k) && m@.to_gmap()[k] == ov;
+        assert(m@.contains_key(k));
+        assert(m@[k] == ov);
+        assert(m.deep_view().contains_key(k.deep_view()) && m.deep_view()[k.deep_view()] == m@[k].deep_view());
+        assert(m.deep_view()[k.deep_view()] == v);
+        assert(lhs.contains(m.deep_view()[k.deep_view()]));
     }
 }
 
@@ -1428,6 +1461,52 @@ pub broadcast proof fn axiom_hashset_decreases<Key, S, A: Allocator>(m: HashSet<
     admit();
 }
 
+pub broadcast proof fn lemma_hashmap_view_ensures_contains_key<K, V>(m: HashMap<K, V>, k: K)
+    ensures
+        #[trigger] m@.contains_key(k) <==> m@.to_infinite().contains_key(k),
+{
+    broadcast use crate::map::group_map_axioms;
+    broadcast use crate::map::group_map_internal_axioms;
+
+}
+
+pub broadcast proof fn lemma_hashmap_view_ensures_to_infinite<K, V>(m: HashMap<K, V>)
+    ensures
+        #[trigger] m@ == m@.to_infinite().to_finite(),
+{
+    // TODO(jonh): minimize
+    broadcast use super::super::map::group_map_axioms;
+    broadcast use super::super::map::group_map_internal_axioms;
+    broadcast use super::super::set::group_set_lemmas;
+    broadcast use crate::gset::GSet::congruent_infiniteness;
+    broadcast use super::super::map::lemma_congruence_extensionality;
+
+    super::super::map::axiom_map_finite_from_type(m@);
+    m@.to_infinite_ensures();
+    assert(m@.to_infinite().congruent_generic(m@.to_gmap()));
+    assert(m@.dom().finite());
+    assert(m@.to_infinite().dom().finite());
+    assert(m@.to_infinite().to_finite().congruent(m@));
+
+    //     assert( m@.to_infinite().dom().finite() );
+}
+
+pub broadcast proof fn lemma_hashset_view_contains_key<K>(s: HashSet<K>, k: K)
+    ensures
+        #[trigger] s@.contains(k) <==> s@.to_infinite().contains(k),
+{
+    broadcast use super::super::set::group_set_lemmas;
+
+}
+
+pub broadcast proof fn lemma_hashset_view_to_infinite<K>(s: HashSet<K>)
+    ensures
+        #[trigger] s@ == s@.to_infinite().to_finite(),
+{
+    broadcast use super::super::set::group_set_lemmas;
+
+}
+
 pub broadcast group group_hash_axioms {
     axiom_box_key_removed,
     axiom_contains_deref_key,
@@ -1464,6 +1543,10 @@ pub broadcast group group_hash_axioms {
     axiom_spec_hash_map_iter,
     axiom_hashmap_decreases,
     axiom_hashset_decreases,
+    lemma_hashmap_view_ensures_contains_key,
+    lemma_hashmap_view_ensures_to_infinite,
+    lemma_hashset_view_contains_key,
+    lemma_hashset_view_to_infinite,
 }
 
 } // verus!

@@ -30,7 +30,7 @@ test_verify_one_file! {
     #[test] dupe_name_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
-                pub v: Map<int, int>,
+                pub v: IMap<int, int>,
             }
 
             transition!{
@@ -387,6 +387,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_use_imap_directly IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(imap)] pub t: IMap<int, int>,
+                #[sharding(variable)] pub v: int,
+            }
+
+            transition!{
+                tr() {
+                    update v = pre.t.index(0);
+                }
+            }
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
+}
+
+test_verify_one_file! {
     #[test] test_use_multiset_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -457,7 +474,7 @@ test_verify_one_file! {
     #[test] test_use_pre_no_field_withdraw_kv_value IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)] pub v: Map<int, int>,
+                #[sharding(storage_imap)] pub v: IMap<int, int>,
             }
 
             transition!{
@@ -489,12 +506,12 @@ test_verify_one_file! {
     #[test] test_use_pre_no_field_withdraw_kv_key IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)] pub v: Map<int, int>,
+                #[sharding(storage_imap)] pub v: IMap<int, int>,
             }
 
             init!{
                 initialize() {
-                    init v = Map::empty();
+                    init v = IMap::empty();
                 }
             }
 
@@ -509,8 +526,8 @@ test_verify_one_file! {
 
         verus!{
 
-        proof fn foo(tracked m: Map<int, int>) {
-            requires(equal(m, Map::empty()));
+        proof fn foo(tracked m: IMap<int, int>) {
+            requires(equal(m, IMap::empty()));
 
             let tracked inst = X::Instance::initialize(m);
             let tracked t = (inst).tr();
@@ -1241,7 +1258,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(option)]
-                pub t: Map<int, int>,
+                pub t: IMap<int, int>,
             }
         }}
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
@@ -1281,6 +1298,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] wrong_form_storage_imap IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_imap)]
+                pub t: int,
+            }
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form IMap<_, _>")
+}
+
+test_verify_one_file! {
     #[test] wrong_form_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1300,6 +1328,17 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Set<_>")
+}
+
+test_verify_one_file! {
+    #[test] wrong_form_iset IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(iset)]
+                pub t: Multiset<int>,
+            }
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form ISet<_>")
 }
 
 test_verify_one_file! {
@@ -2273,8 +2312,8 @@ test_verify_one_file! {
     #[test] inherent_safety_condition_map_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)]
-                pub t: Map<int, int>
+                #[sharding(storage_imap)]
+                pub t: IMap<int, int>
             }
 
             transition!{
@@ -2297,8 +2336,8 @@ test_verify_one_file! {
     #[test] inherent_safety_condition_map_withdraw_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)]
-                pub t: Map<int, int>
+                #[sharding(storage_imap)]
+                pub t: IMap<int, int>
             }
 
             transition!{
@@ -2365,8 +2404,8 @@ test_verify_one_file! {
     #[test] inherent_safety_condition_map_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)]
-                pub t: Map<int, int>
+                #[sharding(storage_imap)]
+                pub t: IMap<int, int>
             }
 
             property!{
@@ -2405,22 +2444,22 @@ test_verify_one_file! {
     #[test] inherent_safety_condition_map_general_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)]
-                pub t: Map<int, int>
+                #[sharding(storage_imap)]
+                pub t: IMap<int, int>
             }
 
             property!{
                 tr() {
-                    guard t >= (Map::<int,int>::empty().insert(5, 7)) by { }; // FAILS
+                    guard t >= (IMap::<int,int>::empty().insert(5, 7)) by { }; // FAILS
 
                     birds_eye let t = pre.t;
                     assert(t.dom().contains(5)) by {
-                        assert(Map::<int,int>::empty().insert(5, 7).dom().contains(5));
-                        assert(Map::<int,int>::empty().insert(5, 7).index(5) == 7);
+                        assert(IMap::<int,int>::empty().insert(5, 7).dom().contains(5));
+                        assert(IMap::<int,int>::empty().insert(5, 7).index(5) == 7);
                     };
                     assert(t.index(5) == 7) by {
-                        assert(Map::<int,int>::empty().insert(5, 7).dom().contains(5));
-                        assert(Map::<int,int>::empty().insert(5, 7).index(5) == 7);
+                        assert(IMap::<int,int>::empty().insert(5, 7).dom().contains(5));
+                        assert(IMap::<int,int>::empty().insert(5, 7).index(5) == 7);
                     };
                 }
             }
@@ -2500,8 +2539,8 @@ test_verify_one_file! {
     #[test] inherent_safety_condition_map_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)]
-                pub t: Map<int, int>
+                #[sharding(storage_imap)]
+                pub t: IMap<int, int>
             }
 
             transition!{
@@ -2827,7 +2866,7 @@ test_verify_one_file! {
     #[test] no_let_repeated_idents IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
-                pub t: Map<int, int>
+                pub t: IMap<int, int>
             }
 
             transition!{
@@ -2847,7 +2886,7 @@ test_verify_one_file! {
     #[test] no_let_repeated_idents2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
-                pub t: Map<int, int>
+                pub t: IMap<int, int>
             }
 
             transition!{
@@ -2864,7 +2903,7 @@ test_verify_one_file! {
     #[test] no_let_repeated_idents3 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
-                pub t: Map<int, int>
+                pub t: IMap<int, int>
             }
 
             transition!{
@@ -2908,10 +2947,10 @@ test_verify_one_file! {
     #[test] type_recursion_fail_negative IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                // this should fail because Map has a reject_recursive_types first param
+                // this should fail because IMap has a reject_recursive_types first param
 
                 #[sharding(variable)]
-                pub t: Map<X::Instance, int>
+                pub t: IMap<X::Instance, int>
             }
         }}
     } => Err(e) => assert_vir_error_msg(e, "non-positive position")
@@ -3329,8 +3368,8 @@ test_verify_one_file! {
                 #[sharding(storage_option)]
                 pub storage_opt: Option<int>,
 
-                #[sharding(storage_map)]
-                pub storage_map: Map<int, int>,
+                #[sharding(storage_imap)]
+                pub storage_map: IMap<int, int>,
             }
 
             transition!{
@@ -3572,8 +3611,8 @@ test_verify_one_file! {
                 #[sharding(option)]
                 pub opt: Option<int>,
 
-                #[sharding(map)]
-                pub map: Map<int, int>,
+                #[sharding(imap)]
+                pub map: IMap<int, int>,
 
                 #[sharding(multiset)]
                 pub mset: Multiset<int>,
@@ -3581,8 +3620,8 @@ test_verify_one_file! {
                 #[sharding(storage_option)]
                 pub storage_opt: Option<int>,
 
-                #[sharding(storage_map)]
-                pub storage_map: Map<int, int>,
+                #[sharding(storage_imap)]
+                pub storage_map: IMap<int, int>,
             }
 
             transition!{
@@ -3590,9 +3629,9 @@ test_verify_one_file! {
                     remove opt -= ( Option::Some(5) );
                     add opt += ( Option::Some(8) );
 
-                    remove map -= ( Map::<int, int>::empty().insert(0, 1) );
-                    have map >= ( Map::<int, int>::empty().insert(2, 3) );
-                    add map += ( Map::<int, int>::empty().insert(4, 5) ) by { assume(false); };
+                    remove map -= ( IMap::<int, int>::empty().insert(0, 1) );
+                    have map >= ( IMap::<int, int>::empty().insert(2, 3) );
+                    add map += ( IMap::<int, int>::empty().insert(4, 5) ) by { assume(false); };
 
                     remove mset -= ( Multiset::<int>::singleton(10) );
                     have mset >= ( Multiset::<int>::singleton(11) );
@@ -3601,15 +3640,15 @@ test_verify_one_file! {
                     withdraw storage_opt -= ( Option::Some(13) ) by { assume(false); };
                     deposit storage_opt += ( Option::Some(14) );
 
-                    withdraw storage_map -= ( Map::<int, int>::empty().insert(15, 16) ) by { assume(false); };
-                    deposit storage_map += ( Map::<int, int>::empty().insert(17, 18) ) by { assume(false); };
+                    withdraw storage_map -= ( IMap::<int, int>::empty().insert(15, 16) ) by { assume(false); };
+                    deposit storage_map += ( IMap::<int, int>::empty().insert(17, 18) ) by { assume(false); };
                 }
             }
 
             transition!{
                 tr2() {
                     have opt >= (Option::Some(7));
-                    add map += (Map::<int, int>::empty().insert(4, 5)) by { assume(false); };
+                    add map += (IMap::<int, int>::empty().insert(4, 5)) by { assume(false); };
                 }
             }
 
@@ -3633,9 +3672,9 @@ test_verify_one_file! {
         spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             &&& pre.opt === Option::Some(5)
 
-            &&& map![0 => 1].submap_of(pre.map)
-            &&& map![2 => 3].submap_of(pre.map.remove_keys(map![0 => 1int].dom()))
-            &&& pre.map.remove_keys(map![0 => 1int].dom()).dom().disjoint(map![4 => 5int].dom())
+            &&& imap![0 => 1].submap_of(pre.map)
+            &&& imap![2 => 3].submap_of(pre.map.remove_keys(imap![0 => 1int].dom()))
+            &&& pre.map.remove_keys(imap![0 => 1int].dom()).dom().disjoint(imap![4 => 5int].dom())
 
             ==> {
 
@@ -3646,21 +3685,21 @@ test_verify_one_file! {
 
             ==>
 
-            (map![15 => 16].submap_of(pre.storage_map)
+            (imap![15 => 16].submap_of(pre.storage_map)
 
             ==>
 
-            (pre.storage_map.remove_keys(map![15 => 16int].dom()).dom().disjoint(map![17 => 18int].dom())
+            (pre.storage_map.remove_keys(imap![15 => 16int].dom()).dom().disjoint(imap![17 => 18int].dom())
 
             ==> {
 
             &&& post.opt === Option::Some(8)
-            &&& post.map === pre.map.remove_keys(map![0 => 1int].dom()).union_prefer_right(map![4 => 5])
+            &&& post.map === pre.map.remove_keys(imap![0 => 1int].dom()).union_prefer_right(imap![4 => 5])
             &&& post.mset ===
                 pre.mset.sub(Multiset::singleton(10)).add(Multiset::singleton(12))
             &&& post.storage_opt === Option::Some(14)
             &&& post.storage_map ===
-                pre.storage_map.remove_keys(map![15 => 16int].dom()).union_prefer_right(map![17 => 18])
+                pre.storage_map.remove_keys(imap![15 => 16int].dom()).union_prefer_right(imap![17 => 18])
             })))}
         }
 
@@ -3668,10 +3707,10 @@ test_verify_one_file! {
             &&& pre.opt === Option::Some(5)
             &&& post.opt === Option::Some(8)
 
-            &&& map![0 => 1].submap_of(pre.map)
-            &&& map![2 => 3].submap_of(pre.map.remove_keys(map![0 => 1int].dom()))
-            &&& pre.map.remove_keys(map![0 => 1int].dom()).dom().disjoint(map![4 => 5int].dom())
-            &&& post.map === pre.map.remove_keys(map![0 => 1int].dom()).union_prefer_right(map![4 => 5])
+            &&& imap![0 => 1].submap_of(pre.map)
+            &&& imap![2 => 3].submap_of(pre.map.remove_keys(imap![0 => 1int].dom()))
+            &&& pre.map.remove_keys(imap![0 => 1int].dom()).dom().disjoint(imap![4 => 5int].dom())
+            &&& post.map === pre.map.remove_keys(imap![0 => 1int].dom()).union_prefer_right(imap![4 => 5])
 
             &&& Multiset::singleton(10).subset_of(pre.mset)
             &&& Multiset::singleton(11).subset_of(pre.mset.sub(Multiset::singleton(10)))
@@ -3681,16 +3720,16 @@ test_verify_one_file! {
             &&& pre.storage_opt === Option::Some(13)
             &&& post.storage_opt === Option::Some(14)
 
-            &&& map![15 => 16].submap_of(pre.storage_map)
-            &&& pre.storage_map.remove_keys(map![15 => 16int].dom()).dom().disjoint(map![17 => 18int].dom())
+            &&& imap![15 => 16].submap_of(pre.storage_map)
+            &&& pre.storage_map.remove_keys(imap![15 => 16int].dom()).dom().disjoint(imap![17 => 18int].dom())
             &&& post.storage_map ===
-                pre.storage_map.remove_keys(map![15 => 16int].dom()).union_prefer_right(map![17 => 18])
+                pre.storage_map.remove_keys(imap![15 => 16int].dom()).union_prefer_right(imap![17 => 18])
         }
 
         spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
             &&& pre.opt === Option::Some(7)
             &&& !pre.map.dom().contains(4) ==> {
-                &&& post.map === pre.map.union_prefer_right(map![4 => 5])
+                &&& post.map === pre.map.union_prefer_right(imap![4 => 5])
                 &&& post.opt === pre.opt
                 &&& post.storage_opt === pre.storage_opt
                 &&& post.storage_map === pre.storage_map
@@ -3701,7 +3740,7 @@ test_verify_one_file! {
         spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
             &&& pre.opt === Option::Some(7)
             &&& !pre.map.dom().contains(4)
-            &&& post.map === pre.map.union_prefer_right(map![4 => 5])
+            &&& post.map === pre.map.union_prefer_right(imap![4 => 5])
             &&& post.opt === pre.opt
             &&& post.storage_opt === pre.storage_opt
             &&& post.storage_map === pre.storage_map
@@ -4267,18 +4306,18 @@ test_verify_one_file! {
                 #[sharding(option)]
                 pub opt: Option<int>,
 
-                #[sharding(map)]
-                pub map: Map<int, u64>,
+                #[sharding(imap)]
+                pub map: IMap<int, u64>,
 
-                #[sharding(storage_map)]
-                pub storage_map: Map<int, u64>,
+                #[sharding(storage_imap)]
+                pub storage_map: IMap<int, u64>,
             }
 
             init!{
                 initialize() {
                     init opt = Option::Some(2);
-                    init map = Map::<int,u64>::empty().insert(1, 5);
-                    init storage_map = Map::<int,u64>::empty().insert(1, 6);
+                    init map = IMap::<int,u64>::empty().insert(1, 5);
+                    init storage_map = IMap::<int,u64>::empty().insert(1, 6);
                 }
             }
 
@@ -4469,7 +4508,7 @@ test_verify_one_file! {
         }
 
         proof fn do_tokens() {
-            let tracked mut m: Map<int, u64> = Map::tracked_empty();
+            let tracked mut m: IMap<int, u64> = IMap::tracked_empty();
             m.tracked_insert(1, 6u64);
             let tracked (Tracked(inst), Tracked(opt_token), Tracked(mut map_tokens)) = Y::Instance::initialize(m);
 
@@ -4870,8 +4909,8 @@ test_verify_one_file! {
     #[test] persistent_map_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
-                #[sharding(persistent_map)]
-                pub c: Map<int, int>,
+                #[sharding(persistent_imap)]
+                pub c: IMap<int, int>,
             }
 
             transition!{
@@ -4955,8 +4994,8 @@ test_verify_one_file! {
     #[test] persistent_set_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
-                #[sharding(persistent_set)]
-                pub c: Set<int>,
+                #[sharding(persistent_iset)]
+                pub c: ISet<int>,
             }
 
             transition!{
@@ -5142,13 +5181,13 @@ test_verify_one_file! {
     #[test] persistent_map_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
-                #[sharding(persistent_map)]
-                pub c: Map<int, int>,
+                #[sharding(persistent_imap)]
+                pub c: IMap<int, int>,
             }
 
             init!{
                 initialize() {
-                    init c = Map::empty().insert(1, 2);
+                    init c = IMap::empty().insert(1, 2);
                 }
             }
 
@@ -5162,7 +5201,7 @@ test_verify_one_file! {
             transition!{
                 tr2() {
                     add c (union)= (
-                        Map::empty().insert(5, 9).insert(12, 15)
+                        IMap::empty().insert(5, 9).insert(12, 15)
                     );
                 }
             }
@@ -5170,7 +5209,7 @@ test_verify_one_file! {
             transition!{
                 tr3() {
                     have c >= (
-                        Map::empty().insert(5, 9).insert(12, 15)
+                        IMap::empty().insert(5, 9).insert(12, 15)
                     );
                 }
             }
@@ -5258,22 +5297,22 @@ test_verify_one_file! {
             assert_maps_equal!(
                 pre.c.insert(5, 9).insert(12, 15),
                 pre.c.union_prefer_right(
-                    Map::empty().insert(5, 9).insert(12, 15)
+                    IMap::empty().insert(5, 9).insert(12, 15)
                 )
             );
 
             if rel_tr3(pre, post) {
                 assert(
-                  Map::empty().insert(5, 9).insert(12, 15).submap_of(pre.c)
+                  IMap::empty().insert(5, 9).insert(12, 15).submap_of(pre.c)
                 );
                 assert(Y::State::tr3(pre, post));
             }
             if Y::State::tr3(pre, post) {
                 assert(
-                  Map::<int, int>::empty().insert(5, 9).insert(12, 15).dom().contains(5)
+                  IMap::<int, int>::empty().insert(5, 9).insert(12, 15).dom().contains(5)
                 );
                 assert(
-                  Map::<int, int>::empty().insert(5, 9).insert(12, 15).dom().contains(12)
+                  IMap::<int, int>::empty().insert(5, 9).insert(12, 15).dom().contains(12)
                 );
                 assert(pre.c.dom().contains(5));
                 assert(pre.c.dom().contains(12));
@@ -5296,7 +5335,7 @@ test_verify_one_file! {
             assert(m_3.value() == 4);
 
             let tracked m_5_12 = inst.tr2();
-            assert(m_5_12.map() =~= map![5 => 9, 12 => 15]);
+            assert(m_5_12.map() =~= imap![5 => 9, 12 => 15]);
             assert(m_5_12.instance_id() == inst.id());
 
             inst.tr3(&m_5_12);
@@ -5316,8 +5355,8 @@ test_verify_one_file! {
 
         tokenized_state_machine!{ Y {
             fields {
-                #[sharding(storage_map)]
-                pub storage_m: Map<int, Goo>,
+                #[sharding(storage_imap)]
+                pub storage_m: IMap<int, Goo>,
 
                 #[sharding(storage_option)]
                 pub storage_opt: Option<Goo>,
@@ -5384,11 +5423,11 @@ test_verify_one_file! {
 
         tokenized_state_machine!{ Y {
             fields {
-                #[sharding(map)]
-                pub m: Map<int, Goo>,
+                #[sharding(imap)]
+                pub m: IMap<int, Goo>,
 
-                #[sharding(storage_map)]
-                pub storage_m: Map<int, Goo>,
+                #[sharding(storage_imap)]
+                pub storage_m: IMap<int, Goo>,
 
                 #[sharding(option)]
                 pub opt: Option<Goo>,
@@ -5398,7 +5437,7 @@ test_verify_one_file! {
             }
 
             init!{
-                initialize(m: Map<int, Goo>, opt: Option<Goo>) {
+                initialize(m: IMap<int, Goo>, opt: Option<Goo>) {
                     init m = m;
                     init storage_m = m;
                     init opt = opt;
@@ -5407,7 +5446,7 @@ test_verify_one_file! {
             }
 
             #[inductive(initialize)]
-            fn initialize_inductive(post: Self, m: Map<int, Goo>, opt: Option<Goo>) { }
+            fn initialize_inductive(post: Self, m: IMap<int, Goo>, opt: Option<Goo>) { }
 
             transition!{
                 tr1() {
@@ -5819,11 +5858,11 @@ test_verify_one_file! {
         }
 
         proof fn test_inst1() {
-            let tracked mut p_m = Map::tracked_empty();
+            let tracked mut p_m = IMap::tracked_empty();
             p_m.tracked_insert(1, Goo::Bar);
 
             let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
-                map![1 => Goo::Bar],
+                imap![1 => Goo::Bar],
                 Option::Some(Goo::Bar),
                 p_m,
                 Option::Some(Goo::Bar),
@@ -5846,11 +5885,11 @@ test_verify_one_file! {
         }
 
         proof fn test_inst2() {
-            let tracked mut p_m = Map::tracked_empty();
+            let tracked mut p_m = IMap::tracked_empty();
             p_m.tracked_insert(1, Goo::Qux(8u64));
 
             let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
-                map![1 => Goo::Qux(8u64)],
+                imap![1 => Goo::Qux(8u64)],
                 Option::Some(Goo::Qux(8u64)),
                 p_m,
                 Option::Some(Goo::Qux(8u64)),
@@ -5873,11 +5912,11 @@ test_verify_one_file! {
         }
 
         proof fn test_inst3() {
-            let tracked mut p_m = Map::tracked_empty();
+            let tracked mut p_m = IMap::tracked_empty();
             p_m.tracked_insert(1, Goo::Tal(8u64, 9u64));
 
             let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
-                map![1 => Goo::Tal(8u64, 9u64)],
+                imap![1 => Goo::Tal(8u64, 9u64)],
                 Option::Some(Goo::Tal(8u64, 9u64)),
                 p_m,
                 Option::Some(Goo::Tal(8u64, 9u64)),
@@ -6590,13 +6629,13 @@ test_verify_one_file! {
     #[test] persistent_set_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
-                #[sharding(persistent_set)]
-                pub b: Set<int>,
+                #[sharding(persistent_iset)]
+                pub b: ISet<int>,
             }
 
             init!{
                 initialize() {
-                    init b = Set::<int>::empty().insert(19);
+                    init b = ISet::<int>::empty().insert(19);
                 }
             }
 
@@ -6614,13 +6653,13 @@ test_verify_one_file! {
 
             transition!{
                 tr_add_gen() {
-                    add b (union)= (Set::<int>::empty().insert(6));
+                    add b (union)= (ISet::<int>::empty().insert(6));
                 }
             }
 
             transition!{
                 tr_have_gen() {
-                    have b >= (Set::<int>::empty().insert(6));
+                    have b >= (ISet::<int>::empty().insert(6));
                 }
             }
         }}
@@ -6646,11 +6685,11 @@ test_verify_one_file! {
         }
 
         spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
-            post.b === pre.b.union(Set::<int>::empty().insert(6))
+            post.b === pre.b.union(ISet::<int>::empty().insert(6))
         }
 
         spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
-            post.b === pre.b.union(Set::<int>::empty().insert(6))
+            post.b === pre.b.union(ISet::<int>::empty().insert(6))
         }
 
         spec fn rel_tr5(pre: Y::State, post: Y::State) -> bool {
@@ -6679,8 +6718,8 @@ test_verify_one_file! {
 
         proof fn test_inst1() {
             let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::initialize();
-            assert(Set::<int>::empty().insert(19).contains(19));
-            assert(token_f.set() =~= set![19]);
+            assert(ISet::<int>::empty().insert(19).contains(19));
+            assert(token_f.set() =~= iset![19]);
             assert(token_f.instance_id() == inst.id());
 
             let tracked token1 = inst.tr_add();
@@ -6692,8 +6731,8 @@ test_verify_one_file! {
             assert(equal(token1_clone, token1));
 
             let tracked token_set = inst.tr_add_gen();
-            assert(Set::<int>::empty().insert(6).contains(6));
-            assert(token_set.set() =~= set![6]);
+            assert(ISet::<int>::empty().insert(6).contains(6));
+            assert(token_set.set() =~= iset![6]);
             assert(token_set.instance_id() == inst.id());
             inst.tr_have_gen(&token_set);
         }
@@ -6776,7 +6815,7 @@ test_verify_one_file! {
         state_machine!{ X {
 
             fields {
-                pub m: Map<int, int>,
+                pub m: IMap<int, int>,
 
                 pub a: int,
                 pub b: int,
@@ -6812,7 +6851,7 @@ test_verify_one_file! {
       state_machine!{ X {
 
             fields {
-                pub m: Map<int, int>,
+                pub m: IMap<int, int>,
 
                 pub a: int,
                 pub b: int,
@@ -6909,7 +6948,7 @@ test_verify_one_file! {
         state_machine!{ X {
 
             fields {
-                pub m: Map<int, int>,
+                pub m: IMap<int, int>,
 
                 pub a: int,
                 pub b: int,
@@ -7035,7 +7074,7 @@ test_verify_one_file! {
 
         state_machine!{ X {
             fields {
-                pub m: Map<int, int>,
+                pub m: IMap<int, int>,
             }
 
             transition!{
@@ -7287,12 +7326,12 @@ test_verify_one_file! {
         tokenized_state_machine!{ A {
             fields {
                 #[sharding(variable)]
-                pub x: Map<int, Y>,
+                pub x: IMap<int, Y>,
             }
 
             init!{
                 initialize() {
-                    init x = Map::<int, Y>::empty();
+                    init x = IMap::<int, Y>::empty();
                 }
             }
         }}
@@ -7309,13 +7348,13 @@ test_verify_one_file! {
 
         tokenized_state_machine!{ A {
             fields {
-                #[sharding(persistent_map)]
-                pub x: Map<int, Y>,
+                #[sharding(persistent_imap)]
+                pub x: IMap<int, Y>,
             }
 
             init!{
                 initialize() {
-                    init x = Map::<int, Y>::empty();
+                    init x = IMap::<int, Y>::empty();
                 }
             }
         }}
@@ -7357,12 +7396,12 @@ test_verify_one_file! {
 
         tokenized_state_machine!{ X<T: Tr> {
             fields {
-                #[sharding(map)]
-                pub m: Map<int, T::AssocType>,
+                #[sharding(imap)]
+                pub m: IMap<int, T::AssocType>,
             }
 
             init!{
-                initialize(m: Map<int, T::AssocType>) {
+                initialize(m: IMap<int, T::AssocType>) {
                     init m = m;
                 }
             }
@@ -7378,16 +7417,16 @@ test_verify_one_file! {
         }
 
         proof fn test() {
-            let tracked (Tracked(inst), Tracked(mut map_token)) = X::Instance::<A>::initialize(map![3 => B { i: 9 }]);
+            let tracked (Tracked(inst), Tracked(mut map_token)) = X::Instance::<A>::initialize(imap![3 => B { i: 9 }]);
             assert(map_token.instance_id() == inst.id());
-            assert(map_token.map() =~= map![3 => B { i: 9 }]);
+            assert(map_token.map() =~= imap![3 => B { i: 9 }]);
             let tracked r = map_token.remove(3);
             assert(r.key() == 3);
             assert(r.value() == B { i: 9 });
             assert(r.instance_id() == inst.id());
 
             let j = X::m_map::<A>::empty(inst.id());
-            assert(j.map() =~= map![]);
+            assert(j.map() =~= imap![]);
         }
     } => Ok(())
 }

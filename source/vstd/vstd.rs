@@ -49,6 +49,7 @@ pub mod laws_cmp;
 pub mod laws_eq;
 pub mod layout;
 pub mod logatom;
+mod gmap;
 pub mod map;
 pub mod map_lib;
 pub mod math;
@@ -64,6 +65,8 @@ pub mod resource;
 pub mod rwlock;
 pub mod seq;
 pub mod seq_lib;
+mod gset;
+pub mod iset;
 pub mod set;
 pub mod set_lib;
 pub mod shared;
@@ -98,7 +101,7 @@ pub broadcast group group_vstd_default {
     seq::group_seq_axioms,
     seq_lib::group_seq_lib_default,
     map::group_map_axioms,
-    set::group_set_axioms,
+    set::group_set_lemmas,
     set_lib::group_set_lib_default,
     multiset::group_multiset_axioms,
     compute::all_spec_ensures,
