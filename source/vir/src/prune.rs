@@ -490,13 +490,13 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         reach_function(ctxt, state, name);
                     }
                     ExprX::Call {
-                        target: CallTarget::Fun(kind, name, _, _impl_paths, autospec, _),
+                        target: CallTarget::Fun(kind, name, _, _impl_paths, attrs),
                         args: _,
                         post_args: _,
                         body: _,
                     } => {
                         // REVIEW: maybe we can be more precise if we use impl_paths here
-                        assert!(ctxt.module.is_none() || *autospec == AutospecUsage::Final);
+                        assert!(ctxt.module.is_none() || attrs.autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
                         if let crate::ast::CallTargetKind::DynamicResolved { resolved, .. } = kind {
                             reach_function(ctxt, state, resolved);
@@ -806,7 +806,7 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
             ft(&expr.typ);
             match &expr.x {
                 ExprX::Call {
-                    target: CallTarget::Fun(_, name, ts, _, _, _),
+                    target: CallTarget::Fun(_, name, ts, _, _),
                     args: _,
                     post_args: _,
                     body: _,

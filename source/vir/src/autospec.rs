@@ -9,6 +9,41 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<Expr, VirErr> {
+    // AssumeExternal
+    let expr = match &expr.x {
+        // TODO: ConstVar
+        ExprX::Call {
+            target: CallTarget::Fun(kind, tgt, _typs, _impl_paths, attrs),
+            args,
+            post_args,
+            body,
+        } => {
+            let mut found = functions.contains_key(tgt);
+            match kind {
+                crate::ast::CallTargetKind::DynamicResolved { resolved, .. } => {
+                    found = found && functions.contains_key(resolved);
+                }
+                _ => {}
+            };
+            if found {
+                expr.clone()
+            } else if attrs.assume_external_allowed {
+                let target = CallTarget::AssumeExternal;
+                expr.new_x(ExprX::Call {
+                    target,
+                    args: args.clone(),
+                    post_args: post_args.clone(),
+                    body: body.clone(),
+                })
+            } else {
+                // should have been flagged by well_formed before reaching here
+                unreachable!("internal error: function {:?} not found", tgt)
+            }
+        }
+        _ => expr.clone(),
+    };
+
+    // autospec
     let new_tgt = |tgt: &Fun, autospec_usage: AutospecUsage| match autospec_usage {
         AutospecUsage::IfMarked => match &functions[tgt].x.attrs.autospec {
             None => tgt.clone(),
@@ -23,12 +58,13 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
             Ok(SpannedTyped::new(&expr.span, &expr.typ, var))
         }
         ExprX::Call {
-            target: CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage, const_var),
+            target: CallTarget::Fun(kind, tgt, typs, impl_paths, attrs),
             args,
             post_args,
             body,
         } => {
             use crate::ast::CallTargetKind;
+            let autospec_usage = attrs.autospec;
             let (kind, tgt, typs, impl_paths) = match (kind, autospec_usage) {
                 (
                     CallTargetKind::DynamicResolved {
@@ -42,7 +78,7 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
                     if functions.get(resolved).is_some_and(|f| f.x.attrs.autospec.is_some()) {
                         (
                             CallTargetKind::Static,
-                            new_tgt(resolved, *autospec_usage),
+                            new_tgt(resolved, autospec_usage),
                             r_typs.clone(),
                             r_impl_paths.clone(),
                         )
@@ -63,24 +99,20 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
                         } else {
                             CallTargetKind::Dynamic
                         };
-                        (kind, new_tgt(tgt, *autospec_usage), typs.clone(), impl_paths.clone())
+                        (kind, new_tgt(tgt, autospec_usage), typs.clone(), impl_paths.clone())
                     } else {
                         (kind.clone(), tgt.clone(), typs.clone(), impl_paths.clone())
                     }
                 }
-                _ => {
-                    (kind.clone(), new_tgt(tgt, *autospec_usage), typs.clone(), impl_paths.clone())
-                }
+                _ => (kind.clone(), new_tgt(tgt, autospec_usage), typs.clone(), impl_paths.clone()),
+            };
+            let attrs = crate::ast::CallTargetAttrs {
+                autospec: AutospecUsage::Final,
+                const_var: attrs.const_var,
+                assume_external_allowed: false,
             };
             let call = ExprX::Call {
-                target: CallTarget::Fun(
-                    kind,
-                    tgt,
-                    typs,
-                    impl_paths,
-                    AutospecUsage::Final,
-                    *const_var,
-                ),
+                target: CallTarget::Fun(kind, tgt, typs, impl_paths, attrs),
                 args: args.clone(),
                 post_args: post_args.clone(),
                 body: body.clone(),

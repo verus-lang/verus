@@ -297,7 +297,15 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
         }
     };
 
-    record_call(bctx, expr, ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost));
+    let assume_external_allowed =
+        crate::attributes::get_externals_available_without_declaration_walk_parents(
+            bctx.ctxt.tcx,
+            bctx.fun_id,
+        );
+
+    let resolved_call =
+        ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost, assume_external_allowed);
+    record_call(bctx, expr, resolved_call);
 
     // REVIEW: The atomic function call is encoded using the following construction:
     //
@@ -354,22 +362,13 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
     let impl_paths = get_impl_paths(bctx, f, node_substs, None, const_var, expr.span)?;
+    let call_target_attrs =
+        vir::ast::CallTargetAttrs { autospec: autospec_usage, assume_external_allowed, const_var };
+    let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, call_target_attrs);
     Ok(bctx.spanned_typed_new(
         expr.span,
         &expr_typ()?,
-        ExprX::Call {
-            target: CallTarget::Fun(
-                target_kind,
-                name,
-                typ_args,
-                impl_paths,
-                autospec_usage,
-                const_var,
-            ),
-            args: Arc::new(vir_args),
-            post_args: None,
-            body: call_body,
-        },
+        ExprX::Call { target, args: Arc::new(vir_args), post_args: None, body: call_body },
     ))
 }
 
@@ -437,8 +436,13 @@ pub(crate) fn deref_to_vir<'tcx>(
 
     let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
     let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None, false, span)?;
+    let call_target_attrs = vir::ast::CallTargetAttrs {
+        autospec: autospec_usage,
+        assume_external_allowed: false,
+        const_var: false,
+    };
     let call_target =
-        CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, autospec_usage, false);
+        CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, call_target_attrs);
     let args = Arc::new(vec![arg.clone()]);
     let x = ExprX::Call { target: call_target, args, post_args: None, body: None };
 
@@ -800,7 +804,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                         }
                     }
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                    let vir_args = vec_map_result(&subargs, |arg| expr_to_vir_consume(&bctx, arg))?;
+                    let vir_args = vec_map_result(&subargs, |arg| {
+                        let mut vir_expr = expr_to_vir_consume(&bctx, arg)?;
+                        // Wrap expressions with #[verus::internal(auto_decreases)] attribute
+                        let arg_attrs = bctx.ctxt.tcx.hir_attrs(arg.hir_id);
+                        if crate::attributes::has_auto_decreases_attr(arg_attrs) {
+                            vir_expr = vir_expr.new_x(vir::ast::ExprX::UnaryOpr(
+                                vir::ast::UnaryOpr::AutoDecreases,
+                                vir_expr.clone(),
+                            ));
+                        }
+                        Ok::<vir::ast::Expr, VirErr>(vir_expr)
+                    })?;
                     let header = match spec_item {
                         SpecItem::InvariantExceptBreak => {
                             Arc::new(HeaderExprX::InvariantExceptBreak(Arc::new(vir_args)))
@@ -2588,7 +2603,16 @@ fn get_ensures_arg<'tcx>(
                 }
             }
         }
-        Ok((default_ensures, expr_to_vir_consume(bctx, expr)?))
+        let mut vir_expr = expr_to_vir_consume(bctx, expr)?;
+        // Wrap expressions with #[verus::internal(auto_loop_ensures)] attribute
+        let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
+        if crate::attributes::has_auto_loop_ensures_attr(expr_attrs) {
+            vir_expr = vir_expr.new_x(vir::ast::ExprX::UnaryOpr(
+                vir::ast::UnaryOpr::AutoLoopEnsures,
+                vir_expr.clone(),
+            ));
+        }
+        Ok((default_ensures, vir_expr))
     } else {
         err_span(expr.span, "ensures needs a bool expression")
     }
@@ -3085,12 +3109,12 @@ fn record_loop_spec<'tcx>(
 
 pub(crate) fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
     let resolved_call = match (resolved_call, &bctx.external_trait_from_to) {
-        (ResolvedCall::Call(ufun, rfun, in_ghost), Some(paths)) if paths.2.is_some() => {
+        (ResolvedCall::Call(ufun, rfun, in_ghost, ae), Some(paths)) if paths.2.is_some() => {
             let (from_path, _to_path, to_spec_path) = &**paths;
             use vir::traits::rewrite_fun;
             let ufun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &ufun);
             let rfun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &rfun);
-            ResolvedCall::Call(ufun, rfun, in_ghost)
+            ResolvedCall::Call(ufun, rfun, in_ghost, ae)
         }
         (resolved_call, _) => resolved_call,
     };

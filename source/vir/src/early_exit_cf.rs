@@ -55,6 +55,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Call { target: CallTarget::Fun(..), .. }
             | ExprX::Call { target: CallTarget::FnSpec(..), .. }
             | ExprX::Call { target: CallTarget::BuiltinSpecFun(..), .. }
+            | ExprX::Call { target: CallTarget::AssumeExternal, .. }
             | ExprX::ArrayLiteral(..)
             | ExprX::Ctor(..)
             | ExprX::NullaryOpr(..)

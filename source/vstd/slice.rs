@@ -41,6 +41,7 @@ impl<T> SliceAdditionalSpecFns<T> for [T] {
 
 #[verifier::external]
 pub trait SliceAdditionalExecFns<T> {
+    #[cfg_attr(not(verus_verify_core), deprecated = "use `slice[i] = value` instead")]
     fn set(&mut self, idx: usize, t: T);
 }
 

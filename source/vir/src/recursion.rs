@@ -389,9 +389,9 @@ fn check_termination<'a>(
         caller_decreases_typs,
     };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
-        StmX::Call { fun, resolved_method, args, dest, .. }
-            if is_recursive_call(&ctxt, fun, resolved_method) =>
-        {
+        StmX::Call {
+            fun: crate::sst::CallTarget::Fun(fun), resolved_method, args, dest, ..
+        } if is_recursive_call(&ctxt, fun, resolved_method) => {
             let check =
                 check_decrease_call(&ctxt, diagnostics, &s.span, fun, resolved_method, args)?;
             let error = error(&s.span, "could not prove termination");
@@ -586,12 +586,12 @@ pub(crate) fn expand_call_graph(
     let add_calls = &mut |expr: &crate::ast::Expr| {
         match &expr.x {
             ExprX::Call {
-                target: CallTarget::Fun(kind, x, ts, impl_paths, autospec, _),
+                target: CallTarget::Fun(kind, x, ts, impl_paths, attrs),
                 args: _,
                 post_args: _,
                 body: _,
             } => {
-                assert!(*autospec == AutospecUsage::Final);
+                assert!(attrs.autospec == AutospecUsage::Final);
                 let (callee, ts, impl_paths) = if let CallTargetKind::DynamicResolved {
                     resolved: x_resolved,
                     typs: ts_resolved,

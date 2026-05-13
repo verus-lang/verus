@@ -547,6 +547,14 @@ pub enum UnaryOpr {
     /// to hold the result.
     /// Mode is the minimum allowed mode (e.g., Spec for spec-only, Exec if allowed in exec).
     IntegerTypeBound(IntegerTypeBoundKind, Mode),
+    /// Custom diagnostic message
+    CustomErr(Arc<String>),
+    /// Marker for expressions with #[verus::internal(auto_decreases)] attribute
+    /// Used to filter out auto-generated decreases-related invariants
+    AutoDecreases,
+    /// Marker for expressions with #[verus::internal(auto_loop_ensures)] attribute
+    /// Used to filter out auto-generated ensures clauses on for-loops
+    AutoLoopEnsures,
     /// Label from a `proof_note` attribute.
     ProofNote(ProofNoteLabel),
     /// Predicate over any type that indicates its mutable references has resolved.
@@ -942,6 +950,15 @@ pub enum ImplPath {
 pub type ImplPaths = Arc<Vec<ImplPath>>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct CallTargetAttrs {
+    pub autospec: AutospecUsage,
+    /// If true, represents an associated const var
+    pub const_var: bool,
+    /// If the expected Fun is undeclared, enable replacing Fun with AssumeExternal
+    pub assume_external_allowed: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTargetKind {
     /// Statically known function
     Static,
@@ -958,12 +975,14 @@ pub enum CallTargetKind {
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
     /// Regular function, passing some type arguments
-    /// If the final bool is true, represents an associated const var
-    Fun(CallTargetKind, Fun, Typs, ImplPaths, AutospecUsage, bool),
+    Fun(CallTargetKind, Fun, Typs, ImplPaths, CallTargetAttrs),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
     BuiltinSpecFun(BuiltinSpecFun, Typs, ImplPaths),
+    /// If enabled, unsoundly allow calls to exec functions with no specs,
+    /// and treat them as requires true, ensures true.
+    AssumeExternal,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq, Hash)]

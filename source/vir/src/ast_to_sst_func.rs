@@ -256,6 +256,11 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
     let mut exprs: Vec<Expr> = Vec::new();
 
     for e in specs {
+        let call_target_attrs = crate::ast::CallTargetAttrs {
+            autospec: AutospecUsage::Final,
+            const_var: false,
+            assume_external_allowed: false,
+        };
         let awaited_call = SpannedTyped::new(
             &e.span,
             &Arc::new(TypX::Bool),
@@ -277,8 +282,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                     Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
                         crate::def::prefix_spec_fn_type(0),
                     )]),
-                    AutospecUsage::Final,
-                    false,
+                    call_target_attrs.clone(),
                 ),
                 args: Arc::new(vec![SpannedTyped::new(
                     &e.span,
@@ -329,8 +333,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                         Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
                             crate::def::prefix_spec_fn_type(0),
                         )]),
-                        AutospecUsage::Final,
-                        false,
+                        call_target_attrs,
                     ),
                     args: Arc::new(vec![SpannedTyped::new(
                         &e.span,

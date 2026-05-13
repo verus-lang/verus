@@ -816,6 +816,7 @@ test_verify_one_file_with_options! {
         use std::collections::hash_map::Keys;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
+        use vstd::std_specs::iter::IteratorSpec;
         fn test()
         {
             let mut m = HashMap::<u32, i8>::new();
@@ -823,25 +824,17 @@ test_verify_one_file_with_options! {
 
             m.insert(3, 4);
             m.insert(6, -8);
-            let m_keys = m.keys();
-            assert(m_keys@.0 == 0);
-            assert(m_keys@.1.to_set() =~= set![3u32, 6u32]);
-            let ghost g_keys = m_keys@.1;
+            let ghost m_keys = m.keys();
 
             let mut items = Vec::<u32>::new();
-            assert(items@ =~= g_keys.take(0));
-
-            for k in iter: m_keys
+            for k in iter: m.keys()
                 invariant
-                    iter.keys == g_keys,
-                    g_keys.to_set() =~= set![3u32, 6u32],
-                    items@ == iter@,
+                    items@ == iter.seq().take(iter.index()).unref(),
             {
-                assert(iter.keys.take(iter.pos).push(*k) =~= iter.keys.take(iter.pos + 1));
                 items.push(*k);
             }
             assert(items@.to_set() =~= set![3u32, 6u32]) by {
-                assert(g_keys.take(g_keys.len() as int) =~= g_keys);
+                assert(m_keys.remaining().take(m_keys.remaining().len() as int) == m_keys.remaining());
             }
             assert(items@.no_duplicates());
         }
@@ -854,7 +847,8 @@ test_verify_one_file_with_options! {
         use std::collections::hash_map::Values;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
-        fn test()
+        use vstd::std_specs::iter::IteratorSpec;
+        fn test_values()
         {
             let mut m = HashMap::<u32, i8>::new();
             assert(m@ == Map::<u32, i8>::empty());
@@ -867,25 +861,16 @@ test_verify_one_file_with_options! {
                 assert(m@.contains_key(6u32));
                 assert(m@.values() =~= set![4i8, -8i8]);
             };
-            let m_values = m.values();
-            assert(m_values@.0 == 0);
-            assert(m_values@.1.to_set() == set![4i8, -8i8]);
-            let ghost g_values = m_values@.1;
-
+            let ghost m_values = m.values();
             let mut items = Vec::<i8>::new();
-            assert(items@ =~= g_values.take(0));
-
-            for v in iter: m_values
+            for v in iter: m.values()
                 invariant
-                    iter.values == g_values,
-                    g_values.to_set() == set![4i8, -8i8],
-                    items@ == iter@,
+                    items@ == iter.seq().take(iter.index()).unref(),
             {
-                assert(iter.values.take(iter.pos).push(*v) =~= iter.values.take(iter.pos + 1));
                 items.push(*v);
             }
             assert(items@.to_set() =~= set![4i8, -8i8]) by {
-                assert(g_values.take(g_values.len() as int) =~= g_values);
+                assert(m_values.remaining().take(m_values.remaining().len() as int) == m_values.remaining());
             }
         }
     } => Ok(())
@@ -897,7 +882,8 @@ test_verify_one_file_with_options! {
         use std::collections::hash_map::Iter;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
-        fn test()
+        use vstd::std_specs::iter::IteratorSpec;
+        fn test_iter()
         {
             let mut m = HashMap::<u32, i8>::new();
             assert(m@ == Map::<u32, i8>::empty());
@@ -906,11 +892,12 @@ test_verify_one_file_with_options! {
             m.insert(6, -8);
 
             let mut idx = 0;
-            let m_iter = m.iter();
-            for (k, v) in iter: m_iter
+            for (k, v) in iter: m.iter()
                 invariant
-                    iter.kv_pairs.to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
+                    iter.seq().unref().to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
             {
+                // OBSERVE: triggers the extensionality in the invariant
+                assert(m@.kv_pairs().contains((*k, *v)));
                 assert(*k == 3 ==> *v == 4);
                 assert(*k == 6 ==> *v == -8);
             }
@@ -922,34 +909,30 @@ test_verify_one_file_with_options! {
     #[test] test_hash_set_iter ["exec_allows_no_decreases_clause"] => verus_code! {
         use std::collections::HashSet;
         use std::collections::hash_set::Iter;
+        use vstd::std_specs::iter::IteratorSpec;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
-        fn test()
+        fn test_set()
         {
             let mut m = HashSet::<u32>::new();
             assert(m@ == Set::<u32>::empty());
 
             m.insert(3);
             m.insert(6);
-            let m_iter = m.iter();
-            assert(m_iter@.0 == 0);
-            assert(m_iter@.1.to_set() =~= set![3u32, 6u32]);
-            let ghost g_elements = m_iter@.1;
+            let ghost m_iter = m.iter();
+            assert(m_iter.remaining().unref().to_set() =~= set![3u32, 6u32]);
 
             let mut items = Vec::<u32>::new();
-            assert(items@ =~= g_elements.take(0));
 
-            for k in iter: m_iter
+            for k in iter: m.iter()
                 invariant
-                    iter.elements == g_elements,
-                    g_elements.to_set() =~= set![3u32, 6u32],
-                    items@ == iter@,
+                    iter.seq().unref().to_set() =~= set![3u32, 6u32],
+                    items@ == iter.seq().take(iter.index()).unref(),
             {
-                assert(iter.elements.take(iter.pos).push(*k) =~= iter.elements.take(iter.pos + 1));
                 items.push(*k);
             }
             assert(items@.to_set() =~= set![3u32, 6u32]) by {
-                assert(g_elements.take(g_elements.len() as int) =~= g_elements);
+                assert(m_iter.remaining().take(m_iter.remaining().len() as int) == m_iter.remaining());
             }
             assert(items@.no_duplicates());
         }

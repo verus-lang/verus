@@ -50,9 +50,9 @@ pub enum ResolvedCall {
     /// The call is to an operator like == or + that should be compiled.
     CompilableOperator(CompilableOperator),
     /// The call is to a function, and we record the name of the function here
-    /// (both unresolved and resolved), as well as an in_ghost flag.
+    /// (both unresolved and resolved), as well as (in_ghost, assume_external) flags.
     /// This is replaced by CallModes as soon as the modes are available.
-    Call(Fun, Fun, bool),
+    Call(Fun, Fun, bool, bool),
     /// Path and variant of datatype constructor
     Ctor(Path, vir::ast::Ident),
     /// Path and variant of datatype constructor. Used for ExprKind::Struct nodes.
@@ -168,11 +168,15 @@ fn resolved_call_to_call_erase(
     Ok(match resolved_call {
         ResolvedCall::SpecPure => CallErasure::EraseTree(TreeErase::IncludeBasicChecks),
         ResolvedCall::SpecAllowProofArgs => CallErasure::Call(NodeErase::Erase),
-        ResolvedCall::Call(ufun, rfun, in_ghost) => {
+        ResolvedCall::Call(ufun, rfun, in_ghost, assume_external) => {
             // Note: in principle, the unresolved function ufun should always be present,
             // but we currently allow external declarations of resolved trait functions
             // without a corresponding external trait declaration.
             let Some(f) = functions.get(ufun).or_else(|| functions.get(rfun)) else {
+                if *assume_external {
+                    let erase = CallErasure::Call(NodeErase::Keep);
+                    return Ok(erase);
+                }
                 dbg!(ufun, rfun);
                 panic!("internal Verus error: could not find mode declarations for function")
             };

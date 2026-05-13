@@ -1,10 +1,9 @@
 name: pages
 
 on:
-  workflow_run:
-    workflows: [ci]
+  push:
     branches: [main]
-    types: [completed]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,11 +20,23 @@ env:
 
 jobs:
   build:
+    if: github.repository == 'verus-lang/verus'
     runs-on: ubuntu-22.04
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: checkout
         uses: actions/checkout@v4
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+
+      - name: build verusdoc
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          ./tools/get-z3.sh
+          ./tools/docs.sh --strict
 
       - name: setup dir structure
         run: |
@@ -34,7 +45,7 @@ jobs:
 
       - name: setup mdbook
         run: |
-          curl -L https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz > mdbook.tar.gz
+          curl -L "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" > mdbook.tar.gz
           tar -xvf mdbook.tar.gz
           rm mdbook.tar.gz
           chmod +x mdbook
@@ -45,14 +56,8 @@ jobs:
       - name: build state_machines book
         run: ./mdbook build -d ./_site/state_machines source/docs/state_machines
 
-      - name: download verusdoc artifact
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          name: verusdoc
-          workflow: .github/workflows/ci.yml
-          run_id: ${{ github.event.workflow_run.id }}
-          workflow_conclusion: success
-          path: ./_site/verusdoc
+      - name: copy verusdoc into site
+        run: cp -R source/doc ./_site/verusdoc
 
       - name: add publications and projects page
         uses: actions/jekyll-build-pages@v1
@@ -74,9 +79,6 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    permissions:
-      pages: write
-      id-token: write
     runs-on: ubuntu-22.04
     steps:
       - name: deploy to github pages

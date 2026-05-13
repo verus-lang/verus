@@ -779,7 +779,7 @@ test_verify_one_file! {
 
             spec fn seq(&self) -> Seq<bool>;
 
-            spec fn initial_value_inv(&self) -> bool;
+            spec fn initial_value_relation(&self) -> bool;
         }
 
         impl T for bool {
@@ -790,7 +790,7 @@ test_verify_one_file! {
                 seq![true]
             }
 
-            spec fn initial_value_inv(&self) -> bool {
+            spec fn initial_value_relation(&self) -> bool {
                 TSpec::seq(self).len() > 1
             }
         }
