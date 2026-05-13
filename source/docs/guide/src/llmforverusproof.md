@@ -5,11 +5,11 @@
 For best results, we recommend this setup:
 
 1. **Use a coding agent**, not direct model API calls
-2. **Provide the Verus standard library (vstd)** for the model to reference
-3. **Provide an installed Verus** for the model to run and see error messages
+2. **Provide Verus resources (vstd and others)** for the model to reference
+3. **Provide a Verus binary** for the model to run and see error messages
 4. **Use a cheat checker** to catch invalid proof shortcuts
 
-With these in place, you don't need complicated prompts—a simple instruction like the following often works well:
+With these in place, you don't need complicated prompts; a simple prompt like the following often works well:
 
 ```
 The file X.rs cannot be verified by Verus yet.
@@ -23,13 +23,12 @@ Before you finish, run the cheat checker to make sure you haven't cheated.
 
 ## Use a Coding Agent
 
-**Why a coding agent?** There is much similarity between writing code and writing proofs. Both require a good understanding of the existing code base and both can beneift from tool support, such as testing tools for code synthesis and verifiers for proof synthesis. Practice has shown that state-of-the-art LLMs work best when they can explore the code base, run tools, and iterate at their own pace, which is well supported by existing coding agents like [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli).
+**Why a coding agent?** Writing code and writing proofs about code have many similarities. Both require a good understanding of the existing code base and both can beneift from tool support, such as testing tools for code synthesis and verifiers for proof synthesis. Practice has shown that state-of-the-art LLMs work best when they can explore the code base, run tools, and iterate at their own pace, which is well supported by existing coding agents like [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli).
 
 **Practical tips:**
-- Use `--allow-all-tools` (Copilot CLI) or similar options to let the agent run Verus and other available tools without prompting
-- Run in a container or sandbox if you're concerned about the model accessing sensitive files
+- We recommend running the agent in a secure container or sandbox, so that you can safely give it the freedom to run Verus and other available tools, without requiring repeated human intervention, e.g., via `--allow-all-tools` (Copilot CLI) or similar options.
 
-## Provide the Standard Library
+## Provide Provide Access to the Verus Standard Library
 
 Access to the Verus standard library (`vstd`) offers LLMs at least two benefits:
 
@@ -103,7 +102,7 @@ I see there are issues with imports. Let me look at the file structure more care
 ...
 ```
 
-This workflow of repeatedly running Verus, reflecting on the resulting Verus error report, and then editing proof annotations accordingly seems to be good practice for both human developers and LLMs.
+This workflow of repeatedly running Verus, reflecting on the resulting Verus error report, and then editing proof annotations accordingly is a good practice for both human developers and LLMs.
 
 **Key points:**
 - Provide a simple command to run Verus (e.g., `verus file.rs`)
@@ -144,7 +143,7 @@ There are several factors that may affect the cost:
 - Using a coding agent in general costs more than directly calling the model API, as the coding agent may make many model API calls before getting back to the user;
 - Applying an LLM to a proof task in a big project could cost much more than applying it to the same proof task extracted out of the project, as the LLM will inevitably explore the code base before settling down on the problem it should solve;
 - More advanced models, naturally, cost more, sometimes much more. Based on our experience, it is possible to cost a few hundred dollars to generate a proof, sometimes incomplete, for just one function. Users may want to decompose a big proof task into smaller ones before using LLMs, and potentially set token limits for each run.
-- The reasoning time varies a lot across different models. Claude Opus 4.5 noticeably takes much longer time to generate proof annotations than Claude Sonnet 4.5. Some older models like GPT-5 seem to know their own limits and give up very easily, which could be an appealing feature depending on the usage scenario. Some models (e.g., Opus series models) tend to add huge `rlimit` numbers (e.g., 2000) for complicated proof tasks and hence wait for many hours for Verus to finish. Users should be aware of this trend and hopefully prevent it through prompting.
+- The reasoning time varies a lot across different models. Claude Opus 4.5 noticeably takes much longer to generate proof annotations than Claude Sonnet 4.5. Some older models like GPT-5 seem to know their own limits and give up very easily, which could be an appealing feature depending on the usage scenario. Some models (e.g., Opus series models) tend to give Verus huge resource limits (e.g., 2000), via the --rlimit command-line option, for complicated proof tasks and hence wait for many hours for Verus to finish. Users should be aware of this trend and actively prompt the model to avoid doing this and to instead focus on breaking the proof into smaller steps.
 - More advanced models sometimes fail to finish the whole proof after a lot of time and money spent, but can help shrink the proof target. This is not true for all models. It is good practice to urge models to output intermediate results and to explain their reasoning, so that it is possible for human experts to take over incomplete proofs.
 
 **Note**: If cost is a major concern, consider:
@@ -163,14 +162,14 @@ LLMs tend to fail on:
 
 ## LLM Proofs May Be Verbose
 
-Expect LLM-generated proofs to be longer than human-written ones—often 2–3× as long on average. This happens because:
+Expect LLM-generated proofs to be longer than human-written ones; often 2–3× as long on average. This happens because:
 
 1. LLMs don't always know what the theorem prover can handle automatically
 2. They tend to add "safety" assertions that turn out to be unnecessary
 3. They may use more explicit reasoning steps and care less about proof maintenance
 
 **Example**: 
-When we provide the following proof function to Sonnet 4.5, 
+When we provided the following proof function to Sonnet 4.5, 
 ```rust
 pub proof fn myseq_lemma<A>()
     ensures
@@ -220,13 +219,15 @@ There is nothing wrong with this, except that an empty proof would have worked j
 - Proof maintenance burden
 - Verification time (slightly)
 
+Users can try asking LLMs to clean up the proof annotations after the verification succeeds.
+
 
 ## LLMs as Collaborators
 
 Of course, we do not have to let LLMs write all the proofs by themselves. LLMs work well as collaborators with human proof developers:
 
 - **Starting from partial proofs**: A human proof developer can write a skeleton of a proof, and let an LLM complete all the detailed proof annotations. This is particularly helpful since LLMs are good at filling in the routine proof obligations which may be tedious for human proof developers
-- **Adjusting lemma specification**: When human proof developers struggle with decomposing a big proof task into smaller lemmas, LLMs could be helpful in adjusting lemma specifications
+- **Adjusting lemma specification**: When human proof developers struggle with decomposing a big proof task into smaller lemmas, LLMs can be helpful in adjusting lemma specifications
 - **Suggesting library usage**: When asked, LLMs are good at finding relevant `vstd` or project-specific lemmas that can be used to simplify proofs
 
 For verified system development, an LLM is a powerful assistant but not a replacement for human judgment about design, specification, and proof architecture.
