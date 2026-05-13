@@ -1701,7 +1701,11 @@ fn check_expr(
         }
         ExprX::ConstVar(x, _)
         | ExprX::StaticVar(x)
-        | ExprX::Call(CallTarget::Fun(_, x, _, _, _, true), _, _) => {
+        | ExprX::Call(
+            CallTarget::Fun(_, x, _, _, crate::ast::CallTargetAttrs { const_var: true, .. }),
+            _,
+            _,
+        ) => {
             let function = match ctxt.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
@@ -1737,7 +1741,7 @@ fn check_expr(
             Ok((mode, Proph::No))
         }
         ExprX::Call(
-            CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _, _),
+            CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),
             es,
             None,
         ) => {
@@ -1785,9 +1789,9 @@ fn check_expr(
 
             Ok((*ret_mode, Proph::No))
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage, const_var), es, None) => {
-            assert!(*autospec_usage == AutospecUsage::Final);
-            assert!(!const_var); // const_var is handled in ConstVar/StaticVar case
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), es, None) => {
+            assert!(attrs.autospec == AutospecUsage::Final);
+            assert!(!attrs.const_var); // const_var is handled in ConstVar/StaticVar case
 
             let function = match ctxt.funs.get(x) {
                 None => {
@@ -1923,6 +1927,23 @@ fn check_expr(
                 proph = proph.join(p);
             }
             Ok((Mode::Spec, proph))
+        }
+        ExprX::Call(CallTarget::AssumeExternal, es, None) => {
+            if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
+                return Err(error(&expr.span, "cannot call external function from non-exec mode"));
+            }
+            for arg in es.iter() {
+                check_expr_has_mode(
+                    ctxt,
+                    record,
+                    typing,
+                    Mode::Exec,
+                    arg,
+                    Mode::Exec,
+                    outer_proph,
+                )?;
+            }
+            Ok((Mode::Exec, Proph::No))
         }
         ExprX::Call(_, _, Some(_)) => {
             return Err(error(&expr.span, "ExprX::Call should not have post_args at this point"));

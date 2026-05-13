@@ -468,9 +468,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::StaticVar(name) => {
                         reach_function(ctxt, state, name);
                     }
-                    ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, autospec, _), _, _) => {
+                    ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, attrs), _, _) => {
                         // REVIEW: maybe we can be more precise if we use impl_paths here
-                        assert!(ctxt.module.is_none() || *autospec == AutospecUsage::Final);
+                        assert!(ctxt.module.is_none() || attrs.autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
                         if let crate::ast::CallTargetKind::DynamicResolved { resolved, .. } = kind {
                             reach_function(ctxt, state, resolved);
@@ -776,7 +776,7 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
         let mut f_get_calls = |_: &mut VisitorScopeMap, expr: &Expr| {
             ft(&expr.typ);
             match &expr.x {
-                ExprX::Call(CallTarget::Fun(_, name, ts, _, _, _), _, _) => {
+                ExprX::Call(CallTarget::Fun(_, name, ts, _, _), _, _) => {
                     for typ in ts.iter() {
                         ft(typ);
                     }

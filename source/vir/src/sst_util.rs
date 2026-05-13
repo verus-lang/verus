@@ -869,7 +869,7 @@ impl<'a> Visitor<Walk, (), NoScoper> for ObligationProofNoteCollector<'a> {
     fn visit_stm(&mut self, stm: &Stm) -> Result<(), ()> {
         match &stm.x {
             // Collect proof note labels from callee `requires` clauses.
-            StmX::Call { fun, .. } => {
+            StmX::Call { fun: crate::sst::CallTarget::Fun(fun), .. } => {
                 if let Some(callee_req_notes) = self.func_to_requires_proof_notes.get(fun) {
                     self.proof_notes.extend(callee_req_notes.iter().cloned());
                 }

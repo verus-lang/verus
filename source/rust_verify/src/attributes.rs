@@ -345,6 +345,8 @@ pub(crate) enum Attr {
     OpenVisibilityQualifier,
     // Allow the function to not have decreases clauses
     ExecAllowNoDecreasesClause,
+    // Assume that external items can be used without a Verus declaration (unsound)
+    ExternalsAvailableWithoutDeclaration(bool),
     // Assume that the function terminates
     AssumeTermination,
     // Proxy containing unerased code
@@ -677,6 +679,16 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "exec_allows_no_decreases_clause" => {
                     v.push(Attr::ExecAllowNoDecreasesClause);
                 }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "assume" && r == "externals_available_without_declaration" =>
+                {
+                    v.push(Attr::ExternalsAvailableWithoutDeclaration(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "deny" && r == "externals_available_without_declaration" =>
+                {
+                    v.push(Attr::ExternalsAvailableWithoutDeclaration(false))
+                }
                 AttrTree::Fun(_, arg, None) if arg == "tracked_swap_primitive" => {
                     v.push(Attr::TrackedSwap)
                 }
@@ -942,6 +954,18 @@ pub(crate) fn get_allow_exec_allows_no_decreases_clause_walk_parents<'tcx>(
     false
 }
 
+pub(crate) fn get_externals_available_without_declaration_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> bool {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::ExternalsAvailableWithoutDeclaration(flag) = attr {
+            return flag;
+        }
+    }
+    false
+}
+
 pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr> {
     for attr in parse_attrs_opt(attrs, None) {
         match attr {
@@ -1126,6 +1150,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) open_visibility_qualifier: bool,
     pub(crate) assume_termination: bool,
     pub(crate) exec_allows_no_decreases_clause: bool,
+    pub(crate) externals_available_without_declaration: Option<bool>,
     pub(crate) unerased_proxy: bool,
     pub(crate) encoded_const: bool,
     pub(crate) encoded_static: bool,
@@ -1300,6 +1325,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         open_visibility_qualifier: false,
         assume_termination: false,
         exec_allows_no_decreases_clause: false,
+        externals_available_without_declaration: None,
         unerased_proxy: false,
         encoded_const: false,
         encoded_static: false,
@@ -1380,6 +1406,9 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
             Attr::AssumeTermination => vs.assume_termination = true,
             Attr::ExecAllowNoDecreasesClause => vs.exec_allows_no_decreases_clause = true,
+            Attr::ExternalsAvailableWithoutDeclaration(flag) => {
+                vs.externals_available_without_declaration = Some(flag)
+            }
             Attr::UnerasedProxy => vs.unerased_proxy = true,
             Attr::EncodedConst => vs.encoded_const = true,
             Attr::EncodedStatic => vs.encoded_static = true,

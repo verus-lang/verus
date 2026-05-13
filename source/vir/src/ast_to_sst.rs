@@ -827,6 +827,84 @@ struct ReturnedCall {
     may_unwind: bool,
 }
 
+fn get_call_args(
+    ctx: &Ctx,
+    state: &mut State,
+    args: &Exprs,
+    post_args: &Option<Expr>,
+    function_kind: &crate::ast::FunctionKind,
+    function_mode: Mode,
+) -> Result<(Vec<Stm>, Vec<Obligation>, Option<Vec<Exp>>), VirErr> {
+    let mut sequr = Sequencer::new();
+
+    // Suppose have as arguments:
+    //   TwoPhaseBorrowMut(p1)
+    //   TwoPhaseBorrowMut(p2)
+    //
+    // Then the "second phase" of these arguments goes after the argument evaluation.
+    // So the result would look like:
+    //
+    //  eval p1
+    //  eval p2
+    //  Phase2 mutation for p1
+    //  Phase2 mutation for p2
+    //  post_args
+    //  execute the "call"
+    //
+    // Note that the "post_args" may contain AssumeResolved statements inserted
+    // by the resolution inference; these are supposed to go after the phase2
+    // mutations.
+
+    // delayed "phase2" Stms
+    let mut second_phase: Vec<Stm> = Vec::new();
+    let mut all_obligations: Vec<Obligation> = Vec::new();
+
+    for arg in args.iter() {
+        let poly = crate::poly::arg_is_poly(ctx, function_kind, function_mode, &arg.typ);
+        let kind = Immutable(LocalDeclKind::StmCallArg { native: !poly });
+
+        match &arg.x {
+            ExprX::TwoPhaseBorrowMut(_) => {
+                let (phase1_stms, bor_sst) = borrow_mut_to_sst(ctx, state, arg)?;
+
+                let early_return = sequr.push_2phase(phase1_stms, &bor_sst, kind);
+                if let Some(stms) = early_return {
+                    return Ok((stms, all_obligations, None));
+                }
+
+                let Maybe::Some((bor_sst, obligations)) = bor_sst else { unreachable!() };
+                second_phase.push(bor_sst.phase2_stm);
+                all_obligations.extend(obligations);
+            }
+            _ => {
+                let (stms0, e0) = expr_to_stm_opt_with_delayed_obligations(ctx, state, &arg)?;
+
+                let exp0 = match &e0 {
+                    Maybe::Never => Maybe::Never,
+                    Maybe::Some((exp0, _obligations)) => Maybe::Some(exp0.clone()),
+                };
+
+                let early_return = sequr.push(stms0, exp0, kind);
+                if let Some(stms) = early_return {
+                    return Ok((stms, all_obligations, None));
+                }
+
+                let Maybe::Some((_exp0, obligations)) = e0 else { unreachable!() };
+                all_obligations.extend(obligations);
+            }
+        };
+    }
+
+    if let Some(post_args) = post_args {
+        let (mut stms0, e0) = expr_to_stm_opt(ctx, state, post_args)?;
+        assert!(matches!(e0, Maybe::Some(Value::ImplicitUnit(_))));
+        second_phase.append(&mut stms0);
+    }
+
+    let (stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
+    Ok((stms, all_obligations, Some(exps)))
+}
+
 fn expr_get_call(
     ctx: &Ctx,
     state: &mut State,
@@ -838,8 +916,8 @@ fn expr_get_call(
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
-            CallTarget::Fun(kind, x, typs, _impl_paths, autospec_usage, _) => {
-                if *autospec_usage != AutospecUsage::Final {
+            CallTarget::Fun(kind, x, typs, _impl_paths, attrs) => {
+                if attrs.autospec != AutospecUsage::Final {
                     return Err(internal_error(&expr.span, "autospec not discharged"));
                 }
                 let function = get_function(ctx, &expr.span, x)?;
@@ -861,77 +939,11 @@ fn expr_get_call(
                     return Ok(None);
                 }
 
-                let mut sequr = Sequencer::new();
-
-                // Suppose have as arguments:
-                //   TwoPhaseBorrowMut(p1)
-                //   TwoPhaseBorrowMut(p2)
-                //
-                // Then the "second phase" of these arguments goes after the argument evaluation.
-                // So the result would look like:
-                //
-                //  eval p1
-                //  eval p2
-                //  Phase2 mutation for p1
-                //  Phase2 mutation for p2
-                //  post_args
-                //  execute the "call"
-                //
-                // Note that the "post_args" may contain AssumeResolved statements inserted
-                // by the resolution inference; these are supposed to go after the phase2
-                // mutations.
-
-                // delayed "phase2" Stms
-                let mut second_phase: Vec<Stm> = Vec::new();
-                let mut all_obligations: Vec<Obligation> = Vec::new();
-
-                for arg in args.iter() {
-                    let poly =
-                        crate::poly::arg_is_poly(ctx, &function.x.kind, function.x.mode, &arg.typ);
-                    let kind = Immutable(LocalDeclKind::StmCallArg { native: !poly });
-
-                    match &arg.x {
-                        ExprX::TwoPhaseBorrowMut(_) => {
-                            let (phase1_stms, bor_sst) = borrow_mut_to_sst(ctx, state, arg)?;
-
-                            let early_return = sequr.push_2phase(phase1_stms, &bor_sst, kind);
-                            if let Some(stms) = early_return {
-                                return Ok(Some((stms, Maybe::Never)));
-                            }
-
-                            let Maybe::Some((bor_sst, obligations)) = bor_sst else {
-                                unreachable!()
-                            };
-                            second_phase.push(bor_sst.phase2_stm);
-                            all_obligations.extend(obligations);
-                        }
-                        _ => {
-                            let (stms0, e0) =
-                                expr_to_stm_opt_with_delayed_obligations(ctx, state, &arg)?;
-
-                            let exp0 = match &e0 {
-                                Maybe::Never => Maybe::Never,
-                                Maybe::Some((exp0, _obligations)) => Maybe::Some(exp0.clone()),
-                            };
-
-                            let early_return = sequr.push(stms0, exp0, kind);
-                            if let Some(stms) = early_return {
-                                return Ok(Some((stms, Maybe::Never)));
-                            }
-
-                            let Maybe::Some((_exp0, obligations)) = e0 else { unreachable!() };
-                            all_obligations.extend(obligations);
-                        }
-                    };
-                }
-
-                if let Some(post_args) = post_args {
-                    let (mut stms0, e0) = expr_to_stm_opt(ctx, state, post_args)?;
-                    assert!(matches!(e0, Maybe::Some(Value::ImplicitUnit(_))));
-                    second_phase.append(&mut stms0);
-                }
-
-                let (stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
+                let (stms, all_obligations, exps) =
+                    get_call_args(ctx, state, args, post_args, &function.x.kind, function.x.mode)?;
+                let Some(exps) = exps else {
+                    return Ok(Some((stms, Maybe::Never)));
+                };
 
                 use crate::ast::{CallTargetKind, FunctionKind};
                 let is_trait_default =
@@ -970,6 +982,9 @@ fn expr_get_call(
             CallTarget::BuiltinSpecFun(_, _, _) => {
                 panic!("internal error: CallTarget::BuiltinSpecFn");
             }
+            CallTarget::AssumeExternal => {
+                panic!("internal error: CallTarget::AssumeExternal");
+            }
         },
         _ => Ok(None),
     }
@@ -983,7 +998,7 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Maybe<ReturnedCall>)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, _, _), _, _)
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), _, _)
             if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? =>
         {
             expr_get_call(ctx, state, disallow_poly_ret, expr)
@@ -1339,7 +1354,7 @@ fn stm_call(
     }
 
     let call = StmX::Call {
-        fun: name,
+        fun: crate::sst::CallTarget::Fun(name),
         resolved_method,
         mode: fun.x.mode,
         is_trait_default,
@@ -1665,6 +1680,40 @@ pub(crate) fn expr_to_stm_opt(
                     }
                 }
             }
+        }
+        ExprX::Call(CallTarget::AssumeExternal, args, post_args) => {
+            let (mut stms, all_obligations, exps) = get_call_args(
+                ctx,
+                state,
+                args,
+                post_args,
+                &crate::ast::FunctionKind::Static,
+                Mode::Exec,
+            )?;
+            let Some(exps) = exps else {
+                return Ok((stms, Maybe::Never));
+            };
+
+            let (temp_ident, temp_var) = state.declare_temp_assign(&expr.span, &expr.typ);
+            let dest = Dest {
+                dest: var_loc_exp(&expr.span, &expr.typ, temp_ident.clone()),
+                is_init: true,
+            };
+            let call = StmX::Call {
+                fun: crate::sst::CallTarget::AssumeExternal,
+                resolved_method: None,
+                mode: Mode::Exec,
+                is_trait_default: None,
+                typ_args: Arc::new(vec![]),
+                args: Arc::new(exps),
+                split: None,
+                dest: Some(dest),
+                assert_id: None,
+            };
+            stms.push(Spanned::new(expr.span.clone(), call));
+            let ti = TypInv::UnwindError; // exec functions are may_unwind = true by default
+            typ_inv_obligations(ctx, state, &mut stms, all_obligations, ti)?;
+            Ok((stms, Maybe::Some(Value::Exp(temp_var))))
         }
         ExprX::Ctor(p, i, binders, update) => {
             assert!(update.is_none()); // should be simplified by ast_simplify
@@ -2806,6 +2855,11 @@ pub(crate) fn expr_to_stm_opt(
             Ok((vec![stm], Maybe::Some(Value::Exp(exp))))
         }
         ExprX::Await(e) => {
+            let attrs = crate::ast::CallTargetAttrs {
+                autospec: AutospecUsage::Final,
+                const_var: false,
+                assume_external_allowed: false,
+            };
             let call_expr = SpannedTyped::new(
                 &expr.span,
                 &expr.typ,
@@ -2815,8 +2869,7 @@ pub(crate) fn expr_to_stm_opt(
                         fun!(CrateId::Vstd => "future", "exec_await"),
                         Arc::new(vec![e.typ.clone()]),
                         Arc::new(vec![]),
-                        AutospecUsage::Final,
-                        false,
+                        attrs,
                     ),
                     Arc::new(vec![e.clone()]),
                     None,

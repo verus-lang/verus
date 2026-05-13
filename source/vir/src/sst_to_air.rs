@@ -1782,12 +1782,53 @@ fn update_field(
     Ok(Arc::new(ExprX::Apply(variant_ident, Arc::new(args))))
 }
 
+fn call_args_to_air(
+    ctx: &Ctx,
+    state: &mut State,
+    expr_ctxt: &ExprCtxt,
+    args: &Vec<Exp>,
+    dest: &Option<Dest>,
+    stm: &Stm,
+    ens_args_wo_typ: &mut Vec<Expr>,
+    stmts: &mut Vec<Stmt>,
+) -> Result<(), VirErr> {
+    let mut call_snapshot = false;
+    for arg in args.iter() {
+        let arg_x = if let Some(Dest { dest, is_init: _ }) = dest {
+            let var = get_loc_var(dest);
+            crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
+                ExpX::Var(x) if *x == var => {
+                    call_snapshot = true;
+                    SpannedTyped::new(
+                        &e.span,
+                        &e.typ,
+                        ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.clone()),
+                    )
+                }
+                _ => e.clone(),
+            })
+        } else {
+            arg.clone()
+        };
+        ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
+    }
+
+    if call_snapshot {
+        stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
+    } else {
+        if ctx.debug {
+            state.map_span(&stm, SpanKind::Full);
+        }
+    }
+    Ok(())
+}
+
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
         StmX::Call {
-            fun,
+            fun: crate::sst::CallTarget::Fun(fun),
             resolved_method,
             is_trait_default,
             mode,
@@ -1905,37 +1946,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
             }
 
-            let typ_args: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
-            let mut call_snapshot = false;
             let mut ens_args_wo_typ = Vec::new();
-            for arg in args.iter() {
-                let arg_x = if let Some(Dest { dest, is_init: _ }) = dest {
-                    let var = get_loc_var(dest);
-                    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
-                        ExpX::Var(x) if *x == var => {
-                            call_snapshot = true;
-                            SpannedTyped::new(
-                                &e.span,
-                                &e.typ,
-                                ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.clone()),
-                            )
-                        }
-                        _ => e.clone(),
-                    })
-                } else {
-                    arg.clone()
-                };
-                ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
-            }
+            call_args_to_air(
+                ctx,
+                state,
+                expr_ctxt,
+                args,
+                dest,
+                stm,
+                &mut ens_args_wo_typ,
+                &mut stmts,
+            )?;
 
-            if call_snapshot {
-                stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
-            } else {
-                if ctx.debug {
-                    state.map_span(&stm, SpanKind::Full);
-                }
-            }
-
+            let typ_args: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
             let (has_ens, resolved_ens, ens_fun, ens_typ_args) = match resolved_method {
                 Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate[res_fun] => {
                     // Use ens predicate for the statically-resolved function
@@ -2000,6 +2023,29 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 );
                 let generic_ens_expr = exp_to_expr(ctx, &generic_ens_exp, expr_ctxt)?;
                 stmts.push(Arc::new(StmtX::Assume(generic_ens_expr)));
+            }
+            vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
+        }
+        StmX::Call { fun: crate::sst::CallTarget::AssumeExternal, args, dest, .. } => {
+            let mut stmts: Vec<Stmt> = Vec::new();
+            let mut ens_args_wo_typ = Vec::new();
+            call_args_to_air(
+                ctx,
+                state,
+                expr_ctxt,
+                args,
+                dest,
+                stm,
+                &mut ens_args_wo_typ,
+                &mut stmts,
+            )?;
+            if let Some(Dest { dest, is_init }) = dest {
+                let var = suffix_local_unique_id(&get_loc_var(dest));
+                assert!(*is_init); // for simplicity, ast_to_sst always generates is_init = true
+                let typ_inv = typ_invariant(ctx, &dest.typ, &ident_var(&var));
+                if let Some(expr) = typ_inv {
+                    stmts.push(Arc::new(StmtX::Assume(expr)));
+                }
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }

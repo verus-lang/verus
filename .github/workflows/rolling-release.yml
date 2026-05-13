@@ -1,0 +1,168 @@
+name: rolling-release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rolling-release
+  cancel-in-progress: true
+
+jobs:
+  # build the release artifacts
+  build:
+    if: github.repository == 'verus-lang/verus'
+
+    strategy:
+      matrix:
+        build: [macos, macos-x86_64, linux, windows]
+        include:
+          - build: macos
+            os: macos-14
+            release_name: verus-arm64-macos
+          - build: macos-x86_64
+            os: macos-15-intel
+            release_name: verus-x86-macos
+          - build: linux
+            os: ubuntu-22.04
+            release_name: verus-x86-linux
+          - build: windows
+            os: windows-2022
+            release_name: verus-x86-win
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: get z3
+        working-directory: ./source
+        run: |
+          ./tools/get-z3.sh
+          echo "z3 version $(./z3 --version)"
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+
+      - name: build
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          vargo clean
+          vargo build --release
+
+      - name: create archive
+        working-directory: ./source
+        run: |
+          ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
+          cp -R ./target-verus/release "../${{ matrix.release_name }}"
+          cd ..
+          if [ "${{ matrix.os }}" == "windows-2022" ]; then
+            7z a "${{ matrix.release_name }}.zip" "./${{ matrix.release_name }}"
+          else
+            zip -r "${{ matrix.release_name }}.zip" "./${{ matrix.release_name }}"
+          fi
+
+      - name: upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.release_name }}
+          path: ${{ matrix.release_name }}.zip
+
+  # publish the release artifacts to the rolling pre-release
+  publish:
+    needs: [build]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: create release tag
+        shell: bash
+        run: |
+          cd verus-x86-linux
+          unzip verus-x86-linux.zip
+          cd ..
+          version="$(cat ./verus-x86-linux/verus-x86-linux/version.txt)"
+          {
+            echo "TAG_NAME=release/rolling/${version}"
+            echo "RELEASE_NAME=${version}"
+          } >> "$GITHUB_ENV"
+          echo "${version}"
+
+      - name: list artifacts
+        run: ls -Al .
+
+      - name: update release
+        id: update_release
+        uses: verus-lang/action-update-release@v0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          id: 163437062
+          new_name: Rolling Release ${{ env.RELEASE_NAME }}
+          new_body: |
+            Rolling release from Continuous Integration
+          delete_tags_prefix: release/rolling/
+          delete_assets: true
+          new_draft_status: true
+
+      - name: upload release for x86-linux
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.update_release.outputs.upload_url }}
+          asset_path: ./verus-x86-linux/verus-x86-linux.zip
+          asset_name: verus-${{ env.RELEASE_NAME }}-x86-linux.zip
+          asset_content_type: application/zip
+
+      - name: upload release for arm64-macos
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.update_release.outputs.upload_url }}
+          asset_path: ./verus-arm64-macos/verus-arm64-macos.zip
+          asset_name: verus-${{ env.RELEASE_NAME }}-arm64-macos.zip
+          asset_content_type: application/zip
+
+      - name: upload release for x86-macos
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.update_release.outputs.upload_url }}
+          asset_path: ./verus-x86-macos/verus-x86-macos.zip
+          asset_name: verus-${{ env.RELEASE_NAME }}-x86-macos.zip
+          asset_content_type: application/zip
+
+      - name: upload release for x86-win
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.update_release.outputs.upload_url }}
+          asset_path: ./verus-x86-win/verus-x86-win.zip
+          asset_name: verus-${{ env.RELEASE_NAME }}-x86-win.zip
+          asset_content_type: application/zip
+
+      - name: publish release
+        uses: verus-lang/action-update-release@v0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          id: 163437062
+          new_tag: ${{ env.TAG_NAME }}
+          new_draft_status: false

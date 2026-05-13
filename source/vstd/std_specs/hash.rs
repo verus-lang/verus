@@ -32,7 +32,9 @@ use core::marker::PhantomData;
 use core::option::Option;
 use core::option::Option::None;
 use std::collections::hash_map;
-use std::collections::hash_map::{DefaultHasher, Keys, RandomState, Values};
+use std::collections::hash_map::{
+    DefaultHasher, Entry, Keys, OccupiedEntry, RandomState, VacantEntry, Values,
+};
 use std::collections::hash_set;
 use std::collections::{HashMap, HashSet};
 
@@ -1222,6 +1224,282 @@ pub broadcast proof fn axiom_hashset_decreases<Key, S, A: Allocator>(m: HashSet<
     admit();
 }
 
+//////// Entry API
+// Specs for OccupiedEntry, VacantEntry, and the Entry enum
+// OccupiedEntry and VacantEntry are both opaque;
+// Entry is just an enum wrapper around the other 2, so we leave it transparent.
+#[verifier::reject_recursive_types_in_ground_variants(K)]
+#[verifier::reject_recursive_types_in_ground_variants(V)]
+#[verifier::reject_recursive_types(A)]
+#[verifier::external_body]
+#[verifier::external_type_specification]
+pub struct ExOccupiedEntry<'a, K: 'a, V: 'a, A: Allocator>(OccupiedEntry<'a, K, V, A>);
+
+#[verifier::reject_recursive_types_in_ground_variants(K)]
+#[verifier::accept_recursive_types(V)]
+#[verifier::reject_recursive_types(A)]
+#[verifier::external_body]
+#[verifier::external_type_specification]
+pub struct ExVacantEntry<'a, K: 'a, V: 'a, A: Allocator>(VacantEntry<'a, K, V, A>);
+
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(A)]
+pub struct ExEntry<'a, K: 'a, V: 'a, A: Allocator>(Entry<'a, K, V, A>);
+
+/// Specification for an [`OccupiedEntry`].
+/// Contains the current key and value in the entry,
+/// and prophesies the final value after this instantiation of the entry API is complete.
+/// The final value is optional, since the user might choose to remove the entry.
+pub trait OccupiedEntrySpecFns<K, V, A>: Sized {
+    spec fn spec_key(self) -> K;
+
+    spec fn value(self) -> V;
+
+    #[verifier::prophetic]
+    spec fn final_value(self) -> Option<V>;
+}
+
+impl<'a, K, V, A: Allocator> OccupiedEntrySpecFns<K, V, A> for OccupiedEntry<'a, K, V, A> {
+    uninterp spec fn spec_key(self) -> K;
+
+    uninterp spec fn value(self) -> V;
+
+    #[verifier::prophetic]
+    uninterp spec fn final_value(self) -> Option<V>;
+}
+
+/// Specification for a [`VacantEntry`].
+/// Contains the current key for the entry,
+/// and prophesies the final value after this instantiation of the entry API is complete.
+/// The final value is optional, since the user may or may not choose to insert a value.
+pub trait VacantEntrySpecFns<K, V, A>: Sized {
+    spec fn spec_key(self) -> K;
+
+    #[verifier::prophetic]
+    spec fn final_value(self) -> Option<V>;
+}
+
+impl<'a, K, V, A: Allocator> VacantEntrySpecFns<K, V, A> for VacantEntry<'a, K, V, A> {
+    uninterp spec fn spec_key(self) -> K;
+
+    #[verifier::prophetic]
+    uninterp spec fn final_value(self) -> Option<V>;
+}
+
+/// Specification for an [`Entry`].
+/// Contains the current key for the entry,
+/// and prophesies the final value after this instantiation of the entry API is complete.
+pub trait EntrySpecFns<K, V, A>: Sized {
+    spec fn spec_key(self) -> K;
+
+    spec fn value(self) -> Option<V>;
+
+    #[verifier::prophetic]
+    spec fn final_value(self) -> Option<V>;
+}
+
+impl<'a, K, V, A: Allocator> EntrySpecFns<K, V, A> for Entry<'a, K, V, A> {
+    open spec fn spec_key(self) -> K {
+        match self {
+            Entry::Occupied(occupied_entry) => occupied_entry.spec_key(),
+            Entry::Vacant(vacant_entry) => vacant_entry.spec_key(),
+        }
+    }
+
+    open spec fn value(self) -> Option<V> {
+        match self {
+            Entry::Occupied(occupied_entry) => Some(occupied_entry.value()),
+            Entry::Vacant(vacant_entry) => None,
+        }
+    }
+
+    #[verifier::prophetic]
+    open spec fn final_value(self) -> Option<V> {
+        match self {
+            Entry::Occupied(occupied_entry) => occupied_entry.final_value(),
+            Entry::Vacant(vacant_entry) => vacant_entry.final_value(),
+        }
+    }
+}
+
+pub broadcast axiom fn axiom_has_resolved_occupied_entry<K, V, A: Allocator>(
+    entry: OccupiedEntry<K, V, A>,
+)
+    ensures
+        #[trigger] has_resolved(entry) ==> entry.final_value() == Some(entry.value()),
+;
+
+pub broadcast axiom fn axiom_has_resolved_vacant_entry<K, V, A: Allocator>(
+    entry: VacantEntry<K, V, A>,
+)
+    ensures
+        #[trigger] has_resolved(entry) ==> entry.final_value() == None::<V>,
+;
+
+pub broadcast proof fn axiom_has_resolved_entry<K, V, A: Allocator>(entry: Entry<K, V, A>)
+    ensures
+        #[trigger] has_resolved(entry) ==> entry.final_value() == entry.value(),
+{
+    broadcast use axiom_has_resolved_occupied_entry;
+    broadcast use axiom_has_resolved_vacant_entry;
+
+}
+
+pub assume_specification<'a, Key: Hash + Eq, Value, S: BuildHasher, A: Allocator>[ HashMap::<
+    Key,
+    Value,
+    S,
+    A,
+>::entry ](m: &'a mut HashMap<Key, Value, S, A>, key: Key) -> (entry: Entry<'a, Key, Value, A>)
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> (entry.key() == key
+            && entry.value() == old(m)@.get(key) && final(m)@ == (match entry.final_value() {
+            Some(value) => old(m)@.insert(key, value),
+            None => old(m)@.remove(key),
+        })),
+;
+
+//// Entry
+#[verifier::allow_in_spec]
+pub assume_specification<'a, 'b, K, V, A: Allocator>[ Entry::key ](
+    entry: &'b Entry::<'a, K, V, A>,
+) -> (key: &'b K)
+    returns
+        &entry.spec_key(),
+;
+
+pub assume_specification<'a, K, V, A: Allocator>[ Entry::or_insert ](
+    entry: Entry::<'a, K, V, A>,
+    default: V,
+) -> (value: &'a mut V)
+    ensures
+        *value == (match entry.value() {
+            Some(v) => v,
+            None => default,
+        }),
+        entry.final_value() == Some(*final(value)),
+;
+
+pub assume_specification<'a, K, V, A: Allocator>[ Entry::insert_entry ](
+    entry: Entry::<'a, K, V, A>,
+    value: V,
+) -> (occ_entry: OccupiedEntry<'a, K, V, A>)
+    ensures
+        occ_entry.key() == entry.key(),
+        occ_entry.value() == value,
+        entry.final_value() == occ_entry.final_value(),
+;
+
+//// OccupiedEntry
+// This module works around a bug with `allow_in_spec` that creates duplicate spec fn names
+mod m_occ {
+    use super::*;
+
+    #[verifier::allow_in_spec]
+    pub assume_specification<'a, 'b, K, V, A: Allocator>[ OccupiedEntry::key ](
+        entry: &'b OccupiedEntry::<'a, K, V, A>,
+    ) -> (key: &'b K)
+        returns
+            &entry.spec_key(),
+    ;
+
+}
+
+pub assume_specification<'a, K, V, A: Allocator>[ OccupiedEntry::remove_entry ](
+    entry: OccupiedEntry::<'a, K, V, A>,
+) -> (kv: (K, V))
+    ensures
+        entry.final_value() === None,
+    returns
+        (*entry.key(), entry.value()),
+;
+
+pub assume_specification<'a, 'b, K, V, A: Allocator>[ OccupiedEntry::get ](
+    entry: &'b OccupiedEntry::<'a, K, V, A>,
+) -> (value: &'b V)
+    ensures
+        *value == entry.value(),
+;
+
+pub assume_specification<'a, 'b, K, V, A: Allocator>[ OccupiedEntry::get_mut ](
+    entry: &'b mut OccupiedEntry::<'a, K, V, A>,
+) -> (value: &'b mut V)
+    ensures
+        *value == old(entry).value(),
+        final(entry).key() == old(entry).key(),
+        final(entry).value() == *final(value),
+        final(entry).final_value() == old(entry).final_value(),
+;
+
+pub assume_specification<'a, K, V, A: Allocator>[ OccupiedEntry::into_mut ](
+    entry: OccupiedEntry::<'a, K, V, A>,
+) -> (value: &mut V)
+    ensures
+        *value === entry.value(),
+        entry.final_value() == Some(*final(value)),
+;
+
+pub assume_specification<'a, K, V, A: Allocator>[ OccupiedEntry::insert ](
+    entry: &mut OccupiedEntry::<'a, K, V, A>,
+    value: V,
+) -> (old_value: V)
+    ensures
+        old_value == old(entry).value(),
+        final(entry).key() == old(entry).key(),
+        final(entry).value() == value,
+        final(entry).final_value() == old(entry).final_value(),
+;
+
+pub assume_specification<'a, K, V, A: Allocator>[ OccupiedEntry::remove ](
+    entry: OccupiedEntry::<'a, K, V, A>,
+) -> (value: V)
+    ensures
+        value == entry.value(),
+        entry.final_value() === None,
+;
+
+//// VacantEntry
+// This module works around a bug with `allow_in_spec` that creates duplicate spec fn names
+mod m_vac {
+    use super::*;
+
+    #[verifier::allow_in_spec]
+    pub assume_specification<'a, 'b, K: 'a, V: 'a, A: Allocator>[ VacantEntry::key ](
+        entry: &'b VacantEntry::<'a, K, V, A>,
+    ) -> (key: &'b K)
+        returns
+            &entry.spec_key(),
+    ;
+
+}
+
+pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::into_key ](
+    entry: VacantEntry::<'a, K, V, A>,
+) -> (key: K)
+    ensures
+        key == entry.key(),
+        entry.final_value() === None,
+;
+
+pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::insert ](
+    entry: VacantEntry::<'a, K, V, A>,
+    value: V,
+) -> (value_ref: &mut V)
+    ensures
+        *value_ref == value,
+        entry.final_value() == Some(*final(value_ref)),
+;
+
+pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::insert_entry ](
+    entry: VacantEntry::<'a, K, V, A>,
+    value: V,
+) -> (occ_entry: OccupiedEntry::<'a, K, V, A>)
+    ensures
+        occ_entry.key() == entry.key(),
+        occ_entry.value() == value,
+        entry.final_value() == occ_entry.final_value(),
+;
+
 pub broadcast group group_hash_axioms {
     axiom_box_key_removed,
     axiom_contains_deref_key,
@@ -1261,6 +1539,9 @@ pub broadcast group group_hash_axioms {
     axiom_spec_values_iter,
     axiom_hashmap_decreases,
     axiom_hashset_decreases,
+    axiom_has_resolved_occupied_entry,
+    axiom_has_resolved_vacant_entry,
+    axiom_has_resolved_entry,
 }
 
 } // verus!

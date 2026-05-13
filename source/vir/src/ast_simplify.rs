@@ -360,26 +360,26 @@ fn simplify_one_expr(
             Ok(expr.clone())
         }
         ExprX::ConstVar(x, autospec) => {
+            let call_target_attrs = crate::ast::CallTargetAttrs {
+                autospec: *autospec,
+                const_var: true,
+                assume_external_allowed: false,
+            };
             let call = ExprX::Call(
                 CallTarget::Fun(
                     CallTargetKind::Static,
                     x.clone(),
                     Arc::new(vec![]),
                     Arc::new(vec![]),
-                    *autospec,
-                    true,
+                    call_target_attrs,
                 ),
                 Arc::new(vec![]),
                 None,
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Call(
-            CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage, const_var),
-            args,
-            post_args,
-        ) => {
-            assert!(*autospec_usage == AutospecUsage::Final);
+        ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, attrs), args, post_args) => {
+            assert!(attrs.autospec == AutospecUsage::Final);
 
             let is_trait_impl = match kind {
                 CallTargetKind::Static => false,
@@ -405,8 +405,7 @@ fn simplify_one_expr(
                     tgt.clone(),
                     typs.clone(),
                     impl_paths.clone(),
-                    *autospec_usage,
-                    *const_var,
+                    attrs.clone(),
                 ),
                 args,
                 post_args.clone(),
