@@ -16,7 +16,7 @@ assumed to uphold the specification. For example, if you verify a crate with
 satisfy the `Formatter` specification, even if that type comes from an unverified crate.
 This is a contract on both current and future unverified code.
 
-[See below](the_obeys_pattern_in_vstd) for a useful pattern (employed by `vstd`) for mitigating this soundness risk.
+[See below](#the-obeys_-pattern-in-vstd) for a useful pattern (employed by `vstd`) for mitigating this soundness risk.
 
 ## Basic external trait specification
 
