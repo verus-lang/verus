@@ -5,6 +5,7 @@ use crate::path::PathKind;
 use crate::INDENT;
 use verus_syn::{Field, Fields, FieldsUnnamed, Variant, VisRestricted, Visibility};
 
+#[rustfmt::skip]
 impl Printer {
     pub fn variant(&mut self, variant: &Variant) {
         self.outer_attrs(&variant.attrs);

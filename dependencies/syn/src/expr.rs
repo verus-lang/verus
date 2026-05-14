@@ -1319,7 +1319,7 @@ pub(crate) mod parsing {
             let expr = parse_with_earlier_boundary_rule_inner(input, attrs)?;
             let expr = Box::new(expr);
             return Ok(Expr::Unary(ExprUnary {
-                attrs: vec![],
+                attrs: Vec::new(),
                 expr,
                 op,
             }));

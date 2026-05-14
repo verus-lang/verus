@@ -1740,7 +1740,7 @@ pub(crate) mod parsing {
     ) -> Result<ItemFn> {
         let (brace_token, stmts, semi_token) = if input.peek(Token![;]) {
             let semi_token: Token![;] = input.parse()?;
-            (token::Brace(semi_token.span), vec![], Some(semi_token))
+            (token::Brace(semi_token.span), Vec::new(), Some(semi_token))
         } else {
             let content;
             let brace_token = braced!(content in input);
@@ -3073,7 +3073,7 @@ pub(crate) mod parsing {
             let span = sig.paren_token.span;
             let block = Block {
                 brace_token: token::Brace { span },
-                stmts: vec![],
+                stmts: Vec::new(),
             };
             (block, Some(semi))
         } else {
