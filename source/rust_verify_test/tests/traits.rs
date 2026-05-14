@@ -4718,13 +4718,13 @@ test_verify_one_file_with_options! {
 
         verus! {
         const trait T {
-            fn f() -> (r: u8) ensures r == 3;
+            fn f() -> (r: u8) ensures r == 3; // TRAIT
         }
         impl const T for bool {
             fn f() -> (r: u8) { 3 }
         }
         const impl T for () {
-            fn f() -> (r: u8) { 4 }
+            fn f() -> (r: u8) { 4 } // FAILS
         }
         fn test() {
             let c1 = <bool as T>::f();
@@ -4733,5 +4733,5 @@ test_verify_one_file_with_options! {
             assert(c2 == 3);
         }
         }
-    } => Err(_)
+    } => Err(err) => assert_one_fails(err)
 }
