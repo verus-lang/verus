@@ -88,7 +88,7 @@ extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"i
 [[project]]
 name = "svsm"
 git_url = "https://github.com/ziqiaozhou/svsm.git"
-refspec = "cargo-verus"
+refspec = "origin/verita"
 cargo_verus = true
 extra_cargo_args = ["--features", "verus"]
 crate_roots = ["kernel"]
