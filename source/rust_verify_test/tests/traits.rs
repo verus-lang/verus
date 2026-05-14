@@ -4709,3 +4709,29 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] const_trait_ensures_fail ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(const_trait_impl))]
+
+        use vstd::prelude::*;
+
+        verus! {
+        const trait T {
+            fn f() -> (r: u8) ensures r == 3;
+        }
+        impl const T for bool {
+            fn f() -> (r: u8) { 3 }
+        }
+        const impl T for () {
+            fn f() -> (r: u8) { 4 }
+        }
+        fn test() {
+            let c1 = <bool as T>::f();
+            let c2 = <() as T>::f();
+            assert(c1 == 3);
+            assert(c2 == 3);
+        }
+        }
+    } => Err(_)
+}
