@@ -67,7 +67,7 @@ impl Printer {
 
     fn vis_restricted(&mut self, vis: &VisRestricted) {
         self.word("pub(");
-        let omit_in = vis.path.get_ident().map_or(false, |ident| {
+        let omit_in = vis.path.get_ident().is_some_and(|ident| {
             matches!(ident.to_string().as_str(), "self" | "super" | "crate")
         });
         if !omit_in {

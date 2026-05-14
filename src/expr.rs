@@ -1359,7 +1359,7 @@ fn is_short_ident(expr: &Expr) -> bool {
             && expr
                 .path
                 .get_ident()
-                .map_or(false, |ident| ident.to_string().len() as isize <= INDENT);
+                .is_some_and(|ident| ident.to_string().len() as isize <= INDENT);
     }
     false
 }

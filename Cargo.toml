@@ -12,7 +12,7 @@ keywords = ["rustfmt"]
 license = "MIT OR Apache-2.0"
 links = "prettyplease02"
 repository = "https://github.com/dtolnay/prettyplease"
-rust-version = "1.68"
+rust-version = "1.71"
 
 [features]
 verbatim = ["syn/parsing"]
