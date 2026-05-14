@@ -3350,7 +3350,6 @@ where
         attrs: f.fold_attributes(node.attrs),
         defaultness: node.defaultness,
         unsafety: node.unsafety,
-        constness: node.constness,
         impl_token: node.impl_token,
         generics: f.fold_generics(node.generics),
         trait_: (node.trait_).map(|it| ((it).0, f.fold_path((it).1), (it).2)),
@@ -3439,7 +3438,6 @@ where
         vis: f.fold_visibility(node.vis),
         unsafety: node.unsafety,
         auto_token: node.auto_token,
-        constness: node.constness,
         restriction: (node.restriction).map(|it| f.fold_impl_restriction(it)),
         trait_token: node.trait_token,
         ident: f.fold_ident(node.ident),
@@ -5119,11 +5117,6 @@ where
         inputs: crate::punctuated::fold(node.inputs, f, F::fold_expr),
         outputs: (node.outputs).map(|it| ((it).0, full!(f.fold_pat((it).1)))),
         follows: (node.follows).map(|it| ((it).0, full!(f.fold_pat((it).1)))),
-        erased_fields: crate::punctuated::fold(
-            node.erased_fields,
-            f,
-            F::fold_field_value,
-        ),
     }
 }
 pub fn fold_with_spec_on_fn<F>(
