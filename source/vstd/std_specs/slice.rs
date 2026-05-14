@@ -1,8 +1,13 @@
 use super::super::prelude::*;
 use super::core::IndexSetTrustedSpec;
 use super::core::TrustedSpecSealed;
+use super::super::utf8::{is_char_boundary};
+
+#[cfg(not(verus_verify_core))]
+use super::super::string::StringSliceAdditionalSpecFns;
 
 use core::slice::Iter;
+use core::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
 
 use verus as verus_;
 
@@ -36,6 +41,243 @@ pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
     requires
         false,
 ;
+
+/* SliceIndex */
+
+/// Precondition on the "sliced" data for `SliceIndex` functions.
+// Currently, this is only used for asserting the valid UTF-8 invariant on `str` within the Rust standard library.
+// In vstd, this property is assumed to hold for `str`, so this is trivial.
+pub uninterp spec fn valid_slice<T: ?Sized>(slice: &T) -> bool;
+
+pub broadcast axiom fn valid_slice_slice<T>(slice: &[T])
+    ensures
+        #[trigger] valid_slice(slice);
+
+#[cfg(not(verus_verify_core))]
+pub broadcast axiom fn valid_slice_str(slice: &str)
+    ensures
+        #[trigger] valid_slice(slice);
+
+/// True when the indices `start` and `end` (exclusive) are considered valid indices for `slice`.
+pub uninterp spec fn in_bounds<T: ?Sized>(start: int, end: int, slice: &T) -> bool;
+
+pub broadcast axiom fn in_bounds_slice<T>(start: int, end: int, slice: &[T])
+    ensures
+        start <= slice@.len() <= end ==> #[trigger] in_bounds(start, end, slice);
+
+#[cfg(not(verus_verify_core))]
+pub broadcast axiom fn in_bounds_str(start: int, end: int, slice: &str)
+    ensures
+        start <= slice.spec_bytes().len() <= end && is_char_boundary(slice.spec_bytes(), start) && is_char_boundary(slice.spec_bytes(), end) ==> #[trigger] in_bounds(start, end, slice);
+
+/// True when `output` matches the result of the slicing `slice` from `start` to `end` (exclusive) indices.
+// This is written as a relation because `Output` is an exec type (e.g. [T]), and so we cannot necessarily return it from a spec function.
+pub uninterp spec fn index_result<T: ?Sized, Output: ?Sized>(start: int, end: int, slice: &T, output: &Output) -> bool;
+
+pub broadcast axiom fn index_result_slice<T>(start: int, end: int, slice: &[T], output: &[T])
+    ensures
+        #[trigger] index_result::<[T], [T]>(start, end, slice, output) <==> output@ =~= slice@.subrange(start, end);
+
+#[cfg(not(verus_verify_core))]
+pub broadcast axiom fn index_result_str(start: int, end: int, slice: &str, output: &str)
+    ensures
+        #[trigger] index_result::<str, str>(start, end, slice, output) <==> output@ == slice@.subrange(start, end);
+
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
+pub trait ExSliceIndex<T> where T: ?Sized {
+    type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
+
+    type Output: ?Sized;
+
+    /// Start index of this slice index on the given slice.
+    spec fn spec_start(&self, slice: &T) -> int;
+
+    /// End index (exclusive) of this slice index on the given slice.
+    spec fn spec_end(&self, slice: &T) -> int;
+
+    fn get(self, slice: &T) -> (out: Option<&Self::Output>)
+        requires
+            valid_slice::<T>(slice),
+        ensures
+            out.is_some() <==> in_bounds(self.spec_start(slice), self.spec_end(slice), slice),
+            out.is_some() ==> index_result(self.spec_start(slice), self.spec_end(slice), slice, out.unwrap())
+    ;
+
+    #[verifier::ignore_outside_new_mut_ref_experiment]
+    fn get_mut(self, slice: &mut T) -> (out: Option<&mut Self::Output>)
+        requires
+            valid_slice::<T>(old(slice)),
+        ensures
+            &*old(slice) == &*final(slice),
+            out.is_some() <==> in_bounds(self.spec_start(final(slice)), self.spec_end(final(slice)), final(slice)),
+            out.is_some() ==> index_result(self.spec_start(final(slice)), self.spec_end(final(slice)), final(slice), out.unwrap())
+    ;
+
+    fn index(self, slice: &T) -> (out: &Self::Output)
+        requires
+            valid_slice::<T>(slice),
+            in_bounds(self.spec_start(slice), self.spec_end(slice), slice)
+        ensures
+            index_result(self.spec_start(slice), self.spec_end(slice), slice, out)
+        ;
+
+    #[verifier::ignore_outside_new_mut_ref_experiment]
+    fn index_mut(self, slice: &mut T) -> (out: &mut Self::Output)
+        requires
+            valid_slice::<T>(old(slice)),
+            in_bounds(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice))
+        ensures
+            &*old(slice) == &*final(slice),
+            index_result(self.spec_start(final(slice)), self.spec_end(final(slice)), final(slice), out)
+        ;
+}
+
+impl<T> SliceIndexSpecImpl<[T]> for usize {
+    open spec fn spec_start(&self, slice: &[T]) -> int {
+        self as int
+    }
+    open spec fn spec_end(&self, slice: &[T]) -> int {
+        self as int
+    }
+}
+// describes range: start..end
+impl<T> SliceIndexSpecImpl<[T]> for Range<usize> {
+    open spec fn spec_start(&self, slice: &[T]) -> int {
+        self.start as int
+    }
+
+    open spec fn spec_end(&self, slice: &[T]) -> int {
+        self.end as int
+    }
+}
+// describes range: start..
+impl<T> SliceIndexSpecImpl<[T]> for RangeFrom<usize> {
+    open spec fn spec_start(&self, slice: &[T]) -> int {
+        self.start as int
+    }
+
+    open spec fn spec_end(&self, slice: &[T]) -> int {
+        slice@.len() as int
+    }
+}
+// describes full range: ..
+impl<T> SliceIndexSpecImpl<[T]> for RangeFull {
+    open spec fn spec_start(&self, slice: &[T]) -> int {
+        0
+    }
+
+    open spec fn spec_end(&self, slice: &[T]) -> int {
+        slice@.len() as int
+    }
+}
+// describes range: start..=end
+impl<T> SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
+    open spec fn spec_start(&self, slice: &[T]) -> int {
+        self@.start as int
+    }
+
+    open spec fn spec_end(&self, slice: &[T]) -> int {
+        self@.end as int + 1
+    }
+}
+// describes range: ..end
+impl<T> SliceIndexSpecImpl<[T]> for RangeTo<usize> {
+    open spec fn spec_start(&self, slice: &[T]) -> int {
+        0
+    }
+
+    open spec fn spec_end(&self, slice: &[T]) -> int {
+        self.end as int
+    }
+}
+// describes range: ..=end
+impl<T> SliceIndexSpecImpl<[T]> for RangeToInclusive<usize> {
+    open spec fn spec_start(&self, slice: &[T]) -> int {
+        0
+    }
+
+    open spec fn spec_end(&self, slice: &[T]) -> int {
+        self.end as int + 1
+    }
+}
+// describes range: start..end
+impl SliceIndexSpecImpl<str> for Range<usize> {
+    open spec fn spec_start(&self, slice: &str) -> int {
+        self.start as int
+    }
+
+    open spec fn spec_end(&self, slice: &str) -> int {
+        self.end as int
+    }
+}
+// describes range: start..
+impl SliceIndexSpecImpl<str> for RangeFrom<usize> {
+    open spec fn spec_start(&self, slice: &str) -> int {
+        self.start as int
+    }
+
+    open spec fn spec_end(&self, slice: &str) -> int {
+        slice@.len() as int
+    }
+}
+// describes full range: ..
+impl SliceIndexSpecImpl<str> for RangeFull {
+    open spec fn spec_start(&self, slice: &str) -> int {
+        0
+    }
+
+    open spec fn spec_end(&self, slice: &str) -> int {
+        slice@.len() as int
+    }
+}
+// describes range: start..=end
+impl SliceIndexSpecImpl<str> for RangeInclusive<usize> {
+    open spec fn spec_start(&self, slice: &str) -> int {
+        self@.start as int
+    }
+
+    open spec fn spec_end(&self, slice: &str) -> int {
+        self@.end as int + 1
+    }
+}
+// describes range: ..end
+impl SliceIndexSpecImpl<str> for RangeTo<usize> {
+    open spec fn spec_start(&self, slice: &str) -> int {
+        0
+    }
+
+    open spec fn spec_end(&self, slice: &str) -> int {
+        self.end as int
+    }
+}
+// describes range: ..=end
+impl SliceIndexSpecImpl<str> for RangeToInclusive<usize> {
+    open spec fn spec_start(&self, slice: &str) -> int {
+        0
+    }
+
+    open spec fn spec_end(&self, slice: &str) -> int {
+        self.end as int + 1
+    }
+}
+
+#[cfg(not(verus_verify_core))]
+pub broadcast group group_slice_index_specs {
+    valid_slice_slice,
+    valid_slice_str,
+    in_bounds_slice,
+    in_bounds_str,
+    index_result_slice,
+    index_result_str
+}
+
+#[cfg(verus_verify_core)]
+pub broadcast group group_slice_index_specs {
+    valid_slice_slice,
+    in_bounds_slice,
+    index_result_slice,
+}
 
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,
 // so we specify that type here.

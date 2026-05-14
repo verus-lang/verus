@@ -2,7 +2,6 @@
 use super::prelude::*;
 use super::seq::*;
 use super::view::*;
-use super::utf8::{valid_utf8, is_char_boundary};
 
 #[cfg(verus_keep_ghost)]
 #[cfg(feature = "alloc")]
@@ -115,146 +114,6 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
     &slice[i..j]
 }
 
-pub uninterp spec fn valid_slice<T: ?Sized>(slice: &T) -> bool;
-
-pub broadcast axiom fn valid_slice_slice<T>(slice: &[T])
-    ensures
-        #[trigger] valid_slice(slice);
-
-#[cfg(not(verus_verify_core))]
-pub broadcast axiom fn valid_slice_str(slice: &str)
-    ensures
-        valid_utf8(slice.spec_bytes()) ==> #[trigger] valid_slice(slice);
-
-pub uninterp spec fn in_bounds<T: ?Sized>(start: int, end: int, slice: &T) -> bool;
-
-pub broadcast axiom fn in_bounds_slice<T>(start: int, end: int, slice: &[T])
-    ensures
-        start <= slice@.len() <= end ==> #[trigger] in_bounds(start, end, slice);
-
-#[cfg(not(verus_verify_core))]
-pub broadcast axiom fn in_bounds_str(start: int, end: int, slice: &str)
-    ensures
-        is_char_boundary(slice.spec_bytes(), start) && is_char_boundary(slice.spec_bytes(), end) ==> #[trigger] in_bounds(start, end, slice);
-
-pub uninterp spec fn index_result<T: ?Sized, Output: ?Sized>(start: int, end: int, slice: &T, output: &Output) -> bool;
-
-pub broadcast axiom fn index_result_slice<T>(start: int, end: int, slice: &[T], output: &[T])
-    ensures
-        #[trigger] index_result::<[T], [T]>(start, end, slice, output) <==> output@ =~= slice@.subrange(start, end);
-
-#[cfg(not(verus_verify_core))]
-pub broadcast axiom fn index_result_str(start: int, end: int, slice: &str, output: &str)
-    ensures
-        #[trigger] index_result::<str, str>(start, end, slice, output) <==> output@ == slice@.subrange(start, end);
-
-pub uninterp spec fn slice_mut_unchanged<T: ?Sized>(old_val: &T, final_val: &T) -> bool;
-
-pub broadcast axiom fn slice_mut_unchanged_slice<T>(old_val: &[T], final_val: &[T])
-    ensures
-        #[trigger] slice_mut_unchanged::<[T]>(old_val, final_val) <==> old_val == final_val;
-
-#[cfg(not(verus_verify_core))]
-pub broadcast axiom fn slice_mut_unchanged_str(old_val: &str, final_val: &str)
-    ensures
-        #[trigger] slice_mut_unchanged::<str>(old_val, final_val) <==> old_val == final_val;
-
-#[verifier::external_trait_specification]
-#[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
-pub trait ExSliceIndex<T> where T: ?Sized {
-    type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
-
-    type Output: ?Sized;
-
-    /// Start index of this slice index.
-    spec fn spec_start(&self) -> int;
-
-    /// End index (exclusive) of this slice index.
-    spec fn spec_end(&self) -> int;
-
-    fn get(self, slice: &T) -> (out: Option<&Self::Output>)
-        requires
-            valid_slice::<T>(slice),
-        ensures
-            out.is_some() <==> in_bounds(self.spec_start(), self.spec_end(), slice),
-            out.is_some() ==> index_result(self.spec_start(), self.spec_end(), slice, out.unwrap())
-    ;
-
-    #[verifier::ignore_outside_new_mut_ref_experiment]
-    fn get_mut(self, slice: &mut T) -> (out: Option<&mut Self::Output>)
-        requires
-            valid_slice::<T>(old(slice)),
-        ensures
-            slice_mut_unchanged(old(slice), final(slice)),
-            out.is_some() <==> in_bounds(self.spec_start(), self.spec_end(), final(slice)),
-            out.is_some() ==> index_result(self.spec_start(), self.spec_end(), final(slice), out.unwrap())
-    ;
-
-    fn index(self, slice: &T) -> (out: &Self::Output)
-        requires
-            valid_slice::<T>(slice),
-            in_bounds(self.spec_start(), self.spec_end(), slice)
-        ensures
-            index_result(self.spec_start(), self.spec_end(), slice, out)
-        ;
-
-    #[verifier::ignore_outside_new_mut_ref_experiment]
-    fn index_mut(self, slice: &mut T) -> (out: &mut Self::Output)
-        requires
-            valid_slice::<T>(old(slice)),
-            in_bounds(self.spec_start(), self.spec_end(), old(slice))
-        ensures
-            slice_mut_unchanged(old(slice), final(slice)),
-            index_result(self.spec_start(), self.spec_end(), final(slice), out)
-        ;
-}
-
-impl<T> SliceIndexSpecImpl<[T]> for usize {
-    open spec fn spec_start(&self) -> int {
-        self as int
-    }
-    open spec fn spec_end(&self) -> int {
-        self as int
-    }
-}
-impl<T> SliceIndexSpecImpl<[T]> for std::ops::Range<usize> {
-    open spec fn spec_start(&self) -> int {
-        self.start as int
-    }
-
-    open spec fn spec_end(&self) -> int {
-        self.end as int
-    }
-}
-
-impl SliceIndexSpecImpl<str> for usize {
-    open spec fn spec_start(&self) -> int {
-        self as int
-    }
-    open spec fn spec_end(&self) -> int {
-        self as int
-    }
-}
-impl SliceIndexSpecImpl<str> for std::ops::Range<usize> {
-    open spec fn spec_start(&self) -> int {
-        self.start as int
-    }
-
-    open spec fn spec_end(&self) -> int {
-        self.end as int
-    }
-}
-
-/*
-#[cfg(not(verus_verify_core))]
-#[verifier::external_trait_specification]
-pub trait ExSliceIndex<T> where T: ?Sized {
-    type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
-
-    type Output: ?Sized;
-}*/
-
-//#[cfg(not(verus_verify_core))]
 pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Option<
     &<I as core::slice::SliceIndex<[T]>>::Output,
 >) where I: core::slice::SliceIndex<[T]>
@@ -262,13 +121,11 @@ pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Opti
         spec_slice_get(slice, i),
 ;
 
-//#[cfg(not(verus_verify_core))]
 pub uninterp spec fn spec_slice_get<T: ?Sized, I: core::slice::SliceIndex<T>>(
     val: &T,
     idx: I,
 ) -> Option<&<I as core::slice::SliceIndex<T>>::Output>;
 
-//#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn axiom_slice_get_usize<T>(v: &[T], i: usize)
     ensures
         i < v.len() ==> #[trigger] spec_slice_get(v, i) === Some(&v[i as int]),

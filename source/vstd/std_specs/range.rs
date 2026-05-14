@@ -1,13 +1,20 @@
 use super::super::prelude::*;
 use super::super::view::View;
 use super::cmp::{PartialOrdIs, PartialOrdSpec};
-use core::ops::{Range, RangeInclusive};
+use core::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
 
 verus! {
 
 #[verifier::external_type_specification]
 #[verifier::reject_recursive_types_in_ground_variants(Idx)]
 pub struct ExRange<Idx>(Range<Idx>);
+
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types_in_ground_variants(Idx)]
+pub struct ExRangeFrom<Idx>(RangeFrom<Idx>);
+
+#[verifier::external_type_specification]
+pub struct ExRangeFull(RangeFull);
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -19,6 +26,20 @@ pub struct RangeInclusiveView<Idx> {
     pub end: Idx,
     pub exhausted: bool,
 }
+
+impl<Idx> View for RangeInclusive<Idx> {
+    type V = RangeInclusiveView<Idx>;
+
+    uninterp spec fn view(&self) -> Self::V;
+}
+
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types_in_ground_variants(Idx)]
+pub struct ExRangeTo<Idx>(RangeTo<Idx>);
+
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types_in_ground_variants(Idx)]
+pub struct ExRangeToInclusive<Idx>(RangeToInclusive<Idx>);
 
 pub trait ContainsSpec<Idx, U> where Idx: PartialOrd<U>, U: ?Sized + PartialOrd<Idx> {
     spec fn obeys_contains() -> bool;
@@ -54,12 +75,6 @@ impl<Idx, U> ContainsSpec<Idx, U> for Range<Idx> where
     open spec fn contains_spec(&self, i: &U) -> bool {
         self.start.is_le(&i) && i.is_lt(&self.end)
     }
-}
-
-impl<Idx> View for RangeInclusive<Idx> {
-    type V = RangeInclusiveView<Idx>;
-
-    uninterp spec fn view(&self) -> Self::V;
 }
 
 pub trait StepSpec where Self: Sized {
