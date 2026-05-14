@@ -435,6 +435,8 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             // set operations may be invoked for checking invariant masks,
             // either when opening an invariant or invoking another function.
             let reach_set_ops = |state: &mut State| {
+                let t = ReachedType::Datatype(Dt::Path(crate::def::set_finite_type_path()));
+                reach_type(ctxt, state, &t);
                 reach_function(ctxt, state, &fn_set_contains_name());
                 reach_function(ctxt, state, &fn_set_empty_name());
                 reach_function(ctxt, state, &fn_set_full_name());
