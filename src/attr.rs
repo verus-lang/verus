@@ -10,11 +10,15 @@ use crate::meta::{self, ParseNestedMeta};
 use crate::parse::{Parse, ParseStream, Parser};
 use crate::path::Path;
 use crate::token;
+#[cfg(feature = "parsing")]
+use alloc::format;
+#[cfg(feature = "parsing")]
+use alloc::vec::Vec;
+#[cfg(feature = "printing")]
+use core::iter;
+#[cfg(feature = "printing")]
+use core::slice;
 use proc_macro2::TokenStream;
-#[cfg(feature = "printing")]
-use std::iter;
-#[cfg(feature = "printing")]
-use std::slice;
 
 ast_struct! {
     /// An attribute, like `#[repr(transparent)]`.
@@ -653,8 +657,9 @@ pub(crate) mod parsing {
     use crate::parse::{Parse, ParseStream};
     use crate::path::Path;
     use crate::{mac, token};
+    use alloc::vec::Vec;
+    use core::fmt::{self, Display};
     use proc_macro2::Ident;
-    use std::fmt::{self, Display};
 
     pub(crate) fn parse_inner(input: ParseStream, attrs: &mut Vec<Attribute>) -> Result<()> {
         while input.peek(Token![#]) && input.peek2(Token![!]) {
@@ -721,7 +726,7 @@ pub(crate) mod parsing {
     pub(crate) fn parse_meta_after_path(path: Path, input: ParseStream) -> Result<Meta> {
         if input.peek(token::Paren) || input.peek(token::Bracket) || input.peek(token::Brace) {
             parse_meta_list_after_path(path, input).map(Meta::List)
-        } else if input.peek(Token![=]) {
+        } else if input.peek(Token![=]) && !input.peek(Token![==]) && !input.peek(Token![=>]) {
             parse_meta_name_value_after_path(path, input).map(Meta::NameValue)
         } else {
             Ok(Meta::Path(path))
