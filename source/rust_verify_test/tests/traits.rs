@@ -4683,3 +4683,29 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
 }
+
+test_verify_one_file_with_options! {
+    #[test] const_trait ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(const_trait_impl))]
+
+        use vstd::prelude::*;
+
+        verus! {
+        const trait T {
+            fn f() -> u8;
+        }
+        impl const T for bool {
+            fn f() -> (r: u8) ensures r == 3 { 3 }
+        }
+        const impl T for () {
+            fn f() -> (r: u8) ensures r == 4 { 4 }
+        }
+        fn test() {
+            let c1 = <bool as T>::f();
+            let c2 = <() as T>::f();
+            assert(c1 == 3);
+            assert(c2 == 4);
+        }
+        }
+    } => Ok(())
+}
