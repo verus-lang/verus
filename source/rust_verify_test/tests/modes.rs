@@ -1714,3 +1714,18 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] mode_checking_in_return_stmt_with_unit_return verus_code! {
+        struct X { }
+        proof fn takes_tracked(tracked x: X) { }
+        spec fn make_ghost_x() -> X { X { } }
+
+        proof fn foo() {
+            let x = X { };
+            return ({
+                takes_tracked(make_ghost_x());
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}

@@ -99,6 +99,7 @@ enum NoProphReason {
     TrackedWrap,
     LetElse,
     OpenInvariantArg,
+    ShrRefStructWrap,
 }
 
 #[derive(Clone, Copy)]
@@ -114,6 +115,7 @@ enum OuterProphReason {
     OpenInvariant,
     NonSpecClosure,
     LetElse,
+    ShrRefStructWrap,
 }
 
 impl Proph {
@@ -157,7 +159,8 @@ impl Proph {
             NoProphReason::AssignToNonProphPlace => {
                 ("assignment to non-prophetic location", "this expression")
             } //NoProphReason::AssignToNonProphSpecPlace => "assignment to ghost location that is not marked prophetic",
-              //NoProphReason::AssignToNonSpecPlace => "assignment to non-ghost location",
+            //NoProphReason::AssignToNonSpecPlace => "assignment to non-ghost location",
+            NoProphReason::ShrRefStructWrap => ("`shr_ref_struct_wrap`", "this operand"),
         };
         let mut err = error(span, format!("prophetic value not allowed for {:}", reason_str));
         err = proph_reason.annotate_err(err);
@@ -195,6 +198,7 @@ impl Proph {
             OuterProphReason::OpenInvariant => "opening an invariant",
             OuterProphReason::NonSpecClosure => "closure",
             OuterProphReason::LetElse => "let-else statement",
+            OuterProphReason::ShrRefStructWrap => "`shr_ref_struct_wrap` operator",
         };
         let mut err = error_with_label(
             span,
@@ -282,6 +286,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
         ExprX::Return(..) => Some(OuterProphReason::Return),
         ExprX::BreakOrContinue { is_break: true, .. } => Some(OuterProphReason::Break),
         ExprX::BreakOrContinue { is_break: false, .. } => Some(OuterProphReason::Continue),
+        ExprX::ShrRefStructWrap ( .. ) => Some(OuterProphReason::ShrRefStructWrap),
     }
 }
 
@@ -1696,7 +1701,11 @@ fn check_expr(
         }
         ExprX::ConstVar(x, _)
         | ExprX::StaticVar(x)
-        | ExprX::Call(CallTarget::Fun(_, x, _, _, _, true), _, _) => {
+        | ExprX::Call(
+            CallTarget::Fun(_, x, _, _, crate::ast::CallTargetAttrs { const_var: true, .. }),
+            _,
+            _,
+        ) => {
             let function = match ctxt.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
@@ -1732,7 +1741,7 @@ fn check_expr(
             Ok((mode, Proph::No))
         }
         ExprX::Call(
-            CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _, _),
+            CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),
             es,
             None,
         ) => {
@@ -1780,9 +1789,9 @@ fn check_expr(
 
             Ok((*ret_mode, Proph::No))
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage, const_var), es, None) => {
-            assert!(*autospec_usage == AutospecUsage::Final);
-            assert!(!const_var); // const_var is handled in ConstVar/StaticVar case
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), es, None) => {
+            assert!(attrs.autospec == AutospecUsage::Final);
+            assert!(!attrs.const_var); // const_var is handled in ConstVar/StaticVar case
 
             let function = match ctxt.funs.get(x) {
                 None => {
@@ -1919,6 +1928,23 @@ fn check_expr(
             }
             Ok((Mode::Spec, proph))
         }
+        ExprX::Call(CallTarget::AssumeExternal, es, None) => {
+            if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
+                return Err(error(&expr.span, "cannot call external function from non-exec mode"));
+            }
+            for arg in es.iter() {
+                check_expr_has_mode(
+                    ctxt,
+                    record,
+                    typing,
+                    Mode::Exec,
+                    arg,
+                    Mode::Exec,
+                    outer_proph,
+                )?;
+            }
+            Ok((Mode::Exec, Proph::No))
+        }
         ExprX::Call(_, _, Some(_)) => {
             return Err(error(&expr.span, "ExprX::Call should not have post_args at this point"));
         }
@@ -2039,14 +2065,17 @@ fn check_expr(
                 if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
                     return Err(error(
                         &expr.span,
-                        format!("cannot perform operation with mode {}", op_mode),
+                        format!(
+                            "cannot perform operation with mode {}, {:?},\n{:?}",
+                            op_mode, &expr.x, &e1
+                        ),
                     ));
                 }
             }
             if !mode_le(outer_mode, *op_mode) {
                 return Err(error(
                     &expr.span,
-                    format!("cannot perform operation with mode {}", op_mode),
+                    format!("cannot perform operation with mode {}, {:?}", op_mode, &expr.x),
                 ));
             }
             let param_mode = mode_join(outer_mode, *from_mode);
@@ -2166,7 +2195,9 @@ fn check_expr(
                 check_expr(ctxt, record, typing, joined_mode, Expect(*min_mode), e1, outer_proph)?;
             Ok((mode_join(*min_mode, mode), proph))
         }
-        ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1) => {
+        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1)
+        | ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1)
+        | ExprX::UnaryOpr(UnaryOpr::AutoDecreases | UnaryOpr::AutoLoopEnsures, e1) => {
             let proph =
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
             Ok((Mode::Spec, proph))
@@ -2834,22 +2865,28 @@ fn check_expr(
             if typing.in_pure {
                 return Err(error(&expr.span, "return is not allowed in pure context"));
             }
-            match (e1, typing.ret_mode) {
-                (None, _) => {}
-                (Some(v), None) if is_unit(&v.typ) => {}
-                (_, None) => return Err(internal_error(&expr.span, "missing return type")),
-                (Some(e1), Some(ret_mode)) => {
-                    let proph = check_expr_has_mode(
-                        ctxt,
-                        record,
-                        typing,
-                        outer_mode,
-                        e1,
-                        ret_mode,
-                        outer_proph,
-                    )?;
-                    proph.check(&expr.span, NoProphReason::Return)?;
+            if let Some(e1) = e1 {
+                let expect = match typing.ret_mode {
+                    Some(mode) => Expect(mode),
+                    None => Expect::none(),
+                };
+                let (mode, proph) =
+                    check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
+                if is_unit(&e1.typ) {
+                    return Ok((Mode::Exec, Proph::No));
                 }
+                match typing.ret_mode {
+                    None => return Err(internal_error(&expr.span, "missing return type")),
+                    Some(ret_mode) => {
+                        if !mode_le(mode, ret_mode) {
+                            return Err(error(
+                                &expr.span,
+                                format!("expression has mode {}, expected mode {}", mode, ret_mode),
+                            ));
+                        }
+                    }
+                }
+                proph.check(&expr.span, NoProphReason::Return)?;
             }
             Ok((Mode::Exec, Proph::No))
         }
@@ -3220,6 +3257,49 @@ fn check_expr(
             }
             let mut typing = typing.push_var_multi_scope();
             Ok(check_expr(ctxt, record, &mut typing, outer_mode, expect, e, outer_proph)?)
+        }
+        ExprX::ShrRefStructWrap(e1, e2, ..) => {
+            if matches!(typing.block_ghostness, Ghost::Exec) {
+                return Err(error(
+                    &expr.span,
+                    format!("cannot use `shr_ref_struct_wrap` in executable context"),
+                ));
+            }
+            if outer_mode == Mode::Spec {
+                return Err(error(
+                    &expr.span,
+                    "cannot use `shr_ref_struct_wrap` which has mode proof here",
+                ));
+            }
+            if typing.in_forall_stmt {
+                return Err(error(
+                    &expr.span,
+                    "`shr_ref_struct_wrap` is not allowed in 'assert ... by' statement",
+                ));
+            }
+            if typing.in_proof_in_spec {
+                return Err(error(&expr.span, "`shr_ref_struct_wrap` is not allowed inside spec"));
+            }
+            if typing.in_pure {
+                return Err(error(
+                    &expr.span,
+                    "`str_ref_struct_wrap` is not allowed inside pure context",
+                ));
+            }
+            let proph1 = check_expr_has_mode(
+                ctxt,
+                record,
+                typing,
+                outer_mode,
+                e1,
+                Mode::Proof,
+                outer_proph,
+            )?;
+            proph1.check(&expr.span, NoProphReason::ShrRefStructWrap)?;
+            let proph2 =
+                check_expr_has_mode(ctxt, record, typing, outer_mode, e2, Mode::Spec, outer_proph)?;
+            proph2.check(&expr.span, NoProphReason::ShrRefStructWrap)?;
+            Ok((Mode::Proof, Proph::No))
         }
     }
 }

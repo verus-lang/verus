@@ -31,7 +31,8 @@ With these restrictions, the expression in the `decreases` clause serves as an u
 depth of calls that `triangle` can make to itself, ensuring termination.
 
 While Verus can often complete these proofs of termination automatically,
-it sometimes needs [additional help with the proof](reference-decreases).
+it sometimes needs additional help with the proof.
+Such a proof can be supplied in a number of sees; see [this page](./reference-decreases.md#helping-verus-prove-termination).
 
 # Fuel and reasoning about recursive functions
 

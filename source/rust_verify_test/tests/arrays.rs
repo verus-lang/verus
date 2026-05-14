@@ -485,3 +485,24 @@ test_verify_one_file! {
 
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_array_for_loop verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let ar: [u32; 3] = [0u32, 2u32, 4u32];
+
+            let mut i: usize = 0;
+            for x in it: ar.iter()
+                invariant
+                    i == it.index(),
+                    it.seq().unref() == seq![0u32, 2u32, 4u32],
+            {
+                assert(x < 5);
+                assert(x % 2 == 0);
+                i = i + 1;
+            }
+        }
+    } => Ok(())
+}

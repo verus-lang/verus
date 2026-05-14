@@ -50,6 +50,11 @@ impl<A> Seq<A> {
         self.map_values(f).flatten()
     }
 
+    /// Add a reference (&) to each element of the sequence
+    pub open spec fn as_ref(&self) -> Seq<&A> {
+        Seq::new(self.len(), |i: int| &self[i])
+    }
+
     /// Is true if the calling sequence is a prefix of the given sequence 'other'.
     ///
     /// ## Example
@@ -2274,6 +2279,20 @@ impl<A> Seq<A> {
         Seq::<_>::lemma_prefix_chain_contains,
         Seq::<_>::lemma_prefix_append_unique,
         Seq::<_>::lemma_all_push,
+    }
+}
+
+impl<A> Seq<&A> {
+    /// Dereference each element of the sequence
+    pub open spec fn unref(self) -> Seq<A> {
+        Seq::new(self.len(), |i: int| *self[i])
+    }
+}
+
+impl<A, B> Seq<(&A, &B)> {
+    /// Dereference each element of each tuple in the sequence
+    pub open spec fn unref(self) -> Seq<(A, B)> {
+        Seq::new(self.len(), |i: int| (*self[i].0, *self[i].1))
     }
 }
 

@@ -55,6 +55,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Call(CallTarget::Fun(..), _, _)
             | ExprX::Call(CallTarget::FnSpec(..), _, _)
             | ExprX::Call(CallTarget::BuiltinSpecFun(..), _, _)
+            | ExprX::Call(CallTarget::AssumeExternal, _, _)
             | ExprX::ArrayLiteral(..)
             | ExprX::Ctor(..)
             | ExprX::NullaryOpr(..)
@@ -79,6 +80,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Old(..)
             | ExprX::Block(..)
             | ExprX::MatchGuardFreeze(..)
+            | ExprX::ShrRefStructWrap(..)
             | ExprX::Await(_) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)

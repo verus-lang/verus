@@ -1,7 +1,5 @@
 # Iterator Specifications for a Custom Type
 
-**These will be available starting May 8th**
-
 To reason about iteration over your own custom type,
 you need to:
 1. Define the iterator struct, similar to how various Rust types have a corresponding iterator
@@ -24,7 +22,7 @@ marking the current and end positions. The type invariant enforces that `i <= j 
 v.len()` at all times.
 
 ```rust
-{{#include iterators.rs:iter_def}}
+{{#include ../../../../examples/guide/iterators.rs:iter_def}}
 ```
 
 ### 2. The `next` method
@@ -33,7 +31,7 @@ This is an ordinary Rust `Iterator` implementation with no Verus-specific annota
 It uses the type invariant to prove that it meets the Verus specification for `next()`.
 
 ```rust
-{{#include iterators.rs:normal_iter}}
+{{#include ../../../../examples/guide/iterators.rs:normal_iter}}
 ```
 
 ### 3. The spec implementation
@@ -67,7 +65,7 @@ on how we define them for our custom iterator.
 
 
 ```rust
-{{#include iterators.rs:iter_spec}}
+{{#include ../../../../examples/guide/iterators.rs:iter_spec}}
 ```
 
 ### 4. The constructor
@@ -89,7 +87,7 @@ and the third connects the value used to construct the iterator
 to its prophecied sequence of yielded values.
 
 ```rust
-{{#include iterators.rs:iter_creation}}
+{{#include ../../../../examples/guide/iterators.rs:iter_creation}}
 ```
 
 ### 5. Implementing `DoubleEndedIterator`
@@ -98,7 +96,7 @@ If your iterator supports backward traversal, implement the standard Rust
 `DoubleEndedIterator` trait, which adds a `next_back` method:
 
 ```rust
-{{#include iterators.rs:double_iter_next_back}}
+{{#include ../../../../examples/guide/iterators.rs:double_iter_next_back}}
 ```
 
 To allow reasoning about `.rev()`, you also need to implement `DoubleEndedIteratorSpecImpl`
@@ -107,5 +105,5 @@ at a given index from the back. Without it, Verus will not know what elements th
 iterator will produce.
 
 ```rust
-{{#include iterators.rs:double_iter_spec}}
+{{#include ../../../../examples/guide/iterators.rs:double_iter_spec}}
 ```

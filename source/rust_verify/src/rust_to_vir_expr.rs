@@ -1244,6 +1244,10 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             // and deref_mut has signature (&mut self) -> &mut Self::Target
             // The adjustment, though, goes from self -> Self::Target
             // without the refs.
+            // We thus produce 3 operations in total:
+            //  - Initial borrow (T -> &T) or (T -> &mut T)
+            //  - Call to deref or deref_mut (gives us &Self::Target or &mut Self::Target)
+            //  - A final dereference (giving us Self::Target)
             let inner = expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?;
             let mutbl = matches!(deref.mutbl, Mutability::Mut);
 
@@ -1458,13 +1462,17 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             if let Some((fun, typ_args)) = f {
                 let autospec_usage =
                     if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                let call_target_attrs = vir::ast::CallTargetAttrs {
+                    autospec: autospec_usage,
+                    const_var: false,
+                    assume_external_allowed: false,
+                };
                 let call_target = CallTarget::Fun(
                     vir::ast::CallTargetKind::Static,
                     fun,
                     typ_args,
                     Arc::new(vec![]),
-                    autospec_usage,
-                    false,
+                    call_target_attrs,
                 );
                 let arg = arg.consume(bctx, get_inner_ty());
                 let args = Arc::new(vec![arg.clone()]);
@@ -2067,14 +2075,18 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         )?;
 
                         let typ_args = Arc::new(vec![tup_typ, ret_typ, fun_typ]);
+                        let call_target_attrs = vir::ast::CallTargetAttrs {
+                            autospec: AutospecUsage::Final,
+                            const_var: false,
+                            assume_external_allowed: false,
+                        };
                         (
                             CallTarget::Fun(
                                 kind,
                                 helper_fun,
                                 typ_args,
                                 impl_paths,
-                                AutospecUsage::Final,
-                                false,
+                                call_target_attrs,
                             ),
                             vec![vir_fun, tup],
                             rcall,
@@ -2130,13 +2142,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 };
                 let autospec_usage =
                     if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                let call_target_attrs = vir::ast::CallTargetAttrs {
+                    autospec: autospec_usage,
+                    const_var: false,
+                    assume_external_allowed: false,
+                };
                 let call_target = CallTarget::Fun(
                     vir::ast::CallTargetKind::Static,
                     fun,
                     typ_args,
                     Arc::new(vec![]),
-                    autospec_usage,
-                    false,
+                    call_target_attrs,
                 );
                 let args = Arc::new(vec![arg_vir.clone()]);
                 mk_expr(ExprX::Call(call_target, args, None))
@@ -2227,13 +2243,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let typ_args = Arc::new(vec![from_typ, to_typ]);
                     let autospec_usage =
                         if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                    let call_target_attrs = vir::ast::CallTargetAttrs {
+                        autospec: autospec_usage,
+                        const_var: false,
+                        assume_external_allowed: false,
+                    };
                     let call_target = CallTarget::Fun(
                         vir::ast::CallTargetKind::Static,
                         fun,
                         typ_args,
                         Arc::new(vec![]),
-                        autospec_usage,
-                        false,
+                        call_target_attrs,
                     );
                     let args = Arc::new(vec![source_vir_expr.clone()]);
                     mk_expr(ExprX::Call(call_target, args, None))
@@ -2722,7 +2742,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
             let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ)?;
-            let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
+            let mut header =
+                vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
             let label = label.map(|l| l.ident.to_string());
             use crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents;
             let allow_no_decreases =
@@ -2735,6 +2756,18 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             } else {
                 header.decrease.clone()
             };
+            if expr_vattrs.auto_decreases && allow_no_decreases {
+                // Filter out auto_decreases invariants if we're not checking for termination
+                // (at present, we only add them to invariant_except_break)
+                Arc::make_mut(&mut header.invariant_except_break).retain(|e| {
+                    if matches!(&e.x, ExprX::UnaryOpr(UnaryOpr::AutoDecreases, _)) {
+                        crate::erase::mark_tree_for_erasure(&bctx.ctxt, e);
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
                 *header_span,
                 &expr_typ()?,
@@ -2746,6 +2779,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     cond: None,
                     body,
                     invs: header.loop_invariants(),
+                    //invs,
                     decrease,
                 },
             )))
@@ -2974,6 +3008,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     None
                 };
 
+                let call_target_attrs = vir::ast::CallTargetAttrs {
+                    autospec: AutospecUsage::Final,
+                    const_var: false,
+                    assume_external_allowed: false,
+                };
                 let call_target = if let Some((fun, typ_args)) = fun_typ_args {
                     // special fast path
                     CallTarget::Fun(
@@ -2983,8 +3022,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // arbitrary impl_path
                         // REVIEW: why is this needed?
                         Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_spec_fn_type(0))]),
-                        AutospecUsage::Final,
-                        false,
+                        call_target_attrs,
                     )
                 } else {
                     // general Index trait case
@@ -2993,14 +3031,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let typ_args =
                         Arc::new(vec![undecorate_typ(&tgt_vir.typ), idx_vir.typ.clone()]);
                     let fun = vir::fun!(CrateId::Core => "ops", "index", "Index", "index");
-                    CallTarget::Fun(
-                        target_kind,
-                        fun,
-                        typ_args,
-                        impl_paths,
-                        AutospecUsage::Final,
-                        false,
-                    )
+                    CallTarget::Fun(target_kind, fun, typ_args, impl_paths, call_target_attrs)
                 };
 
                 // tgt[idx] is equivalent to either *index(tgt, idx) or *index_mut(tgt, idx)
@@ -3824,13 +3855,17 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
         Some(PtrCastKind::Complex(fun, typ_args, clip)) => {
             let autospec_usage =
                 if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+            let call_target_attrs = vir::ast::CallTargetAttrs {
+                autospec: autospec_usage,
+                const_var: false,
+                assume_external_allowed: false,
+            };
             let call_target = CallTarget::Fun(
                 vir::ast::CallTargetKind::Static,
                 fun,
                 typ_args,
                 Arc::new(vec![]),
-                autospec_usage,
-                false,
+                call_target_attrs,
             );
             let args = Arc::new(vec![src_vir.clone()]);
             let x = ExprX::Call(call_target, args, None);
@@ -3961,9 +3996,30 @@ pub(crate) fn deref_overloaded<'tcx>(
             // Immutable dereference is implicit
             Ok(temp_place)
         }
-        TyKind::Ref(_, inner_ty, rustc_ast::Mutability::Mut) => {
-            // deref_mut
-            unsupported_err!(span, format!("deref_mut for {inner_ty:?} not yet supported"))
+        TyKind::Ref(_, _inner_ty, rustc_ast::Mutability::Mut) => {
+            let ref_of_target_ty = bctx.ctxt.tcx.mk_ty_from_kind(TyKind::Ref(
+                bctx.ctxt.tcx.lifetimes.re_erased,
+                target_ty,
+                Mutability::Mut,
+            ));
+            let ref_of_target_typ = bctx.mid_ty_to_vir(span, &ref_of_target_ty)?;
+
+            let call_expr = crate::fn_call_to_vir::deref_to_vir(
+                bctx,
+                fn_def_id,
+                expr.clone(),
+                ref_of_target_typ.clone(),
+                ty,
+                span,
+            )?;
+
+            let temp_place = bctx.spanned_typed_new(
+                span,
+                &ref_of_target_typ,
+                PlaceX::Temporary(call_expr.clone()),
+            );
+
+            deref_mut(bctx, span, &temp_place)
         }
         _ => {
             crate::internal_err!(span, format!("overloaded deref expected ref or mut ref"))

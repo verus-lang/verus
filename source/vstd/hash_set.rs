@@ -73,7 +73,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     #[verifier::external_body]
     pub fn reserve(&mut self, additional: usize)
         ensures
-            self@ == old(self)@,
+            final(self)@ == old(self)@,
     {
         self.m.reserve(additional);
     }
@@ -106,7 +106,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     #[verifier::external_body]
     pub fn insert(&mut self, k: Key) -> (result: bool)
         ensures
-            self@ == old(self)@.insert(k@) && result == !old(self)@.contains(k@),
+            final(self)@ == old(self)@.insert(k@) && result == !old(self)@.contains(k@),
     {
         self.m.insert(k)
     }
@@ -117,7 +117,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     #[verifier::external_body]
     pub fn remove(&mut self, k: &Key) -> (result: bool)
         ensures
-            self@ == old(self)@.remove(k@) && result == old(self)@.contains(k@),
+            final(self)@ == old(self)@.remove(k@) && result == old(self)@.contains(k@),
     {
         self.m.remove(k)
     }
@@ -153,7 +153,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     #[verifier::external_body]
     pub fn clear(&mut self)
         ensures
-            self@ == Set::<<Key as View>::V>::empty(),
+            final(self)@ == Set::<<Key as View>::V>::empty(),
     {
         self.m.clear()
     }
@@ -216,7 +216,7 @@ impl StringHashSet {
     #[verifier::external_body]
     pub fn reserve(&mut self, additional: usize)
         ensures
-            self@ == old(self)@,
+            final(self)@ == old(self)@,
     {
         self.m.reserve(additional);
     }
@@ -249,7 +249,7 @@ impl StringHashSet {
     #[verifier::external_body]
     pub fn insert(&mut self, k: String) -> (result: bool)
         ensures
-            self@ == old(self)@.insert(k@) && result == !old(self)@.contains(k@),
+            final(self)@ == old(self)@.insert(k@) && result == !old(self)@.contains(k@),
     {
         self.m.insert(k)
     }
@@ -260,7 +260,7 @@ impl StringHashSet {
     #[verifier::external_body]
     pub fn remove(&mut self, k: &str) -> (result: bool)
         ensures
-            self@ == old(self)@.remove(k@) && result == old(self)@.contains(k@),
+            final(self)@ == old(self)@.remove(k@) && result == old(self)@.contains(k@),
     {
         self.m.remove(k)
     }
@@ -296,7 +296,7 @@ impl StringHashSet {
     #[verifier::external_body]
     pub fn clear(&mut self)
         ensures
-            self@ == Set::<Seq<char>>::empty(),
+            final(self)@ == Set::<Seq<char>>::empty(),
     {
         self.m.clear()
     }

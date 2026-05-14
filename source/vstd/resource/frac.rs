@@ -186,7 +186,7 @@ impl<T> FracGhost<T> {
     {
         use_type_invariant(self);
         use_type_invariant(other);
-        let tracked joined = self.r.as_ref().join_shared(&other.r.as_ref());
+        let tracked joined = self.r.join_shared(&other.r);
         joined.validate()
     }
 
@@ -207,11 +207,11 @@ impl<T> FracGhost<T> {
         requires
             (0 as real) < result_frac < old(self).frac(),
         ensures
-            self.id() == old(self).id(),
-            result.id() == self.id(),
-            self@ == old(self)@,
+            final(self).id() == old(self).id(),
+            result.id() == final(self).id(),
+            final(self)@ == old(self)@,
             result@ == old(self)@,
-            self.frac() == old(self).frac() - result_frac,
+            final(self).frac() == old(self).frac() - result_frac,
             result.frac() == result_frac,
     {
         self.bounded();
@@ -237,11 +237,11 @@ impl<T> FracGhost<T> {
     /// fraction.
     pub proof fn split(tracked &mut self) -> (tracked result: Self)
         ensures
-            self.id() == old(self).id(),
-            result.id() == self.id(),
-            self@ == old(self)@,
+            final(self).id() == old(self).id(),
+            result.id() == final(self).id(),
+            final(self)@ == old(self)@,
             result@ == old(self)@,
-            self.frac() == old(self).frac() / 2 as real,
+            final(self).frac() == old(self).frac() / 2 as real,
             result.frac() == old(self).frac() / 2 as real,
     {
         self.bounded();
@@ -253,10 +253,10 @@ impl<T> FracGhost<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
-            self@ == other@,
-            self.frac() == old(self).frac() + other.frac(),
+            final(self).id() == old(self).id(),
+            final(self)@ == old(self)@,
+            final(self)@ == other@,
+            final(self).frac() == old(self).frac() + other.frac(),
     {
         self.bounded();
         let tracked mut mself = Self::dummy();
@@ -264,7 +264,7 @@ impl<T> FracGhost<T> {
         use_type_invariant(&mself);
         use_type_invariant(&other);
         let tracked mut r = mself.r;
-        r.validate_2(&other.r.as_ref());
+        r.validate_2(&other.r);
         *self = Self { r: r.join(other.r) };
     }
 
@@ -273,9 +273,9 @@ impl<T> FracGhost<T> {
         requires
             old(self).frac() == (1 as real),
         ensures
-            self.id() == old(self).id(),
-            self@ == v,
-            self.frac() == old(self).frac(),
+            final(self).id() == old(self).id(),
+            final(self)@ == v,
+            final(self).frac() == old(self).frac(),
     {
         self.bounded();
         let tracked mut mself = Self::dummy();
@@ -297,13 +297,13 @@ impl<T> FracGhost<T> {
             old(self).id() == old(other).id(),
             old(self).frac() + old(other).frac() == 1 as real,
         ensures
-            self.id() == old(self).id(),
-            other.id() == old(other).id(),
-            self.frac() == old(self).frac(),
-            other.frac() == old(other).frac(),
+            final(self).id() == old(self).id(),
+            final(other).id() == old(other).id(),
+            final(self).frac() == old(self).frac(),
+            final(other).frac() == old(other).frac(),
             old(self)@ == old(other)@,
-            self@ == v,
-            other@ == v,
+            final(self)@ == v,
+            final(other)@ == v,
     {
         let ghost other_frac = other.frac();
         other.bounded();

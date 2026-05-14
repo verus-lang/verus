@@ -17,7 +17,6 @@
 #![cfg_attr(verus_keep_ghost, feature(derive_clone_copy_internals))]
 #![cfg_attr(verus_keep_ghost, feature(derive_eq_internals))]
 #![cfg_attr(verus_keep_ghost, feature(slice_index_methods))]
-#![cfg_attr(verus_keep_ghost, verifier::deprecated_postcondition_mut_ref_style(true))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 #![cfg_attr(verus_keep_ghost, feature(new_range_api))]
 
@@ -123,6 +122,7 @@ pub broadcast group group_vstd_default {
     std_specs::control_flow::group_control_flow_axioms,
     std_specs::slice::group_slice_axioms,
     std_specs::manually_drop::group_manually_drop_axioms,
+    std_specs::iter::group_iter_axioms,
     //
     // std_specs for alloc (with or without std)
     //

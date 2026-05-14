@@ -37,6 +37,13 @@ pub trait ExDeref: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
+pub trait ExDerefMut: core::ops::Deref + PointeeSized {
+    type ExternalTraitSpecificationFor: core::ops::DerefMut;
+
+    fn deref_mut(&mut self) -> &mut Self::Target;
+}
+
+#[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IndexSpec via IndexSpecImpl)]
 pub trait ExIndex<Idx> where Idx: ?Sized {
     type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
@@ -100,25 +107,6 @@ pub trait ExPtrPointee: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
-pub trait ExIterator {
-    type ExternalTraitSpecificationFor: core::iter::Iterator;
-
-    type Item;
-
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExIntoIterator {
-    type ExternalTraitSpecificationFor: core::iter::IntoIterator;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExIterStep: Clone + PartialOrd + Sized {
-    type ExternalTraitSpecificationFor: core::iter::Step;
-}
-
-#[verifier::external_trait_specification]
 pub trait ExBorrow<Borrowed> where Borrowed: ?Sized {
     type ExternalTraitSpecificationFor: core::borrow::Borrow<Borrowed>;
 }
@@ -143,8 +131,8 @@ pub trait ExMetaSized {
 
 pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
     ensures
-        *a == *old(b),
-        *b == *old(a),
+        *final(a) == *old(b),
+        *final(b) == *old(a),
     opens_invariants none
     no_unwind
 ;
@@ -232,7 +220,7 @@ pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
     requires
         old(container).spec_index_set_requires(index),
     ensures
-        old(container).spec_index_set_ensures(container, index, val),
+        old(container).spec_index_set_ensures(final(container), index, val),
     no_unwind
 {
     container[index] = val;

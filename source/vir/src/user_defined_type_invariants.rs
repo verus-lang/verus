@@ -27,6 +27,17 @@ pub(crate) fn annotate_one(
                 Ok(expr.clone())
             }
         }
+        ExprX::ShrRefStructWrap(..) => {
+            if typ_has_user_defined_type_invariant(datatypes, &expr.typ) {
+                let fun = typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
+                let Some(function) = functions.get(&fun) else {
+                    return Err(internal_error(&expr.span, "missing type invariant function"));
+                };
+                Ok(assert_and_return(&expr, function, module)?)
+            } else {
+                Ok(expr.clone())
+            }
+        }
         ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: true, expr, fun: _ } => {
             // Check that this is fine, and fill in the correct 'fun'
 

@@ -4,8 +4,8 @@
 #![allow(repr_transparent_non_zst_fields)]
 #![allow(clippy::match_wildcard_for_single_variants)]
 use super::{Lite, Present};
+use core::fmt::{self, Debug, Display};
 use ref_cast::RefCast;
-use std::fmt::{self, Debug, Display};
 impl Debug for Lite<syn::Abi> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Abi");
@@ -1112,6 +1112,20 @@ impl Debug for Lite<syn::Expr> {
                     formatter.field("expr_name", Print::ref_cast(val));
                 }
                 formatter.field("expr", Lite(&_val.expr));
+                if let Some(val) = &_val.invariant_except_break {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::InvariantExceptBreak);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some(")?;
+                            Debug::fmt(Lite(&self.0), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("invariant_except_break", Print::ref_cast(val));
+                }
                 if let Some(val) = &_val.invariant {
                     #[derive(RefCast)]
                     #[repr(transparent)]
@@ -1125,6 +1139,20 @@ impl Debug for Lite<syn::Expr> {
                         }
                     }
                     formatter.field("invariant", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.ensures {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::Ensures);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some(")?;
+                            Debug::fmt(Lite(&self.0), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("ensures", Print::ref_cast(val));
                 }
                 if let Some(val) = &_val.decreases {
                     #[derive(RefCast)]
@@ -2115,6 +2143,20 @@ impl Debug for Lite<syn::ExprForLoop> {
             formatter.field("expr_name", Print::ref_cast(val));
         }
         formatter.field("expr", Lite(&self.value.expr));
+        if let Some(val) = &self.value.invariant_except_break {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::InvariantExceptBreak);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("invariant_except_break", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.invariant {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -2128,6 +2170,20 @@ impl Debug for Lite<syn::ExprForLoop> {
                 }
             }
             formatter.field("invariant", Print::ref_cast(val));
+        }
+        if let Some(val) = &self.value.ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Ensures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("ensures", Print::ref_cast(val));
         }
         if let Some(val) = &self.value.decreases {
             #[derive(RefCast)]

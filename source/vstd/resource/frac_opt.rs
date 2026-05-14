@@ -134,13 +134,13 @@ impl<T> Frac<T> {
             (0 as real) < frac < old(r).value()->frac,
             old(r).value() matches FractionalCarrierOpt::Value { v: Some(_), .. },
         ensures
-            r.loc() == old(r).loc(),
+            final(r).loc() == old(r).loc(),
             result.id() == old(r).loc(),
-            r.value()->v.unwrap() == old(r).value()->v.unwrap(),
+            final(r).value()->v.unwrap() == old(r).value()->v.unwrap(),
             result.resource() == old(r).value()->v.unwrap(),
-            r.value()->frac + result.frac() == old(r).value()->frac,
+            final(r).value()->frac + result.frac() == old(r).value()->frac,
             result.frac() == frac,
-            r.value() matches FractionalCarrierOpt::Value { v: Some(_), .. },
+            final(r).value() matches FractionalCarrierOpt::Value { v: Some(_), .. },
     {
         r.validate();
         let tracked mut r1 = StorageResource::alloc(
@@ -163,11 +163,11 @@ impl<T> Frac<T> {
         requires
             (0 as real) < result_frac < old(self).frac(),
         ensures
-            self.id() == old(self).id(),
+            final(self).id() == old(self).id(),
             result.id() == old(self).id(),
-            self.resource() == old(self).resource(),
+            final(self).resource() == old(self).resource(),
             result.resource() == old(self).resource(),
-            self.frac() == old(self).frac() - result_frac,
+            final(self).frac() == old(self).frac() - result_frac,
             result.frac() == result_frac,
     {
         use_type_invariant(&*self);
@@ -179,11 +179,11 @@ impl<T> Frac<T> {
     /// quantity `old(self).frac() - n`.
     pub proof fn split(tracked &mut self) -> (tracked result: Self)
         ensures
-            self.id() == old(self).id(),
+            final(self).id() == old(self).id(),
             result.id() == old(self).id(),
-            self.resource() == old(self).resource(),
+            final(self).resource() == old(self).resource(),
             result.resource() == old(self).resource(),
-            self.frac() == old(self).frac() / 2 as real,
+            final(self).frac() == old(self).frac() / 2 as real,
             result.frac() == old(self).frac() / 2 as real,
     {
         use_type_invariant(&*self);
@@ -196,10 +196,10 @@ impl<T> Frac<T> {
         requires
             old(self).id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self.resource() == old(self).resource(),
-            self.resource() == other.resource(),
-            self.frac() == old(self).frac() + other.frac(),
+            final(self).id() == old(self).id(),
+            final(self).resource() == old(self).resource(),
+            final(self).resource() == other.resource(),
+            final(self).frac() == old(self).frac() + other.frac(),
     {
         use_type_invariant(&*self);
         Self::combine_helper(&mut self.r, other);
@@ -214,11 +214,11 @@ impl<T> Frac<T> {
             old(r).loc() == other.id(),
             old(r).value() matches FractionalCarrierOpt::Value { v: Some(_), .. },
         ensures
-            r.loc() == old(r).loc(),
-            r.value()->v.unwrap() == old(r).value()->v.unwrap(),
-            r.value()->v.unwrap() == other.resource(),
-            r.value()->frac == old(r).value()->frac + other.frac(),
-            r.value() matches FractionalCarrierOpt::Value { v: Some(_), .. },
+            final(r).loc() == old(r).loc(),
+            final(r).value()->v.unwrap() == old(r).value()->v.unwrap(),
+            final(r).value()->v.unwrap() == other.resource(),
+            final(r).value()->frac == old(r).value()->frac + other.frac(),
+            final(r).value() matches FractionalCarrierOpt::Value { v: Some(_), .. },
     {
         use_type_invariant(&other);
         r.validate();

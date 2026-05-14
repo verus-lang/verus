@@ -136,8 +136,12 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-            UnaryOpr::ProofNote(_) | UnaryOpr::ToDyn(_) => {
+            UnaryOpr::ProofNote(_) | UnaryOpr::CustomErr(_) | UnaryOpr::ToDyn(_) => {
                 // recurse inside coercions
+                check_trigger_expr_arg(state, arg)
+            }
+            UnaryOpr::AutoDecreases | UnaryOpr::AutoLoopEnsures => {
+                // recurse inside marker
                 check_trigger_expr_arg(state, arg)
             }
             UnaryOpr::IsVariant { .. }
@@ -201,6 +205,7 @@ fn check_trigger_expr(
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
         ExpX::Unary(UnaryOp::IeeeFloat(_), _) | ExpX::Binary(BinaryOp::IeeeFloat(_), _, _) => {}
         ExpX::UnaryOpr(UnaryOpr::HasResolved(_), _) => {}
+        ExpX::UnaryOpr(UnaryOpr::AutoDecreases | UnaryOpr::AutoLoopEnsures, _) => {}
         _ => {
             return Err(error(
                 &exp.span,
@@ -292,7 +297,11 @@ fn check_trigger_expr(
             },
             ExpX::UnaryOpr(op, arg) => match op {
                 UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-                UnaryOpr::ProofNote(_) | UnaryOpr::ToDyn(_) => Ok(()),
+                UnaryOpr::CustomErr(_)
+                | UnaryOpr::AutoDecreases
+                | UnaryOpr::AutoLoopEnsures
+                | UnaryOpr::ProofNote(_)
+                | UnaryOpr::ToDyn(_) => Ok(()),
                 UnaryOpr::IsVariant { .. } | UnaryOpr::Field { .. } => {
                     check_trigger_expr_arg(state, arg);
                     Ok(())

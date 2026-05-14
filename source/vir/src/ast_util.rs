@@ -743,7 +743,8 @@ impl FunctionX {
 pub(crate) fn call_no_unwind(call_target: &CallTarget, funs: &HashMap<Fun, Function>) -> bool {
     match call_target {
         CallTarget::FnSpec(_) | CallTarget::BuiltinSpecFun(..) => true,
-        CallTarget::Fun(kind, fun, _, _, _, _) => match kind {
+        CallTarget::AssumeExternal => true,
+        CallTarget::Fun(kind, fun, _, _, _) => match kind {
             CallTargetKind::ProofFn(..) => true,
             CallTargetKind::Static
             | CallTargetKind::Dynamic
@@ -768,6 +769,28 @@ pub fn get_field<'a, A: Clone>(variant: &'a Binders<A>, field: &Ident) -> &'a Bi
     match variant.iter().find(|f| f.name == *field) {
         Some(field) => field,
         None => panic!("internal error: missing field {}", &field),
+    }
+}
+
+pub fn get_variant_or_err<'a>(
+    span: &Span,
+    variants: &'a Variants,
+    variant: &Ident,
+) -> Result<&'a Variant, VirErr> {
+    match variants.iter().find(|v| v.name == *variant) {
+        Some(variant) => Ok(variant),
+        None => Err(crate::messages::error(span, format!("no variant named `{:}`", variant))),
+    }
+}
+
+pub fn get_field_or_err<'a, A: Clone>(
+    span: &Span,
+    variant: &'a Binders<A>,
+    field: &Ident,
+) -> Result<&'a Binder<A>, VirErr> {
+    match variant.iter().find(|f| f.name == *field) {
+        Some(field) => Ok(field),
+        None => Err(crate::messages::error(span, format!("no field named `{:}`", field))),
     }
 }
 

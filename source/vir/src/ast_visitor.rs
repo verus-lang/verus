@@ -202,7 +202,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
 
     fn visit_call_target(&mut self, call_target: &CallTarget) -> Result<R::Ret<CallTarget>, Err> {
         match call_target {
-            CallTarget::Fun(kind, fun, typs, impl_paths, au, const_var) => {
+            CallTarget::Fun(kind, fun, typs, impl_paths, attrs) => {
                 let kind = self.visit_call_target_kind(kind)?;
                 let typs = self.visit_typs(typs)?;
                 R::ret(|| {
@@ -211,8 +211,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         fun.clone(),
                         R::get_vec_a(typs),
                         impl_paths.clone(),
-                        *au,
-                        *const_var,
+                        attrs.clone(),
                     )
                 })
             }
@@ -226,6 +225,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     CallTarget::BuiltinSpecFun(bsf.clone(), R::get_vec_a(typs), impl_paths.clone())
                 })
             }
+            CallTarget::AssumeExternal => R::ret(|| call_target.clone()),
         }
     }
 
@@ -286,6 +286,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
             | UnaryOpr::IntegerTypeBound(..)
+            | UnaryOpr::CustomErr(..)
+            | UnaryOpr::AutoDecreases
+            | UnaryOpr::AutoLoopEnsures
             | UnaryOpr::ProofNote(..) => R::ret(|| uopr.clone()),
         }
     }
@@ -672,6 +675,22 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let p = self.visit_place(p)?;
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::MatchGuardFreeze(R::get(p), R::get(e))))
+            }
+            ExprX::ShrRefStructWrap(e1, e2, t1, t2, variant, field) => {
+                let e1 = self.visit_expr(e1)?;
+                let e2 = self.visit_expr(e2)?;
+                let t1 = self.visit_typ(t1)?;
+                let t2 = self.visit_typ(t2)?;
+                R::ret(|| {
+                    expr_new(ExprX::ShrRefStructWrap(
+                        R::get(e1),
+                        R::get(e2),
+                        R::get(t1),
+                        R::get(t2),
+                        variant.clone(),
+                        field.clone(),
+                    ))
+                })
             }
         }
     }

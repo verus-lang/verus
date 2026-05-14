@@ -1,6 +1,5 @@
 use crate::attributes::{AttrPublish, VerifierAttrs, get_mode, get_ret_mode, get_var_mode};
 use crate::automatic_derive::AutomaticDeriveAction;
-use crate::config::Vstd;
 use crate::context::{BodyCtxt, Context, ContextX, HeaderSetting};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_base::{
@@ -1446,17 +1445,10 @@ pub(crate) fn check_item_fn<'tcx>(
         FnOrConstSigEnum::ConstVar(..) => get_mode(Mode::Spec, attrs),
     };
 
-    let do_migration = if vattrs.ignore_outside_new_mut_ref_experiment {
-        false
-    } else {
+    let do_migration = {
         let migration_attr = crate::attributes::migrate_postconditions_walk_parents(ctxt.tcx, id);
         migration_attr == Some(true)
     };
-
-    let new_mut_ref = vattrs.ignore_outside_new_mut_ref_experiment;
-    if new_mut_ref && !matches!(ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore) {
-        return err_span(sig.span, "ignore_outside_new_mut_ref_experiment is only for vstd");
-    }
 
     if vattrs.encoded_const || vattrs.encoded_static {
         let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();

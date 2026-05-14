@@ -5,6 +5,8 @@
 #![allow(clippy::needless_pass_by_ref_mut)]
 #[cfg(any(feature = "full", feature = "derive"))]
 use crate::punctuated::Punctuated;
+#[cfg(any(feature = "derive", feature = "full"))]
+use alloc::vec::Vec;
 #[cfg(feature = "full")]
 macro_rules! full {
     ($e:expr) => {
@@ -2110,8 +2112,14 @@ where
         skip!((* * it).1);
     }
     v.visit_expr_mut(&mut *node.expr);
+    if let Some(it) = &mut node.invariant_except_break {
+        v.visit_invariant_except_break_mut(it);
+    }
     if let Some(it) = &mut node.invariant {
         v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
     }
     if let Some(it) = &mut node.decreases {
         v.visit_decreases_mut(it);

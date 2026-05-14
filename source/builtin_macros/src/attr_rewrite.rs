@@ -72,6 +72,7 @@ enum VerusSpecTarget {
     IOTarget(VerusIOTarget),
     FnOrLoop(AnyFnOrLoop),
     ItemConst(ItemConst),
+    ItemStatic(syn::ItemStatic),
 }
 
 impl syn::parse::Parse for VerusSpecTarget {
@@ -93,6 +94,11 @@ impl syn::parse::Parse for VerusSpecTarget {
         if let Ok(item_const) = fork.parse::<ItemConst>() {
             input.advance_to(&fork);
             return Ok(VerusSpecTarget::ItemConst(item_const));
+        }
+        let fork = input.fork();
+        if let Ok(item_static) = fork.parse::<syn::ItemStatic>() {
+            input.advance_to(&fork);
+            return Ok(VerusSpecTarget::ItemStatic(item_static));
         }
 
         let expr: Expr = input.parse()?;
@@ -380,6 +386,12 @@ impl VisitMut for VerusVerifyVisitor {
         let span = i.span();
         self.add_verus_spec_if_needed(&mut i.attrs, span);
     }
+
+    fn visit_item_static_mut(&mut self, i: &mut syn::ItemStatic) {
+        syn::visit_mut::visit_item_static_mut(self, i);
+        let span = i.span();
+        self.add_verus_spec_if_needed(&mut i.attrs, span);
+    }
 }
 
 fn is_verus_proof_stmt(stmt: &syn::Stmt) -> bool {
@@ -448,6 +460,9 @@ pub(crate) fn rewrite_verus_spec(
         }
         VerusSpecTarget::ItemConst(i) => {
             rewrite_verus_spec_on_item_const(erase, outer_attr_tokens, i)
+        }
+        VerusSpecTarget::ItemStatic(i) => {
+            rewrite_verus_spec_on_item_static(erase, outer_attr_tokens, i)
         }
         VerusSpecTarget::IOTarget(i) => {
             rewrite_verus_spec_on_expr_local(erase, outer_attr_tokens, i)
@@ -528,7 +543,40 @@ pub(crate) fn rewrite_verus_spec_on_item_const(
         verus_item_const.expr = None;
         verus_item_const.semi_token = None;
     }
-    crate::syntax::rewrite_items(verus_item_const.to_token_stream().into(), erase_ghost, true)
+    let mut items = vec![verus_syn::Item::Const(verus_item_const)];
+    crate::syntax::rewrite_items_inner(&mut items, erase_ghost, true)
+}
+
+pub(crate) fn rewrite_verus_spec_on_item_static(
+    erase_ghost: EraseGhost,
+    outer_attr_tokens: proc_macro::TokenStream,
+    item_static: syn::ItemStatic,
+) -> proc_macro::TokenStream {
+    if erase_ghost.erase() {
+        return item_static.to_token_stream().into();
+    }
+    let spec_attr =
+        verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
+    let mut verus_item_static = syn_to_verus_syn::<verus_syn::ItemStatic>(item_static);
+    let span = verus_item_static.span();
+    // Must add exec mode to static explicitly
+    verus_item_static.mode =
+        verus_syn::FnMode::Exec(verus_syn::ModeExec { exec_token: verus_syn::Token![exec](span) });
+    if spec_attr.spec.ensures.is_some() {
+        verus_item_static.ensures = spec_attr.spec.ensures;
+        verus_item_static.block = Some(Box::new(verus_syn::Block {
+            brace_token: verus_syn::token::Brace::default(),
+            stmts: vec![verus_syn::Stmt::Expr(
+                verus_syn::Expr::Verbatim(verus_item_static.expr.to_token_stream()),
+                None,
+            )],
+        }));
+        verus_item_static.eq_token = None;
+        verus_item_static.expr = None;
+        verus_item_static.semi_token = None;
+    }
+    let mut items = vec![verus_syn::Item::Static(verus_item_static)];
+    crate::syntax::rewrite_items_inner(&mut items, erase_ghost, true)
 }
 
 pub(crate) fn rewrite_verus_spec_on_fun_or_loop(

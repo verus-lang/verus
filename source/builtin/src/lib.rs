@@ -2432,6 +2432,15 @@ pub fn mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(_a: &'a mut T, _b: &'a mu
     unimplemented!()
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::two_phase_mutable_reference_tie"]
+pub fn two_phase_mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(
+    _a: &'a mut T,
+    _b: &'a mut U,
+) -> &'a mut T {
+    unimplemented!()
+}
+
 /// Directives and spec functions related to &mut references
 
 #[cfg(verus_keep_ghost)]
@@ -2481,5 +2490,16 @@ pub fn after_borrow<T>(_: T) -> T {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::mut_ref_tracked"]
 pub fn mut_ref_tracked<T>(_: &mut T) -> &mut Tracked<T> {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::shr_ref_struct_wrap"]
+pub fn shr_ref_struct_wrap<'a, 'b, A, B>(
+    _: &'a A,
+    _: &'b B,
+    _variant: &'static str,
+    _field: &'static str,
+) -> &'a B {
     unimplemented!()
 }

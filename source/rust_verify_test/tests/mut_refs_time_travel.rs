@@ -1072,8 +1072,7 @@ test_verify_one_file_with_options! {
 
             *z = 20;
         }
-    //} => Err(err) => assert_spec_borrowed(err, "a")
-    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+    } => Err(err) => assert_spec_borrowed(err, "a")
 }
 
 test_verify_one_file_with_options! {
@@ -1181,7 +1180,7 @@ test_verify_one_file_with_options! {
 
             *z = 20;
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -1764,6 +1763,38 @@ test_verify_one_file_with_options! {
                 }) => {
                 }
                 _ => { }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] complex_early_binder_and_two_phase_issue2433 [] => verus_code! {
+        use vstd::prelude::*;
+
+        pub trait MyCombinator<'x>: View {
+            type Type: View;
+            type SType: View;
+
+            fn serialize(&self, v: Self::SType, buf: &mut Vec<u8>) -> usize;
+        }
+
+        pub struct Wrap<Inner> { pub inner: Inner }
+
+        impl<Inner: View> View for Wrap<Inner> {
+            type V = Wrap<Inner::V>;
+            open spec fn view(&self) -> Self::V { Wrap { inner: self.inner@ } }
+        }
+
+        impl<'x, Inner> MyCombinator<'x> for Wrap<Inner> where
+            Inner: MyCombinator<'x, SType = &'x <Inner as MyCombinator<'x>>::Type>,
+            Inner::Type: 'x,
+        {
+            type Type = Inner::Type;
+            type SType = Inner::SType;
+
+            fn serialize(&self, v: Self::SType, buf: &mut Vec<u8>) -> usize {
+                self.inner.serialize(v, buf)
             }
         }
     } => Ok(())
