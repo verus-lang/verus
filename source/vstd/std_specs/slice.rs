@@ -1,13 +1,13 @@
 use super::super::prelude::*;
+use super::super::utf8::is_char_boundary;
 use super::core::IndexSetTrustedSpec;
 use super::core::TrustedSpecSealed;
-use super::super::utf8::{is_char_boundary};
 
 #[cfg(not(verus_verify_core))]
 use super::super::string::StringSliceAdditionalSpecFns;
 
-use core::slice::Iter;
 use core::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
+use core::slice::Iter;
 
 use verus as verus_;
 
