@@ -109,6 +109,8 @@
   - [Memory safety is conditional on verification](./memory-safety.md)
   - [Calling verified code from unverified code](./call-from-unverified-code.md)
 
+- [Verifying asynchronous code](./async-await.md)
+
 # Installation, configuration, and tooling
 
 - [Installation and setup]()
