@@ -46,8 +46,6 @@ contains some APIs that may be useful more generally.
 [`syn::DeriveInput`]: https://docs.rs/syn/2.0/syn/struct.DeriveInput.html
 [parser functions]: https://docs.rs/syn/2.0/syn/parse/index.html
 
-*Version requirement: Syn supports rustc 1.61 and up.*
-
 [*Release notes*](https://github.com/dtolnay/syn/releases)
 
 <br>
@@ -213,8 +211,8 @@ longer trigger or be less helpful than it used to be.
 ## Debugging
 
 When developing a procedural macro it can be helpful to look at what the
-generated code looks like. Use `cargo rustc -- -Zunstable-options
---pretty=expanded` or the [`cargo expand`] subcommand.
+generated code looks like. Use `cargo rustc -- -Zunstable-options -Zunpretty=expanded`
+or the [`cargo expand`] subcommand.
 
 [`cargo expand`]: https://github.com/dtolnay/cargo-expand
 
