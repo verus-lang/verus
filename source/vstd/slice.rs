@@ -6,8 +6,6 @@ use super::view::*;
 #[cfg(verus_keep_ghost)]
 #[cfg(feature = "alloc")]
 pub use super::std_specs::vec::VecAdditionalSpecFns;
-#[cfg(not(verus_verify_core))]
-use super::string::StringSliceAdditionalSpecFns;
 
 verus! {
 
@@ -163,7 +161,6 @@ pub broadcast axiom fn axiom_slice_has_resolved<T>(slice: &[T], i: int)
             ==> has_resolved(#[trigger] slice@[i]),
 ;
 
-//#[cfg(not(verus_verify_core))]
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
     axiom_slice_get_usize,
@@ -172,13 +169,5 @@ pub broadcast group group_slice_axioms {
     axiom_spec_slice_index,
     axiom_slice_has_resolved,
 }
-
-//#[cfg(verus_verify_core)]
-// pub broadcast group group_slice_axioms {
-//     axiom_spec_len,
-//     axiom_slice_ext_equal,
-//     axiom_spec_slice_update,
-//     axiom_slice_has_resolved,
-// }
 
 } // verus!
