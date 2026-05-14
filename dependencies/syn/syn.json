@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2026-02-15-0106",
+  "version": "0.0.0-2026-05-10-0145",
   "types": [
     {
       "ident": "Abi",
@@ -4211,6 +4211,11 @@
             "token": "Unsafe"
           }
         },
+        "constness": {
+          "option": {
+            "token": "Const"
+          }
+        },
         "impl_token": {
           "token": "Impl"
         },
@@ -4457,6 +4462,11 @@
         "auto_token": {
           "option": {
             "token": "Auto"
+          }
+        },
+        "constness": {
+          "option": {
+            "token": "Const"
           }
         },
         "restriction": {
@@ -7631,6 +7641,14 @@
                 "syn": "Pat"
               }
             ]
+          }
+        },
+        "erased_fields": {
+          "punctuated": {
+            "element": {
+              "syn": "FieldValue"
+            },
+            "punct": "Comma"
           }
         }
       }

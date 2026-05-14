@@ -3385,6 +3385,7 @@ where
     }
     skip!(node.defaultness);
     skip!(node.unsafety);
+    skip!(node.constness);
     skip!(node.impl_token);
     v.visit_generics(&node.generics);
     if let Some(it) = &node.trait_ {
@@ -3492,6 +3493,7 @@ where
     v.visit_visibility(&node.vis);
     skip!(node.unsafety);
     skip!(node.auto_token);
+    skip!(node.constness);
     if let Some(it) = &node.restriction {
         v.visit_impl_restriction(it);
     }
@@ -5186,6 +5188,10 @@ where
     if let Some(it) = &node.follows {
         skip!((it).0);
         full!(v.visit_pat(& (it).1));
+    }
+    for el in Punctuated::pairs(&node.erased_fields) {
+        let it = el.value();
+        v.visit_field_value(it);
     }
 }
 pub fn visit_with_spec_on_fn<'ast, V>(v: &mut V, node: &'ast crate::WithSpecOnFn)

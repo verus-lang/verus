@@ -195,6 +195,7 @@ ast_struct! {
         pub attrs: Vec<Attribute>,
         pub defaultness: Option<Token![default]>,
         pub unsafety: Option<Token![unsafe]>,
+        pub constness: Option<Token![const]>,
         pub impl_token: Token![impl],
         pub generics: Generics,
         /// Trait this impl implements.
@@ -276,6 +277,7 @@ ast_struct! {
         pub vis: Visibility,
         pub unsafety: Option<Token![unsafe]>,
         pub auto_token: Option<Token![auto]>,
+        pub constness: Option<Token![const]>,
         pub restriction: Option<ImplRestriction>,
         pub trait_token: Token![trait],
         pub ident: Ident,
@@ -1106,7 +1108,10 @@ pub(crate) mod parsing {
                     }))
                 }
             }
-        } else if lookahead.peek(Token![const]) {
+        } else if lookahead.peek(Token![const])
+            && !ahead.peek2(Token![impl])
+            && !ahead.peek2(Token![trait])
+        {
             let vis = input.parse()?;
             let publish = input.parse()?;
             let mode = input.parse()?;
@@ -1196,7 +1201,10 @@ pub(crate) mod parsing {
             input.call(parse_trait_or_trait_alias)
         } else if lookahead.peek(Token![auto]) && ahead.peek2(Token![trait]) {
             input.parse().map(Item::Trait)
+        } else if lookahead.peek(Token![const]) && ahead.peek2(Token![trait]) {
+            input.parse().map(Item::Trait)
         } else if lookahead.peek(Token![impl])
+            || lookahead.peek(Token![const]) && ahead.peek2(Token![impl])
             || lookahead.peek(Token![default]) && !ahead.peek2(Token![!])
         {
             let allow_verbatim_impl = true;
@@ -2360,12 +2368,14 @@ pub(crate) mod parsing {
         {
             let unsafety = None;
             let auto_token = None;
+            let const_token = None;
             parse_rest_of_trait(
                 input,
                 attrs,
                 vis,
                 unsafety,
                 auto_token,
+                const_token,
                 trait_token,
                 ident,
                 generics,
@@ -2386,6 +2396,7 @@ pub(crate) mod parsing {
             let vis: Visibility = input.parse()?;
             let unsafety: Option<Token![unsafe]> = input.parse()?;
             let auto_token: Option<Token![auto]> = input.parse()?;
+            let constness: Option<Token![const]> = input.parse()?;
             let trait_token: Token![trait] = input.parse()?;
             let ident: Ident = input.parse()?;
             let generics: Generics = input.parse()?;
@@ -2395,6 +2406,7 @@ pub(crate) mod parsing {
                 vis,
                 unsafety,
                 auto_token,
+                constness,
                 trait_token,
                 ident,
                 generics,
@@ -2408,6 +2420,7 @@ pub(crate) mod parsing {
         vis: Visibility,
         unsafety: Option<Token![unsafe]>,
         auto_token: Option<Token![auto]>,
+        constness: Option<Token![const]>,
         trait_token: Token![trait],
         ident: Ident,
         mut generics: Generics,
@@ -2447,6 +2460,7 @@ pub(crate) mod parsing {
             vis,
             unsafety,
             auto_token,
+            constness,
             restriction: None,
             trait_token,
             ident,
@@ -2766,6 +2780,7 @@ pub(crate) mod parsing {
         let has_visibility = allow_verbatim_impl && input.parse::<Visibility>()?.is_some();
         let defaultness: Option<Token![default]> = input.parse()?;
         let unsafety: Option<Token![unsafe]> = input.parse()?;
+        let mut constness: Option<Token![const]> = input.parse()?;
         let impl_token: Token![impl] = input.parse()?;
 
         let has_generics = generics::parsing::choose_generics_over_qpath(input);
@@ -2775,11 +2790,8 @@ pub(crate) mod parsing {
             Generics::default()
         };
 
-        let is_const_impl = allow_verbatim_impl
-            && (input.peek(Token![const]) || input.peek(Token![?]) && input.peek2(Token![const]));
-        if is_const_impl {
-            input.parse::<Option<Token![?]>>()?;
-            input.parse::<Token![const]>()?;
+        if constness.is_none() {
+            constness = input.parse()?;
         }
 
         let polarity = if input.peek(Token![!]) && !input.peek2(token::Brace) {
@@ -2840,13 +2852,14 @@ pub(crate) mod parsing {
             items.push(content.parse()?);
         }
 
-        if has_visibility || is_const_impl || is_impl_for && trait_.is_none() {
+        if has_visibility || is_impl_for && trait_.is_none() {
             Ok(None)
         } else {
             Ok(Some(ItemImpl {
                 attrs,
                 defaultness,
                 unsafety,
+                constness,
                 impl_token,
                 generics,
                 trait_,
@@ -3381,6 +3394,7 @@ pub(crate) mod printing {
             self.vis.to_tokens(tokens);
             self.unsafety.to_tokens(tokens);
             self.auto_token.to_tokens(tokens);
+            self.constness.to_tokens(tokens);
             self.trait_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.generics.to_tokens(tokens);
@@ -3417,6 +3431,7 @@ pub(crate) mod printing {
             tokens.append_all(self.attrs.outer());
             self.defaultness.to_tokens(tokens);
             self.unsafety.to_tokens(tokens);
+            self.constness.to_tokens(tokens);
             self.impl_token.to_tokens(tokens);
             self.generics.to_tokens(tokens);
             if let Some((polarity, path, for_token)) = &self.trait_ {
