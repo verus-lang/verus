@@ -2837,6 +2837,7 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     no_unwind
 )]
 #[inline(always)]
+#[verifier::external_body]
 #[allow(non_snake_case)]
 pub const fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T {
     ptr_ref(ptr, Tracked::assume_new())
