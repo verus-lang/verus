@@ -11,6 +11,7 @@ use vir::ast::{
 };
 use vir::ast_util::{bool_typ};
 use rustc_hir::def_id::DefId;
+use rustc_middle::ty::TyKind;
 
 /// Traits with special handling
 #[derive(Clone, Copy, Debug)]
@@ -172,10 +173,10 @@ fn clone_add_post_condition<'tcx>(
             Err(()) => { warn_unexpected(); return Ok(None); }
         };
         let rel = cleanup_span_ids(ctxt, span, hir_id, &rel);
-        let (datatype_visibility, datatype_body_visibility) = get_visibilities(ctxt, def_id);
+        let (datatype_visibility, datatype_body_visibility) = get_visibilities(&expr.span, ctxt, def_id)?;
         let function = mk_spec_function(&expr.span,
             spec_fn_name,
-            datatype_visibility,
+            datatype_visibility.clone(),
             datatype_body_visibility,
             &module_path,
             &functionx.typ_params,
@@ -203,6 +204,10 @@ fn clone_add_post_condition<'tcx>(
         
         let ens_expr = cleanup_span_ids(ctxt, span, hir_id, &ens_expr);
         functionx.ensure.0 = Arc::new(vec![ens_expr]);
+        // TODO: Right now trait functions are always public, but the datatype might be private,
+        // so it's impossible to make this well-formed. So we fix the visibility here, but really,
+        // this should be fixed for all trait functions.
+        functionx.visibility = datatype_visibility;
         Ok(Some(function))
     }
 }
@@ -235,7 +240,7 @@ fn to_relation(expr: &Expr, output: &Expr) -> Result<Expr, ()> {
                     }), output.clone()));
                 let (clonee, impl_paths, clone_typ_arg) = match &binder.a.x {
                     ExprX::Call(CallTarget::Fun(
-                        CallTargetKind::Static | CallTargetKind::DynamicResolved { .. },
+                        CallTargetKind::DynamicResolved { .. } | CallTargetKind::Dynamic,
                         fun, typs, impl_paths, _call_target_attrs
                     ), args, None) if fun == &vir::fun!(CrateId::Core => "clone", "Clone", "clone") =>
                     {
@@ -365,8 +370,27 @@ fn mk_spec_function(
     })
 }
 
-fn get_visibilities<'tcx>(_ctxt: &Context<'tcx>, _def_id: DefId) -> (Visibility, Visibility) {
-    (Visibility::public(), Visibility::public())
+/// Given the DefId of the clone impl, returns:
+/// (i) visiblity of the datatype
+/// (ii) visiblity of the interior of the datatype
+fn get_visibilities<'tcx>(span: &vir::messages::Span, ctxt: &Context<'tcx>, def_id: DefId) -> Result<(Visibility, Visibility), VirErr> {
+    let fn_sig = ctxt.tcx.fn_sig(def_id).skip_binder();
+    let self_ty = fn_sig.output().skip_binder();
+    let adt_def = match self_ty.kind() {
+        TyKind::Adt(adt_def, _args) => adt_def,
+        _ => {
+            return Err(vir::messages::error(span, "Verus Internal Error: handling auto-derive Clone, expected TyKind::Adt"));
+        }
+    };
+    let datatype_vis = crate::rust_to_vir_base::mk_visibility(ctxt, adt_def.did());
+    let mut inner_vis = datatype_vis.clone();
+    for variant_def in adt_def.variants().iter() {
+        for field_def in variant_def.fields.iter() {
+            let vis = crate::rust_to_vir_base::mk_visibility_from_vis(ctxt, field_def.vis);
+            inner_vis = inner_vis.join(&vis);
+        }
+    }
+    Ok((datatype_vis, inner_vis))
 }
 
 // TODO better place for this

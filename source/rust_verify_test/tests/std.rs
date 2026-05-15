@@ -926,3 +926,124 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 7)
 }
+
+test_verify_one_file! {
+    #[test] autoderive_clone_structs_enums verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Clone)]
+        pub struct Single {
+        }
+
+        fn test1() {
+            let x = Single { };
+            let y = x.clone();
+            assert(y == Single { });
+        }
+
+        #[derive(Clone)]
+        pub struct X {
+            pub a: u64
+        }
+
+        fn test2() {
+            let x = X { a: 20 };
+            let y = x.clone();
+            assert(y.a == 20);
+        }
+
+        #[derive(Clone)]
+        pub struct X2 {
+            pub x: X,
+        }
+
+        fn test3() {
+            let x2 = X2 { x: X { a: 20 } };
+            let y = x2.clone();
+            assert(y.x.a == 20);
+        }
+
+        #[derive(Clone)]
+        pub enum Option<A> {
+            Some(A),
+            None,
+        }
+
+        fn test4() {
+            let x = Option::<u64>::None;
+            let y = x.clone();
+            assert(y == Option::<u64>::None);
+        }
+
+        fn test5() {
+            let x = Option::Some(X2 { x: X { a: 5 } });
+            let y = x.clone();
+            assert(y == Option::Some(X2 { x: X { a: 5 } }));
+        }
+
+        pub trait Tr {
+            type R: Clone;
+        }
+
+        #[derive(Clone)]
+        pub enum ComplexOption<A: Tr> {
+            Some(A::R),
+            None,
+        }
+
+        #[derive(Clone)]
+        pub struct Z;
+
+        impl Tr for Z {
+            type R = X2;
+        }
+
+        fn test6() {
+            let x = ComplexOption::<Z>::Some(X2 { x: X { a: 5 } });
+            let y = x.clone();
+            assert(y == ComplexOption::<Z>::Some(X2 { x: X { a: 5 } }));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] autoderive_clone_with_visibility verus_code! {
+        #[derive(Clone)]
+        pub struct X {
+            pub a: u64
+        }
+
+        #[derive(Clone)]
+        pub struct X2 {
+            pub x: X,
+        }
+
+        mod inner_mod {
+            use vstd::prelude::*;
+            use super::X2;
+            use super::X;
+
+            #[derive(Clone)]
+            pub(crate) struct Foo {
+                pub j: u64,
+                x: X2,
+            }
+
+            fn test_from_inside() {
+                let foo = Foo { j: 1, x: X2 { x: X { a: 2 } } };
+                let foo2 = foo.clone();
+                assert(foo2 == Foo { j: 1, x: X2 { x: X { a: 2 } } });
+            }
+
+            pub(crate) fn new() -> Foo {
+                Foo { j: 1, x: X2 { x: X { a: 2 } } }
+            }
+        }
+        use inner_mod::Foo;
+
+        fn test_from_outside() {
+            let foo = inner_mod::new();
+            let foo2 = foo.clone();
+        }
+    } => Ok(())
+}
