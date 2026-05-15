@@ -30,7 +30,7 @@ Before you finish, run the cheat checker to make sure you haven't cheated.
 
 ## Provide Verus Resources
 
-Access to the Verus resources, such as standard library ([`vstd`](https://github.com/verus-lang/verus/tree/main/source/vstd)), Verus test ([`rust_verify_test`](https://github.com/verus-lang/verus/tree/main/source/rust_verify_test)), and Verus [guide](https://github.com/verus-lang/verus/tree/main/source/docs/guide/src/) , offers LLMs several benefits:
+Giving the LLM access to existing Verus resources, such as the Verus standard library  ([`vstd`](https://github.com/verus-lang/verus/tree/main/source/vstd)), the Verus test suite ([`rust_verify_test`](https://github.com/verus-lang/verus/tree/main/source/rust_verify_test)), and the Verus [Guide](https://github.com/verus-lang/verus/tree/main/source/docs/guide/src/), offers several benefits:
 
 1. **Learning Verus syntax**: By examining these resources, LLMs can learn correct Verus idioms. This is especially helpful for models that occasionally produce syntax errors.
 
