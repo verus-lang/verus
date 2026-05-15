@@ -151,18 +151,76 @@ Cannot be used together with [`custom_err`](#verifiercustom_errtext-and-verifier
 
 ## `#[verifier::prophetic]`
 
-This can be applied to any `spec` function to indicate that the result is _prophecy-dependent_.
-This attribute is required on any `spec` function where the body is prophecy-dependent.
+This attribute is used to mark a value as _prophecy-dependent_, or _prophetic_, meaning that its value may depend
+on a value from the program's future, e.g., the `final` operator (used for [mutable references](./mutable-references.md)),
+or the [value of a prophecy variable](https://verus-lang.github.io/verus/verusdoc/vstd/proph/struct.ProphecyGhost.html#method.value).
+This attribute aids Verus in tracking which spec values are prophecy-dependent, which are restricted in certain contexts:
 
-For example, a spec function needs to be marked with this attribute if any of the following
-are true:
+ * Prophecy-dependent values cannot appear in [decreases clauses](./reference-decreases.md).
+ * Prophecy-dependent values cannot appear as an operand to `Ghost`.
+ * Prophecy-dependent values cannot influence the value of tracked-mode ghost state.
 
- * It uses the `final` operator on a mutable reference.
- * It calls another spec function also marked `#[verifier::prophetic]`, e.g.,
-   [`ProphecyGhost::value`](https://verus-lang.github.io/verus/verusdoc/vstd/proph/struct.ProphecyGhost.html#method.value)
+The rationale for these restrictions [is explained here](https://verus-lang.github.io/verus/verusdoc/vstd/proph/index.html).
+
+The `#[verifier::prophetic]` attribute may appear on any spec function or any ghost-mode local variable.
+
+### On spec functions
+
+By default, every spec function is considered non-prophetic unless it is explicitly marked prophetic.
+Verus considers it ill-formed to have a function with a prophetic body that is not marked prophetic.
+
+Examples:
+
+```rust
+// Ill-formed: prophetic value not allowed for body of non-prophetic spec function
+spec fn future_value_of_mut_ref(a: &mut u64) -> u64 {
+    *final(a)
+}
+```
+
+```rust
+// Ok
+#[verifier::prophetic]
+spec fn future_value_of_mut_ref2(a: &mut u64) -> u64 {
+    *final(a)
+}
+```
 
 Furthermore, if a spec function in a trait implementation is marked `#[verifier::prophetic]`,
 then it must also be marked `#[verifier::prophetic]` in the trait declaration.
+The converse is not true: an implementation function may be non-prophetic even if the trait function is prophetic.
+
+### On local variables
+
+By default, Verus infers the propheticness of each local variable based on the propheticness of its initial value.
+A local variable can be explicitly marked prophetic regardless of its initial value.
+
+Examples:
+
+```rust
+proof fn test() {
+    let ghost mut local_var = 0;
+    let tracked proph_var = vstd::proph::ProphecyGhost::<u64>::new();
+    local_var = proph_var.value(); // Ill-formed: prophetic value not allowed for assignment to non-prophetic location
+}
+```
+
+```rust
+proof fn test() {
+    #[verifier::prophetic]
+    let ghost mut local_var = 0;
+    let tracked proph_var = vstd::proph::ProphecyGhost::<u64>::new();
+    local_var = proph_var.value(); // Ok, `local_var` was explicitly marked prophetic
+}
+```
+
+```rust
+proof fn test(tracked some_int: &mut u64) {
+    let ghost mut local_var = *final(some_int);
+    let tracked proph_var = vstd::proph::ProphecyGhost::<u64>::new();
+    local_var = proph_var.value(); // Ok, `local_var` was inferred as prophetic
+}
+```
 
 ## `#[verifier::custom_err("text")]` and `#![verifier::custom_err("text")]`
 
