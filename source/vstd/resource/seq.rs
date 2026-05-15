@@ -1,10 +1,9 @@
 use super::super::modes::*;
 use super::super::prelude::*;
 use super::Loc;
-use super::super::gset::lemma_gset_ext_equal;
 use super::super::iset::{lemma_iset_difference, lemma_iset_ext_equal};
+use super::super::imap::lemma_imap_ext_equal;
 use super::map::*;
-use super::super::set::lemma_set_generic_difference;
 
 verus! {
 
@@ -360,15 +359,6 @@ impl<V> GhostSubseq<V> {
 
         let full = ISet::new(|i: int| off <= i < off + len);
         assert(old_map.dom() =~= full);
-        super::super::map::lemma_infinite_new_ensures(
-            |i: int| old_map.contains_key(i),
-            |i: int|
-                if mself.off() <= i < mself.off() + v.len() {
-                    v[i - mself.off()]
-                } else {
-                    old_map[i]
-                },
-        );
         let rhs_map = IMap::new(
             |i: int| old_map.contains_key(i),
             |i: int|
@@ -379,7 +369,7 @@ impl<V> GhostSubseq<V> {
                 },
         );
         assert(map_auth@ =~= rhs_map);
-        super::super::map::lemma_imap_ext_equal(map_auth@, rhs_map);
+        super::super::imap::lemma_imap_ext_equal(map_auth@, rhs_map);
         assert(rhs_map.dom() =~= old_map.dom()) by {
             assert forall|i: int| rhs_map.dom().contains(i) == old_map.dom().contains(i) by {
                 assert(rhs_map.dom().contains(i) == old_map.contains_key(i));
@@ -411,7 +401,7 @@ impl<V> GhostSubseq<V> {
             super::super::iset::lemma_iset_ext_equal(auth.auth@.dom(), full);
             assert(auth.auth@.dom().contains(abs));
             assert(auth.auth@.contains_key(abs));
-            super::super::map::lemma_imap_ext_equal(auth.auth@, rhs_map);
+            super::super::imap::lemma_imap_ext_equal(auth.auth@, rhs_map);
             assert(auth.auth@[abs] == rhs_map[abs]);
             if self.off() <= abs < self.off() + v.len() {
                 assert(rel <= i < rel + v.len());
@@ -486,18 +476,9 @@ impl<V> GhostSubseq<V> {
                     old(auth)@[i]
                 },
         );
-        super::super::map::lemma_imap_ext_equal(auth@, rhs);
+        super::super::imap::lemma_imap_ext_equal(auth@, rhs);
         assert(auth@.dom() =~= rhs.dom()) by {
             assert forall|i: int| auth@.dom().contains(i) == rhs.dom().contains(i) by {
-                super::super::map::lemma_infinite_new_ensures(
-                    |ii: int| old(auth)@.contains_key(ii),
-                    |ii: int|
-                        if self.off() <= ii < self.off() + v.len() {
-                            v[ii - self.off()]
-                        } else {
-                            old(auth)@[ii]
-                        },
-                );
                 assert(vmap.dom().contains(i) ==> old(auth)@.dom().contains(i));
                 assert((old(auth)@.union_prefer_right(vmap)).dom().contains(i) == old(auth)@.dom().contains(i));
                 assert(auth@.dom().contains(i) == (old(auth)@.union_prefer_right(vmap)).dom().contains(i));
@@ -508,15 +489,6 @@ impl<V> GhostSubseq<V> {
         }
         assert forall|i: int| auth@.dom().contains(i) implies auth@[i] == rhs[i] by {
             super::super::iset::lemma_iset_new(|ii: int| self.off <= ii < self.off + v.len(), i);
-            super::super::map::lemma_infinite_new_ensures(
-                |ii: int| old(auth)@.contains_key(ii),
-                |ii: int|
-                    if self.off() <= ii < self.off() + v.len() {
-                        v[ii - self.off()]
-                    } else {
-                        old(auth)@[ii]
-                    },
-            );
             assert(auth@.contains_key(i));
             if self.off() <= i < self.off() + v.len() {
                 assert(vmap.dom().contains(i));

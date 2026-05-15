@@ -35,9 +35,9 @@ broadcast use group_set_lemmas;
 ///
 // We could in principle implement the Multiset via an inductive datatype
 // and so we can mark its type argument as accept_recursive_types.
-// Note: Multiset is finite (in contrast to Set, Map, which are infinite) because it
-// isn't entirely obvious how to represent an infinite multiset in the case where
-// a single value (v: V) has an infinite multiplicity. It seems to require either:
+// Note: Multiset is finite because it isn't entirely obvious how to represent an
+// infinite multiset in the case where a single value (v: V) has an infinite
+// multiplicity. It seems to require either:
 //   (1) representing multiplicity by an ordinal or cardinal or something
 //   (2) limiting each multiplicity to be finite
 // (1) would be complicated and it's not clear what the use would be; (2) has some
@@ -427,8 +427,7 @@ pub broadcast proof fn lemma_update_same<V>(m: Multiset<V>, v: V, mult: nat)
 {
     broadcast use {
         group_set_lemmas,
-        super::map::group_map_axioms,
-        super::map::group_map_internal_axioms,
+        super::map::group_map_lemmas,
         group_multiset_axioms,
         Multiset::dom_ensures,
     };
@@ -458,8 +457,7 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
 {
     broadcast use {
         group_set_lemmas,
-        super::map::group_map_axioms,
-        super::map::group_map_internal_axioms,
+        super::map::group_map_lemmas,
         group_multiset_axioms,
     };
     broadcast use {axiom_multiset_contained, Multiset::dom_ensures};
@@ -555,8 +553,7 @@ pub broadcast proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V
 {
     broadcast use {
         group_set_lemmas,
-        super::map::group_map_axioms,
-        super::map::group_map_internal_axioms,
+        super::map::group_map_lemmas,
         group_multiset_axioms,
     };
     broadcast use {group_multiset_axioms, Multiset::dom_ensures};
@@ -643,8 +640,7 @@ pub broadcast proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>,
 {
     broadcast use {
         group_set_lemmas,
-        super::map::group_map_axioms,
-        super::map::group_map_internal_axioms,
+        super::map::group_map_lemmas,
         group_multiset_axioms,
         Multiset::dom_ensures,
     };

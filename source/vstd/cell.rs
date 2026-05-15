@@ -21,7 +21,7 @@ pub mod pcell_maybe_uninit;
 
 verus! {
 
-broadcast use {super::map::group_map_axioms, super::set::group_set_lemmas};
+broadcast use {super::map::group_map_lemmas, super::set::group_set_lemmas};
 
 /// **Now deprecated** See [`pcell::PCell`] or [`pcell_maybe_uninit::PCell`] instead
 ///

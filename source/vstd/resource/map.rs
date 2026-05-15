@@ -91,8 +91,7 @@ verus! {
 
 broadcast use {
     super::super::group_vstd_default,
-    super::super::map::group_map_internal_axioms,
-    super::super::gmap::group_map_axioms,
+    super::super::imap::group_imap_lemmas,
 };
 
 #[verifier::reject_recursive_types(K)]

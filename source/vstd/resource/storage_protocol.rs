@@ -5,8 +5,7 @@ verus! {
 
 broadcast use {
     super::super::set::group_set_lemmas,
-    super::super::map::group_map_axioms,
-    super::super::map::group_map_internal_axioms,
+    super::super::map::group_map_lemmas,
 };
 
 /// Interface for "storage protocol" ghost state.

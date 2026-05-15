@@ -1,5 +1,4 @@
 #[macro_use]
-use super::map::{Map, assert_maps_equal, assert_maps_equal_internal};
 use super::imap::{IMap, assert_imaps_equal, assert_imaps_equal_internal};
 #[allow(unused_imports)]
 use super::pervasive::*;
@@ -7,13 +6,13 @@ use super::pervasive::*;
 use super::prelude::*;
 #[allow(unused_imports)]
 use super::relations::*;
-use super::set::*;
+use super::iset::*;
 #[cfg(verus_keep_ghost)]
 use super::set_lib::*;
 
 verus! {
 
-broadcast use {super::map::group_map_lemmas, super::set::group_set_lemmas};
+broadcast use {super::imap::group_imap_lemmas, super::iset::group_iset_lemmas};
 
 impl<K, V> Map<K, V> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
@@ -459,8 +458,10 @@ impl<K, V> Map<K, V> {
 
     pub proof fn lemma_injective_values_len(self)
         requires
+            self.dom().finite(),
             self.is_injective(),
         ensures
+            self.values().finite(),
             self.values().len() == self.dom().len(),
     {
         let f = |k: K|
@@ -478,7 +479,10 @@ impl<K, V> Map<K, V> {
     }
 
     pub proof fn lemma_values_len(self)
+        requires
+            self.dom().finite(),
         ensures
+            self.values().finite(),
             self.values().len() <= self.dom().len(),
     {
         let f = |k: K|
@@ -704,11 +708,13 @@ pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
 pub broadcast proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     requires
         m1.dom().disjoint(m2.dom()),
+        m1.dom().finite(),
+        m2.dom().finite(),
     ensures
         #[trigger] m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
 {
     let u = m1.union_prefer_right(m2);
-    assert(u.dom() =~= m1.dom() + m2.dom());
+    assert(u.dom() =~= m1.dom() + m2.dom());  //proves u.dom() is finite
     assert(u.remove_keys(m1.dom()).dom() =~= m2.dom());
     assert(u.remove_keys(m1.dom()).dom().len() == u.dom().len() - m1.dom().len()) by {
         u.lemma_remove_keys_len(m1.dom());
@@ -781,6 +787,40 @@ pub broadcast group group_map_extra {
     Map::lemma_prefixed_entries_contains,
     Map::lemma_prefixed_entries_insert,
     Map::lemma_prefixed_entries_union,
+}
+
+pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
+    requires
+        m.dom().finite(),
+    ensures
+        m.values().finite(),
+    decreases m.len(),
+{
+    if m.len() > 0 {
+        let k = m.dom().choose();
+        let v = m[k];
+        let m1 = m.remove(k);
+        assert(m.contains_key(k));
+        assert(m.contains_value(v));
+        let mv = m.values();
+        let m1v = m1.values();
+        assert_sets_equal!(mv == m1v.insert(v), v0 => {
+            if m.contains_value(v0) {
+                if v0 != v {
+                    let k0 = choose|k0| #![auto] m.contains_key(k0) && m[k0] == v0;
+                    assert(k0 != k);
+                    assert(m1.contains_key(k0));
+                    assert(mv.contains(v0) ==> m1v.insert(v).contains(v0));
+                    assert(mv.contains(v0) <== m1v.insert(v).contains(v0));
+                }
+            }
+        });
+        assert(m1.len() < m.len());
+        lemma_values_finite(m1);
+        axiom_set_insert_finite(m1.values(), v);
+    } else {
+        assert(m.values() =~= Set::<V>::empty());
+    }
 }
 
 } // verus!

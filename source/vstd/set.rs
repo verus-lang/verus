@@ -1,215 +1,209 @@
 #[allow(unused_imports)]
-use super::map::*;
+use super::iset::*;
 #[allow(unused_imports)]
-use super::map::GenericMap;
+use super::map::*;
 #[allow(unused_imports)]
 use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
-use core::marker::PhantomData;
-use super::gset::*;
-pub use super::iset::ISet;
-#[allow(unused_imports)]
-use super::iset::{
-    lemma_set_insert_finite,
-    lemma_set_remove_finite,
-    lemma_iset_map_contains,
-    lemma_set_union_finite,
-    lemma_set_intersect_finite,
-    lemma_set_difference_finite,
-    lemma_to_finite_len,
-};
 
 verus! {
 
-/// `Set<A>` is a set type for specifications.
+/// `Set<A>` is a finite set type for specifications.
 ///
 /// An object `set: Set<A>` is a subset of the set of all values `a: A`.
 /// Equivalently, it can be thought of as a boolean predicate on `A`.
-/// Sets are always finite; the constructors only allow construction of finite sets. If you require
-/// infinite sets, see `Iset`.
+///
+/// Sets can be constructed in a few different ways:
+///  * [`Set::empty`] gives an empty set
+///  * [`Set::new`] constructs a set from a boolean predicate
+///  * The [`set!`] macro, to construct small sets of a fixed size
+///  * By manipulating an existing sequence with [`Set::union`], [`Set::intersect`],
+///    [`Set::difference`], [`Set::complement`], [`Set::filter`], [`Set::insert`],
+///    or [`Set::remove`].
+///
+/// To prove that two sequences are equal, it is usually easiest to use the extensionality
+/// operator `=~=`.
+
+//////////////////////////////////////////////////////////////////////////////
+// Important soundness note!
+//
+// In this file, one can construct `Set`s directly with
+// `Set{set:...}`, Since we make the assumption that all Sets are
+// finite, we must be careful to only allow functions in this file
+// that construct `Set`s to admit a finite number of elements.
+// Otherwise, one could prove that set both finite and infinite and
+// introduce false. The danger of this soundness risk is encapsulated
+// in the axiom `lemma_set_is_finite`, which assumes that the set
+// function is finite.
+//
+// Outside of this file, callers only have access to `Set`
+// constructors that create only finite sets.
+//
+// For future work, we may figure out how to have `Set` use a
+// `Seq`-like representation that is inherently finite, to eliminate
+// this risk. We haven't done this yet, though, because it would
+// introduce the problem of multiple representations of equivalent
+// sets, which creates a different problem with extensional equality.
+//////////////////////////////////////////////////////////////////////////////
+
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(A)]
-pub struct Set<A>(pub(crate) GSet<A, Finite>);
-
-
+pub struct Set<A> {
+    set: spec_fn(A) -> bool,
+}
 
 impl<A> Set<A> {
-    #[doc(hidden)]
-    pub closed spec fn from_gset(s: GSet<A, Finite>) -> Set<A> {
-        Set(s)
+    /// The "empty" set.
+    ///
+    /// Usage Example: <br>
+    /// ```rust
+    /// let empty_set = Set::<A>::empty();
+    ///
+    /// assert(empty_set.is_empty());
+    /// assert(empty_set.complement() =~= Set::<A>::full());
+    /// assert(Set::<A>::empty().finite());
+    /// assert(Set::<A>::empty().len() == 0);
+    /// assert(forall |x: A| !Set::<A>::empty().contains(x));
+    /// ```
+    /// Axioms around the empty set are: <br>
+    /// * [`lemma_set_empty_finite`]
+    /// * [`lemma_set_empty_len`] <br>
+    /// * [`lemma_set_empty`]
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::empty"]
+    pub closed spec fn empty() -> Set<A> {
+        Set { set: |a| false }
     }
 
-    /// Compatibility constructor for finite sets described by a predicate.
-    #[verifier::inline]
-    pub open spec fn new(f: spec_fn(A) -> bool) -> Set<A>
-        recommends
-            ISet::<A>::new(f).finite(),
-    {
-        ISet::<A>::new(f).to_finite()
-    }
-
-    /// Returns the set that contains an element `f(x)` for every element `x` in `self`.
-    #[verifier::opaque]
-    pub open spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
-        Set::from_gset(self.to_gset().map(f))
-    }
-
-    /// Set of all elements in the given set which satisfy the predicate `f`.
-    /// Preserves finiteness of self.
-    #[verifier::opaque]
-    pub open spec fn filter(self, f: spec_fn(A) -> bool) -> (out: Set<A>) {
-        Set::from_gset(self.to_gset().filter(f))
-    }
-
-    /// Replace each element of a set with the elements of another set.
-    /// Preserves finiteness of self.
-    #[verifier::opaque]
-    pub open spec fn product<B>(self, f: spec_fn(A) -> Set<B>) -> (out: Set<B>) {
-        Set::from_gset(self.to_gset().product(|a| f(a).to_gset()))
-    }
-
-    pub open spec fn to_finite(self) -> Set<A>
-        recommends
-            self.finite(),
-    {
-        Set::from_gset(self.to_gset().cast_finiteness::<Finite>())
-    }
-}
-
-pub broadcast proof fn lemma_set_finite_from_type<A>(s: Set<A>)
-    ensures
-        #[trigger] s.finite(),
-{
-    axiom_gset_finite_from_trait(s.0);
-}
-
-pub broadcast proof fn lemma_set_map_contains<A, B>(s: Set<A>, f: spec_fn(A) -> B)
-    ensures
-        #![trigger s.map(f)]
-        forall|y|
-            s.map(f).contains(y) <==> (exists|x| s.contains(x) && f(x) == y),
-{
-    reveal(Set::map);
-    lemma_gset_map_contains(s.0, f);
-    assert forall|y| s.map(f).contains(y) implies (exists|x: A| s.contains(x) && f(x) == y) by {
-        // Force the GSet-level bridge with an explicit intermediate
-        let gset_mapped: GSet<B, Finite> = s.0.map(f);
-        assert(gset_mapped.contains(y));
-        // GSet lemma gives: exists|x| s.0.contains(x) && f(x) == y
-        let witness = choose|x: A| s.0.contains(x) && f(x) == y;
-        assert(s.contains(witness) && f(witness) == y);
-    }
-}
-
-
-
-
-impl<A, FINITE: Finiteness> GSet<A, FINITE> {
-    #[rustc_diagnostic_item = "verus::vstd::set::GSet::empty"]
-    pub open spec fn empty() -> GSet<A, FINITE> {
-        Self { set: |a| false, _phantom: PhantomData }
+    /// Set whose membership is determined by the given boolean predicate.
+    /// But if that boolean predicate produces an infinite set, then the
+    /// produced set is an arbitrary finite set instead.
+    ///
+    /// Usage Examples:
+    /// ```rust
+    /// let set_a = Set::new(|x : nat| x < 42);
+    /// let set_b = Set::<A>::new(|x| some_predicate(x));
+    /// assert(forall|x| some_predicate(x) <==> set_b.contains(x));
+    /// ```
+    pub closed spec fn new(f: spec_fn(A) -> bool) -> Set<A> {
+        if ISet::new(f).finite() {
+            Set { set: f }
+        }
+        else {
+            arbitrary()
+        }
     }
 
     /// The "full" set, i.e., set containing every element of type `A`.
-    /// Note that `full()` always returns an ISet, even if A is inhabited
-    /// by only a finite number of elements.
-    #[rustc_diagnostic_item = "verus::vstd::set::GSet::full"]
-    pub open spec fn full() -> GSet<A, Infinite> {
-        GSet::<A, Infinite>::empty().complement()
+    /// Note that if `A` is infinite, then this produces an arbitrary
+    /// finite subset of `A`.
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::full"]
+    pub open spec fn full() -> Set<A> {
+        Set::new(|a: A| true)
     }
 
     /// Predicate indicating if the set contains the given element.
-    #[rustc_diagnostic_item = "verus::vstd::set::GSet::contains"]
-    pub open spec fn contains(self, a: A) -> bool {
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::contains"]
+    pub closed spec fn contains(self, a: A) -> bool {
         (self.set)(a)
     }
 
+    /// Predicate indicating if the set contains the given element: supports `self has a` syntax.
+    #[verifier::inline]
+    pub open spec fn spec_has(self, a: A) -> bool {
+        self.contains(a)
+    }
+
     /// Returns `true` if the first argument is a subset of the second.
-    #[rustc_diagnostic_item = "verus::vstd::set::GSet::subset_of"]
-    pub open spec fn subset_of<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> bool {
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::subset_of"]
+    pub open spec fn subset_of(self, s2: Set<A>) -> bool {
         forall|a: A| self.contains(a) ==> s2.contains(a)
     }
 
     #[verifier::inline]
-    pub open spec fn spec_le<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> bool {
+    pub open spec fn spec_le(self, s2: Set<A>) -> bool {
         self.subset_of(s2)
     }
 
     /// Returns a new set with the given element inserted.
     /// If that element is already in the set, then an identical set is returned.
-    #[rustc_diagnostic_item = "verus::vstd::set::GSet::insert"]
-    // TODO(perf): make opaque for verification performance; export insert_same/insert_different
-    pub open spec fn insert(self, a: A) -> GSet<A, FINITE> {
-        GSet {
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::insert"]
+    pub closed spec fn insert(self, a: A) -> Set<A> {
+        Set {
             set: |a2|
                 if a2 == a {
                     true
                 } else {
                     (self.set)(a2)
                 },
-            _phantom: PhantomData,
         }
     }
 
     /// Returns a new set with the given element removed.
     /// If that element is already absent from the set, then an identical set is returned.
-    #[rustc_diagnostic_item = "verus::vstd::set::GSet::remove"]
-    // TODO(perf): make opaque for verification performance; export remove_same/remove_different
-    pub open spec fn remove(self, a: A) -> GSet<A, FINITE> {
-        GSet {
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::remove"]
+    pub closed spec fn remove(self, a: A) -> Set<A> {
+        Set {
             set: |a2|
                 if a2 == a {
                     false
                 } else {
                     (self.set)(a2)
                 },
-            _phantom: PhantomData,
         }
     }
 
-    /// Union of two sets of possibly-mixed finiteness.
-    /// Most applications should use the finite- or infinite- specializations
-    /// `union`; this generic version is mostly useful for writing generic libraries.
-    // TODO(perf): make opaque for verification performance; export generic_union_contains
-    pub open spec fn generic_union<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> GSet<A, Infinite> {
-        GSet { set: |a| (self.set)(a) || (s2.set)(a), _phantom: PhantomData }
+    /// Union of two sets.
+    pub closed spec fn union(self, s2: Set<A>) -> Set<A> {
+        Set { set: |a| (self.set)(a) || (s2.set)(a) }
     }
 
-    /// Intersection of two sets of possibly-mixed finiteness.
-    /// Most applications should use the finite- or infinite- specializations
-    /// `intersect`; this generic version is mostly useful for writing generic libraries.
-    // TODO(perf): make opaque for verification performance; export generic_intersect_contains
-    pub open spec fn generic_intersect<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> GSet<A, Infinite> {
-        GSet { set: |a| (self.set)(a) && (s2.set)(a), _phantom: PhantomData }
+    /// `+` operator, synonymous with `union`
+    #[verifier::inline]
+    pub open spec fn spec_add(self, s2: Set<A>) -> Set<A> {
+        self.union(s2)
+    }
+
+    /// Intersection of two sets.
+    pub closed spec fn intersect(self, s2: Set<A>) -> Set<A> {
+        Set { set: |a| (self.set)(a) && (s2.set)(a) }
+    }
+
+    /// `*` operator, synonymous with `intersect`
+    #[verifier::inline]
+    pub open spec fn spec_mul(self, s2: Set<A>) -> Set<A> {
+        self.intersect(s2)
     }
 
     /// Set difference, i.e., the set of all elements in the first one but not in the second.
-    /// Most applications should use the finite- or infinite- specializations
-    /// `difference`; this generic version is mostly useful for writing generic libraries.
-    // TODO(perf): make opaque for verification performance; export generic_difference_contains
-    pub open spec fn generic_difference<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> GSet<A, Infinite> {
-        GSet { set: |a| (self.set)(a) && !(s2.set)(a), _phantom: PhantomData }
+    pub closed spec fn difference(self, s2: Set<A>) -> Set<A> {
+        Set { set: |a| (self.set)(a) && !(s2.set)(a) }
     }
 
-    /// Set complement (within the space of all possible elements in `A`).
-    // TODO(perf): make opaque for verification performance; export complement_contains
-    pub open spec fn complement(self) -> GSet<A, Infinite> {
-        GSet { set: |a| !(self.set)(a), _phantom: PhantomData }
+    /// `-` operator, synonymous with `difference`
+    #[verifier::inline]
+    pub open spec fn spec_sub(self, s2: Set<A>) -> Set<A> {
+        self.difference(s2)
     }
 
-    /// Returns `true` if the set is finite.
+    /// Set of all elements in the given set which satisfy the predicate `f`.
+    pub open spec fn filter(self, f: spec_fn(A) -> bool) -> Set<A> {
+        self.intersect(Self::new(f))
+    }
+
+    /// Returns `true` if the set is finite, which is always true.
     pub open spec fn finite(self) -> bool {
-        exists|f: spec_fn(A) -> nat, ub: nat|
-            {
-                &&& #[trigger] trigger_finite(f, ub)
-                &&& surj_on(f, self)
-                &&& forall|a| self.contains(a) ==> f(a) < ub
-            }
+        true
     }
 
-    /// Cardinality of the set. (Only meaningful if a set is finite.)
-    pub open spec fn len(self) -> nat {
+    /// Returns `true` if this set is congruent to (contains the same elements as)
+    /// a given ISet.
+    pub open spec fn congruent(self, s2: ISet<A>) -> bool {
+        forall|a: A| self.contains(a) <==> s2.contains(a)
+    }
+
+    /// Cardinality of the set.
+    pub closed spec fn len(self) -> nat {
         self.fold(0, |acc: nat, a| acc + 1)
     }
 
@@ -225,207 +219,460 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 
     /// Creates a [`Map`] whose domain is the given set.
     /// The values of the map are given by `f`, a function of the keys.
-    /// Note: this returns an internal generic map type at generic `FINITE`; expressing a
-    /// FINITE-indexed `Map`/`IMap` associated return type is blocked on Verus
-    /// lacking support for trait generics.
-    #[doc(hidden)]
-    #[deprecated = "Use `Map::from_set` instead"]
-    pub open spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> GenericMap<A, V, FINITE> {
-        GenericMap::from_set(self, f)
-    }
+    pub uninterp spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> Map<A, V>;
 
     /// Returns `true` if the sets are disjoint, i.e., if their interesection is
     /// the empty set.
-    pub open spec fn disjoint<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> bool {
+    pub open spec fn disjoint(self, s2: Self) -> bool {
         forall|a: A| self.contains(a) ==> !s2.contains(a)
     }
 }
 
-impl<A> Set<A> {
-    /// The "empty" set.
-    pub open spec fn empty() -> Set<A> { Set::from_gset(GSet::empty()) }
-
-    /// Predicate indicating if the set contains the given element.
-    pub open spec fn contains(self, a: A) -> bool {
-        self.to_gset().contains(a)
-    }
-
-    #[doc(hidden)]
-    pub closed spec fn to_gset(self) -> GSet<A, Finite> {
-        self.0
-    }
-
-    /// Predicate indicating if the set contains the given element: supports `self has a` syntax.
-    pub open spec fn spec_has(self, a: A) -> bool {
-        self.contains(a)
-    }
-
-    #[verifier::opaque]
-    pub open spec fn union(self, s2: Set<A>) -> Set<A> {
-        Set::from_gset(GSet {
-            set: |a| (self.to_gset().set)(a) || (s2.to_gset().set)(a),
-            _phantom: PhantomData,
-        })
-    }
-
-    /// If *either* set in an intersection is finite, the result is finite.
-    /// To exploit that knowledge using this method, put the one you know is finite in the `self`
-    /// position.
-    #[verifier::opaque]
-    pub open spec fn intersect(self, s2: Set<A>) -> Set<A> {
-        Set::from_gset(GSet {
-            set: |a| (self.to_gset().set)(a) && (s2.to_gset().set)(a),
-            _phantom: PhantomData,
-        })
-    }
-
-    #[verifier::opaque]
-    pub open spec fn difference(self, s2: Set<A>) -> Set<A> {
-        Set::from_gset(GSet {
-            set: |a| (self.to_gset().set)(a) && !(s2.to_gset().set)(a),
-            _phantom: PhantomData,
-        })
-    }
-
-    /// `+` operator, synonymous with `union`
-    pub open spec fn spec_add(self, s2: Set<A>) -> Set<A> {
-        self.union(s2)
-    }
-
-    /// `*` operator, synonymous with `intersect`
-    pub open spec fn spec_mul(self, s2: Set<A>) -> Set<A> {
-        self.intersect(s2)
-    }
-
-    /// `-` operator, synonymous with `difference`
-    pub open spec fn spec_sub(self, s2: Set<A>) -> Set<A> {
-        self.difference(s2)
-    }
-
-    /// Returns a new set with the given element inserted.
-    #[verifier::opaque]
-    pub open spec fn insert(self, a: A) -> Set<A> {
-        Set::from_gset(self.to_gset().insert(a))
-    }
-
-    /// Returns a new set with the given element removed.
-    #[verifier::opaque]
-    pub open spec fn remove(self, a: A) -> Set<A> {
-        Set::from_gset(self.to_gset().remove(a))
-    }
-
-    /// Returns `true` if the set is finite.
-    pub open spec fn finite(self) -> bool {
-        self.to_gset().finite()
-    }
-
-    /// Cardinality of the set.
-    pub open spec fn len(self) -> nat {
-        self.to_gset().len()
-    }
-
-    /// Chooses an arbitrary element of the set.
-    pub open spec fn choose(self) -> A {
-        self.to_gset().choose()
-    }
-
-    /// Returns `true` if the first argument is a subset of the second.
-    pub open spec fn subset_of(self, s2: Set<A>) -> bool {
-        self.to_gset().subset_of(s2.to_gset())
-    }
-
-    pub open spec fn spec_le(self, s2: Set<A>) -> bool {
-        self.subset_of(s2)
-    }
-
-    /// Returns `true` if the sets are disjoint.
-    pub open spec fn disjoint(self, s2: Set<A>) -> bool {
-        self.to_gset().disjoint(s2.to_gset())
-    }
-
-    /// Union of two sets of possibly-mixed finiteness.
-    pub open spec fn generic_union<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> ISet<A> {
-        ISet::from_gset(self.to_gset().generic_union(s2))
-    }
-
-    /// Intersection of two sets of possibly-mixed finiteness.
-    pub open spec fn generic_intersect<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> ISet<A> {
-        ISet::from_gset(self.to_gset().generic_intersect(s2))
-    }
-
-    /// Set difference of possibly-mixed finiteness.
-    pub open spec fn generic_difference<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> ISet<A> {
-        ISet::from_gset(self.to_gset().generic_difference(s2))
-    }
-
-    /// Set complement.
-    pub open spec fn complement(self) -> ISet<A> {
-        ISet::from_gset(self.to_gset().complement())
-    }
-
-    /// Creates a [`Map`] whose domain is the given set.
-    #[deprecated = "Use `Map::from_set` instead"]
-    pub open spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> Map<A, V> {
-        Map::from_set(self, f)
-    }
-
-    /// The "full" set. Always returns an ISet since the full set is typically infinite.
-    pub open spec fn full() -> ISet<A> {
-        ISet::from_gset(GSet::<A, Finite>::full())
-    }
-
-    /// Returns `true` if the set is empty.
-    pub open spec fn is_empty(self) -> bool {
-        self =~= Set::empty()
-    }
-
-    /// Cast to ISet (always valid for Set).
-    pub open spec fn to_infinite(self) -> ISet<A> {
-        ISet::from_gset(self.to_gset().to_infinite())
-    }
-
-    /// Cast finiteness parameter.
-    pub open spec fn cast_finiteness<NEWFINITE: Finiteness>(self) -> GSet<A, NEWFINITE> {
-        self.to_gset().cast_finiteness()
-    }
-
-    /// Two sets are congruent if they contain the same elements.
-    pub open spec fn congruent(self, s2: Set<A>) -> bool {
-        self.to_gset().congruent(s2.to_gset())
-    }
-
-    /// Fold over the set.
-    pub open spec fn fold<B>(self, init: B, f: spec_fn(B, A) -> B) -> B {
-        self.to_gset().fold(init, f)
-    }
+// Closures make triggering finicky but using this to trigger explicitly works well.
+spec fn trigger_finite<A>(f: spec_fn(A) -> nat, ub: nat) -> bool {
+    true
 }
 
-pub broadcast proof fn lemma_set_from_to_gset<A>(s: Set<A>)
-    ensures
-        #[trigger] Set::from_gset(s.to_gset()) == s,
-{
+spec fn surj_on<A, B>(f: spec_fn(A) -> B, s: Set<A>) -> bool {
+    forall|a1, a2| #![all_triggers] s.contains(a1) && s.contains(a2) && a1 != a2 ==> f(a1) != f(a2)
 }
 
-pub broadcast proof fn lemma_set_to_from_gset<A>(s: GSet<A, Finite>)
-    ensures
-        #[trigger] Set::from_gset(s).to_gset() == s,
-{
+pub mod fold {
+    //! This module defines a fold function for finite sets and proves a number of associated
+    //! lemmas.
+    //!
+    //! The module was ported (with some modifications) from Isabelle/HOL's finite set theory in:
+    //! `HOL/Finite_Set.thy`
+    //! That file contains the following author list:
+    //!
+    //!
+    //! (*  Title:      HOL/Finite_Set.thy
+    //!     Author:     Tobias Nipkow
+    //!     Author:     Lawrence C Paulson
+    //!     Author:     Markus Wenzel
+    //!     Author:     Jeremy Avigad
+    //!     Author:     Andrei Popescu
+    //! *)
+    //!
+    //!
+    //! The file is distributed under a 3-clause BSD license as indicated in the file `COPYRIGHT`
+    //! in Isabelle's root directory, which also carries the following copyright notice:
+    //!
+    //! Copyright (c) 1986-2024,
+    //! University of Cambridge,
+    //! Technische Universitaet Muenchen,
+    //! and contributors.
+    use super::*;
+
+    broadcast group group_set_lemmas_early {
+        lemma_set_empty,
+        lemma_set_new,
+        lemma_set_insert_same,
+        lemma_set_insert_different,
+        lemma_set_remove_same,
+        lemma_set_remove_insert,
+        lemma_set_remove_different,
+        lemma_set_union,
+        lemma_set_intersect,
+        lemma_set_difference,
+        lemma_set_complement,
+        lemma_set_ext_equal,
+        lemma_set_ext_equal_deep,
+        lemma_set_empty_finite,
+        lemma_set_insert_finite,
+        lemma_set_remove_finite,
+    }
+
+    pub open spec fn is_fun_commutative<A, B>(f: spec_fn(B, A) -> B) -> bool {
+        forall|a1, a2, b| #[trigger] f(f(b, a2), a1) == f(f(b, a1), a2)
+    }
+
+    // This predicate is intended to be used like an inductive predicate, with the corresponding
+    // introduction, elimination and induction rules proved below.
+    #[verifier(opaque)]
+    spec fn fold_graph<A, B>(z: B, f: spec_fn(B, A) -> B, s: Set<A>, y: B, d: nat) -> bool
+        decreases d,
+    {
+        if s === Set::empty() {
+            &&& z == y
+            &&& d == 0
+        } else {
+            exists|yr, a|
+                {
+                    &&& #[trigger] trigger_fold_graph(yr, a)
+                    &&& d > 0
+                    &&& s.remove(a).finite()
+                    &&& s.contains(a)
+                    &&& fold_graph(z, f, s.remove(a), yr, sub(d, 1))
+                    &&& y == f(yr, a)
+                }
+        }
+    }
+
+    spec fn trigger_fold_graph<A, B>(yr: B, a: A) -> bool {
+        true
+    }
+
+    // Introduction rules
+    proof fn lemma_fold_graph_empty_intro<A, B>(z: B, f: spec_fn(B, A) -> B)
+        ensures
+            fold_graph(z, f, Set::empty(), z, 0),
+    {
+        reveal(fold_graph);
+    }
+
+    proof fn lemma_fold_graph_insert_intro<A, B>(
+        z: B,
+        f: spec_fn(B, A) -> B,
+        s: Set<A>,
+        y: B,
+        d: nat,
+        a: A,
+    )
+        requires
+            fold_graph(z, f, s, y, d),
+            !s.contains(a),
+        ensures
+            fold_graph(z, f, s.insert(a), f(y, a), d + 1),
+    {
+        broadcast use group_set_lemmas_early;
+
+        reveal(fold_graph);
+        let _ = trigger_fold_graph(y, a);
+        assert(s == s.insert(a).remove(a));
+    }
+
+    // Elimination rules
+    proof fn lemma_fold_graph_empty_elim<A, B>(z: B, f: spec_fn(B, A) -> B, y: B, d: nat)
+        requires
+            fold_graph(z, f, Set::empty(), y, d),
+        ensures
+            z == y,
+            d == 0,
+    {
+        reveal(fold_graph);
+    }
+
+    proof fn lemma_fold_graph_insert_elim<A, B>(
+        z: B,
+        f: spec_fn(B, A) -> B,
+        s: Set<A>,
+        y: B,
+        d: nat,
+        a: A,
+    )
+        requires
+            is_fun_commutative(f),
+            fold_graph(z, f, s.insert(a), y, d),
+            !s.contains(a),
+        ensures
+            d > 0,
+            exists|yp| y == f(yp, a) && #[trigger] fold_graph(z, f, s, yp, sub(d, 1)),
+    {
+        reveal(fold_graph);
+        lemma_fold_graph_insert_elim_aux(z, f, s.insert(a), y, d, a);
+        assert(s.insert(a).remove(a) =~= s);
+        let yp = choose|yp| y == f(yp, a) && #[trigger] fold_graph(z, f, s, yp, sub(d, 1));
+    }
+
+    proof fn lemma_fold_graph_insert_elim_aux<A, B>(
+        z: B,
+        f: spec_fn(B, A) -> B,
+        s: Set<A>,
+        y: B,
+        d: nat,
+        a: A,
+    )
+        requires
+            is_fun_commutative(f),
+            fold_graph(z, f, s, y, d),
+            s.contains(a),
+        ensures
+            exists|yp| y == f(yp, a) && #[trigger] fold_graph(z, f, s.remove(a), yp, sub(d, 1)),
+        decreases d,
+    {
+        broadcast use group_set_lemmas_early;
+
+        reveal(fold_graph);
+        let (yr, aa): (B, A) = choose|yr, aa|
+            #![all_triggers]
+            {
+                &&& trigger_fold_graph(yr, a)
+                &&& d > 0
+                &&& s.remove(aa).finite()
+                &&& s.contains(aa)
+                &&& fold_graph(z, f, s.remove(aa), yr, sub(d, 1))
+                &&& y == f(yr, aa)
+            };
+        assert(trigger_fold_graph(yr, a));
+        if s.remove(aa) === Set::empty() {
+        } else {
+            if a == aa {
+            } else {
+                lemma_fold_graph_insert_elim_aux(z, f, s.remove(aa), yr, sub(d, 1), a);
+                let yrp = choose|yrp|
+                    yr == f(yrp, a) && #[trigger] fold_graph(
+                        z,
+                        f,
+                        s.remove(aa).remove(a),
+                        yrp,
+                        sub(d, 2),
+                    );
+                assert(fold_graph(z, f, s.remove(aa).insert(aa).remove(a), f(yrp, aa), sub(d, 1)))
+                    by {
+                    assert(s.remove(aa).remove(a) == s.remove(aa).insert(aa).remove(a).remove(aa));
+                    assert(trigger_fold_graph(yrp, aa));
+                };
+            }
+        }
+    }
+
+    // Induction rule
+    proof fn lemma_fold_graph_induct<A, B>(
+        z: B,
+        f: spec_fn(B, A) -> B,
+        s: Set<A>,
+        y: B,
+        d: nat,
+        pred: spec_fn(Set<A>, B, nat) -> bool,
+    )
+        requires
+            is_fun_commutative(f),
+            fold_graph(z, f, s, y, d),
+            pred(Set::empty(), z, 0),
+            forall|a, s, y, d|
+                pred(s, y, d) && !s.contains(a) && #[trigger] fold_graph(z, f, s, y, d) ==> pred(
+                    #[trigger] s.insert(a),
+                    f(y, a),
+                    d + 1,
+                ),
+        ensures
+            pred(s, y, d),
+        decreases d,
+    {
+        broadcast use group_set_lemmas_early;
+
+        reveal(fold_graph);
+        if s === Set::empty() {
+            lemma_fold_graph_empty_elim(z, f, y, d);
+        } else {
+            let a = s.choose();
+            lemma_fold_graph_insert_elim(z, f, s.remove(a), y, d, a);
+            let yp = choose|yp|
+                y == f(yp, a) && #[trigger] fold_graph(z, f, s.remove(a), yp, sub(d, 1));
+            lemma_fold_graph_induct(z, f, s.remove(a), yp, sub(d, 1), pred);
+        }
+    }
+
+    impl<A> Set<A> {
+        /// Folds the set, applying `f` to perform the fold. The next element for the fold is chosen by
+        /// the choose operator.
+        ///
+        /// Given a set `s = {x0, x1, x2, ..., xn}`, applying this function `s.fold(init, f)`
+        /// returns `f(...f(f(init, x0), x1), ..., xn)`.
+        pub closed spec fn fold<B>(self, z: B, f: spec_fn(B, A) -> B) -> B
+            recommends
+                self.finite(),
+                is_fun_commutative(f),
+        {
+            let (y, d): (B, nat) = choose|y, d| fold_graph(z, f, self, y, d);
+            y
+        }
+    }
+
+    proof fn lemma_fold_graph_finite<A, B>(z: B, f: spec_fn(B, A) -> B, s: Set<A>, y: B, d: nat)
+        requires
+            is_fun_commutative(f),
+            fold_graph(z, f, s, y, d),
+        ensures
+            s.finite(),
+    {
+        broadcast use group_set_lemmas_early;
+
+        let pred = |s: Set<A>, y, d| s.finite();
+        lemma_fold_graph_induct(z, f, s, y, d, pred);
+    }
+
+    proof fn lemma_fold_graph_deterministic<A, B>(
+        z: B,
+        f: spec_fn(B, A) -> B,
+        s: Set<A>,
+        y1: B,
+        y2: B,
+        d1: nat,
+        d2: nat,
+    )
+        requires
+            is_fun_commutative(f),
+            fold_graph(z, f, s, y1, d1),
+            fold_graph(z, f, s, y2, d2),
+        ensures
+            y1 == y2,
+            d1 == d2,
+    {
+        let pred = |s: Set<A>, y1: B, d1: nat|
+            forall|y2, d2| fold_graph(z, f, s, y2, d2) ==> y1 == y2 && d2 == d1;
+        // Base case
+        assert(pred(Set::empty(), z, 0)) by {
+            assert forall|y2, d2| fold_graph(z, f, Set::empty(), y2, d2) implies z == y2 && d2
+                == 0 by {
+                lemma_fold_graph_empty_elim(z, f, y2, d2);
+            };
+        };
+        // Step case
+        assert forall|a, s, y1, d1|
+            pred(s, y1, d1) && !s.contains(a) && #[trigger] fold_graph(
+                z,
+                f,
+                s,
+                y1,
+                d1,
+            ) implies pred(#[trigger] s.insert(a), f(y1, a), d1 + 1) by {
+            assert forall|y2, d2| fold_graph(z, f, s.insert(a), y2, d2) implies f(y1, a) == y2 && d2
+                == d1 + 1 by {
+                lemma_fold_graph_insert_elim(z, f, s, y2, d2, a);
+            };
+        };
+        lemma_fold_graph_induct(z, f, s, y2, d2, pred);
+    }
+
+    proof fn lemma_fold_is_fold_graph<A, B>(z: B, f: spec_fn(B, A) -> B, s: Set<A>, y: B, d: nat)
+        requires
+            is_fun_commutative(f),
+            fold_graph(z, f, s, y, d),
+        ensures
+            s.fold(z, f) == y,
+    {
+        lemma_fold_graph_finite(z, f, s, y, d);
+        if s.fold(z, f) != y {
+            let (y2, d2) = choose|y2, d2| fold_graph(z, f, s, y2, d2) && y2 != y;
+            lemma_fold_graph_deterministic(z, f, s, y2, y, d2, d);
+            assert(false);
+        }
+    }
+
+    // At this point set cardinality is not yet defined, so we can't easily give a decreasing
+    // measure to prove the subsequent lemma `lemma_fold_graph_exists`. Instead, we first prove
+    // this lemma, for which we use the upper bound of a finiteness witness as the decreasing
+    // measure.
+    pub proof fn lemma_finite_set_induct<A>(s: Set<A>, pred: spec_fn(Set<A>) -> bool)
+        requires
+            s.finite(),
+            pred(Set::empty()),
+            forall|s, a| pred(s) && s.finite() && !s.contains(a) ==> #[trigger] pred(s.insert(a)),
+        ensures
+            pred(s),
+    {
+        let (f, ub) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
+            trigger_finite(f, ub) && surj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
+        lemma_finite_set_induct_aux(s, f, ub, pred);
+    }
+
+    proof fn lemma_finite_set_induct_aux<A>(
+        s: Set<A>,
+        f: spec_fn(A) -> nat,
+        ub: nat,
+        pred: spec_fn(Set<A>) -> bool,
+    )
+        requires
+            surj_on(f, s),
+            s.finite(),
+            forall|a| s.contains(a) ==> f(a) < ub,
+            pred(Set::empty()),
+            forall|s, a| pred(s) && s.finite() && !s.contains(a) ==> #[trigger] pred(s.insert(a)),
+        ensures
+            pred(s),
+        decreases ub,
+    {
+        broadcast use group_set_lemmas_early;
+
+        if s =~= Set::empty() {
+        } else {
+            let a = s.choose();
+            // If `f` maps something to `ub - 1`, remap it to `f(a)` so we can decrease ub
+            let fp = |aa|
+                if f(aa) == ub - 1 {
+                    f(a)
+                } else {
+                    f(aa)
+                };
+            lemma_finite_set_induct_aux(s.remove(a), fp, sub(ub, 1), pred);
+        }
+    }
+
+    proof fn lemma_fold_graph_exists<A, B>(z: B, f: spec_fn(B, A) -> B, s: Set<A>)
+        requires
+            s.finite(),
+            is_fun_commutative(f),
+        ensures
+            exists|y, d| fold_graph(z, f, s, y, d),
+    {
+        let pred = |s| exists|y, d| fold_graph(z, f, s, y, d);
+        // Base case
+        assert(fold_graph(z, f, Set::empty(), z, 0)) by {
+            lemma_fold_graph_empty_intro(z, f);
+        };
+        // Step case
+        assert forall|s, a| pred(s) && s.finite() && !s.contains(a) implies #[trigger] pred(
+            s.insert(a),
+        ) by {
+            let (y, d): (B, nat) = choose|y, d| fold_graph(z, f, s, y, d);
+            lemma_fold_graph_insert_intro(z, f, s, y, d, a);
+        };
+        lemma_finite_set_induct(s, pred);
+    }
+
+    pub broadcast proof fn lemma_fold_insert<A, B>(s: Set<A>, z: B, f: spec_fn(B, A) -> B, a: A)
+        requires
+            s.finite(),
+            !s.contains(a),
+            is_fun_commutative(f),
+        ensures
+            #[trigger] s.insert(a).fold(z, f) == f(s.fold(z, f), a),
+    {
+        lemma_fold_graph_exists(z, f, s);
+        let (y, d): (B, nat) = choose|y, d| fold_graph(z, f, s, y, d);
+        lemma_fold_graph_insert_intro(z, f, s, s.fold(z, f), d, a);
+        lemma_fold_is_fold_graph(z, f, s.insert(a), f(s.fold(z, f), a), d + 1);
+    }
+
+    pub broadcast proof fn lemma_fold_empty<A, B>(z: B, f: spec_fn(B, A) -> B)
+        ensures
+            #[trigger] Set::empty().fold(z, f) == z,
+    {
+        let (y, d): (B, nat) = choose|y, d| fold_graph(z, f, Set::empty(), y, d);
+        lemma_fold_graph_empty_intro(z, f);
+        lemma_fold_graph_empty_elim(z, f, y, d);
+    }
+
 }
 
+// Axioms
 /// The empty set contains no elements
 pub broadcast proof fn lemma_set_empty<A>(a: A)
     ensures
-        !(#[trigger] Set::<A>::empty().contains(a)),
+        !(#[trigger] Set::empty().contains(a)),
 {
 }
 
+pub broadcast proof fn lemma_set_new<A>(f: spec_fn(A) -> bool, a: A)
+    requires
+        ISet::<A>::new(f).finite(),
+    ensures
+        #[trigger] Set::<A>::new(f).contains(a) == f(a),
+{
+    super::iset::lemma_iset_new(f, a);
+    super::iset::lemma_iset_to_finite_contains(ISet::<A>::new(f), a);
+    assert(Set::<A>::new(f).contains(a) == ISet::<A>::new(f).to_finite().contains(a));
+    assert(ISet::<A>::new(f).to_finite().contains(a) == ISet::<A>::new(f).contains(a));
+    assert(Set::<A>::new(f).to_gset().contains(a) == Set::<A>::new(f).contains(a));
+}
 
 /// The result of inserting element `a` into set `s` must contains `a`.
 pub broadcast proof fn lemma_set_insert_same<A>(s: Set<A>, a: A)
     ensures
         #[trigger] s.insert(a).contains(a),
 {
-    reveal(Set::insert);
 }
 
 /// If `a1` does not equal `a2`, then the result of inserting element `a2` into set `s`
@@ -436,7 +683,6 @@ pub broadcast proof fn lemma_set_insert_different<A>(s: Set<A>, a1: A, a2: A)
     ensures
         #[trigger] s.insert(a2).contains(a1) == s.contains(a1),
 {
-    reveal(Set::insert);
 }
 
 /// The result of removing element `a` from set `s` must not contain `a`.
@@ -444,7 +690,6 @@ pub broadcast proof fn lemma_set_remove_same<A>(s: Set<A>, a: A)
     ensures
         !(#[trigger] s.remove(a).contains(a)),
 {
-    reveal(Set::remove);
 }
 
 /// Removing an element `a` from a set `s` and then inserting `a` back into the set`
@@ -479,13 +724,12 @@ pub broadcast proof fn lemma_set_remove_insert<A>(s: Set<A>, a: A)
 
 /// If `a1` does not equal `a2`, then the result of removing element `a2` from set `s`
 /// must contain `a1` if and only if the set contained `a1` before the removal of `a2`.
-pub broadcast proof fn lemma_set_remove_different<A>( s: Set<A>, a1: A, a2: A,)
+pub broadcast proof fn lemma_set_remove_different<A>(s: Set<A>, a1: A, a2: A)
     requires
         a1 != a2,
     ensures
         #[trigger] s.remove(a2).contains(a1) == s.contains(a1),
 {
-    reveal(Set::remove);
 }
 
 /// The union of sets `s1` and `s2` contains element `a` if and only if
@@ -494,172 +738,82 @@ pub broadcast proof fn lemma_set_union<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
         #[trigger] s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
 {
-    reveal(Set::union);
 }
 
 /// The intersection of sets `s1` and `s2` contains element `a` if and only if
 /// both `s1` and `s2` contain `a`.
-pub broadcast proof fn lemma_set_intersect<A>( s1: Set<A>, s2: Set<A>, a: A,)
+pub broadcast proof fn lemma_set_intersect<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
         #[trigger] s1.intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)),
 {
-    reveal(Set::intersect);
 }
 
 /// The set difference between `s1` and `s2` contains element `a` if and only if
 /// `s1` contains `a` and `s2` does not contain `a`.
-pub broadcast proof fn lemma_set_difference<A>( s1: Set<A>, s2: Set<A>, a: A,)
+pub broadcast proof fn lemma_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
         #[trigger] s1.difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
 {
-    reveal(Set::difference);
 }
 
-pub broadcast proof fn lemma_set_subset_of_difference_union_component<A>(
-    kept: Set<A>,
-    sibling: Set<A>,
-    base: Set<A>,
-    removed: Set<A>,
-    new_removed: Set<A>,
-    added: Set<A>,
-    added_sup: Set<A>,
-)
-    requires
-        kept.subset_of(base.difference(removed)),
-        new_removed =~= removed.union(added),
-        added.subset_of(added_sup),
-        added_sup.disjoint(kept.union(sibling)),
+/// The complement of set `s` contains element `a` if and only if `s` does not contain `a`.
+pub broadcast proof fn lemma_set_complement<A>(s: Set<A>, a: A)
     ensures
-        kept.subset_of(base.difference(new_removed)),
+        #[trigger] s.complement().contains(a) == !s.contains(a),
 {
-    lemma_set_ext_equal(new_removed, removed.union(added));
-    assert(kept.to_gset().subset_of(base.difference(new_removed).to_gset())) by {
-        assert forall |a: A| #[trigger] kept.to_gset().contains(a)
-            implies base.difference(new_removed).to_gset().contains(a)
-        by {
-            assert(kept.contains(a));
-            assert(base.difference(removed).contains(a));
-            lemma_set_difference(base, removed, a);
-            assert(base.contains(a));
-            if new_removed.contains(a) {
-                assert(removed.union(added).contains(a));
-                lemma_set_union(removed, added, a);
-                if removed.contains(a) {
-                    assert(false);
-                } else {
-                    assert(added.contains(a));
-                    assert(added_sup.contains(a));
-                    lemma_set_union(kept, sibling, a);
-                    assert(kept.union(sibling).contains(a));
-                    assert(!added_sup.contains(a));
-                    assert(false);
-                }
-            }
-            lemma_set_difference(base, new_removed, a);
-            assert(base.difference(new_removed).contains(a));
-        }
+}
+
+/// Sets `s1` and `s2` are equal if and only if they contain all of the same elements.
+pub broadcast proof fn lemma_set_ext_equal<A>(s1: Set<A>, s2: Set<A>)
+    ensures
+        #[trigger] (s1 =~= s2) <==> (forall|a: A| s1.contains(a) == s2.contains(a)),
+{
+    if s1 =~= s2 {
+        assert(forall|a: A| s1.contains(a) == s2.contains(a));
     }
-    assert(kept.subset_of(base.difference(new_removed)));
-}
-
-pub broadcast proof fn lemma_set_ext_equal<A>( s1: Set<A>, s2: Set<A>,)
-    ensures
-        #[trigger] (s1 =~= s2) <==> (forall|a: A| s1.contains(a) == s2.contains(a))
-{
-    // Backward: forall|a| contains ==> =~=
     if forall|a: A| s1.contains(a) == s2.contains(a) {
-        // Bridge through GSet level
-        assert forall|a: A| s1.0.contains(a) == s2.0.contains(a) by {
-            assert(s1.contains(a) == s2.contains(a));
+        if !(forall|a: A| #[trigger] (s1.set)(a) <==> (s2.set)(a)) {
+            assert(exists|a: A| #[trigger] (s1.set)(a) != (s2.set)(a));
+            let a = choose|a: A| #[trigger] (s1.set)(a) != (s2.set)(a);
+            assert(s1.contains(a));
+            assert(false);
         }
-        lemma_gset_ext_equal(s1.0, s2.0);
-        // Now s1.0 =~= s2.0, so s1 =~= s2
-    }
-    // Forward: =~= ==> forall|a| contains
-    if s1 =~= s2 {
-        assert(s1.0 =~= s2.0);
-        lemma_gset_ext_equal(s1.0, s2.0);
-        // Now forall|a| s1.0.contains(a) == s2.0.contains(a)
-        assert forall|a: A| s1.contains(a) == s2.contains(a) by {
-            // s1.contains(a) == s1.0.contains(a) by definition (both open)
-        }
+        assert(s1 =~= s2);
     }
 }
 
-/// Sets `s1` and `s2` are definitionally equal if they contain all of the same elements.
-pub broadcast proof fn lemma_set_ext_equal_eq<A>(s1: Set<A>, s2: Set<A>)
+pub broadcast proof fn lemma_set_ext_equal_deep<A>(s1: Set<A>, s2: Set<A>)
     ensures
-        #[trigger] (s1 =~= s2) ==> s1 == s2,
+        #[trigger] (s1 =~~= s2) <==> s1 =~= s2,
 {
-    if s1 =~= s2 {
-        assert(s1.0 =~= s2.0);
-        lemma_gset_ext_equal_eq(s1.0, s2.0);
-        assert(s1 == s2);
-    }
 }
 
-/// The empty set is finite.
-pub broadcast proof fn lemma_set_empty_finite<A, FINITE: Finiteness>()
+pub broadcast axiom fn lemma_set_mk_map_domain<K, V>(s: Set<K>, f: spec_fn(K) -> V)
     ensures
-        #[trigger] GSet::<A, FINITE>::empty().finite(),
-{
-    let f = |a: A| 0;
-    let ub = 0;
-    let _ = trigger_finite(f, ub);
-}
+        #[trigger] s.mk_map(f).dom() == s,
+;
 
-//////////////////////////////////////////////////////////////////////////////
+pub broadcast axiom fn lemma_set_mk_map_index<K, V>(s: Set<K>, f: spec_fn(K) -> V, key: K)
+    requires
+        s.contains(key),
+    ensures
+        #[trigger] s.mk_map(f)[key] == f(key),
+;
+
+// Trusted axioms about len
+// Note: we could add more axioms about len, but they would be incomplete.
+// The following, with lemma_set_ext_equal, are enough to build libraries about len.
 /// The empty set has length 0.
 pub broadcast proof fn lemma_set_empty_len<A>()
     ensures
         #[trigger] Set::<A>::empty().len() == 0,
 {
-    broadcast use lemma_gset_empty_len;
-}
-
-pub broadcast proof fn lemma_set_map_insert<A, B>(
-    s: Set<A>,
-    f: spec_fn(A) -> B,
-    a: A,
-)
-    ensures
-        #[trigger] s.insert(a).map(f) == s.map(f).insert(f(a)),
-{
-    reveal(Set::insert);
-    reveal(Set::map);
-    lemma_gset_map_insert(s.0, f, a);
-}
-
-
-pub broadcast proof fn lemma_set_map_len<A, B>(
-    s: Set<A>,
-    f: spec_fn(A) -> B,
-)
-    requires
-        s.finite(),
-    ensures
-        #![trigger(s.map(f))]
-        s.map(f).len() <= s.len(),
-    decreases s.len(),
-{
-    reveal(Set::map);
-    lemma_gset_map_len(s.0, f);
-}
-
-pub broadcast proof fn lemma_set_len_empty<A>(s: Set<A>)
-    requires
-        s.finite(),
-    ensures
-        #[trigger] s.len() == 0 ==> Set::<A>::empty() == s,
-{
-    lemma_gset_len_empty(s.0);
+    fold::lemma_fold_empty(0, |b: nat, a: A| b + 1);
 }
 
 /// The result of inserting an element `a` into a finite set `s` has length
 /// `s.len() + 1` if `a` is not already in `s` and length `s.len()` otherwise.
 pub broadcast proof fn lemma_set_insert_len<A>(s: Set<A>, a: A)
-    requires
-        s.finite(),
     ensures
         #[trigger] s.insert(a).len() == s.len() + (if s.contains(a) {
             0int
@@ -667,15 +821,16 @@ pub broadcast proof fn lemma_set_insert_len<A>(s: Set<A>, a: A)
             1
         }),
 {
-    reveal(Set::insert);
-    lemma_gset_insert_len(s.0, a);
+    if s.contains(a) {
+        assert(s =~= s.insert(a));
+    } else {
+        fold::lemma_fold_insert(s, 0, |b: nat, a: A| b + 1, a);
+    }
 }
 
 /// The result of removing an element `a` from a finite set `s` has length
 /// `s.len() - 1` if `a` is in `s` and length `s.len()` otherwise.
 pub broadcast proof fn lemma_set_remove_len<A>(s: Set<A>, a: A)
-    requires
-        s.finite(),
     ensures
         s.len() == #[trigger] s.remove(a).len() + (if s.contains(a) {
             1int
@@ -683,8 +838,13 @@ pub broadcast proof fn lemma_set_remove_len<A>(s: Set<A>, a: A)
             0
         }),
 {
-    reveal(Set::remove);
-    lemma_gset_remove_len(s.0, a);
+    lemma_set_remove_finite(s, a);
+    lemma_set_insert_len(s.remove(a), a);
+    if s.contains(a) {
+        assert(s =~= s.remove(a).insert(a));
+    } else {
+        assert(s =~= s.remove(a));
+    }
 }
 
 /// If a finite set `s` contains any element, it has length greater than 0.
@@ -694,570 +854,68 @@ pub broadcast proof fn lemma_set_contains_len<A>(s: Set<A>, a: A)
     ensures
         #[trigger] s.len() != 0,
 {
-    lemma_gset_contains_len(s.0, a);
+    let a = s.choose();
+    assert(s.remove(a).insert(a) =~= s);
+    lemma_set_remove_finite(s, a);
+    lemma_set_insert_finite(s.remove(a), a);
+    lemma_set_insert_len(s.remove(a), a);
 }
 
 /// A finite set `s` contains the element `s.choose()` if it has length greater than 0.
 pub broadcast proof fn lemma_set_choose_len<A>(s: Set<A>)
     requires
-        s.finite(),
         #[trigger] s.len() != 0,
     ensures
         #[trigger] s.contains(s.choose()),
 {
-    lemma_gset_choose_len(s.0);
+    // Separate statements to work around https://github.com/verus-lang/verusfmt/issues/86
+    broadcast use lemma_set_contains_len;
+    broadcast use lemma_set_empty_len;
+    broadcast use lemma_set_ext_equal;
+    broadcast use lemma_set_insert_finite;
+
+    let pred = |s: Set<A>| s.finite() ==> s.len() == 0 <==> s =~= Set::empty();
+    fold::lemma_finite_set_induct(s, pred);
 }
 
-//////////////////////////////////////////////////////////////////////////////
-
-pub broadcast proof fn lemma_set_new<A>(f: spec_fn(A) -> bool, a: A)
-    requires
-        ISet::<A>::new(f).finite(),
+/// Leverages the finiteness to return a demonstration of
+/// finiteness: A function `f` from `A` to `nat`, and an upper
+/// bound `ub`, such that (1) different elements of `self` are
+/// mapped by `f` to different `nat` values, and (2) each element
+/// of `self` is mapped by `f` to a value less than `ub`.
+pub broadcast axiom fn axiom_set_is_finite<A>(s: Set<A>) -> (f_and_ub: (spec_fn(A) -> nat, nat))
     ensures
-        #[trigger] Set::<A>::new(f).contains(a) == f(a),
-        #[trigger] Set::<A>::new(f).to_gset().contains(a) == f(a),
-{
-    super::iset::lemma_iset_new(f, a);
-    super::iset::lemma_iset_to_finite_contains(ISet::<A>::new(f), a);
-    assert(Set::<A>::new(f).contains(a) == ISet::<A>::new(f).to_finite().contains(a));
-    assert(ISet::<A>::new(f).to_finite().contains(a) == ISet::<A>::new(f).contains(a));
-    assert(Set::<A>::new(f).to_gset().contains(a) == Set::<A>::new(f).contains(a));
-}
+    ({
+        let (f, ub) = f_and_ub;
+        &&& #[trigger] trigger_finite(f, ub)
+        &&& surj_on(f, s)
+        &&& forall|a| s.contains(a) ==> f(a) < ub
+    }),
+;
 
-pub broadcast proof fn lemma_set_generic_union<A, FINITE: Finiteness, FINITE2: Finiteness>(
-    s1: GSet<A, FINITE>,
-    s2: GSet<A, FINITE2>,
-    a: A,
-)
-    ensures
-        #[trigger] s1.generic_union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
-{
-    lemma_gset_generic_union(s1, s2, a);
-}
-
-pub broadcast proof fn lemma_set_generic_intersect<A, FINITE: Finiteness, FINITE2: Finiteness>(
-    s1: GSet<A, FINITE>,
-    s2: GSet<A, FINITE2>,
-    a: A,
-)
-    ensures
-        #[trigger] s1.generic_intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)),
-{
-    lemma_gset_generic_intersect(s1, s2, a);
-}
-
-pub broadcast proof fn lemma_set_generic_difference<A, FINITE1: Finiteness, FINITE2: Finiteness>(
-    s1: GSet<A, FINITE1>,
-    s2: GSet<A, FINITE2>,
-    a: A,
-)
-    ensures
-        #[trigger] s1.generic_difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
-{
-    lemma_gset_generic_difference(s1, s2, a);
-}
-
-pub broadcast proof fn lemma_set_complement<A>(s: ISet<A>, a: A)
-    ensures
-        #[trigger] s.complement().contains(a) == !s.contains(a),
-{
-    super::iset::lemma_iset_complement(s, a);
-}
-
-pub broadcast proof fn lemma_set_ext_equal_deep<A, FINITE: Finiteness>(
-    s1: GSet<A, FINITE>,
-    s2: GSet<A, FINITE>,
-)
-    ensures
-        #[trigger] (s1 =~~= s2) <==> s1 =~= s2,
-{
-    lemma_gset_ext_equal_deep(s1, s2);
-}
-
-pub broadcast proof fn lemma_set_map_subset<A, FINITE1: Finiteness, FINITE2: Finiteness, B>(
-    s1: GSet<A, FINITE1>,
-    s2: GSet<A, FINITE2>,
-    f: spec_fn(A) -> B,
-)
-    requires
-        s1.subset_of(s2),
-    ensures
-        #![trigger s1.map(f), s2.map(f)]
-        s1.map(f).subset_of(s2.map(f)),
-{
-    lemma_gset_map_subset(s1, s2, f);
-}
-
-pub broadcast proof fn lemma_set_map_finite<A, FINITE: Finiteness, B>(
-    s: GSet<A, FINITE>,
-    f: spec_fn(A) -> B,
-)
-    requires
-        s.finite(),
-    ensures
-        #![trigger(s.map(f))]
-        s.map(f).finite(),
-{
-    lemma_gset_map_finite(s, f);
-}
-
-pub broadcast proof fn lemma_set_filter_finite<A, FINITE: Finiteness>(
-    s: GSet<A, FINITE>,
-    f: spec_fn(A) -> bool,
-)
-    requires
-        s.finite(),
-    ensures
-        #![trigger(s.filter(f))]
-        s.filter(f).finite(),
-{
-    lemma_gset_filter_finite(s, f);
-}
-
-pub broadcast proof fn lemma_set_generic_union_finite<A, FINITE1: Finiteness, FINITE2: Finiteness>(
-    s1: GSet<A, FINITE1>,
-    s2: GSet<A, FINITE2>,
-)
-    requires
-        s1.finite(),
-        s2.finite(),
-    ensures
-        #[trigger] s1.generic_union(s2).finite(),
-{
-    lemma_gset_generic_union_finite(s1, s2);
-}
-
-pub broadcast proof fn lemma_set_generic_intersect_finite<A, FINITE1: Finiteness, FINITE2: Finiteness>(
-    s1: GSet<A, FINITE1>,
-    s2: GSet<A, FINITE2>,
-)
-    requires
-        s1.finite() || s2.finite(),
-    ensures
-        #[trigger] s1.generic_intersect(s2).finite(),
-{
-    lemma_gset_generic_intersect_finite(s1, s2);
-}
-
-pub broadcast proof fn lemma_set_generic_difference_finite<A, FINITE1: Finiteness, FINITE2: Finiteness>(
-    s1: GSet<A, FINITE1>,
-    s2: GSet<A, FINITE2>,
-)
-    requires
-        s1.finite(),
-    ensures
-        #[trigger] s1.generic_difference(s2).finite(),
-{
-    lemma_gset_generic_difference_finite(s1, s2);
-}
-
-pub broadcast proof fn lemma_set_to_infinite_contains<A>(s: Set<A>, a: A)
-    ensures
-        #[trigger] s.to_infinite().contains(a) == s.contains(a),
-{
-    lemma_set_finite_from_type(s);
-    s.to_gset().to_infinite_ensures();
-    super::iset::lemma_iset_to_from_gset(s.to_gset().to_infinite());
-    assert(s.to_infinite().to_gset() == s.to_gset().to_infinite());
-    assert(s.to_infinite().contains(a) == s.to_infinite().to_gset().contains(a));
-    assert(s.contains(a) == s.to_gset().contains(a));
-    assert(s.to_gset().to_infinite().contains(a) == s.to_gset().contains(a));
-}
-
-pub broadcast proof fn lemma_set_choose_infinite<A, FINITE: Finiteness>(s: GSet<A, FINITE>)
-    requires
-        !s.finite(),
-    ensures
-        #[trigger] s.contains(s.choose()),
-{
-    lemma_gset_choose_infinite(s);
-}
-
-//////////////////////////////////////////////////////////////////////////////
-// Machinery to support range_set
-pub trait FiniteRange: Sized {
-    spec fn range_iset(lo: Self, hi: Self) -> ISet<Self>;
-
-    spec fn range_len(lo: Self, hi: Self) -> nat;
-
-    proof fn range_properties(lo: Self, hi: Self)
-        ensures
-            Self::range_iset(lo, hi).finite(),
-            Self::range_iset(lo, hi).len() == Self::range_len(lo, hi),
-    ;
-}
-
-pub broadcast proof fn range_set_properties<A: FiniteRange>(lo: A, hi: A)
-    ensures
-        (#[trigger] A::range_iset(lo, hi)).finite(),
-        A::range_iset(lo, hi).len() == A::range_len(lo, hi),
-{
-    A::range_properties(lo, hi);
-}
-
-pub trait FiniteFull: Sized {
-    proof fn full_properties()
-        ensures
-            ISet::<Self>::full().finite(),
-    ;
-}
-
-pub broadcast proof fn full_set_properties<A: FiniteFull>()
-    ensures
-        #![trigger Set::<A>::full()]
-        #![trigger ISet::<A>::full()]
-        (ISet::<A>::full()).finite(),
-{
-    A::full_properties();
-}
-
-impl<A: FiniteRange> Set<A> {
-    #[verifier::inline]
-    /// This is a recommended constructor for building finite sets containing a contiguous range of a
-    /// numeric type.
-    pub open spec fn range(lo: A, hi: A) -> Set<A> {
-        A::range_iset(lo, hi).to_finite()
-    }
-
-    #[verifier::inline]
-    pub open spec fn range_inclusive(lo: A, hi: A) -> Set<A> {
-        A::range_iset(lo, hi).insert(hi).to_finite()
-    }
-}
-
-impl Set<int> {
-    #[verifier::inline]
-    pub open spec fn int_range(lo: int, hi: int) -> Set<int> {
-        Set::<int>::range(lo, hi)
-    }
-}
-
-pub broadcast proof fn lemma_set_range_int_contains(lo: int, hi: int, a: int)
-    ensures
-        #[trigger] Set::<int>::range(lo, hi).contains(a) <==> lo <= a < hi,
-{
-    range_set_properties(lo, hi);
-    let ir = <int as FiniteRange>::range_iset(lo, hi);
-    assert(ir.finite());
-    super::iset::lemma_iset_ext_equal(ir, ISet::new(|ii: int| lo <= ii < hi));
-    super::iset::lemma_iset_ext_equal_eq(ir, ISet::new(|ii: int| lo <= ii < hi));
-    ir.to_gset().cast_finiteness_properties::<Finite>();
-    lemma_set_to_from_gset(ir.to_gset().to_finite());
-    assert(ir.to_finite().to_gset() == ir.to_gset().to_finite());
-    assert(ir.to_gset().to_finite().contains(a) == ir.to_gset().contains(a));
-    reveal(Set::range);
-    assert(Set::<int>::range(lo, hi) == ir.to_finite());
-    super::iset::lemma_iset_new(|ii: int| lo <= ii < hi, a);
-    assert(ir.contains(a) == (lo <= a < hi));
-    assert(Set::<int>::range(lo, hi).contains(a) == ir.to_finite().contains(a));
-    assert(ir.to_finite().contains(a) == ir.contains(a));
-}
-
-impl<A: FiniteRange> ISet<A> {
-    #[verifier::inline]
-    /// This is a recommended constructor for building finite sets containing a contiguous range of a
-    /// numeric type.
-    pub open spec fn range(lo: A, hi: A) -> ISet<A> {
-        A::range_iset(lo, hi)
-    }
-
-    #[verifier::inline]
-    pub open spec fn range_inclusive(lo: A, hi: A) -> ISet<A> {
-        A::range_iset(lo, hi).insert(hi)
-    }
-}
-
-// Macro to implement the trait for every numeric type. We need a macro here
-// because 'as nat' can't be written as a type generic.
-macro_rules! range_impls {
-    ([$($t:ty)*]) => {
-        $(
-            verus! {
-                impl FiniteRange for $t {
-                    open spec fn range_iset(lo: Self, hi: Self) -> ISet<Self> {
-                        ISet::new(|i: Self| lo <= i < hi)
-                    }
-                    open spec fn range_len(lo: Self, hi: Self) -> nat {
-                        if lo <= hi { (hi - lo) as nat } else { 0 }
-                    }
-                    proof fn range_properties(lo: Self, hi: Self)
-                        decreases hi - lo
-                    {
-                        broadcast use lemma_set_empty_finite;
-                        broadcast use super::iset::lemma_iset_empty_len;
-                        broadcast use super::iset::lemma_iset_insert_len;
-
-                        if hi <= lo {
-                            assert forall|i: Self| #[trigger] Self::range_iset(lo, hi).contains(i)
-                                == ISet::<Self>::empty().contains(i) by {
-                                super::iset::lemma_iset_new(|ii: Self| lo <= ii < hi, i);
-                                super::iset::lemma_iset_empty(i);
-                                if Self::range_iset(lo, hi).contains(i) {
-                                    assert(lo <= i < hi);
-                                    assert(false);
-                                }
-                            }
-                            super::iset::lemma_iset_ext_equal(Self::range_iset(lo, hi), ISet::<Self>::empty());
-                            assert(Self::range_iset(lo, hi) =~= ISet::<Self>::empty());
-                            super::iset::lemma_iset_ext_equal_eq(Self::range_iset(lo, hi), ISet::<Self>::empty());
-                            assert(Self::range_iset(lo, hi) == ISet::<Self>::empty());
-                            super::iset::lemma_iset_to_from_gset(GSet::<Self, Infinite>::empty());
-                            assert(ISet::<Self>::empty().to_gset() == GSet::<Self, Infinite>::empty());
-                            assert(GSet::<Self, Infinite>::empty().finite());
-                            assert(ISet::<Self>::empty().finite());
-                            assert(Self::range_iset(lo, hi).is_empty());
-                            assert(Self::range_iset(lo, hi).len() == 0);
-                            assert(Self::range_len(lo, hi) == 0);
-                            assert(Self::range_iset(lo, hi).finite());
-                        } else {
-                            let hi1 = (hi - 1) as $t;
-                            Self::range_properties(lo, hi1);
-                            assert forall|i: Self| #[trigger] Self::range_iset(lo, hi).contains(i)
-                                == Self::range_iset(lo, hi1).insert(hi1).contains(i) by {
-                                super::iset::lemma_iset_new(|ii: Self| lo <= ii < hi, i);
-                                super::iset::lemma_iset_new(|ii: Self| lo <= ii < hi1, i);
-                                super::iset::lemma_iset_insert_same(Self::range_iset(lo, hi1), hi1);
-                                if Self::range_iset(lo, hi).contains(i) {
-                                    assert(lo <= i < hi);
-                                    if i != hi1 {
-                                        super::iset::lemma_iset_insert_different(
-                                            Self::range_iset(lo, hi1),
-                                            i,
-                                            hi1,
-                                        );
-                                        assert(i < hi1);
-                                    }
-                                }
-                                if Self::range_iset(lo, hi1).insert(hi1).contains(i) {
-                                    if i == hi1 {
-                                        assert(lo <= hi1 < hi);
-                                    } else {
-                                        super::iset::lemma_iset_insert_different(
-                                            Self::range_iset(lo, hi1),
-                                            i,
-                                            hi1,
-                                        );
-                                        assert(Self::range_iset(lo, hi1).contains(i));
-                                        assert(lo <= i < hi1);
-                                        assert(i < hi);
-                                    }
-                                }
-                            }
-                            super::iset::lemma_iset_ext_equal(
-                                Self::range_iset(lo, hi),
-                                Self::range_iset(lo, hi1).insert(hi1),
-                            );
-                            assert(Self::range_iset(lo, hi) =~= Self::range_iset(lo, hi1).insert(hi1));
-                            super::iset::lemma_iset_ext_equal_eq(
-                                Self::range_iset(lo, hi),
-                                Self::range_iset(lo, hi1).insert(hi1),
-                            );
-                            assert(Self::range_iset(lo, hi) == Self::range_iset(lo, hi1).insert(hi1));
-                            lemma_set_insert_finite(Self::range_iset(lo, hi1), hi1);
-                            assert(!Self::range_iset(lo, hi1).contains(hi1)) by {
-                                super::iset::lemma_iset_new(|ii: Self| lo <= ii < hi1, hi1);
-                            }
-                            assert(Self::range_iset(lo, hi).len() == Self::range_iset(lo, hi1).insert(hi1).len());
-                            assert(Self::range_iset(lo, hi1).insert(hi1).len() == Self::range_iset(lo, hi1).len() + 1);
-                            assert(Self::range_iset(lo, hi).len() == Self::range_len(lo, hi1) + 1);
-                            assert(Self::range_len(lo, hi1) + 1 == Self::range_len(lo, hi));
-                            assert(Self::range_iset(lo, hi).finite());
-                        }
-                        assert forall|i: Self| #[trigger] Self::range_iset(lo, hi).contains(i)
-                            <==> lo <= i < hi by {
-                            super::iset::lemma_iset_new(|ii: Self| lo <= ii < hi, i);
-                        }
-                    }
-                }
-            } // verus!
-        )*
-    }
-}
-
-macro_rules! full_impls {
-    ([$($t:ty)*]) => {
-        $(
-            verus! {
-                impl FiniteFull for $t {
-                    proof fn full_properties() {
-                        broadcast use lemma_set_insert_finite;
-                        assert forall|i: $t| #[trigger] ISet::<$t>::full().contains(i)
-                            == ISet::range_inclusive($t::MIN, $t::MAX).contains(i) by {
-                            reveal(ISet::full);
-                            reveal(ISet::range_inclusive);
-                            reveal(ISet::range);
-                            reveal(ISet::complement);
-                            reveal(ISet::empty);
-                            super::iset::lemma_iset_complement(ISet::<$t>::empty(), i);
-                            super::iset::lemma_iset_empty(i);
-                            super::iset::lemma_iset_new(|ii: $t| $t::MIN <= ii < $t::MAX, i);
-                            super::iset::lemma_iset_insert_same(ISet::<$t>::range($t::MIN, $t::MAX), $t::MAX);
-                            if i != $t::MAX {
-                                super::iset::lemma_iset_insert_different(
-                                    ISet::<$t>::range($t::MIN, $t::MAX),
-                                    i,
-                                    $t::MAX,
-                                );
-                            }
-                        }
-                        super::iset::lemma_iset_ext_equal(ISet::<$t>::full(), ISet::range_inclusive($t::MIN, $t::MAX));
-                        assert(ISet::<$t>::full() =~= ISet::range_inclusive($t::MIN, $t::MAX));
-                        super::iset::lemma_iset_ext_equal_eq(
-                            ISet::<$t>::full(),
-                            ISet::range_inclusive($t::MIN, $t::MAX),
-                        );
-                        <$t as FiniteRange>::range_properties($t::MIN, $t::MAX);
-                    }
-                }
-            } // verus!
-        )*
-    }
-}
-
-// Make Set,ISet::range available for all of the Verus numeric types
-range_impls!([
-    int nat
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-
-// Make ISet::full available for all of the Verus numeric types
-full_impls!([
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-
-//////////////////////////////////////////////////////////////////////////////
-#[deprecated = "Use `Set::range` instead"]
-#[verifier::inline]
-pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
-    Set::<int>::range(lo, hi)
-}
-
-pub broadcast proof fn lemma_set_range_int_subset_of(lo1: int, hi1: int, lo2: int, hi2: int)
-    requires
-        lo2 <= lo1,
-        hi1 <= hi2,
-    ensures
-        #[trigger] Set::<int>::range(lo1, hi1).subset_of(Set::<int>::range(lo2, hi2)),
-{
-    let s1 = Set::<int>::range(lo1, hi1).to_gset();
-    let s2 = Set::<int>::range(lo2, hi2).to_gset();
-    assert(s1.subset_of(s2)) by {
-        assert forall|a: int| #[trigger] s1.contains(a) implies s2.contains(a) by {
-            lemma_set_range_int_contains(lo1, hi1, a);
-            lemma_set_range_int_contains(lo2, hi2, a);
-            assert(lo2 <= a);
-            assert(a < hi2);
-        }
-    }
-    assert(Set::<int>::range(lo1, hi1).subset_of(Set::<int>::range(lo2, hi2)));
-}
-
-pub broadcast proof fn lemma_set_range_int_difference_prefix(lo: int, mid: int, hi: int)
-    requires
-        lo <= mid,
-        mid <= hi,
-    ensures
-        #[trigger] Set::<int>::range(lo, hi).difference(Set::<int>::range(lo, mid))
-            == Set::<int>::range(mid, hi),
-{
-    let prefix = Set::<int>::range(lo, mid);
-    let full = Set::<int>::range(lo, hi);
-    let suffix = Set::<int>::range(mid, hi);
-    assert forall|a: int| #[trigger] full.difference(prefix).contains(a) == suffix.contains(a) by {
-        lemma_set_difference(full, prefix, a);
-        lemma_set_range_int_contains(lo, hi, a);
-        lemma_set_range_int_contains(lo, mid, a);
-        lemma_set_range_int_contains(mid, hi, a);
-        if full.difference(prefix).contains(a) {
-            assert(lo <= a < hi);
-            assert(!(lo <= a < mid));
-            assert(mid <= a);
-        }
-        if suffix.contains(a) {
-            assert(mid <= a < hi);
-            assert(lo <= a);
-            assert(!(lo <= a < mid));
-        }
-    }
-    lemma_set_ext_equal(full.difference(prefix), suffix);
-    lemma_set_ext_equal_eq(full.difference(prefix), suffix);
-}
-
-pub broadcast proof fn lemma_set_range_int_union_adjacent(lo: int, mid: int, hi: int)
-    requires
-        lo <= mid,
-        mid <= hi,
-    ensures
-        #![trigger Set::<int>::range(lo, mid), Set::<int>::range(mid, hi)]
-        Set::<int>::range(lo, mid) + Set::<int>::range(mid, hi) == Set::<int>::range(lo, hi),
-{
-    let left = Set::<int>::range(lo, mid);
-    let right = Set::<int>::range(mid, hi);
-    let full = Set::<int>::range(lo, hi);
-    assert forall|a: int| #[trigger] (left + right).contains(a) == full.contains(a) by {
-        lemma_set_union(left, right, a);
-        lemma_set_range_int_contains(lo, mid, a);
-        lemma_set_range_int_contains(mid, hi, a);
-        lemma_set_range_int_contains(lo, hi, a);
-        if (left + right).contains(a) {
-            if left.contains(a) {
-                assert(lo <= a < hi);
-            } else {
-                assert(mid <= a < hi);
-                assert(lo <= a);
-            }
-        }
-        if full.contains(a) {
-            assert(lo <= a < hi);
-            if a < mid {
-                assert(left.contains(a));
-            } else {
-                assert(right.contains(a));
-            }
-        }
-    }
-    lemma_set_ext_equal(left + right, full);
-    lemma_set_ext_equal_eq(left + right, full);
-}
-
-// filter definition is closed now, so we expose its meaning through this lemma
-pub broadcast proof fn lemma_set_filter_is_intersect<A, FINITE: Finiteness>(
-    s: GSet<A, FINITE>,
-    f: spec_fn(A) -> bool,
-)
-    ensures
-        (#[trigger] s.filter(f)).congruent(s.generic_intersect(ISet::new(f).to_gset())),
-{
-    assert forall|a: A| s.filter(f).contains(a) == s.generic_intersect(ISet::new(f).to_gset()).contains(a) by {
-        super::iset::lemma_iset_new(f, a);
-        lemma_gset_generic_intersect(s, ISet::new(f).to_gset(), a);
-    }
-}
-
-impl<A, FINITE: Finiteness> GSet<A, FINITE> {
-    pub broadcast proof fn lemma_set_product_contains<B>(self, f: spec_fn(A) -> GSet<B, FINITE>)
-        ensures
-            #![trigger(self.product(f))]
-            forall|b|
-                (#[trigger] self.product(f).contains(b)) <==> exists|a|
-                    self.contains(a) && f(a).contains(b),
-    {
-    }
-
-    pub broadcast proof fn lemma_set_product_contains_2<B>(
-        self,
-        f: spec_fn(A) -> GSet<B, FINITE>,
-        a: A,
-        b: B,
-    )
-        ensures
-            #![trigger self.contains(a), f(a).contains(b)]
-            #![trigger self.product(f).contains(b), f(a).contains(b)]
-            self.contains(a) && f(a).contains(b) ==> self.product(f).contains(b),
-    {
-    }
+pub broadcast group group_set_lemmas {
+    lemma_set_empty,
+    lemma_set_new,
+    lemma_set_insert_same,
+    lemma_set_insert_different,
+    lemma_set_remove_same,
+    lemma_set_remove_insert,
+    lemma_set_remove_different,
+    lemma_set_union,
+    lemma_set_intersect,
+    lemma_set_difference,
+    lemma_set_complement,
+    lemma_set_ext_equal,
+    lemma_set_ext_equal_deep,
+    lemma_set_mk_map_domain,
+    lemma_set_mk_map_index,
+    lemma_set_empty_len,
+    lemma_set_insert_len,
+    lemma_set_remove_len,
+    lemma_set_contains_len,
+    lemma_set_choose_len,
+    axiom_set_is_finite,
+    lemma_set_new,
 }
 
 // Macros
@@ -1279,130 +937,5 @@ macro_rules! set {
 
 pub use set_internal;
 pub use set;
-
-impl<A: FiniteFull> Set<A> {
-    #[verifier::inline]
-    pub open spec fn from_finite_type(f: spec_fn(A) -> bool) -> Set<A> {
-        ISet::<A>::full().to_finite().filter(f)
-    }
-}
-
-impl<A> Set<A> {
-    /// Set::map_by is like Set::map, but map only takes a forward function fwd: spec_fn(A) -> B,
-    /// while map_by also takes a reverse function rev: spec_fn(B) -> A.
-    /// This reverse function can make proofs easier
-    /// by avoiding the "exists" that appears in lemmas about Set::map.
-    /// Example: for a set s: Set<int>, to map each i in s to (i, 10 * i),
-    /// we can write either s.map(|i: int| (i, 10 * i))
-    /// or s.map_by(|i: int| (i, 10 * i), |p: (int, int)| p.0);
-    /// the version with map_by is usually easier to use in proofs.
-    pub open spec fn map_by<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A) -> Set<B> {
-        self.map(fwd).filter(|b: B| self.contains(rev(b)) && b == fwd(rev(b)))
-    }
-}
-
-pub broadcast proof fn lemma_map_by<A, B>(sa: Set<A>, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A)
-    ensures
-        #![trigger sa.map_by(fwd, rev)]
-        forall|b: B| #[trigger]
-            sa.map_by(fwd, rev).contains(b) <==> sa.contains(rev(b)) && b == fwd(rev(b)),
-{
-    reveal(Set::map_by);
-    reveal(Set::filter);
-    reveal(Set::map_by);
-    lemma_set_map_contains(sa, fwd);
-    assert forall|b: B| #[trigger] sa.map_by(fwd, rev).contains(b) <==> sa.contains(rev(b)) && b
-        == fwd(rev(b)) by {
-        if sa.map_by(fwd, rev).contains(b) {
-            assert(sa.contains(rev(b)) && b == fwd(rev(b)));
-        }
-        if sa.contains(rev(b)) && b == fwd(rev(b)) {
-            assert(exists|x: A| sa.contains(x) && fwd(x) == b) by {
-                assert(sa.contains(rev(b)) && fwd(rev(b)) == b);
-            }
-            assert(sa.map(fwd).contains(b));
-        }
-    }
-}
-
-pub broadcast group group_set_lemmas {
-    super::gset::group_gset_lemmas_early,
-    super::gset::group_gset_support_lemmas,
-    lemma_set_finite_from_type,
-    lemma_set_empty,
-    lemma_set_new,
-    super::iset::lemma_iset_new,
-    super::iset::lemma_iset_new_subset,
-    super::iset::lemma_iset_new_strict_subset_witness,
-    super::iset::lemma_iset_empty,
-    super::iset::lemma_iset_insert_same,
-    super::iset::lemma_iset_insert_different,
-    super::iset::lemma_iset_remove_same,
-    super::iset::lemma_iset_remove_different,
-    super::iset::lemma_iset_union,
-    super::iset::lemma_iset_union_eq,
-    super::iset::lemma_iset_union_empty,
-    super::iset::lemma_iset_union_empty_left,
-    super::iset::lemma_iset_intersect,
-    super::iset::lemma_iset_intersect_eq,
-    super::iset::lemma_iset_difference,
-    super::iset::lemma_iset_difference_eq,
-    super::iset::lemma_iset_difference_empty,
-    super::iset::lemma_iset_complement,
-    super::iset::lemma_iset_ext_equal,
-    super::iset::lemma_iset_ext_equal_eq,
-    super::iset::lemma_iset_congruent_eq,
-    lemma_set_insert_same,
-    lemma_set_insert_different,
-    lemma_set_remove_same,
-    lemma_set_remove_insert,
-    lemma_set_remove_different,
-    lemma_set_generic_union,
-    lemma_set_union,
-    lemma_set_generic_intersect,
-    lemma_set_intersect,
-    lemma_set_generic_difference,
-    lemma_set_difference,
-    lemma_set_subset_of_difference_union_component,
-    lemma_set_complement,
-    lemma_set_ext_equal,
-    lemma_set_ext_equal_eq,
-    lemma_set_ext_equal_deep,
-    lemma_set_from_to_gset,
-    lemma_set_to_from_gset,
-    super::iset::lemma_iset_from_to_gset,
-    super::iset::lemma_iset_to_from_gset,
-    lemma_set_empty_finite,
-    lemma_set_insert_finite,
-    lemma_set_remove_finite,
-    lemma_set_map_contains,
-    lemma_iset_map_contains,
-    lemma_set_map_subset,
-    lemma_set_map_finite,
-    lemma_set_filter_finite,
-    lemma_set_map_len,
-    lemma_set_map_insert,
-    lemma_set_generic_union_finite,
-    lemma_set_union_finite,
-    lemma_set_generic_intersect_finite,
-    lemma_set_intersect_finite,
-    lemma_set_generic_difference_finite,
-    lemma_set_difference_finite,
-    lemma_set_choose_infinite,
-    lemma_set_empty_len,
-    lemma_set_len_empty,
-    lemma_set_insert_len,
-    lemma_set_remove_len,
-    lemma_set_contains_len,
-    lemma_set_choose_len,
-    lemma_set_filter_is_intersect,
-    range_set_properties,
-    lemma_set_range_int_subset_of,
-    lemma_set_range_int_difference_prefix,
-    lemma_set_range_int_union_adjacent,
-    lemma_to_finite_len,
-    lemma_map_by,
-    full_set_properties,
-}
 
 } // verus!

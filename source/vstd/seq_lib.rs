@@ -534,10 +534,7 @@ impl<A> Seq<A> {
             // to_set finds everything .contains finds
             forall|a| #[trigger] self.to_set().contains(a) <==> self.contains(a),
     {
-        super::set::lemma_set_map_contains(
-            Set::range(0, self.len() as int),
-            |i: int| self.index(i),
-        );
+        Set::range(0, self.len() as int).lemma_map_contains(|i: int| self.index(i));
         assert forall|i| 0 <= i < self.len() implies #[trigger] self.to_set().contains(self[i]) by {
             super::set::lemma_set_range_int_contains(0, self.len() as int, i);
             assert(Set::range(0, self.len() as int).contains(i));
@@ -579,12 +576,11 @@ impl<A> Seq<A> {
             self.to_set_ensures();
             super::iset::lemma_iset_new(|x: A| self.contains(x), a);
         }
-        assert(self.to_set().to_gset().congruent(self.to_iset().to_gset())) by {
-            assert forall|a: A| self.to_set().to_gset().contains(a) <==> self.to_iset().to_gset().contains(a) by {
+        assert(self.to_set().congruent(self.to_iset())) by {
+            assert forall|a: A| self.to_set().contains(a) <==> self.to_iset().contains(a) by {
                 assert(self.to_set().contains(a) == self.to_iset().contains(a));
             }
         }
-        Set::congruent_infiniteness(self.to_set(), self.to_iset().to_gset());
     }
 
     /// Converts a sequence into a multiset
@@ -1100,7 +1096,7 @@ impl<A> Seq<A> {
             self.len() == self.to_iset().len(),
         decreases self.len(),
     {
-        broadcast use {super::set::group_set_lemmas, super::gset::GSet::congruent_len};
+        broadcast use super::set::group_set_lemmas;
 
         seq_to_set_equal_rec::<A>(self);
         if self.len() == 0 {
@@ -1109,32 +1105,10 @@ impl<A> Seq<A> {
             rest.unique_seq_to_set();
             seq_to_set_equal_rec::<A>(rest);
             seq_to_set_rec_is_finite::<A>(rest);
-            rest.to_set_ensures();
-            assert(!rest.contains(self.last())) by {
-                if rest.contains(self.last()) {
-                    let i = choose|i: int| 0 <= i < rest.len() && rest[i] == self.last();
-                    assert(0 <= i < rest.len());
-                    assert(rest.len() == self.len() - 1);
-                    assert(0 <= self.len() - 1 < self.len());
-                    assert(i != self.len() - 1);
-                    assert(rest[i] == self[i]);
-                    assert(self.no_duplicates());
-                    assert(false);
-                }
-            }
-            assert(seq_to_set_rec(rest) == rest.to_set());
-            assert(!rest.to_set().contains(self.last()));
             assert(!seq_to_set_rec(rest).contains(self.last()));
             assert(seq_to_set_rec(rest).insert(self.last()).len() == seq_to_set_rec(rest).len()
                 + 1);
         }
-        assert(self.to_set().to_gset().congruent(self.to_iset().to_gset())) by {
-            assert forall|a: A| self.to_set().to_gset().contains(a) <==> self.to_iset().to_gset().contains(a) by {
-                self.to_set_ensures();
-                self.to_iset_ensures();
-            }
-        }
-        Set::congruent_infiniteness(self.to_set(), self.to_iset().to_gset());
     }
 
     /// The cardinality of a set of elements is always less than or

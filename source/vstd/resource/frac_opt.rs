@@ -5,7 +5,7 @@ use super::storage_protocol::*;
 
 verus! {
 
-broadcast use {super::super::map::group_map_axioms, super::super::set::group_set_lemmas};
+broadcast use {super::super::map::group_map_lemmas, super::super::set::group_set_lemmas};
 
 /////// Fractional tokens that allow borrowing of resources
 enum FractionalCarrierOpt<T> {
