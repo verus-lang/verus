@@ -28,16 +28,15 @@ Before you finish, run the cheat checker to make sure you haven't cheated.
 **Practical tips:**
 - We recommend running the agent in a secure container or sandbox, so that you can safely give it the freedom to run Verus and other available tools, without requiring repeated human intervention, e.g., via `--allow-all-tools` (Copilot CLI) or similar options.
 
-## Provide Provide Access to the Verus Standard Library
+## Provide Verus Resources
 
-Access to the Verus standard library (`vstd`) offers LLMs at least two benefits:
+Access to the Verus resources, such as standard library ([`vstd`](https://github.com/verus-lang/verus/tree/main/source/vstd)), Verus test ([`rust_verify_test`](https://github.com/verus-lang/verus/tree/main/source/rust_verify_test)), and Verus [guide](https://github.com/verus-lang/verus/tree/main/source/docs/guide/src/) , offers LLMs several benefits:
 
-1. **Finding helper lemmas**: The `vstd` library contains many useful lemmas that can simplify or enable proofs. If you don't give LLMs access to `vstd`, they may hallucinate about what lemmas are available.
+1. **Learning Verus syntax**: By examining these resources, LLMs can learn correct Verus idioms. This is especially helpful for models that occasionally produce syntax errors.
 
-2. **Learning Verus syntax**: By examining `vstd` examples, LLMs can learn correct Verus idioms. This is especially helpful for models that occasionally produce syntax errors.
+2. **Finding helper lemmas**: The `vstd` library contains many useful lemmas that can simplify or enable proofs. If you don't give LLMs access to `vstd`, they may hallucinate about what lemmas are available.
 
-For LLMs to be aware of latest features of Verus, providing the [`rust_verify_test` folder](https://github.com/verus-lang/verus/tree/main/source/rust_verify_test) would be helpful.
-
+3. **Learning latest features**: `rust_verify_test` is a great resource for LLMs to learn about the most recent features added to Verus.
 
 Here is a snippet of GPT-5-mini's reasoning log, when provided with the [`lemma_len_intersect`](./assert_assume.md) lemma to prove:
 
@@ -68,7 +67,7 @@ Here is a snippet of GPT-5-mini's reasoning log, when provided with the [`lemma_
 
 As you can see, when `vstd` is not provided, models can struggle and hallucinate.
 
-## Allow the Model to Run Verus
+## Provide a Verus Binary
 
 LLMs should be able to invoke Verus and see its error output. Verus error messages are informative and help guide the proof-development process. When you are facing a complicated proof task, even the most capable model today can rarely generate a correct and sufficient proof in one attempt. Without seeing the error report from Verus, the model will rely on luck to fix an incomplete or incorrect proof.
 
