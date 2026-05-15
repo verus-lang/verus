@@ -967,7 +967,7 @@ pub enum PatternX {
 /// Arms of match expressions
 pub type Arm = Arc<Spanned<ArmX>>;
 pub type Arms = Arc<Vec<Arm>>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode)]
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub struct ArmX {
     /// pattern
     pub pattern: Pattern,
