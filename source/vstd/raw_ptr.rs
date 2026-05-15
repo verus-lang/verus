@@ -2822,7 +2822,7 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
 }
 
 } // verus!
-/// Trusted wrapper around `ptr_ref`, due to
+/*/// Trusted wrapper around `ptr_ref`, due to
 /// [current limitations](https://verus-lang.github.io/verus/guide/exec_attr.html?highlight=verus_spec#using-a-mix-of-verus_spec-and-verus)
 /// with mixing `verus!` and `#[verus_spec`].
 #[verus_spec(v =>
@@ -2840,4 +2840,4 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
 #[allow(non_snake_case)]
 pub const fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T {
     ptr_ref(ptr, Tracked::assume_new())
-}
+}*/
