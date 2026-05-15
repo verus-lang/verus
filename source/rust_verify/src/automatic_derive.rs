@@ -160,6 +160,27 @@ fn clone_add_post_condition<'tcx>(
         functionx.ensure.0 = Arc::new(vec![eq_expr]);
         Ok(None)
     } else {
+        // for a struct `S { x: X, y: Y }`, the clone function looks like
+        //   `S { x: self.x.clone(), y: self.y.clone() }`.
+        // Basically we want the ensures clause to be something like:
+        //   strictly_cloned(self.x, out.x) && strictly_cloned(self.y, out.y)
+        // However, some of the fields might be private.
+        // So we factor the ensures clause out into a separate spec function where we can
+        // configure the body visibility.
+        // So we end up with:
+        //
+        // spec fn helper_clone_fn(self: S, other: S) -> bool {
+        //   strictly_cloned(self.x, out.x) && strictly_cloned(self.y, out.y
+        // }
+        //
+        // impl Clone for S {
+        //     fn clone(&self) -> (out: self)
+        //         ensures helper_clone_fn(self, out)
+        //     { ... }
+        // }
+        //
+        // For enums, it's similar, but there's a match statement to handle.
+
         let ExprX::Block(_, Some(expr)) = &body.x else { unreachable!() };
         let module_path = functionx.name.path.pop_segment().pop_segment();
         let spec_fn_name = vir::def::clone_spec_fn_name(&functionx.name.path.pop_segment());
