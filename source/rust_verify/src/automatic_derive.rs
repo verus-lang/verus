@@ -170,7 +170,7 @@ fn clone_add_post_condition<'tcx>(
         // So we end up with:
         //
         // spec fn helper_clone_fn(self: S, other: S) -> bool {
-        //   strictly_cloned(self.x, out.x) && strictly_cloned(self.y, out.y
+        //   strictly_cloned(self.x, out.x) && strictly_cloned(self.y, out.y)
         // }
         //
         // impl Clone for S {
