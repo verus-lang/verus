@@ -1,7 +1,7 @@
 # Mutable references in a container
 
 In this chapter, we'll look at a client application using a `TreeMap<u64, &mut u64>`.
-Putting mutable references in a container like this kind of uncommon, but not unheard of.
+Putting mutable references in a container like this is kind of uncommon, but not unheard of.
 In Verus, it takes a little additional know-how.
 
 ## A detour through `Vec`
@@ -13,7 +13,7 @@ Here, we use a vector of mutable references as a way of "indexing" into a triple
 {{#include ../../../../examples/guide/bst_map_generic.rs:vec_with_mut_refs_broken}}
 ```
 
-Unfortunately, all 3 assertions will fail to verify, though they are obviously true. Why is this?
+Unfortunately, all 3 assertions will fail to verify, although they are obviously true. Why is this?
 
 Typically, when we have a mutable reference stored in a local variable (say, `a: &mut u64`),
 Verus will identify the last mutation to `a` and insert an assumption of the predicate, 
