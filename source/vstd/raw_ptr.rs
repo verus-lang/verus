@@ -2821,7 +2821,7 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     SharedReference(unsafe { &*ptr })
 }
 
-#[verus_spec(v =>
+/*#[verus_spec(v =>
     with
         Tracked(perm): Tracked<&'a PointsTo<T>>
     requires
@@ -2838,6 +2838,5 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
 #[verifier::external_body]
 pub fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T {
     ptr_ref(ptr, Tracked::assume_new())
-}
-
+}*/
 } // verus!
