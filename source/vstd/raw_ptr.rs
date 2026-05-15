@@ -2691,7 +2691,7 @@ impl<'a, T> SharedReference<'a, [T]> {
         self.as_ref().len()
     }
 
-    pub fn index(self, idx: usize) -> (out: &'a T)
+    pub const fn index(self, idx: usize) -> (out: &'a T)
         requires
             0 <= idx < self.value()@.len(),
         ensures
@@ -2821,7 +2821,11 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     SharedReference(unsafe { &*ptr })
 }
 
-/*#[verus_spec(v =>
+} // verus!
+/// Trusted wrapper around `ptr_ref`, due to
+/// [current limitations](https://verus-lang.github.io/verus/guide/exec_attr.html?highlight=verus_spec#using-a-mix-of-verus_spec-and-verus)
+/// with mixing `verus!` and `#[verus_spec`].
+#[verus_spec(v =>
     with
         Tracked(perm): Tracked<&'a PointsTo<T>>
     requires
@@ -2832,11 +2836,9 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     opens_invariants none
     no_unwind
 )]
-/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
-pub fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T {
+#[allow(non_snake_case)]
+pub const fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T {
     ptr_ref(ptr, Tracked::assume_new())
-}*/
-} // verus!
+}
