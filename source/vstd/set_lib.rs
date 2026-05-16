@@ -1,4 +1,6 @@
 #[allow(unused_imports)]
+use super::iset::*;
+#[allow(unused_imports)]
 use super::multiset::Multiset;
 #[allow(unused_imports)]
 use super::pervasive::*;
@@ -21,7 +23,7 @@ impl<A> Set<A> {
     }
 
     /// Returns an indicator function used by `map`.
-    pub closed spec fn map_inner<B>(self, f: spec_fn(A) -> B) -> (spec_fn(B) -> bool) {
+    spec fn map_inner<B>(self, f: spec_fn(A) -> B) -> (spec_fn(B) -> bool) {
         |b: B| exists|a: A| self.contains(a) && b == f(a)
     }
 
@@ -31,30 +33,24 @@ impl<A> Set<A> {
             ISet::<B>::new(self.map_inner::<B>(f)).finite(),
         decreases self.len(),
     {
-        broadcast use group_iset_lemmas;
-        broadcast use lemma_iset_empty_equivalency_len;
-
-        let inner_f = self.map_inner::<B>(f);
-        let inner_iset = ISet::<B>::new(inner_f);
-
-        if self.len() == 0 {
-            assert(forall|elem: A| !(#[trigger] self.contains(elem)));
-            assert forall|res: B| #[trigger] inner_iset.contains(res) implies false by {
-                let x = choose|x: A| self.contains(x) && f(x) == res;
-            }
-            assert(inner_iset =~= ISet::<B>::empty());
-        } else {
-            let x = choose|x: A| self.contains(x);
-            assert(inner_iset.contains(f(x)));
-            self.remove(x).lemma_map_inner_finite(f);
-            assert(self.remove(x).insert(x) == self);
-            assert(inner_iset =~= ISet::<B>::new(self.remove(x).map_inner(f)).insert(f(x)));
+        let map_f: spec_fn(B) -> bool = self.map_inner::<B>(f);
+        let map_i: ISet<B> = ISet::<B>::new(map_f);
+        let s: Seq<A> = self.to_seq();
+        let map_s: Seq<B> = s.map(f);
+        assert forall|b: B| map_i.contains(b) implies map_s.contains(b) by {
+            assert(map_f(b));
+            let a = choose|a: A| self.contains(a) && b == f(a);
+            assert(self.contains(a) && b == f(a));
+            assert(s.contains(a));
+            let j = choose|j: int| 0 <= j < s.len() && s[j] == a;
+            assert(map_s[j] == b);
         }
+        lemma_iset_finite_if_subset_of_seq(map_i, map_s);
     }
 
     /// Returns the set contains an element `f(x)` for every element `x` in `self`.
     pub closed spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
-        Set::new(self.map_inner::<B>(f))
+        Set::new(self.map_inner::<B>(f)).unwrap()
     }
 
     /// `Set::map_by` is like `Set::map`, but `map` only takes a forward function `fwd: spec_fn(A) -> B`,
@@ -70,27 +66,25 @@ impl<A> Set<A> {
     /// it is trivially guaranteed that `self.map_by(fwd, rev) == self.map(fwd)`.
     /// Also see the `set_build!` macro for a convenient interface to `map_by`.
     pub closed spec fn map_by_inner<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A) -> (spec_fn(B) -> bool)
-        recommends
-            forall|a: A| self.contains(a) ==> rev(fwd(a)) == a,
     {
         |b: B| self.contains(rev(b)) && b == fwd(rev(b))
     }
 
-    proof fn lemma_map_by_finite<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A)
+    proof fn lemma_map_by_inner_finite<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A)
         ensures
             ISet::new(self.map_by_inner(fwd, rev)).finite(),
     {
-        broadcast use lemma_set_subset_finite;
+        broadcast use super::iset_lib::lemma_iset_subset_finite;
 
-        assert(self.map_by(fwd, rev).subset_of(self.map(fwd)));
-        self.lemma_map_finite(fwd);
+        assert(ISet::new(self.map_by_inner(fwd, rev)).subset_of(ISet::new(self.map_inner(fwd))));
+        self.lemma_map_inner_finite(fwd);
     }
 
     pub closed spec fn map_by<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A) -> Set<B>
         recommends
             forall|a: A| self.contains(a) ==> rev(fwd(a)) == a,
     {
-        Set::new(self.map_by_inner::<B>(fwd, rev))
+        Set::new(self.map_by_inner::<B>(fwd, rev)).unwrap()
     }
 
     /// Similar to `Set::map_by`, but the forward function returns `Set<B>` rather than `B`,
@@ -118,16 +112,21 @@ impl<A> Set<A> {
         ensures
             ISet::new(self.map_flatten_by_inner(fwd, rev)).finite(),
     {
-        broadcast use lemma_set_subset_finite;
+        let map_f: spec_fn(B) -> bool = self.map_flatten_by_inner::<B>(fwd, rev);
+        let map_i: ISet<B> = ISet::<B>::new(map_f);
+        let s: Seq<A> = self.to_seq();
+        let map_s: Seq<Seq<B>> = s.map(fwd);
+        let map_flatten_s: Seq<B> = map_s.flatten();
 
-        let s1 = self.map_flatten_by(fwd, rev);
-        let s2 = self.map(fwd).flatten();
-        assert forall|b: B| s1.contains(b) implies s2.contains(b) by {
-            assert(self.map(fwd).contains(fwd(rev(b))));
+        assert forall|b: B| map_i.contains(b) implies map_flatten_s.contains(b) by {
+            assert(map_f(b));
+            assert(self.contains(rev(b)) && fwd(rev(b)).contains(b));
+            assert(s.contains(rev(b)));
+            assert(map_s.contains(fwd(rev(b))));
+            map_s.lemma_flatten_contains(fwd(rev(b)), b);
+            assert(map_flatten_s.contains(b));
         }
-        assert(s1.subset_of(s2));
-        self.lemma_map_finite(fwd);
-        self.map(fwd).lemma_flatten_finite();
+        lemma_iset_finite_if_subset_of_seq(map_i, map_s);
     }
 
     pub closed spec fn map_flatten_by<B>(
@@ -139,7 +138,7 @@ impl<A> Set<A> {
             forall|a: A, b: B| #[trigger]
                 self.contains(a) && fwd(a).contains(b) ==> #[trigger] rev(b) == a,
     {
-        Set::new(self.map_flatten_by_inner::<B>(fwd, rev))
+        Set::new(self.map_flatten_by_inner::<B>(fwd, rev)).unwrap()
     }
 
     pub proof fn map_flatten_by_is_map_flatten<B>(
@@ -153,6 +152,7 @@ impl<A> Set<A> {
         ensures
             self.map_flatten_by(fwd, rev) == self.map(fwd).flatten(),
     {
+        self.lemma_map_flatten_by_inner_finite(fwd, rev);
         assert forall|b: B| self.map_flatten_by(fwd, rev).contains(b) implies #[trigger] self.map(
             fwd,
         ).flatten().contains(b) by {
@@ -291,7 +291,6 @@ impl<A> Set<A> {
     /// Proof of correctness and expected behavior for `Set::find_unique_maximal`.
     pub proof fn find_unique_maximal_ensures(self, r: spec_fn(A, A) -> bool)
         requires
-            self.finite(),
             self.len() > 0,
             total_ordering(r),
         ensures
@@ -411,7 +410,6 @@ impl<A> Set<A> {
     /// The result of filtering a finite set is finite and has size less than or equal to the original set.
     pub proof fn lemma_len_filter(self, f: spec_fn(A) -> bool)
         ensures
-            self.filter(f).finite(),
             self.filter(f).len() <= self.len(),
         decreases self.len(),
     {
@@ -725,23 +723,21 @@ impl<A> Set<A> {
             #[trigger] self.map_by(fwd, rev).contains(b) <==> self.contains(rev(b)) && b == fwd(rev(b)),
         decreases self.len(),
     {
-        self.lemma_map_by_inner_finite(f);
+        self.lemma_map_by_inner_finite(fwd, rev);
     }
 
-    pub broadcast proof fn lemma_map_flatten_by_contains<B>(self, fwd: spec_fn(A) -> Set<B>, rev: spec_fn(B) -> A, b: B)
+    pub broadcast proof fn lemma_map_flatten_by_contains<B>(
+        self,
+        fwd: spec_fn(A) -> Set<B>,
+        rev: spec_fn(B) -> A,
+        b: B
+    )
         ensures
             #[trigger] self.map_flatten_by(fwd, rev).contains(b) <==>
                 self.contains(rev(b)) && b == fwd(rev(b)).contains(b),
         decreases self.len(),
     {
-        self.lemma_map_flatten_by_inner_finite(f);
-    }
-
-    pub broadcast proof fn lemma_flatten_contains(self, a: A)
-        ensures
-            #[trigger] self.flatten().contains(a) <==> exists|s: Set<A>| #[trigger] self.contains(s) && s.contains(a)
-    {
-        self.lemma_flatten_inner_finite(f);
+        self.lemma_map_flatten_by_inner_finite(fwd, rev);
     }
 
     pub broadcast proof fn lemma_set_all_subset(self, s2: Set<A>, p: spec_fn(A) -> bool)
@@ -753,27 +749,6 @@ impl<A> Set<A> {
     {
         broadcast use group_set_lemmas;
 
-    }
-
-    /// `filter_map` preserves finiteness.
-    pub broadcast proof fn lemma_filter_map_finite<B>(self, f: spec_fn(A) -> Option<B>)
-        requires
-            self.finite(),
-        ensures
-            #[trigger] self.filter_map(f).finite(),
-        decreases self.len(),
-    {
-        broadcast use group_set_lemmas;
-        broadcast use Set::lemma_filter_map_insert;
-
-        let mapped = self.filter_map(f);
-        if self.len() == 0 {
-            assert(self.filter_map(f) =~= Set::<B>::empty());
-        } else {
-            let elem = self.choose();
-            self.remove(elem).lemma_filter_map_finite(f);
-            assert(self =~= self.remove(elem).insert(elem));
-        }
     }
 
     /// Conversion to a sequence and back to a set is the identity function.
@@ -798,19 +773,38 @@ impl<A> Set<A> {
 }
 
 impl<A> Set<Set<A>> {
-    pub closed spec fn flatten_inner(self) -> (spec_fn(A) -> bool) {
+    spec fn flatten_inner(self) -> (spec_fn(A) -> bool) {
         |elem| exists|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem)
     }
 
     pub closed spec fn flatten(self) -> Set<A> {
-        Set::new(self.flatten_inner())
+        Set::new(self.flatten_inner()).unwrap()
     }
 
-    proof fn flatten_inner_finite(self)
+    proof fn lemma_flatten_inner_finite(self)
         ensures
             IMap::new(self.flatten_inner()).finite(),
     {
-        assume(false);
+        let flatten_f: spec_fn(A) -> bool = self.flatten_inner();
+        let flatten_i: ISet<A> = ISet::<A>::new(flatten_f);
+        let s: Seq<A> = self.to_seq();
+        let flatten_s: Seq<A> = s.flatten();
+
+        assert forall|a: A| flatten_i.contains(a) implies flatten_s.contains(a) by {
+            assert(flatten_f(a));
+            let elem_s = choose|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(a);
+            self.lemma_flatten_contains(a);
+            assert(flatten_s.contains(a));
+        }
+        lemma_iset_finite_if_subset_of_seq(flatten_i, flatten_s);
+    }
+
+    pub broadcast proof fn lemma_flatten_contains(self, elem: A)
+        ensures
+            #[trigger] self.flatten().contains(elem) <==>
+                (exists|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem))
+    {
+        self.lemma_flatten_inner_finite();
     }
 
     pub broadcast proof fn flatten_insert_union_commute(self, other: Set<A>)
@@ -823,6 +817,7 @@ impl<A> Set<Set<A>> {
         let rhs = self.insert(other).flatten();
 
         assert forall|elem: A| lhs.contains(elem) implies rhs.contains(elem) by {
+            lhs.lemma_flatten_contains(elem);
             if exists|s: Set<A>| self.contains(s) && s.contains(elem) {
                 let s = choose|s: Set<A>| self.contains(s) && s.contains(elem);
                 assert(self.insert(other).contains(s));
@@ -830,40 +825,28 @@ impl<A> Set<Set<A>> {
             } else {
                 assert(self.insert(other).contains(other));
             }
-        }
-    }
-
-    proof fn lemma_flatten_inner_finite(self)
-        ensures
-            ISet::new(self.flatten_inner()).finite(),
-        decreases self.len(),
-    {
-        broadcast use group_set_lemmas;
-
-        if self.len() == 0 {
-            assert(self.flatten() =~= Set::<A>::empty());
-        } else {
-            let s = self.choose();
-            let self2 = self.remove(s);
-            self2.lemma_flatten_finite();
-            self2.flatten_insert_union_commute(s);
+            rhs.lemma_flatten_contains(elem);
         }
     }
 }
 
 pub trait FiniteRange: Sized {
+    spec fn in_range(i: Self, lo: Self, hi: Self) -> bool;
+
     spec fn range_set(lo: Self, hi: Self) -> Set<Self>;
 
     spec fn range_len(lo: Self, hi: Self) -> nat;
 
     proof fn range_properties(lo: Self, hi: Self)
         ensures
+            forall|i: Self| #[trigger] Self::range_set(lo, hi).contains(i) <==> Self::in_range(i, lo, hi),
             Self::range_set(lo, hi).len() == Self::range_len(lo, hi),
     ;
 }
 
 pub broadcast proof fn range_set_properties<A: FiniteRange>(lo: A, hi: A)
     ensures
+        forall|i: A| #[trigger] A::range_set(lo, hi).contains(i) <==> A::in_range(i, lo, hi),
         A::range_set(lo, hi).len() == A::range_len(lo, hi),
 {
     A::range_properties(lo, hi);
@@ -872,14 +855,14 @@ pub broadcast proof fn range_set_properties<A: FiniteRange>(lo: A, hi: A)
 pub trait FiniteFull: Sized {
     proof fn full_properties()
         ensures
-            Set::<Self>::full().finite(),
+            Set::<Self>::full() is Some,
     ;
 }
 
 pub broadcast proof fn full_set_properties<A: FiniteFull>()
     ensures
         #![trigger Set::<A>::full()]
-        (Set::<A>::full()).finite(),
+        Set::<A>::full() is Some,
 {
     A::full_properties();
 }
@@ -899,7 +882,7 @@ impl<A: FiniteRange> Set<A> {
 impl<A: FiniteFull> Set<A> {
     #[verifier::inline]
     pub open spec fn from_finite_type(f: spec_fn(A) -> bool) -> Set<A> {
-        Set::<A>::full().filter(f)
+        Set::<A>::full().unwrap().filter(f)
     }
 }
 
@@ -910,11 +893,11 @@ macro_rules! range_impls {
         $(
             verus! {
                 impl FiniteRange for $t {
-                    open spec fn range_set_inner(lo: Self, hi: Self) -> (spec_fn(Self) -> bool) {
-                        |i: Self| lo <= i < hi
+                    open spec fn in_range(i: Self, lo: Self, hi: Self) -> bool {
+                        lo <= i < hi
                     }
                     open spec fn range_set(lo: Self, hi: Self) -> Set<Self> {
-                        Set::new(range_set_inner)
+                        Set::new(|i: Self| lo <= i < hi).unwrap()
                     }
                     open spec fn range_len(lo: Self, hi: Self) -> nat {
                         if lo <= hi { (hi - lo) as nat } else { 0 }
@@ -922,9 +905,15 @@ macro_rules! range_impls {
                     proof fn range_properties(lo: Self, hi: Self)
                         decreases hi - lo
                     {
-                        broadcast use axiom_set_empty_finite;
-                        broadcast use axiom_set_empty_len;
-                        broadcast use axiom_set_insert_finite;
+                        broadcast use lemma_set_empty_len;
+
+                        let s = Seq::new((hi - lo) as nat, |i: int| (lo + i) as Self);
+                        let f = |i: Self| lo <= i && i < hi;
+                        let i = ISet::new(f);
+                        assert(forall|a| i.contains(a) ==> s.contains(a));
+                        lemma_iset_finite_if_subset_of_seq(i, s);
+                        assert(set_function_finite(f));
+                        assert(forall|j: Self| set_int_range(lo, hi).contains(j) <==> lo <= j < hi);
 
                         if hi <= lo {
                             assert(Self::range_set(lo, hi).is_empty());
@@ -932,7 +921,6 @@ macro_rules! range_impls {
                             let hi1 = (hi - 1) as $t;
                             Self::range_properties(lo, hi1);
                             assert(Self::range_set(lo, hi) == Self::range_set(lo, hi1).insert(hi1));
-                            axiom_set_insert_finite(Self::range_set(lo, hi1), hi1);
                         }
                     }
                 }
@@ -947,8 +935,6 @@ macro_rules! full_impls {
             verus! {
                 impl FiniteFull for $t {
                     proof fn full_properties() {
-                        broadcast use axiom_set_insert_finite;
-
                         assert(Set::<$t>::full() == Set::range_inclusive($t::MIN, $t::MAX));
                         <$t as FiniteRange>::range_properties($t::MIN, $t::MAX);
                     }
@@ -1015,79 +1001,9 @@ pub proof fn lemma_sets_eq_iff_injective_map_on_eq<T, S>(s1: Set<T>, s2: Set<T>,
     }
 }
 
-/// The result of inserting an element `a` into a set `s` is finite iff `s` is finite.
-pub broadcast proof fn lemma_set_insert_finite_iff<A>(s: Set<A>, a: A)
-    ensures
-        #[trigger] s.insert(a).finite() <==> s.finite(),
-{
-    if s.insert(a).finite() {
-        if s.contains(a) {
-            assert(s == s.insert(a));
-        } else {
-            assert(s == s.insert(a).remove(a));
-        }
-    }
-    assert(s.insert(a).finite() ==> s.finite());
-}
-
-/// The result of removing an element `a` into a set `s` is finite iff `s` is finite.
-pub broadcast proof fn lemma_set_remove_finite_iff<A>(s: Set<A>, a: A)
-    ensures
-        #[trigger] s.remove(a).finite() <==> s.finite(),
-{
-    if s.remove(a).finite() {
-        if s.contains(a) {
-            assert(s == s.remove(a).insert(a));
-        } else {
-            assert(s == s.remove(a));
-        }
-    }
-}
-
-/// The union of two sets is finite iff both sets are finite.
-pub broadcast proof fn lemma_set_union_finite_iff<A>(s1: Set<A>, s2: Set<A>)
-    ensures
-        #[trigger] s1.union(s2).finite() <==> s1.finite() && s2.finite(),
-{
-    if s1.union(s2).finite() {
-        lemma_set_union_finite_implies_sets_finite(s1, s2);
-    }
-}
-
-pub proof fn lemma_set_union_finite_implies_sets_finite<A>(s1: Set<A>, s2: Set<A>)
-    requires
-        s1.union(s2).finite(),
-    ensures
-        s1.finite(),
-        s2.finite(),
-    decreases s1.union(s2).len(),
-{
-    if s1.union(s2) =~= set![] {
-        assert(s1 =~= set![]);
-        assert(s2 =~= set![]);
-    } else {
-        let a = s1.union(s2).choose();
-        assert(s1.remove(a).union(s2.remove(a)) == s1.union(s2).remove(a));
-        axiom_set_remove_len(s1.union(s2), a);
-        lemma_set_union_finite_implies_sets_finite(s1.remove(a), s2.remove(a));
-        assert(forall|s: Set<A>|
-            #![auto]
-            s.remove(a).insert(a) == if s.contains(a) {
-                s
-            } else {
-                s.insert(a)
-            });
-        lemma_set_insert_finite_iff(s1, a);
-        lemma_set_insert_finite_iff(s2, a);
-    }
-}
-
 /// The size of a union of two sets is less than or equal to the size of
 /// both individual sets combined.
 pub proof fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>)
-    requires
-        s1.finite(),
-        s2.finite(),
     ensures
         s1.union(s2).len() <= s1.len() + s2.len(),
     decreases s1.len(),
@@ -1108,9 +1024,6 @@ pub proof fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>)
 /// The size of a union of two sets is greater than or equal to the size of
 /// both individual sets.
 pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
-    requires
-        s1.finite(),
-        s2.finite(),
     ensures
         s1.union(s2).len() >= s1.len(),
         s1.union(s2).len() >= s2.len(),
@@ -1133,8 +1046,6 @@ pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
 
 /// The size of the intersection of finite set `s1` and set `s2` is less than or equal to the size of `s1`.
 pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
-    requires
-        s1.finite(),
     ensures
         s1.intersect(s2).len() <= s1.len(),
     decreases s1.len(),
@@ -1152,11 +1063,9 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
 /// the size of `s2` and `s1` must be finite.
 pub proof fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>)
     requires
-        s2.finite(),
         s1.subset_of(s2),
     ensures
         s1.len() <= s2.len(),
-        s1.finite(),
 {
     lemma_len_intersect::<A>(s2, s1);
     assert(s2.intersect(s1) =~= s1);
@@ -1164,8 +1073,6 @@ pub proof fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>)
 
 /// The size of the difference of finite set `s1` and set `s2` is less than or equal to the size of `s1`.
 pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
-    requires
-        s1.finite(),
     ensures
         s1.difference(s2).len() <= s1.len(),
     decreases s1.len(),
@@ -1181,7 +1088,7 @@ pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
 
 /// Creates a finite set of integers in the range [lo, hi).
 pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
-    Set::new(|i: int| lo <= i && i < hi)
+    Set::<int>::range(lo, hi)
 }
 
 /// If a set solely contains integers in the range [a, b), then its size is
@@ -1190,24 +1097,34 @@ pub proof fn lemma_int_range(lo: int, hi: int)
     requires
         lo <= hi,
     ensures
-        set_int_range(lo, hi).finite(),
+        forall|j: int| set_int_range(lo, hi).contains(j) <==> lo <= j < hi,
         set_int_range(lo, hi).len() == hi - lo,
     decreases hi - lo,
 {
+    broadcast use range_set_properties;
+
+    /* TODO: Remove this body
+    let s = Seq::new((hi - lo) as nat, |i: int| lo + i);
+    let f = |i: int| lo <= i && i < hi;
+    let i = ISet::new(f);
+    assert(forall|a| i.contains(a) ==> s.contains(a));
+    lemma_iset_finite_if_subset_of_seq(i, s);
+    assert(set_function_finite(f));
+    assert(forall|j: int| set_int_range(lo, hi).contains(j) <==> lo <= j < hi);
+
     if lo == hi {
         assert(set_int_range(lo, hi) =~= Set::empty());
     } else {
         lemma_int_range(lo, hi - 1);
         assert(set_int_range(lo, hi - 1).insert(hi - 1) =~= set_int_range(lo, hi));
     }
+    */
 }
 
 /// If x is a subset of y and the size of x is equal to the size of y, x is equal to y.
 pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
     requires
         x.subset_of(y),
-        x.finite(),
-        y.finite(),
         x.len() == y.len(),
     ensures
         x =~= y,
@@ -1226,11 +1143,9 @@ pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
 /// another set, the two sets have the same size.
 pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
     requires
-        x.finite(),
         injective_on(f, x),
         x.map(f) == y,
     ensures
-        y.finite(),
         x.len() == y.len(),
     decreases x.len(),
 {
@@ -1252,10 +1167,8 @@ pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
 /// another set, the constructed set's length is at most the original's
 pub proof fn lemma_map_size_bound<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
     requires
-        x.finite(),
         x.map(f) == y,
     ensures
-        y.finite(),
         y.len() <= x.len(),
     decreases x.len(),
 {
@@ -1349,8 +1262,6 @@ pub broadcast proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
 /// Set `s` has length 0 if and only if it is equal to the empty set. If `s` has length greater than 0,
 /// Then there must exist an element `x` such that `s` contains `x`.
 pub broadcast proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
-    requires
-        s.finite(),
     ensures
         #![trigger s.len()]
         (s.len() == 0 <==> s == Set::<A>::empty()) && (s.len() != 0 ==> exists|x: A| s.contains(x)),
@@ -1364,7 +1275,7 @@ pub broadcast proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
             if exists|a: A| s.contains(a) {
                 let a = s.choose();
                 assert(s.remove(a).len() == s.len() - 1) by {
-                    axiom_set_remove_len(s, a);
+                    lemma_set_remove_len(s, a);
                 }
             }
         }
@@ -1376,9 +1287,6 @@ pub broadcast proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
 /// If sets `a` and `b` are disjoint, meaning they share no elements in common, then the length
 /// of the union `a + b` is equal to the sum of the lengths of `a` and `b`.
 pub broadcast proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
-    requires
-        a.finite(),
-        b.finite(),
     ensures
         a.disjoint(b) ==> #[trigger] (a + b).len() == a.len() + b.len(),
     decreases a.len(),
@@ -1423,9 +1331,6 @@ pub proof fn lemma_disjoint_iff_empty_intersection<T>(a: Set<T>, b: Set<T>)
 /// The length of the union between two sets added to the length of the intersection between the
 /// two sets is equal to the sum of the lengths of the two sets.
 pub broadcast proof fn lemma_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
-    requires
-        a.finite(),
-        b.finite(),
     ensures
         #[trigger] (a + b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len(),
     decreases a.len(),
@@ -1455,9 +1360,6 @@ pub broadcast proof fn lemma_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
 /// The length of the set difference `A \ B` is equal to the length of `A` minus the length of the
 /// intersection `A ∩ B`.
 pub broadcast proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
-    requires
-        a.finite(),
-        b.finite(),
     ensures
         (#[trigger] a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a
             + b).len()) && (a.difference(b).len() == a.len() - a.intersect(b).len()),
@@ -1512,7 +1414,7 @@ pub broadcast proof fn axiom_is_empty<A>(s: Set<A>)
 
 pub broadcast proof fn axiom_is_empty_len0<A>(s: Set<A>)
     ensures
-        #[trigger] s.is_empty() <==> (s.finite() && s.len() == 0),
+        #[trigger] s.is_empty() <==> s.len() == 0,
 {
 }
 

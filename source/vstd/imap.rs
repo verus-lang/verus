@@ -238,7 +238,7 @@ pub broadcast proof fn lemma_imap_empty<K, V>()
     ensures
         #[trigger] IMap::<K, V>::empty().dom() == ISet::<K>::empty(),
 {
-    broadcast use super::set::group_iset_lemmas;
+    broadcast use super::iset::group_iset_lemmas;
 
     assert(ISet::new(|k: K| (|k| None::<V>)(k) is Some) == ISet::<K>::empty());
 }
@@ -249,7 +249,7 @@ pub broadcast proof fn lemma_imap_insert_domain<K, V>(m: IMap<K, V>, key: K, val
     ensures
         #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
-    broadcast use super::set::group_iset_lemmas;
+    broadcast use super::iset::group_iset_lemmas;
 
     assert(m.insert(key, value).dom() =~= m.dom().insert(key));
 }
@@ -276,7 +276,7 @@ pub broadcast proof fn lemma_imap_remove_domain<K, V>(m: IMap<K, V>, key: K)
     ensures
         #[trigger] m.remove(key).dom() == m.dom().remove(key),
 {
-    broadcast use super::set::group_iset_lemmas;
+    broadcast use super::iset::group_iset_lemmas;
 
     assert(m.remove(key).dom() =~= m.dom().remove(key));
 }
@@ -299,7 +299,7 @@ pub broadcast proof fn lemma_imap_ext_equal<K, V>(m1: IMap<K, V>, m2: IMap<K, V>
             &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
         },
 {
-    broadcast use super::set::group_iset_lemmas;
+    broadcast use super::iset::group_iset_lemmas;
 
     if m1 =~= m2 {
         assert(m1.dom() =~= m2.dom());

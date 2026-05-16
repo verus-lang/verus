@@ -49,7 +49,7 @@ impl<A> ISet<A> {
     /// * [`lemma_iset_empty_finite`]
     /// * [`lemma_iset_empty_len`] <br>
     /// * [`lemma_iset_empty`]
-    #[rustc_diagnostic_item = "verus::vstd::set::ISet::empty"]
+    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::empty"]
     pub closed spec fn empty() -> ISet<A> {
         ISet { set: |a| false }
     }
@@ -67,13 +67,13 @@ impl<A> ISet<A> {
     }
 
     /// The "full" set, i.e., set containing every element of type `A`.
-    #[rustc_diagnostic_item = "verus::vstd::set::ISet::full"]
+    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::full"]
     pub open spec fn full() -> ISet<A> {
         ISet::empty().complement()
     }
 
     /// Predicate indicating if the set contains the given element.
-    #[rustc_diagnostic_item = "verus::vstd::set::ISet::contains"]
+    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::contains"]
     pub closed spec fn contains(self, a: A) -> bool {
         (self.set)(a)
     }
@@ -85,7 +85,7 @@ impl<A> ISet<A> {
     }
 
     /// Returns `true` if the first argument is a subset of the second.
-    #[rustc_diagnostic_item = "verus::vstd::set::ISet::subset_of"]
+    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::subset_of"]
     pub open spec fn subset_of(self, s2: ISet<A>) -> bool {
         forall|a: A| self.contains(a) ==> s2.contains(a)
     }
@@ -97,7 +97,7 @@ impl<A> ISet<A> {
 
     /// Returns a new set with the given element inserted.
     /// If that element is already in the set, then an identical set is returned.
-    #[rustc_diagnostic_item = "verus::vstd::set::ISet::insert"]
+    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::insert"]
     pub closed spec fn insert(self, a: A) -> ISet<A> {
         ISet {
             set: |a2|
@@ -111,7 +111,7 @@ impl<A> ISet<A> {
 
     /// Returns a new set with the given element removed.
     /// If that element is already absent from the set, then an identical set is returned.
-    #[rustc_diagnostic_item = "verus::vstd::set::ISet::remove"]
+    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::remove"]
     pub closed spec fn remove(self, a: A) -> ISet<A> {
         ISet {
             set: |a2|
@@ -176,7 +176,7 @@ impl<A> ISet<A> {
             }
     }
 
-    pub closed spec fn to_finite(self) -> Set<A>
+    pub closed spec fn to_set(self) -> Option<Set<A>>
         recommends
             self.finite(),
     {
@@ -200,7 +200,7 @@ impl<A> ISet<A> {
 
     /// Creates a [`Map`] whose domain is the given set.
     /// The values of the map are given by `f`, a function of the keys.
-    pub uninterp spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> Map<A, V>;
+    pub uninterp spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> IMap<A, V>;
 
     /// Returns `true` if the sets are disjoint, i.e., if their interesection is
     /// the empty set.
@@ -1011,12 +1011,35 @@ pub broadcast proof fn lemma_iset_choose_len<A>(s: ISet<A>)
     fold::lemma_finite_set_induct(s, pred);
 }
 
-pub broadcast proof fn lemma_iset_to_finite_contains<A>(s: ISet<A>, a: A)
+pub broadcast proof fn lemma_iset_to_set_contains<A>(s: ISet<A>, a: A)
     requires
         s.finite(),
     ensures
-        #[trigger] s.to_finite().contains(a) == s.contains(a),
+        #[trigger] s.to_set().unwrap().contains(a) == s.contains(a),
 {
+}
+
+pub proof fn lemma_iset_finite_if_subset_of_seq<A>(i: ISet<A>, s: Seq<A>)
+    requires
+        forall|a| i.contains(a) ==> s.contains(a),
+    ensures
+        i.finite(),
+{
+    let f = |a: A| (s.index_of(a) as nat);
+    let ub = s.len();
+    assert(surj_on(f, i)) by {
+        assert forall|a1, a2| #![all_triggers] i.contains(a1) && i.contains(a2) && a1 != a2 implies f(a1) != f(a2) by {
+            assert(s.contains(a1));
+            assert(s.contains(a2));
+            assert(0 <= f(a1) < s.len() && s[f(a1) as int] == a1);
+            assert(0 <= f(a2) < s.len() && s[f(a2) as int] == a2);
+        }
+    }
+    assert forall|a| i.contains(a) implies f(a) < ub by {
+        assert(s.contains(a));
+        assert(0 <= f(a) < s.len() && s[f(a) as int] == a);
+    }
+    assert(trigger_finite(f, ub));
 }
 
 pub broadcast group group_iset_lemmas {
@@ -1048,7 +1071,7 @@ pub broadcast group group_iset_lemmas {
     lemma_iset_remove_len,
     lemma_iset_contains_len,
     lemma_iset_choose_len,
-    lemma_iset_to_finite_contains,
+    lemma_iset_to_set_contains,
 }
 
 // Macros
@@ -1056,7 +1079,7 @@ pub broadcast group group_iset_lemmas {
 #[macro_export]
 macro_rules! iset_internal {
     [$($elem:expr),* $(,)?] => {
-        $crate::vstd::set::ISet::empty()
+        $crate::vstd::iset::ISet::empty()
             $(.insert($elem))*
     };
 }
@@ -1064,7 +1087,7 @@ macro_rules! iset_internal {
 #[macro_export]
 macro_rules! iset {
     [$($tail:tt)*] => {
-        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::set::iset_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::iset::iset_internal!($($tail)*))
     };
 }
 

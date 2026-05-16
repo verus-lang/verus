@@ -53,6 +53,11 @@ pub struct Set<A> {
     set: spec_fn(A) -> bool,
 }
 
+pub open spec fn set_function_finite<A>(f: spec_fn(A) -> bool) -> bool
+{
+    ISet::<A>::new(f).finite()
+}
+
 impl<A> Set<A> {
     /// The "empty" set.
     ///
@@ -75,30 +80,45 @@ impl<A> Set<A> {
         Set { set: |a| false }
     }
 
-    /// Set whose membership is determined by the given boolean predicate.
-    /// But if that boolean predicate produces an infinite set, then the
-    /// produced set is an arbitrary finite set instead.
+    /// Set whose membership is determined by the given boolean predicate,
+    /// but only if the predicate produces a finite set. (If it produces an
+    /// infinite set, the result of this function is None.)
     ///
     /// Usage Examples:
     /// ```rust
     /// let set_a = Set::new(|x : nat| x < 42);
     /// let set_b = Set::<A>::new(|x| some_predicate(x));
-    /// assert(forall|x| some_predicate(x) <==> set_b.contains(x));
+    /// assert(set_function_finite(|x| some_predicate(x)) ==>
+    ///        set_b matches Some(s) &&
+    ///        forall|x| some_predicate(x) <==> s.contains(x));
     /// ```
-    pub closed spec fn new(f: spec_fn(A) -> bool) -> Set<A> {
-        if ISet::new(f).finite() {
-            Set { set: f }
+    pub closed spec fn new(f: spec_fn(A) -> bool) -> Option<Set<A>> {
+        if set_function_finite(f) {
+            Some(Set { set: f })
         }
         else {
-            arbitrary()
+            None
         }
     }
 
+    /// Set whose membership is determined by the given boolean predicate,
+    /// assuming the predicate produces a finite set.
+    ///
+    /// Usage Examples:
+    /// ```rust
+    /// let set_a = Set::new_assuming_finite(|x : nat| x < 42);
+    /// let set_b = Set::<A>::new_assuming_finite(|x| some_predicate(x));
+    /// assert(forall|x| some_predicate(x) <==> set_b.contains(x));
+    /// ```
+    #[deprecated(note = "Set::new_assuming_finite is helpful for incremental porting of existing code to the new version of Verus supporting finite sets. But it's dangerous since it assumes the given function describes a finite set.")]
+    pub closed spec fn new_assuming_finite(f: spec_fn(A) -> bool) -> Set<A> {
+        Set { set: f }
+    }
+
     /// The "full" set, i.e., set containing every element of type `A`.
-    /// Note that if `A` is infinite, then this produces an arbitrary
-    /// finite subset of `A`.
+    /// Note that if `A` is infinite, then this produces None.
     #[rustc_diagnostic_item = "verus::vstd::set::Set::full"]
-    pub open spec fn full() -> Set<A> {
+    pub open spec fn full() -> Option<Set<A>> {
         Set::new(|a: A| true)
     }
 
@@ -186,12 +206,19 @@ impl<A> Set<A> {
         self.difference(s2)
     }
 
-    /// Set of all elements in the given set which satisfy the predicate `f`.
-    pub open spec fn filter(self, f: spec_fn(A) -> bool) -> Set<A> {
-        self.intersect(Self::new(f))
+    /// Set complement (within the space of all possible elements in `A`).
+    /// Returns None if this would be an infinite set.
+    pub open spec fn complement(self) -> Option<Set<A>> {
+        Set::new(|a| !(self.set)(a))
     }
 
-    /// Returns `true` if the set is finite, which is always true.
+    /// Set of all elements in the given set which satisfy the predicate `f`.
+    pub closed spec fn filter(self, f: spec_fn(A) -> bool) -> Set<A> {
+        Set { set: |a| (self.set)(a) && f(a) }
+    }
+
+    /// Returns `true` if the set is finite.
+    #[deprecated(note = "Every Set is always finite, so this is always true.")]
     pub open spec fn finite(self) -> bool {
         true
     }
@@ -200,6 +227,11 @@ impl<A> Set<A> {
     /// a given ISet.
     pub open spec fn congruent(self, s2: ISet<A>) -> bool {
         forall|a: A| self.contains(a) <==> s2.contains(a)
+    }
+
+    /// Generates an `iset` with the same elements
+    pub open spec fn to_iset(self) -> ISet<A> {
+        ISet::<A>::new(|a| self.contains(a))
     }
 
     /// Cardinality of the set.
@@ -228,13 +260,26 @@ impl<A> Set<A> {
     }
 }
 
-// Closures make triggering finicky but using this to trigger explicitly works well.
-spec fn trigger_finite<A>(f: spec_fn(A) -> nat, ub: nat) -> bool {
-    true
+pub struct FinitenessDemonstration<A>
+{
+    pub f: spec_fn(A) -> nat,
+    pub ub: nat,
 }
 
-spec fn surj_on<A, B>(f: spec_fn(A) -> B, s: Set<A>) -> bool {
-    forall|a1, a2| #![all_triggers] s.contains(a1) && s.contains(a2) && a1 != a2 ==> f(a1) != f(a2)
+impl<A> FinitenessDemonstration<A>
+{
+    pub open spec fn demonstrates_set_is_finite(self, s: Set<A>) -> bool
+    {
+        &&& forall|a1, a2| #![all_triggers] s.contains(a1) && s.contains(a2) && a1 != a2 ==> self.f(a1) != self.f(a2)
+        &&& forall|a| s.contains(a) ==> self.f(a) < self.ub
+    }
+}
+
+impl<A> Set<A> {
+    pub axiom fn axiom_get_finiteness_demonstration(self) -> (d: FinitenessDemonstration<A>)
+        ensures
+            d.demonstrates_set_is_finite(self),
+    ;
 }
 
 pub mod fold {
@@ -278,9 +323,6 @@ pub mod fold {
         lemma_set_complement,
         lemma_set_ext_equal,
         lemma_set_ext_equal_deep,
-        lemma_set_empty_finite,
-        lemma_set_insert_finite,
-        lemma_set_remove_finite,
     }
 
     pub open spec fn is_fun_commutative<A, B>(f: spec_fn(B, A) -> B) -> bool {
@@ -301,7 +343,6 @@ pub mod fold {
                 {
                     &&& #[trigger] trigger_fold_graph(yr, a)
                     &&& d > 0
-                    &&& s.remove(a).finite()
                     &&& s.contains(a)
                     &&& fold_graph(z, f, s.remove(a), yr, sub(d, 1))
                     &&& y == f(yr, a)
@@ -399,7 +440,6 @@ pub mod fold {
             {
                 &&& trigger_fold_graph(yr, a)
                 &&& d > 0
-                &&& s.remove(aa).finite()
                 &&& s.contains(aa)
                 &&& fold_graph(z, f, s.remove(aa), yr, sub(d, 1))
                 &&& y == f(yr, aa)
@@ -472,25 +512,11 @@ pub mod fold {
         /// returns `f(...f(f(init, x0), x1), ..., xn)`.
         pub closed spec fn fold<B>(self, z: B, f: spec_fn(B, A) -> B) -> B
             recommends
-                self.finite(),
                 is_fun_commutative(f),
         {
             let (y, d): (B, nat) = choose|y, d| fold_graph(z, f, self, y, d);
             y
         }
-    }
-
-    proof fn lemma_fold_graph_finite<A, B>(z: B, f: spec_fn(B, A) -> B, s: Set<A>, y: B, d: nat)
-        requires
-            is_fun_commutative(f),
-            fold_graph(z, f, s, y, d),
-        ensures
-            s.finite(),
-    {
-        broadcast use group_set_lemmas_early;
-
-        let pred = |s: Set<A>, y, d| s.finite();
-        lemma_fold_graph_induct(z, f, s, y, d, pred);
     }
 
     proof fn lemma_fold_graph_deterministic<A, B>(
@@ -543,7 +569,6 @@ pub mod fold {
         ensures
             s.fold(z, f) == y,
     {
-        lemma_fold_graph_finite(z, f, s, y, d);
         if s.fold(z, f) != y {
             let (y2, d2) = choose|y2, d2| fold_graph(z, f, s, y2, d2) && y2 != y;
             lemma_fold_graph_deterministic(z, f, s, y2, y, d2, d);
@@ -557,14 +582,12 @@ pub mod fold {
     // measure.
     pub proof fn lemma_finite_set_induct<A>(s: Set<A>, pred: spec_fn(Set<A>) -> bool)
         requires
-            s.finite(),
             pred(Set::empty()),
-            forall|s, a| pred(s) && s.finite() && !s.contains(a) ==> #[trigger] pred(s.insert(a)),
+            forall|other: Set<A>, a: A| pred(other) && !other.contains(a) ==> #[trigger] pred(other.insert(a)),
         ensures
             pred(s),
     {
-        let (f, ub) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
-            trigger_finite(f, ub) && surj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
+        let FinitenessDemonstration{ f, ub } = s.axiom_get_finiteness_demonstration();
         lemma_finite_set_induct_aux(s, f, ub, pred);
     }
 
@@ -575,11 +598,10 @@ pub mod fold {
         pred: spec_fn(Set<A>) -> bool,
     )
         requires
-            surj_on(f, s),
-            s.finite(),
+            forall|a1, a2| #![all_triggers] s.contains(a1) && s.contains(a2) && a1 != a2 ==> f(a1) != f(a2),
             forall|a| s.contains(a) ==> f(a) < ub,
             pred(Set::empty()),
-            forall|s, a| pred(s) && s.finite() && !s.contains(a) ==> #[trigger] pred(s.insert(a)),
+            forall|other: Set<A>, a: A| pred(other) && !other.contains(a) ==> #[trigger] pred(other.insert(a)),
         ensures
             pred(s),
         decreases ub,
@@ -602,7 +624,6 @@ pub mod fold {
 
     proof fn lemma_fold_graph_exists<A, B>(z: B, f: spec_fn(B, A) -> B, s: Set<A>)
         requires
-            s.finite(),
             is_fun_commutative(f),
         ensures
             exists|y, d| fold_graph(z, f, s, y, d),
@@ -613,18 +634,17 @@ pub mod fold {
             lemma_fold_graph_empty_intro(z, f);
         };
         // Step case
-        assert forall|s, a| pred(s) && s.finite() && !s.contains(a) implies #[trigger] pred(
-            s.insert(a),
+        assert forall|other: Set<A>, a: A| pred(other) && !other.contains(a) implies #[trigger] pred(
+            other.insert(a),
         ) by {
-            let (y, d): (B, nat) = choose|y, d| fold_graph(z, f, s, y, d);
-            lemma_fold_graph_insert_intro(z, f, s, y, d, a);
+            let (y, d): (B, nat) = choose|y, d| fold_graph(z, f, other, y, d);
+            lemma_fold_graph_insert_intro(z, f, other, y, d, a);
         };
         lemma_finite_set_induct(s, pred);
     }
 
     pub broadcast proof fn lemma_fold_insert<A, B>(s: Set<A>, z: B, f: spec_fn(B, A) -> B, a: A)
         requires
-            s.finite(),
             !s.contains(a),
             is_fun_commutative(f),
         ensures
@@ -662,10 +682,6 @@ pub broadcast proof fn lemma_set_new<A>(f: spec_fn(A) -> bool, a: A)
         #[trigger] Set::<A>::new(f).contains(a) == f(a),
 {
     super::iset::lemma_iset_new(f, a);
-    super::iset::lemma_iset_to_finite_contains(ISet::<A>::new(f), a);
-    assert(Set::<A>::new(f).contains(a) == ISet::<A>::new(f).to_finite().contains(a));
-    assert(ISet::<A>::new(f).to_finite().contains(a) == ISet::<A>::new(f).contains(a));
-    assert(Set::<A>::new(f).to_gset().contains(a) == Set::<A>::new(f).contains(a));
 }
 
 /// The result of inserting element `a` into set `s` must contains `a`.
@@ -838,7 +854,6 @@ pub broadcast proof fn lemma_set_remove_len<A>(s: Set<A>, a: A)
             0
         }),
 {
-    lemma_set_remove_finite(s, a);
     lemma_set_insert_len(s.remove(a), a);
     if s.contains(a) {
         assert(s =~= s.remove(a).insert(a));
@@ -856,8 +871,6 @@ pub broadcast proof fn lemma_set_contains_len<A>(s: Set<A>, a: A)
 {
     let a = s.choose();
     assert(s.remove(a).insert(a) =~= s);
-    lemma_set_remove_finite(s, a);
-    lemma_set_insert_finite(s.remove(a), a);
     lemma_set_insert_len(s.remove(a), a);
 }
 
@@ -872,26 +885,10 @@ pub broadcast proof fn lemma_set_choose_len<A>(s: Set<A>)
     broadcast use lemma_set_contains_len;
     broadcast use lemma_set_empty_len;
     broadcast use lemma_set_ext_equal;
-    broadcast use lemma_set_insert_finite;
 
-    let pred = |s: Set<A>| s.finite() ==> s.len() == 0 <==> s =~= Set::empty();
+    let pred = |other: Set<A>| other.len() == 0 <==> other =~= Set::empty();
     fold::lemma_finite_set_induct(s, pred);
 }
-
-/// Leverages the finiteness to return a demonstration of
-/// finiteness: A function `f` from `A` to `nat`, and an upper
-/// bound `ub`, such that (1) different elements of `self` are
-/// mapped by `f` to different `nat` values, and (2) each element
-/// of `self` is mapped by `f` to a value less than `ub`.
-pub broadcast axiom fn axiom_set_is_finite<A>(s: Set<A>) -> (f_and_ub: (spec_fn(A) -> nat, nat))
-    ensures
-    ({
-        let (f, ub) = f_and_ub;
-        &&& #[trigger] trigger_finite(f, ub)
-        &&& surj_on(f, s)
-        &&& forall|a| s.contains(a) ==> f(a) < ub
-    }),
-;
 
 pub broadcast group group_set_lemmas {
     lemma_set_empty,
@@ -914,7 +911,6 @@ pub broadcast group group_set_lemmas {
     lemma_set_remove_len,
     lemma_set_contains_len,
     lemma_set_choose_len,
-    axiom_set_is_finite,
     lemma_set_new,
 }
 

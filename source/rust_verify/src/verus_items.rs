@@ -341,6 +341,7 @@ pub(crate) enum SetItem {
 pub(crate) enum VstdItem {
     SeqFn(vir::interpreter::SeqFn),
     SetFn(SetItem),
+    ISetFn(SetItem),
     Invariant(InvariantItem),
     ExecNonstaticCall,
     ProofNonstaticCall,
@@ -640,12 +641,19 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::seq::Seq::ext_equal",   VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::ExtEqual), Some(Arc::new("seq::Seq::ext_equal"  .to_owned())))),
         ("verus::vstd::seq::Seq::last",        VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Last    ), Some(Arc::new("seq::Seq::last"       .to_owned())))),
 
-        ("verus::vstd::set::GSet::empty",     VerusItem::Vstd(VstdItem::SetFn(SetItem::Empty),    Some(Arc::new("set::GSet::empty".to_owned())))),
-        ("verus::vstd::set::GSet::full",      VerusItem::Vstd(VstdItem::SetFn(SetItem::Full),     Some(Arc::new("set::GSet::full".to_owned())))),
-        ("verus::vstd::set::GSet::contains",  VerusItem::Vstd(VstdItem::SetFn(SetItem::Contains), Some(Arc::new("set::GSet::contains".to_owned())))),
-        ("verus::vstd::set::GSet::subset_of", VerusItem::Vstd(VstdItem::SetFn(SetItem::SubsetOf), Some(Arc::new("set::GSet::subset_of".to_owned())))),
-        ("verus::vstd::set::GSet::insert",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Insert),   Some(Arc::new("set::GSet::insert".to_owned())))),
-        ("verus::vstd::set::GSet::remove",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Remove),   Some(Arc::new("set::GSet::remove".to_owned())))),
+        ("verus::vstd::set::Set::empty",     VerusItem::Vstd(VstdItem::SetFn(SetItem::Empty),    Some(Arc::new("set::Set::empty".to_owned())))),
+        ("verus::vstd::set::Set::full",      VerusItem::Vstd(VstdItem::SetFn(SetItem::Full),     Some(Arc::new("set::Set::full".to_owned())))),
+        ("verus::vstd::set::Set::contains",  VerusItem::Vstd(VstdItem::SetFn(SetItem::Contains), Some(Arc::new("set::Set::contains".to_owned())))),
+        ("verus::vstd::set::Set::subset_of", VerusItem::Vstd(VstdItem::SetFn(SetItem::SubsetOf), Some(Arc::new("set::Set::subset_of".to_owned())))),
+        ("verus::vstd::set::Set::insert",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Insert),   Some(Arc::new("set::Set::insert".to_owned())))),
+        ("verus::vstd::set::Set::remove",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Remove),   Some(Arc::new("set::Set::remove".to_owned())))),
+
+        ("verus::vstd::iset::ISet::empty",     VerusItem::Vstd(VstdItem::ISetFn(SetItem::Empty),   Some(Arc::new("iset::ISet::empty".to_owned())))),
+        ("verus::vstd::iset::ISet::full",      VerusItem::Vstd(VstdItem::ISetFn(SetItem::Full),     Some(Arc::new("iset::ISet::full".to_owned())))),
+        ("verus::vstd::iset::ISet::contains",  VerusItem::Vstd(VstdItem::ISetFn(SetItem::Contains), Some(Arc::new("iset::ISet::contains".to_owned())))),
+        ("verus::vstd::iset::ISet::subset_of", VerusItem::Vstd(VstdItem::ISetFn(SetItem::SubsetOf), Some(Arc::new("iset::ISet::subset_of".to_owned())))),
+        ("verus::vstd::iset::ISet::insert",    VerusItem::Vstd(VstdItem::ISetFn(SetItem::Insert),   Some(Arc::new("iset::ISet::insert".to_owned())))),
+        ("verus::vstd::iset::ISet::remove",    VerusItem::Vstd(VstdItem::ISetFn(SetItem::Remove),   Some(Arc::new("iset::ISet::remove".to_owned())))),
 
         ("verus::vstd::invariant::AtomicInvariant::namespace",           VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantNamespace       ), Some(Arc::new("invariant::AtomicInvariant::namespace"          .to_owned())))),
         ("verus::vstd::invariant::AtomicInvariant::inv",                 VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantInv             ), Some(Arc::new("invariant::AtomicInvariant::inv"                .to_owned())))),

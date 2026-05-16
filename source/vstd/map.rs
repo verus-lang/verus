@@ -41,14 +41,28 @@ impl<K, V> Map<K, V> {
     }
 
     /// Gives a `Map<K, V>` whose domain is given by the boolean predicate on keys `fk`,
-    /// and maps each key to the value given by `fv`.
-    pub open spec fn new(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V) -> Map<K, V> {
-        Set::new(fk).mk_map(fv)
+    /// and maps each key to the value given by `fv`. If the domain is infinite, returns
+    /// None.
+    pub open spec fn new(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V) -> Option<Map<K, V>> {
+        match Set::new(fk) {
+            Some(s) => s.mk_map(fv),
+            None => None,
+        }
     }
+
+    spec fn dom_internal(self) -> Option<Set<K>>
+    {
+        Set::new(|k| (self.mapping)(k) is Some)
+    }
+
+    broadcast axiom fn axiom_dom_internal_finite(self)
+        ensures
+            #[trigger] self.dom_internal() is Some,
+    ;
 
     /// The domain of the map as a set.
     pub closed spec fn dom(self) -> Set<K> {
-        Set::new(|k| (self.mapping)(k) is Some)
+        self.dom_internal().unwrap()
     }
 
     /// Gets the value that the given key `key` maps to.
@@ -217,7 +231,7 @@ pub broadcast proof fn lemma_map_empty<K, V>()
 {
     broadcast use super::set::group_set_lemmas;
 
-    assert(Set::new(|k: K| (|k| None::<V>)(k) is Some) == Set::<K>::empty());
+    assert(Set::new(|k: K| (|k| None::<V>)(k) is Some) == Some(Set::<K>::empty()));
 }
 
 /// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
@@ -227,6 +241,7 @@ pub broadcast proof fn lemma_map_insert_domain<K, V>(m: Map<K, V>, key: K, value
         #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
     broadcast use super::set::group_set_lemmas;
+    broadcast use Map::axiom_dom_internal_finite;
 
     assert(m.insert(key, value).dom() =~= m.dom().insert(key));
 }
@@ -277,6 +292,7 @@ pub broadcast proof fn lemma_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
         },
 {
     broadcast use super::set::group_set_lemmas;
+    broadcast use Map::axiom_dom_internal_finite;
 
     if m1 =~= m2 {
         assert(m1.dom() =~= m2.dom());

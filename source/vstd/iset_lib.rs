@@ -563,8 +563,8 @@ impl<A> ISet<A> {
         self.map(
             |elem: A|
                 match f(elem) {
-                    Option::Some(r) => set!{r},
-                    Option::None => set!{},
+                    Option::Some(r) => iset!{r},
+                    Option::None => iset!{},
                 },
         ).flatten()
     }
@@ -916,7 +916,7 @@ pub proof fn lemma_iset_union_finite_implies_sets_finite<A>(s1: ISet<A>, s2: ISe
     } else {
         let a = s1.union(s2).choose();
         assert(s1.remove(a).union(s2.remove(a)) == s1.union(s2).remove(a));
-        axiom_set_remove_len(s1.union(s2), a);
+        lemma_iset_remove_len(s1.union(s2), a);
         lemma_iset_union_finite_implies_sets_finite(s1.remove(a), s2.remove(a));
         assert(forall|s: ISet<A>|
             #![auto]
@@ -1225,7 +1225,7 @@ pub broadcast proof fn lemma_iset_empty_equivalency_len<A>(s: ISet<A>)
             if exists|a: A| s.contains(a) {
                 let a = s.choose();
                 assert(s.remove(a).len() == s.len() - 1) by {
-                    axiom_set_remove_len(s, a);
+                    lemma_iset_remove_len(s, a);
                 }
             }
         }

@@ -6,7 +6,7 @@ use super::prelude::*;
 #[allow(unused_imports)]
 use super::seq::*;
 #[allow(unused_imports)]
-use super::set::Set;
+use super::iset::ISet;
 
 verus! {
 
@@ -14,7 +14,7 @@ pub open spec fn injective<X, Y>(r: spec_fn(X) -> Y) -> bool {
     forall|x1: X, x2: X| #[trigger] r(x1) == #[trigger] r(x2) ==> x1 == x2
 }
 
-pub open spec fn injective_on<X, Y>(r: spec_fn(X) -> Y, dom: Set<X>) -> bool {
+pub open spec fn injective_on<X, Y>(r: spec_fn(X) -> Y, dom: ISet<X>) -> bool {
     forall|x1: X, x2: X|
         dom.contains(x1) && dom.contains(x2) && #[trigger] r(x1) == #[trigger] r(x2) ==> x1 == x2
 }
@@ -100,24 +100,24 @@ pub open spec fn sorted_by<T>(a: Seq<T>, less_than: spec_fn(T, T) -> bool) -> bo
 /// every other element of the set.
 ///
 /// change f to leq bc it is a relation. also these are an ordering relation
-pub open spec fn is_least<T>(leq: spec_fn(T, T) -> bool, min: T, s: Set<T>) -> bool {
+pub open spec fn is_least<T>(leq: spec_fn(T, T) -> bool, min: T, s: ISet<T>) -> bool {
     s.contains(min) && forall|x: T| s.contains(x) ==> #[trigger] leq(min, x)
 }
 
 /// An element in an ordered set is called a minimal element, if no other element is less than it.
-pub open spec fn is_minimal<T>(leq: spec_fn(T, T) -> bool, min: T, s: Set<T>) -> bool {
+pub open spec fn is_minimal<T>(leq: spec_fn(T, T) -> bool, min: T, s: ISet<T>) -> bool {
     s.contains(min) && forall|x: T|
         s.contains(x) && #[trigger] leq(x, min) ==> #[trigger] leq(min, x)
 }
 
 /// An element in an ordered set is called a greatest element (or a maximum), if it is greater than
 ///every other element of the set.
-pub open spec fn is_greatest<T>(leq: spec_fn(T, T) -> bool, max: T, s: Set<T>) -> bool {
+pub open spec fn is_greatest<T>(leq: spec_fn(T, T) -> bool, max: T, s: ISet<T>) -> bool {
     s.contains(max) && forall|x: T| s.contains(x) ==> #[trigger] leq(x, max)
 }
 
 /// An element in an ordered set is called a maximal element, if no other element is greater than it.
-pub open spec fn is_maximal<T>(leq: spec_fn(T, T) -> bool, max: T, s: Set<T>) -> bool {
+pub open spec fn is_maximal<T>(leq: spec_fn(T, T) -> bool, max: T, s: ISet<T>) -> bool {
     s.contains(max) && forall|x: T|
         s.contains(x) && #[trigger] leq(max, x) ==> #[trigger] leq(x, max)
 }
@@ -144,7 +144,7 @@ pub proof fn lemma_new_first_element_still_sorted_by<T>(
 }
 
 /// If a function is injective on a set `s2`, then it is also injective on any subset `s1` of `s2`.
-pub proof fn lemma_injective_on_subset<X, Y>(r: spec_fn(X) -> Y, s1: Set<X>, s2: Set<X>)
+pub proof fn lemma_injective_on_subset<X, Y>(r: spec_fn(X) -> Y, s1: ISet<X>, s2: ISet<X>)
     requires
         s1 <= s2,
         injective_on(r, s2),

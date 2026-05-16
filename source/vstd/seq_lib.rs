@@ -536,7 +536,6 @@ impl<A> Seq<A> {
     {
         Set::range(0, self.len() as int).lemma_map_contains(|i: int| self.index(i));
         assert forall|i| 0 <= i < self.len() implies #[trigger] self.to_set().contains(self[i]) by {
-            super::set::lemma_set_range_int_contains(0, self.len() as int, i);
             assert(Set::range(0, self.len() as int).contains(i));
             assert(self.to_set().contains(self[i]));
         }
@@ -544,7 +543,6 @@ impl<A> Seq<A> {
             if self.to_set().contains(a) {
                 let i = choose|i: int|
                     Set::range(0, self.len() as int).contains(i) && self.index(i) == a;
-                super::set::lemma_set_range_int_contains(0, self.len() as int, i);
                 assert(0 <= i < self.len());
                 assert(self.contains(a));
             }
@@ -2573,6 +2571,20 @@ impl<A> Seq<Seq<A>> {
     {
         assert(self.flatten() == self[0] + self.drop_first().flatten());
         assert(self.flatten() == self[0]);
+    }
+
+    pub proof fn lemma_flatten_contains(self, s: Set<A>, elem: A)
+        requires
+            self.contains(s),
+            s.contains(elem),
+        ensures
+            self.flatten().contains(elem),
+        decreases
+            self.len(),
+    {
+        if self[0] != s {
+            self.drop_first().lemma_flatten_contains(s, elem);
+        }
     }
 
     pub broadcast group group_seq_flatten {

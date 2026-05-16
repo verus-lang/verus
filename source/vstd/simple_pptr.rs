@@ -375,7 +375,6 @@ impl<V> PPtr<V> {
             proof {
                 assert forall|i: int|
                     #[trigger] Set::<int>::range(p as int, p as int).contains(i) == Set::<int>::empty().contains(i) by {
-                    super::set::lemma_set_range_int_contains(p as int, p as int, i);
                 }
                 super::set::lemma_set_ext_equal(Set::<int>::range(p as int, p as int), Set::<int>::empty());
                 assert(emp.is_range(p as int, 0));

@@ -182,8 +182,8 @@ impl<V> Multiset<V> {
     /// Returns the set of all elements that have a count greater than 0
     pub open spec fn dom(self) -> Set<V> {
         // This module assumes that all well-formed multisets have finite footprint,
-        // so to_finite() here is reasonable.
-        ISet::new(|v: V| self.count(v) > 0).to_finite()
+        // so new_assuming_finite() here is reasonable.
+        Set::new_assuming_finite(|v: V| self.count(v) > 0)
     }
 
     // dom() won't mean anything unless we know our domain is finite, which is a soundness
@@ -200,7 +200,7 @@ impl<V> Multiset<V> {
         }
         assert forall|v: V| #[trigger] self.dom().contains(v) <==> self.count(v) > 0 by {
             super::iset::lemma_iset_new(|vv: V| self.count(vv) > 0, v);
-            super::iset::lemma_iset_to_finite_contains(s, v);
+            super::iset::lemma_iset_to_set_contains(s, v);
         }
     }
 }
@@ -281,7 +281,7 @@ pub broadcast proof fn lemma_from_map_dom<V>(mymap: Map<V, nat>)
             assert(lhs.contains(v));
         }
     };
-    lemma_set_ext_equal_eq(lhs, rhs);
+    lemma_set_ext_equal(lhs, rhs);
 }
 
 // Specification of `singleton`
