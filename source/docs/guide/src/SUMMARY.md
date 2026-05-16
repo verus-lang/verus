@@ -48,7 +48,7 @@
     - [Proving absence of overflow](overflow.md)
 - [Using LLM assistants](llms.md)
     - [Using LLMs to develop proofs](llmforverusproof.md)
-    - [Using LLMs to develop specifications]
+    - [Using LLMs to develop specifications]()
 - [Quantifiers](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
