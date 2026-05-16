@@ -359,6 +359,50 @@ pub(crate) fn subst_exp(
     e
 }
 
+fn mentioned_and_bound_idents(exp: &Exp) -> (HashSet<VarIdent>, HashSet<VarIdent>) {
+    let mut mentioned_idents = HashSet::new();
+    let mut bound_idents = HashSet::new();
+    crate::sst_visitor::exp_visitor_check(exp, &mut VisitorScopeMap::new(), &mut |e| {
+        match &e.x {
+            ExpX::Var(ident) | ExpX::VarLoc(ident) | ExpX::VarAt(ident, _)
+                | ExpX::Old(_, ident)
+            => {
+                mentioned_idents.insert(ident.clone());
+            }
+            ExpX::Bind(bnd, exp) => {
+                match bnd {
+                    BndX::Let(binders) => {
+                        for binder in binders.iter() {
+                            bound_idents.insert(binder.name.clone());
+                            mentioned_idents.insert(binder.name.clone());
+                        }
+                    }
+                    BndX::Quant(_, binders, _, _) | BndX::Lambda(binders, _) | BndX::Choose(binders, _, _) => {
+                        for binder in binders.iter() {
+                            bound_idents.insert(binder.name.clone());
+                            mentioned_idents.insert(binder.name.clone());
+                        }
+                    }
+                }
+            }
+            ExpX::Const(_) => { }
+        }
+    }).unwrap();
+    (mentioned_idents, bound_idents)
+}
+
+struct FreshenState {
+    update_map: HashMap<VarIdent, VarIdent>,
+    seen_bound_idents: HashMap<VarIdent>,
+}
+
+fn freshen_rec(
+
+/// Return an equivalent Exp with no duplicate identifiers.
+pub(crate) fn freshen_exp(exp: &Exp) {
+    let (mentioned_idents, bound_idents) = mentioned_and_bound_idents(exp);
+}
+
 pub(crate) fn subst_stm(
     typ_substs: &HashMap<Ident, Typ>,
     substs: &HashMap<UniqueIdent, Exp>,
