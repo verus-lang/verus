@@ -454,6 +454,24 @@ pub(crate) fn translate_trait<'tcx>(
                                     );
                                 }
                             }
+                            (ClauseKind::Projection(p1), ClauseKind::Projection(p2)) => {
+                                if p1.projection_term.def_id != p2.projection_term.def_id {
+                                    return err_span(
+                                        trait_span,
+                                        format!(
+                                            "Mismatched projection bounds on associated type ({} != {})",
+                                            p1, p2
+                                        ),
+                                    );
+                                }
+                            }
+                            (ClauseKind::RegionOutlives(..), ClauseKind::RegionOutlives(..))
+                            | (ClauseKind::TypeOutlives(..), ClauseKind::TypeOutlives(..)) => {
+                                // Lifetime bounds don't affect verification soundness —
+                                // they are handled entirely by the Rust borrow checker.
+                                // This is consistent with process_predicate_bounds and
+                                // compare_clause_kind, which also skip lifetime bounds.
+                            }
                             _ => {
                                 return err_span(
                                     trait_span,

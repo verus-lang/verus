@@ -827,6 +827,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_assoc_type_with_trait_bound verus_code! {
+        // Test that external_trait_specification works for traits with
+        // associated types that have trait bounds (ClauseKind::Projection)
+        // and lifetime bounds (ClauseKind::TypeOutlives).
+        #[verifier::external]
+        trait Bits: Sized + 'static {
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExBits: Sized + 'static {
+            type ExternalTraitSpecificationFor: Bits;
+        }
+
+        #[verifier::external]
+        trait Flags: Sized + 'static {
+            type B: Bits;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExFlags: Sized + 'static {
+            type ExternalTraitSpecificationFor: Flags;
+            type B: Bits;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] unrecognized_assoc_type_issue1485 verus_code! {
         use std::borrow::Cow;
 

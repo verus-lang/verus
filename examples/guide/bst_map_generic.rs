@@ -28,7 +28,8 @@ pub trait TotalOrdered : Sized {
             Cmp::Less => self.le(*other) && self != other,
             Cmp::Equal => self == other,
             Cmp::Greater => other.le(*self) && self != other,
-        });
+        }),
+        no_unwind;
 }
 // ANCHOR_END: trait
 
@@ -40,9 +41,11 @@ struct Node<K: TotalOrdered, V> {
     right: Option<Box<Node<K, V>>>,
 }
 
+// ANCHOR: tree_map_struct
 pub struct TreeMap<K: TotalOrdered, V> {
     root: Option<Box<Node<K, V>>>,
 }
+// ANCHOR_END: tree_map_struct
 // ANCHOR_END: structs
 
 impl<K: TotalOrdered, V> Node<K, V> {
@@ -394,6 +397,109 @@ impl<K: TotalOrdered, V> TreeMap<K, V> {
     }
 }
 
+// ANCHOR: node_get_mut
+impl<K: TotalOrdered, V> Node<K, V> {
+    fn get_mut_from_optional(node: &mut Option<Box<Node<K, V>>>, key: K) -> (ret: Option<&mut V>)
+        requires
+            node.is_some() ==> node.unwrap().well_formed(),
+        ensures
+            (match ret {
+                Some(r) =>
+                    old(node).is_some()
+                      && old(node).unwrap().as_map().dom().contains(key)
+                      && *r == old(node).unwrap().as_map()[key]
+                      && final(node).is_some()
+                      && final(node).unwrap().well_formed()
+                      && final(node).unwrap().as_map() == old(node).unwrap().as_map().insert(key, *final(r))
+                      && Node::optional_as_map(*final(node)).dom() =~= Node::optional_as_map(*old(node)).dom(),
+                None =>
+                    (old(node).is_some() ==> !old(node).unwrap().as_map().dom().contains(key))
+                      && *final(node) == *old(node)
+            }),
+        decreases *node,
+        no_unwind
+    {
+        match node {
+            None => None,
+            Some(node) => {
+                node.get_mut(key)
+            }
+        }
+    }
+
+    fn get_mut(&mut self, key: K) -> (ret: Option<&mut V>)
+        requires
+            self.well_formed(),
+        ensures
+            (match ret {
+                Some(r) =>
+                    old(self).as_map().dom().contains(key)
+                      && *r == old(self).as_map()[key]
+                      && final(self).well_formed()
+                      && final(self).as_map() == old(self).as_map().insert(key, *final(r))
+                      && final(self).as_map().dom() =~= old(self).as_map().dom(),
+                None =>
+                    !old(self).as_map().dom().contains(key)
+                      && *final(self) == *old(self)
+            })
+        decreases *self,
+        no_unwind
+    {
+        match key.compare(&self.key) {
+            Cmp::Equal => {
+                Some(&mut self.value)
+            }
+            Cmp::Less => {
+                proof {
+                    if Node::<K, V>::optional_as_map(self.right).dom().contains(key) {
+                        TotalOrdered::antisymmetric(self.key, key);
+                        assert(false);
+                    }
+                    assert(key != self.key);
+                    assert((match self.left {
+                            Some(node) => (if node.as_map().dom().contains(key) { Some(&node.as_map()[key]) } else { None }),
+                            None => None,
+                        }) == (if self.as_map().dom().contains(key) { Some(&self.as_map()[key]) } else { None }));
+                }
+                Self::get_mut_from_optional(&mut self.left, key)
+            }
+            Cmp::Greater => {
+                proof {
+                    if Node::<K, V>::optional_as_map(self.left).dom().contains(key) {
+                        TotalOrdered::antisymmetric(self.key, key);
+                        assert(false);
+                    }
+                    assert(key != self.key);
+                    assert((match self.right {
+                            Some(node) => (if node.as_map().dom().contains(key) { Some(&node.as_map()[key]) } else { None }),
+                            None => None,
+                        }) == (if self.as_map().dom().contains(key) { Some(&self.as_map()[key]) } else { None }));
+                }
+                Self::get_mut_from_optional(&mut self.right, key)
+            }
+        }
+    }
+}
+// ANCHOR_END: node_get_mut
+
+impl<K: TotalOrdered, V> TreeMap<K, V> {
+    pub fn get_mut(&mut self, key: K) -> (ret: Option<&mut V>)
+        ensures
+            (match ret {
+                Some(r) =>
+                    old(self)@.dom().contains(key)
+                      && *r == old(self)@[key]
+                      && final(self).as_map() == old(self)@.insert(key, *final(r)),
+                None =>
+                    !old(self)@.dom().contains(key)
+                      && *final(self) == *old(self)
+            })
+    {
+        proof { use_type_invariant(&*self); }
+        Node::<K, V>::get_mut_from_optional(&mut self.root, key)
+    }
+}
+
 // ANCHOR: clone_full_impl
 impl<K: Copy + TotalOrdered, V: Clone> Clone for Node<K, V> {
     fn clone(&self) -> (res: Self)
@@ -548,6 +654,107 @@ fn test_clone_weird_int(tree_map: TreeMap<u64, WeirdInt>) {
 }
 // ANCHOR_END: clone_weird_int
 
+// ANCHOR: resolved_lemmas
+proof fn lemma_node_has_resolved<K: TotalOrdered, V>(node: Node<K, V>, k: K)
+    requires
+        has_resolved(node),
+        node.as_map().dom().contains(k),
+    ensures
+        has_resolved(node.as_map()[k])
+    decreases node,
+{
+    if node.left.is_some() && node.left.unwrap().as_map().dom().contains(k) {
+        lemma_node_has_resolved(*node.left.unwrap(), k);
+    }
+    if node.right.is_some() && node.right.unwrap().as_map().dom().contains(k) {
+        lemma_node_has_resolved(*node.right.unwrap(), k);
+    }
+}
+
+proof fn lemma_tree_map_has_resolved<K: TotalOrdered, V>(map: TreeMap<K, V>, k: K)
+    requires
+        has_resolved(map),
+        map@.dom().contains(k),
+    ensures
+        has_resolved(map@[k])
+{
+    match map.root {
+        Some(node) => {
+            lemma_node_has_resolved(*node, k);
+        }
+        None => { }
+    }
+}
+// ANCHOR_END: resolved_lemmas
+
+/*
+// ANCHOR: vec_with_mut_refs_broken
+fn vec_with_mut_refs(i: usize)
+    requires 0 <= i < 3
+{
+    let mut a = 0;
+    let mut b = 0;
+    let mut c = 0;
+
+    let mut v = vec![&mut a, &mut b, &mut c];
+
+    *v[i] = 1;
+
+    assert(i == 0 ==> (a, b, c) === (1, 0, 0));
+    assert(i == 1 ==> (a, b, c) === (0, 1, 0));
+    assert(i == 2 ==> (a, b, c) === (0, 0, 1));
+}
+// ANCHOR_END: vec_with_mut_refs_broken
+*/
+
+// ANCHOR: vec_with_mut_refs
+fn vec_with_mut_refs(i: usize)
+    requires 0 <= i < 3
+{
+    let mut a = 0;
+    let mut b = 0;
+    let mut c = 0;
+
+    let mut v = vec![&mut a, &mut b, &mut c];
+
+    *v[i] = 1;
+
+    assert(has_resolved(v[0]));
+    assert(has_resolved(v[1]));
+    assert(has_resolved(v[2]));
+
+    assert(i == 0 ==> (a, b, c) === (1, 0, 0));
+    assert(i == 1 ==> (a, b, c) === (0, 1, 0));
+    assert(i == 2 ==> (a, b, c) === (0, 0, 1));
+}
+// ANCHOR_END: vec_with_mut_refs
+
+// ANCHOR: tree_map_with_mut_refs
+fn tree_map_with_mut_refs(i: u64)
+    requires 0 <= i < 3
+{
+    let mut a = 0;
+    let mut b = 0;
+    let mut c = 0;
+
+    let mut tree_map = TreeMap::<u64, &mut u64>::new();
+    tree_map.insert(0, &mut a);
+    tree_map.insert(1, &mut b);
+    tree_map.insert(2, &mut c);
+
+    **tree_map.get_mut(i).unwrap() = 1;
+
+    proof {
+        lemma_tree_map_has_resolved(tree_map, 0);
+        lemma_tree_map_has_resolved(tree_map, 1);
+        lemma_tree_map_has_resolved(tree_map, 2);
+    }
+
+    assert(i == 0 ==> (a, b, c) === (1, 0, 0));
+    assert(i == 1 ==> (a, b, c) === (0, 1, 0));
+    assert(i == 2 ==> (a, b, c) === (0, 0, 1));
+}
+// ANCHOR_END: tree_map_with_mut_refs
 
 }
 // ANCHOR_END: all
