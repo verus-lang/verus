@@ -823,3 +823,13 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: destructuring assignment")
 }
+
+test_verify_one_file! {
+    #[test] ensures_clause_no_named_ret_value verus_code! {
+        fn test() -> u8
+            ensures 0 == 1 // FAILS
+        {
+            1
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
