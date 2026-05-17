@@ -1093,8 +1093,13 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                     }
                     match &*right.expr {
                         verus_syn::Expr::Call(call_expr) => {
-                            let verus_syn::ExprCall { attrs: _, func, paren_token: _, args: _ } =
-                                &*call_expr;
+                            let verus_syn::ExprCall {
+                                attrs: _,
+                                func,
+                                paren_token: _,
+                                args: _,
+                                atomically: _,
+                            } = call_expr;
                             if let verus_syn::Expr::Path(path) = &**func {
                                 if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
                                     .then(|| path.path.segments[0].ident.to_string())

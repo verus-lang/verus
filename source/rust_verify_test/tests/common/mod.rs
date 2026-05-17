@@ -201,9 +201,8 @@ pub fn parse_diags(
 
     // eprintln!("rust_output: {}", &rust_output);
     if rust_output.len() > 0 {
-        for ss in rust_output.split("\n") {
-            let diag: Result<Diagnostic, _> = serde_json::from_str(ss);
-            if let Ok(diag) = diag {
+        for line in rust_output.lines() {
+            if let Ok(diag) = serde_json::from_str::<Diagnostic>(line) {
                 eprintln!("{}", diag.rendered);
                 if diag.level == "note" && diag.message.starts_with("diagnostics via expansion") {
                     // TODO(main_new) define in defs
@@ -224,8 +223,14 @@ pub fn parse_diags(
                 }
                 errors.push(diag);
             } else {
+                // HACK: skip long running messages
+                if line.contains("has been running for") {
+                    eprintln!("{line}");
+                    continue;
+                }
+
                 *is_failure = true;
-                eprintln!("[unexpected json] \"{}\"", ss);
+                eprintln!("[unexpected json] \"{line}\"");
             }
         }
     }
@@ -488,8 +493,14 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
     let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
     child.env("VERUS_Z3_PATH", z3);
 
+    // Reset build and target directory in case they have been set upstream
+    let target = dir.join("target");
+    child.env("CARGO_TARGET_DIR", &target);
+    child.env("CARGO_BUILD_TARGET_DIR", &target);
+    child.env("CARGO_BUILD_BUILD_DIR", &target);
+
     let child = child
-        .args(&args[..])
+        .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -514,8 +525,19 @@ pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     // verus_builtin and vstd to require unstable features not available on stable Rust
     child.env_remove("RUSTFLAGS");
 
+    // Reset build and target directory in case they have been set upstream
+    //
+    // The test setup we're using assumes that every crate has its own target
+    // directory, and that running `cargo clean` on one crate does not affect
+    // any other tests running concurrently, which may not be the case if the
+    // system has one unified target directory, so we must reset it manually.
+    let target = dir.join("target");
+    child.env("CARGO_TARGET_DIR", &target);
+    child.env("CARGO_BUILD_TARGET_DIR", &target);
+    child.env("CARGO_BUILD_BUILD_DIR", &target);
+
     let child = child
-        .args(&args[..])
+        .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()

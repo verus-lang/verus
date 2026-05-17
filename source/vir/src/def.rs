@@ -2,6 +2,7 @@ use crate::ast::{ClosureKind, CrateId, Dt, Fun, FunX, InvAtomicity, Path, PathX,
 use crate::ast_util::air_unique_var;
 use crate::messages::Span;
 use crate::util::vec_map;
+use crate::{fun, path};
 use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -1153,6 +1154,54 @@ pub fn fn_set_contains_name() -> Fun {
             ]),
         }),
     })
+}
+
+pub fn au_type_path() -> Path {
+    path!(CrateId::Vstd => "atomic", "AtomicUpdate")
+}
+
+pub fn fn_au_pred() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "pred")
+}
+
+pub fn fn_au_resolves() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "resolves")
+}
+
+pub fn fn_au_input() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "input")
+}
+
+pub fn fn_au_output() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "output")
+}
+
+pub fn fn_au_req() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "req")
+}
+
+pub fn fn_au_ens() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "ens")
+}
+
+pub fn fn_au_outer_mask() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "outer_mask")
+}
+
+pub fn fn_au_inner_mask() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "inner_mask")
+}
+
+pub fn fn_pred_args() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "pred_args")
+}
+
+pub fn fn_branch_bool() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "branch_bool")
+}
+
+pub fn result_type_path() -> Path {
+    path!(CrateId::Core => "result", "Result")
 }
 
 pub fn strslice_module_path() -> Path {

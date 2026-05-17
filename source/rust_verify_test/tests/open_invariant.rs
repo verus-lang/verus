@@ -518,7 +518,7 @@ test_verify_one_file! {
           opens_invariants [ true ]
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "opens_invariants needs an int expression")
+    } => Err(err) => assert_vir_error_msg(err, "invariant mask must be type int")
 }
 
 test_verify_one_file! {
@@ -579,7 +579,7 @@ test_verify_one_file! {
                 });
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the scope")
 }
 
 test_verify_one_file! {
@@ -601,7 +601,7 @@ test_verify_one_file! {
                 });
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the scope")
 }
 
 test_verify_one_file! {
@@ -810,7 +810,7 @@ test_verify_one_file! {
                 open_atomic_invariant!(&self.inv => inner => {});
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the scope")
 }
 
 test_verify_one_file! {
