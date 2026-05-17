@@ -144,8 +144,8 @@ tokenized_state_machine!{FifoQueue<T> {
     // based on the producer/consumer state.
 
     pub open spec fn is_checked_out(&self, i: nat) -> bool {
-        self.producer === ProducerState::Producing(i)
-        || self.consumer === ConsumerState::Consuming(i)
+        self.producer == ProducerState::Producing(i)
+        || self.consumer == ConsumerState::Consuming(i)
     }
 
     // Predicate to determine that the state at cell index `i`
@@ -167,7 +167,7 @@ tokenized_state_machine!{FifoQueue<T> {
             self.storage.dom().contains(i)
 
             // Permission must be for the correct cell:
-            && self.storage.index(i).id() === self.backing_cells.index(i as int)
+            && self.storage.index(i).id() == self.backing_cells.index(i as int)
 
             && if self.in_active_range(i) {
                 // The cell is full
@@ -194,7 +194,7 @@ tokenized_state_machine!{FifoQueue<T> {
             require(
                 (forall|i: nat| 0 <= i && i < backing_cells.len() ==>
                     #[trigger] storage.dom().contains(i)
-                    && storage.index(i).id() === backing_cells.index(i as int)
+                    && storage.index(i).id() == backing_cells.index(i as int)
                     && storage.index(i).is_uninit())
             );
             require(backing_cells.len() > 0);
@@ -242,7 +242,7 @@ tokenized_state_machine!{FifoQueue<T> {
             //  (i) is for the cell at index `tail` (the IDs match)
             //  (ii) the permission indicates that the cell is empty
             assert(
-                perm.id() === pre.backing_cells.index(tail as int)
+                perm.id() == pre.backing_cells.index(tail as int)
                 && perm.is_uninit()
             ) by {
                 assert(!pre.in_active_range(tail));
@@ -279,7 +279,7 @@ tokenized_state_machine!{FifoQueue<T> {
             // checked in satisfies its requirements. It has to be associated
             // with the correct cell, and it has to be full.
 
-            require(perm.id() === pre.backing_cells.index(tail as int)
+            require(perm.id() == pre.backing_cells.index(tail as int)
               && perm.is_init());
 
             // Perform our updates. Update the tail to the computed value,
@@ -319,7 +319,7 @@ tokenized_state_machine!{FifoQueue<T> {
                 assert(pre.valid_storage_at_idx(head));
             };
 
-            assert(perm.id() === pre.backing_cells.index(head as int)) by {
+            assert(perm.id() == pre.backing_cells.index(head as int)) by {
                 assert(pre.valid_storage_at_idx(head));
             };
             assert(perm.is_init()) by {
@@ -340,7 +340,7 @@ tokenized_state_machine!{FifoQueue<T> {
             update consumer = ConsumerState::Idle(next_head);
             update head = next_head;
 
-            require(perm.id() === pre.backing_cells.index(head as int)
+            require(perm.id() == pre.backing_cells.index(head as int)
               && perm.is_uninit());
             deposit storage += [head => perm] by { assert(pre.valid_storage_at_idx(head)); };
         }
@@ -477,12 +477,12 @@ struct_with_invariants!{
         }
 
         invariant on head with (instance) is (v: u64, g: FifoQueue::head<T>) {
-            &&& g.instance_id() === instance@.id()
+            &&& g.instance_id() == instance@.id()
             &&& g.value() == v as int
         }
 
         invariant on tail with (instance) is (v: u64, g: FifoQueue::tail<T>) {
-            &&& g.instance_id() === instance@.id()
+            &&& g.instance_id() == instance@.id()
             &&& g.value() == v as int
         }
     }
@@ -516,8 +516,8 @@ pub struct Consumer<T> {
 impl<T> Consumer<T> {
     pub closed spec fn wf(&self) -> bool {
         (*self.queue).wf()
-            && self.consumer@.instance_id() === (*self.queue).instance@.id()
-            && self.consumer@.value() === ConsumerState::Idle(self.head as nat)
+            && self.consumer@.instance_id() == (*self.queue).instance@.id()
+            && self.consumer@.value() == ConsumerState::Idle(self.head as nat)
             && (self.head as int) < (*self.queue).buffer@.len()
     }
 }
@@ -543,7 +543,7 @@ pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
                 #![trigger( backing_cells_vec@.index(j as int) )]
                 #![trigger( perms.index(j) )]
                 0 <= j && j < backing_cells_vec.len() as int ==> perms.dom().contains(j)
-                    && backing_cells_vec@.index(j as int).id() === perms.index(j).id()
+                    && backing_cells_vec@.index(j as int).id() == perms.index(j).id()
                     && perms.index(j).is_uninit(),
     {
         let ghost i = backing_cells_vec.len();
@@ -553,7 +553,7 @@ pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
             perms.tracked_insert(i as nat, cell_perm.get());
         }
         assert(perms.dom().contains(i as nat));
-        assert(backing_cells_vec@.index(i as int).id() === perms.index(i as nat).id());
+        assert(backing_cells_vec@.index(i as int).id() == perms.index(i as nat).id());
         assert(perms.index(i as nat).is_uninit());
     }
     // Vector for ids

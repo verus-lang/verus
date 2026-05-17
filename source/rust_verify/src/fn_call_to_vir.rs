@@ -2316,6 +2316,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::ShadowGhostValue
         | VerusItem::DummyCapture(_)
         | VerusItem::MutableReferenceTie
+        | VerusItem::TwoPhaseMutableReferenceTie
         | VerusItem::GetFirst => {
             return err_span(
                 expr.span,

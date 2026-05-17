@@ -453,7 +453,7 @@ test_verify_one_file! {
         }
 
         proof fn test<A: Allocator>(b: Box<u8, A>, c: Box<u8>)
-            requires b == c
+            requires *b == *c
         {
             assert(some_int(b) == some_int(c)); // FAILS
         }
@@ -519,7 +519,7 @@ test_verify_one_file! {
 
         fn test5(a: Box<X>) {
             let b = a.clone();
-            assert(b == X { i: 5 } || b == a);
+            assert(*b == X { i: 5 } || b == a);
         }
     } => Err(err) => assert_fails(err, 3)
 }

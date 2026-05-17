@@ -524,7 +524,7 @@ pub broadcast axiom fn next_postcondition<'a>(
                 &&& new_chars.remaining() == old_chars.remaining().drop_first()
                 &&& ret == Some(old_chars.remaining()[0])
             } else {
-                new_chars.remaining() === old_chars.remaining() && ret === None
+                new_chars.remaining() == old_chars.remaining() && ret == None
                     && new_chars.will_return_none()
             }
         }),

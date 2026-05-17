@@ -142,7 +142,7 @@ pub uninterp spec fn spec_slice_get<T: ?Sized, I: SliceIndex<T>>(val: &T, idx: I
 
 pub broadcast axiom fn axiom_slice_get_usize<T>(v: &[T], i: usize)
     ensures
-        i < v.len() ==> #[trigger] spec_slice_get(v, i) === Some(&v[i as int]),
+        i < v.len() ==> #[trigger] spec_slice_get(v, i) == Some(&v[i as int]),
         i >= v.len() ==> spec_slice_get(v, i).is_none(),
 ;
 

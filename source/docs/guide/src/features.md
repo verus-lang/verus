@@ -4,7 +4,7 @@ Quick reference for supported Rust features. Note that this list does not includ
 
 Note that Verus is in active development. If a feature is unsupported, it might be genuinely hard, or it might just be low priority. See the [github issues](https://github.com/verus-lang/verus/issues) or [discussions](https://github.com/verus-lang/verus/discussions) for information on planned features.
 
-**Last Updated: 2026-02-18**
+**Last Updated: 2026-05-13**
 
 <div class="table-wrapper"><table>
   <thead><tr><th colspan="2"><strong>Items</strong></th></tr></thead>
@@ -96,8 +96,8 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Supported</td>
   </tr>
   <tr>
-    <td>Items</td>
-    <td>Not supported</td>
+    <td>Nested items</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td><code>loop</code>, <code>while</code></td>
@@ -124,12 +124,20 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Supported</td>
   </tr>
   <tr>
-    <td><code>&</code></td>
+    <td>Shared borrows (<code>&</code>)</td>
     <td>Supported</td>
   </tr>
   <tr>
-    <td><code>&mut</code>, place expressions</td>
-    <td>Partially supported</td>
+    <td>Mutable borrows (<code>&mut</code>)</td>
+    <td>Supported</td>
+  </tr>
+  <tr>
+    <td>Place expressions</td>
+    <td>Supported</td>
+  </tr>
+  <tr>
+    <td><a href="https://doc.rust-lang.org/reference/expressions/operator-expr.html?highlight=assignment#destructuring-assignments">Destructuring assignment</a></td>
+    <td>Not supported</td>
   </tr>
   <tr>
     <td><code>==</code>, <code>!=</code></td>
@@ -181,6 +189,10 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Return statements</td>
+    <td>Supported</td>
+  </tr>
+  <tr>
+    <td>Implicit coercions, derefences, and borrows</td>
     <td>Supported</td>
   </tr>
   </tbody>
@@ -242,12 +254,12 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Partially supported</td>
   </tr>
   <tr>
-    <td>References (<code>&</code>)</td>
+    <td>Shared references (<code>&T</code>)</td>
     <td>Supported</td>
   </tr>
   <tr>
-    <td>Mutable references (<code>&mut</code>)</td>
-    <td>Partially supported</td>
+    <td>Mutable references (<code>&mut T</code>)</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Never type</td>
@@ -259,7 +271,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Closure types</td>
-    <td>Supported</td>
+    <td>Partially Supported (no mutable captures)</td>
   </tr>
   <tr>
     <td>Trait objects (dyn)</td>
@@ -271,7 +283,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Cell, RefCell</td>
-    <td>Not supported (see <a href="https://verus-lang.github.io/verus/verusdoc/vstd/cell/index.html">vstd alternatives</a>)</td>
+    <td><a href="https://verus-lang.github.io/verus/verusdoc/vstd/cell/index.html">vstd alternatives</a></td>
   </tr>
   <tr>
     <td>Iterators</td>
@@ -358,7 +370,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td><code>DerefMut</code></td>
-    <td>Not supported</td>
+    <td>Supported</td>
   </tr>
   </tbody>
   <thead><tr><th colspan="2"><strong>Multi-threading</strong></th></tr></thead>
@@ -373,7 +385,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Atomics</td>
-    <td>Supported (<a href="https://verus-lang.github.io/verus/verusdoc/vstd/atomic_ghost/index.html">vstd equivalent</a>)</td>
+    <td><a href="https://verus-lang.github.io/verus/verusdoc/vstd/atomic_ghost/index.html">vstd alternatives</a></td>
   </tr>
   <tr>
     <td>spawn and join</td>
@@ -400,7 +412,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td><code>UnsafeCell</code></td>
-    <td>Supported (<a href="https://verus-lang.github.io/verus/verusdoc/vstd/cell/struct.PCell.html">vstd equivalent</a>)</td>
+    <td><a href="https://verus-lang.github.io/verus/verusdoc/vstd/cell/struct.PCell.html">vstd alternative</a></td>
   </tr>
   </tbody>
   <thead><tr><th colspan="2"><strong>Crates and code organization</strong></th></tr></thead>

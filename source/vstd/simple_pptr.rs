@@ -62,13 +62,13 @@ verus! {
 ///         // p: PPtr<u64>, points_to: PointsTo<u64>
 ///         let (p, Tracked(mut points_to)) = PPtr::<u64>::empty();
 ///
-///         assert(points_to.mem_contents() === MemContents::Uninit);
+///         assert(points_to.mem_contents() == MemContents::Uninit);
 ///         assert(points_to.pptr() == p);
 ///
 ///         // unsafe { *p = 5; }
 ///         p.write(Tracked(&mut points_to), 5);
 ///
-///         assert(points_to.mem_contents() === MemContents::Init(5));
+///         assert(points_to.mem_contents() == MemContents::Init(5));
 ///         assert(points_to.pptr() == p);
 ///
 ///         // let x = unsafe { *p };
@@ -521,7 +521,7 @@ impl<V> PPtr<V> {
             perm.pptr() == self,
             perm.is_init(),
         ensures
-            *v === perm.value(),
+            *v == perm.value(),
         opens_invariants none
         no_unwind
     {
@@ -541,7 +541,7 @@ impl<V> PPtr<V> {
         ensures
             final(perm).pptr() == self,
             final(perm).is_init(),
-            *v === old(perm).value(),
+            *v == old(perm).value(),
             final(perm).value() == *final(v),
         opens_invariants none
         no_unwind
@@ -558,8 +558,8 @@ impl<V> PPtr<V> {
         requires
             old(perm).pptr() == self,
         ensures
-            final(perm).pptr() === old(perm).pptr(),
-            final(perm).mem_contents() === MemContents::Init(in_v),
+            final(perm).pptr() == old(perm).pptr(),
+            final(perm).mem_contents() == MemContents::Init(in_v),
         opens_invariants none
         no_unwind
     {

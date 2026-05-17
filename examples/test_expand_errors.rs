@@ -128,15 +128,15 @@ pub proof fn test7(a: Option<u64>, b: u64) {
 }
 
 pub proof fn test8(a: Option<u64>, b: u64) {
-    assert(a === None);
+    assert(a == None);
 }
 
 pub proof fn test9(a: Option<u64>, b: u64) {
-    assert(None === a);
+    assert(None == a);
 }
 
 pub proof fn test10(a: Option<u64>, b: u64) {
-    assert(None === Some(b));
+    assert(None == Some(b));
 }
 
 pub proof fn test11(a: u64, b: u64) {
@@ -167,15 +167,15 @@ pub proof fn test14(a: Foo, b: u64, c: u64) {
 }
 
 pub proof fn test15(a: Foo) {
-    assert(a === Foo::Bar);
+    assert(a == Foo::Bar);
 }
 
 pub proof fn test16(a: Foo, b: u64) {
-    assert(Foo::Bar === a);
+    assert(Foo::Bar == a);
 }
 
 pub proof fn test17(a: u64, b: u64, c: u64) {
-    assert(Foo::Qux(a) === Foo::Duck(b, c));
+    assert(Foo::Qux(a) == Foo::Duck(b, c));
 }
 
 pub proof fn test18(b: u64, c: u64, e: u64, f: u64) {

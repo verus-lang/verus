@@ -3304,7 +3304,7 @@ test_verify_one_file_with_options! {
             let tracked mut x: Tracked<int> = Tracked(0);
             let tracked x_ref = &mut x;
             set_to(Tracked(x_ref), Tracked(x_ref.get() + 1));
-            assert(x == 1);
+            assert(*x == 1);
             assert(false);
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot use `*x_ref` because it was mutably borrowed")

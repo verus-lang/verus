@@ -46,7 +46,7 @@ tokenized_state_machine! {InternSystem<T> {
     property!{
         get_value(i: int) {
             have frag >= [i => let val];
-            assert(i < pre.auth.len() && pre.auth.index(i) === val);
+            assert(i < pre.auth.len() && pre.auth.index(i) == val);
         }
     }
 
@@ -54,7 +54,7 @@ tokenized_state_machine! {InternSystem<T> {
         compute_equality(idx1: int, val1: T, idx2: int, val2: T) {
             have frag >= [idx1 => val1];
             have frag >= [idx2 => val2];
-            assert((idx1 == idx2) <==> (val1 === val2));
+            assert((idx1 == idx2) <==> (val1 == val2));
         }
     }
 
@@ -62,7 +62,7 @@ tokenized_state_machine! {InternSystem<T> {
     pub fn agreement(&self) -> bool {
         forall |k| #[trigger] self.frag.dom().contains(k) ==>
             0 <= k && k < self.auth.len()
-                && self.auth.index(k) === self.frag.index(k)
+                && self.auth.index(k) == self.frag.index(k)
     }
 
     #[invariant]
@@ -151,7 +151,7 @@ struct Interned<T> {
 #[verifier::external_body]
 fn compute_eq<T>(a: &T, b: &T) -> (res: bool)
     ensures
-        res <==> (a === b),
+        res <==> (a == b),
 {
     unimplemented!();
 }
@@ -160,7 +160,7 @@ impl<T> Interner<T> {
     spec fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
         &&& self.inst@ == inst
         &&& self.auth@.instance_id() == inst.id()
-        &&& self.auth@.value() === self.store@
+        &&& self.auth@.value() == self.store@
     }
 
     fn new() -> (x: (Self, Tracked<InternSystem::Instance<T>>))
@@ -180,7 +180,7 @@ impl<T> Interner<T> {
         requires
             old(self).wf(inst),
         ensures
-            final(self).wf(inst) && st.wf(inst) && st@ === val,
+            final(self).wf(inst) && st.wf(inst) && st@ == val,
     {
         let idx: usize = 0;
         while idx < self.store.len()
@@ -215,7 +215,7 @@ impl<T> Interner<T> {
         requires
             self.wf(inst) && interned.wf(inst),
         ensures
-            *st === interned@,
+            *st == interned@,
     {
         proof {
             self.inst.borrow().get_value(
@@ -231,7 +231,7 @@ impl<T> Interner<T> {
 impl<T> Interned<T> {
     spec fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
         &&& self.frag@.instance_id() == inst.id()
-        &&& inst === self.inst@
+        &&& inst == self.inst@
         &&& self.id as int == self.frag@.key()
     }
 
@@ -243,7 +243,7 @@ impl<T> Interned<T> {
         requires
             self.wf(inst),
         ensures
-            s.wf(inst) && s@ === self@,
+            s.wf(inst) && s@ == self@,
     {
         Interned {
             inst: Tracked(self.inst.borrow().clone()),
@@ -256,7 +256,7 @@ impl<T> Interned<T> {
         requires
             self.wf(inst) && other.wf(inst),
         ensures
-            b == (self@ === other@),
+            b == (self@ == other@),
     {
         proof {
             self.inst.borrow().compute_equality(

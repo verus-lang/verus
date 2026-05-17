@@ -17,9 +17,11 @@ use crate::verus::{
     AssumeSpecification, BroadcastUse, DataMode, Ensures, FnMode, Global, ItemBroadcastGroup,
     Publish, SignatureSpec,
 };
-use proc_macro2::TokenStream;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 #[cfg(feature = "parsing")]
-use std::mem;
+use core::mem;
+use proc_macro2::TokenStream;
 
 ast_enum_of_structs! {
     /// Things that can appear directly inside of a module or scope.
@@ -70,13 +72,13 @@ ast_enum_of_structs! {
         /// A trait alias: `pub trait SharableIterator = Iterator + Sync`.
         TraitAlias(ItemTraitAlias),
 
-        /// A type alias: `type Result<T> = std::result::Result<T, MyError>`.
+        /// A type alias: `type Result<T> = core::result::Result<T, MyError>`.
         Type(ItemType),
 
         /// A union definition: `union Foo<A, B> { x: A, y: B }`.
         Union(ItemUnion),
 
-        /// A use declaration: `use std::collections::HashMap`.
+        /// A use declaration: `use alloc::collections::HashMap`.
         Use(ItemUse),
 
         /// Tokens forming an item not interpreted by Syn.
@@ -303,7 +305,7 @@ ast_struct! {
 }
 
 ast_struct! {
-    /// A type alias: `type Result<T> = std::result::Result<T, MyError>`.
+    /// A type alias: `type Result<T> = core::result::Result<T, MyError>`.
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     pub struct ItemType {
         pub attrs: Vec<Attribute>,
@@ -331,7 +333,7 @@ ast_struct! {
 }
 
 ast_struct! {
-    /// A use declaration: `use std::collections::HashMap`.
+    /// A use declaration: `use alloc::collections::HashMap`.
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     pub struct ItemUse {
         pub attrs: Vec<Attribute>,
@@ -468,7 +470,7 @@ ast_enum_of_structs! {
     /// [syntax tree enum]: crate::expr::Expr#syntax-tree-enums
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     pub enum UseTree {
-        /// A path prefix of imports in a `use` item: `std::...`.
+        /// A path prefix of imports in a `use` item: `core::...`.
         Path(UsePath),
 
         /// An identifier imported by a `use` item: `HashMap`.
@@ -486,7 +488,7 @@ ast_enum_of_structs! {
 }
 
 ast_struct! {
-    /// A path prefix of imports in a `use` item: `std::...`.
+    /// A path prefix of imports in a `use` item: `core::...`.
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     pub struct UsePath {
         pub ident: Ident,
@@ -1002,6 +1004,8 @@ pub(crate) mod parsing {
     use crate::ty::{Abi, ReturnType, Type, TypePath, TypeReference};
     use crate::verbatim;
     use crate::verus::{Context, DataMode, Ensures, FnMode, Publish};
+    use alloc::boxed::Box;
+    use alloc::vec::Vec;
     use proc_macro2::TokenStream;
 
     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
@@ -1736,7 +1740,7 @@ pub(crate) mod parsing {
     ) -> Result<ItemFn> {
         let (brace_token, stmts, semi_token) = if input.peek(Token![;]) {
             let semi_token: Token![;] = input.parse()?;
-            (token::Brace(semi_token.span), vec![], Some(semi_token))
+            (token::Brace(semi_token.span), Vec::new(), Some(semi_token))
         } else {
             let content;
             let brace_token = braced!(content in input);
@@ -1778,8 +1782,9 @@ pub(crate) mod parsing {
     ) -> Result<FnArgOrVariadic> {
         let tracked: Option<Token![tracked]> = input.parse()?;
         let ahead = input.fork();
-        if let Ok(mut receiver) = ahead.parse::<Receiver>() {
+        if let Ok((reference, mutability, self_token)) = parse_receiver_begin(&ahead) {
             input.advance_to(&ahead);
+            let mut receiver = parse_rest_of_receiver(reference, mutability, self_token, input)?;
             receiver.attrs = attrs;
             let kind = FnArgKind::Receiver(receiver);
             let fn_arg = FnArg { tracked, kind };
@@ -1833,46 +1838,69 @@ pub(crate) mod parsing {
     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
     impl Parse for Receiver {
         fn parse(input: ParseStream) -> Result<Self> {
-            let reference = if input.peek(Token![&]) {
-                let ampersand: Token![&] = input.parse()?;
-                let lifetime: Option<Lifetime> = input.parse()?;
-                Some((ampersand, lifetime))
-            } else {
-                None
-            };
-            let mutability: Option<Token![mut]> = input.parse()?;
-            let self_token: Token![self] = input.parse()?;
-            let colon_token: Option<Token![:]> = if reference.is_some() {
-                None
-            } else {
-                input.parse()?
-            };
-            let ty: Type = if colon_token.is_some() {
-                input.parse()?
-            } else {
-                let mut ty = Type::Path(TypePath {
-                    qself: None,
-                    path: Path::from(Ident::new("Self", self_token.span)),
-                });
-                if let Some((ampersand, lifetime)) = reference.as_ref() {
-                    ty = Type::Reference(TypeReference {
-                        and_token: Token![&](ampersand.span),
-                        lifetime: lifetime.clone(),
-                        mutability: mutability.as_ref().map(|m| Token![mut](m.span)),
-                        elem: Box::new(ty),
-                    });
-                }
-                ty
-            };
-            Ok(Receiver {
-                attrs: Vec::new(),
-                reference,
-                mutability,
-                self_token,
-                colon_token,
-                ty: Box::new(ty),
-            })
+            let (reference, mutability, self_token) = parse_receiver_begin(input)?;
+            parse_rest_of_receiver(reference, mutability, self_token, input)
         }
+    }
+
+    fn parse_receiver_begin(
+        input: ParseStream,
+    ) -> Result<(
+        Option<(Token![&], Option<Lifetime>)>,
+        Option<Token![mut]>,
+        Token![self],
+    )> {
+        let reference = if input.peek(Token![&]) {
+            let ampersand: Token![&] = input.parse()?;
+            let lifetime: Option<Lifetime> = input.parse()?;
+            Some((ampersand, lifetime))
+        } else {
+            None
+        };
+        let mutability: Option<Token![mut]> = input.parse()?;
+        let self_token: Token![self] = input.parse()?;
+        if input.peek(Token![::]) {
+            return Err(input.error("expected `:`"));
+        }
+        Ok((reference, mutability, self_token))
+    }
+
+    fn parse_rest_of_receiver(
+        reference: Option<(Token![&], Option<Lifetime>)>,
+        mutability: Option<Token![mut]>,
+        self_token: Token![self],
+        input: ParseStream,
+    ) -> Result<Receiver> {
+        let colon_token: Option<Token![:]> = if reference.is_some() {
+            None
+        } else {
+            input.parse()?
+        };
+        let ty: Type = if colon_token.is_some() {
+            input.parse()?
+        } else {
+            let mut ty = Type::Path(TypePath {
+                qself: None,
+                path: Path::from(Ident::new("Self", self_token.span)),
+            });
+            if let Some((ampersand, lifetime)) = reference.as_ref() {
+                ty = Type::Reference(TypeReference {
+                    and_token: Token![&](ampersand.span),
+                    lifetime: lifetime.clone(),
+                    mutability: mutability.as_ref().map(|m| Token![mut](m.span)),
+                    elem: Box::new(ty),
+                });
+            }
+            ty
+        };
+        Ok(Receiver {
+            attrs: Vec::new(),
+            reference,
+            mutability,
+            self_token,
+            colon_token,
+            ty: Box::new(ty),
+        })
     }
 
     pub(crate) fn parse_fn_args(
@@ -3045,7 +3073,7 @@ pub(crate) mod parsing {
             let span = sig.paren_token.span;
             let block = Block {
                 brace_token: token::Brace { span },
-                stmts: vec![],
+                stmts: Vec::new(),
             };
             (block, Some(semi))
         } else {

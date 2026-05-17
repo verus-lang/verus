@@ -26,13 +26,13 @@ tokenized_state_machine! { Petersons<T> {
 
     #[invariant]
     pub spec fn the_inv(&self) -> bool {
-        &&& (self.thread_0 === ThreadState::Idle) <==> !self.flag_0
-        &&& (self.thread_1 === ThreadState::Idle) <==> !self.flag_1
-        &&& !(self.thread_0 === ThreadState::Critical && self.thread_1 === ThreadState::Critical)
+        &&& (self.thread_0 == ThreadState::Idle) <==> !self.flag_0
+        &&& (self.thread_1 == ThreadState::Idle) <==> !self.flag_1
+        &&& !(self.thread_0 == ThreadState::Critical && self.thread_1 == ThreadState::Critical)
         &&& self.storage.is_Some() <==>
             (self.thread_0 !== ThreadState::Critical && self.thread_1 !== ThreadState::Critical)
-        &&& self.thread_0 === ThreadState::Critical && self.turn == 1 ==> self.thread_1 === ThreadState::Idle || self.thread_1 === ThreadState::SetFlag
-        &&& self.thread_1 === ThreadState::Critical && self.turn == 0 ==> self.thread_0 === ThreadState::Idle || self.thread_0 === ThreadState::SetFlag
+        &&& self.thread_0 == ThreadState::Critical && self.turn == 1 ==> self.thread_1 == ThreadState::Idle || self.thread_1 == ThreadState::SetFlag
+        &&& self.thread_1 == ThreadState::Critical && self.turn == 0 ==> self.thread_0 == ThreadState::Idle || self.thread_0 == ThreadState::SetFlag
         &&& self.turn == 0 || self.turn == 1
     }
 
@@ -51,7 +51,7 @@ tokenized_state_machine! { Petersons<T> {
 
     transition!{
         t0_set_flag() {
-            require pre.thread_0 === ThreadState::Idle;
+            require pre.thread_0 == ThreadState::Idle;
             update thread_0 = ThreadState::SetFlag;
 
             update flag_0 = true;
@@ -60,7 +60,7 @@ tokenized_state_machine! { Petersons<T> {
 
     transition!{
         t0_set_turn() {
-            require pre.thread_0 === ThreadState::SetFlag;
+            require pre.thread_0 == ThreadState::SetFlag;
             update thread_0 = ThreadState::Waiting;
             update turn = 1;
         }
@@ -68,7 +68,7 @@ tokenized_state_machine! { Petersons<T> {
 
     transition!{
         t0_enter_via_flag() {
-            require pre.thread_0 === ThreadState::Waiting;
+            require pre.thread_0 == ThreadState::Waiting;
             require pre.flag_1 == false;
             update thread_0 = ThreadState::Critical;
             withdraw storage -= Some(let _);
@@ -77,7 +77,7 @@ tokenized_state_machine! { Petersons<T> {
 
     transition!{
         t0_enter_via_turn() {
-            require pre.thread_0 === ThreadState::Waiting;
+            require pre.thread_0 == ThreadState::Waiting;
             require pre.turn != 1;
             update thread_0 = ThreadState::Critical;
             withdraw storage -= Some(let _);
@@ -86,7 +86,7 @@ tokenized_state_machine! { Petersons<T> {
 
     transition!{
         t0_done(t: T) {
-            require pre.thread_0 === ThreadState::Critical;
+            require pre.thread_0 == ThreadState::Critical;
             update thread_0 = ThreadState::Idle;
             update flag_0 = false;
             deposit storage += Some(t);
@@ -97,7 +97,7 @@ tokenized_state_machine! { Petersons<T> {
 
     transition!{
         t1_set_flag() {
-            require pre.thread_1 === ThreadState::Idle;
+            require pre.thread_1 == ThreadState::Idle;
             update thread_1 = ThreadState::SetFlag;
 
             update flag_1 = true;
@@ -106,7 +106,7 @@ tokenized_state_machine! { Petersons<T> {
 
     transition!{
         t1_set_turn() {
-            require pre.thread_1 === ThreadState::SetFlag;
+            require pre.thread_1 == ThreadState::SetFlag;
             update thread_1 = ThreadState::Waiting;
             update turn = 0;
         }
@@ -114,7 +114,7 @@ tokenized_state_machine! { Petersons<T> {
 
     transition!{
         t1_enter_via_flag() {
-            require pre.thread_1 === ThreadState::Waiting;
+            require pre.thread_1 == ThreadState::Waiting;
             require pre.flag_0 == false;
             update thread_1 = ThreadState::Critical;
             withdraw storage -= Some(let _);
@@ -123,7 +123,7 @@ tokenized_state_machine! { Petersons<T> {
 
     transition!{
         t1_enter_via_turn() {
-            require pre.thread_1 === ThreadState::Waiting;
+            require pre.thread_1 == ThreadState::Waiting;
             require pre.turn != 0;
             update thread_1 = ThreadState::Critical;
             withdraw storage -= Some(let _);
@@ -132,7 +132,7 @@ tokenized_state_machine! { Petersons<T> {
 
     transition!{
         t1_done(t: T) {
-            require pre.thread_1 === ThreadState::Critical;
+            require pre.thread_1 == ThreadState::Critical;
             update thread_1 = ThreadState::Idle;
             update flag_1 = false;
             deposit storage += Some(t);

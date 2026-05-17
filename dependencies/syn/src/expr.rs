@@ -28,14 +28,16 @@ use crate::verus::{
     ExprFinal, ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions,
     Invariant, InvariantEnsures, InvariantExceptBreak, Requires, RevealHide, View,
 };
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+#[cfg(feature = "printing")]
+use core::fmt::{self, Display};
+use core::hash::{Hash, Hasher};
+#[cfg(all(feature = "parsing", feature = "full"))]
+use core::mem;
 use proc_macro2::{Span, TokenStream};
 #[cfg(feature = "printing")]
 use quote::IdentFragment;
-#[cfg(feature = "printing")]
-use std::fmt::{self, Display};
-use std::hash::{Hash, Hasher};
-#[cfg(all(feature = "parsing", feature = "full"))]
-use std::mem;
 
 ast_enum_of_structs! {
     /// A Rust expression.
@@ -200,7 +202,7 @@ ast_enum_of_structs! {
         /// A parenthesized expression: `(a + b)`.
         Paren(ExprParen),
 
-        /// A path like `std::mem::replace` possibly containing generic
+        /// A path like `core::mem::replace` possibly containing generic
         /// parameters and a qualified self-type.
         ///
         /// A plain identifier like `x` is a path of length 1.
@@ -236,7 +238,7 @@ ast_enum_of_structs! {
         /// A tuple expression: `(a, b, c, d)`.
         Tuple(ExprTuple),
 
-        /// A unary operation: `!x`, `*x`.
+        /// A unary operation: `!x`, `*x`, `-x`.
         Unary(ExprUnary),
 
         /// An unsafe block: `unsafe { ... }`.
@@ -594,7 +596,7 @@ ast_struct! {
 }
 
 ast_struct! {
-    /// A path like `std::mem::replace` possibly containing generic
+    /// A path like `core::mem::replace` possibly containing generic
     /// parameters and a qualified self-type.
     ///
     /// A plain identifier like `x` is a path of length 1.
@@ -710,7 +712,7 @@ ast_struct! {
 }
 
 ast_struct! {
-    /// A unary operation: `!x`, `*x`.
+    /// A unary operation: `!x`, `*x`, `-x`.
     #[cfg_attr(docsrs, doc(cfg(any(feature = "full", feature = "derive"))))]
     pub struct ExprUnary {
         pub attrs: Vec<Attribute>,
@@ -760,8 +762,8 @@ impl Expr {
     /// An unspecified invalid expression.
     ///
     /// ```
+    /// use core::mem;
     /// use quote::ToTokens;
-    /// use std::mem;
     /// use syn::{parse_quote, Expr};
     ///
     /// fn unparenthesize(e: &mut Expr) {
@@ -799,7 +801,7 @@ impl Expr {
     ///
     /// ```
     /// # struct S;
-    /// # impl std::ops::Deref for S {
+    /// # impl core::ops::Deref for S {
     /// #     type Target = bool;
     /// #     fn deref(&self) -> &Self::Target {
     /// #         &true
@@ -1274,9 +1276,13 @@ pub(crate) mod parsing {
         ClosureArg, Context, Decreases, Ensures, ExprGetField, ExprHas, ExprHasNot, ExprIs,
         ExprIsNot, Requires, View,
     };
+    use alloc::boxed::Box;
+    use alloc::format;
+    use alloc::string::ToString;
+    use alloc::vec::Vec;
+    use core::mem;
     #[cfg(feature = "full")]
     use proc_macro2::{Span, TokenStream};
-    use std::mem;
 
     // When we're parsing expressions which occur before blocks, like in an if
     // statement's condition, we cannot parse a struct literal.
@@ -1315,7 +1321,7 @@ pub(crate) mod parsing {
             let expr = parse_with_earlier_boundary_rule_inner(input, attrs)?;
             let expr = Box::new(expr);
             return Ok(Expr::Unary(ExprUnary {
-                attrs: vec![],
+                attrs: Vec::new(),
                 expr,
                 op,
             }));

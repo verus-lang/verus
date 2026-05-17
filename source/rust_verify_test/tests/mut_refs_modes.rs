@@ -1366,28 +1366,28 @@ test_verify_one_file_with_options! {
 
         fn test2(x: Tracked<u64>) {
             let tracked y: &u64 = &*x;
-            assert(x == y);
+            assert(*x == y);
         }
 
         fn test3(x: Tracked<Ghost<u64>>) {
             let mut x = x;
             let tracked y: &mut Ghost<u64> = &mut *x;
             proof { *y = Ghost(3); }
-            assert(x == 3);
+            assert(*x == 3);
         }
 
         fn test3_fails(x: Tracked<Ghost<u64>>) {
             let mut x = x;
             let tracked y: &mut Ghost<u64> = &mut *x;
             proof { *y = Ghost(3); }
-            assert(x == 3);
+            assert(*x == 3);
             assert(false); // FAILS
         }
 
         fn test4(x: Tracked<Ghost<u64>>) {
             let mut x = x;
             proof { *x = Ghost(3); }
-            assert(x == 3);
+            assert(*x == 3);
         }
     } => Err(err) => assert_fails(err, 1)
 }
@@ -1397,7 +1397,7 @@ test_verify_one_file_with_options! {
         fn test4(x: Tracked<Ghost<u64>>) {
             let mut x = x;
             *x = Ghost(3);
-            assert(x == 3);
+            assert(*x == 3);
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot access proof-mode place in executable context")
 }
@@ -1442,7 +1442,7 @@ test_verify_one_file_with_options! {
 
         fn test2(x: Ghost<u64>) {
             let ghost y: &u64 = &*x;
-            assert(x == y);
+            assert(*x == y);
         }
 
         fn test3(x: Ghost<u64>) {
@@ -1473,7 +1473,7 @@ test_verify_one_file_with_options! {
         fn test4(x: Ghost<Ghost<u64>>) {
             let mut x = x;
             *x = Ghost(3);
-            assert(x == 3);
+            assert(*x == 3);
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
 }

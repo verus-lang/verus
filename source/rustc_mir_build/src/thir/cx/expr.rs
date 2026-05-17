@@ -85,7 +85,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
         };
 
         // OK, all done!
-        self.thir.exprs.push(expr)
+        let expr_id = self.thir.exprs.push(expr);
+        crate::verus_expr::scope_post(self, expr_id)
     }
 
     #[instrument(level = "trace", skip(self, expr, span))]
