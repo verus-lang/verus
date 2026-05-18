@@ -173,10 +173,12 @@ pub(crate) fn translate_trait<'tcx>(
         let proxy_predicates = tcx.predicates_of(trait_def_id);
         let mut preds1 = external_predicates.instantiate(tcx, ex_trait_ref_for.args).predicates;
         let mut preds2 = proxy_predicates.instantiate(tcx, ex_trait_ref_for.args).predicates;
+        let mut external_trait_private_bounds = trait_vattrs.external_trait_private_bounds.clone();
         use crate::rust_to_vir_func::remove_ignored_trait_bounds_from_predicates;
         remove_ignored_trait_bounds_from_predicates(
             ctxt,
             true,
+            Some(&mut external_trait_private_bounds),
             &[ex_trait_ref_for.def_id],
             Some(ex_trait_ref_for.args[0]),
             &mut preds1,
@@ -184,10 +186,20 @@ pub(crate) fn translate_trait<'tcx>(
         remove_ignored_trait_bounds_from_predicates(
             ctxt,
             true,
+            None,
             &[ex_trait_ref_for.def_id, trait_def_id],
             Some(ex_trait_ref_for.args[0]),
             &mut preds2,
         );
+        if let Some(bound) = external_trait_private_bounds.get(0) {
+            return err_span(
+                trait_span,
+                format!(
+                    "external_trait_private_bound {:?} is not a private non-local bound for this trait",
+                    bound,
+                ),
+            );
+        }
         if !crate::rust_to_vir_func::predicates_match(ctxt.tcx, &preds1, &preds2) {
             let err =
                 err_span_bare(trait_span, "external_trait_specification trait bound mismatch")
