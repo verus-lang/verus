@@ -195,30 +195,30 @@ impl<A> Set<A> {
     /// every other element of the set.
     ///
     /// change f to leq bc it is a relation. also these are an ordering relation
-    pub open spec fn has_least<A>(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
+    pub open spec fn has_least(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
         self.contains(min) && forall|x: A| self.contains(x) ==> #[trigger] leq(min, x)
     }
 
     /// An element in an ordered set is called a minimal element, if no other element is less than it.
-    pub open spec fn has_minium<A>(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
+    pub open spec fn has_minimum(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
         self.contains(min) && forall|x: A|
             self.contains(x) && #[trigger] leq(x, min) ==> #[trigger] leq(min, x)
     }
 
     /// An element in an ordered set is called a greatest element (or a maximum), if it is greater than
     ///every other element of the set.
-    pub open spec fn has_greatest<A>(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
+    pub open spec fn has_greatest(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
         self.contains(max) && forall|x: A| self.contains(x) ==> #[trigger] leq(x, max)
     }
 
     /// An element in an ordered set is called a maximal element, if no other element is greater than it.
-    pub open spec fn has_maximum<A>(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
+    pub open spec fn has_maximum(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
         self.contains(max) && forall|x: A|
             self.contains(x) && #[trigger] leq(max, x) ==> #[trigger] leq(x, max)
     }
 
     /// If a function is injective on the set `self`, then it is also injective on any subset `other` of `self`.
-    pub proof fn lemma_injective_on_subset<A, B>(self, r: spec_fn(A) -> B, other: Self)
+    pub proof fn lemma_injective_on_subset<B>(self, r: spec_fn(A) -> B, other: Self)
         requires
             other <= self,
             self.injective_on(r),
@@ -263,8 +263,8 @@ impl<A> Set<A> {
             self.len() > 0,
             total_ordering(r),
         ensures
-            self.has_minium(r, self.find_unique_minimal(r)) && (forall|min: A|
-                self.has_minium(r, min) ==> self.find_unique_minimal(r) == min),
+            self.has_minimum(r, self.find_unique_minimal(r)) && (forall|min: A|
+                self.has_minimum(r, min) ==> self.find_unique_minimal(r) == min),
         decreases self.len(),
     {
         broadcast use group_set_properties;
@@ -272,11 +272,11 @@ impl<A> Set<A> {
         if self.len() == 1 {
             let x = choose|x: A| self.contains(x);
             assert(self.remove(x).insert(x) =~= self);
-            assert(self.has_minium(r, self.find_unique_minimal(r)));
+            assert(self.has_minimum(r, self.find_unique_minimal(r)));
         } else {
             let x = choose|x: A| self.contains(x);
             self.remove(x).find_unique_minimal_ensures(r);
-            assert(self.remove(x).has_minium(r, self.remove(x).find_unique_minimal(r)));
+            assert(self.remove(x).has_minimum(r, self.remove(x).find_unique_minimal(r)));
             let y = self.remove(x).find_unique_minimal(r);
             let min_updated = self.find_unique_minimal(r);
             assert(!r(y, x) ==> min_updated == x);
@@ -289,7 +289,7 @@ impl<A> Set<A> {
             ) by {
                 assert(r(min_updated, x) || r(min_updated, y));
                 if min_updated == y {  // Case where the new min is the old min
-                    assert(self.has_minium(r, self.find_unique_minimal(r)));
+                    assert(self.has_minimum(r, self.find_unique_minimal(r)));
                 } else {  //Case where the new min is the newest element
                     assert(self.remove(x).contains(elt) || elt == x);
                     assert(min_updated == x);
@@ -304,8 +304,8 @@ impl<A> Set<A> {
                 }
             }
             assert forall|min_poss: A|
-                self.has_minium(r, min_poss) implies self.find_unique_minimal(r) == min_poss by {
-                assert(self.remove(x).has_minium(r, min_poss) || x == min_poss);
+                self.has_minimum(r, min_poss) implies self.find_unique_minimal(r) == min_poss by {
+                assert(self.remove(x).has_minimum(r, min_poss) || x == min_poss);
                 assert(r(min_poss, self.find_unique_minimal(r)));
             }
         }
@@ -484,7 +484,7 @@ impl<A> Set<A> {
         requires
             pre_ordering(r),
         ensures
-            self.has_least(r, min) ==> self.has_minium(r, min),
+            self.has_least(r, min) ==> self.has_minimum(r, min),
     {
     }
 
@@ -504,9 +504,9 @@ impl<A> Set<A> {
         requires
             total_ordering(r),
         ensures
-            self.has_least(r, min) <==> self.has_minium(r, min),
+            self.has_least(r, min) <==> self.has_minimum(r, min),
     {
-        assert(self.has_minium(r, min) ==> forall|x: A|
+        assert(self.has_minimum(r, min) ==> forall|x: A|
             !self.contains(x) || !r(x, min) || r(min, x));
     }
 
@@ -547,10 +547,10 @@ impl<A> Set<A> {
             total_ordering(r),
         ensures
             forall|min: A, min_prime: A|
-                self.has_minium(r, min) && self.has_minium(r, min_prime) ==> min == min_prime,
+                self.has_minimum(r, min) && self.has_minimum(r, min_prime) ==> min == min_prime,
     {
         assert forall|min: A, min_prime: A|
-            self.has_minium(r, min) && self.has_minium(r, min_prime) implies min == min_prime by {
+            self.has_minimum(r, min) && self.has_minimum(r, min_prime) implies min == min_prime by {
             self.lemma_minimal_equivalent_least(r, min);
             self.lemma_minimal_equivalent_least(r, min_prime);
             self.lemma_least_is_unique(r);

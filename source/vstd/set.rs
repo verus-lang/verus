@@ -260,7 +260,7 @@ impl<A> Set<A> {
     }
 }
 
-#[verifier::reject_recursive_types<A>]
+#[verifier::reject_recursive_types(A)]
 pub struct FinitenessDemonstration<A>
 {
     pub f: spec_fn(A) -> nat,
