@@ -26,9 +26,16 @@ pub(crate) trait Scoper {
 pub(crate) struct NoScoper;
 impl Scoper for NoScoper {}
 
-pub type VisitorScopeMap = ScopeMap<VarIdent, bool>;
+pub(crate) struct ScopeEntry {
+    /// Is this a Quant, Choose, or Let?
+    pub is_triggered: bool,
+    /// Is this a Let binding?
+    pub is_let: bool,
+}
 
-impl Scoper for ScopeMap<VarIdent, bool> {
+pub type VisitorScopeMap = ScopeMap<VarIdent, ScopeEntry>;
+
+impl Scoper for ScopeMap<VarIdent, ScopeEntry> {
     fn push_scope(&mut self) {
         self.push_scope(true);
     }
@@ -43,12 +50,15 @@ impl Scoper for ScopeMap<VarIdent, bool> {
             BndX::Lambda(..) => false,
             BndX::Let(..) => unreachable!(),
         };
-        let _ = self.insert(binder.name.clone(), is_triggered);
+        let entry = ScopeEntry { is_triggered, is_let: false };
+        let _ = self.insert(binder.name.clone(), entry);
     }
 
     fn insert_binding_exp(&mut self, binder: &VarBinder<Exp>, bnd_source: &Bnd) {
         assert!(matches!(bnd_source.x, BndX::Let(..)));
-        let _ = self.insert(binder.name.clone(), true);
+        // REVIEW: why is is_triggered 'true' here?
+        let entry = ScopeEntry { is_triggered: true, is_let: true };
+        let _ = self.insert(binder.name.clone(), entry);
     }
 }
 
