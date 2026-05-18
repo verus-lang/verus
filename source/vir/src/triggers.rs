@@ -421,10 +421,9 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 check_trigger_expr(state, &e1, &map)?;
                 // If the trigger doesn't contain *any* of our trigger vars, then it must
                 // be for a more outer quantifier
-                if !state.trigger_vars.iter().any(|trigger_var| {
+                if !free_vars.iter().any(|trigger_var| {
                     if let Some(scope_entry) = map.get(trigger_var)
                         && scope_entry.bnd_kind.is_outer_trigger()
-                        && free_vars.contains(trigger_var)
                     {
                         true
                     } else {
