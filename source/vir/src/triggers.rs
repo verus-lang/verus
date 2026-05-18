@@ -5,7 +5,7 @@ use crate::ast::{
 use crate::context::Ctx;
 use crate::messages::{Span, error};
 use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs};
-use crate::sst_visitor::ScopeEntry;
+use crate::sst_visitor::{BndKind, ScopeEntry};
 use crate::triggers_auto::AutoType;
 use crate::util::vec_map;
 use air::scope_map::ScopeMap;
@@ -238,7 +238,7 @@ fn check_trigger_expr(
         }
         ExpX::Var(x) => {
             if let Some(entry) = scope_map.get(x)
-                && entry.is_let
+                && entry.bnd_kind.is_let()
             {
                 return Err(error(
                     &exp.span,
@@ -361,11 +361,24 @@ fn check_trigger_expr(
     })
 }
 
+impl BndKind {
+    fn is_triggered(&self) -> bool {
+        match self {
+            BndKind::Quant | BndKind::Choose => true,
+            BndKind::Lambda | BndKind::Let => false,
+        }
+    }
+
+    fn is_let(&self) -> bool {
+        matches!(self, BndKind::Let)
+    }
+}
+
 fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
     let mut map: ScopeMap<VarIdent, ScopeEntry> = ScopeMap::new();
     map.push_scope(false);
     for x in state.trigger_vars.iter() {
-        map.insert(x.clone(), ScopeEntry { is_triggered: true, is_let: false })
+        map.insert(x.clone(), ScopeEntry { bnd_kind: BndKind::Quant })
             .expect("duplicate bound variables");
     }
     let span = &exp.span;
@@ -389,9 +402,8 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 let e1 = preprocess_exp(&e1);
                 for x in &free_vars {
                     if let Some(scope_entry) = map.get(x)
-                        && scope_entry.is_triggered
+                        && scope_entry.bnd_kind.is_triggered()
                         && !state.trigger_vars.contains(x)
-                        && !scope_entry.is_let
                     {
                         // If the trigger contains variables declared by a nested quantifier,
                         // it must be the nested quantifier's trigger, not ours.
