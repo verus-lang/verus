@@ -468,27 +468,6 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 }
                 Ok(())
             }
-            ExpX::Bind(bnd, _) => {
-                let bvars: Vec<VarIdent> = match &bnd.x {
-                    BndX::Let(binders) => binders.iter().map(|b| b.name.clone()).collect(),
-                    BndX::Quant(_, binders, _, _)
-                    | BndX::Lambda(binders, _)
-                    | BndX::Choose(binders, _, _) => {
-                        binders.iter().map(|b| b.name.clone()).collect()
-                    }
-                };
-                for x in bvars {
-                    if map.contains_key(&x) {
-                        return Err(error(
-                            span,
-                            format!(
-                                "Verus Internal Error: get_manual_triggers: variable shadowing case unhandled ({x})"
-                            ),
-                        ));
-                    }
-                }
-                Ok(())
-            }
             _ => Ok(()),
         }
     })?;
