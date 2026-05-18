@@ -700,9 +700,9 @@ fn vec_with_mut_refs(i: usize)
 
     *v[i] = 1;
 
-    assert(i == 0 ==> (a, b, c) === (1, 0, 0));
-    assert(i == 1 ==> (a, b, c) === (0, 1, 0));
-    assert(i == 2 ==> (a, b, c) === (0, 0, 1));
+    assert(i == 0 ==> (a, b, c) == (1, 0, 0));
+    assert(i == 1 ==> (a, b, c) == (0, 1, 0));
+    assert(i == 2 ==> (a, b, c) == (0, 0, 1));
 }
 // ANCHOR_END: vec_with_mut_refs_broken
 */
@@ -723,9 +723,9 @@ fn vec_with_mut_refs(i: usize)
     assert(has_resolved(v[1]));
     assert(has_resolved(v[2]));
 
-    assert(i == 0 ==> (a, b, c) === (1, 0, 0));
-    assert(i == 1 ==> (a, b, c) === (0, 1, 0));
-    assert(i == 2 ==> (a, b, c) === (0, 0, 1));
+    assert(i == 0 ==> (a, b, c) == (1, 0, 0));
+    assert(i == 1 ==> (a, b, c) == (0, 1, 0));
+    assert(i == 2 ==> (a, b, c) == (0, 0, 1));
 }
 // ANCHOR_END: vec_with_mut_refs
 
@@ -750,9 +750,9 @@ fn tree_map_with_mut_refs(i: u64)
         lemma_tree_map_has_resolved(tree_map, 2);
     }
 
-    assert(i == 0 ==> (a, b, c) === (1, 0, 0));
-    assert(i == 1 ==> (a, b, c) === (0, 1, 0));
-    assert(i == 2 ==> (a, b, c) === (0, 0, 1));
+    assert(i == 0 ==> (a, b, c) == (1, 0, 0));
+    assert(i == 1 ==> (a, b, c) == (0, 1, 0));
+    assert(i == 2 ==> (a, b, c) == (0, 0, 1));
 }
 // ANCHOR_END: tree_map_with_mut_refs
 

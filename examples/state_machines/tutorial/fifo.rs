@@ -354,7 +354,7 @@ tokenized_state_machine!{FifoQueue<T> {
             assert(post.storage.dom().contains(i));
             /*
             assert(
-                post.storage.index(i).id() ===
+                post.storage.index(i).id() ==
                 post.backing_cells.index(i)
             );
             assert(if post.in_active_range(i) {
@@ -399,7 +399,7 @@ tokenized_state_machine!{FifoQueue<T> {
             } else {
                 assert(post.storage.dom().contains(i));
                 assert(
-                    post.storage.index(i).id() ===
+                    post.storage.index(i).id() ==
                     post.backing_cells.index(i)
                 );
                 assert(if post.in_active_range(i) {
@@ -423,7 +423,7 @@ tokenized_state_machine!{FifoQueue<T> {
         let head = pre.consumer.get_Consuming_0();
         assert(post.storage.dom().contains(head));
         assert(
-                post.storage.index(head).id() ===
+                post.storage.index(head).id() ==
                 post.backing_cells.index(head as int)
             );
         assert(if post.in_active_range(head) {
@@ -472,7 +472,7 @@ struct_with_invariants!{
             // The Cell IDs in the instance protocol match the cell IDs in the actual vector:
             &&& self.instance@.backing_cells().len() == self.buffer@.len()
             &&& forall|i: int| 0 <= i && i < self.buffer@.len() as int ==>
-                self.instance@.backing_cells().index(i) ===
+                self.instance@.backing_cells().index(i) ==
                     self.buffer@.index(i).id()
         }
 

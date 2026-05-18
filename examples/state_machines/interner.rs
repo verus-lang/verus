@@ -30,7 +30,7 @@ tokenized_state_machine! {InternSystem<T> {
 
     transition!{
         insert(val: T) {
-            require(forall |i: int| 0 <= i && i < pre.auth.len() ==> pre.auth.index(i) !== val);
+            require(forall |i: int| 0 <= i && i < pre.auth.len() ==> pre.auth.index(i) != val);
             update auth = pre.auth.push(val);
         }
     }
@@ -72,7 +72,7 @@ tokenized_state_machine! {InternSystem<T> {
             0 <= j && j < self.auth.len() &&
             i != j
             ==>
-            self.auth.index(i) !== self.auth.index(j)
+            self.auth.index(i) != self.auth.index(j)
     }
 
     #[inductive(empty)]
