@@ -112,13 +112,6 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
     &slice[i..j]
 }
 
-#[verifier::external_trait_specification]
-pub trait ExSliceIndex<T> where T: ?Sized {
-    type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
-
-    type Output: ?Sized;
-}
-
 pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Option<
     &<I as core::slice::SliceIndex<[T]>>::Output,
 >) where I: core::slice::SliceIndex<[T]>
