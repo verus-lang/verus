@@ -168,7 +168,7 @@ impl<A> Seq<A> {
     #[verifier(external_body)]
     pub proof fn tracked_empty() -> (tracked ret: Self)
         ensures
-            ret === Seq::empty(),
+            ret == Seq::empty(),
     {
         unimplemented!()
     }
@@ -178,7 +178,7 @@ impl<A> Seq<A> {
         requires
             0 <= i < old(self).len(),
         ensures
-            ret === old(self)[i],
+            ret == old(self)[i],
             final(self).len() == old(self).len() - 1,
             *final(self) == old(self).remove(i),
     {
@@ -201,7 +201,7 @@ impl<A> Seq<A> {
         requires
             0 <= i < self.len(),
         ensures
-            *ret === self[i],
+            *ret == self[i],
     {
         unimplemented!()
     }
@@ -221,7 +221,7 @@ impl<A> Seq<A> {
         requires
             old(self).len() > 0,
         ensures
-            ret === old(self).last(),
+            ret == old(self).last(),
             final(self).len() == old(self).len() - 1,
             *final(self) == old(self).take(old(self).len() - 1),
     {
@@ -235,7 +235,7 @@ impl<A> Seq<A> {
         requires
             old(self).len() > 0,
         ensures
-            ret === old(self).first(),
+            ret == old(self).first(),
             final(self).len() == old(self).len() - 1,
             *final(self) == old(self).drop_first(),
     {

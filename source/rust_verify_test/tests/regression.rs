@@ -12,7 +12,7 @@ test_verify_one_file! {
             let s2: Set<i32> = Set::empty();
             assert(!s2.contains(1));
             // assert(!s1.ext_equal(s2));
-            assert(s1 !== s2);
+            assert(s1 != s2);
         }
     } => Ok(())
 }
@@ -26,7 +26,7 @@ test_verify_one_file! {
         proof fn test_sets_1() {
             let s1: Set<i32> = Set::empty().insert(1);
 
-            assert (exists|s3: Set<i32>| different_set(s3) !== s1) by {
+            assert (exists|s3: Set<i32>| different_set(s3) != s1) by {
                 assert(!different_set(Set::empty()).contains(1i32));
             }
         }
@@ -53,7 +53,7 @@ test_verify_one_file! {
         proof fn test() {
             let s1: nat = 0;
             assert_with_binding!(true);
-            assert(s1 === 0);
+            assert(s1 == 0);
         }
 
         macro_rules! recursor {
@@ -165,14 +165,14 @@ test_verify_one_file! {
         use vstd::map::*;
 
         proof fn some_proof() -> (m: Map<int, int>)
-            ensures m === Map::empty()
+            ensures m == Map::empty()
         {
             Map::empty()
         }
 
         proof fn cats() {
             let m = some_proof();
-            assert(m === Map::empty());
+            assert(m == Map::empty());
         }
     } => Ok(())
 }

@@ -1737,6 +1737,15 @@ pub(crate) fn check_generic_bound<'tcx>(
         } else if Some(trait_def_id) == tcx.lang_items().pointee_sized_trait() {
             TraitId::Sizedness(Sizedness::PointeeSized)
         } else {
+            // Verus attributes are `Unparsed` where get_all_attrs is acceptable per its
+            // deprecation message.
+            #[allow(deprecated)]
+            let trait_attrs = tcx.get_all_attrs(trait_def_id);
+            let internal_trait = crate::attributes::is_internal_trait(trait_attrs, None)?;
+            if internal_trait {
+                return err_span(span, "cannot use trait marked `verifier::internal_trait`");
+            }
+
             TraitId::Path(def_id_to_vir_path(
                 tcx,
                 verus_items,

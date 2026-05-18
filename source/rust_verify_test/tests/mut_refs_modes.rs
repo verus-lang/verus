@@ -715,7 +715,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] tracked_places_lifetime_error2 ["--no-lifetime"] => verus_code! {
         proof fn id<A>(tracked a: A) -> (tracked ret: A)
-            ensures ret === a
+            ensures ret == a
         { a }
 
         fn test() {
@@ -736,7 +736,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] tracked_places_lifetime_error3 ["--no-lifetime"] => verus_code! {
         proof fn id<A>(tracked a: A) -> (tracked ret: A)
-            ensures ret === a
+            ensures ret == a
         { a }
 
         fn test() {
@@ -823,14 +823,14 @@ test_verify_one_file_with_options! {
             let mut t: Ghost<(int, int)> = Ghost((4, 6));
             let mut_ref = &mut t;
             proof { *mut_ref.borrow_mut() = (5, 10); }
-            assert(t@ === (5, 10));
+            assert(t@ == (5, 10));
         }
 
         fn test1_fails() {
             let mut t: Ghost<(int, int)> = Ghost((4, 6));
             let mut_ref = &mut t;
             proof { *mut_ref.borrow_mut() = (5, 10); }
-            assert(t@ === (5, 10));
+            assert(t@ == (5, 10));
             assert(false); // FAILS
         }
 
@@ -838,14 +838,14 @@ test_verify_one_file_with_options! {
             let mut t: Ghost<(int, int)> = Ghost((4, 6));
             let mut_ref = &mut t;
             proof { mut_ref.borrow_mut().0 = 5; }
-            assert(t@ === (5, 6));
+            assert(t@ == (5, 6));
         }
 
         fn test2_fails() {
             let mut t: Ghost<(int, int)> = Ghost((4, 6));
             let mut_ref = &mut t;
             proof { mut_ref.borrow_mut().0 = 5; }
-            assert(t@ === (5, 6));
+            assert(t@ == (5, 6));
             assert(false); // FAILS
         }
 
@@ -857,14 +857,14 @@ test_verify_one_file_with_options! {
             let mut t: Tracked<Tr> = Tracked(Tr { ints: (4, 6) });
             let mut_ref = &mut t;
             proof { mut_ref.borrow_mut().ints = (5, 10); }
-            assert(t@.ints === (5, 10));
+            assert(t@.ints == (5, 10));
         }
 
         fn test3_fails() {
             let mut t: Tracked<Tr> = Tracked(Tr { ints: (4, 6) });
             let mut_ref = &mut t;
             proof { mut_ref.borrow_mut().ints = (5, 10); }
-            assert(t@.ints === (5, 10));
+            assert(t@.ints == (5, 10));
             assert(false); // FAILS
         }
 
@@ -872,14 +872,14 @@ test_verify_one_file_with_options! {
             let mut t: Tracked<Tr> = Tracked(Tr { ints: (4, 6) });
             let mut_ref = &mut t;
             proof { mut_ref.borrow_mut().ints.0 = 5; }
-            assert(t@.ints === (5, 6));
+            assert(t@.ints == (5, 6));
         }
 
         fn test4_fails() {
             let mut t: Tracked<Tr> = Tracked(Tr { ints: (4, 6) });
             let mut_ref = &mut t;
             proof { mut_ref.borrow_mut().ints.0 = 5; }
-            assert(t@.ints === (5, 6));
+            assert(t@.ints == (5, 6));
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 4)
@@ -1366,28 +1366,28 @@ test_verify_one_file_with_options! {
 
         fn test2(x: Tracked<u64>) {
             let tracked y: &u64 = &*x;
-            assert(x == y);
+            assert(*x == y);
         }
 
         fn test3(x: Tracked<Ghost<u64>>) {
             let mut x = x;
             let tracked y: &mut Ghost<u64> = &mut *x;
             proof { *y = Ghost(3); }
-            assert(x == 3);
+            assert(*x == 3);
         }
 
         fn test3_fails(x: Tracked<Ghost<u64>>) {
             let mut x = x;
             let tracked y: &mut Ghost<u64> = &mut *x;
             proof { *y = Ghost(3); }
-            assert(x == 3);
+            assert(*x == 3);
             assert(false); // FAILS
         }
 
         fn test4(x: Tracked<Ghost<u64>>) {
             let mut x = x;
             proof { *x = Ghost(3); }
-            assert(x == 3);
+            assert(*x == 3);
         }
     } => Err(err) => assert_fails(err, 1)
 }
@@ -1397,7 +1397,7 @@ test_verify_one_file_with_options! {
         fn test4(x: Tracked<Ghost<u64>>) {
             let mut x = x;
             *x = Ghost(3);
-            assert(x == 3);
+            assert(*x == 3);
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot access proof-mode place in executable context")
 }
@@ -1442,7 +1442,7 @@ test_verify_one_file_with_options! {
 
         fn test2(x: Ghost<u64>) {
             let ghost y: &u64 = &*x;
-            assert(x == y);
+            assert(*x == y);
         }
 
         fn test3(x: Ghost<u64>) {
@@ -1473,7 +1473,7 @@ test_verify_one_file_with_options! {
         fn test4(x: Ghost<Ghost<u64>>) {
             let mut x = x;
             *x = Ghost(3);
-            assert(x == 3);
+            assert(*x == 3);
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
 }

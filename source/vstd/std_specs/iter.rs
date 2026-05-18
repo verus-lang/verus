@@ -53,7 +53,7 @@ pub trait ExIterator {
                     &&& final(self).remaining() == old(self).remaining().drop_first()
                     &&& ret == Some(old(self).remaining()[0])
                 } else {
-                    final(self).remaining() === old(self).remaining() && ret === None && final(self).will_return_none()
+                    final(self).remaining() == old(self).remaining() && ret == None && final(self).will_return_none()
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
@@ -121,7 +121,7 @@ pub trait ExDoubleEndedIterator : Iterator {
                     <Self as IteratorSpec>::remaining(final(self)) == <Self as IteratorSpec>::remaining(old(self)).drop_last()
                         && ret == Some(<Self as IteratorSpec>::remaining(old(self)).last())
                 } else {
-                    <Self as IteratorSpec>::remaining(final(self)) === <Self as IteratorSpec>::remaining(old(self)) && ret === None && <Self as IteratorSpec>::will_return_none(final(self))
+                    <Self as IteratorSpec>::remaining(final(self)) == <Self as IteratorSpec>::remaining(old(self)) && ret == None && <Self as IteratorSpec>::will_return_none(final(self))
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
@@ -311,7 +311,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
                     &&& final(self).iter.remaining() == old(self).iter.remaining().drop_first()
                     &&& ret == Some(old(self).iter.remaining()[0])
                 } else {
-                    final(self).iter.remaining() === old(self).iter.remaining() && ret === None && final(self).iter.will_return_none()
+                    final(self).iter.remaining() == old(self).iter.remaining() && ret == None && final(self).iter.will_return_none()
                 }
             }),
             final(self).iter.obeys_prophetic_iter_laws() && old(self).iter.remaining().len() > 0 && final(self).iter.decrease() is Some ==>

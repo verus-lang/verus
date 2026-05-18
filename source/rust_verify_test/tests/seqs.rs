@@ -14,7 +14,7 @@ test_verify_one_file! {
             assert(s1.index(3) == 30);
             let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert(s1 =~= s2);
-            assert(s1 === s2);
+            assert(s1 == s2);
             let s3 = s2.subrange(1, 4);
             assert(s3.len() == 3);
             let s4 = Seq::<int>::empty().push(10).push(20).push(30);
@@ -69,7 +69,7 @@ test_verify_one_file! {
             assert(s1.index(3) == 30);
             let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert(s1 =~= s2);
-            assert(s1 === s2);
+            assert(s1 == s2);
             let s3 = s2.subrange(1, 4);
             assert(s3.len() == 3);
             let s4 = Seq::<int>::empty().push(10).push(20).push(30);

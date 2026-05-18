@@ -333,6 +333,8 @@ pub(crate) enum Attr {
     // Marks a trait as "sealed", i.e. not implementable in Verus code
     // requires it to also be marked `unsafe`
     Sealed,
+    // Marks a trait as "internal_trait", i.e. not usable in Verus code
+    InternalTrait,
     // Marks spec functions that depend on resolved prophecies
     Prophetic,
     // Unrecognized attribute that starts with 'rustc_', internal to the stdlib
@@ -663,6 +665,9 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::ExternalTraitExtension(s.clone(), i.clone()))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "sealed" => v.push(Attr::Sealed),
+                AttrTree::Fun(_, arg, None) if arg == "internal_trait" => {
+                    v.push(Attr::InternalTrait)
+                }
                 AttrTree::Fun(_, arg, None) if arg == "prophetic" => v.push(Attr::Prophetic),
                 AttrTree::Fun(_, arg, None) if arg == "type_invariant" => {
                     v.push(Attr::TypeInvariantFn)
@@ -1142,7 +1147,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) trusted: bool,
     pub(crate) internal_get_field_many_variants: bool,
     pub(crate) size_of_global: bool,
-    pub(crate) sealed: bool,
     pub(crate) prophecy_dependent: bool,
     pub(crate) item_broadcast_use: bool,
     pub(crate) size_of_broadcast_proof: bool,
@@ -1187,6 +1191,24 @@ pub(crate) fn is_sealed(
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
             Attr::Sealed => {
+                return Ok(true);
+            }
+            _ => {}
+        }
+    }
+    Ok(false)
+}
+
+// Check for the `internal_trait` attribute
+// Skips additional checks that are meant to be applied only during the 'main' processing
+// of an item.
+pub(crate) fn is_internal_trait(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<bool, VirErr> {
+    for attr in parse_attrs(attrs, diagnostics)? {
+        match attr {
+            Attr::InternalTrait => {
                 return Ok(true);
             }
             _ => {}
@@ -1317,7 +1339,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         trusted: false,
         size_of_global: false,
         internal_get_field_many_variants: false,
-        sealed: false,
         prophecy_dependent: false,
         item_broadcast_use: false,
         size_of_broadcast_proof: false,
@@ -1396,7 +1417,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::SizeOfGlobal => vs.size_of_global = true,
             Attr::ItemBroadcastUse => vs.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => vs.internal_get_field_many_variants = true,
-            Attr::Sealed => vs.sealed = true,
             Attr::Prophetic => vs.prophecy_dependent = true,
             Attr::UnsupportedRustcAttr(name, span) => {
                 unsupported_rustc_attr = Some((name.clone(), span))

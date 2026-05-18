@@ -1653,13 +1653,13 @@ test_verify_one_file! {
 
             fn f<'a>(&'a self, x: &'a Self, b: bool) -> (r: &'a Self)
                 ensures
-                    b ==> r === self,
-                    !b ==> r === x;
+                    b ==> r == self,
+                    !b ==> r == x;
         }
 
         fn p<A: T>(a1: &A, a2: &A) {
             let a3 = a1.f(a2, true);
-            assert(a3 === a1);
+            assert(a3 == a1);
         }
 
         struct S(u8);
@@ -1671,7 +1671,7 @@ test_verify_one_file! {
 
             fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                 let x = if b { self } else { x };
-                assert(x === self.r(x, b));
+                assert(x == self.r(x, b));
                 x
             }
         }
@@ -1690,13 +1690,13 @@ test_verify_one_file! {
         trait T {
             fn f<'a>(&'a self, x: &'a Self, b: bool) -> (r: &'a Self)
                 ensures
-                    b ==> r === self,
-                    !b ==> r === x; // TRAIT
+                    b ==> r == self,
+                    !b ==> r == x; // TRAIT
         }
 
         fn p<A: T>(a1: &A, a2: &A) {
             let a3 = a1.f(a2, false);
-            assert(a3 === a1); // FAILS
+            assert(a3 == a1); // FAILS
         }
 
         struct S(u8);
@@ -2060,7 +2060,7 @@ test_verify_one_file! {
             spec fn f(&self) -> T;
 
             fn compute_f(&self) -> (t: T)
-                ensures t === self.f();
+                ensures t == self.f();
         }
 
         struct X { }
@@ -2102,7 +2102,7 @@ test_verify_one_file! {
             spec fn f(&self) -> T;
 
             fn compute_f(&self) -> (t: T)
-                ensures t === self.f();
+                ensures t == self.f();
         }
 
         struct Z<T> { a: T, b: T }
@@ -2128,7 +2128,7 @@ test_verify_one_file! {
             spec fn f(&self) -> T;
 
             fn compute_f(&self, t: T)
-                requires t === self.f();
+                requires t == self.f();
         }
 
         struct Z<T> { a: T, b: T }
@@ -2141,7 +2141,7 @@ test_verify_one_file! {
 
             fn compute_f(&self, t: T)
             {
-                assert(t === self.f());
+                assert(t == self.f());
             }
         }
     } => Ok(())
