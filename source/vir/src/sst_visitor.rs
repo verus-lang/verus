@@ -31,6 +31,9 @@ pub enum BndKind {
     Quant,
     Lambda,
     Choose,
+    /// Used by a pass in triggers.rs to distinguish trigger variables of interest
+    /// that are bound outside the walked expression.
+    OuterTrigger,
 }
 
 pub(crate) struct ScopeEntry {

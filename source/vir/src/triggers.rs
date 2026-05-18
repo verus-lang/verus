@@ -362,11 +362,15 @@ fn check_trigger_expr(
 }
 
 impl BndKind {
-    fn is_triggered(&self) -> bool {
+    fn is_inner_trigger(&self) -> bool {
         match self {
             BndKind::Quant | BndKind::Choose => true,
-            BndKind::Lambda | BndKind::Let => false,
+            BndKind::Lambda | BndKind::Let | BndKind::OuterTrigger => false,
         }
+    }
+
+    fn is_outer_trigger(&self) -> bool {
+        matches!(self, BndKind::OuterTrigger)
     }
 
     fn is_let(&self) -> bool {
@@ -378,7 +382,10 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
     let mut map: ScopeMap<VarIdent, ScopeEntry> = ScopeMap::new();
     map.push_scope(false);
     for x in state.trigger_vars.iter() {
-        map.insert(x.clone(), ScopeEntry { bnd_kind: BndKind::Quant })
+        // The "outer trigger" refers to the current quantifier of interest.
+        // If while walking the expression we encounter more quantifiers, those are
+        // "inner triggers".
+        map.insert(x.clone(), ScopeEntry { bnd_kind: BndKind::OuterTrigger })
             .expect("duplicate bound variables");
     }
     let span = &exp.span;
@@ -402,8 +409,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 let e1 = preprocess_exp(&e1);
                 for x in &free_vars {
                     if let Some(scope_entry) = map.get(x)
-                        && scope_entry.bnd_kind.is_triggered()
-                        && !state.trigger_vars.contains(x)
+                        && scope_entry.bnd_kind.is_inner_trigger()
                     {
                         // If the trigger contains variables declared by a nested quantifier,
                         // it must be the nested quantifier's trigger, not ours.
@@ -413,7 +419,16 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 check_trigger_expr(state, &e1, &map)?;
                 // If the trigger doesn't contain *any* of our trigger vars, then it must
                 // be for a more outer quantifier
-                if !state.trigger_vars.iter().any(|trigger_var| free_vars.contains(trigger_var)) {
+                if !state.trigger_vars.iter().any(|trigger_var| {
+                    if let Some(scope_entry) = map.get(trigger_var)
+                        && scope_entry.bnd_kind.is_outer_trigger()
+                        && free_vars.contains(trigger_var)
+                    {
+                        true
+                    } else {
+                        false
+                    }
+                }) {
                     return Ok(());
                 }
                 if !state.triggers.contains_key(group) {
@@ -422,7 +437,9 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 }
                 state.triggers.get_mut(group).unwrap().push(e1.clone());
                 for x in &free_vars {
-                    if state.trigger_vars.contains(x) {
+                    if let Some(scope_entry) = map.get(x)
+                        && scope_entry.bnd_kind.is_outer_trigger()
+                    {
                         state.coverage.get_mut(group).unwrap().insert(x.clone());
                     }
                 }
@@ -438,7 +455,9 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                             let free_vars: HashSet<VarIdent> = get_free_vars(e)?;
                             check_trigger_expr(state, e, &map)?;
                             for x in free_vars {
-                                if state.trigger_vars.contains(&x) {
+                                if let Some(scope_entry) = map.get(&x)
+                                    && scope_entry.bnd_kind.is_outer_trigger()
+                                {
                                     coverage.insert(x);
                                 }
                             }
