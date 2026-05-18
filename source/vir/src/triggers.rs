@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::context::Ctx;
 use crate::messages::{Span, error};
-use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs};
+use crate::sst::{Exp, ExpX, Exps, Trig, Trigs};
 use crate::sst_visitor::{BndKind, ScopeEntry};
 use crate::triggers_auto::AutoType;
 use crate::util::vec_map;
@@ -388,8 +388,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
         map.insert(x.clone(), ScopeEntry { bnd_kind: BndKind::OuterTrigger })
             .expect("duplicate bound variables");
     }
-    let span = &exp.span;
-    crate::sst_visitor::exp_visitor_check(exp, &mut map, &mut |exp, map| {
+    crate::sst_visitor::exp_visitor_check::<VirErr, _>(exp, &mut map, &mut |exp, map| {
         // this closure mutates `state`
         match &exp.x {
             ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::AutoTrigger), _) => {
