@@ -534,12 +534,13 @@ impl<A> Seq<A> {
             // to_set finds everything .contains finds
             forall|a| #[trigger] self.to_set().contains(a) <==> self.contains(a),
     {
-        Set::range(0, self.len() as int).lemma_map_contains(|i: int| self.index(i));
         assert forall|i| 0 <= i < self.len() implies #[trigger] self.to_set().contains(self[i]) by {
+            Set::range(0, self.len() as int).lemma_map_contains(|i: int| self.index(i), self[i]);
             assert(Set::range(0, self.len() as int).contains(i));
             assert(self.to_set().contains(self[i]));
         }
         assert forall|a| #[trigger] self.to_set().contains(a) <==> self.contains(a) by {
+            Set::range(0, self.len() as int).lemma_map_contains(|i: int| self.index(i), a);
             if self.to_set().contains(a) {
                 let i = choose|i: int|
                     Set::range(0, self.len() as int).contains(i) && self.index(i) == a;
@@ -2573,7 +2574,7 @@ impl<A> Seq<Seq<A>> {
         assert(self.flatten() == self[0]);
     }
 
-    pub proof fn lemma_flatten_contains(self, s: Set<A>, elem: A)
+    pub proof fn lemma_flatten_contains(self, s: Seq<A>, elem: A)
         requires
             self.contains(s),
             s.contains(elem),
@@ -3101,7 +3102,6 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
 proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
     ensures
         seq.to_set() == seq_to_set_rec(seq),
-        seq.to_iset().to_gset().congruent(seq_to_set_rec(seq).to_gset()),
     decreases seq.len(),
 {
     broadcast use super::set::group_set_lemmas;
@@ -3112,10 +3112,6 @@ proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
         seq_to_set_rec_contains(seq);
     }
     assert(seq.to_set() =~= seq_to_set_rec(seq));
-    assert forall|a: A| seq.to_iset().to_gset().contains(a) == seq_to_set_rec(seq).to_gset().contains(a) by {
-        assert(seq.to_iset().contains(a) <==> seq.contains(a));
-        assert(seq.contains(a) <==> seq_to_set_rec(seq).contains(a));
-    }
 }
 
 /// The set obtained from a sequence is finite

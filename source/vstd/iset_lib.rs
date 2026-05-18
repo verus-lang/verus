@@ -753,7 +753,7 @@ impl<A> ISet<A> {
         requires
             self.finite(),
         ensures
-            #[trigger] self.to_seq().to_set() =~= self,
+            #[trigger] self.to_seq().to_set().to_iset() =~= self,
         decreases self.len(),
     {
         broadcast use group_iset_lemmas;
@@ -761,7 +761,7 @@ impl<A> ISet<A> {
         broadcast use super::seq_lib::group_seq_properties;
 
         if self.len() == 0 {
-            assert(self.to_seq().to_set() =~= ISet::<A>::empty());
+            assert(self.to_seq().to_set().to_iset() =~= ISet::<A>::empty());
         } else {
             let elem = self.choose();
             self.remove(elem).lemma_to_seq_to_set_id();
@@ -910,9 +910,9 @@ pub proof fn lemma_iset_union_finite_implies_sets_finite<A>(s1: ISet<A>, s2: ISe
         s2.finite(),
     decreases s1.union(s2).len(),
 {
-    if s1.union(s2) =~= set![] {
-        assert(s1 =~= set![]);
-        assert(s2 =~= set![]);
+    if s1.union(s2) =~= ISet::<A>::empty() {
+        assert(s1 =~= ISet::<A>::empty());
+        assert(s2 =~= ISet::<A>::empty());
     } else {
         let a = s1.union(s2).choose();
         assert(s1.remove(a).union(s2.remove(a)) == s1.union(s2).remove(a));

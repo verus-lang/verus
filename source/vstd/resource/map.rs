@@ -78,6 +78,7 @@ use super::super::map_lib::*;
 use super::super::modes::*;
 use super::super::prelude::*;
 use super::super::set_lib::*;
+use super::super::iset_lib::lemma_disjoint_iff_empty_intersection as lemma_iset_disjoint_iff_empty_intersection;
 use super::Loc;
 use super::algebra::ResourceAlgebra;
 #[cfg(verus_keep_ghost)]
@@ -228,7 +229,7 @@ impl<K, V> ResourceAlgebra for MapCarrier<K, V> {
         // derive contradiction that the items are disjoint
         if !a.frac.owning_map().dom().disjoint(a.frac.dup_map().dom()) {
             // The intersection is not empty
-            lemma_disjoint_iff_empty_intersection(
+            lemma_iset_disjoint_iff_empty_intersection(
                 a.frac.owning_map().dom(),
                 a.frac.dup_map().dom(),
             );
@@ -489,7 +490,7 @@ impl<K, V> GhostMapAuth<K, V> {
             result.id() == final(self).id(),
             result@ == (k, v),
     {
-        let tracked submap = self.insert_map(map![k => v]);
+        let tracked submap = self.insert_map(imap![k => v]);
         GhostPointsTo { submap }
     }
 
@@ -842,6 +843,29 @@ impl<K, V> GhostSubmap<K, V> {
         GhostSubmap { r }
     }
 
+    pub proof fn split_with_olddom(
+        tracked &mut self,
+        s: ISet<K>,
+        olddom: ISet<K>,
+    ) -> (tracked result: GhostSubmap<K, V>)
+        requires
+            olddom == old(self)@.dom(),
+            s <= olddom,
+        ensures
+            final(self).id() == old(self).id(),
+            result.id() == final(self).id(),
+            old(self)@ == final(self)@.union_prefer_right(result@),
+            result@.dom() == s,
+            final(self)@.dom() == olddom - s,
+    {
+        let tracked out = self.split(s);
+        assert(olddom == old(self)@.dom());
+        assert(self@.dom() == old(self)@.dom() - s);
+        assert(self@.dom() == olddom - s);
+        assert(out@.dom() == s);
+        out
+    }
+
     /// We can separate a single key out of a [`GhostSubmap`]
     pub proof fn split_points_to(tracked &mut self, k: K) -> (tracked result: GhostPointsTo<K, V>)
         requires
@@ -855,7 +879,7 @@ impl<K, V> GhostSubmap<K, V> {
     {
         use_type_invariant(&*self);
 
-        let tracked submap = self.split(set![k]);
+        let tracked submap = self.split(iset![k]);
         GhostPointsTo { submap }
     }
 
@@ -918,7 +942,7 @@ impl<K, V> GhostSubmap<K, V> {
 
         let new_auth_carrier = MapCarrier {
             auth: r_upd.value().auth,
-            frac: FracCarrier::Frac { owning: Map::empty(), dup: IMap::empty() },
+            frac: FracCarrier::Frac { owning: IMap::empty(), dup: IMap::empty() },
         };
         let new_frac_carrier = MapCarrier { auth: AuthCarrier::Frac, frac: r_upd.value().frac };
         assert(r_upd.value().frac == MapCarrier::op(new_auth_carrier, new_frac_carrier).frac);
@@ -934,7 +958,7 @@ impl<K, V> GhostSubmap<K, V> {
         requires
             self.is_points_to(),
         ensures
-            self@ == map![r.key() => r.value()],
+            self@ == imap![r.key() => r.value()],
             self.id() == r.id(),
     {
         let tracked r = GhostPointsTo { submap: self };
@@ -1236,7 +1260,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
     {
         use_type_invariant(&*self);
 
-        let tracked submap = self.split(set![k]);
+        let tracked submap = self.split(iset![k]);
         GhostPersistentPointsTo { submap }
     }
 
@@ -1245,7 +1269,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         requires
             self.is_points_to(),
         ensures
-            self@ == map![r.key() => r.value()],
+            self@ == imap![r.key() => r.value()],
             self.id() == r.id(),
     {
         let tracked r = GhostPersistentPointsTo { submap: self };
@@ -1321,7 +1345,7 @@ impl<K, V> GhostPointsTo<K, V> {
             self.id() == other.id(),
         ensures
             r.id() == self.id(),
-            r@ == map![self.key() => self.value(), other.key() => other.value()],
+            r@ == imap![self.key() => self.value(), other.key() => other.value()],
             self.key() != other.key(),
     {
         use_type_invariant(&self);
@@ -1404,7 +1428,7 @@ impl<K, V> GhostPointsTo<K, V> {
             final(auth).id() == old(auth).id(),
             final(self).key() == old(self).key(),
             final(self)@ == (final(self).key(), v),
-            final(auth)@ == old(auth)@.union_prefer_right(map![final(self).key() => v]),
+            final(auth)@ == old(auth)@.union_prefer_right(imap![final(self).key() => v]),
     {
         broadcast use lemma_submap_of_trans;
         broadcast use lemma_submap_of_op;
@@ -1414,7 +1438,7 @@ impl<K, V> GhostPointsTo<K, V> {
 
         let ghost old_dom = self.submap.dom();
         self.lemma_map_view();
-        let m = map![self.key() => v];
+        let m = imap![self.key() => v];
         assert(self.submap@.union_prefer_right(m) == m);
         self.submap.update(auth, m);
     }
@@ -1423,7 +1447,7 @@ impl<K, V> GhostPointsTo<K, V> {
     pub proof fn submap(tracked self) -> (tracked r: GhostSubmap<K, V>)
         ensures
             r.id() == self.id(),
-            r@ == map![self.key() => self.value()],
+            r@ == imap![self.key() => self.value()],
     {
         self.lemma_map_view();
         self.submap
@@ -1431,11 +1455,11 @@ impl<K, V> GhostPointsTo<K, V> {
 
     proof fn lemma_map_view(tracked &self)
         ensures
-            self.submap@ == map![self.key() => self.value()],
+            self.submap@ == imap![self.key() => self.value()],
     {
         use_type_invariant(self);
         let key = self.key();
-        let target_dom = set![key];
+        let target_dom = iset![key];
 
         assert(self.submap@.dom().len() == 1);
         assert(target_dom.len() == 1);
@@ -1450,7 +1474,7 @@ impl<K, V> GhostPointsTo<K, V> {
         assert(target_dom.remove(key).len() == 0);
 
         assert(self.submap@.dom() =~= target_dom);
-        assert(self.submap@ == map![self.key() => self.value()]);
+        assert(self.submap@ == imap![self.key() => self.value()]);
     }
 
     /// Can be used to learn what the key-value pair of [`GhostPointsTo`] is
@@ -1552,7 +1576,7 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
             self.id() == other.id(),
         ensures
             submap.id() == self.id(),
-            submap@ == map![self.key() => self.value(), other.key() => other.value()],
+            submap@ == imap![self.key() => self.value(), other.key() => other.value()],
             self.key() != other.key() ==> submap@.len() == 2,
             self.key() == other.key() ==> submap@.len() == 1,
     {
@@ -1635,7 +1659,7 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
     pub proof fn submap(tracked self) -> (tracked r: GhostPersistentSubmap<K, V>)
         ensures
             r.id() == self.id(),
-            r@ == map![self.key() => self.value()],
+            r@ == imap![self.key() => self.value()],
     {
         self.lemma_map_view();
         self.submap
@@ -1643,11 +1667,11 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
 
     proof fn lemma_map_view(tracked &self)
         ensures
-            self.submap@ == map![self.key() => self.value()],
+            self.submap@ == imap![self.key() => self.value()],
     {
         use_type_invariant(self);
         let key = self.key();
-        let target_dom = set![key];
+        let target_dom = iset![key];
 
         assert(self.submap@.dom().len() == 1);
         assert(target_dom.len() == 1);
@@ -1662,7 +1686,7 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
         assert(target_dom.remove(key).len() == 0);
 
         assert(self.submap@.dom() =~= target_dom);
-        assert(self.submap@ == map![self.key() => self.value()]);
+        assert(self.submap@ == imap![self.key() => self.value()]);
     }
 
     /// Can be used to learn what the key-value pair of [`GhostPersistentPointsTo`] is

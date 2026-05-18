@@ -209,7 +209,7 @@ impl<A> Set<A> {
     /// Set complement (within the space of all possible elements in `A`).
     /// Returns None if this would be an infinite set.
     pub open spec fn complement(self) -> Option<Set<A>> {
-        Set::new(|a| !(self.set)(a))
+        Set::new(|a| !self.contains(a))
     }
 
     /// Set of all elements in the given set which satisfy the predicate `f`.
@@ -260,6 +260,7 @@ impl<A> Set<A> {
     }
 }
 
+#[verifier::reject_recursive_types<A>]
 pub struct FinitenessDemonstration<A>
 {
     pub f: spec_fn(A) -> nat,
@@ -270,8 +271,8 @@ impl<A> FinitenessDemonstration<A>
 {
     pub open spec fn demonstrates_set_is_finite(self, s: Set<A>) -> bool
     {
-        &&& forall|a1, a2| #![all_triggers] s.contains(a1) && s.contains(a2) && a1 != a2 ==> self.f(a1) != self.f(a2)
-        &&& forall|a| s.contains(a) ==> self.f(a) < self.ub
+        &&& forall|a1, a2| #![all_triggers] s.contains(a1) && s.contains(a2) && a1 != a2 ==> (self.f)(a1) != (self.f)(a2)
+        &&& forall|a| s.contains(a) ==> (self.f)(a) < self.ub
     }
 }
 
@@ -675,13 +676,22 @@ pub broadcast proof fn lemma_set_empty<A>(a: A)
 {
 }
 
-pub broadcast proof fn lemma_set_new<A>(f: spec_fn(A) -> bool, a: A)
+pub broadcast proof fn lemma_set_new<A>(f: spec_fn(A) -> bool)
     requires
         ISet::<A>::new(f).finite(),
     ensures
-        #[trigger] Set::<A>::new(f).contains(a) == f(a),
+        #[trigger] Set::<A>::new(f) is Some,
 {
-    super::iset::lemma_iset_new(f, a);
+}
+
+pub broadcast proof fn lemma_set_new_contains<A>(f: spec_fn(A) -> bool, a: A)
+    requires
+        ISet::<A>::new(f).finite(),
+    ensures
+        Set::<A>::new(f) is Some,
+        #[trigger] Set::<A>::new(f).unwrap().contains(a) == f(a),
+{
+    super::iset::lemma_iset_new_contains(f, a);
 }
 
 /// The result of inserting element `a` into set `s` must contains `a`.
@@ -775,7 +785,7 @@ pub broadcast proof fn lemma_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A)
 /// The complement of set `s` contains element `a` if and only if `s` does not contain `a`.
 pub broadcast proof fn lemma_set_complement<A>(s: Set<A>, a: A)
     ensures
-        #[trigger] s.complement().contains(a) == !s.contains(a),
+        #[trigger] s.complement().unwrap().contains(a) == !s.contains(a),
 {
 }
 
@@ -893,6 +903,7 @@ pub broadcast proof fn lemma_set_choose_len<A>(s: Set<A>)
 pub broadcast group group_set_lemmas {
     lemma_set_empty,
     lemma_set_new,
+    lemma_set_new_contains,
     lemma_set_insert_same,
     lemma_set_insert_different,
     lemma_set_remove_same,

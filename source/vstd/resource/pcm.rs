@@ -164,7 +164,7 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
-        let new_values = set![new_value];
+        let new_values = iset![new_value];
         assert(new_values.contains(new_value));
         self.update_nondeterministic(new_values)
     }
@@ -268,7 +268,7 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
-        let new_values = set![new_value];
+        let new_values = iset![new_value];
         let so = set_op(new_values, other.value());
         assert(so.contains(P::op(new_value, other.value())));
         self.update_nondeterministic_with_shared(other, new_values)

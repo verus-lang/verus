@@ -36,7 +36,7 @@ impl<A> Set<A> {
         let map_f: spec_fn(B) -> bool = self.map_inner::<B>(f);
         let map_i: ISet<B> = ISet::<B>::new(map_f);
         let s: Seq<A> = self.to_seq();
-        let map_s: Seq<B> = s.map(f);
+        let map_s: Seq<B> = s.map_values(f);
         assert forall|b: B| map_i.contains(b) implies map_s.contains(b) by {
             assert(map_f(b));
             let a = choose|a: A| self.contains(a) && b == f(a);
@@ -115,18 +115,19 @@ impl<A> Set<A> {
         let map_f: spec_fn(B) -> bool = self.map_flatten_by_inner::<B>(fwd, rev);
         let map_i: ISet<B> = ISet::<B>::new(map_f);
         let s: Seq<A> = self.to_seq();
-        let map_s: Seq<Seq<B>> = s.map(fwd);
-        let map_flatten_s: Seq<B> = map_s.flatten();
+        let map_s: Seq<Set<B>> = s.map_values(fwd);
+        let map_s_seqs: Seq<Seq<B>> = map_s.map_values(|inner: Set<B>| inner.to_seq());
+        let map_flatten_s: Seq<B> = map_s_seqs.flatten();
 
         assert forall|b: B| map_i.contains(b) implies map_flatten_s.contains(b) by {
             assert(map_f(b));
             assert(self.contains(rev(b)) && fwd(rev(b)).contains(b));
             assert(s.contains(rev(b)));
             assert(map_s.contains(fwd(rev(b))));
-            map_s.lemma_flatten_contains(fwd(rev(b)), b);
+            map_s_seqs.lemma_flatten_contains(fwd(rev(b)).to_seq(), b);
             assert(map_flatten_s.contains(b));
         }
-        lemma_iset_finite_if_subset_of_seq(map_i, map_s);
+        lemma_iset_finite_if_subset_of_seq(map_i, map_flatten_s);
     }
 
     pub closed spec fn map_flatten_by<B>(
@@ -215,8 +216,8 @@ impl<A> Set<A> {
             self.len() > 0,
             total_ordering(r),
         ensures
-            is_minimal(r, self.find_unique_minimal(r), self) && (forall|min: A|
-                is_minimal(r, min, self) ==> self.find_unique_minimal(r) == min),
+            is_minimal(r, self.find_unique_minimal(r), self.to_iset()) && (forall|min: A|
+                is_minimal(r, min, self.to_iset()) ==> self.find_unique_minimal(r) == min),
         decreases self.len(),
     {
         broadcast use group_set_properties;
@@ -224,11 +225,11 @@ impl<A> Set<A> {
         if self.len() == 1 {
             let x = choose|x: A| self.contains(x);
             assert(self.remove(x).insert(x) =~= self);
-            assert(is_minimal(r, self.find_unique_minimal(r), self));
+            assert(is_minimal(r, self.find_unique_minimal(r), self.to_iset()));
         } else {
             let x = choose|x: A| self.contains(x);
             self.remove(x).find_unique_minimal_ensures(r);
-            assert(is_minimal(r, self.remove(x).find_unique_minimal(r), self.remove(x)));
+            assert(is_minimal(r, self.remove(x).find_unique_minimal(r), self.remove(x).to_iset()));
             let y = self.remove(x).find_unique_minimal(r);
             let min_updated = self.find_unique_minimal(r);
             assert(!r(y, x) ==> min_updated == x);
@@ -241,7 +242,7 @@ impl<A> Set<A> {
             ) by {
                 assert(r(min_updated, x) || r(min_updated, y));
                 if min_updated == y {  // Case where the new min is the old min
-                    assert(is_minimal(r, self.find_unique_minimal(r), self));
+                    assert(is_minimal(r, self.find_unique_minimal(r), self.to_iset()));
                 } else {  //Case where the new min is the newest element
                     assert(self.remove(x).contains(elt) || elt == x);
                     assert(min_updated == x);
@@ -256,8 +257,8 @@ impl<A> Set<A> {
                 }
             }
             assert forall|min_poss: A|
-                is_minimal(r, min_poss, self) implies self.find_unique_minimal(r) == min_poss by {
-                assert(is_minimal(r, min_poss, self.remove(x)) || x == min_poss);
+                is_minimal(r, min_poss, self.to_iset()) implies self.find_unique_minimal(r) == min_poss by {
+                assert(is_minimal(r, min_poss, self.remove(x).to_iset()) || x == min_poss);
                 assert(r(min_poss, self.find_unique_minimal(r)));
             }
         }
@@ -294,8 +295,8 @@ impl<A> Set<A> {
             self.len() > 0,
             total_ordering(r),
         ensures
-            is_maximal(r, self.find_unique_maximal(r), self) && (forall|max: A|
-                is_maximal(r, max, self) ==> self.find_unique_maximal(r) == max),
+            is_maximal(r, self.find_unique_maximal(r), self.to_iset()) && (forall|max: A|
+                is_maximal(r, max, self.to_iset()) ==> self.find_unique_maximal(r) == max),
         decreases self.len(),
     {
         broadcast use group_set_properties;
@@ -307,7 +308,7 @@ impl<A> Set<A> {
         } else {
             let x = choose|x: A| self.contains(x);
             self.remove(x).find_unique_maximal_ensures(r);
-            assert(is_maximal(r, self.remove(x).find_unique_maximal(r), self.remove(x)));
+            assert(is_maximal(r, self.remove(x).find_unique_maximal(r), self.remove(x).to_iset()));
             assert(self.remove(x).insert(x) =~= self);
             let y = self.remove(x).find_unique_maximal(r);
             let max_updated = self.find_unique_maximal(r);
@@ -322,7 +323,7 @@ impl<A> Set<A> {
                 if max_updated == y {  // Case where the new max is the old max
                     assert(r(elt, max_updated));
                     assert(r(x, max_updated));
-                    assert(is_maximal(r, self.find_unique_maximal(r), self));
+                    assert(is_maximal(r, self.find_unique_maximal(r), self.to_iset()));
                 } else {  //Case where the new max is the newest element
                     assert(self.remove(x).contains(elt) || elt == x);
                     assert(max_updated == x);
@@ -340,8 +341,8 @@ impl<A> Set<A> {
                 }
             }
             assert forall|max_poss: A|
-                is_maximal(r, max_poss, self) implies self.find_unique_maximal(r) == max_poss by {
-                assert(is_maximal(r, max_poss, self.remove(x)) || x == max_poss);
+                is_maximal(r, max_poss, self.to_iset()) implies self.find_unique_maximal(r) == max_poss by {
+                assert(is_maximal(r, max_poss, self.remove(x).to_iset()) || x == max_poss);
                 assert(r(max_poss, self.find_unique_maximal(r)));
                 assert(r(self.find_unique_maximal(r), max_poss));
             }
@@ -413,7 +414,13 @@ impl<A> Set<A> {
             self.filter(f).len() <= self.len(),
         decreases self.len(),
     {
-        lemma_len_intersect::<A>(self, Set::new(f));
+        if s1.is_empty() {
+            assert(s1.filter(f) =~= s1);
+        } else {
+            let a = s1.choose();
+            assert(s1.filter(f).remove(a) =~= s1.remove(a).filter(f));
+            lemma_len_filter::<A>(s1.remove(a), f);
+        }
     }
 
     /// In a pre-ordered set, a greatest element is necessarily maximal.
@@ -421,7 +428,7 @@ impl<A> Set<A> {
         requires
             pre_ordering(r),
         ensures
-            is_greatest(r, max, self) ==> is_maximal(r, max, self),
+            is_greatest(r, max, self.to_iset()) ==> is_maximal(r, max, self.to_iset()),
     {
     }
 
@@ -430,7 +437,7 @@ impl<A> Set<A> {
         requires
             pre_ordering(r),
         ensures
-            is_least(r, min, self) ==> is_minimal(r, min, self),
+            is_least(r, min, self.to_iset()) ==> is_minimal(r, min, self.to_iset()),
     {
     }
 
@@ -439,9 +446,9 @@ impl<A> Set<A> {
         requires
             total_ordering(r),
         ensures
-            is_greatest(r, max, self) <==> is_maximal(r, max, self),
+            is_greatest(r, max, self.to_iset()) <==> is_maximal(r, max, self.to_iset()),
     {
-        assert(is_maximal(r, max, self) ==> forall|x: A|
+        assert(is_maximal(r, max, self.to_iset()) ==> forall|x: A|
             !self.contains(x) || !r(max, x) || r(x, max));
     }
 
@@ -450,9 +457,9 @@ impl<A> Set<A> {
         requires
             total_ordering(r),
         ensures
-            is_least(r, min, self) <==> is_minimal(r, min, self),
+            is_least(r, min, self.to_iset()) <==> is_minimal(r, min, self.to_iset()),
     {
-        assert(is_minimal(r, min, self) ==> forall|x: A|
+        assert(is_minimal(r, min, self.to_iset()) ==> forall|x: A|
             !self.contains(x) || !r(x, min) || r(min, x));
     }
 
@@ -462,10 +469,10 @@ impl<A> Set<A> {
             partial_ordering(r),
         ensures
             forall|min: A, min_prime: A|
-                is_least(r, min, self) && is_least(r, min_prime, self) ==> min == min_prime,
+                is_least(r, min, self.to_iset()) && is_least(r, min_prime, self.to_iset()) ==> min == min_prime,
     {
         assert forall|min: A, min_prime: A|
-            is_least(r, min, self) && is_least(r, min_prime, self) implies min == min_prime by {
+            is_least(r, min, self.to_iset()) && is_least(r, min_prime, self.to_iset()) implies min == min_prime by {
             assert(r(min, min_prime));
             assert(r(min_prime, min));
         }
@@ -477,10 +484,10 @@ impl<A> Set<A> {
             partial_ordering(r),
         ensures
             forall|max: A, max_prime: A|
-                is_greatest(r, max, self) && is_greatest(r, max_prime, self) ==> max == max_prime,
+                is_greatest(r, max, self.to_iset()) && is_greatest(r, max_prime, self.to_iset()) ==> max == max_prime,
     {
         assert forall|max: A, max_prime: A|
-            is_greatest(r, max, self) && is_greatest(r, max_prime, self) implies max
+            is_greatest(r, max, self.to_iset()) && is_greatest(r, max_prime, self.to_iset()) implies max
             == max_prime by {
             assert(r(max_prime, max));
             assert(r(max, max_prime));
@@ -493,10 +500,10 @@ impl<A> Set<A> {
             total_ordering(r),
         ensures
             forall|min: A, min_prime: A|
-                is_minimal(r, min, self) && is_minimal(r, min_prime, self) ==> min == min_prime,
+                is_minimal(r, min, self.to_iset()) && is_minimal(r, min_prime, self.to_iset()) ==> min == min_prime,
     {
         assert forall|min: A, min_prime: A|
-            is_minimal(r, min, self) && is_minimal(r, min_prime, self) implies min == min_prime by {
+            is_minimal(r, min, self.to_iset()) && is_minimal(r, min_prime, self.to_iset()) implies min == min_prime by {
             self.lemma_minimal_equivalent_least(r, min);
             self.lemma_minimal_equivalent_least(r, min_prime);
             self.lemma_least_is_unique(r);
@@ -509,10 +516,10 @@ impl<A> Set<A> {
             total_ordering(r),
         ensures
             forall|max: A, max_prime: A|
-                is_maximal(r, max, self) && is_maximal(r, max_prime, self) ==> max == max_prime,
+                is_maximal(r, max, self.to_iset()) && is_maximal(r, max_prime, self.to_iset()) ==> max == max_prime,
     {
         assert forall|max: A, max_prime: A|
-            is_maximal(r, max, self) && is_maximal(r, max_prime, self) implies max == max_prime by {
+            is_maximal(r, max, self.to_iset()) && is_maximal(r, max_prime, self.to_iset()) implies max == max_prime by {
             self.lemma_maximal_equivalent_greatest(r, max);
             self.lemma_maximal_equivalent_greatest(r, max_prime);
             self.lemma_greatest_is_unique(r);
@@ -734,7 +741,7 @@ impl<A> Set<A> {
     )
         ensures
             #[trigger] self.map_flatten_by(fwd, rev).contains(b) <==>
-                self.contains(rev(b)) && b == fwd(rev(b)).contains(b),
+                self.contains(rev(b)) && fwd(rev(b)).contains(b),
         decreases self.len(),
     {
         self.lemma_map_flatten_by_inner_finite(fwd, rev);
@@ -783,18 +790,16 @@ impl<A> Set<Set<A>> {
 
     proof fn lemma_flatten_inner_finite(self)
         ensures
-            IMap::new(self.flatten_inner()).finite(),
+            ISet::new(self.flatten_inner()).finite(),
     {
         let flatten_f: spec_fn(A) -> bool = self.flatten_inner();
         let flatten_i: ISet<A> = ISet::<A>::new(flatten_f);
-        let s: Seq<A> = self.to_seq();
-        let flatten_s: Seq<A> = s.flatten();
+        let s: Seq<Set<A>> = self.to_seq();
+        let flatten_s: Seq<A> = s.map_values(|inner: Set<A>| inner.to_seq()).flatten();
 
         assert forall|a: A| flatten_i.contains(a) implies flatten_s.contains(a) by {
             assert(flatten_f(a));
             let elem_s = choose|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(a);
-            self.lemma_flatten_contains(a);
-            assert(flatten_s.contains(a));
         }
         lemma_iset_finite_if_subset_of_seq(flatten_i, flatten_s);
     }
@@ -896,8 +901,9 @@ macro_rules! range_impls {
                     open spec fn in_range(i: Self, lo: Self, hi: Self) -> bool {
                         lo <= i < hi
                     }
+                    #[allow(deprecated)]
                     open spec fn range_set(lo: Self, hi: Self) -> Set<Self> {
-                        Set::new(|i: Self| lo <= i < hi).unwrap()
+                        Set::new_assuming_finite(|i: Self| lo <= i < hi)
                     }
                     open spec fn range_len(lo: Self, hi: Self) -> nat {
                         if lo <= hi { (hi - lo) as nat } else { 0 }
@@ -913,7 +919,7 @@ macro_rules! range_impls {
                         assert(forall|a| i.contains(a) ==> s.contains(a));
                         lemma_iset_finite_if_subset_of_seq(i, s);
                         assert(set_function_finite(f));
-                        assert(forall|j: Self| set_int_range(lo, hi).contains(j) <==> lo <= j < hi);
+                        assert(forall|j: Self| Self::range_set(lo, hi).contains(j) <==> lo <= j < hi);
 
                         if hi <= lo {
                             assert(Self::range_set(lo, hi).is_empty());
@@ -935,7 +941,7 @@ macro_rules! full_impls {
             verus! {
                 impl FiniteFull for $t {
                     proof fn full_properties() {
-                        assert(Set::<$t>::full() == Set::range_inclusive($t::MIN, $t::MAX));
+                        assert(Set::<$t>::full().unwrap() == Set::range_inclusive($t::MIN, $t::MAX));
                         <$t as FiniteRange>::range_properties($t::MIN, $t::MAX);
                     }
                 }
@@ -982,7 +988,7 @@ pub proof fn lemma_sets_eq_iff_injective_map_eq<T, S>(s1: Set<T>, s2: Set<T>, f:
 /// Two sets are equal iff applying an injective (in the union of the sets) function `f` to each set produces equal sets.
 pub proof fn lemma_sets_eq_iff_injective_map_on_eq<T, S>(s1: Set<T>, s2: Set<T>, f: spec_fn(T) -> S)
     requires
-        super::relations::injective_on(f, s1 + s2),
+        super::relations::injective_on(f, (s1 + s2).to_iset()),
     ensures
         (s1 == s2) <==> (s1.map(f) == s2.map(f)),
 {
@@ -1143,7 +1149,7 @@ pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
 /// another set, the two sets have the same size.
 pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
     requires
-        injective_on(f, x),
+        injective_on(f, x.to_iset()),
         x.map(f) == y,
     ensures
         x.len() == y.len(),

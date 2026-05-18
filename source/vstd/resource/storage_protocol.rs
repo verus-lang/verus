@@ -244,7 +244,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         P::op_unit(p.value());
         let tracked (selff, unit) = p.split(p.value(), P::unit());
         let new_values0 = set_op(new_values, P::unit());
-        super::super::set_lib::assert_sets_equal!(new_values0, new_values, v => {
+        super::super::iset_lib::assert_isets_equal!(new_values0, new_values, v => {
             P::op_unit(v.0);
             if new_values.contains(v) {
                 assert(new_values0.contains(v));

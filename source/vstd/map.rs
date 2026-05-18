@@ -40,14 +40,9 @@ impl<K, V> Map<K, V> {
         Map { mapping: |k| None }
     }
 
-    /// Gives a `Map<K, V>` whose domain is given by the boolean predicate on keys `fk`,
-    /// and maps each key to the value given by `fv`. If the domain is infinite, returns
-    /// None.
-    pub open spec fn new(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V) -> Option<Map<K, V>> {
-        match Set::new(fk) {
-            Some(s) => s.mk_map(fv),
-            None => None,
-        }
+    /// Gives a `Map<K, V>` whose domain is given, mapping each key to the value given by `fv`.
+    pub open spec fn new(s: Set<K>, fv: spec_fn(K) -> V) -> Map<K, V> {
+        s.mk_map(fv)
     }
 
     spec fn dom_internal(self) -> Option<Set<K>>

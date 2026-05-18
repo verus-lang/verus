@@ -474,7 +474,7 @@ impl<T> GhostSubset<T> {
         requires
             self.is_singleton(),
         ensures
-            self@ == set![r@],
+            self@ == iset![r@],
             self.id() == r.id(),
     {
         let tracked map = self.map.points_to();
@@ -651,7 +651,7 @@ impl<T> GhostPersistentSubset<T> {
         requires
             self.is_singleton(),
         ensures
-            self@ == set![r@],
+            self@ == iset![r@],
             self.id() == r.id(),
     {
         let tracked map = self.map.points_to();
@@ -705,7 +705,7 @@ impl<T> GhostSingleton<T> {
             self.id() == other.id(),
         ensures
             r.id() == self.id(),
-            r@ == set![self@, other@],
+            r@ == iset![self@, other@],
             self@ != other@,
     {
         let tracked map = self.map.combine(other.map);
@@ -767,7 +767,7 @@ impl<T> GhostSingleton<T> {
     pub proof fn subset(tracked self) -> (tracked r: GhostSubset<T>)
         ensures
             r.id() == self.id(),
-            r@ == set![self@],
+            r@ == iset![self@],
     {
         let tracked map = self.map.submap();
         GhostSubset { map }
@@ -838,7 +838,7 @@ impl<T> GhostPersistentSingleton<T> {
             self.id() == other.id(),
         ensures
             r.id() == self.id(),
-            r@ == set![self@, other@],
+            r@ == iset![self@, other@],
             self@ != other@ ==> r@.len() == 2,
             self@ == other@ ==> r@.len() == 1,
     {
@@ -874,7 +874,7 @@ impl<T> GhostPersistentSingleton<T> {
     pub proof fn subset(tracked self) -> (tracked r: GhostPersistentSubset<T>)
         ensures
             r.id() == self.id(),
-            r@ == set![self@],
+            r@ == iset![self@],
     {
         let tracked map = self.map.submap();
         GhostPersistentSubset { map }

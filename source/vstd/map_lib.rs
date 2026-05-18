@@ -19,7 +19,7 @@ impl<K, V> Map<K, V> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
     #[verifier::inline]
     pub open spec fn is_full(self) -> bool {
-        self.dom().is_full()
+        forall|k: K| self.dom().contains(k)
     }
 
     /// Is `true` if called by an "empty" map, i.e., a map containing no elements and has length 0
@@ -63,7 +63,7 @@ impl<K, V> Map<K, V> {
     /// }
     /// ```
     pub open spec fn values(self) -> Set<V> {
-        Set::<V>::new(|v: V| self.contains_value(v))
+        self.dom().map(self[k])
     }
 
     ///
@@ -80,7 +80,7 @@ impl<K, V> Map<K, V> {
     /// }
     /// ```
     pub open spec fn kv_pairs(self) -> Set<(K, V)> {
-        Set::<(K, V)>::new(|kv: (K, V)| self.dom().contains(kv.0) && self[kv.0] == kv.1)
+        self.dom().map(|k: V| (k, self[k]))
     }
 
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
@@ -130,7 +130,7 @@ impl<K, V> Map<K, V> {
                 } else {
                     self[k]
                 },
-        )
+        ).unwrap()
     }
 
     /// Removes the given keys and their associated values from the map.
@@ -145,7 +145,7 @@ impl<K, V> Map<K, V> {
     ///    =~= map![1 => 10]);
     /// ```
     pub open spec fn remove_keys(self, keys: Set<K>) -> Self {
-        Self::new(|k: K| self.dom().contains(k) && !keys.contains(k), |k: K| self[k])
+        Self::new(self.dom().difference(keys), |k: K| self[k])
     }
 
     /// Complement to `remove_keys`. Restricts the map to (key, value) pairs
@@ -160,7 +160,7 @@ impl<K, V> Map<K, V> {
     ///    =~= map![2 => 11, 3 => 12]);
     /// ```
     pub open spec fn restrict(self, keys: Set<K>) -> Self {
-        Self::new(|k: K| self.dom().contains(k) && keys.contains(k), |k: K| self[k])
+        Self::new(self.dom().intersect(keys), |k: K| self[k])
     }
 
     /// Returns `true` if and only if the given key maps to the same value or does not exist in self and m2.
@@ -176,12 +176,12 @@ impl<K, V> Map<K, V> {
 
     /// Map a function `f` over all (k, v) pairs in `self`.
     pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> Map<K, W> {
-        Map::new(|k: K| self.contains_key(k), |k: K| f(k, self[k]))
+        Self::new(self.dom(), |k: K| f(k, self[k]))
     }
 
     /// Map a function `f` over the values in `self`.
     pub open spec fn map_values<W>(self, f: spec_fn(V) -> W) -> Map<K, W> {
-        Map::new(|k: K| self.contains_key(k), |k: K| f(self[k]))
+        Self::new(self.dom(), |k: K| f(self[k]))
     }
 
     /// Returns `true` if and only if a map is injective
@@ -195,7 +195,7 @@ impl<K, V> Map<K, V> {
     /// promises on which key is chosen on the intersection.
     pub open spec fn invert(self) -> Map<V, K> {
         Map::<V, K>::new(
-            |v: V| self.contains_value(v),
+            self.values(),
             |v: V| choose|k: K| self.contains_pair(k, v),
         )
     }
@@ -467,7 +467,7 @@ impl<K, V> Map<K, V> {
             if self.contains_key(k) {
                 self[k]
             } else {
-                Set::<V>::full().difference(self.values()).choose()
+                arbitrary()
             };
         assert(forall|a1: K, a2: K|
             self.dom().contains(a1) && self.dom().contains(a2) && #[trigger] f(a1) == #[trigger] f(
@@ -485,7 +485,7 @@ impl<K, V> Map<K, V> {
             if self.contains_key(k) {
                 self[k]
             } else {
-                Set::<V>::full().difference(self.values()).choose()
+                Set::<V>::full().unwrap().difference(self.values()).choose()
             };
         assert(self.dom().map(f) == self.values());
         lemma_map_size_bound(self.dom(), self.values(), f);
@@ -512,7 +512,10 @@ impl<K, V> Map<Seq<K>, V> {
     /// }
     /// ```
     pub open spec fn prefixed_entries(self, prefix: Seq<K>) -> Self {
-        Map::new(|k: Seq<K>| self.contains_key(prefix + k), |k: Seq<K>| self[prefix + k])
+        Map::new(
+            Set::new(|k: Seq<K>| self.contains_key(prefix + k)).unwrap(),
+            |k: Seq<K>| self[prefix + k]
+        )
     }
 
     /// For every key `k` kept by `prefixed_entries(prefix)`,
@@ -738,33 +741,22 @@ pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: Map<K, V>, m2: Map<K, V>,
     }
 }
 
-// This verified lemma used to be an axiom in the Dafny prelude
+// This verified lemma corresponds to an axiom in the Dafny prelude saying that:
 /// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `Set::new(fk)`.
-pub broadcast proof fn lemma_map_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_map_new_domain<K, V>(s: Set<K>, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(fk, fv).dom() == Set::<K>::new(|k: K| fk(k)),
+        #[trigger] Map::<K, V>::new(s, fv).dom() == s,
 {
-    assert(Set::new(fk) =~= Set::<K>::new(|k: K| fk(k)));
 }
 
-// This verified lemma used to be an axiom in the Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude saying that:
 /// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to
 /// the set constructed with `Set::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
 /// the set of all values fv(k) where fk(k) is true.
-pub broadcast proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_map_new_values<K, V>(s: Set<K>, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(fk, fv).values() == Set::<V>::new(
-            |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
-        ),
+        #[trigger] Map::<K, V>::new(s, fv).values() == s.map(fv),
 {
-    let keys = Set::<K>::new(fk);
-    let values = Map::<K, V>::new(fk, fv).values();
-    let map = Map::<K, V>::new(fk, fv);
-    assert(map.dom() =~= keys);
-    assert(forall|k: K| #[trigger] fk(k) ==> keys.contains(k));
-    assert(values =~= Set::<V>::new(
-        |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
-    ));
 }
 
 pub broadcast group group_map_properties {
