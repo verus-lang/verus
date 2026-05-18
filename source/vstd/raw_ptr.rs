@@ -393,8 +393,8 @@ impl<T> PointsTo<T> {
     /// Delegates to the underlying `PointsToUnaligned`.
     pub proof fn leak_contents(tracked &mut self)
         ensures
-            self.ptr() == old(self).ptr(),
-            self.is_uninit(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).is_uninit(),
     {
         broadcast use layout_of_sized;
 
@@ -428,9 +428,9 @@ impl<T> PointsTo<T> {
             size_of::<T>() != 0,
             size_of::<S>() != 0,
         ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= self.ptr() as int,
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= final(self).ptr() as int,
     {
         broadcast use layout_of_sized;
 
@@ -846,10 +846,10 @@ impl<T> PointsTo<[T]> {
             size_of::<T>() * old(self).mem_contents_seq().len() != 0,
             size_of::<S>() * other.mem_contents_seq().len() != 0,
         ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<T>() * self.mem_contents_seq().len() <= other.ptr() as int
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() * final(self).mem_contents_seq().len() <= other.ptr() as int
                 || other.ptr() as int + size_of::<S>() * other.mem_contents_seq().len()
-                <= self.ptr() as int,
+                <= final(self).ptr() as int,
     {
         broadcast use layout_of_sized;
 
@@ -1050,10 +1050,10 @@ impl<T> PointsToUnaligned<[T]> {
             size_of::<T>() * old(self).mem_contents_seq().len() != 0,
             size_of::<S>() * other.mem_contents_seq().len() != 0,
         ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<T>() * self.mem_contents_seq().len() <= other.ptr() as int
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() * final(self).mem_contents_seq().len() <= other.ptr() as int
                 || other.ptr() as int + size_of::<S>() * other.mem_contents_seq().len()
-                <= self.ptr() as int,
+                <= final(self).ptr() as int,
     ;
 
     /// Convert `PointsToUnaligned<[\T\]>` to an aligned `PointsTo<[\T\]>`.
@@ -1597,7 +1597,7 @@ impl<T> MapPointsTo<T> {
                 |i: nat| 0 <= i < len,
                 |i: nat| old(self).points_to()[(i + begin) as nat],
             ),
-            self.points_to() == old(self).points_to().remove_keys(range_set(begin, len)),
+            final(self).points_to() == old(self).points_to().remove_keys(range_set(begin, len)),
             out_map.ptr() == ptr_mut_from_data(
                 PtrData::<[T]> {
                     addr: addr_from_index(old(self).ptr(), begin),
@@ -1605,7 +1605,7 @@ impl<T> MapPointsTo<T> {
                     metadata: len as usize,
                 },
             ),
-            self.ptr() == old(self).ptr(),
+            final(self).ptr() == old(self).ptr(),
     {
         broadcast use crate::vstd::group_vstd_default;
 
@@ -1688,10 +1688,10 @@ impl<T> MapPointsTo<T> {
                 |i: nat| i + get_index_offset(old(self).ptr(), other.ptr()),
             ).subset_of(old(self).all_indices()),
         ensures
-            self.points_to() == old(self).points_to().union_prefer_right(
-                map_keys(other.points_to(), get_index_offset(self.ptr(), other.ptr())),
+            final(self).points_to() == old(self).points_to().union_prefer_right(
+                map_keys(other.points_to(), get_index_offset(final(self).ptr(), other.ptr())),
             ),
-            self.ptr() == old(self).ptr(),
+            final(self).ptr() == old(self).ptr(),
     {
         broadcast use group_set_axioms;
         broadcast use crate::vstd::group_vstd_default;
@@ -2044,7 +2044,7 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
         old(perm).ptr() == ptr,
     ensures
         final(perm).ptr() == ptr,
-        final(perm).opt_value() == MemContents::Init(v),
+        final(perm).mem_contents() == MemContents::Init(v),
     opens_invariants none
     no_unwind
 {
