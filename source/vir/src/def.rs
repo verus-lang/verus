@@ -120,6 +120,7 @@ pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
 pub const CLOSURE_RETURN_VALUE_PREFIX: &str = "%closure_return";
 
 pub const AUTOSPEC_FUNC_SUFFIX: &str = "%returns_clause_autospec";
+pub const CLONE_FUNC_SUFFIX: &str = "%clone_clause_autoderived";
 
 pub const FNDEF_TYPE: &str = "fndef";
 pub const FNDEF_SINGLETON: &str = "fndef_singleton";
@@ -134,6 +135,7 @@ pub const FUEL_BOOL: &str = "fuel_bool";
 pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
 pub const FUEL_DEFAULTS: &str = "fuel_defaults";
 pub const RETURN_VALUE: &str = "%return";
+pub const OTHER_PARAM_VALUE: &str = "%other";
 pub const DEFAULT_ENSURES: &str = "default_ensures";
 pub const U_HI: &str = "uHi";
 pub const I_LO: &str = "iLo";
@@ -1299,5 +1301,11 @@ pub(crate) fn is_dummy_param_name(v: &VarIdent) -> bool {
 pub fn autospec_return_clause_spec_fn_name(path: &Path) -> Fun {
     let name = path.last_segment();
     let p = path.pop_segment().push_segment(Arc::new(format!("{}{}", name, AUTOSPEC_FUNC_SUFFIX)));
+    Arc::new(FunX { path: p })
+}
+
+pub fn clone_spec_fn_name(path: &Path) -> Fun {
+    let name = path.last_segment();
+    let p = path.pop_segment().push_segment(Arc::new(format!("{}{}", name, CLONE_FUNC_SUFFIX)));
     Arc::new(FunX { path: p })
 }

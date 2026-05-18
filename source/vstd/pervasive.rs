@@ -413,6 +413,7 @@ impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
 ///
 /// It is usually recommended to use [`cloned`] instead,
 /// which takes the reflexive closure.
+#[rustc_diagnostic_item = "verus::vstd::pervasive::strictly_cloned"]
 pub open spec fn strictly_cloned<T: Clone>(a: T, b: T) -> bool {
     call_ensures(T::clone, (&a,), b)
 }
