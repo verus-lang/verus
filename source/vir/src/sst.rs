@@ -133,7 +133,6 @@ pub struct ParX {
     pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
-    pub is_mut: bool,
     pub purpose: ParPurpose,
 }
 
@@ -156,6 +155,13 @@ pub struct LoopInv {
 
 pub type AssertId = air::ast::AssertId;
 
+// A subset of ast::CallTarget
+#[derive(Clone, Debug, ToDebugSNode)]
+pub enum CallTarget {
+    Fun(Fun),
+    AssumeExternal,
+}
+
 pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug, ToDebugSNode)]
@@ -163,7 +169,7 @@ pub enum StmX {
     /// Call to exec/proof function (or spec function when checking preconditions).
     /// Unlike `ExpX::Call`, this has side effects and may modify state.
     Call {
-        fun: Fun,
+        fun: CallTarget,
         /// For trait method calls, the resolved concrete implementation
         resolved_method: Option<(Fun, Typs)>,
         mode: Mode,
@@ -383,6 +389,7 @@ pub struct FunctionSstX {
     pub exec_proof_check: Option<Arc<FuncCheckSst>>,
     pub recommends_check: Option<Arc<FuncCheckSst>>,
     pub safe_api_check: Option<Arc<FuncCheckSst>>,
+    pub async_ret: Option<Par>,
 }
 
 pub type KrateSst = Arc<KrateSstX>;

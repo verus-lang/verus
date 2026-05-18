@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] old_in_body ["new-mut-ref"] => verus_code! {
+    #[test] old_in_body [] => verus_code! {
         fn test(x: &mut u64)
             requires *x == 0
         {
@@ -46,7 +46,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] old_in_closure_body ["new-mut-ref"] => verus_code! {
+    #[test] old_in_closure_body [] => verus_code! {
         fn test() {
             let clos = |x: &mut u64|
                 requires *x == 0
@@ -92,7 +92,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] old_in_spec_fn ["new-mut-ref"] => verus_code! {
+    #[test] old_in_spec_fn [] => verus_code! {
         spec fn foo(x: &mut u64) -> u64 {
             *old(x)
         }
@@ -100,7 +100,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] old_in_spec_fn_sig ["new-mut-ref"] => verus_code! {
+    #[test] old_in_spec_fn_sig [] => verus_code! {
         spec fn foo(x: &mut u64) -> u64
             recommends *old(x) == 0
         {
@@ -110,7 +110,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] old_of_spec_closure_param ["new-mut-ref"] => verus_code! {
+    #[test] old_of_spec_closure_param [] => verus_code! {
         proof fn test() {
             let x = |a: &mut u64| *old(a) == 0;
         }
@@ -119,7 +119,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] old_of_local ["new-mut-ref"] => verus_code! {
+    #[test] old_of_local [] => verus_code! {
         fn test() {
             let mut x = 24;
             let x_ref = &mut x;
@@ -130,7 +130,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] postcondition_missing_old ["new-mut-ref"] => verus_code! {
+    #[test] postcondition_missing_old [] => verus_code! {
         fn test(x: &mut u64)
             ensures *x == 20,
         {
@@ -139,7 +139,20 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] postcondition_missing_old_closure ["new-mut-ref"] => verus_code! {
+    #[test] postcondition_missing_old_async_fn [] => verus_code! {
+        use vstd::prelude::*;
+
+        pub async fn bar(x: &mut usize) -> (ret: ())
+            ensures
+                *x == 2333,
+        {
+            *x = 2333;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] postcondition_missing_old_closure [] => verus_code! {
         fn test() {
             let clos = |x: &mut u64|
                 ensures *x == 20,
@@ -150,7 +163,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] postcondition_missing_old_for_return_is_ok ["new-mut-ref"] => verus_code! {
+    #[test] postcondition_missing_old_for_return_is_ok [] => verus_code! {
         fn test(x: &mut u64) -> (y: &mut u64)
             ensures *y == *old(x) && *final(y) == *final(x),
         {
@@ -160,7 +173,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] postcondition_missing_old_for_tuple ["new-mut-ref"] => verus_code! {
+    #[test] postcondition_missing_old_for_tuple [] => verus_code! {
         fn test(x: (&mut u64, &mut u64))
             ensures *x.1 == 20,
         {
@@ -169,7 +182,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] postcondition_old_fin_tuple_ok ["new-mut-ref"] => verus_code! {
+    #[test] postcondition_old_fin_tuple_ok [] => verus_code! {
         fn test(x: (&mut u64, &mut u64))
             requires *x.1 < 10,
             ensures *final(x.1) == *old(x.1) + 1
@@ -180,7 +193,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] postcondition_old_fin_tuple_ok_2 ["new-mut-ref"] => verus_code! {
+    #[test] postcondition_old_fin_tuple_ok_2 [] => verus_code! {
         // I intend for this to also be ok but `old` is currently restricted to &mut -> &mut
         fn test2(x: (&mut u64, &mut u64))
             requires *x.1 < 10,
@@ -192,7 +205,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] old_containing_fin ["new-mut-ref"] => verus_code! {
+    #[test] old_containing_fin [] => verus_code! {
         fn test2(x: &mut u64)
             ensures *old(final(x)) == 20
         {
@@ -201,7 +214,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] fin_containing_old ["new-mut-ref"] => verus_code! {
+    #[test] fin_containing_old [] => verus_code! {
         // bizarre thing to write, but there's no reason to disallow it
         fn test2(x: &mut u64)
             ensures *final(old(x)) == 20
@@ -212,7 +225,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] nested_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] nested_mut_refs [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn leak_mut_ref() -> (res: &'static mut u64)
             ensures
@@ -269,7 +282,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_assert_by ["new-mut-ref"] => verus_code! {
+    #[test] test_assert_by [] => verus_code! {
         fn test1_assert_by(x: &mut u64)
             requires *x == 0,
         {
@@ -295,7 +308,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_assert_forall ["new-mut-ref"] => verus_code! {
+    #[test] test_assert_forall [] => verus_code! {
         spec fn foo(z: bool) -> bool { z }
 
         fn test1_assert_forall(x: &mut u64)
@@ -349,8 +362,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): (blocking) currently malformed AIR error
-    #[ignore] #[test] test_assert_nonlinear ["new-mut-ref"] => verus_code! {
+    #[test] test_assert_nonlinear [] => verus_code! {
         fn nonlinear(x: &mut u64)
             requires *x == 0,
         {
@@ -362,11 +374,11 @@ test_verify_one_file_with_options! {
             assert(*x == 0 && *old(x) == 5) by(nonlinear_arith)
               requires *x == 0 && *old(x) == 5;
         }
-    } => Err(err) => assert_vir_error_msg(err, "old not allowed in assert-by-nonlinear")
+    } => Err(err) => assert_vir_error_msg(err, "`old` is not supported in `nonlinear_arith` assert")
 }
 
 test_verify_one_file_with_options! {
-    #[test] old_in_closure_referring_to_outer_param ["new-mut-ref"] => verus_code! {
+    #[test] old_in_closure_referring_to_outer_param [] => verus_code! {
         use vstd::prelude::*;
 
         fn test(x: &mut u64)
@@ -415,7 +427,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] unwrap_params ["new-mut-ref"] => verus_code! {
+    #[test] unwrap_params [] => verus_code! {
         fn test(Tracked(x): Tracked<&mut Ghost<int>>)
             requires *x == 0,
             ensures final(x)@ == old(x)@ + 3,
@@ -458,4 +470,155 @@ test_verify_one_file_with_options! {
             test(Tracked(&mut x)); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mutable_param_used_in_opens_invariants [] => verus_code! {
+        use vstd::prelude::*;
+        struct X { a: u64 }
+
+        spec fn ns(x: X) -> int { x.a as int }
+
+        fn foo() {
+        }
+
+        fn c0()
+            opens_invariants [ 0int ]
+        {
+        }
+
+        fn test1(x: &mut X)
+            requires x.a == 0,
+            opens_invariants [ ns(*x) ]
+        {
+            *x = X { a: 1 };
+            c0();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] mutable_param_used_in_opens_invariants2 [] => verus_code! {
+        use vstd::prelude::*;
+        struct X { a: u64 }
+
+        spec fn ns(x: X) -> int { x.a as int }
+
+        fn foo() {
+        }
+
+        fn c1()
+            opens_invariants [ 1int ]
+        {
+        }
+
+        fn test2(x: &mut X)
+            requires x.a == 0,
+            opens_invariants [ ns(*x) ]
+        {
+            *x = X { a: 1 };
+            c1(); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mutable_param_used_in_opens_invariants3 [] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred;
+        impl<'a> InvariantPredicate<(), Ghost<u64>> for Pred {
+            closed spec fn inv(k: (), v: Ghost<u64>) -> bool {
+                5 <= v@ <= 13
+            }
+        }
+
+        struct X { a: u64 }
+
+        spec fn ns(x: X) -> int { x.a as int }
+
+        fn foo() {
+        }
+
+        fn test1(x: &mut X, Tracked(p): Tracked<&LocalInvariant<(), Ghost<u64>, Pred>>)
+            requires x.a == 0, p.namespace() == 0,
+            opens_invariants [ ns(*x) ]
+        {
+            *x = X { a: 1 };
+            open_local_invariant!(p => p2 => { });
+        }
+
+        fn test2(x: &mut X, Tracked(p): Tracked<&LocalInvariant<(), Ghost<u64>, Pred>>)
+            requires x.a == 0, p.namespace() == 1,
+            opens_invariants [ ns(*x) ]
+        {
+            *x = X { a: 1 };
+            open_local_invariant!(p => p2 => { }); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mutable_param_used_in_decreases [] => verus_code! {
+        fn test(x: &mut u64)
+            decreases *x
+        {
+            *x = 200;
+            let mut a = 0;
+            test(&mut a); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mutable_param_used_in_returns [] => verus_code! {
+        fn test_returns_fails(x: &mut u64) -> (ret: u64)
+            requires *x < 100,
+            returns *old(x)
+        {
+            let j = *x;
+            *x += 1;
+            return j + 1; // FAILS
+        }
+
+        fn test_returns(x: &mut u64) -> (ret: u64)
+            requires *x < 100,
+            returns *old(x)
+        {
+            let j = *x;
+            *x += 1;
+            return j;
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mutable_param_used_in_unwind_spec [] => verus_code! {
+        fn callee(b: bool)
+            no_unwind when !b
+        {
+        }
+
+        fn test1(x: &mut u64)
+            no_unwind when *x != 0
+        {
+            callee(true); // FAILS
+        }
+
+        fn test2(x: &mut u64)
+            no_unwind when *x != 0
+        {
+            *x = 0;
+            callee(true); // FAILS
+        }
+
+        fn test3(x: &mut u64)
+            requires *x == 0,
+            no_unwind when *x != 0
+        {
+            *x = 1;
+            callee(true);
+        }
+    } => Err(err) => assert_fails(err, 2)
 }

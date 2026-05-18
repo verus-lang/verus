@@ -211,6 +211,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                                     None,
                                     initializer_span,
                                     DeclareLetBindings::No,
+                                    false, // Verus added arg
                                 )
                             });
                         matching.and(failure)

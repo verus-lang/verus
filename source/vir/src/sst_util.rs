@@ -571,6 +571,9 @@ impl ExpX {
                     CustomErr(_msg) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }
+                    AutoDecreases | AutoLoopEnsures => {
+                        return exp.x.to_string_prec(global, precedence);
+                    }
                     ProofNote(_label) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }
@@ -795,7 +798,6 @@ pub(crate) fn sst_exp_get_proof_note(exp: &Exp) -> Option<ProofNoteLabel> {
     match &exp.x {
         ExpX::UnaryOpr(UnaryOpr::Box(_), e) => sst_exp_get_proof_note(e),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => sst_exp_get_proof_note(e),
-        ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e) => sst_exp_get_proof_note(e),
         ExpX::UnaryOpr(UnaryOpr::ProofNote(label), _) => Some(label.clone()),
         _ => None,
     }
@@ -867,7 +869,7 @@ impl<'a> Visitor<Walk, (), NoScoper> for ObligationProofNoteCollector<'a> {
     fn visit_stm(&mut self, stm: &Stm) -> Result<(), ()> {
         match &stm.x {
             // Collect proof note labels from callee `requires` clauses.
-            StmX::Call { fun, .. } => {
+            StmX::Call { fun: crate::sst::CallTarget::Fun(fun), .. } => {
                 if let Some(callee_req_notes) = self.func_to_requires_proof_notes.get(fun) {
                     self.proof_notes.extend(callee_req_notes.iter().cloned());
                 }

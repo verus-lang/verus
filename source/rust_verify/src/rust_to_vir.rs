@@ -28,7 +28,7 @@ use rustc_hir::{
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{FunX, FunctionKind, Krate, KrateX, Path, VirErr};
+use vir::ast::{CrateId, FunX, FunctionKind, Krate, KrateX, Path, VirErr};
 
 fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
@@ -162,8 +162,7 @@ fn check_item<'tcx>(
         }
 
         let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
-        let vir_ty =
-            ctxt.mid_ty_to_vir(def_id, item.span, &mid_ty, false, None).map_err(|e| vec![e])?;
+        let vir_ty = ctxt.mid_ty_to_vir(def_id, item.span, &mid_ty, None).map_err(|e| vec![e])?;
 
         crate::rust_to_vir_func::check_item_const_or_static(
             ctxt,
@@ -176,7 +175,6 @@ fn check_item<'tcx>(
             &vir_ty,
             body_id,
             matches!(item.kind, ItemKind::Static(_, _, _, _)),
-            false,
         )
         .map_err(|e| vec![e])?;
 
@@ -580,7 +578,7 @@ pub fn crate_to_vir<'a, 'tcx>(
         return Err(errors);
     }
 
-    vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&ctxt.vstd_crate_name);
+    vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
 
     crate::rust_to_vir_impl::collect_external_trait_impls(
         &ctxt,

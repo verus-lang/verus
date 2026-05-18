@@ -40,21 +40,21 @@ test_verify_one_file! {
         // Generics
 
         fn foo_generic<T>(x: &[T])
-            requires x@.len() === 2, x[0] === x[1],
+            requires x@.len() == 2, x[0] == x[1],
         {
             let t = slice_index_get(x, 0);
-            assert(*t === x[1]);
+            assert(*t == x[1]);
         }
 
         fn foo_generic_index<T>(x: &[T])
-            requires x@.len() === 2, x[0] === x[1],
+            requires x@.len() == 2, x[0] == x[1],
         {
             let t = &x[0];
-            assert(*t === x[1]);
+            assert(*t == x[1]);
         }
 
         fn foo_generic2<T>(x: Vec<T>)
-            requires x@.len() === 2, x[0] === x[1],
+            requires x@.len() == 2, x[0] == x[1],
         {
             foo_generic(x.as_slice());
         }
@@ -123,15 +123,15 @@ test_verify_one_file! {
         use vstd::seq;
 
         fn test() {
-            let sl = &[0u32, 2u32, 4u32];
+            let sl: &[u32] = &[0u32, 2u32, 4u32];
 
             let mut i: usize = 0;
-            let iter = sl.iter();
-            for x in it: iter
+            for x in it: sl.iter()
                 invariant
-                    i == it.pos,
-                    it.elements == seq![0u32, 2u32, 4u32],
+                    i == it.index(),
+                    it.seq().unref() == seq![0u32, 2u32, 4u32],
             {
+                assert(it.seq().unref().contains(*x));
                 assert(x < 5);
                 assert(x % 2 == 0);
                 i = i + 1;

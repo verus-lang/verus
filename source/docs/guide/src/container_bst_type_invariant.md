@@ -11,10 +11,12 @@ impl<V> TreeMap<V> {
 {{#include ../../../../examples/guide/bst_map.rs:delete_signature}}
 
 {{#include ../../../../examples/guide/bst_map.rs:get_signature}}
+
+{{#include ../../../../examples/guide/bst_map.rs:get_mut_signature}}
 }
 ```
 
-Observe the presenence of this `tree_map.well_formed()`  predicate, especially in the
+Observe the presence of this `tree_map.well_formed()`  predicate, especially in the
 `requires` clauses.
 As a result of this,
 the client needs to work with this `tree_map.well_formed()` predicate all throughout
@@ -133,6 +135,19 @@ This is pretty much the same as `insert`.
 {{#include ../../../../examples/guide/bst_map_type_invariant.rs:delete}}
 ```
 
+### Updating the code: `get_mut`
+
+This is a little more interesting since the concrete value of the updated map isn't known
+at the end of the call; it is only known after the returned mutable reference is resolved.
+Crucially, the type invariant doesn't depend on the _values_ in the map, so there is no way
+for the client to violate the type invariant by using the returned mutable reference.
+In other words, the type invariant holds for _all_ possible final values of the mutable
+reference.
+
+```rust
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:delete}}
+```
+
 ### The new signatures and specifications
 
 Putting it all together, we end up with the following specifications for our public API:
@@ -146,6 +161,8 @@ impl<V> TreeMap<V> {
 {{#include ../../../../examples/guide/bst_map_type_invariant.rs:delete_signature}}
 
 {{#include ../../../../examples/guide/bst_map_type_invariant.rs:get_signature}}
+
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:get_mut_signature}}
 }
 ```
 

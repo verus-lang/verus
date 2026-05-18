@@ -595,11 +595,11 @@ test_verify_one_file! {
 
         proof fn test_match_spec(foo: Foo) {
             assert(foo.is_Bar() ==>
-                match_spec(foo) === foo.get_Bar_0() as int + 1);
+                match_spec(foo) == foo.get_Bar_0() as int + 1);
             assert(foo.is_Qux() ==>
-                match_spec(foo) === foo.get_Qux_0() as int + 1);
+                match_spec(foo) == foo.get_Qux_0() as int + 1);
             assert(foo.is_Duck() ==>
-                match_spec(foo) === foo.get_Duck_0() as int);
+                match_spec(foo) == foo.get_Duck_0() as int);
         }
 
         proof fn test_match_statements(foo: Foo) {
@@ -668,9 +668,9 @@ test_verify_one_file! {
                 Path::Left(box q) | q | Path::Right(box q) => {
                     // If 'p' matches multiple, then it should be the first
                     if p.is_Left() {
-                        assert(q === *p.get_Left_0());
+                        assert(q == *p.get_Left_0());
                     } else {
-                        assert(q === p);
+                        assert(q == p);
                     }
                 }
                 _ => {
@@ -685,11 +685,11 @@ test_verify_one_file! {
                 Path::Left(box q) | Path::Right(box q) | q => {
                     // If 'p' matches multiple, then it should be the first
                     if p.is_Left() {
-                        assert(q === *p.get_Left_0());
+                        assert(q == *p.get_Left_0());
                     } else if p.is_Right() {
-                        assert(q === *p.get_Right_0());
+                        assert(q == *p.get_Right_0());
                     } else {
-                        assert(q === p);
+                        assert(q == p);
                     }
                 }
                 _ => {
@@ -703,7 +703,7 @@ test_verify_one_file! {
             match p {
                 Path::Left(box q) | q | Path::Right(box q) => {
                     if p.is_Left() {
-                        assert(p === q); // FAILS
+                        assert(p == q); // FAILS
                     }
                 }
             }
@@ -880,15 +880,15 @@ test_verify_one_file! {
         }
 
         fn test4() {
-            assert(some_fn(Some(Some(4))) === (4, Some(4)));
-            assert(some_fn(Some(None)) === (0, None));
-            assert(some_fn(None) === (1, None));
+            assert(some_fn(Some(Some(4))) == (4, Some(4)));
+            assert(some_fn(Some(None)) == (0, None));
+            assert(some_fn(None) == (1, None));
         }
 
         fn test5() {
-            assert(some_fn(Some(Some(4))) === (4, Some(4)));
-            assert(some_fn(Some(None)) === (0, None));
-            assert(some_fn(None) === (1, None));
+            assert(some_fn(Some(Some(4))) == (4, Some(4)));
+            assert(some_fn(Some(None)) == (0, None));
+            assert(some_fn(None) == (1, None));
             assert(false); // FAILS
         }
 
@@ -1056,7 +1056,7 @@ test_verify_one_file! {
                 _ => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X` which is ignored")
 }
 
 test_verify_one_file! {

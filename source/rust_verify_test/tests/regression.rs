@@ -12,7 +12,7 @@ test_verify_one_file! {
             let s2: Set<i32> = Set::empty();
             assert(!s2.contains(1));
             // assert(!s1.ext_equal(s2));
-            assert(s1 !== s2);
+            assert(s1 != s2);
         }
     } => Ok(())
 }
@@ -26,7 +26,7 @@ test_verify_one_file! {
         proof fn test_sets_1() {
             let s1: Set<i32> = Set::empty().insert(1);
 
-            assert (exists|s3: Set<i32>| different_set(s3) !== s1) by {
+            assert (exists|s3: Set<i32>| different_set(s3) != s1) by {
                 assert(!different_set(Set::empty()).contains(1i32));
             }
         }
@@ -53,7 +53,7 @@ test_verify_one_file! {
         proof fn test() {
             let s1: nat = 0;
             assert_with_binding!(true);
-            assert(s1 === 0);
+            assert(s1 == 0);
         }
 
         macro_rules! recursor {
@@ -165,14 +165,14 @@ test_verify_one_file! {
         use vstd::map::*;
 
         proof fn some_proof() -> (m: Map<int, int>)
-            ensures m === Map::empty()
+            ensures m == Map::empty()
         {
             Map::empty()
         }
 
         proof fn cats() {
             let m = some_proof();
-            assert(m === Map::empty());
+            assert(m == Map::empty());
         }
     } => Ok(())
 }
@@ -278,7 +278,7 @@ test_verify_one_file! {
             let lock = opt_lock.get_SomeX_0();   // This line triggers panic
             true
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::OptionX::get_SomeX_0` with mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::OptionX::get_SomeX_0` with mode spec")
 }
 
 test_verify_one_file! {
@@ -440,17 +440,17 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] poly_has_type_regression_577 verus_code! {
         #[verifier::ext_equal]
-        struct S {
-            n: nat,
+        tracked struct S {
+            ghost n: nat,
             i: int,
         }
 
         trait T {
-            proof fn f(x: &mut S);
+            proof fn f(tracked x: &mut S);
         }
 
         impl T for S {
-            proof fn f(x: &mut S) {
+            proof fn f(tracked x: &mut S) {
                 x.n = 3; // breaks has_type unless we add Box(Unbox(x)) == x
                 assert(*x =~= S { n: x.n, i: x.i });
             }
@@ -587,17 +587,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_unwrapped_tracked_wrong_span_387_discussioncomment_6733203_1 verus_code! {
-        fn test_bug1(Tracked(s): Tracked<&mut i32>)
-        {
-            let tracked x: &mut i32 = s;
-        }
-    } => Err(err) => {
-        assert!(err.errors[0].rendered.contains("let tracked x: &mut i32 = s;"));
-    }
-}
-
-test_verify_one_file! {
     #[test] test_unwrapped_tracked_wrong_span_387_discussioncomment_6733203_2 verus_code! {
         fn test_bug2(Tracked(s): Tracked<&mut i32>)
         {
@@ -605,19 +594,6 @@ test_verify_one_file! {
         }
     } => Err(err) => {
         assert!(err.errors[0].rendered.contains("let tracked x: i32 = s;"));
-    }
-}
-
-test_verify_one_file! {
-    #[test] test_unwrapped_tracked_unintended_387_discussioncomment_6680621 verus_code! {
-        exec fn f(foo: &mut usize) {
-            let tracked tracked_foo = Tracked(foo);
-        }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 1);
-        assert_eq!(err.warnings.len(), 1);
-        assert!(err.errors[0].rendered.contains("let tracked tracked_foo = Tracked(foo);"));
-        assert!(err.warnings.iter().find(|x| x.message.contains("the right-hand side is already wrapped with `Tracked`")).is_some());
     }
 }
 
@@ -1312,7 +1288,7 @@ test_verify_one_file! {
             assume(true);
             hide(foo);
         }
-    } => Err(e) => assert_vir_error_msg(e, "This kind of statement should go at the beginning of the function body")
+    } => Err(e) => assert_vir_error_msg(e, "This verus_builtin header should go at the beginning of the function body")
 }
 
 test_verify_one_file! {
@@ -1510,7 +1486,7 @@ test_verify_one_file! {
                 _ => 0,
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::Never` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::Never` which is ignored")
 }
 
 test_verify_one_file! {

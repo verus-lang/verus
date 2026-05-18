@@ -13,7 +13,7 @@ use std::ops::DerefMut;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
-use vir::ast::{Ident, Mode, Path, Pattern, VirErr};
+use vir::ast::{CrateId, Mode, Path, Pattern, VirErr};
 use vir::messages::AstId;
 
 pub struct ErasureInfo {
@@ -45,8 +45,7 @@ pub struct ContextX<'tcx> {
     pub(crate) diagnostics: Rc<RefCell<Vec<vir::ast::VirErrAs>>>,
     pub(crate) no_vstd: bool,
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
-    pub(crate) crate_name: Ident,
-    pub(crate) vstd_crate_name: Ident,
+    pub(crate) crate_name: CrateId,
     pub(crate) name_def_id_map: Rc<RefCell<std::collections::HashMap<Path, DefId>>>,
     pub(crate) next_read_kind_id: AtomicU64,
 }
@@ -58,7 +57,7 @@ pub enum HeaderSetting {
     /// Including closures
     Fn,
     /// Loops (invariants, ensures, etc.)
-    Loop,
+    Loop(HirId),
     /// Requires or ensures on an assert-by, assert-by-nonlinear, assert-by-forall etc.
     Assert,
 }
@@ -74,7 +73,6 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) in_ghost: bool,
     // loop_isolation for the nearest enclosing loop, false otherwise
     pub(crate) loop_isolation: bool,
-    pub(crate) new_mut_ref: bool,
     pub(crate) migrate_postcondition_vars: Option<std::collections::HashSet<vir::ast::VarIdent>>,
     /// Context to interpret a header if we encounter one
     /// (this is used to determine when it's correct to set `in_fn_sig`).
@@ -104,8 +102,7 @@ impl<'tcx> ContextX<'tcx> {
         spans: crate::spans::SpanContext,
         verus_items: Arc<VerusItems>,
         no_vstd: bool,
-        crate_name: Ident,
-        vstd_crate_name: Ident,
+        crate_name: CrateId,
     ) -> Self {
         ContextX {
             cmd_line_args,
@@ -118,7 +115,6 @@ impl<'tcx> ContextX<'tcx> {
             no_vstd,
             arch_word_bits: None,
             crate_name,
-            vstd_crate_name,
             name_def_id_map: Rc::new(RefCell::new(HashMap::new())),
             next_read_kind_id: AtomicU64::new(0),
         }
@@ -177,7 +173,6 @@ impl<'tcx> ContextX<'tcx> {
         param_env_src: DefId,
         span: rustc_span::Span,
         ty: &rustc_middle::ty::Ty<'tcx>,
-        allow_mut_ref: bool,
         assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
     ) -> Result<vir::ast::Typ, VirErr> {
         crate::rust_to_vir_base::mid_ty_to_vir(
@@ -187,7 +182,6 @@ impl<'tcx> ContextX<'tcx> {
             param_env_src,
             span,
             ty,
-            allow_mut_ref,
             assume_specification_opaque_type_map,
         )
     }
@@ -211,15 +205,8 @@ impl<'tcx> BodyCtxt<'tcx> {
         &self,
         span: rustc_span::Span,
         ty: &rustc_middle::ty::Ty<'tcx>,
-        allow_mut_ref: bool,
     ) -> Result<vir::ast::Typ, VirErr> {
-        self.ctxt.mid_ty_to_vir(
-            self.fun_id,
-            span,
-            ty,
-            allow_mut_ref,
-            self.external_opaque_type_map.as_ref(),
-        )
+        self.ctxt.mid_ty_to_vir(self.fun_id, span, ty, self.external_opaque_type_map.as_ref())
     }
     pub(crate) fn is_param_migrated(&self, ident: &vir::ast::VarIdent) -> bool {
         let Some(vars) = &self.migrate_postcondition_vars else {

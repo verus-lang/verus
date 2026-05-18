@@ -24,11 +24,9 @@ use itertools::Itertools;
 use rustc_abi::{ExternAbi, FieldIdx};
 use rustc_apfloat::Float;
 use rustc_apfloat::ieee::{Double, Half, Quad, Single};
-use rustc_ast::attr;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::sorted_map::SortedIndexMultiMap;
 use rustc_errors::ErrorGuaranteed;
-use rustc_hir::attrs::AttributeKind;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::{self as hir, BindingMode, ByRef, HirId, ItemLocalId, Node, find_attr};
@@ -42,7 +40,7 @@ use rustc_middle::thir::{self, ExprId, LocalVarId, Param, ParamId, PatKind, Thir
 use rustc_middle::ty::{self, ScalarInt, Ty, TyCtxt, TypeVisitableExt, TypingMode};
 use rustc_middle::{bug, span_bug};
 use rustc_session::lint;
-use rustc_span::{Span, Symbol, sym};
+use rustc_span::{Span, Symbol};
 
 use crate::builder::expr::as_place::PlaceBuilder;
 use crate::builder::scope::{DropKind, LintLevel};
@@ -510,7 +508,8 @@ fn construct_fn<'tcx>(
         ty => span_bug!(span_with_body, "unexpected type of body: {ty:?}"),
     };
 
-    if let Some((dialect, phase)) = find_attr!(tcx.hir_attrs(fn_id), AttributeKind::CustomMir(dialect, phase, _) => (dialect, phase))
+    if let Some((dialect, phase)) =
+        find_attr!(tcx.hir_attrs(fn_id), CustomMir(dialect, phase, _) => (dialect, phase))
     {
         return custom::build_custom_mir(
             tcx,
@@ -596,7 +595,7 @@ fn construct_const<'a, 'tcx>(
         })
         | Node::ImplItem(hir::ImplItem { kind: hir::ImplItemKind::Const(ty, _), span, .. })
         | Node::TraitItem(hir::TraitItem {
-            kind: hir::TraitItemKind::Const(ty, Some(_)),
+            kind: hir::TraitItemKind::Const(ty, Some(_), _),
             span,
             ..
         }) => (*span, ty.span),
@@ -769,11 +768,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         coroutine: Option<Box<CoroutineInfo<'tcx>>>,
     ) -> Builder<'a, 'tcx> {
         let tcx = infcx.tcx;
-        let attrs = tcx.hir_attrs(hir_id);
         // Some functions always have overflow checks enabled,
         // however, they may not get codegen'd, depending on
         // the settings for the crate they are codegened in.
-        let mut check_overflow = attr::contains_name(attrs, sym::rustc_inherit_overflow_checks);
+        let mut check_overflow = find_attr!(tcx.hir_attrs(hir_id), RustcInheritOverflowChecks);
         // Respect -C overflow-checks.
         check_overflow |= tcx.sess.overflow_checks();
         // Constants always need overflow checks.

@@ -5,8 +5,12 @@ use crate::verus::{
     is_node_with_single_arg_erased_or_shadow,
 };
 use crate::verus_time_travel_prevention::try_move_head_into_shadow;
+use rustc_hir::HirId;
 use rustc_hir::{Expr, ExprKind, UnOp};
-use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow};
+use rustc_middle::thir;
+use rustc_middle::thir::{ExprId, LocalVarId, Pat, PatKind};
+use rustc_middle::ty::TyKind;
+use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, DerefAdjustKind};
 
 pub(crate) fn mirror_expr_adjusted_pre<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
@@ -48,7 +52,9 @@ pub(crate) fn apply_adjustment_post<'tcx>(
     }
 
     let kind = match adjustment.kind {
-        Adjust::Deref(None | Some(_)) | Adjust::Borrow(AutoBorrow::Ref(_)) | Adjust::NeverToAny => {
+        Adjust::Deref(DerefAdjustKind::Builtin | DerefAdjustKind::Overloaded(_))
+        | Adjust::Borrow(AutoBorrow::Ref(_))
+        | Adjust::NeverToAny => {
             // Adjust::Deref(None) -> implicit *
             // Adjust::Borrow(AutoBorrow::Ref(_)) -> implicit &
             // Adjust::Deref(Some(_)) -> This case means inserting a Deref::deref function.
@@ -75,7 +81,7 @@ pub(crate) fn mirror_expr_pre<'tcx>(
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
             let call_erasure = handle_call(&cx.verus_ctxt, expr);
             match call_erasure {
-                CallErasure::EraseTree(t) => Some(erase_tree_kind(cx, expr, t)),
+                CallErasure::EraseTree(t) => Some(erase_tree_kind(cx, expr, expr.hir_id, t)),
                 _ => None,
             }
         }
@@ -121,4 +127,110 @@ pub(crate) fn mirror_expr_post<'tcx>(
     };
 
     crate::verus_time_travel_prevention::expr_post(cx, expr, ty, kind)
+}
+
+pub(crate) fn enter_guard<'tcx>(cx: &mut ThirBuildCx<'tcx>, pat: &Pat<'tcx>) {
+    let mut v = vec![];
+    pat_get_ids(pat, &mut v);
+    cx.verus_ctxt.guard_pattern_vars.push(v);
+}
+
+pub(crate) fn exit_guard<'tcx>(cx: &mut ThirBuildCx<'tcx>) {
+    cx.verus_ctxt.guard_pattern_vars.pop().unwrap();
+}
+
+pub(crate) fn is_bound_via_pattern_guard<'tcx>(cx: &ThirBuildCx<'tcx>, var_hir_id: HirId) -> bool {
+    let var = LocalVarId(var_hir_id);
+    cx.verus_ctxt.guard_pattern_vars.iter().any(|v| v.iter().any(|v| v == &var))
+}
+
+fn pat_get_ids<'tcx>(pat: &Pat<'tcx>, out: &mut Vec<LocalVarId>) {
+    match &pat.kind {
+        PatKind::Missing => {}
+        PatKind::Wild => {}
+        PatKind::Binding {
+            name: _,
+            mode: _,
+            var,
+            ty: _,
+            subpattern,
+            is_primary: _,
+            is_shorthand: _,
+        } => {
+            out.push(*var);
+            if let Some(subpattern) = subpattern {
+                pat_get_ids(subpattern, out);
+            }
+        }
+        PatKind::Variant { adt_def: _, args: _, variant_index: _, subpatterns }
+        | PatKind::Leaf { subpatterns } => {
+            for field_pat in subpatterns.iter() {
+                pat_get_ids(&field_pat.pattern, out);
+            }
+        }
+        PatKind::Deref { subpattern, pin: _ } => pat_get_ids(subpattern, out),
+        PatKind::DerefPattern { subpattern, borrow: _ } => {
+            pat_get_ids(subpattern, out);
+        }
+        PatKind::Constant { value: _ } => {}
+        PatKind::Range(_pat_range) => {}
+        PatKind::Slice { prefix, slice, suffix } | PatKind::Array { prefix, slice, suffix } => {
+            for p in prefix.iter() {
+                pat_get_ids(p, out);
+            }
+            if let Some(sl) = slice {
+                pat_get_ids(sl, out);
+            }
+            for p in suffix.iter() {
+                pat_get_ids(p, out);
+            }
+        }
+        PatKind::Or { pats } => {
+            if pats.len() > 0 {
+                pat_get_ids(&pats[0], out);
+            }
+        }
+        PatKind::Never => {}
+        PatKind::Error(_error_guaranteed) => {}
+    }
+}
+
+pub(crate) fn scope_post<'tcx>(cx: &mut ThirBuildCx<'tcx>, expr_id: ExprId) -> ExprId {
+    let thir::ExprKind::Scope { region_scope, value, hir_id } = cx.thir[expr_id].kind else {
+        panic!("scope_post expected ExprKind::Scope");
+    };
+
+    match cx.thir.exprs[value].kind {
+        thir::ExprKind::Call { ty, fun, ref args, from_hir_call, fn_span } => {
+            let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
+                return expr_id;
+            };
+            match ty.kind() {
+                TyKind::FnDef(fn_def_id, _)
+                    if *fn_def_id == erasure_ctxt.two_phase_mutable_reference_tie_fn_def_id
+                        || *fn_def_id == erasure_ctxt.mutable_reference_tie_fn_def_id =>
+                {
+                    assert!(args.len() == 2);
+                    let arg0 = args[0];
+                    let arg1 = args[1];
+                    let arg = cx.thir.exprs.push(thir::Expr {
+                        temp_scope_id: cx.thir[expr_id].temp_scope_id,
+                        ty: cx.thir[arg0].ty,
+                        span: cx.thir[arg0].span,
+                        kind: thir::ExprKind::Scope { region_scope, value: arg0, hir_id },
+                    });
+                    let args = Box::new([arg, arg1]);
+                    return cx.thir.exprs.push(thir::Expr {
+                        temp_scope_id: cx.thir[value].temp_scope_id,
+                        ty: cx.thir.exprs[value].ty,
+                        span: cx.thir.exprs[value].span,
+                        kind: thir::ExprKind::Call { ty, fun, args, from_hir_call, fn_span },
+                    });
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
+    return expr_id;
 }

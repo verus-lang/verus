@@ -17,8 +17,8 @@ use rustc_middle::thir::{
 use rustc_middle::ty;
 use rustc_middle::ty::{
     Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVarIndexKind, BoundVariableKind,
-    CapturedPlace, GenericArg, Mutability, PolyFnSig, Ty, TyCtxt, TyKind, TypeSuperFoldable,
-    UpvarCapture,
+    CapturedPlace, GenericArg, Mutability, Ty, TyCtxt, TyKind, TypeSuperFoldable, UpvarCapture,
+    adjustment::DerefAdjustKind,
 };
 use rustc_middle::ty::{TypeFoldable, TypeFolder, UpvarArgs};
 use rustc_span::Span;
@@ -58,7 +58,7 @@ pub enum TreeErase {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CallErasure {
     /// Erase the call and ALL subexpressions. This can only be used when the node is guaranteed
-    /// to have no proof code in the subtree (outer_mode = spec in modes.rs)
+    /// to have no proof code in the subtree (e.g., consired 'pure' by modes.rs)
     EraseTree(TreeErase),
     Call(NodeErase),
 }
@@ -68,6 +68,22 @@ pub enum CallErasure {
 pub struct BodyErasure {
     pub erase_body: bool,
     pub ret_spec: bool,
+}
+
+/// Set of program locations relative to a Loop expressions.
+/// For a loop, if we mark the two points A and B: `loop { A; body }; B`
+/// then: A = BodyStart and B = PostLoop
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum LoopSpecEvaluationLocation {
+    BodyStart,
+    PostLoop,
+    BodyStartAndPostLoop,
+}
+
+/// Information for a loop.
+#[derive(Debug, Clone)]
+pub struct LoopErasure {
+    pub specs: Vec<(HirId, LoopSpecEvaluationLocation)>,
 }
 
 /// Global context with all information across the krate.
@@ -88,6 +104,11 @@ pub struct VerusErasureCtxt {
     /// Useful, e.g., to erase a single argument of some call.
     pub adjusted_node_erasure: HashSet<HirId>,
 
+    /// Loop headers require special handling. This maps every loop expression to
+    /// a list of all its headers. (Note: the headers themselves should be marked
+    /// EraseAbsolutely so they don't end up being double-handled.)
+    pub loop_erasure: HashMap<HirId, LoopErasure>,
+
     pub bodies: HashMap<LocalDefId, BodyErasure>,
 
     /// Some DefIds from builtin that we'll need to handle directly
@@ -95,8 +116,8 @@ pub struct VerusErasureCtxt {
     pub shadow_ghost_value_fn_def_id: DefId,
     pub dummy_capture_struct_def_id: DefId,
     pub mutable_reference_tie_fn_def_id: DefId,
-
-    pub new_mut_ref: bool,
+    pub two_phase_mutable_reference_tie_fn_def_id: DefId,
+    pub get_first_fn_def_id: DefId,
 }
 
 /// Used to communicate the set of LocalDefIds that may require erasure.
@@ -130,7 +151,7 @@ fn get_verus_erasure_ctxt() -> Arc<VerusErasureCtxt> {
         .clone()
 }
 
-fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
+pub(crate) fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
     VERUS_ERASURE_CTXT.read().unwrap().clone()
 }
 
@@ -174,6 +195,7 @@ pub(crate) struct VerusThirBuildCtxt {
     pub(crate) ctxt: Option<Arc<VerusErasureCtxt>>,
     closure_overrides: HashMap<LocalDefId, ClosureOverrides>,
     pub(crate) do_time_travel_prevention: bool,
+    pub(crate) guard_pattern_vars: Vec<Vec<LocalVarId>>,
 }
 
 impl VerusThirBuildCtxt {
@@ -183,13 +205,13 @@ impl VerusThirBuildCtxt {
             VERUS_AWARE_DEF_IDS.read().unwrap().clone().unwrap().contains(&fn_local_def_id);
         let ctxt = get_verus_erasure_ctxt_option();
 
-        let do_time_travel_prevention =
-            verus_aware && ctxt.is_some() && ctxt.as_ref().unwrap().new_mut_ref;
+        let do_time_travel_prevention = verus_aware && ctxt.is_some();
 
         VerusThirBuildCtxt {
             ctxt: get_verus_erasure_ctxt_option(),
             closure_overrides: HashMap::new(),
             do_time_travel_prevention,
+            guard_pattern_vars: vec![],
         }
     }
 
@@ -204,7 +226,10 @@ impl VerusThirBuildCtxt {
     }
 }
 
-fn enclosing_fn_local_def_id<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> LocalDefId {
+pub(crate) fn enclosing_fn_local_def_id<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
+) -> LocalDefId {
     if tcx.is_closure_like(local_def_id.into()) {
         let hir_id = tcx.local_def_id_to_hir_id(local_def_id);
         let parent_owner_id = tcx.hir_get_parent_item(hir_id);
@@ -261,7 +286,9 @@ pub(crate) fn handle_var<'tcx>(
     match erasure_ctxt.vars.get(&expr.hir_id) {
         None | Some(VarErasure::Keep) => None,
         Some(VarErasure::Shadow)
-            if cx.verus_ctxt.do_time_travel_prevention && !cx.is_upvar(var_hir_id) =>
+            if cx.verus_ctxt.do_time_travel_prevention
+                && !cx.is_upvar(var_hir_id)
+                && !crate::verus_expr::is_bound_via_pattern_guard(cx, var_hir_id) =>
         {
             Some(crate::verus_time_travel_prevention::shadow_var_use(
                 cx,
@@ -296,7 +323,7 @@ pub(crate) fn erase_tree<'tcx>(
     hir_expr: &'tcx hir::Expr<'tcx>,
     t: TreeErase,
 ) -> ExprId {
-    let kind = erase_tree_kind(cx, hir_expr, t);
+    let kind = erase_tree_kind(cx, hir_expr, hir_expr.hir_id, t);
     let ty = cx.typeck_results.expr_ty(hir_expr);
 
     let expr = Expr { temp_scope_id: hir_expr.hir_id.local_id, ty, span: hir_expr.span, kind };
@@ -319,6 +346,7 @@ pub(crate) fn erase_tree<'tcx>(
 pub(crate) fn erase_tree_kind<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
+    root_hir_id: HirId,
     t: TreeErase,
 ) -> ExprKind<'tcx> {
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
@@ -329,7 +357,7 @@ pub(crate) fn erase_tree_kind<'tcx>(
         TreeErase::IncludeBasicChecks => {
             // We have to preserve all match statements
             let (mut exprs, local_uses) =
-                get_all_stmts_with_pattern_checking(cx, &erasure_ctxt, expr);
+                get_all_stmts_with_pattern_checking(cx, &erasure_ctxt, expr, root_hir_id);
             if cx.verus_ctxt.do_time_travel_prevention {
                 exprs.append(&mut crate::verus_time_travel_prevention::shadow_var_uses(
                     cx,
@@ -569,20 +597,6 @@ fn erased_ghost_value_kind<'tcx>(
     erased_ghost_value_kind_with_args(cx, erasure_ctxt, hir_id, span, ty, vec![])
 }
 
-/// Produce an expression `builtin::erased_ghost_value::<T>((args...))`
-/// The args are packaged as a tuple.
-fn erased_ghost_value_with_args<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    erasure_ctxt: &VerusErasureCtxt,
-    hir_id: HirId,
-    span: Span,
-    ty: Ty<'tcx>,
-    expr_args: Vec<ExprId>,
-) -> ExprId {
-    let kind = erased_ghost_value_kind_with_args(cx, erasure_ctxt, hir_id, span, ty, expr_args);
-    expr_id_from_kind(cx, kind, hir_id, span, ty)
-}
-
 fn some_ghost_value_with_args<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_id: HirId,
@@ -753,7 +767,7 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
                 erase_pat_rec(emode, &mut field_pat.pattern);
             }
         }
-        PatKind::Deref { subpattern } => {
+        PatKind::Deref { subpattern, pin: _ } => {
             erase_pat_rec(emode, subpattern);
         }
         PatKind::DerefPattern { subpattern, borrow: _ } => {
@@ -806,12 +820,12 @@ fn get_all_stmts_with_pattern_checking<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
     expr: &'tcx hir::Expr<'tcx>,
+    root_hir_id: HirId,
 ) -> (Vec<ExprId>, Vec<LocalUse<'tcx>>) {
     use crate::rustc_hir::intravisit::Visitor;
 
     // We use two visitors, one that visits closure bodies and one that doesn't.
 
-    let root_hir_id = expr.hir_id;
     let mut vis = VisitTreeForPats { cx, erasure_ctxt, root_hir_id, output_exprs: vec![] };
     vis.visit_expr(expr);
     let output_exprs = vis.output_exprs;
@@ -951,7 +965,9 @@ impl<'a, 'tcx> VisitTreeForLocalUses<'a, 'tcx> {
         let mut projs = vec![];
         let adjustments = self.cx.typeck_results.expr_adjustments(expr);
         for adjustment in adjustments.iter() {
-            if let rustc_middle::ty::adjustment::Adjust::Deref(None) = &adjustment.kind {
+            if let rustc_middle::ty::adjustment::Adjust::Deref(DerefAdjustKind::Builtin) =
+                &adjustment.kind
+            {
                 projs.push(Proj { ty: adjustment.target, kind: ProjKind::Deref });
             } else {
                 return None;
@@ -1310,75 +1326,6 @@ pub(crate) fn get_override_closure_kind<'tcx>(
 
 // Utilities to replace Region::ReErased with bound regions
 
-/// Based on fn_sig but we replace erased regions with named regions in the early binders
-/// e.g., suppose the function is `f<T>(t: T) -> T` and we instantiate T with `&mut U`.
-/// We ultimately want to get out a signature like `for<'a> &'a U -> &'a U`.
-/// To do this, we first have to name the erased regions in `&mut U` -> `&'a mut U`.
-pub(crate) fn fn_sig_with_region_vars<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> PolyFnSig<'tcx> {
-    match ty.kind() {
-        TyKind::FnPtr(..) => ty.fn_sig(tcx),
-        TyKind::FnDef(def_id, args) => {
-            let mut replacer = ReErasedReplacer::new(tcx);
-            let args = args.fold_with(&mut replacer);
-            let f = tcx.fn_sig(def_id).instantiate(tcx, args);
-
-            // suppose the new vars we introduced are e_1, e_2, ..., e_n
-            // while our late binders are l_1, ..., l_m
-            // Right now, f is a sig that look like `for<l_1, ..., l_m> fn(...)`
-            // where the e_i vars are bound freely (debruijn innermost).
-            // We want to transform this to:
-            // for<l_1, ..., l_m, e_1, ..., e_n> fn(...)
-
-            let late_len = f.bound_vars().len();
-            let f2 =
-                rustc_middle::ty::fold_regions(tcx, f.skip_binder(), |region, current_index| {
-                    match region.kind() {
-                        rustc_middle::ty::ReBound(
-                            BoundVarIndexKind::Bound(debruijn),
-                            bound_region,
-                        ) => {
-                            if debruijn == current_index {
-                                // l_i var; leave it as is
-                                region
-                            } else if debruijn == current_index.shifted_in(1) {
-                                // e_i var; bump it down an index and move it to
-                                // the correct location in the new var list
-                                let new_bound_region = BoundRegion {
-                                    var: BoundVar::from_usize(
-                                        bound_region.var.as_usize() + late_len,
-                                    ),
-                                    kind: bound_region.kind,
-                                };
-                                rustc_middle::ty::Region::new_bound(
-                                    tcx,
-                                    current_index,
-                                    new_bound_region,
-                                )
-                            } else {
-                                panic!("fn_sig_with_region_vars failed");
-                            }
-                        }
-                        _ => region,
-                    }
-                });
-
-            let mut bound_variable_kinds = vec![];
-            for kind in f.bound_vars().iter() {
-                bound_variable_kinds.push(kind.clone());
-            }
-            for _i in 0..replacer.current_var {
-                bound_variable_kinds.push(BoundVariableKind::Region(BoundRegionKind::Anon));
-            }
-            let binders2 = tcx.mk_bound_variable_kinds(&bound_variable_kinds);
-
-            Binder::bind_with_vars(f2, binders2)
-        }
-        _ => {
-            panic!("fn_sig_with_region_vars doesn't know how to handle this TyKind")
-        }
-    }
-}
-
 struct ReErasedReplacer<'tcx> {
     tcx: TyCtxt<'tcx>,
     current_index: rustc_middle::ty::DebruijnIndex,
@@ -1691,6 +1638,9 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
             if cx.is_upvar(var_hir_id) {
                 continue;
             }
+            if crate::verus_expr::is_bound_via_pattern_guard(cx, var_hir_id) {
+                continue;
+            }
             let place_expr = cx.convert_captured_hir_place(expr, capt.place.clone());
             let place_expr = cx.thir.exprs.push(place_expr);
             let shadow_place = crate::verus_time_travel_prevention::shadow_place(
@@ -1832,26 +1782,6 @@ pub(crate) fn make_fake_call_kind<'tcx>(
     args: Vec<ExprId>,
 ) -> ExprKind<'tcx> {
     let f = erased_ghost_value(cx, erasure_ctxt, hir_id, span, fn_ty);
-
-    ExprKind::Call {
-        ty: fn_ty,
-        fun: f,
-        args: args.into_boxed_slice(),
-        from_hir_call: false,
-        fn_span: span,
-    }
-}
-
-pub(crate) fn make_fake_call_kind_with_original_fn<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    erasure_ctxt: &VerusErasureCtxt,
-    hir_id: HirId,
-    span: Span,
-    fn_ty: Ty<'tcx>,
-    original_fn: ExprId,
-    args: Vec<ExprId>,
-) -> ExprKind<'tcx> {
-    let f = erased_ghost_value_with_args(cx, erasure_ctxt, hir_id, span, fn_ty, vec![original_fn]);
 
     ExprKind::Call {
         ty: fn_ty,

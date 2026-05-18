@@ -244,7 +244,7 @@ check_send!(cell_points_to_send, cell_points_to_send2, "<T: Send>", "vstd::cell:
 check_sync!(cell_points_to_sync, cell_points_to_sync2, "<T: Sync>", "vstd::cell::PointsTo<T>");
 check_none!(cell_points_none, cell_points_none2, "<T>", "vstd::cell::PointsTo<T>");
 
-check_send_sync!(pcell, "<T: Send + Sync>", "vstd::cell::PCell<T>");
+check_send_sync!(pcell, "<T: Send + Sync>", "vstd::cell::pcell::PCell<T>");
 
 check_covariant!(
     cell_points_to_covariant,

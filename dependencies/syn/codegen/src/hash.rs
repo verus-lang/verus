@@ -160,7 +160,9 @@ pub fn generate(defs: &Definitions) -> Result<()> {
         quote! {
             #[cfg(any(feature = "derive", feature = "full"))]
             use crate::tt::TokenStreamHelper;
-            use std::hash::{Hash, Hasher};
+            #[cfg(feature = "extra-traits")]
+            use alloc::string::ToString;
+            use core::hash::{Hash, Hasher};
 
             #impls
         },

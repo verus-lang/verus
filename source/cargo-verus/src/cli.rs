@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Clone, Debug, Parser)]
@@ -175,14 +175,13 @@ fn has_late_verus_arg(opts: &CargoOptions) -> bool {
 }
 
 impl CargoVerusCli {
-    pub fn from_args(args: impl Iterator<Item = String>) -> Result<Self> {
+    pub fn from_args<'a>(args: impl Iterator<Item = &'a str>) -> Result<Self> {
         let normalized_args = normalize_args(args);
         let mut parsed_cli = CargoVerusCli::parse_from(normalized_args).clap_trailing_args_hotfix();
 
         if parsed_cli.has_inadvisable_verus_arg() {
             eprintln!("Args forwarded to Cargo must precede args forwarded to Verus");
-            // TODO: Consider replacing this with `return Err(anyhow!("message above^"))`.
-            std::process::exit(2);
+            return Err(anyhow!("Args forwarded to Cargo must precede args forwarded to Verus"));
         }
 
         parsed_cli.set_fwd_verus_args_to_default();
@@ -242,6 +241,6 @@ impl CargoVerusCli {
     }
 }
 
-fn normalize_args(args: impl Iterator<Item = String>) -> impl Iterator<Item = String> {
-    args.enumerate().filter(|(i, arg)| *i != 1 || arg != "verus").map(|(_, arg)| arg)
+fn normalize_args<'a>(args: impl Iterator<Item = &'a str>) -> impl Iterator<Item = &'a str> {
+    args.enumerate().filter(|(i, arg)| *i != 1 || *arg != "verus").map(|(_, arg)| arg)
 }

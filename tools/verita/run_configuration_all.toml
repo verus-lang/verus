@@ -1,7 +1,6 @@
 verus_git_url = "https://github.com/verus-lang/verus.git"
 verus_refspec = "main"
-verus_features = ["singular"]
-verus_extra_verus_args = ["--no-report-long-running"]
+verus_extra_args = ["--no-report-long-running"]
 
 # Successes
 
@@ -41,7 +40,7 @@ extra_verus_args = [
 prepare_script = """
 pushd test_libc
 cargo clean
-cargo +1.94.0 build --release
+cargo +1.95.0 build --release
 popd
 LIBC_RLIB_NAME=$(find ./test_libc/target/release/deps/ -name 'liblibc-*.rlib')
 mkdir -p build
@@ -51,7 +50,7 @@ prepare_script_windows = """
 $ErrorActionPreference = 'Stop'
 Push-Location test_libc
 cargo clean
-cargo +1.94.0 build --release
+cargo +1.95.0 build --release
 Pop-Location
 $libcRlib = Get-ChildItem -Path "./test_libc/target/release/deps/" -Filter "liblibc-*.rlib" | Select-Object -First 1
 New-Item -ItemType Directory -Path "build" -Force | Out-Null
@@ -74,49 +73,55 @@ cargo install vest
 
 [[project]]
 name = "human-eval"
-#TODO: restore original git_url, refspec:
-#git_url = "https://github.com/secure-foundations/human-eval-verus.git"
-#refspec = "main"
-git_url = "https://github.com/Chris-Hawblitzel/human-eval-verus.git"
-refspec = "origin/rlimit"
+git_url = "https://github.com/secure-foundations/human-eval-verus.git"
+refspec = "main"
 crate_roots = ["tasks/lib.rs"]
 extra_verus_args = ["--crate-type=lib"]
 
 [[project]]
 name = "page-table"
-#TODO: restore original git_url:
-#git_url = "https://github.com/matthias-brun/verified-nrkernel.git"
-git_url = "https://github.com/Chris-Hawblitzel/verified-nrkernel.git"
+git_url = "https://github.com/matthias-brun/verified-nrkernel.git"
 refspec = "main"
 crate_roots = ["page-table/src/lib.rs"]
 extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"impl\""]
 
+[[project]]
+name = "svsm"
+git_url = "https://github.com/ziqiaozhou/svsm.git"
+refspec = "origin/verita"
+cargo_verus = true
+extra_cargo_args = ["--features", "verus"]
+crate_roots = ["kernel"]
 
-# Fails 
+# This project has Cargo.lock and need to do cargo update after patching verus libs.
+prepare_script = """
+git submodule init
+git submodule update
+cargo update
+rustup target add x86_64-unknown-none --toolchain 1.95.0
+"""
 
 [[project]]
 name = "anvil"
 git_url = "https://github.com/anvil-verifier/anvil"
 refspec = "main"
-# Fails with "variable shadowing not yet supported" in vstd/std_specs/option.rs
-#   and with "function body check: Resource limit (rlimit) exceeded on newly_added_msg_have_different_id_from_existing_ones
-ignore= true
-crate_roots = ["src/vdeployment_admission_controller.rs"]
+crate_roots = ["src/esr_composition.rs"]
 extra_verus_args = ["--crate-type=lib", 
               "-L", "dependency=src/deps_hack/target/debug/deps",
-              "--extern=deps_hack=\"src/deps_hack/target/debug/libdeps_hack.rlib\"",
+              "--extern=deps_hack=src/deps_hack/target/debug/libdeps_hack.rlib",
+              "--rlimit", "50",
+              "--verify-module", "vdeployment_controller", # remove this line to run full verification on all 4 controllers
               "-A", "warnings"]
 prepare_script = """
 pushd src/deps_hack
 cargo clean
-cargo +1.94.0 build
+cargo build
 popd
 """
 prepare_script_windows = """
 $ErrorActionPreference = 'Stop'
 Push-Location src/deps_hack
 cargo clean
-cargo +1.94.0 build
+cargo build
 Pop-Location
 """
-

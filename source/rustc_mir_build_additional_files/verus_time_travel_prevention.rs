@@ -74,8 +74,7 @@ can actually be declared.
 
 ### Two-phase borrows
 
-For two-phase borrows, we can't use the `mutable_references_tie` solution like we would
-for normal mutable borrows. Imagine we expanded:
+Two-phase borrows pose an additional challenge. Imagine we expanded:
 
 ```
 f(&mut[two_phase] x, y)
@@ -87,14 +86,26 @@ to:
 f(mutable_reference_tie(&mut[two_phase] x, &mut x_shadow), y)
 ```
 
-The problem is that the scope of the two-phase borrow only extends through the
-artificial `mutable_reference_tie` call, not through the entire `f` call.
+The problem is that the scope of the first phase of two-phase borrow only extends through to the
+artificial `mutable_reference_tie` call (i.e., before the evaluation of `y`) whereas we need
+it to go all the way to the `f` call (i.e., after the evaluation of `y`).
 
-We do this instead:
+To my knowledge, extending the two-phase borrow in this way isn't expressible in THIR.
+Therefore, this requires us to also modify the THIR->MIR conversion. First, we use
+a different identifier for the "tie" function so that the case is recognizable.
 
 ```
-fake_f(&mut[two_phase] x, &mut[two_phase] x_shadow, y)
+f(two_phase_mutable_reference_tie(&mut[two_phase] x, &mut x_shadow), y)
 ```
+
+Then we modify the MIR builder to look for `two_phase_mutable_reference_tie` calls and modify
+the evaluation order correspondingly. In the above case, the evalution order would be:
+
+ - `tmp1 = &mut[two_phase x]`
+ - `tmp2 = &mut[two_phase x_shadow]`
+ - `arg2 = y`
+ - `arg1 = two_phase_mutable_reference_tie(tmp1, tmp2)`
+ - `f(arg1, arg2)`
 
 ### Patterns
 
@@ -156,24 +167,69 @@ to be replicated for the shadow var.
 Inside a closure, we don't emit shadow vars for captured vars. Instead, those are
 emitted by the enclosing fn/closure at the point the closure is created.
 This is handled with the rest of closure-handling, in verus.rs.
+
+### Pattern guards
+
+When a variable is bound by a pattern with a guard, that variable is in-scope during the guard,
+but it cannot be mutably borrowed from. Therefore, we do not need to bind a shadow variable
+during a guard.
+
+```rust
+match m {
+    x if ({
+        // guard expression
+        // don't need to bound any shadow variables here or perform shadow transformations
+        // related to `x`
+    }) => ({
+        let x_shadow = ...; // bind shadow variables here
+    })
+}
+```
+
+### Loops
+
+Loops make for an additional complication because the way they are encoded in Verus source / HIR
+does not correspond to their conceptual "evaluation" points, e.g., a while-loop would be desugared
+as thus:
+
+```rust
+loop {
+    if cond() {
+        ::verus_builtin::invariant(...);
+        body;
+    } else {
+        break;
+    }
+}
+```
+
+when the conceptual evaluation point of the `invariant` is at the beginning/end of the loop.
+Same issue for `invariant_except_break` / `ensures` / `decreases`
+(and remember that the prophecy check is essential for soundness when it comes to decreases).
+
+To resolve this, we have to handle all loop headers specially. First, we simply ignore them
+when we encounter them during the main traversal (they should be marked EraseAbsolutely).
+Then, when handling the Loop node itself, we insert the headers' shadow usages at the
+appropriate program points.
 */
 
 use crate::rustc_index::Idx;
 use crate::thir::cx::ThirBuildCx;
 use crate::verus::{LocalUse, expr_id_from_kind};
 use crate::verus::{
-    VarErasure, VerusErasureCtxt, erased_ghost_value, erased_ghost_value_kind_with_args,
-    make_fake_call_kind_with_original_fn, shadow_ghost_value_kind_with_args,
+    LoopSpecEvaluationLocation, TreeErase, VarErasure, VerusErasureCtxt, erase_tree_kind,
+    erased_ghost_value, erased_ghost_value_kind_with_args, shadow_ghost_value_kind_with_args,
 };
 use rustc_hir as hir;
+use rustc_hir::def_id::LocalDefId;
 use rustc_hir::{BindingMode, ByRef, HirId, Mutability, Pinnedness};
 use rustc_middle::middle::region;
 use rustc_middle::mir::{BorrowKind, MutBorrowKind};
 use rustc_middle::thir::{
     Arm, ArmId, Block, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, LogicalOp, Pat, PatKind,
-    Stmt, StmtId, StmtKind,
+    Stmt, StmtId, StmtKind, Thir,
 };
-use rustc_middle::ty::{GenericArg, Region, RegionKind, Ty, TyKind};
+use rustc_middle::ty::{GenericArg, Region, RegionKind, Ty, TyCtxt, TyKind};
 use rustc_span::Span;
 use rustc_span::Symbol;
 
@@ -191,32 +247,28 @@ pub(crate) fn expr_post<'tcx>(
 
     match &kind {
         ExprKind::Borrow { borrow_kind: BorrowKind::Mut { kind: borrow_kind_mut }, arg: _ } => {
-            match borrow_kind_mut {
-                MutBorrowKind::Default | MutBorrowKind::ClosureCapture => {
-                    // Turn `&mut place` into
-                    // `&mut mutable_reference_tie(&mut place, &mut shadow_place)`
-                    // If the place is a temporary, we don't need to do the transformation.
-                    let shadow =
-                        shadow_mut_ref_kind(cx, hir_expr.hir_id, hir_expr.span, kind.clone());
-                    match shadow {
-                        None => kind,
-                        Some(shadow_kind) => {
-                            let main_expr =
-                                expr_id_from_kind(cx, kind, hir_expr.hir_id, hir_expr.span, ty);
-                            let shadow_expr = expr_id_from_kind(
-                                cx,
-                                shadow_kind,
-                                hir_expr.hir_id,
-                                hir_expr.span,
-                                ty,
-                            );
-                            tie_mut_refs(cx, hir_expr.hir_id, hir_expr.span, main_expr, shadow_expr)
-                        }
-                    }
-                }
-                MutBorrowKind::TwoPhaseBorrow => {
-                    // must be handled separately
-                    kind
+            let two_phase = match borrow_kind_mut {
+                MutBorrowKind::Default | MutBorrowKind::ClosureCapture => false,
+                MutBorrowKind::TwoPhaseBorrow => true,
+            };
+            // Turn `&mut place` into
+            // `&mut mutable_reference_tie(&mut place, &mut shadow_place)`
+            // If the place is a temporary, we don't need to do the transformation.
+            let shadow = shadow_mut_ref_kind(cx, hir_expr.hir_id, hir_expr.span, kind.clone());
+            match shadow {
+                None => kind,
+                Some(shadow_kind) => {
+                    let main_expr = expr_id_from_kind(cx, kind, hir_expr.hir_id, hir_expr.span, ty);
+                    let shadow_expr =
+                        expr_id_from_kind(cx, shadow_kind, hir_expr.hir_id, hir_expr.span, ty);
+                    tie_mut_refs(
+                        cx,
+                        hir_expr.hir_id,
+                        hir_expr.span,
+                        main_expr,
+                        shadow_expr,
+                        two_phase,
+                    )
                 }
             }
         }
@@ -260,7 +312,7 @@ pub(crate) fn expr_post<'tcx>(
         ExprKind::LoopMatch { .. } => {
             panic!("Verus Internal Error: LoopMatch not supported");
         }
-        ExprKind::Call { .. } => call_post(cx, hir_expr, ty, kind),
+        ExprKind::Loop { .. } => loop_post(cx, hir_expr, ty, kind),
         _ => kind,
     }
 }
@@ -402,6 +454,31 @@ pub(crate) fn expand_stmt<'tcx>(
 ///   && let x_shadow = arbitrary_ghost_value();
 ///   && let y_shadow = arbitrary_ghost_value();
 /// ```
+///
+/// We need to be careful about refutability issues. Rust always adds an extra edge for
+/// the match-failure cases of a let expression. (This even includes let expressions
+/// where the pattern is actually refutable, e.g., our
+/// `let x_shadow = arbitrary_ghost_value()` line.)
+///
+/// This can cause problems in a scenario like:
+///
+/// ```rust
+/// fn test_if_let_move(s: Option<String>) {
+///     if let Some(a) = s {
+///         let t1 = a;
+///     } else {
+///         let t2 = s;
+///     }
+/// }
+/// ```
+///
+/// Here, the extra clauses added by our translation create extra CFG edges, which means
+/// that we do a move out of `s` and then reach the else-block (which wouldn't be the case
+/// if this were translated normally).
+///
+/// To deal with this, we *also* modify the THIR->MIR lowering to skip this extra edge
+/// for any Let expression that we determine to be the result of our half-pattern translation.
+/// See `let_expr_treat_as_irrefutable`.
 fn expr_let_post<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &hir::Expr<'tcx>,
@@ -464,6 +541,122 @@ fn expr_let_post<'tcx>(
     }
 
     conjoin_exprs(cx, &let_exprs, hir_expr.hir_id, hir_expr.span)
+}
+
+/// Returns true if this is one of our inserted LetExprs which should be treated
+/// as irrefutable.
+pub(crate) fn let_expr_treat_as_irrefutable<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    thir: &Thir<'tcx>,
+    local_def_id: LocalDefId,
+    pat: &Pat<'tcx>,
+    expr_id: ExprId,
+) -> bool {
+    let Some(erasure_ctxt) = crate::verus::get_verus_erasure_ctxt_option() else {
+        return false;
+    };
+
+    let enclosing_def_id = crate::verus::enclosing_fn_local_def_id(tcx, local_def_id);
+
+    // This will catch either:
+    // `let (ref mut x_half2, _) = shadow_place`
+    // or:
+    // `let x_shadow = arbitrary_ghost_value()`
+    if pat_has_shadow(enclosing_def_id, pat) {
+        return true;
+    }
+
+    // This will catch:
+    // let x = mutable_reference_tie(x_half1, x_half2)
+    match &thir.exprs[expr_id].kind {
+        ExprKind::Call { fun, args, .. } => match thir.exprs[*fun].ty.kind() {
+            TyKind::FnDef(fn_def_id, _)
+                if *fn_def_id == erasure_ctxt.mutable_reference_tie_fn_def_id =>
+            {
+                assert!(args.len() == 2);
+                match &thir.exprs[args[1]].kind {
+                    ExprKind::VarRef { id } => is_half_var_id(enclosing_def_id, *id, Half::Shadow),
+                    _ => false,
+                }
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// Does the pat contain a `x_shadow` var or `x_half2` var?
+fn pat_has_shadow<'tcx>(enclosing_def_id: LocalDefId, pat: &Pat<'tcx>) -> bool {
+    match &pat.kind {
+        PatKind::Missing => false,
+        PatKind::Wild => false,
+        PatKind::Binding {
+            name: _,
+            mode: _,
+            var,
+            ty: _,
+            subpattern,
+            is_primary: _,
+            is_shorthand: _,
+        } => {
+            if is_half_var_id(enclosing_def_id, *var, Half::Shadow) {
+                return true;
+            }
+            if is_shadow_var_id(enclosing_def_id, *var) {
+                return true;
+            }
+            if let Some(subpat) = subpattern {
+                if pat_has_shadow(enclosing_def_id, subpat) {
+                    return true;
+                }
+            }
+            false
+        }
+        PatKind::Variant { adt_def: _, args: _, variant_index: _, subpatterns }
+        | PatKind::Leaf { subpatterns } => {
+            for field_pat in subpatterns.iter() {
+                if pat_has_shadow(enclosing_def_id, &field_pat.pattern) {
+                    return true;
+                }
+            }
+            false
+        }
+
+        PatKind::Deref { subpattern, pin: _ } => pat_has_shadow(enclosing_def_id, subpattern),
+        PatKind::DerefPattern { subpattern, borrow: _ } => {
+            pat_has_shadow(enclosing_def_id, subpattern)
+        }
+        PatKind::Constant { value: _ } => false,
+        PatKind::Range(_pat_range) => false,
+        PatKind::Slice { prefix, slice, suffix } | PatKind::Array { prefix, slice, suffix } => {
+            for p in prefix.iter() {
+                if pat_has_shadow(enclosing_def_id, p) {
+                    return true;
+                }
+            }
+            if let Some(sl) = slice {
+                if pat_has_shadow(enclosing_def_id, sl) {
+                    return true;
+                }
+            }
+            for p in suffix.iter() {
+                if pat_has_shadow(enclosing_def_id, p) {
+                    return true;
+                }
+            }
+            false
+        }
+        PatKind::Or { pats } => {
+            for pat in pats.iter() {
+                if pat_has_shadow(enclosing_def_id, pat) {
+                    return true;
+                }
+            }
+            false
+        }
+        PatKind::Never => false,
+        PatKind::Error(_error_guaranteed) => false,
+    }
 }
 
 /// Translate the given arm with the 'half pattern' transformation. The arm's pattern is
@@ -614,7 +807,7 @@ fn pattern_bindings_rec<'tcx>(bindings: &mut Vec<Binding<'tcx>>, pat: &Pat<'tcx>
                 pattern_bindings_rec(bindings, &field_pat.pattern);
             }
         }
-        PatKind::Deref { subpattern } => {
+        PatKind::Deref { subpattern, pin: _ } => {
             pattern_bindings_rec(bindings, subpattern);
         }
         PatKind::DerefPattern { subpattern, borrow: _ } => {
@@ -704,7 +897,7 @@ fn make_half_pat_rec<'tcx>(pat: &mut Pat<'tcx>, half_kind: Half) {
                 make_half_pat_rec(&mut field_pat.pattern, half_kind);
             }
         }
-        PatKind::Deref { subpattern } => {
+        PatKind::Deref { subpattern, pin: _ } => {
             make_half_pat_rec(subpattern, half_kind);
         }
         PatKind::DerefPattern { subpattern, borrow: _ } => {
@@ -813,7 +1006,6 @@ fn make_half_decl<'tcx>(
 }
 
 /// Same as `make_half_decl`, but returns a let expression instead of let statement.
-/// For let expressions, we don't have to worry about refutability.
 fn make_half_let_expr<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     _erasure_ctxt: &VerusErasureCtxt,
@@ -899,7 +1091,7 @@ fn make_tie_halves_components<'tcx>(
         binding.span,
         binding.ty,
     );
-    let tied_kind = tie_mut_refs(cx, hir_id, binding.span, e1, e2);
+    let tied_kind = tie_mut_refs(cx, hir_id, binding.span, e1, e2, false);
     let tied = expr_id_from_kind(cx, tied_kind, hir_id, binding.span, binding.ty);
     (pat, tied)
 }
@@ -1002,6 +1194,27 @@ fn half_local_var_id(v: LocalVarId, hk: Half) -> LocalVarId {
     )
 }
 
+/// Is this an `x_half1`/`x_half2` identifier?
+fn is_half_var_id(enclosing_def_id: LocalDefId, v: LocalVarId, hk: Half) -> bool {
+    let v_id = v.0.owner.def_id.local_def_index.as_usize();
+    let main_id = enclosing_def_id.local_def_index.as_usize();
+    let modifier_offset = v_id.checked_sub(main_id).unwrap();
+    assert!(modifier_offset <= 3);
+    match hk {
+        Half::Normal => modifier_offset == 2,
+        Half::Shadow => modifier_offset == 3,
+    }
+}
+
+/// Is this an `x_shadow` identifier?
+fn is_shadow_var_id(enclosing_def_id: LocalDefId, v: LocalVarId) -> bool {
+    let v_id = v.0.owner.def_id.local_def_index.as_usize();
+    let main_id = enclosing_def_id.local_def_index.as_usize();
+    let modifier_offset = v_id.checked_sub(main_id).unwrap();
+    assert!(modifier_offset <= 3);
+    modifier_offset == 1
+}
+
 /// Make a fresh LocalVarId
 fn modded_local_var_id(v: LocalVarId, mod_idx: usize) -> LocalVarId {
     // The easiest way to make unique LocalVarIds for the shadow variables
@@ -1086,13 +1299,17 @@ fn shadow_place_rec<'tcx>(
             let index = erased_ghost_value(cx, &erasure_ctxt, hir_id, span, index_ty);
             ExprKind::Index { lhs, index }
         }
-        ExprKind::VarRef { id } => ExprKind::VarRef { id: shadow_local_var_id(*id) },
-        ExprKind::UpvarRef { var_hir_id, closure_def_id: _ } => {
-            ExprKind::VarRef { id: shadow_local_var_id(*var_hir_id) }
+        ExprKind::VarRef { id } => {
+            if crate::verus_expr::is_bound_via_pattern_guard(cx, id.0) {
+                return None;
+            }
+            ExprKind::VarRef { id: shadow_local_var_id(*id) }
+        }
+        ExprKind::UpvarRef { var_hir_id: _, closure_def_id: _ } => {
+            return None;
         }
 
-        ExprKind::Box { .. }
-        | ExprKind::If { .. }
+        ExprKind::If { .. }
         | ExprKind::Call { .. }
         | ExprKind::ByUse { .. }
         | ExprKind::Binary { .. }
@@ -1156,6 +1373,7 @@ fn tie_mut_refs<'tcx>(
     span: Span,
     e1: ExprId,
     e2: ExprId,
+    two_phase: bool,
 ) -> ExprKind<'tcx> {
     let erasure_ctxt = cx.verus_ctxt.ctxt.clone().unwrap();
 
@@ -1174,7 +1392,11 @@ fn tie_mut_refs<'tcx>(
     let arg1 = GenericArg::from(e1_ty_inner);
     let arg2 = GenericArg::from(e2_ty_inner);
     let args = cx.tcx.mk_args(&[arg1, arg2]);
-    let fn_def_id = erasure_ctxt.mutable_reference_tie_fn_def_id;
+    let fn_def_id = if two_phase {
+        erasure_ctxt.two_phase_mutable_reference_tie_fn_def_id
+    } else {
+        erasure_ctxt.mutable_reference_tie_fn_def_id
+    };
     let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
 
     let fun_expr_kind = ExprKind::ZstLiteral { user_ty: None };
@@ -1189,113 +1411,23 @@ fn tie_mut_refs<'tcx>(
     }
 }
 
-/// Post-process a function call, dealing with two-phase borrows
-pub(crate) fn call_post<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    hir_expr: &hir::Expr<'tcx>,
-    _return_ty: Ty<'tcx>,
-    kind: ExprKind<'tcx>,
-) -> ExprKind<'tcx> {
-    let erasure_ctxt = cx.verus_ctxt.ctxt.clone().unwrap();
-    let tcx = cx.tcx;
-
-    let ExprKind::Call { ref args, ty: fun_ty, fun, .. } = kind else { panic!("expr_let_post") };
-
-    match fun_ty.kind() {
-        TyKind::FnDef(def_id, _) if *def_id == erasure_ctxt.erased_ghost_value_fn_def_id => {
-            return kind;
-        }
-        _ => {}
-    }
-
-    let mut arg_transforms = vec![];
-    for arg in args.iter() {
-        if let Some(shadow) = get_two_phase_arg(cx, hir_expr, *arg) {
-            arg_transforms.push(ArgTransform::TwoPhaseShadow(shadow));
-        } else {
-            arg_transforms.push(ArgTransform::Normal);
-        }
-    }
-
-    if arg_transforms.iter().all(|arg| *arg == ArgTransform::Normal) {
-        return kind;
-    }
-
-    let fn_sig = crate::verus::fn_sig_with_region_vars(tcx, fun_ty);
-    let bound_var_kinds = fn_sig.bound_vars();
-    let output_ty = fn_sig.skip_binder().output();
-
-    let mut new_args: Vec<ExprId> = vec![];
-    let mut new_input_tys: Vec<Ty> = vec![];
-    for (i, (arg, arg_transform)) in args.iter().zip(arg_transforms.iter()).enumerate() {
-        let ty = fn_sig.skip_binder().inputs()[i];
-        match arg_transform {
-            ArgTransform::Normal => {
-                new_args.push(*arg);
-                new_input_tys.push(ty);
+pub(crate) fn is_two_phase_mutable_reference_tie<'tcx>(
+    thir: &Thir<'tcx>,
+    expr_id: ExprId,
+) -> Option<(ExprId, ExprId, ExprId, Ty<'tcx>)> {
+    let Some(erasure_ctxt) = crate::verus::get_verus_erasure_ctxt_option() else {
+        return None;
+    };
+    match &thir.exprs[expr_id].kind {
+        ExprKind::Call { ty, fun, args, .. } => match ty.kind() {
+            TyKind::FnDef(fn_def_id, _)
+                if *fn_def_id == erasure_ctxt.two_phase_mutable_reference_tie_fn_def_id =>
+            {
+                assert!(args.len() == 2);
+                Some((*fun, args[0], args[1], thir.exprs[expr_id].ty))
             }
-            ArgTransform::TwoPhaseShadow(shadow_id) => {
-                new_args.push(*arg);
-                new_args.push(*shadow_id);
-                new_input_tys.push(ty);
-                new_input_tys.push(ty);
-            }
-        }
-    }
-
-    let inputs_and_output =
-        tcx.mk_type_list_from_iter(new_input_tys.iter().cloned().chain(std::iter::once(output_ty)));
-    let fnty = tcx.mk_ty_from_kind(TyKind::FnPtr(
-        rustc_middle::ty::Binder::bind_with_vars(
-            rustc_middle::ty::FnSigTys { inputs_and_output },
-            bound_var_kinds,
-        ),
-        rustc_middle::ty::FnHeader {
-            c_variadic: false,
-            safety: rustc_hir::Safety::Safe,
-            abi: rustc_abi::ExternAbi::Rust,
+            _ => None,
         },
-    ));
-
-    make_fake_call_kind_with_original_fn(
-        cx,
-        &erasure_ctxt,
-        hir_expr.hir_id,
-        hir_expr.span,
-        fnty,
-        fun,
-        new_args,
-    )
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum ArgTransform {
-    Normal,
-    TwoPhaseShadow(ExprId),
-}
-
-fn get_two_phase_arg<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    hir_expr: &hir::Expr<'tcx>,
-    arg: ExprId,
-) -> Option<ExprId> {
-    let kind = &cx.thir.exprs[arg].kind;
-    match kind {
-        ExprKind::Borrow {
-            borrow_kind: BorrowKind::Mut { kind: MutBorrowKind::TwoPhaseBorrow },
-            arg: _,
-        } => match shadow_mut_ref_kind(cx, hir_expr.hir_id, hir_expr.span, kind.clone()) {
-            Some(shadow_arg_kind) => {
-                let ty = cx.thir.exprs[arg].ty;
-                let shadow_arg =
-                    expr_id_from_kind(cx, shadow_arg_kind, hir_expr.hir_id, hir_expr.span, ty);
-                Some(shadow_arg)
-            }
-            None => None,
-        },
-        ExprKind::Scope { hir_id: _, region_scope: _, value } => {
-            get_two_phase_arg(cx, hir_expr, *value)
-        }
         _ => None,
     }
 }
@@ -1318,6 +1450,9 @@ pub(crate) fn shadow_var_uses<'tcx>(
         }
 
         if cx.is_upvar(local_use.local.0) {
+            continue;
+        }
+        if crate::verus_expr::is_bound_via_pattern_guard(cx, local_use.local.0) {
             continue;
         }
 
@@ -1530,4 +1665,151 @@ fn sequence_2_unit_exprs<'tcx>(
         cx.tcx.types.unit,
         vec![e1, e2],
     )
+}
+
+pub(crate) fn loop_post<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    hir_expr: &hir::Expr<'tcx>,
+    ty: Ty<'tcx>,
+    kind: rustc_middle::thir::ExprKind<'tcx>,
+) -> rustc_middle::thir::ExprKind<'tcx> {
+    let rustc_hir::ExprKind::Loop(hir_block, ..) = &hir_expr.kind else {
+        panic!("Verus Internal Error: Expected ExprKind::Loop from THIR Loop");
+    };
+
+    let erasure_ctxt = cx.verus_ctxt.ctxt.clone().unwrap();
+
+    let Some(loop_erasure) = erasure_ctxt.loop_erasure.get(&hir_expr.hir_id) else {
+        // nothing to do
+        return kind;
+    };
+
+    let mut inner_exprs = vec![];
+    let mut outer_exprs = vec![];
+
+    for (fn_hir_id, loc) in loop_erasure.specs.iter() {
+        let (inner, outer) = match loc {
+            LoopSpecEvaluationLocation::BodyStart => (true, false),
+            LoopSpecEvaluationLocation::PostLoop => (false, true),
+            LoopSpecEvaluationLocation::BodyStartAndPostLoop => (true, true),
+        };
+        let rustc_hir::Node::Expr(fn_hir_expr) = cx.tcx.hir_node(*fn_hir_id) else {
+            panic!("Verus Internal Error: loop_post expected expected Expr");
+        };
+        let rustc_hir::ExprKind::Call(_fn, args) = &fn_hir_expr.kind else {
+            panic!("Verus Internal Error: loop_post expected expected ExprKind::Call");
+        };
+        if args.len() != 1 {
+            panic!("Verus Internal Error: loop_post expected expected args.len() == 1");
+        }
+        let arg_hir_expr = &args[0];
+        let arg_ty = cx.typeck_results.expr_ty(arg_hir_expr);
+
+        if inner {
+            let kind =
+                erase_tree_kind(cx, arg_hir_expr, hir_block.hir_id, TreeErase::IncludeBasicChecks);
+            let e = expr_id_from_kind(cx, kind, hir_block.hir_id, hir_block.span, arg_ty);
+            inner_exprs.push(e);
+        }
+
+        if outer {
+            let kind =
+                erase_tree_kind(cx, arg_hir_expr, hir_expr.hir_id, TreeErase::IncludeBasicChecks);
+            let e = expr_id_from_kind(cx, kind, hir_expr.hir_id, hir_expr.span, arg_ty);
+            outer_exprs.push(e);
+        }
+    }
+
+    let mut kind = kind;
+
+    // Insert inner_exprs
+    let ExprKind::Loop { body } = kind else { unreachable!() };
+    let new_body = insert_exprs_before(cx, inner_exprs, body, hir_block);
+    kind = ExprKind::Loop { body: new_body };
+
+    // Insert outer_exprs
+    kind = insert_exprs_after_kind(cx, kind, ty, outer_exprs, hir_expr);
+
+    return kind;
+}
+
+fn insert_exprs_before<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    pre_exprs: Vec<ExprId>,
+    last_expr: ExprId,
+    hir_block: &rustc_hir::Block<'tcx>,
+) -> ExprId {
+    if pre_exprs.len() == 0 {
+        return last_expr;
+    }
+    let scope =
+        region::Scope { local_id: hir_block.hir_id.local_id, data: region::ScopeData::Node };
+    let mut stmts = vec![];
+    for e in pre_exprs.into_iter() {
+        let stmt = Stmt { kind: StmtKind::Expr { scope, expr: e } };
+        stmts.push(cx.thir.stmts.push(stmt));
+    }
+    let block = Block {
+        targeted_by_break: false,
+        region_scope: scope,
+        span: hir_block.span,
+        stmts: stmts.into_boxed_slice(),
+        expr: Some(last_expr),
+        safety_mode: BlockSafety::Safe,
+    };
+    let block = cx.thir.blocks.push(block);
+    let kind = ExprKind::Block { block };
+    let ty = cx.thir.exprs[last_expr].ty;
+    expr_id_from_kind(cx, kind, hir_block.hir_id, hir_block.span, ty)
+}
+
+fn insert_exprs_after_kind<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    kind: rustc_middle::thir::ExprKind<'tcx>,
+    ty: Ty<'tcx>,
+    post_exprs: Vec<ExprId>,
+    hir_expr: &rustc_hir::Expr<'tcx>,
+) -> rustc_middle::thir::ExprKind<'tcx> {
+    if post_exprs.len() == 0 {
+        return kind;
+    }
+    let erasure_ctxt = cx.verus_ctxt.ctxt.clone().unwrap();
+
+    let e1 = expr_id_from_kind(cx, kind, hir_expr.hir_id, hir_expr.span, ty);
+
+    let scope = region::Scope { local_id: hir_expr.hir_id.local_id, data: region::ScopeData::Node };
+    let mut stmts = vec![];
+    for e in post_exprs.into_iter() {
+        let stmt = Stmt { kind: StmtKind::Expr { scope, expr: e } };
+        stmts.push(cx.thir.stmts.push(stmt));
+    }
+    let block = Block {
+        targeted_by_break: false,
+        region_scope: scope,
+        span: hir_expr.span,
+        stmts: stmts.into_boxed_slice(),
+        expr: None,
+        safety_mode: BlockSafety::Safe,
+    };
+    let block = cx.thir.blocks.push(block);
+    let kind = ExprKind::Block { block };
+    let e2 = expr_id_from_kind(cx, kind, hir_expr.hir_id, hir_expr.span, cx.tcx.types.unit);
+
+    // get_first(e1, e2)
+    let arg1 = GenericArg::from(cx.thir.exprs[e1].ty);
+    let arg2 = GenericArg::from(cx.thir.exprs[e2].ty);
+    let args = cx.tcx.mk_args(&[arg1, arg2]);
+    let fn_def_id = erasure_ctxt.get_first_fn_def_id;
+    let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
+
+    let fun_expr_kind = ExprKind::ZstLiteral { user_ty: None };
+    let fun_expr = expr_id_from_kind(cx, fun_expr_kind, hir_expr.hir_id, hir_expr.span, fn_ty);
+
+    ExprKind::Call {
+        ty: fn_ty,
+        fun: fun_expr,
+        args: Box::new([e1, e2]),
+        from_hir_call: false,
+        fn_span: hir_expr.span,
+    }
 }

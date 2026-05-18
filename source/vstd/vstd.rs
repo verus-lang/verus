@@ -17,7 +17,6 @@
 #![cfg_attr(verus_keep_ghost, feature(derive_clone_copy_internals))]
 #![cfg_attr(verus_keep_ghost, feature(derive_eq_internals))]
 #![cfg_attr(verus_keep_ghost, feature(slice_index_methods))]
-#![cfg_attr(verus_keep_ghost, verifier::deprecated_postcondition_mut_ref_style(true))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 #![cfg_attr(verus_keep_ghost, feature(new_range_api))]
 
@@ -37,6 +36,8 @@ pub mod contrib;
 pub mod endian;
 pub mod float;
 pub mod function;
+#[cfg(feature = "std")]
+pub mod future;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]
@@ -54,13 +55,12 @@ pub mod math;
 pub mod modes;
 pub mod multiset;
 pub mod multiset_lib;
-pub mod pcm;
-pub mod pcm_lib;
 pub mod pervasive;
 pub mod predicate;
 pub mod proph;
 pub mod raw_ptr;
 pub mod relations;
+pub mod resource;
 pub mod rwlock;
 pub mod seq;
 pub mod seq_lib;
@@ -71,7 +71,6 @@ pub mod shared;
 pub mod simple_pptr;
 pub mod slice;
 pub mod state_machine_internal;
-pub mod storage_protocol;
 pub mod string;
 #[cfg(feature = "std")]
 pub mod thread;
@@ -127,6 +126,7 @@ pub broadcast group group_vstd_default {
     std_specs::control_flow::group_control_flow_axioms,
     std_specs::slice::group_slice_axioms,
     std_specs::manually_drop::group_manually_drop_axioms,
+    std_specs::iter::group_iter_axioms,
     //
     // std_specs for alloc (with or without std)
     //
@@ -139,7 +139,7 @@ pub broadcast group group_vstd_default {
     //
     #[cfg(all(feature = "alloc", feature = "std"))]
     std_specs::hash::group_hash_axioms,
-    #[cfg(all(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     std_specs::btree::group_btree_axioms,
 }
 

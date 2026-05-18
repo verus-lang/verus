@@ -1188,8 +1188,8 @@ test_verify_one_file_with_options! {
         }
 
         proof fn good() {
-            inline_air_stmt("(assert (= (f.? (I 200) (I 3)) (Add (f.? (I 200) (I 3)) 0)))");
-            inline_air_stmt("(assume (= (f.? (I 200) (I 3)) (Add (f.? (I 200) (I 3)) 0)))");
+            inline_air_stmt("(assert (= (test_crate!f.? (I 200) (I 3)) (Add (test_crate!f.? (I 200) (I 3)) 0)))");
+            inline_air_stmt("(assume (= (test_crate!f.? (I 200) (I 3)) (Add (test_crate!f.? (I 200) (I 3)) 0)))");
         }
     } => Ok(())
 }
@@ -1207,8 +1207,8 @@ test_verify_one_file_with_options! {
         proof fn bad()
             ensures false
         {
-            inline_air_stmt("(assert (= (f.? (I 300) (I 3)) (Add (f.? (I 300) (I 3)) 1)))");
-            inline_air_stmt("(assume (= (f.? (I 300) (I 3)) (Add (f.? (I 300) (I 3)) 1)))");
+            inline_air_stmt("(assert (= (test_crate!f.? (I 300) (I 3)) (Add (test_crate!f.? (I 300) (I 3)) 1)))");
+            inline_air_stmt("(assume (= (test_crate!f.? (I 300) (I 3)) (Add (test_crate!f.? (I 300) (I 3)) 1)))");
         }
     } => Err(err) => { assert!(err.errors.len() == 1); }
 }
@@ -1232,11 +1232,11 @@ test_verify_one_file_with_options! {
         }
 
         fn test1() {
-            inline_air_stmt("(assert (= (some_spec_fn.? $ (CONST_INT 256)) true))");
+            inline_air_stmt("(assert (= (test_crate!some_spec_fn.? $ (CONST_INT 256)) true))");
         }
 
         fn test2() {
-            inline_air_stmt("(assert (= (some_spec_fn.? $ (CONST_INT 255)) true))"); // ok
+            inline_air_stmt("(assert (= (test_crate!some_spec_fn.? $ (CONST_INT 255)) true))"); // ok
         }
     } => Err(err) => { assert!(err.errors.len() == 1); }
 }
@@ -2292,4 +2292,46 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
+}
+
+test_verify_one_file! {
+    #[test] recursive_through_struct_with_invariants_ok verus_code!{
+        use vstd::prelude::*;
+        use vstd::atomic_ghost::*;
+        use vstd::cell::pcell as cell;
+        use vstd::cell::pcell::PCell;
+
+        pub struct Node {
+            pub data: u32,
+            pub next_node: Option<Box<LockedNode>>,
+        }
+
+        struct_with_invariants!{
+            pub struct LockedNode {
+                pub atomic: AtomicBool<_, Option<cell::PointsTo<Node>>, _>,
+                pub cell: PCell<Node>,
+                pub node_id: u32,
+            }
+
+            pub open spec fn wf(&self) -> bool {
+                invariant on atomic with (cell, node_id) is (v: bool, g: Option<cell::PointsTo<Node>>) {
+                    match g {
+                        None => v == true,
+                        Some(points_to) => {
+                            v == false &&
+                            points_to.id() == cell.id() &&
+
+                            (node_id == 0 ==> points_to.value().next_node.is_none()) &&
+
+                            (points_to.value().next_node.is_some() ==>
+                                points_to.value().next_node.unwrap().node_id < node_id) &&
+
+                            (points_to.value().next_node.is_some() ==>
+                                points_to.value().next_node.unwrap().wf())
+                        }
+                    }
+                }
+            }
+        }
+    } => Ok(())
 }

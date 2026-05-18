@@ -1653,13 +1653,13 @@ test_verify_one_file! {
 
             fn f<'a>(&'a self, x: &'a Self, b: bool) -> (r: &'a Self)
                 ensures
-                    b ==> r === self,
-                    !b ==> r === x;
+                    b ==> r == self,
+                    !b ==> r == x;
         }
 
         fn p<A: T>(a1: &A, a2: &A) {
             let a3 = a1.f(a2, true);
-            assert(a3 === a1);
+            assert(a3 == a1);
         }
 
         struct S(u8);
@@ -1671,7 +1671,7 @@ test_verify_one_file! {
 
             fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                 let x = if b { self } else { x };
-                assert(x === self.r(x, b));
+                assert(x == self.r(x, b));
                 x
             }
         }
@@ -1690,13 +1690,13 @@ test_verify_one_file! {
         trait T {
             fn f<'a>(&'a self, x: &'a Self, b: bool) -> (r: &'a Self)
                 ensures
-                    b ==> r === self,
-                    !b ==> r === x; // TRAIT
+                    b ==> r == self,
+                    !b ==> r == x; // TRAIT
         }
 
         fn p<A: T>(a1: &A, a2: &A) {
             let a3 = a1.f(a2, false);
-            assert(a3 === a1); // FAILS
+            assert(a3 == a1); // FAILS
         }
 
         struct S(u8);
@@ -1996,9 +1996,9 @@ test_verify_one_file_with_options! {
             // stops us from saying f::<ty>(x) for ty that doesn't implement T.
 
             // So we manually emit the AIR that corresponds to the f::<B>(x) call.
-            inline_air_stmt("(assume (tr_bound%T. $ TYPE%B.))");
-            inline_air_stmt("(assert (= (f.? $ TYPE%B. (I i!)) (not (f.? $ TYPE%B. (I (Sub i! 0))))))");
-            inline_air_stmt("(assume (= (f.? $ TYPE%B. (I i!)) (not (f.? $ TYPE%B. (I (Sub i! 0))))))");
+            inline_air_stmt("(assume (tr_bound%test_crate!T. $ TYPE%test_crate!B.))");
+            inline_air_stmt("(assert (= (test_crate!f.? $ TYPE%test_crate!B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!B. (I (Sub i! 0))))))");
+            inline_air_stmt("(assume (= (test_crate!f.? $ TYPE%test_crate!B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!B. (I (Sub i! 0))))))");
             assert(false);
         }
     } => Ok(())
@@ -2017,8 +2017,8 @@ test_verify_one_file_with_options! {
             // stops us from saying f::<ty>(x) for ty that doesn't implement T.
 
             // So we manually emit the AIR that corresponds to the f::<B>(x) call.
-            // inline_air_stmt("(assume (tr_bound%T. $ TYPE%B.))");
-            inline_air_stmt("(assert (= (f.? $ TYPE%B. (I i!)) (not (f.? $ TYPE%B. (I (Sub i! 0))))))");
+            // inline_air_stmt("(assume (tr_bound%test_crate!T. $ TYPE%test_crate!B.))");
+            inline_air_stmt("(assert (= (test_crate!f.? $ TYPE%test_crate!B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!B. (I (Sub i! 0))))))");
         }
     } => Err(err) => { assert!(err.errors.len() == 1); }
 }
@@ -2060,7 +2060,7 @@ test_verify_one_file! {
             spec fn f(&self) -> T;
 
             fn compute_f(&self) -> (t: T)
-                ensures t === self.f();
+                ensures t == self.f();
         }
 
         struct X { }
@@ -2102,7 +2102,7 @@ test_verify_one_file! {
             spec fn f(&self) -> T;
 
             fn compute_f(&self) -> (t: T)
-                ensures t === self.f();
+                ensures t == self.f();
         }
 
         struct Z<T> { a: T, b: T }
@@ -2128,7 +2128,7 @@ test_verify_one_file! {
             spec fn f(&self) -> T;
 
             fn compute_f(&self, t: T)
-                requires t === self.f();
+                requires t == self.f();
         }
 
         struct Z<T> { a: T, b: T }
@@ -2141,7 +2141,7 @@ test_verify_one_file! {
 
             fn compute_f(&self, t: T)
             {
-                assert(t === self.f());
+                assert(t == self.f());
             }
         }
     } => Ok(())
@@ -3023,7 +3023,7 @@ test_verify_one_file! {
         trait ATrait {
             exec fn afun(Tracked(aparam): Tracked<&mut AType>)
                 requires *old(aparam) == (AType { v: 41 }),
-                ensures *aparam == (AType { v: 41 });
+                ensures *final(aparam) == (AType { v: 41 });
         }
 
         struct AnotherType {}
@@ -4507,7 +4507,7 @@ test_verify_one_file! {
         impl T for I {
             type A = ();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
 }
 
 test_verify_one_file! {
@@ -4522,7 +4522,7 @@ test_verify_one_file! {
         impl T for X {
             type A = I;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
 }
 
 test_verify_one_file! {
@@ -4682,4 +4682,56 @@ test_verify_one_file! {
             const C: u8 = Q;
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
+}
+
+test_verify_one_file_with_options! {
+    #[test] const_trait ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(const_trait_impl))]
+
+        use vstd::prelude::*;
+
+        verus! {
+        const trait T {
+            fn f() -> u8;
+        }
+        impl const T for bool {
+            fn f() -> (r: u8) ensures r == 3 { 3 }
+        }
+        const impl T for () {
+            fn f() -> (r: u8) ensures r == 4 { 4 }
+        }
+        fn test() {
+            let c1 = <bool as T>::f();
+            let c2 = <() as T>::f();
+            assert(c1 == 3);
+            assert(c2 == 4);
+        }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] const_trait_ensures_fail ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(const_trait_impl))]
+
+        use vstd::prelude::*;
+
+        verus! {
+        const trait T {
+            fn f() -> (r: u8) ensures r == 3; // TRAIT
+        }
+        impl const T for bool {
+            fn f() -> (r: u8) { 3 }
+        }
+        const impl T for () {
+            fn f() -> (r: u8) { 4 } // FAILS
+        }
+        fn test() {
+            let c1 = <bool as T>::f();
+            let c2 = <() as T>::f();
+            assert(c1 == 3);
+            assert(c2 == 3);
+        }
+        }
+    } => Err(err) => assert_one_fails(err)
 }

@@ -5,13 +5,13 @@
 //! This also includes code for pattern bindings in `let` statements and
 //! function parameters.
 
-use std::assert_matches::debug_assert_matches;
 use std::borrow::Borrow;
 use std::mem;
 use std::sync::Arc;
 
 use itertools::{Itertools, Position};
-use rustc_abi::{FIRST_VARIANT, VariantIdx};
+use rustc_abi::{FIRST_VARIANT, FieldIdx, VariantIdx};
+use rustc_data_structures::debug_assert_matches;
 use rustc_data_structures::fx::FxIndexMap;
 use rustc_data_structures::stack::ensure_sufficient_stack;
 use rustc_hir::{BindingMode, ByRef, LangItem, LetStmt, LocalSource, Node};
@@ -196,6 +196,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 Some(args.variable_source_info.scope),
                 args.variable_source_info.span,
                 args.declare_let_bindings,
+                true,
             ),
             _ => {
                 let mut block = block;
@@ -914,7 +915,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | PatKind::Never
             | PatKind::Error(_) => {}
 
-            PatKind::Deref { ref subpattern } => {
+            PatKind::Deref { pin: Pinnedness::Pinned, ref subpattern } => {
+                // Project into the `Pin(_)` struct, then deref the inner `&` or `&mut`.
+                visit_subpat(self, subpattern, &user_tys.leaf(FieldIdx::ZERO).deref(), f);
+            }
+            PatKind::Deref { pin: Pinnedness::Not, ref subpattern } => {
                 visit_subpat(self, subpattern, &user_tys.deref(), f);
             }
 
@@ -2354,6 +2359,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         source_scope: Option<SourceScope>,
         scope_span: Span,
         declare_let_bindings: DeclareLetBindings,
+        verus_do_irrefut_patch: bool,
     ) -> BlockAnd<()> {
         let expr_span = self.thir[expr_id].span;
         let scrutinee = unpack!(block = self.lower_scrutinee(block, expr_id, expr_span));
@@ -2367,7 +2373,23 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         );
         let [branch] = built_tree.branches.try_into().unwrap();
 
-        self.break_for_else(built_tree.otherwise_block, self.source_info(expr_span));
+        if verus_do_irrefut_patch
+            && crate::verus_time_travel_prevention::let_expr_treat_as_irrefutable(
+                self.tcx,
+                &self.thir,
+                self.def_id,
+                pat,
+                expr_id,
+            )
+        {
+            self.cfg.terminate(
+                built_tree.otherwise_block,
+                self.source_info(expr_span),
+                TerminatorKind::Unreachable,
+            );
+        } else {
+            self.break_for_else(built_tree.otherwise_block, self.source_info(expr_span));
+        }
 
         match declare_let_bindings {
             DeclareLetBindings::Yes => {

@@ -1,13 +1,13 @@
 use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Constant, Datatype, DatatypeTransparency, Dt, Expr,
     ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
-    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec,
-    VarIdent, VirErr, VirErrAs, Visibility,
+    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypDecoration, TypX, UnaryOp,
+    UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
-    ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name,
-    is_body_visible_to, is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr,
-    typ_to_diagnostic_str, types_equal, undecorate_typ,
+    ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name, get_field_or_err,
+    get_variant_or_err, is_body_visible_to, is_visible_to_opt, path_as_friendly_rust_name,
+    referenced_vars_expr, typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
@@ -114,6 +114,26 @@ fn check_one_typ<Emit: EmitError>(
                 check_function_access(ctxt, res_fun, None, span, emit)?;
             }
             Ok(())
+        }
+        TypX::Projection { trait_typ_args: _, trait_path, name } => {
+            if let Some(tr) = ctxt.traits.get(trait_path) {
+                if tr.x.assoc_typs.iter().any(|n| n == name) {
+                    Ok(())
+                } else {
+                    Err(error(
+                        span,
+                        &format!("Verus does not recognize associated type `{}` of trait `{}`", name, path_as_friendly_rust_name(trait_path)),
+                    ).help("If this trait was declared to Verus via `external_trait_specification`, it may need the associated type declared"))
+                }
+            } else {
+                Err(error(
+                    span,
+                    &format!(
+                        "trait {} not declared to Verus",
+                        path_as_friendly_rust_name(trait_path)
+                    ),
+                ))
+            }
         }
         _ => Ok(()),
     }
@@ -420,13 +440,20 @@ fn check_one_expr<Emit: EmitError>(
     emit: &mut Emit,
 ) -> Result<(), VirErr> {
     match &expr.x {
-        ExprX::Var(x) => {
-            check_var(function, &expr.span, area, x)?;
-        }
         ExprX::ConstVar(x, _) => {
             check_function_access(ctxt, x, disallow_private_access, &expr.span, emit)?;
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, _, _), args, _post_args) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), _args, _post_args) => {
+            if attrs.assume_external_allowed && !ctxt.funs.contains_key(x) {
+                if ctxt.no_cheating {
+                    return Err(error(
+                        &expr.span,
+                        "call via externals_available_without_declaration not allowed with --no-cheating",
+                    ));
+                }
+                // allow missing function via AssumeExternal
+                return Ok(());
+            }
             let f =
                 check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span, emit)?;
             let Ok(f) = f else {
@@ -465,34 +492,6 @@ fn check_one_expr<Emit: EmitError>(
                     "cannot call a broadcast_forall function with 0 arguments directly",
                 ));
             }
-            for (_param, arg) in f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut) {
-                fn is_ok(e: &Expr) -> bool {
-                    match &e.x {
-                        ExprX::VarLoc(_) => true,
-                        ExprX::Unary(UnaryOp::CoerceMode { .. }, e1) => is_ok(e1),
-                        ExprX::UnaryOpr(UnaryOpr::Field { .. }, base) => is_ok(base),
-                        ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => is_ok(e1),
-                        ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => is_ok(e1),
-                        _ => false,
-                    }
-                }
-                let arg_x = match &arg.x {
-                    // Tracked(&mut x) and Ghost(&mut x) arguments appear as
-                    // Expr::Ghost { ... Expr::Loc ... }
-                    ExprX::Ghost { alloc_wrapper: true, tracked: _, expr: e } => &e.x,
-                    e => e,
-                };
-                let is_ok = match &arg_x {
-                    ExprX::Loc(l) => is_ok(l),
-                    _ => false,
-                };
-                if !is_ok {
-                    return Err(error(
-                        &arg.span,
-                        "complex arguments to &mut parameters are currently unsupported",
-                    ));
-                }
-            }
         }
         ExprX::Ctor(Dt::Path(path), _variant, _fields, _update) => {
             check_datatype_access(
@@ -504,14 +503,6 @@ fn check_one_expr<Emit: EmitError>(
                 "constructor",
                 emit,
             )?;
-        }
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => {
-            if !crate::ast_util::type_is_bool(&e.typ) {
-                return Err(error(
-                    &expr.span,
-                    "`custom_err` attribute only makes sense for bool expressions",
-                ));
-            }
         }
         ExprX::UnaryOpr(
             UnaryOpr::Field(FieldOpr {
@@ -565,9 +556,7 @@ fn check_one_expr<Emit: EmitError>(
                 &mut crate::ast_visitor::VisitorScopeMap::new(),
                 &mut (),
                 &mut |_, scope_map, e| match &e.x {
-                    ExprX::Var(x) | ExprX::VarLoc(x)
-                        if !scope_map.contains_key(&x) && !referenced.contains(x) =>
-                    {
+                    ExprX::Var(x) if !scope_map.contains_key(&x) && !referenced.contains(x) => {
                         Err(error(
                             &e.span,
                             format!("variable {} not mentioned in requires/ensures", x).as_str(),
@@ -668,19 +657,11 @@ fn check_one_expr<Emit: EmitError>(
         ExprX::ExecFnByName(fun) => {
             let func =
                 check_path_and_get_function(ctxt, fun, disallow_private_access, &expr.span, emit)?;
-            let Ok(func) = func else {
+            let Ok(_func) = func else {
                 // Found an error resolving f; skip this and proceed to find more errors
                 assert!(emit.has_fatal_errors());
                 return Ok(());
             };
-            for param in func.x.params.iter() {
-                if param.x.is_mut {
-                    return Err(error(
-                        &expr.span,
-                        "not supported: using a function that takes '&mut' params as a value",
-                    ));
-                }
-            }
         }
         ExprX::ProofInSpec(_) => {
             // At the moment, spec termination checking is the only place set up to handle
@@ -703,7 +684,7 @@ fn check_one_expr<Emit: EmitError>(
             return Err(error(
                 &expr.span,
                 format!(
-                    "This kind of statement should go at the {:}",
+                    "This verus_builtin header should go at the {:} (this is probably a Verus bug, unless you are manually writing calls to Verus builtin headers, which is unusual)",
                     header.location_for_diagnostic()
                 ),
             ));
@@ -765,6 +746,80 @@ fn check_one_expr<Emit: EmitError>(
                 "`old` is meaningless in spec functions",
             ).help("You can dereference the mutable reference normally to get the \"current\"/\"old\" value"));
         }
+        ExprX::ShrRefStructWrap(_e1, _e2, t1, t2, variant_ident, field_ident) => {
+            let datatype_typ = undecorate_typ(&t2);
+            let (dt, typ_args) = match &*datatype_typ {
+                TypX::Datatype(dt, typ_args, ..) => (dt, typ_args),
+                _ => {
+                    return Err(error(
+                        &expr.span,
+                        "second argument to `shr_ref_struct_wrap` should be a datatype",
+                    ));
+                }
+            };
+            let Dt::Path(path) = dt else {
+                return Err(error(&expr.span, "shr_ref_struct_wrap not supported for tuples"));
+            };
+            check_datatype_access(
+                ctxt,
+                path,
+                disallow_private_access,
+                &function.x.owning_module,
+                &expr.span,
+                "`shr_ref_struct_wrap` operator",
+                emit,
+            )?;
+            let datatype = ctxt.dts.get(path).unwrap();
+            let variant = if datatype.x.variants.len() == 1 && **variant_ident == "" {
+                &datatype.x.variants[0]
+            } else {
+                get_variant_or_err(&expr.span, &datatype.x.variants, variant_ident)?
+            };
+            let field = get_field_or_err(&expr.span, &variant.fields, field_ident)?;
+            let field_typ = crate::sst_util::subst_typ_for_datatype(
+                &datatype.x.typ_params,
+                typ_args,
+                &field.a.0,
+            );
+            // REVIEW: not robust to normalization
+            if !types_equal(t1, &field_typ) {
+                return Err(error(
+                    &expr.span,
+                    format!(
+                        "shr_ref_struct_wrap: first argument of type `{:}` should match field type `{:}`",
+                        typ_to_diagnostic_str(t1),
+                        typ_to_diagnostic_str(&field_typ)
+                    ),
+                ));
+            }
+            if datatype.x.mode == Mode::Spec {
+                return Err(error(
+                    &expr.span,
+                    "shr_ref_struct_wrap cannot target ghost-mode datatype",
+                ));
+            };
+            if field.a.1 == Mode::Spec {
+                return Err(error(
+                    &expr.span,
+                    "shr_ref_struct_wrap cannot target ghost-mode field",
+                ));
+            }
+            for field in variant.fields.iter() {
+                if &field.name != field_ident {
+                    if field.a.1 != Mode::Spec
+                        && !matches!(&*field.a.0, TypX::Decorate(TypDecoration::Ghost, ..))
+                    {
+                        return Err(error(
+                            &expr.span,
+                            format!(
+                                "shr_ref_struct_wrap can only be applied when all other fields of the relevant variant are ghost-mode or of type Ghost (field `{:}` does not meet this requirement)",
+                                &field.name
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
         _ => {}
     }
     Ok(())
@@ -794,13 +849,10 @@ fn check_one_place<Emit: EmitError>(
     function: &Function,
     place: &Place,
     disallow_private_access: Option<(&Visibility, &str)>,
-    area: Area,
+    _area: Area,
     emit: &mut Emit,
 ) -> Result<(), VirErr> {
     match &place.x {
-        PlaceX::Local(x) => {
-            check_var(function, &place.span, area, x)?;
-        }
         PlaceX::Field(
             FieldOpr { datatype: Dt::Path(path), variant: _, field: _, get_variant: _, check: _ },
             _,
@@ -816,24 +868,6 @@ fn check_one_place<Emit: EmitError>(
             )?;
         }
         _ => {}
-    }
-    Ok(())
-}
-
-fn check_var(function: &Function, span: &Span, area: Area, x: &VarIdent) -> Result<(), VirErr> {
-    if let Area::PreState(clause_name) = area {
-        for param in function.x.params.iter().filter(|p| p.x.is_mut) {
-            if *x == param.x.name {
-                return Err(error(
-                    span,
-                    format!(
-                        "in {}, use `old({})` to refer to the pre-state of an &mut variable",
-                        clause_name,
-                        crate::def::user_local_name(&param.x.name)
-                    ),
-                ));
-            }
-        }
     }
     Ok(())
 }
@@ -862,6 +896,7 @@ fn check_one_pattern<Emit: EmitError>(
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 enum Area {
     PreState(&'static str),
@@ -1075,12 +1110,6 @@ fn check_function<Emit: EmitError>(
         for param in function.x.params.iter() {
             if param.x.mode != Mode::Spec {
                 return Err(error(&function.span, "broadcast function must have spec parameters"));
-            }
-            if param.x.is_mut {
-                return Err(error(
-                    &function.span,
-                    "broadcast function cannot have &mut parameters",
-                ));
             }
         }
     }

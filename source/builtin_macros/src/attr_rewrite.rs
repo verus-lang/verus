@@ -43,7 +43,7 @@ use syn::{Expr, Item, ItemConst, parse2, spanned::Spanned};
 use crate::{
     EraseGhost,
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
-    syntax::{self, mk_verifier_attr_syn, mk_verus_attr_syn},
+    syntax::{self, has_external_code_syn, mk_verifier_attr_syn, mk_verus_attr_syn},
     syntax_trait,
     unerased_proxies::VERUS_UNERASED_PROXY,
 };
@@ -72,6 +72,7 @@ enum VerusSpecTarget {
     IOTarget(VerusIOTarget),
     FnOrLoop(AnyFnOrLoop),
     ItemConst(ItemConst),
+    ItemStatic(syn::ItemStatic),
 }
 
 impl syn::parse::Parse for VerusSpecTarget {
@@ -93,6 +94,11 @@ impl syn::parse::Parse for VerusSpecTarget {
         if let Ok(item_const) = fork.parse::<ItemConst>() {
             input.advance_to(&fork);
             return Ok(VerusSpecTarget::ItemConst(item_const));
+        }
+        let fork = input.fork();
+        if let Ok(item_static) = fork.parse::<syn::ItemStatic>() {
+            input.advance_to(&fork);
+            return Ok(VerusSpecTarget::ItemStatic(item_static));
         }
 
         let expr: Expr = input.parse()?;
@@ -159,7 +165,7 @@ pub(crate) fn rewrite_verus_attribute(
                 spec_f.sig.ident = ident.clone();
                 spec_f.attrs = vec![mk_verus_attr_syn(f.span(), quote! { spec })];
                 // remove proof-related macros
-                replace_block(EraseGhost::Erase, spec_f.block_mut().unwrap());
+                replace_block(EraseGhost::Erase, spec_f.block_mut().unwrap(), false);
                 spec_fun = Some(spec_f);
 
                 attributes
@@ -194,6 +200,7 @@ pub(crate) fn rewrite_verus_attribute(
 
 struct ExecReplacer {
     erase: EraseGhost,
+    inside_external_code: bool,
 }
 
 impl VisitMut for ExecReplacer {
@@ -202,7 +209,7 @@ impl VisitMut for ExecReplacer {
     fn visit_macro_mut(&mut self, mac: &mut syn::Macro) {
         syn::visit_mut::visit_macro_mut(self, mac);
         // Only replace in verification mode
-        if !self.erase.keep() {
+        if !self.erase.keep() || self.inside_external_code {
             return;
         }
         if let Some(x) = mac.path.segments.first_mut() {
@@ -244,7 +251,35 @@ impl VisitMut for ExecReplacer {
     /// proof_with!{ p: Tracked(p) }
     /// STest { u }
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
-        syn::visit_mut::visit_block_mut(self, block);
+        // Don't call visit_block_mut to recurse on the whole block --
+        // skip statements that will be processed by their own #[verus_spec] attribute.
+        // syn::visit_mut::visit_block_mut(self, block);
+        for stmt in &mut block.stmts {
+            // Don't recurse here into Fn and Const.
+            // Instead, let a subsequent expansion of #[verus_spec] handle the visit
+            let span = stmt.span();
+            match stmt {
+                syn::Stmt::Item(Item::Fn(item)) => {
+                    if get_verus_spec(&item.attrs).is_none() {
+                        item.attrs.push(crate::syntax::mk_rust_attr_syn(
+                            span,
+                            VERUS_SPEC,
+                            TokenStream::new(),
+                        ));
+                    }
+                }
+                syn::Stmt::Item(Item::Const(item)) => {
+                    if get_verus_spec(&item.attrs).is_none() {
+                        item.attrs.push(crate::syntax::mk_rust_attr_syn(
+                            span,
+                            VERUS_SPEC,
+                            TokenStream::new(),
+                        ));
+                    }
+                }
+                _ => self.visit_stmt_mut(stmt),
+            }
+        }
 
         // If we are in non-verification mode, we erase all proof-related statements.
         if !self.erase.keep() {
@@ -291,7 +326,7 @@ impl VisitMut for ExecReplacer {
     fn visit_expr_for_loop_mut(&mut self, for_loop: &mut syn::ExprForLoop) {
         syn::visit_mut::visit_expr_for_loop_mut(self, for_loop);
 
-        if !self.erase.keep() {
+        if !self.erase.keep() || self.inside_external_code {
             return;
         }
 
@@ -351,6 +386,12 @@ impl VisitMut for VerusVerifyVisitor {
         let span = i.span();
         self.add_verus_spec_if_needed(&mut i.attrs, span);
     }
+
+    fn visit_item_static_mut(&mut self, i: &mut syn::ItemStatic) {
+        syn::visit_mut::visit_item_static_mut(self, i);
+        let span = i.span();
+        self.add_verus_spec_if_needed(&mut i.attrs, span);
+    }
 }
 
 fn is_verus_proof_stmt(stmt: &syn::Stmt) -> bool {
@@ -370,13 +411,17 @@ fn is_verus_proof_stmt(stmt: &syn::Stmt) -> bool {
 // TODO: when tracked/ghost is supported, we need to clear verus-related
 // attributes for expression so that unverfied `cargo build` does not need to
 // enable unstable feature for macro.
-pub(crate) fn replace_block(erase: EraseGhost, fblock: &mut syn::Block) {
-    let mut replacer = ExecReplacer { erase };
+pub(crate) fn replace_block(
+    erase: EraseGhost,
+    fblock: &mut syn::Block,
+    inside_external_code: bool,
+) {
+    let mut replacer = ExecReplacer { erase, inside_external_code };
     replacer.visit_block_mut(fblock);
 }
 
 pub(crate) fn replace_expr(erase: EraseGhost, expr: &mut syn::Expr) {
-    let mut replacer = ExecReplacer { erase };
+    let mut replacer = ExecReplacer { erase, inside_external_code: false };
     replacer.visit_expr_mut(expr);
 }
 
@@ -415,6 +460,9 @@ pub(crate) fn rewrite_verus_spec(
         }
         VerusSpecTarget::ItemConst(i) => {
             rewrite_verus_spec_on_item_const(erase, outer_attr_tokens, i)
+        }
+        VerusSpecTarget::ItemStatic(i) => {
+            rewrite_verus_spec_on_item_static(erase, outer_attr_tokens, i)
         }
         VerusSpecTarget::IOTarget(i) => {
             rewrite_verus_spec_on_expr_local(erase, outer_attr_tokens, i)
@@ -495,7 +543,40 @@ pub(crate) fn rewrite_verus_spec_on_item_const(
         verus_item_const.expr = None;
         verus_item_const.semi_token = None;
     }
-    crate::syntax::rewrite_items(verus_item_const.to_token_stream().into(), erase_ghost, true)
+    let mut items = vec![verus_syn::Item::Const(verus_item_const)];
+    crate::syntax::rewrite_items_inner(&mut items, erase_ghost, true)
+}
+
+pub(crate) fn rewrite_verus_spec_on_item_static(
+    erase_ghost: EraseGhost,
+    outer_attr_tokens: proc_macro::TokenStream,
+    item_static: syn::ItemStatic,
+) -> proc_macro::TokenStream {
+    if erase_ghost.erase() {
+        return item_static.to_token_stream().into();
+    }
+    let spec_attr =
+        verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
+    let mut verus_item_static = syn_to_verus_syn::<verus_syn::ItemStatic>(item_static);
+    let span = verus_item_static.span();
+    // Must add exec mode to static explicitly
+    verus_item_static.mode =
+        verus_syn::FnMode::Exec(verus_syn::ModeExec { exec_token: verus_syn::Token![exec](span) });
+    if spec_attr.spec.ensures.is_some() {
+        verus_item_static.ensures = spec_attr.spec.ensures;
+        verus_item_static.block = Some(Box::new(verus_syn::Block {
+            brace_token: verus_syn::token::Brace::default(),
+            stmts: vec![verus_syn::Stmt::Expr(
+                verus_syn::Expr::Verbatim(verus_item_static.expr.to_token_stream()),
+                None,
+            )],
+        }));
+        verus_item_static.eq_token = None;
+        verus_item_static.expr = None;
+        verus_item_static.semi_token = None;
+    }
+    let mut items = vec![verus_syn::Item::Static(verus_item_static)];
+    crate::syntax::rewrite_items_inner(&mut items, erase_ghost, true)
 }
 
 pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
@@ -637,7 +718,8 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             let _ = fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
 
             // Parse and replace proof_xxx!() inside function and replace panic.
-            replace_block(erase, fun.block_mut().unwrap());
+            let inside_external_code = has_external_code_syn(&fun.attrs);
+            replace_block(erase, fun.block_mut().unwrap(), inside_external_code);
             fun.to_tokens(&mut new_stream);
             proc_macro::TokenStream::from(new_stream)
         }
@@ -974,7 +1056,8 @@ fn rewrite_const_ret_proxy(const_fun: &mut syn::ItemFn) -> syn::ItemFn {
     // But just do it to be safe and consistent with verus macro.
     let span = const_fun.sig.constness.unwrap().span();
     let mut proxy_fun = const_fun.clone();
-    replace_block(EraseGhost::Erase, const_fun.block_mut().unwrap());
+    let inside_external_code = has_external_code_syn(&const_fun.attrs);
+    replace_block(EraseGhost::Erase, const_fun.block_mut().unwrap(), inside_external_code);
     const_fun.attrs.push(mk_verifier_attr_syn(span, quote! { external }));
     const_fun.attrs.push(mk_verus_attr_syn(span, quote! { uses_unerased_proxy }));
     const_fun.attrs.push(mk_verus_attr_syn(span, quote! { encoded_const }));

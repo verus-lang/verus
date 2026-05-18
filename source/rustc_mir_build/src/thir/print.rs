@@ -223,11 +223,6 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
                 self.print_expr(*value, depth_lvl + 2);
                 print_indented!(self, "}", depth_lvl);
             }
-            Box { value } => {
-                print_indented!(self, "Box {", depth_lvl);
-                self.print_expr(*value, depth_lvl + 1);
-                print_indented!(self, "}", depth_lvl);
-            }
             If { if_then_scope, cond, then, else_opt } => {
                 print_indented!(self, "If {", depth_lvl);
                 print_indented!(self, format!("if_then_scope: {:?}", if_then_scope), depth_lvl + 1);
@@ -402,9 +397,10 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
             }
             Index { lhs, index } => {
                 print_indented!(self, "Index {", depth_lvl);
-                print_indented!(self, format!("index: {:?}", index), depth_lvl + 1);
                 print_indented!(self, "lhs:", depth_lvl + 1);
                 self.print_expr(*lhs, depth_lvl + 2);
+                print_indented!(self, "index:", depth_lvl + 1);
+                self.print_expr(*index, depth_lvl + 2);
                 print_indented!(self, "}", depth_lvl);
             }
             VarRef { id } => {
@@ -774,8 +770,9 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
                 print_indented!(self, "]", depth_lvl + 2);
                 print_indented!(self, "}", depth_lvl + 1);
             }
-            PatKind::Deref { subpattern } => {
+            PatKind::Deref { pin, subpattern } => {
                 print_indented!(self, "Deref { ", depth_lvl + 1);
+                print_indented!(self, format_args!("pin: {pin:?}"), depth_lvl + 2);
                 print_indented!(self, "subpattern:", depth_lvl + 2);
                 self.print_pat(subpattern, depth_lvl + 2);
                 print_indented!(self, "}", depth_lvl + 1);

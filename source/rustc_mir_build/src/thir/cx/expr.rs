@@ -3,7 +3,6 @@ use rustc_abi::{FIRST_VARIANT, FieldIdx, Size, VariantIdx};
 use rustc_ast::UnsafeBinderCastKind;
 use rustc_data_structures::stack::ensure_sufficient_stack;
 use rustc_hir as hir;
-use rustc_hir::attrs::AttributeKind;
 use rustc_hir::def::{CtorKind, CtorOf, DefKind, Res};
 use rustc_hir::{LangItem, find_attr};
 use rustc_index::Idx;
@@ -14,13 +13,13 @@ use rustc_middle::middle::region;
 use rustc_middle::mir::{self, AssignOp, BinOp, BorrowKind, UnOp};
 use rustc_middle::thir::*;
 use rustc_middle::ty::adjustment::{
-    Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
+    Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, DerefAdjustKind, PointerCoercion,
 };
 use rustc_middle::ty::{
     self, AdtKind, GenericArgs, InlineConstArgs, InlineConstArgsParts, ScalarInt, Ty, UpvarArgs,
 };
 use rustc_middle::{bug, span_bug};
-use rustc_span::{Span, sym};
+use rustc_span::Span;
 use tracing::{debug, info, instrument, trace};
 
 use crate::errors::*;
@@ -86,7 +85,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
         };
 
         // OK, all done!
-        self.thir.exprs.push(expr)
+        let expr_id = self.thir.exprs.push(expr);
+        crate::verus_expr::scope_post(self, expr_id)
     }
 
     #[instrument(level = "trace", skip(self, expr, span))]
@@ -144,11 +144,11 @@ impl<'tcx> ThirBuildCx<'tcx> {
             }
             Adjust::NeverToAny if adjustment.target.is_never() => return expr,
             Adjust::NeverToAny => ExprKind::NeverToAny { source: self.thir.exprs.push(expr) },
-            Adjust::Deref(None) => {
+            Adjust::Deref(DerefAdjustKind::Builtin) => {
                 adjust_span(&mut expr);
                 ExprKind::Deref { arg: self.thir.exprs.push(expr) }
             }
-            Adjust::Deref(Some(deref)) => {
+            Adjust::Deref(DerefAdjustKind::Overloaded(deref)) => {
                 // We don't need to do call adjust_span here since
                 // deref coercions always start with a built-in deref.
                 let call_def_id = deref.method_call(self.tcx);
@@ -396,24 +396,6 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         from_hir_call: true,
                         fn_span: expr.span,
                     }
-                } else if let ty::FnDef(def_id, _) = self.typeck_results.expr_ty(fun).kind()
-                    && let Some(intrinsic) = self.tcx.intrinsic(def_id)
-                    && intrinsic.name == sym::box_new
-                {
-                    // We don't actually evaluate `fun` here, so make sure that doesn't miss any side-effects.
-                    if !matches!(fun.kind, hir::ExprKind::Path(_)) {
-                        span_bug!(
-                            expr.span,
-                            "`box_new` intrinsic can only be called via path expression"
-                        );
-                    }
-                    let value = &args[0];
-                    return Expr {
-                        temp_scope_id: expr.hir_id.local_id,
-                        ty: expr_ty,
-                        span: expr.span,
-                        kind: ExprKind::Box { value: self.mirror_expr(value) },
-                    };
                 } else {
                     // Tuple-like ADTs are represented as ExprKind::Call. We convert them here.
                     let adt_data = if let hir::ExprKind::Path(ref qpath) = fun.kind
@@ -742,7 +724,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         fake_reads,
                     }))
                 } else if self.verus_ctxt.skip_closure(def_id) {
-                    crate::verus::erase_tree_kind(self, expr, crate::verus::TreeErase::IncludeBasicChecks)
+                    crate::verus::erase_tree_kind(self, expr, expr.hir_id, crate::verus::TreeErase::IncludeBasicChecks)
                 } else {
                 // leave unindented for easier merging
 
@@ -913,7 +895,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             hir::ExprKind::Ret(v) => ExprKind::Return { value: v.map(|v| self.mirror_expr(v)) },
             hir::ExprKind::Become(call) => ExprKind::Become { value: self.mirror_expr(call) },
             hir::ExprKind::Break(dest, ref value) => {
-                if find_attr!(self.tcx.hir_attrs(expr.hir_id), AttributeKind::ConstContinue(_)) {
+                if find_attr!(self.tcx.hir_attrs(expr.hir_id), ConstContinue(_)) {
                     match dest.target_id {
                         Ok(target_id) => {
                             let (Some(value), Some(_)) = (value, dest.label) else {
@@ -978,7 +960,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 match_source,
             },
             hir::ExprKind::Loop(body, ..) => {
-                if find_attr!(self.tcx.hir_attrs(expr.hir_id), AttributeKind::LoopMatch(_)) {
+                if find_attr!(self.tcx.hir_attrs(expr.hir_id), LoopMatch(_)) {
                     let dcx = self.tcx.dcx();
 
                     // Accept either `state = expr` or `state = expr;`.
@@ -1223,9 +1205,16 @@ impl<'tcx> ThirBuildCx<'tcx> {
     }
 
     fn convert_arm(&mut self, arm: &'tcx hir::Arm<'tcx>) -> ArmId {
+        let pattern = self.pattern_from_hir(&arm.pat);
+        let guard = arm.guard.as_ref().map(|g| {
+            crate::verus_expr::enter_guard(self, &pattern);
+            let e = self.mirror_expr(g);
+            crate::verus_expr::exit_guard(self);
+            e
+        });
         let arm = Arm {
-            pattern: self.pattern_from_hir(&arm.pat),
-            guard: arm.guard.as_ref().map(|g| self.mirror_expr(g)),
+            pattern,
+            guard,
             body: self.mirror_expr(arm.body),
             hir_id: arm.hir_id,
             scope: region::Scope { local_id: arm.hir_id.local_id, data: region::ScopeData::Node },

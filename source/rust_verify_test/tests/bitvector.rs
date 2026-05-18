@@ -234,7 +234,7 @@ test_verify_one_bv_file! {
         proof fn test_int(x: X, y: X) {
             assert(x == y) by (bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle type `crate::X`")
+    } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle type `test_crate::X`")
 }
 
 test_verify_one_bv_file! {
@@ -1518,7 +1518,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_dereference_mut_ref_2 ["new-mut-ref"] => verus_code! {
+    #[test] test_dereference_mut_ref_2 [] => verus_code! {
         fn nonlinear_test(x: &mut u64, y: &mut u64)
         {
             assert(*x == *y ==> x == y) by(bit_vector)
@@ -1527,7 +1527,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_dereference_mut_ref_final_not_supported ["new-mut-ref"] => verus_code! {
+    #[test] test_dereference_mut_ref_final_not_supported [] => verus_code! {
         fn nonlinear_test(x: &mut u64)
         {
             assert(*final(x) == *x) by(bit_vector)
@@ -1536,12 +1536,12 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_old_not_supported ["new-mut-ref"] => verus_code! {
+    #[test] test_old_not_supported [] => verus_code! {
         fn nonlinear(x: &mut u64)
             requires *x == 0,
         {
             *x = 5;
             assert(*x == 0 && *old(x) == 5) by(bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "unsupported for bitvector: this mutable reference operator")
+    } => Err(err) => assert_vir_error_msg(err, "`old` is not supported in `bit_vector` assert")
 }
