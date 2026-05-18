@@ -19,6 +19,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.CRATES_UPDATE_TOKEN }}
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@master
@@ -68,7 +69,7 @@ jobs:
       - name: Push branch and open PR
         if: env.CHANGED == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.CRATES_UPDATE_TOKEN }}
         run: |
           git push origin $BRANCH
           gh pr create \
