@@ -549,3 +549,86 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] issue2342 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::inline]
+        spec fn unwrap_or(a: Option<int>, b: int) -> int {
+            match a {
+                Some(x) => x,
+                None => b,
+            }
+        }
+
+        spec fn f(opt: Option<int>, opt2: Option<int>) -> (spec_fn(int) -> bool) {
+            |s: int| {
+                match opt {
+                    Some(x) => {
+                        unwrap_or(opt2, 1) == x
+                    },
+                    None => { false }
+                }
+            }
+        }
+
+        fn test() {
+            assert(f(None, None)(0)); // FAILS
+        }
+
+        fn test2() {
+            assert(f(Some(1), None)(0));
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] issue2342_2 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::inline]
+        spec fn unwrap_or(a: Option<int>, b: int) -> int {
+            match a {
+                Some(x) => x,
+                None => b,
+            }
+        }
+
+        spec fn f_quant(opt: Option<int>, opt2: Option<int>) -> bool {
+            forall |s: int| {
+                match opt {
+                    Some(x) => {
+                        unwrap_or(opt2, s) == x
+                    },
+                    None => { false }
+                }
+            }
+        }
+
+        fn test3() {
+            assert(f_quant(Some(2), Some(2)));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Could not automatically infer triggers for this quantifier")
+}
+
+test_verify_one_file! {
+    #[test] issue2123 verus_code! {
+        use vstd::prelude::*;
+
+        pub enum A {
+            Foo { xyz: Result<(), ()> },
+        }
+
+        pub open spec fn foo(a: A) -> Set<nat> {
+            Set::new(|x: nat| {
+                match a {
+                    A::Foo { xyz, .. } => {
+                        let _ = xyz.ok();
+                        true
+                    },
+                }
+            })
+        }
+    } => Ok(())
+}
