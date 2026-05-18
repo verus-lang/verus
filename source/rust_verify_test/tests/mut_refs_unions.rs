@@ -835,7 +835,7 @@ test_verify_one_file_with_options! {
                 upd(&mut x.a, 20);
             }
             assert(is_variant(x, "a"));
-            assert(get_union_field::<X, u64>(x, "a") === 20);
+            assert(get_union_field::<X, u64>(x, "a") == 20);
         }
 
         fn test2() {
@@ -843,7 +843,7 @@ test_verify_one_file_with_options! {
             let x_ref = unsafe { &mut x.a };
             upd(x_ref, *x_ref + 1);
             assert(is_variant(x, "a"));
-            assert(get_union_field::<X, u64>(x, "a") === 19);
+            assert(get_union_field::<X, u64>(x, "a") == 19);
         }
 
         fn test1_fails() {
@@ -852,7 +852,7 @@ test_verify_one_file_with_options! {
                 upd(&mut x.a, 20);
             }
             assert(is_variant(x, "a"));
-            assert(get_union_field::<X, u64>(x, "a") === 20);
+            assert(get_union_field::<X, u64>(x, "a") == 20);
             assert(false); // FAILS
         }
 
@@ -861,7 +861,7 @@ test_verify_one_file_with_options! {
             let x_ref = unsafe { &mut x.a };
             upd(x_ref, *x_ref + 1);
             assert(is_variant(x, "a"));
-            assert(get_union_field::<X, u64>(x, "a") === 19);
+            assert(get_union_field::<X, u64>(x, "a") == 19);
             assert(false); // FAILS
         }
 
@@ -877,7 +877,7 @@ test_verify_one_file_with_options! {
             let x_ref = unsafe { &mut x.a }; // FAILS
             upd(x_ref, *x_ref + 1);
             assert(is_variant(x, "a"));
-            assert(get_union_field::<X, u64>(x, "a") === 19);
+            assert(get_union_field::<X, u64>(x, "a") == 19);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 4)
@@ -915,7 +915,7 @@ test_verify_one_file_with_options! {
                 x.y.upd(x.y.e + 10);
             }
             assert(is_variant(x, "y"));
-            assert(get_union_field::<X, Y>(x, "y") === Y { e: 10, f: 1 });
+            assert(get_union_field::<X, Y>(x, "y") == Y { e: 10, f: 1 });
         }
 
         fn test2_fails() {
@@ -924,7 +924,7 @@ test_verify_one_file_with_options! {
                 x.y.upd(x.y.e + 10);
             }
             assert(is_variant(x, "y"));
-            assert(get_union_field::<X, Y>(x, "y") === Y { e: 10, f: 1 });
+            assert(get_union_field::<X, Y>(x, "y") == Y { e: 10, f: 1 });
             assert(false); // FAILS
         }
 
