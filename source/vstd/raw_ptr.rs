@@ -847,9 +847,9 @@ impl<T> PointsTo<[T]> {
             size_of::<S>() * other.mem_contents_seq().len() != 0,
         ensures
             *old(self) == *final(self),
-            final(self).ptr() as int + size_of::<T>() * final(self).mem_contents_seq().len() <= other.ptr() as int
-                || other.ptr() as int + size_of::<S>() * other.mem_contents_seq().len()
-                <= final(self).ptr() as int,
+            final(self).ptr() as int + size_of::<T>() * final(self).mem_contents_seq().len()
+                <= other.ptr() as int || other.ptr() as int + size_of::<S>()
+                * other.mem_contents_seq().len() <= final(self).ptr() as int,
     {
         broadcast use layout_of_sized;
 
@@ -1051,9 +1051,9 @@ impl<T> PointsToUnaligned<[T]> {
             size_of::<S>() * other.mem_contents_seq().len() != 0,
         ensures
             *old(self) == *final(self),
-            final(self).ptr() as int + size_of::<T>() * final(self).mem_contents_seq().len() <= other.ptr() as int
-                || other.ptr() as int + size_of::<S>() * other.mem_contents_seq().len()
-                <= final(self).ptr() as int,
+            final(self).ptr() as int + size_of::<T>() * final(self).mem_contents_seq().len()
+                <= other.ptr() as int || other.ptr() as int + size_of::<S>()
+                * other.mem_contents_seq().len() <= final(self).ptr() as int,
     ;
 
     /// Convert `PointsToUnaligned<[\T\]>` to an aligned `PointsTo<[\T\]>`.
