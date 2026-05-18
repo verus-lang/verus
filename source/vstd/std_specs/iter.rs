@@ -5,15 +5,9 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{Iterator, Rev};
+use core::iter::{FromIterator, Iterator, Rev};
 
 verus_! {
-
-#[verifier::external_trait_specification]
-pub trait ExIntoIterator {
-    type ExternalTraitSpecificationFor: core::iter::IntoIterator;
-}
-
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IteratorSpec via IteratorSpecImpl)]
@@ -91,6 +85,14 @@ pub trait ExIterator {
                 r == into_rev_spec(self) && rev_post(self, r),
     ;
 
+    fn collect<B>(self) -> (collection: B)
+        where
+            B: FromIterator<Self::Item>,
+            Self: Sized,
+        default_ensures
+            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
+                FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
+    ;
 }
 
 #[verifier::external_trait_specification]
@@ -134,6 +136,52 @@ pub trait ExDoubleEndedIterator : Iterator {
     // If we can make a useful guess as to what the i-th value from the back will be, return it.
     // Otherwise, return None.
     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
+}
+
+/********************************************************************************
+ * Definitions for `IntoIterator` and `FromIterator``
+ ********************************************************************************/
+#[verifier::external_trait_specification]
+pub trait ExIntoIterator {
+    type ExternalTraitSpecificationFor: core::iter::IntoIterator;
+}
+
+pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
+    i
+}
+
+#[verifier::when_used_as_spec(iter_into_iter_spec)]
+pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) -> (r: I)
+    ensures
+        r == i,
+;
+
+// Uninterpreted function representing the sequence of elements that will be
+// produced by the iterator obtained from an IntoIterator value.
+// This avoids requiring IteratorSpec bounds in from_iter's ensures clause.
+pub uninterp spec fn into_iter_remaining<A, T>(iter: T) -> Seq<A>;
+
+// Connects into_iter_remaining to remaining() for types implementing Iterator + IteratorSpec.
+// This allows callers of from_iter to relate the result to the iterator's remaining elements.
+pub broadcast axiom fn axiom_from_iterator_ensures<A, I: Iterator<Item = A> + IteratorSpec>(iter: I)
+    ensures
+        #[trigger] into_iter_remaining::<A, I>(iter) == iter.remaining(),
+;
+
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(FromIteratorSpec via FromIteratorSpecImpl)]
+pub trait ExFromIterator<A>: Sized {
+    type ExternalTraitSpecificationFor: FromIterator<A>;
+
+    spec fn obeys_from_iterator_spec() -> bool;
+
+    spec fn from_iter_ensures(remaining: Seq<A>, s: Self) -> bool;
+
+    fn from_iter<T>(iter: T) -> (s: Self)
+       where T: IntoIterator<Item = A>
+        ensures
+            Self::obeys_from_iterator_spec() ==> Self::from_iter_ensures(into_iter_remaining(iter), s),
+    ;
 }
 
 /********************************************************************************
