@@ -152,6 +152,7 @@
   - [The view function `@`](./reference-at-sign.md)
   - [Spec index operator `[]`](./reference-spec-index.md)
   - [`decreases_to!`](./reference-decreases-to.md)
+- [Types](./reference-types.md)
 - [Proof features]()
   - [assert and assume]()
   - [assert ... by](./reference-assert-by.md)
