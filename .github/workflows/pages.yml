@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
@@ -72,7 +72,7 @@ jobs:
           destination: ./_site/verus
 
       - name: upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
 
   deploy:
     needs: build
@@ -83,4 +83,4 @@ jobs:
     steps:
       - name: deploy to github pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
