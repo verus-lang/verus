@@ -632,3 +632,18 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] trigger_with_mixed_outer_quantifier_inner_closure verus_code! {
+        spec fn foo(y: int, z: int) -> bool { y == z }
+
+        spec fn test(x: int) -> bool {
+            forall |y: int| (|z: int| #[trigger] foo(y, z))(x)
+        }
+    } => Err(err) => {
+        assert!(err.warnings.len() == 1);
+        assert!(err.warnings[0].message.contains("#[trigger] on a spec_fn closure is deprecated"));
+        assert!(err.errors.len() == 1);
+        assert!(err.errors[0].message.contains("Could not automatically infer triggers for this quantifier"));
+    }
+}

@@ -363,9 +363,12 @@ fn check_trigger_expr(
 
 impl BndKind {
     fn is_inner_trigger(&self) -> bool {
+        // Triggers on Closure is deprecated; we still include it as an "inner trigger" here
+        // since any trigger expression containing a closure variable needs to be associated
+        // with that closure and not with the outer trigger.
         match self {
-            BndKind::Quant | BndKind::Choose => true,
-            BndKind::Lambda | BndKind::Let | BndKind::OuterTrigger => false,
+            BndKind::Quant | BndKind::Choose | BndKind::Lambda => true,
+            BndKind::Let | BndKind::OuterTrigger => false,
         }
     }
 
