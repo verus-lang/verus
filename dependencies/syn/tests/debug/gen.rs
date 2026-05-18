@@ -3822,6 +3822,9 @@ impl Debug for Lite<syn::Item> {
                 if _val.unsafety.is_some() {
                     formatter.field("unsafety", &Present);
                 }
+                if _val.constness.is_some() {
+                    formatter.field("constness", &Present);
+                }
                 formatter.field("generics", Lite(&_val.generics));
                 if let Some(val) = &_val.trait_ {
                     #[derive(RefCast)]
@@ -3997,6 +4000,9 @@ impl Debug for Lite<syn::Item> {
                 }
                 if _val.auto_token.is_some() {
                     formatter.field("auto_token", &Present);
+                }
+                if _val.constness.is_some() {
+                    formatter.field("constness", &Present);
                 }
                 if let Some(val) = &_val.restriction {
                     #[derive(RefCast)]
@@ -4277,6 +4283,9 @@ impl Debug for Lite<syn::ItemImpl> {
         if self.value.unsafety.is_some() {
             formatter.field("unsafety", &Present);
         }
+        if self.value.constness.is_some() {
+            formatter.field("constness", &Present);
+        }
         formatter.field("generics", Lite(&self.value.generics));
         if let Some(val) = &self.value.trait_ {
             #[derive(RefCast)]
@@ -4462,6 +4471,9 @@ impl Debug for Lite<syn::ItemTrait> {
         }
         if self.value.auto_token.is_some() {
             formatter.field("auto_token", &Present);
+        }
+        if self.value.constness.is_some() {
+            formatter.field("constness", &Present);
         }
         if let Some(val) = &self.value.restriction {
             #[derive(RefCast)]
@@ -7160,6 +7172,9 @@ impl Debug for Lite<syn::WithSpecOnExpr> {
                 }
             }
             formatter.field("follows", Print::ref_cast(val));
+        }
+        if !self.value.erased_fields.is_empty() {
+            formatter.field("erased_fields", Lite(&self.value.erased_fields));
         }
         formatter.finish()
     }
