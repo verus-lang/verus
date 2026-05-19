@@ -181,11 +181,24 @@ def walk_item(item, definitions):
 # check subcommand
 # ---------------------------------------------------------------------------
 
+def _prose_v_names(prose_text):
+    """Yield all V@[name] names in a prose string, skipping inline code spans."""
+    last = 0
+    for m in INLINE_CODE_RE.finditer(prose_text):
+        for vm in V_AT_RE.finditer(prose_text[last:m.start()]):
+            yield vm.group(1)
+        last = m.end()
+    for vm in V_AT_RE.finditer(prose_text[last:]):
+        yield vm.group(1)
+
+
 def check_mode():
     """
     Scan src/*.md, then report:
-      (1) grammar items defined but never referenced elsewhere
-      (2) grammar items referenced but never defined
+      (1) grammar items referenced in grammar blocks but not defined
+      (2) grammar items defined but never referenced from any grammar block
+      (3) grammar items referenced in prose but not defined
+    Grammar-block references count toward (2); prose references do not.
     Returns an exit code (1 if any issues found, 0 otherwise).
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -193,12 +206,16 @@ def check_mode():
 
     # definitions[name] = filename where V@[name] ::= first appears
     definitions = {}
-    # references[name] = set of filenames where V@[name] appears
-    # as a non-definition occurrence inside a verus-grammar block
-    references = {}
+    # grammar_refs[name] = set of filenames; non-definition V@[name] in grammar blocks
+    grammar_refs = {}
+    # prose_refs[name] = set of filenames; V@[name] in prose (outside all fenced blocks)
+    prose_refs = {}
 
-    def add_ref(name, filename):
-        references.setdefault(name, set()).add(filename)
+    def add_grammar_ref(name, filename):
+        grammar_refs.setdefault(name, set()).add(filename)
+
+    def add_prose_ref(name, filename):
+        prose_refs.setdefault(name, set()).add(filename)
 
     for filename in sorted(os.listdir(src_dir)):
         if not filename.endswith('.md'):
@@ -206,45 +223,69 @@ def check_mode():
         with open(os.path.join(src_dir, filename)) as f:
             content = f.read()
 
+        last_end = 0
         for m in FENCED_BLOCK_RE.finditer(content):
+            # Prose segment before this fenced block
+            for name in _prose_v_names(content[last_end:m.start()]):
+                add_prose_ref(name, filename)
+
             if m.group('info').strip() == 'verus-grammar':
                 body = m.group('body')
-                # Collect definitions (LHS of ::=)
                 def_starts = set()
                 for dm in DEFINITION_RE.finditer(body):
                     name = dm.group(1)
                     def_starts.add(dm.start())
                     if name not in definitions:
                         definitions[name] = filename
-                # Collect references (all V@[name] that are not definitions)
                 for vm in V_AT_RE.finditer(body):
                     if vm.start() not in def_starts:
-                        add_ref(vm.group(1), filename)
+                        add_grammar_ref(vm.group(1), filename)
+
+            last_end = m.end()
+
+        # Trailing prose after the last fenced block
+        for name in _prose_v_names(content[last_end:]):
+            add_prose_ref(name, filename)
 
     defined = set(definitions)
-    referenced = set(references)
 
-    undefined = sorted(referenced - defined)
-    unreferenced = sorted(defined - referenced)
+    undefined_grammar = sorted(set(grammar_refs) - defined)
+    unreferenced = sorted(defined - set(grammar_refs))
+    undefined_prose = sorted(set(prose_refs) - defined)
 
-    if undefined:
-        print("Grammar items mentioned but not defined:")
-        for name in undefined:
-            locs = ', '.join(sorted(references[name]))
+    issues = False
+
+    if undefined_grammar:
+        issues = True
+        print("Grammar items referenced in grammar blocks but not defined:")
+        for name in undefined_grammar:
+            locs = ', '.join(sorted(grammar_refs[name]))
             print(f"  V@[{name}]  (in {locs})")
     else:
-        print("No undefined grammar item references.")
+        print("No undefined grammar-block references.")
 
     print()
 
     if unreferenced:
-        print("Grammar items defined but never referenced:")
+        issues = True
+        print("Grammar items defined but never referenced from a grammar block:")
         for name in unreferenced:
             print(f"  V@[{name}]  (defined in {definitions[name]})")
     else:
         print("No unreferenced grammar item definitions.")
 
-    return 1 if (undefined or unreferenced) else 0
+    print()
+
+    if undefined_prose:
+        issues = True
+        print("Grammar items referenced in prose but not defined:")
+        for name in undefined_prose:
+            locs = ', '.join(sorted(prose_refs[name]))
+            print(f"  V@[{name}]  (in {locs})")
+    else:
+        print("No undefined prose references.")
+
+    return 1 if issues else 0
 
 
 # ---------------------------------------------------------------------------
