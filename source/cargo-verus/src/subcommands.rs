@@ -391,13 +391,11 @@ fn make_cargo_plan(
                 verus_driver_args_for_package.push("--no-verify".to_owned());
             }
 
-            for dep in entry.deps() {
-                if metadata_index.get(&dep.pkg).verus_metadata().verify {
-                    verus_driver_args_for_package.extend_from_slice(&[
-                        "--VIA-CARGO".to_owned(),
-                        format!("import-dep-if-present={}", dep.name),
-                    ]);
-                }
+            for import_name in metadata_index.transitive_verified_import_names(pkg_id) {
+                verus_driver_args_for_package.extend_from_slice(&[
+                    "--VIA-CARGO".to_owned(),
+                    format!("import-dep-if-present={import_name}"),
+                ]);
             }
 
             // If the package has a lib target *and* a non-lib target, like a test or example,
