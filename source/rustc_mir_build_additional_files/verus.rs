@@ -10,9 +10,10 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::hir::place::{Place, Projection, ProjectionKind};
 use rustc_middle::middle::region;
 use rustc_middle::mir::FakeReadCause;
+use rustc_middle::mir::UnOp;
 use rustc_middle::thir::{
-    AdtExprBase, Arm, ArmId, Block, BlockId, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, Pat,
-    PatKind, Stmt, StmtId, StmtKind,
+    AdtExprBase, Arm, ArmId, Block, BlockId, BlockSafety, Expr, ExprId, ExprKind, LocalVarId,
+    LogicalOp, Pat, PatKind, Stmt, StmtId, StmtKind,
 };
 use rustc_middle::ty;
 use rustc_middle::ty::{
@@ -61,6 +62,9 @@ pub enum CallErasure {
     /// to have no proof code in the subtree (e.g., consired 'pure' by modes.rs)
     EraseTree(TreeErase),
     Call(NodeErase),
+    /// Rewrite `implies(lhs, rhs)` as `!lhs || rhs` so borrow/lifetime checking sees
+    /// the correct short-circuit semantics instead of treating both args as unconditional.
+    ImpliesRewrite,
 }
 
 /// Information for a body (function or closure).
@@ -256,22 +260,56 @@ impl CallErasure {
     pub(crate) fn should_erase(&self) -> bool {
         match self {
             CallErasure::EraseTree(_) => panic!("EraseTree should be handled by mirror_expr_opt"),
+            CallErasure::ImpliesRewrite => {
+                panic!("ImpliesRewrite should be handled by mirror_expr_pre")
+            }
             CallErasure::Call(node_erase) => node_erase.should_erase(),
         }
     }
 }
 
 pub(crate) fn handle_call<'tcx>(
-    verus_ctxt: &VerusThirBuildCtxt,
+    cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
-) -> CallErasure {
-    let Some(erasure_ctxt) = verus_ctxt.ctxt.clone() else {
-        return CallErasure::keep_all();
+    kind: ExprKind<'tcx>,
+) -> ExprKind<'tcx> {
+    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
+        return kind;
     };
 
-    match erasure_ctxt.calls.get(&expr.hir_id) {
-        None => CallErasure::keep_all(),
-        Some(call_erasure) => call_erasure.clone(),
+    let call_erasure = match erasure_ctxt.calls.get(&expr.hir_id) {
+        None => return kind,
+        Some(ce) => ce.clone(),
+    };
+
+    match call_erasure {
+        CallErasure::EraseTree(_) => {
+            panic!("EraseTree should be handled by mirror_expr_pre")
+        }
+        CallErasure::ImpliesRewrite => {
+            // Rewrite implies(lhs, rhs) as !lhs || rhs so borrow/lifetime checking sees
+            // short-circuit semantics: rhs is only evaluated when lhs is true, matching
+            // the VIR treatment of BinaryOp::Implies.
+            let ExprKind::Call { ref args, .. } = kind else {
+                panic!("ImpliesRewrite: expected ExprKind::Call");
+            };
+            assert_eq!(args.len(), 2, "implies must have exactly 2 arguments");
+            let lhs_id = args[0];
+            let rhs_id = args[1];
+            let bool_ty = cx.thir[lhs_id].ty;
+            let lhs_span = cx.thir[lhs_id].span;
+            let not_lhs = Expr {
+                temp_scope_id: expr.hir_id.local_id,
+                ty: bool_ty,
+                span: lhs_span,
+                kind: ExprKind::Unary { op: UnOp::Not, arg: lhs_id },
+            };
+            let not_lhs_id = cx.thir.exprs.push(not_lhs);
+            ExprKind::LogicalOp { op: LogicalOp::Or, lhs: not_lhs_id, rhs: rhs_id }
+        }
+        CallErasure::Call(node_erase) => {
+            if node_erase.should_erase() { erase_node_unadjusted(cx, expr, kind) } else { kind }
+        }
     }
 }
 

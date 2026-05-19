@@ -200,8 +200,9 @@ fn resolved_call_to_call_erase(
 
             CompilableOperator::GhostExec => CallErasure::Call(NodeErase::Keep),
 
-            CompilableOperator::Implies
-            | CompilableOperator::RcNew
+            CompilableOperator::Implies => CallErasure::ImpliesRewrite,
+
+            CompilableOperator::RcNew
             | CompilableOperator::ArcNew
             | CompilableOperator::BoxNew
             | CompilableOperator::SmartPtrClone { .. }
