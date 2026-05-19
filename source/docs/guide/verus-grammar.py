@@ -120,6 +120,11 @@ def transform_block_body(body, current_path, definitions):
     body = V_AT_RE.sub(replace_v_ref, body)
     body = R_AT_RE.sub(lambda m: r_span(m.group(1)), body)
     body = body.replace('?', '<sup>?</sup>')
+    body = body.replace('+', '<sup>+</sup>')
+    body = body.replace('*', '<sup>*</sup>')
+    body = body.replace('\\<sup>+</sup>', '+')
+    body = body.replace('\\<sup>*</sup>', '*')
+    body = body.replace('\\<sup>?</sup>', '?')
     return body
 
 

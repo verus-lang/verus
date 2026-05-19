@@ -245,8 +245,3 @@ Verus supports [string literal expressions](https://doc.rust-lang.org/reference/
 The primary spec operator for strings is the "view" operator, `s@` or `s.view()`.
 
 
-
-## Slices and arrays
-
-
-## Mode wrappers: `Ghost` and `Tracked`

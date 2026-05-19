@@ -9,10 +9,10 @@ For an introduction to Verus arithmetic, see
 ### Syntax
 
 ```verus-grammar
-V@[arith_expr] ::= V@[spec_expr] + V@[spec_expr]
+V@[arith_expr] ::= V@[spec_expr] \+ V@[spec_expr]
              | V@[spec_expr] - V@[spec_expr]
              | - V@[spec_expr]
-             | V@[spec_expr] * V@[spec_expr]
+             | V@[spec_expr] \* V@[spec_expr]
              | V@[spec_expr] / V@[spec_expr]
              | V@[spec_expr] % V@[spec_expr]
 

@@ -9,10 +9,10 @@ The table below defines operator precedence from tightest-binding (top) to loose
 | [`is` `matches`](./datatypes_enum.md)                                                | left                 |                                                         |
 | [`*` `/` `%`](./spec-arithmetic.md)                                                  | left                 | V@[arith_expr]                                          |
 | [`+` `-`](./spec-arithmetic.md)                                                      | left                 | V@[arith_expr]                                          |
-| [`<<` `>>`](./spec-bit-ops.md)                                                       | left                 | V@[shl_expr] V@[shr_expr]                               |
-| [`&`](./spec-bit-ops.md)                                                             | left                 | V@[bit_and_expr]                                        |
-| [`^`](./spec-bit-ops.md)                                                             | left                 | V@[bit_xor_expr]                                        |
-| [<code>&#124;</code>](./spec-bit-ops.md)                                             | left                 | V@[bit_or_expr]                                         |
+| [`<<` `>>`](./spec-bit-ops.md)                                                       | left                 | V@[bit_expr]                                            |
+| [`&`](./spec-bit-ops.md)                                                             | left                 | V@[bit_expr]                                            |
+| [`^`](./spec-bit-ops.md)                                                             | left                 | V@[bit_expr]                                            |
+| [<code>&#124;</code>](./spec-bit-ops.md)                                             | left                 | V@[bit_expr]                                            |
 | [`!==` `==` `!=`](./spec-equality.md) `<=` `<` `>=` `>`                              | requires parentheses | V@[equality_expr] V@[ineq_expr]                         |
 | `&&`                                                                                 | left                 | V@[and_expr]                                            |
 | <code>&#124;&#124;</code>                                                            | left                 | V@[or_expr]                                             |

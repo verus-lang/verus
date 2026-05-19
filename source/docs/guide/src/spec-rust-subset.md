@@ -66,10 +66,10 @@ This is not the same thing as `==` in exec-mode; see [more on `==`](./spec-equal
 **Syntax:**
 
 ```verus-grammar
-V@[arith_expr] ::= V@[spec_expr] + V@[spec_expr]
+V@[arith_expr] ::= V@[spec_expr] \+ V@[spec_expr]
              | V@[spec_expr] - V@[spec_expr]
              | - V@[spec_expr]
-             | V@[spec_expr] * V@[spec_expr]
+             | V@[spec_expr] \* V@[spec_expr]
              | V@[spec_expr] / V@[spec_expr]
              | V@[spec_expr] % V@[spec_expr]
 ```
@@ -83,7 +83,7 @@ and `nat` types. See [more on arithmetic](./spec-arithmetic.md).
 
 ```verus-grammar
 V@[ref_expr]   ::= & V@[spec_expr]
-V@[deref_expr] ::= * V@[spec_expr]
+V@[deref_expr] ::= \* V@[spec_expr]
 ```
 
 Verus attempts to ignore `Box` and references as much as possible in spec mode.
