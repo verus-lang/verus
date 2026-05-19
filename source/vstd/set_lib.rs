@@ -859,7 +859,7 @@ impl<A> Set<Set<A>> {
         self.lemma_flatten_inner_finite();
     }
 
-    pub broadcast proof fn flatten_insert_union_commute(self, other: Self)
+    pub broadcast proof fn flatten_insert_union_commute(self, other: Set<A>)
         ensures
             self.flatten().union(other) =~= #[trigger] self.insert(other).flatten(),
     {
@@ -869,15 +869,16 @@ impl<A> Set<Set<A>> {
         let rhs = self.insert(other).flatten();
 
         assert forall|elem: A| lhs.contains(elem) implies rhs.contains(elem) by {
-            lhs.lemma_flatten_contains(elem);
-            if exists|s: Set<A>| self.contains(s) && s.contains(elem) {
+            if self.flatten().contains(elem) {
+                self.lemma_flatten_contains(elem);
                 let s = choose|s: Set<A>| self.contains(s) && s.contains(elem);
                 assert(self.insert(other).contains(s));
                 assert(s.contains(elem));
             } else {
+                assert(other.contains(elem));
                 assert(self.insert(other).contains(other));
             }
-            rhs.lemma_flatten_contains(elem);
+            self.insert(other).lemma_flatten_contains(elem);
         }
     }
 }
@@ -898,8 +899,8 @@ pub trait FiniteRange: Sized {
 
 pub broadcast proof fn range_set_properties<A: FiniteRange>(lo: A, hi: A)
     ensures
-        forall|i: A| #[trigger] A::range_set(lo, hi).contains(i) <==> A::in_range(i, lo, hi),
-        A::range_set(lo, hi).len() == A::range_len(lo, hi),
+        forall|i: A| A::range_set(lo, hi).contains(i) <==> A::in_range(i, lo, hi),
+        (#[trigger] A::range_set(lo, hi)).len() == A::range_len(lo, hi),
 {
     A::range_properties(lo, hi);
 }
