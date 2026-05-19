@@ -12,6 +12,8 @@ a given predicate. It is the Hilbert choice operator (also known as the epsilon 
 V@[choose_expr] ::= choose |R@[binders...]| V@[spec_expr]
 ```
 
+The body V@[spec_expr] may include [trigger annotations](./trigger-annotations.md).
+
 ### Typing
 
 The body V@[spec_expr] must have type `bool`. The bound variables are available as spec-mode
