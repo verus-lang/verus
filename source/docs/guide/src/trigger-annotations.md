@@ -9,6 +9,20 @@ on [multiple triggers and matching loops](./multitriggers.md).
 
 This page explains the procedure Verus uses to determine these triggers from Verus source code.
 
+## Syntax
+
+```verus-grammar
+V@[root_trigger_attr]  ::= #![trigger V@[spec_expr] (, V@[spec_expr])*]
+                         | #![auto]
+                         | #![all_triggers]
+V@[inner_trigger_attr] ::= #[trigger] V@[spec_expr]
+                         | #[trigger(R@[n])] V@[spec_expr]
+```
+
+V@[root_trigger_attr] annotations appear at the start of the quantifier body and configure
+trigger selection for the whole quantifier. V@[inner_trigger_attr] annotations appear on
+specific sub-expressions within the body to mark them individually as triggers.
+
 ## Terminology: trigger groups and trigger expressions
 
 Every quantifier has a number of _quantifier variables_. To control how the solver instantiates

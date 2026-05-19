@@ -9,3 +9,10 @@ Specifically, the use of the `=~=` and `=~~=` operators will trigger the applica
 "extensional equality" operators.
 
 See [the guide page](extensional_equality.md) for an introductory explanation.
+
+## Syntax
+
+```verus-grammar
+V@[ext_eq_expr] ::= V@[spec_expr] =~=  V@[spec_expr]
+                  | V@[spec_expr] =~~= V@[spec_expr]
+```
