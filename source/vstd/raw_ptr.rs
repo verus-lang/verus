@@ -579,11 +579,9 @@ impl<T> PointsTo<[T]> {
 
     /// Returns `true` if all of the permission's associated memory in the given subrange is initialized.
     #[verifier::inline]
-    pub open spec fn is_init_subrange(&self, start_index: int, len: nat) -> bool
-        recommends
-            0 <= start_index <= start_index + len <= self.mem_contents_seq().len(),
-    {
-        forall|i|
+    pub open spec fn is_init_subrange(&self, start_index: int, len: nat) -> bool {
+        &&& 0 <= start_index <= start_index + len <= self.mem_contents_seq().len()
+        &&& forall|i|
             start_index <= i < start_index + len ==> self.mem_contents_seq().index(i).is_init()
     }
 
