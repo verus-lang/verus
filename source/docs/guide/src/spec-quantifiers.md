@@ -4,52 +4,35 @@ For an intuition-guided introduction to quantifiers and triggers, see the
 [Quantifiers](quants.md) tutorial, specifically [forall and triggers](forall.md)
 and [exists and choose](exists.md).
 
-Both `forall` and `exists` are **spec-mode only** expressions with type `bool`.
+Both `forall` and `exists` are **spec-mode only** expressions.
 
-## forall
-
-**Syntax:**
+### Syntax
 
 ```verus-grammar
 V@[forall_expr] ::= forall |R@[binders...]| V@[spec_expr]
-```
-
-`SpecExpr` is a spec-mode `bool` expression. The bound variables are in scope in `SpecExpr`
-and are also spec-mode.
-
-**Semantics:** `forall|x: T| P(x)` is `true` if and only if `P(x)` is `true` for every
-value `x` of type `T`.
-
-**Example:**
-
-```rust
-// All elements of s are positive
-forall|i: int| 0 <= i < s.len() ==> s[i] > 0
-```
-
-## exists
-
-**Syntax:**
-
-```verus-grammar
 V@[exists_expr] ::= exists |R@[binders...]| V@[spec_expr]
 ```
 
-**Semantics:** `exists|x: T| P(x)` is `true` if and only if there is at least one value
-`x` of type `T` for which `P(x)` is `true`. The dual identity holds:
-`exists|x: T| P(x)` is equivalent to `!forall|x: T| !P(x)`.
+The body V@[spec_expr] may be preceded by [trigger annotations](./trigger-annotations.md).
 
-**Example:**
+### Typing
 
-```rust
-// Some element of s is zero
-exists|i: int| 0 <= i < s.len() && s[i] == 0
+The body V@[spec_expr] must have type `bool`. The bound variables are available as spec-mode
+variables within the body. Both `forall` and `exists` expressions have type `bool`.
+
+### Semantics
+
+`forall|x: T| P(x)` is `true` if and only if `P(x)` is `true` for every value `x` of type `T`.
+
+`exists|x: T| P(x)` is `true` if and only if there exists at least one value `x` of type `T`
+such that `P(x)` is `true`. The two are duals:
+
+```
+exists|x: T| P(x)  ≡  !forall|x: T| !P(x)
 ```
 
-## Multiple bound variables
-
-Both `forall` and `exists` support binding multiple variables simultaneously.
-This is equivalent to nesting single-variable quantifiers:
+Both quantifiers support binding multiple variables simultaneously, which is equivalent to
+nesting single-variable quantifiers:
 
 ```rust
 // These two are equivalent:
@@ -57,10 +40,10 @@ forall|i: int, j: int| i < j ==> f(i) <= f(j)
 forall|i: int| forall|j: int| i < j ==> f(i) <= f(j)
 ```
 
-## Triggers
+### Triggers
 
 Because quantifiers range over infinite domains, the SMT solver does not enumerate all
-possible instantiations. Instead, it uses *triggers*: syntactic patterns that, when matched
+possible instantiations. Instead it uses *triggers*: syntactic patterns that, when matched
 by terms in the proof context, cause the quantifier to be instantiated with the matching values.
 
 Every quantifier must have at least one trigger group. Verus can choose triggers
