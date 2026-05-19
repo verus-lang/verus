@@ -12,10 +12,10 @@ V@[bit_expr] ::= V@[spec_expr]  &  V@[spec_expr]
 
 ### Typing
 
-| operation | LHS type            | RHS type             | result type | notes   |
-|-----------|---------------------|----------------------|-------------|----------------------|
-| `&` <code>&#124;</code> `^` | t | t | t | |
-| `<<` `>>`   | t<sub>1</sub>     | t<sub>2</sub>        | t<sub>1</sub> |         |
+| operation | LHS type            | RHS type             | result type   |
+|-----------|---------------------|----------------------|---------------|
+| `&` <code>&#124;</code> `^` | t | t                    | t             |
+| `<<` `>>`   | t<sub>1</sub>     | t<sub>2</sub>        | t<sub>1</sub> |
 
 ### Semantics
 
