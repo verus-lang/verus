@@ -173,7 +173,6 @@ impl<A> ISet<A> {
     {
         proof {
             broadcast use group_iset_properties;
-
         }
         if self.len() <= 1 {
             self.choose()
@@ -208,7 +207,7 @@ impl<A> ISet<A> {
         } else {
             let x = choose|x: A| self.contains(x);
             self.remove(x).find_unique_minimal_ensures(r);
-            assert(self.has_minimum(r, self.remove(x).find_unique_minimal(r)));
+            assert(self.remove(x).has_minimum(r, self.remove(x).find_unique_minimal(r)));
             let y = self.remove(x).find_unique_minimal(r);
             let min_updated = self.find_unique_minimal(r);
             assert(!r(y, x) ==> min_updated == x);
@@ -238,7 +237,14 @@ impl<A> ISet<A> {
             assert forall|min_poss: A|
                 self.has_minimum(r, min_poss) implies self.find_unique_minimal(r) == min_poss by {
                 assert(self.remove(x).has_minimum(r, min_poss) || x == min_poss);
-                assert(r(min_poss, self.find_unique_minimal(r)));
+                if self.remove(x).has_minimum(r, min_poss) {
+                    assert(r(x, min_poss) ==> r(min_poss, x));
+                    assert(r(min_poss, self.find_unique_minimal(r)));
+                }
+                else {
+                    assert(x == min_poss);
+                    assert(r(x, y));
+                }
             }
         }
     }
@@ -638,14 +644,14 @@ impl<A> ISet<A> {
         };
         let to_set = |elem: A|
             match f(elem) {
-                Option::Some(r) => set!{r},
-                Option::None => set!{},
+                Option::Some(r) => iset!{r},
+                Option::None => iset!{},
             };
         assert forall|r: B| #[trigger] lhs.contains(r) implies rhs.contains(r) by {
             if f(elem) != Some(r) {
                 let orig = choose|orig: A| #[trigger]
                     s.contains(orig) && f(orig) == Option::Some(r);
-                assert(to_set(orig) == set!{r});
+                assert(to_set(orig) == iset!{r});
                 assert(s.map(to_set).contains(to_set(orig)));
             }
         }
@@ -672,8 +678,8 @@ impl<A> ISet<A> {
         let rhs = self.filter_map(f).union(t.filter_map(f));
         let to_set = |elem: A|
             match f(elem) {
-                Option::Some(r) => set!{r},
-                Option::None => set!{},
+                Option::Some(r) => iset!{r},
+                Option::None => iset!{},
             };
 
         assert forall|elem: B| rhs.contains(elem) implies lhs.contains(elem) by {
@@ -803,8 +809,10 @@ impl<A> ISet<A> {
             #[trigger] self.to_seq().to_set().to_iset() =~= self,
         decreases self.len(),
     {
+        broadcast use group_set_lemmas;
         broadcast use group_iset_lemmas;
         broadcast use lemma_iset_empty_equivalency_len;
+        broadcast use super::seq_lib::group_seq_lib_default;
         broadcast use super::seq_lib::group_seq_properties;
 
         if self.len() == 0 {

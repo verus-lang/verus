@@ -526,7 +526,7 @@ impl<A> Seq<A> {
     }
 
     /// Converts a sequence into a set
-    pub open spec fn to_set(self) -> Set<A> {
+    pub closed spec fn to_set(self) -> Set<A> {
         Set::range(0, self.len() as int).map(|i| self.index(i))
     }
 

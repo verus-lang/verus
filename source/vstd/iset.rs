@@ -1017,6 +1017,7 @@ pub broadcast proof fn lemma_iset_to_set_contains<A>(s: ISet<A>, a: A)
     ensures
         #[trigger] s.to_set().unwrap().contains(a) == s.contains(a),
 {
+    broadcast use super::set::group_set_lemmas;
 }
 
 pub proof fn lemma_iset_finite_if_subset_of_seq<A>(i: ISet<A>, s: Seq<A>)
