@@ -10,7 +10,7 @@ use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
 pub use super::raw_ptr::MemContents;
-use super::set::*;
+use super::iset::*;
 use super::*;
 
 pub mod invcell;
@@ -21,7 +21,7 @@ pub mod pcell_maybe_uninit;
 
 verus! {
 
-broadcast use {super::map::group_map_lemmas, super::set::group_set_lemmas};
+broadcast use {super::imap::group_imap_lemmas, super::iset::group_iset_lemmas};
 
 /// **Now deprecated** See [`pcell::PCell`] or [`pcell_maybe_uninit::PCell`] instead
 ///

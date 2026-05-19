@@ -648,7 +648,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::set::Set::insert",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Insert),   Some(Arc::new("set::Set::insert".to_owned())))),
         ("verus::vstd::set::Set::remove",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Remove),   Some(Arc::new("set::Set::remove".to_owned())))),
 
-        ("verus::vstd::iset::ISet::empty",     VerusItem::Vstd(VstdItem::ISetFn(SetItem::Empty),   Some(Arc::new("iset::ISet::empty".to_owned())))),
+        ("verus::vstd::iset::ISet::empty",     VerusItem::Vstd(VstdItem::ISetFn(SetItem::Empty),    Some(Arc::new("iset::ISet::empty".to_owned())))),
         ("verus::vstd::iset::ISet::full",      VerusItem::Vstd(VstdItem::ISetFn(SetItem::Full),     Some(Arc::new("iset::ISet::full".to_owned())))),
         ("verus::vstd::iset::ISet::contains",  VerusItem::Vstd(VstdItem::ISetFn(SetItem::Contains), Some(Arc::new("iset::ISet::contains".to_owned())))),
         ("verus::vstd::iset::ISet::subset_of", VerusItem::Vstd(VstdItem::ISetFn(SetItem::SubsetOf), Some(Arc::new("iset::ISet::subset_of".to_owned())))),

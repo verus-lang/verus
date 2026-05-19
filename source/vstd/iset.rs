@@ -49,7 +49,7 @@ impl<A> ISet<A> {
     /// * [`lemma_iset_empty_finite`]
     /// * [`lemma_iset_empty_len`] <br>
     /// * [`lemma_iset_empty`]
-    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::empty"]
+//    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::empty"]
     pub closed spec fn empty() -> ISet<A> {
         ISet { set: |a| false }
     }
@@ -67,13 +67,13 @@ impl<A> ISet<A> {
     }
 
     /// The "full" set, i.e., set containing every element of type `A`.
-    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::full"]
+//    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::full"]
     pub open spec fn full() -> ISet<A> {
         ISet::empty().complement()
     }
 
     /// Predicate indicating if the set contains the given element.
-    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::contains"]
+//    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::contains"]
     pub closed spec fn contains(self, a: A) -> bool {
         (self.set)(a)
     }
@@ -85,7 +85,7 @@ impl<A> ISet<A> {
     }
 
     /// Returns `true` if the first argument is a subset of the second.
-    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::subset_of"]
+//    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::subset_of"]
     pub open spec fn subset_of(self, s2: ISet<A>) -> bool {
         forall|a: A| self.contains(a) ==> s2.contains(a)
     }
@@ -97,7 +97,7 @@ impl<A> ISet<A> {
 
     /// Returns a new set with the given element inserted.
     /// If that element is already in the set, then an identical set is returned.
-    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::insert"]
+//    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::insert"]
     pub closed spec fn insert(self, a: A) -> ISet<A> {
         ISet {
             set: |a2|
@@ -111,7 +111,7 @@ impl<A> ISet<A> {
 
     /// Returns a new set with the given element removed.
     /// If that element is already absent from the set, then an identical set is returned.
-    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::remove"]
+//    #[rustc_diagnostic_item = "verus::vstd::iset::ISet::remove"]
     pub closed spec fn remove(self, a: A) -> ISet<A> {
         ISet {
             set: |a2|
