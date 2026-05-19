@@ -594,11 +594,9 @@ impl<T> PointsTo<[T]> {
 
     /// Returns `true` if all of the permission's associated memory in the given subrange is initialized.
     #[verifier::inline]
-    pub open spec fn is_init_subrange(&self, start_index: int, len: nat) -> bool
-        recommends
-            0 <= start_index <= start_index + len <= self.mem_contents_seq().len(),
-    {
-        forall|i|
+    pub open spec fn is_init_subrange(&self, start_index: int, len: nat) -> bool {
+        &&& 0 <= start_index <= start_index + len <= self.mem_contents_seq().len()
+        &&& forall|i|
             start_index <= i < start_index + len ==> self.mem_contents_seq().index(i).is_init()
     }
 
@@ -950,6 +948,29 @@ impl<T> PointsTo<[T]> {
         use_type_invariant(&self);
         self.inner.into_seq_pt()
     }
+
+    /// We can always convert a `PointsTo<[T]>` into a `SeqPointsTo<T>` for the same pointer,
+    /// whose elements are individual `PointsTo<T>` with the memory contents of the corresponding index.
+    pub proof fn into_seq_pt(tracked self) -> (tracked s: SeqPointsTo<T>)
+        ensures
+            forall|i|
+                #![trigger s[i].mem_contents()]
+                #![trigger self.mem_contents_seq()[i as int]]
+                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
+                    == self.mem_contents_seq()[i as int],
+            // Do I need to specify the ptrs? Or does this follow from the invariant?
+            // && s.pt_seq()[i].ptr() == self.ptr()
+            s.ptr() == self.ptr() as *mut T,
+            s.len() == self.mem_contents_seq().len(),
+    {
+        broadcast use layout_of_sized;
+        broadcast use layout_of_slices;
+
+        let ghost v: &[T] = arbitrary();
+        assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
+        use_type_invariant(&self);
+        self.inner.into_seq_pt()
+    }
 }
 
 // PointsToUnaligned<[T]>: the unaligned slice permission that PointsTo<[T]> delegates to.
@@ -1184,6 +1205,23 @@ impl<T> PointsToUnaligned<[T]> {
     //         m.ptr() == self.ptr() as *mut T,
     //         m.len() == self.ptr()@.metadata,
     // ;
+    /// We can always convert a `PointsToUnaligned<[T]>` into a `SeqPointsTo<T>` for the same pointer,
+    /// whose elements are individual `PointsToUnaligned<T>` with the memory contents of the corresponding index.
+    pub axiom fn into_seq_pt(tracked self) -> (tracked s: SeqPointsTo<T>)
+        requires
+            self.ptr()@.addr as int % align_of::<T>() as int == 0,
+        ensures
+            forall|i|
+                #![trigger s[i].mem_contents()]
+                #![trigger self.mem_contents_seq()[i as int]]
+                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
+                    == self.mem_contents_seq()[i as int],
+            // Do I need to specify the ptrs? Or does this follow from the invariant?
+            // && s.pt_seq()[i].ptr() == self.ptr()
+            s.ptr() == self.ptr() as *mut T,
+            s.len() == self.mem_contents_seq().len(),
+    ;
+
     /// We can always convert a `PointsToUnaligned<[T]>` into a `SeqPointsTo<T>` for the same pointer,
     /// whose elements are individual `PointsToUnaligned<T>` with the memory contents of the corresponding index.
     pub axiom fn into_seq_pt(tracked self) -> (tracked s: SeqPointsTo<T>)
@@ -2096,12 +2134,44 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
-pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
+pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
     requires
         perm.ptr() == ptr,
         perm.is_init(),
     ensures
         v == perm.value(),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &*ptr }
+}
+
+/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>) -> (v: &str)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v == perm.value(),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &*ptr }
+}
+
+/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v@ == perm.value(),
     opens_invariants none
     no_unwind
 {
@@ -2723,7 +2793,7 @@ impl<'a, T> SharedReference<'a, [T]> {
         self.as_ref().len()
     }
 
-    pub fn index(self, idx: usize) -> (out: &'a T)
+    pub const fn index(self, idx: usize) -> (out: &'a T)
         requires
             0 <= idx < self.value()@.len(),
         ensures
@@ -2853,6 +2923,10 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     SharedReference(unsafe { &*ptr })
 }
 
+} // verus!
+/// Trusted wrapper around `ptr_ref`, due to
+/// [current limitations](https://verus-lang.github.io/verus/guide/exec_attr.html?highlight=verus_spec#using-a-mix-of-verus_spec-and-verus)
+/// with mixing `verus!` and `#[verus_spec`].
 #[verus_spec(v =>
     with
         Tracked(perm): Tracked<&'a PointsTo<T>>
@@ -2864,12 +2938,9 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     opens_invariants none
     no_unwind
 )]
-/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
-#[verifier::external_body]
-pub fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T {
+#[verus_verify(external_body)]
+#[allow(non_snake_case)]
+pub const fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T {
     ptr_ref(ptr, Tracked::assume_new())
 }
-
-} // verus!

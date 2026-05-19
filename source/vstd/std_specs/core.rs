@@ -71,6 +71,11 @@ pub trait ExPtrPointee: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
+pub trait ExThin: core::ptr::Pointee<Metadata = ()> + PointeeSized {
+    type ExternalTraitSpecificationFor: core::ptr::Thin;
+}
+
+#[verifier::external_trait_specification]
 pub trait ExIterator {
     type ExternalTraitSpecificationFor: core::iter::Iterator;
 

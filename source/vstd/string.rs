@@ -234,13 +234,13 @@ impl StrSliceExecFns for str {
             }
             if char_pos == to {
                 byte_end = Some(byte_pos);
-                break ;
+                break;
             }
             if let Some(c) = it.next() {
                 char_pos += 1;
                 byte_pos += c.len_utf8();
             } else {
-                break ;
+                break;
             }
         }
         let byte_start = byte_start.unwrap();
