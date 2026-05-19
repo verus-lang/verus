@@ -2,7 +2,7 @@ use cargo_verus::{
     BIN_NAME, ExecutionPlan,
     test_utils::{
         CARGO_DEFAULT_LIB_METADATA, MockDep, MockPackage, MockWorkspace, RUSTC_WRAPPER,
-        VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
+        VERUS_DRIVER_ARGS_FOR, VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
     },
 };
 
@@ -299,4 +299,46 @@ fn workspace_manifest_package_hasdeps() {
     cargo_plan.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
     cargo_plan.assert_env_has_no_key_prefix(&verify_optout_prefix);
     cargo_plan.assert_env_has_no_key_prefix(&verify_unset_prefix);
+}
+
+#[test]
+fn workspace_emits_import_for_transitive_verified_dep() {
+    // consumer -> mid (alias `renamed`) -> deeper. All three are verify=true.
+    // The verus driver args for consumer must include `import-dep-if-present`
+    // entries for both the direct dep (using the consumer-side alias) and the
+    // deeper dep (using its lib target name).
+    let consumer = "consumer";
+    let mid = "mid";
+    let deeper = "deeper";
+
+    let workspace_dir = MockWorkspace::new()
+        .members([
+            MockPackage::new(deeper).lib().verify(true),
+            MockPackage::new(mid).lib().verify(true).deps([MockDep::workspace(deeper)]),
+            MockPackage::new(consumer)
+                .lib()
+                .verify(true)
+                .deps([MockDep::path(mid, "../mid").alias("renamed")]),
+        ])
+        .materialize();
+
+    let manifest_path = workspace_dir.path().join("Cargo.toml");
+    let manifest_path = manifest_path.to_str().expect("manifest path to string");
+    let consumer_args_prefix = format!("{VERUS_DRIVER_ARGS_FOR}{consumer}-0.1.0-");
+
+    let args = [BIN_NAME, "verify", "--manifest-path", manifest_path, "--package", consumer];
+    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
+
+    let driver_args = cargo_plan.parse_driver_args_for_key_prefix(&consumer_args_prefix);
+    assert!(
+        driver_args.contains(&"import-dep-if-present=renamed"),
+        "expected direct-dep alias in driver args, got: {driver_args:?}",
+    );
+    assert!(
+        driver_args.contains(&"import-dep-if-present=deeper"),
+        "expected transitive dep by lib name in driver args, got: {driver_args:?}",
+    );
 }
