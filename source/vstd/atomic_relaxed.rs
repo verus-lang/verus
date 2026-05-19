@@ -125,6 +125,11 @@ impl<T> History<T> {
         &&& forall|ts| #[trigger] self.contains_timestamp(ts) ==> ts <= timestamp
     }
 
+    pub open spec fn is_max_timestamp_with_val(&self, timestamp: nat, val: T) -> bool {
+        &&& self.contains_timestamp(timestamp)
+        &&& forall|ts| #[trigger] self.contains_timestamp(ts) && self.get(ts).unwrap().0 == val ==> ts <= timestamp
+    }
+
     // pub uninterp spec fn last(&self) -> (nat, (T, Option<ThreadView>))
     //     recommends self.0.len() > 0;
 
