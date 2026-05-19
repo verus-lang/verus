@@ -30,7 +30,7 @@ tokenized_state_machine! { Petersons<T> {
         &&& (self.thread_1 == ThreadState::Idle) <==> !self.flag_1
         &&& !(self.thread_0 == ThreadState::Critical && self.thread_1 == ThreadState::Critical)
         &&& self.storage.is_Some() <==>
-            (self.thread_0 !== ThreadState::Critical && self.thread_1 !== ThreadState::Critical)
+            (self.thread_0 != ThreadState::Critical && self.thread_1 != ThreadState::Critical)
         &&& self.thread_0 == ThreadState::Critical && self.turn == 1 ==> self.thread_1 == ThreadState::Idle || self.thread_1 == ThreadState::SetFlag
         &&& self.thread_1 == ThreadState::Critical && self.turn == 0 ==> self.thread_0 == ThreadState::Idle || self.thread_0 == ThreadState::SetFlag
         &&& self.turn == 0 || self.turn == 1

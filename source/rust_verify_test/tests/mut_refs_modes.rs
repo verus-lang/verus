@@ -715,7 +715,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] tracked_places_lifetime_error2 ["--no-lifetime"] => verus_code! {
         proof fn id<A>(tracked a: A) -> (tracked ret: A)
-            ensures ret === a
+            ensures ret == a
         { a }
 
         fn test() {
@@ -736,7 +736,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] tracked_places_lifetime_error3 ["--no-lifetime"] => verus_code! {
         proof fn id<A>(tracked a: A) -> (tracked ret: A)
-            ensures ret === a
+            ensures ret == a
         { a }
 
         fn test() {
@@ -823,14 +823,14 @@ test_verify_one_file_with_options! {
             let mut t: Ghost<(int, int)> = Ghost((4, 6));
             let mut_ref = &mut t;
             proof { *mut_ref.borrow_mut() = (5, 10); }
-            assert(t@ === (5, 10));
+            assert(t@ == (5, 10));
         }
 
         fn test1_fails() {
             let mut t: Ghost<(int, int)> = Ghost((4, 6));
             let mut_ref = &mut t;
             proof { *mut_ref.borrow_mut() = (5, 10); }
-            assert(t@ === (5, 10));
+            assert(t@ == (5, 10));
             assert(false); // FAILS
         }
 
@@ -838,14 +838,14 @@ test_verify_one_file_with_options! {
             let mut t: Ghost<(int, int)> = Ghost((4, 6));
             let mut_ref = &mut t;
             proof { mut_ref.borrow_mut().0 = 5; }
-            assert(t@ === (5, 6));
+            assert(t@ == (5, 6));
         }
 
         fn test2_fails() {
             let mut t: Ghost<(int, int)> = Ghost((4, 6));
             let mut_ref = &mut t;
             proof { mut_ref.borrow_mut().0 = 5; }
-            assert(t@ === (5, 6));
+            assert(t@ == (5, 6));
             assert(false); // FAILS
         }
 
@@ -857,14 +857,14 @@ test_verify_one_file_with_options! {
             let mut t: Tracked<Tr> = Tracked(Tr { ints: (4, 6) });
             let mut_ref = &mut t;
             proof { mut_ref.borrow_mut().ints = (5, 10); }
-            assert(t@.ints === (5, 10));
+            assert(t@.ints == (5, 10));
         }
 
         fn test3_fails() {
             let mut t: Tracked<Tr> = Tracked(Tr { ints: (4, 6) });
             let mut_ref = &mut t;
             proof { mut_ref.borrow_mut().ints = (5, 10); }
-            assert(t@.ints === (5, 10));
+            assert(t@.ints == (5, 10));
             assert(false); // FAILS
         }
 
@@ -872,14 +872,14 @@ test_verify_one_file_with_options! {
             let mut t: Tracked<Tr> = Tracked(Tr { ints: (4, 6) });
             let mut_ref = &mut t;
             proof { mut_ref.borrow_mut().ints.0 = 5; }
-            assert(t@.ints === (5, 6));
+            assert(t@.ints == (5, 6));
         }
 
         fn test4_fails() {
             let mut t: Tracked<Tr> = Tracked(Tr { ints: (4, 6) });
             let mut_ref = &mut t;
             proof { mut_ref.borrow_mut().ints.0 = 5; }
-            assert(t@.ints === (5, 6));
+            assert(t@.ints == (5, 6));
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 4)

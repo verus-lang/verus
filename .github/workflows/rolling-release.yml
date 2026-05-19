@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: get z3
         working-directory: ./source
@@ -75,7 +75,7 @@ jobs:
           fi
 
       - name: upload release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.release_name }}
           path: ${{ matrix.release_name }}.zip
@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
 
       - name: create release tag
         shell: bash
@@ -119,44 +119,48 @@ jobs:
           new_draft_status: true
 
       - name: upload release for x86-linux
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.update_release.outputs.upload_url }}
-          asset_path: ./verus-x86-linux/verus-x86-linux.zip
-          asset_name: verus-${{ env.RELEASE_NAME }}-x86-linux.zip
-          asset_content_type: application/zip
+          UPLOAD_URL: ${{ steps.update_release.outputs.upload_url }}
+        run: |
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/zip" \
+            --data-binary @./verus-x86-linux/verus-x86-linux.zip \
+            "${UPLOAD_URL%%\{*}?name=verus-${{ env.RELEASE_NAME }}-x86-linux.zip"
 
       - name: upload release for arm64-macos
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.update_release.outputs.upload_url }}
-          asset_path: ./verus-arm64-macos/verus-arm64-macos.zip
-          asset_name: verus-${{ env.RELEASE_NAME }}-arm64-macos.zip
-          asset_content_type: application/zip
+          UPLOAD_URL: ${{ steps.update_release.outputs.upload_url }}
+        run: |
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/zip" \
+            --data-binary @./verus-arm64-macos/verus-arm64-macos.zip \
+            "${UPLOAD_URL%%\{*}?name=verus-${{ env.RELEASE_NAME }}-arm64-macos.zip"
 
       - name: upload release for x86-macos
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.update_release.outputs.upload_url }}
-          asset_path: ./verus-x86-macos/verus-x86-macos.zip
-          asset_name: verus-${{ env.RELEASE_NAME }}-x86-macos.zip
-          asset_content_type: application/zip
+          UPLOAD_URL: ${{ steps.update_release.outputs.upload_url }}
+        run: |
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/zip" \
+            --data-binary @./verus-x86-macos/verus-x86-macos.zip \
+            "${UPLOAD_URL%%\{*}?name=verus-${{ env.RELEASE_NAME }}-x86-macos.zip"
 
       - name: upload release for x86-win
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.update_release.outputs.upload_url }}
-          asset_path: ./verus-x86-win/verus-x86-win.zip
-          asset_name: verus-${{ env.RELEASE_NAME }}-x86-win.zip
-          asset_content_type: application/zip
+          UPLOAD_URL: ${{ steps.update_release.outputs.upload_url }}
+        run: |
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/zip" \
+            --data-binary @./verus-x86-win/verus-x86-win.zip \
+            "${UPLOAD_URL%%\{*}?name=verus-${{ env.RELEASE_NAME }}-x86-win.zip"
 
       - name: publish release
         uses: verus-lang/action-update-release@v0.2

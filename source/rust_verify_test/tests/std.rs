@@ -277,7 +277,7 @@ test_verify_one_file_with_options! {
         use vstd::*;
 
         fn test() -> (res: Result<u32, bool>)
-            ensures res === Err(false),
+            ensures res == Err(false),
         {
             let x: Result<u8, bool> = Err(false);
             let y = x?;
@@ -725,27 +725,27 @@ test_verify_one_file! {
             let mut a = vec![1, 2];
             let b: &mut [u64] = &mut a;
             b[0] = 10;
-            assert(a@ === seq![10, 2]);
+            assert(a@ == seq![10, 2]);
         }
 
         fn test_overloaded_star_operator() {
             let mut a = vec![1, 2];
             let b: &mut [u64] = &mut *a;
             b[0] = 10;
-            assert(a@ === seq![10, 2]);
+            assert(a@ == seq![10, 2]);
         }
 
         fn test_overloaded_star_operator2() {
             let mut a = vec![1, 2];
             (*a)[1] = 20;
-            assert(a@ === seq![1, 20]);
+            assert(a@ == seq![1, 20]);
         }
 
         fn fails_implicit_via_adjustment() {
             let mut a = vec![1, 2];
             let b: &mut [u64] = &mut a;
             b[0] = 10;
-            assert(a@ === seq![10, 2]);
+            assert(a@ == seq![10, 2]);
             assert(false); // FAILS
         }
 
@@ -753,14 +753,14 @@ test_verify_one_file! {
             let mut a = vec![1, 2];
             let b: &mut [u64] = &mut *a;
             b[0] = 10;
-            assert(a@ === seq![10, 2]);
+            assert(a@ == seq![10, 2]);
             assert(false); // FAILS
         }
 
         fn fails_overloaded_star_operator2() {
             let mut a = vec![1, 2];
             (*a)[1] = 20;
-            assert(a@ === seq![1, 20]);
+            assert(a@ == seq![1, 20]);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
@@ -779,7 +779,7 @@ test_verify_one_file! {
             // Use entry API to insert to the map
 
             let entry = m.entry(5);
-            assert(entry.key() == 5 && entry.value() === None);
+            assert(entry.key() == 5 && entry.value() == None);
 
             let value_ref = entry.or_insert(20);
             assert(*value_ref == 20);
