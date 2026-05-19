@@ -19,7 +19,8 @@ functions marked with the `when_used_as_spec` directive).
 **Syntax:**
 
 ```verus-grammar
-V@[let_expr] ::= let R@[pattern] = V@[spec_expr]; V@[spec_expr]
+V@[spec_block_expr] ::= { V@[spec_let_stmt]* V@[spec_expr] }
+V@[spec_let_stmt]   ::= let R@[pattern] = V@[spec_expr];
 ```
 
 Spec expressions support `let`-bindings, but not `let mut`-bindings.
@@ -30,7 +31,7 @@ Spec expressions support `let`-bindings, but not `let mut`-bindings.
 
 ```verus-grammar
 V@[if_expr]     ::= if V@[spec_expr] { V@[spec_expr] } else { V@[spec_expr] }
-V@[if_let_expr] ::= if let R@[pattern] = R@[expr] { V@[spec_expr] } else { V@[spec_expr] }
+V@[if_let_expr] ::= if let R@[pattern] = V@[spec_expr] { V@[spec_expr] } else { V@[spec_expr] }
 V@[match_expr]  ::= match R@[expr] { R@[match_arms] }
 ```
 

@@ -13,6 +13,14 @@ hyperlinks to the page+anchor where that item is defined (if known).
 
 verus-grammar fenced blocks are also converted to:
   <pre class="verus-grammar"><code>...</code></pre>
+
+Usage:
+  As an mdBook preprocessor (reads [context, book] JSON from stdin):
+    python3 verus-grammar.py
+    python3 verus-grammar.py supports html
+
+  Check for broken/orphaned grammar references (reads src/*.md directly):
+    python3 verus-grammar.py check
 """
 
 import html
@@ -55,6 +63,10 @@ def compute_relative_link(from_path, to_path):
     rel = os.path.relpath(to_path, from_dir) if from_dir else to_path
     return os.path.splitext(rel)[0] + '.html'
 
+
+# ---------------------------------------------------------------------------
+# Preprocessor helpers
+# ---------------------------------------------------------------------------
 
 def collect_definitions(book):
     """
@@ -165,10 +177,98 @@ def walk_item(item, definitions):
             walk_item(sub, definitions)
 
 
+# ---------------------------------------------------------------------------
+# check subcommand
+# ---------------------------------------------------------------------------
+
+def check_mode():
+    """
+    Scan src/*.md, then report:
+      (1) grammar items defined but never referenced elsewhere
+      (2) grammar items referenced but never defined
+    Returns an exit code (1 if any issues found, 0 otherwise).
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    src_dir = os.path.join(script_dir, 'src')
+
+    # definitions[name] = filename where V@[name] ::= first appears
+    definitions = {}
+    # references[name] = sorted list of filenames where V@[name] appears
+    # as a non-definition occurrence (in prose or on the RHS of a rule)
+    references = {}
+
+    def add_ref(name, filename):
+        references.setdefault(name, set()).add(filename)
+
+    for filename in sorted(os.listdir(src_dir)):
+        if not filename.endswith('.md'):
+            continue
+        with open(os.path.join(src_dir, filename)) as f:
+            content = f.read()
+
+        last_end = 0
+        for m in FENCED_BLOCK_RE.finditer(content):
+            # Prose before this block
+            for vm in V_AT_RE.finditer(content[last_end:m.start()]):
+                add_ref(vm.group(1), filename)
+
+            if m.group('info').strip() == 'verus-grammar':
+                body = m.group('body')
+                # Collect definitions (LHS of ::=)
+                def_starts = set()
+                for dm in DEFINITION_RE.finditer(body):
+                    name = dm.group(1)
+                    def_starts.add(dm.start())
+                    if name not in definitions:
+                        definitions[name] = filename
+                # Collect references (all V@[name] that are not definitions)
+                for vm in V_AT_RE.finditer(body):
+                    if vm.start() not in def_starts:
+                        add_ref(vm.group(1), filename)
+
+            last_end = m.end()
+
+        # Trailing prose
+        for vm in V_AT_RE.finditer(content[last_end:]):
+            add_ref(vm.group(1), filename)
+
+    defined = set(definitions)
+    referenced = set(references)
+
+    undefined = sorted(referenced - defined)
+    unreferenced = sorted(defined - referenced)
+
+    if undefined:
+        print("Grammar items mentioned but not defined:")
+        for name in undefined:
+            locs = ', '.join(sorted(references[name]))
+            print(f"  V@[{name}]  (in {locs})")
+    else:
+        print("No undefined grammar item references.")
+
+    print()
+
+    if unreferenced:
+        print("Grammar items defined but never referenced:")
+        for name in unreferenced:
+            print(f"  V@[{name}]  (defined in {definitions[name]})")
+    else:
+        print("No unreferenced grammar item definitions.")
+
+    return 1 if (undefined or unreferenced) else 0
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
 def main():
     if len(sys.argv) >= 2 and sys.argv[1] == 'supports':
         renderer = sys.argv[2] if len(sys.argv) >= 3 else ''
         sys.exit(0 if renderer == 'html' else 1)
+
+    if len(sys.argv) >= 2 and sys.argv[1] == 'check':
+        sys.exit(check_mode())
 
     _context, book = json.load(sys.stdin)
     definitions = collect_definitions(book)

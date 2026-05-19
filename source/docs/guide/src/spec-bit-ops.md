@@ -1,6 +1,6 @@
 # Bit operators
 
-## Syntax
+### Syntax
 
 ```verus-grammar
 V@[bit_expr] ::= V@[spec_expr]  &  V@[spec_expr]
@@ -10,9 +10,16 @@ V@[bit_expr] ::= V@[spec_expr]  &  V@[spec_expr]
            | V@[spec_expr]  >> V@[spec_expr]
 ```
 
-## Definitions
+### Typing
 
-### `&`, `|`, and `^`
+| operation | LHS type            | RHS type             | result type | notes   |
+|-----------|---------------------|----------------------|-------------|----------------------|
+| `&` <code>&#124;</code> `^` | t | t | t | |
+| `<<` `>>`   | t<sub>1</sub>     | t<sub>2</sub>        | t<sub>1</sub> |         |
+
+### Semantics
+
+**`&`, `|`, and `^`**.
 
 These have the usual meaning: bitwise-OR, bitwise-AND, and bitwise-XOR. Verus, like Rust, requires the input operands to be the same
 type, even in specification code.
@@ -22,7 +29,7 @@ these operations are independent of bitwidth.
 This is true even for negative operands, as a result of the way two's complement
 [sign-extension](https://en.wikipedia.org/wiki/Sign_extension) works.
 
-### `>>` and `<<`
+**`>>` and `<<`**.
 
 Verus specifications, like Rust, does not require the left and right sides of a _shift_ operator
 to be the same type. Shift is unspecified when the right-hand side is negative.
