@@ -63,7 +63,7 @@ impl<K, V> Map<K, V> {
     /// }
     /// ```
     pub open spec fn values(self) -> Set<V> {
-        self.dom().map(self[k])
+        self.dom().map(|k: K| self[k])
     }
 
     ///
@@ -80,7 +80,7 @@ impl<K, V> Map<K, V> {
     /// }
     /// ```
     pub open spec fn kv_pairs(self) -> Set<(K, V)> {
-        self.dom().map(|k: V| (k, self[k]))
+        self.dom().map(|k: K| (k, self[k]))
     }
 
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
@@ -123,14 +123,14 @@ impl<K, V> Map<K, V> {
     /// ```
     pub open spec fn union_prefer_right(self, m2: Self) -> Self {
         Self::new(
-            |k: K| self.dom().contains(k) || m2.dom().contains(k),
+            self.dom().union(m2.dom()),
             |k: K|
                 if m2.dom().contains(k) {
                     m2[k]
                 } else {
                     self[k]
                 },
-        ).unwrap()
+        )
     }
 
     /// Removes the given keys and their associated values from the map.
@@ -176,12 +176,12 @@ impl<K, V> Map<K, V> {
 
     /// Map a function `f` over all (k, v) pairs in `self`.
     pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> Map<K, W> {
-        Self::new(self.dom(), |k: K| f(k, self[k]))
+        Map::<K, W>::new(self.dom(), |k: K| f(k, self[k]))
     }
 
     /// Map a function `f` over the values in `self`.
     pub open spec fn map_values<W>(self, f: spec_fn(V) -> W) -> Map<K, W> {
-        Self::new(self.dom(), |k: K| f(self[k]))
+        Map::<K, W>::new(self.dom(), |k: K| f(self[k]))
     }
 
     /// Returns `true` if and only if a map is injective
@@ -206,7 +206,6 @@ impl<K, V> Map<K, V> {
     pub proof fn lemma_remove_key_len(self, key: K)
         requires
             self.dom().contains(key),
-            self.dom().finite(),
         ensures
             self.dom().len() == 1 + self.remove(key).dom().len(),
     {
@@ -225,8 +224,6 @@ impl<K, V> Map<K, V> {
     pub proof fn lemma_remove_keys_len(self, keys: Set<K>)
         requires
             forall|k: K| #[trigger] keys.contains(k) ==> self.contains_key(k),
-            keys.finite(),
-            self.dom().finite(),
         ensures
             self.remove_keys(keys).dom().len() == self.dom().len() - keys.len(),
         decreases keys.len(),

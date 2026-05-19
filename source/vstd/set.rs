@@ -676,22 +676,22 @@ pub broadcast proof fn lemma_set_empty<A>(a: A)
 {
 }
 
-pub broadcast proof fn lemma_set_new<A>(f: spec_fn(A) -> bool)
-    requires
-        ISet::<A>::new(f).finite(),
-    ensures
-        #[trigger] Set::<A>::new(f) is Some,
-{
-}
-
-pub broadcast proof fn lemma_set_new_contains<A>(f: spec_fn(A) -> bool, a: A)
+pub broadcast proof fn lemma_set_new<A>(f: spec_fn(A) -> bool, a: A)
     requires
         ISet::<A>::new(f).finite(),
     ensures
         Set::<A>::new(f) is Some,
         #[trigger] Set::<A>::new(f).unwrap().contains(a) == f(a),
 {
-    super::iset::lemma_iset_new_contains(f, a);
+    super::iset::lemma_iset_new(f, a);
+}
+
+pub broadcast proof fn lemma_set_new_some<A>(f: spec_fn(A) -> bool)
+    requires
+        ISet::<A>::new(f).finite(),
+    ensures
+        #[trigger] Set::<A>::new(f) is Some,
+{
 }
 
 /// The result of inserting element `a` into set `s` must contains `a`.
@@ -903,7 +903,7 @@ pub broadcast proof fn lemma_set_choose_len<A>(s: Set<A>)
 pub broadcast group group_set_lemmas {
     lemma_set_empty,
     lemma_set_new,
-    lemma_set_new_contains,
+    lemma_set_new_some,
     lemma_set_insert_same,
     lemma_set_insert_different,
     lemma_set_remove_same,

@@ -643,7 +643,7 @@ pub broadcast proof fn lemma_iset_empty<A>(a: A)
 }
 
 /// A call to `ISet::new` with the predicate `f` contains `a` if and only if `f(a)` is true.
-pub broadcast proof fn lemma_iset_new_contains<A>(f: spec_fn(A) -> bool, a: A)
+pub broadcast proof fn lemma_iset_new<A>(f: spec_fn(A) -> bool, a: A)
     ensures
         #[trigger] ISet::new(f).contains(a) == f(a),
 {
@@ -1044,7 +1044,7 @@ pub proof fn lemma_iset_finite_if_subset_of_seq<A>(i: ISet<A>, s: Seq<A>)
 
 pub broadcast group group_iset_lemmas {
     lemma_iset_empty,
-    lemma_iset_new_contains,
+    lemma_iset_new,
     lemma_iset_insert_same,
     lemma_iset_insert_different,
     lemma_iset_remove_same,

@@ -225,11 +225,11 @@ impl<A> Set<A> {
         ensures
             other.injective_on(r),
     {
-        assert forall|x1: X, x2: X| other.contains(x1) && other.contains(x2) && #[trigger] r(x1) == #[trigger] r(x2)
-               implies x1 == x2 by {
-            assert(self.contains(x1));
-            assert(self.contains(x2));
-            assert(r(x1) == r(x2));
+        assert forall|a1: A, a2: A| other.contains(a1) && other.contains(a2) && #[trigger] r(a1) == #[trigger] r(a2)
+               implies a1 == a2 by {
+            assert(self.contains(a1));
+            assert(self.contains(a2));
+            assert(r(a1) == r(a2));
         }
     }
 
@@ -461,12 +461,12 @@ impl<A> Set<A> {
             self.filter(f).len() <= self.len(),
         decreases self.len(),
     {
-        if s1.is_empty() {
-            assert(s1.filter(f) =~= s1);
+        if self.is_empty() {
+            assert(self.filter(f) =~= self);
         } else {
-            let a = s1.choose();
-            assert(s1.filter(f).remove(a) =~= s1.remove(a).filter(f));
-            lemma_len_filter::<A>(s1.remove(a), f);
+            let a = self.choose();
+            assert(self.filter(f).remove(a) =~= self.remove(a).filter(f));
+            self.remove(a).lemma_len_filter(f);
         }
     }
 

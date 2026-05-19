@@ -679,7 +679,7 @@ pub open spec fn hash_map_deep_view_impl<
     A: core::alloc::Allocator,
 >(m: HashMap<Key, Value, S, A>) -> Map<Key::V, Value::V> {
     Map::new(
-        m@.dom().map(|k: K| k.deep_view()),
+        m@.dom().map(|k: Key| k.deep_view()),
         |dk: Key::V|
             {
                 let k = choose|k: Key| m@.contains_key(k) && #[trigger] k.deep_view() == dk;

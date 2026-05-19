@@ -182,11 +182,22 @@ impl<V> Multiset<V> {
         forall|x: V| self.count(x) == 0 || other.count(x) == 0
     }
 
+    /// Returns the set of all elements that have a count greater than 0, but only
+    /// if that set is finite.
+    spec fn dom_internal(self) -> Option<Set<V>> {
+        Set::new(|v: V| self.count(v) > 0)
+    }
+
+    broadcast axiom fn axiom_dom_internal_finite(self)
+        ensures
+            #[trigger] self.dom_internal() is Some,
+    ;
+
     /// Returns the set of all elements that have a count greater than 0
-    pub open spec fn dom(self) -> Set<V> {
+    pub closed spec fn dom(self) -> Set<V> {
         // This module assumes that all well-formed multisets have finite footprint,
         // so new_assuming_finite() here is reasonable.
-        Set::new_assuming_finite(|v: V| self.count(v) > 0)
+        self.dom_internal().unwrap()
     }
 
     // dom() won't mean anything unless we know our domain is finite, which is a soundness
@@ -197,13 +208,9 @@ impl<V> Multiset<V> {
             forall|v: V| #[trigger]
                 self.dom().contains(v) <==> self.count(v) > 0,
     {
-        let s = ISet::new(|v: V| self.count(v) > 0);
-        assert(s.finite()) by {
-            admit();
-        }
+        self.axiom_dom_internal_finite();
         assert forall|v: V| #[trigger] self.dom().contains(v) <==> self.count(v) > 0 by {
             super::iset::lemma_iset_new(|vv: V| self.count(vv) > 0, v);
-            super::iset::lemma_iset_to_set_contains(s, v);
         }
     }
 }
@@ -234,7 +241,6 @@ pub broadcast proof fn lemma_multiset_empty_len<V>(m: Multiset<V>)
 /// value `v` to multiplicity `m[v]` if `v` is in the domain of `m`.
 pub broadcast axiom fn axiom_multiset_contained<V>(m: Map<V, nat>, v: V)
     requires
-        m.dom().finite(),
         m.dom().contains(v),
     ensures
 //         #[trigger] Multiset::from_map(m).dom().contains(v),
@@ -246,7 +252,6 @@ pub broadcast axiom fn axiom_multiset_contained<V>(m: Map<V, nat>, v: V)
 /// value `v` to multiplicity 0 if `v` is not in the domain of `m`.
 pub broadcast axiom fn axiom_multiset_new_not_contained<V>(m: Map<V, nat>, v: V)
     requires
-        m.dom().finite(),
         !m.dom().contains(v),
     ensures
         #[trigger] Multiset::from_map(m).count(v) == 0,
@@ -391,15 +396,6 @@ pub broadcast axiom fn axiom_choose_count<V>(m: Multiset<V>)
         #[trigger] m.count(m.choose()) > 0,
 ;
 
-// Axiom about finiteness
-/// The domain of a multiset (the set of all values that map to a multiplicity greater than 0) is always finite.
-// NB this axiom's soundness depends on the inability to learn anything about the entirety of
-// Multiset::from_map.dom().
-pub broadcast axiom fn axiom_multiset_always_finite<V>(m: Multiset<V>)
-    ensures
-        #[trigger] m.dom().finite(),
-;
-
 pub broadcast group group_multiset_axioms {
     axiom_multiset_empty,
     axiom_multiset_contained,
@@ -418,7 +414,6 @@ pub broadcast group group_multiset_axioms {
     axiom_count_le_len,
     axiom_filter_count,
     axiom_choose_count,
-    axiom_multiset_always_finite,
 }
 
 // Lemmas about `update`
@@ -473,7 +468,7 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
             m.count(key)
         };
     let map = key_set.mk_map(fv);
-    crate::vstd::map_lib::lemma_map_new_domain(|v: V| key_set.contains(v), fv);
+    crate::vstd::map_lib::lemma_map_new_domain(key_set, fv);
     if map.dom().contains(v2) {
         assert(map[v2] == m.count(v2));
         axiom_multiset_contained(map, v2);
@@ -732,6 +727,7 @@ pub broadcast group group_multiset_properties {
     lemma_right_pseudo_idempotence,
     lemma_difference_count,
     lemma_difference_bottoms_out,
+    Multiset::dom_ensures,
 }
 
 #[doc(hidden)]

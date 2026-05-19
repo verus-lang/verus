@@ -1103,7 +1103,6 @@ impl<A> Seq<A> {
             let rest = self.drop_last();
             rest.unique_seq_to_set();
             seq_to_set_equal_rec::<A>(rest);
-            seq_to_set_rec_is_finite::<A>(rest);
             assert(!seq_to_set_rec(rest).contains(self.last()));
             assert(seq_to_set_rec(rest).insert(self.last()).len() == seq_to_set_rec(rest).len()
                 + 1);
@@ -1118,7 +1117,7 @@ impl<A> Seq<A> {
         decreases self.len(),
     {
         // trivial from lemma_set_map_len
-        broadcast use {super::set::group_set_lemmas, seq_to_set_is_finite};
+        broadcast use super::set::group_set_lemmas;
 
     }
 
@@ -1128,7 +1127,7 @@ impl<A> Seq<A> {
         ensures
             self.to_set().len() == 0 <==> self.len() == 0,
     {
-        broadcast use super::set::group_set_lemmas, seq_to_set_is_finite;
+        broadcast use super::set::group_set_lemmas;
 
         self.to_set_ensures();
 
@@ -1150,7 +1149,7 @@ impl<A> Seq<A> {
             self.no_duplicates(),
         decreases self.len(),
     {
-        broadcast use super::set::group_set_lemmas, seq_to_set_is_finite;
+        broadcast use super::set::group_set_lemmas;
 
         self.to_set_ensures();
         self.drop_first().to_set_ensures();
@@ -3055,22 +3054,6 @@ spec fn seq_to_set_rec<A>(seq: Seq<A>) -> Set<A>
     }
 }
 
-// Helper function showing that the recursive definition of set_to_seq produces a finite set
-proof fn seq_to_set_rec_is_finite<A>(seq: Seq<A>)
-    ensures
-        seq_to_set_rec(seq).finite(),
-    decreases seq.len(),
-{
-    broadcast use super::set::group_set_lemmas;
-
-    if seq.len() > 0 {
-        let sub_seq = seq.drop_last();
-        assert(seq_to_set_rec(sub_seq).finite()) by {
-            seq_to_set_rec_is_finite(sub_seq);
-        }
-    }
-}
-
 // Helper function showing that the resulting set contains all elements of the sequence
 proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
     ensures
@@ -3112,19 +3095,6 @@ proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
         seq_to_set_rec_contains(seq);
     }
     assert(seq.to_set() =~= seq_to_set_rec(seq));
-}
-
-/// The set obtained from a sequence is finite
-pub broadcast proof fn seq_to_set_is_finite<A>(seq: Seq<A>)
-    ensures
-        #[trigger] seq.to_set().finite(),
-{
-    broadcast use super::set::group_set_lemmas;
-
-    assert(seq.to_set().finite()) by {
-        seq_to_set_equal_rec(seq);
-        seq_to_set_rec_is_finite(seq);
-    }
 }
 
 pub proof fn seq_to_set_distributes_over_add<T>(s1: Seq<T>, s2: Seq<T>)
@@ -3714,7 +3684,6 @@ pub broadcast group group_seq_lib_default {
     Seq::add_empty_right,
     Seq::push_distributes_over_add,
     Seq::filter_distributes_over_add,
-    seq_to_set_is_finite,
     Seq::lemma_fold_right_split,
     Seq::lemma_fold_left_split,
 }

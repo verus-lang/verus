@@ -479,7 +479,7 @@ pub open spec fn btree_map_deep_view_impl<Key: DeepView, Value: DeepView, A: All
     m: BTreeMap<Key, Value, A>,
 ) -> Map<Key::V, Value::V> {
     Map::new(
-        m@.dom().map(|k: K| k.deep_view()),
+        m@.dom().map(|k: Key| k.deep_view()),
         |dk: Key::V|
             {
                 let k = choose|k: Key| m@.contains_key(k) && #[trigger] k.deep_view() == dk;

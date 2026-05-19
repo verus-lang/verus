@@ -153,11 +153,11 @@ impl<A> ISet<A> {
         ensures
             other.injective_on(r),
     {
-        assert forall|x1: X, x2: X| other.contains(x1) && other.contains(x2) && #[trigger] r(x1) == #[trigger] r(x2)
-               implies x1 == x2 by {
-            assert(self.contains(x1));
-            assert(self.contains(x2));
-            assert(r(x1) == r(x2));
+        assert forall|a1: A, a2: A| other.contains(a1) && other.contains(a2) && #[trigger] r(a1) == #[trigger] r(a2)
+               implies a1 == a2 by {
+            assert(self.contains(a1));
+            assert(self.contains(a2));
+            assert(r(a1) == r(a2));
         }
     }
 
@@ -208,7 +208,7 @@ impl<A> ISet<A> {
         } else {
             let x = choose|x: A| self.contains(x);
             self.remove(x).find_unique_minimal_ensures(r);
-            assert(self.minimal(r, self.remove(x).find_unique_minimal(r)));
+            assert(self.has_minimum(r, self.remove(x).find_unique_minimal(r)));
             let y = self.remove(x).find_unique_minimal(r);
             let min_updated = self.find_unique_minimal(r);
             assert(!r(y, x) ==> min_updated == x);
@@ -428,9 +428,9 @@ impl<A> ISet<A> {
         requires
             total_ordering(r),
         ensures
-            has_greatest(r, max, self) <==> has_maximum(r, max, self),
+            self.has_greatest(r, max) <==> self.has_maximum(r, max),
     {
-        assert(has_maximum(r, max, self) ==> forall|x: A|
+        assert(self.has_maximum(r, max) ==> forall|x: A|
             !self.contains(x) || !r(max, x) || r(x, max));
     }
 
@@ -482,10 +482,10 @@ impl<A> ISet<A> {
             total_ordering(r),
         ensures
             forall|min: A, min_prime: A|
-                has_minimum(r, min, self) && has_minimum(r, min_prime, self) ==> min == min_prime,
+                self.has_minimum(r, min) && self.has_minimum(r, min_prime) ==> min == min_prime,
     {
         assert forall|min: A, min_prime: A|
-            has_minimum(r, min, self) && has_minimum(r, min_prime, self) implies min == min_prime by {
+            self.has_minimum(r, min) && self.has_minimum(r, min_prime) implies min == min_prime by {
             self.lemma_minimal_equivalent_least(r, min);
             self.lemma_minimal_equivalent_least(r, min_prime);
             self.lemma_least_is_unique(r);
@@ -499,10 +499,10 @@ impl<A> ISet<A> {
             total_ordering(r),
         ensures
             forall|max: A, max_prime: A|
-                has_maximum(r, max, self) && has_maximum(r, max_prime, self) ==> max == max_prime,
+                self.has_maximum(r, max) && self.has_maximum(r, max_prime) ==> max == max_prime,
     {
         assert forall|max: A, max_prime: A|
-            has_maximum(r, max, self) && has_maximum(r, max_prime, self) implies max == max_prime by {
+            self.has_maximum(r, max) && self.has_maximum(r, max_prime) implies max == max_prime by {
             self.lemma_maximal_equivalent_greatest(r, max);
             self.lemma_maximal_equivalent_greatest(r, max_prime);
             self.lemma_greatest_is_unique(r);

@@ -447,8 +447,8 @@ impl<V> GhostSubseq<V> {
         self.frac.agree(auth);
         assert(self.frac@ <= auth@);
         self.frac.update(auth, vmap);
-        old(self).frac@.lemma_union_prefer_right(vmap);
-        old(auth)@.lemma_union_prefer_right(vmap);
+//        old(self).frac@.lemma_union_prefer_right(vmap);
+//        old(auth)@.lemma_union_prefer_right(vmap);
         assert(self.frac@ == old(self).frac@.union_prefer_right(vmap));
         assert(auth@ == old(auth)@.union_prefer_right(vmap));
 
@@ -587,7 +587,7 @@ impl<V> GhostSubseq<V> {
         super::super::iset::lemma_iset_ext_equal_eq(mselffrac@.dom(), left);
         assert(mselffrac@.dom() == left);
         assert(mself.frac@ == mselffrac@.union_prefer_right(mfrac@));
-        mselffrac@.lemma_union_prefer_right(mfrac@);
+//        mselffrac@.lemma_union_prefer_right(mfrac@);
         let tracked result = GhostSubseq::new((mself.off + n) as nat, (mself.len - n) as nat, mfrac);
         let tracked nself = GhostSubseq::new(mself.off, n as nat, mselffrac);
         *self = nself;
@@ -601,7 +601,7 @@ impl<V> GhostSubseq<V> {
             super::super::iset::lemma_iset_new(|ii: int| mself.off + n <= ii < mself.off + mself.len, k);
             assert(left.contains(k));
             assert(mselffrac@.dom().contains(k) == (olddom - s).contains(k));
-            mselffrac@.lemma_union_prefer_right(mfrac@);
+//            mselffrac@.lemma_union_prefer_right(mfrac@);
             assert((olddom - s).contains(k));
             assert(mselffrac@.dom().contains(k));
             assert(!s.contains(k));
@@ -631,7 +631,7 @@ impl<V> GhostSubseq<V> {
             assert(s.contains(k));
             assert(mfrac@.dom().contains(k));
             assert((mselffrac@.union_prefer_right(mfrac@)).dom().contains(k));
-            mselffrac@.lemma_union_prefer_right(mfrac@);
+//            mselffrac@.lemma_union_prefer_right(mfrac@);
             assert((mselffrac@.union_prefer_right(mfrac@))[k] == if mfrac@.dom().contains(k) {
                 mfrac@[k]
             } else {
@@ -666,7 +666,7 @@ impl<V> GhostSubseq<V> {
         mselffrac.combine(r.frac);
         let combined_dom = ISet::new(|i: int| mself.off <= i < mself.off + mself.len + r.len);
         assert(mselffrac@ == mself.frac@.union_prefer_right(r.frac@));
-        mself.frac@.lemma_union_prefer_right(r.frac@);
+//        mself.frac@.lemma_union_prefer_right(r.frac@);
 
         assert forall|i: int| mselffrac@.dom().contains(i) == combined_dom.contains(i) by {
             super::super::iset::lemma_iset_new(|ii: int| mself.off <= ii < mself.off + mself.len, i);
