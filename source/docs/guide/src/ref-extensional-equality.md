@@ -14,5 +14,5 @@ See [the guide page](extensional_equality.md) for an introductory explanation.
 
 ```verus-grammar
 V@[ext_eq_expr] ::= V@[spec_expr] =~=  V@[spec_expr]
-                  | V@[spec_expr] =~~= V@[spec_expr]
+              | V@[spec_expr] =~~= V@[spec_expr]
 ```

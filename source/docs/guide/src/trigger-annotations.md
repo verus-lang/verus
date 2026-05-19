@@ -13,10 +13,10 @@ This page explains the procedure Verus uses to determine these triggers from Ver
 
 ```verus-grammar
 V@[root_trigger_attr]  ::= #![trigger V@[spec_expr] (, V@[spec_expr])*]
-                         | #![auto]
-                         | #![all_triggers]
+                     | #![auto]
+                     | #![all_triggers]
 V@[inner_trigger_attr] ::= #[trigger] V@[spec_expr]
-                         | #[trigger(R@[n])] V@[spec_expr]
+                     | #[trigger(R@[n])] V@[spec_expr]
 ```
 
 V@[root_trigger_attr] annotations appear at the start of the quantifier body and configure

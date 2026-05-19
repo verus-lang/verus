@@ -6,7 +6,7 @@ For an introduction, see [Expressions and operators for specifications](operator
 
 ```verus-grammar
 V@[prefix_and_expr] ::= (&&&  V@[spec_expr])+
-V@[prefix_or_expr]  ::= (||| V@[spec_expr])+
+V@[prefix_or_expr]  ::= (|||  V@[spec_expr])+
 ```
 
 Each operand is introduced by its operator as a prefix. `&&&` is the prefix conjunction
