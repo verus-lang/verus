@@ -31,9 +31,8 @@ forall|i: int| 0 <= i < s.len() ==> s[i] > 0
 
 **Syntax:**
 
-```
-ExistsExpr ::= "exists" "|" BoundVar ("," BoundVar)* "|" SpecExpr
-BoundVar   ::= Ident ":" Type
+```verus-grammar
+V@[exists_expr] ::= exists |R@[binders...]| V@[spec_expr]
 ```
 
 **Semantics:** `exists|x: T| P(x)` is `true` if and only if there is at least one value
