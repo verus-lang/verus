@@ -225,3 +225,53 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 8)
 }
+
+test_verify_one_file! {
+    #[test] f32_assume_ieee verus_code! {
+        use vstd::std_specs::cmp::{PartialEqSpec, PartialOrdSpec, PartialOrdIs};
+
+        fn test1(x: f32, y: f32) -> (z: f32)
+            requires
+                1.0f32.is_le(&x),
+                x.is_le(&2.0),
+                4.0f32.is_le(&y),
+                y.is_le(&8.0),
+            ensures
+                5.0f32.is_le(&z),
+                z.is_le(&10.0),
+        {
+            broadcast use vstd::contrib::assume_ieee_float::assume_ieee_float;
+
+            let z = x + y;
+            assert(5.0f32.ieee_le(x.ieee_add(y)) && x.ieee_add(y).ieee_le(10.0)) by(bit_vector)
+                requires
+                    1.0f32.ieee_le(x),
+                    x.ieee_le(2.0),
+                    4.0f32.ieee_le(y),
+                    y.ieee_le(8.0);
+            z
+        }
+
+        fn test2(x: f32, y: f32) -> (z: f32)
+            requires
+                1.0f32.is_le(&x),
+                x.is_le(&2.0),
+                4.0f32.is_le(&y),
+                y.is_le(&8.0),
+            ensures
+                5.0f32.is_le(&z),
+                z.is_lt(&10.0),
+        {
+            broadcast use vstd::contrib::assume_ieee_float::assume_ieee_float;
+
+            let z = x + y;
+            assert(5.0f32.ieee_le(x.ieee_add(y)) && x.ieee_add(y).ieee_lt(10.0)) by(bit_vector) // FAILS
+                requires
+                    1.0f32.ieee_le(x),
+                    x.ieee_le(2.0),
+                    4.0f32.ieee_le(y),
+                    y.ieee_le(8.0);
+            z
+        }
+    } => Err(err) => assert_one_fails(err)
+}
