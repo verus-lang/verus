@@ -3,7 +3,7 @@
 ## Syntax
 
 ```verus-grammar
-V@[view_expr] ::= R@[expr] @
+V@[view_expr] ::= V@[spec_expr] @
 ```
 
 The expression `expr@` is a shorthand for `expr.view()`. The `view()` function is a Verus

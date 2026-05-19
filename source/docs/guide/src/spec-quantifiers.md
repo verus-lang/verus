@@ -25,7 +25,7 @@ variables within the body. Both `forall` and `exists` expressions have type `boo
 `forall|x: T| P(x)` is `true` if and only if `P(x)` is `true` for every value `x` of type `T`.
 
 `exists|x: T| P(x)` is `true` if and only if there exists at least one value `x` of type `T`
-such that `P(x)` is `true`. The two are duals:
+such that `P(x)` is `true`. The two are duals, and because Verus uses classical logic:
 
 ```
 exists|x: T| P(x)  ≡  !forall|x: T| !P(x)
@@ -56,9 +56,6 @@ automatically, or they can be specified explicitly using annotations on the quan
 | `#![trigger expr1, expr2, ...]` at the root of the body | `expr1, expr2, ...` form a single trigger group |
 | `#![auto]` at the root of the body | Use automatic trigger selection and suppress the trigger-logging note |
 | `#![all_triggers]` at the root of the body | Use aggressive automatic trigger selection |
-
-A trigger expression must be a function call, a field access, or a bitwise operator —
-arithmetic and boolean operators are not valid triggers.
 
 For full details on how Verus selects and validates trigger groups, see
 [Trigger annotations](./trigger-annotations.md).

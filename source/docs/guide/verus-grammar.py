@@ -193,8 +193,8 @@ def check_mode():
 
     # definitions[name] = filename where V@[name] ::= first appears
     definitions = {}
-    # references[name] = sorted list of filenames where V@[name] appears
-    # as a non-definition occurrence (in prose or on the RHS of a rule)
+    # references[name] = set of filenames where V@[name] appears
+    # as a non-definition occurrence inside a verus-grammar block
     references = {}
 
     def add_ref(name, filename):
@@ -206,12 +206,7 @@ def check_mode():
         with open(os.path.join(src_dir, filename)) as f:
             content = f.read()
 
-        last_end = 0
         for m in FENCED_BLOCK_RE.finditer(content):
-            # Prose before this block
-            for vm in V_AT_RE.finditer(content[last_end:m.start()]):
-                add_ref(vm.group(1), filename)
-
             if m.group('info').strip() == 'verus-grammar':
                 body = m.group('body')
                 # Collect definitions (LHS of ::=)
@@ -225,12 +220,6 @@ def check_mode():
                 for vm in V_AT_RE.finditer(body):
                     if vm.start() not in def_starts:
                         add_ref(vm.group(1), filename)
-
-            last_end = m.end()
-
-        # Trailing prose
-        for vm in V_AT_RE.finditer(content[last_end:]):
-            add_ref(vm.group(1), filename)
 
     defined = set(definitions)
     referenced = set(references)

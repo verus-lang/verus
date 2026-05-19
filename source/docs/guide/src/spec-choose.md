@@ -15,8 +15,10 @@ V@[choose_expr] ::= choose |R@[binders...]| V@[spec_expr]
 ### Typing
 
 The body V@[spec_expr] must have type `bool`. The bound variables are available as spec-mode
-variables within the body. With a single binder `x: T`, the expression has type `T`. With
-multiple binders, the expression has tuple type `(T1, T2, ...)`.
+variables within the body. The return type depends on the number of binders:
+
+ * For a single binder `x: T`, the expression has type `T`.
+ * For multiple binders `x: T, y: U, ...`, the expression has tuple type `(T, U, ...)`.
 
 ### Semantics
 
