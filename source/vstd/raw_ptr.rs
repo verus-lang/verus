@@ -2122,8 +2122,7 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
     unsafe { &*ptr }
 }
 
-/* coming soon
-/// Equivalent to &mut *X, passing in a permission `perm` to ensure safety.
+/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]

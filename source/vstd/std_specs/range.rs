@@ -2,7 +2,7 @@ use super::super::prelude::*;
 use super::super::view::View;
 use super::cmp::{PartialOrdIs, PartialOrdSpec};
 use super::iter::{IteratorSpec, StepSpec, StepSpecImpl};
-use core::ops::{Range, RangeInclusive};
+use core::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
 
 verus! {
 

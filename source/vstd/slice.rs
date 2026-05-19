@@ -114,7 +114,7 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
     &slice[i..j]
 }
 
-#[cfg(not(verus_verify_core))]
+// TODO-Elanor: Figure out what to do with duplicates
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
 pub trait ExSliceIndex<T> where T: ?Sized {

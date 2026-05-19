@@ -4,7 +4,7 @@ use super::core::{IndexSetTrustedSpec, IndexSpec, TrustedSpecSealed};
 use super::iter::IteratorSpec;
 use super::super::utf8::is_char_boundary;
 
-use core::ops::{Index, Range};
+use core::ops::{Index};
 use core::slice::{Iter, SliceIndex};
 #[cfg(not(verus_verify_core))]
 use super::super::string::StringSliceAdditionalSpecFns;
