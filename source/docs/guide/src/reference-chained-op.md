@@ -9,8 +9,8 @@ V@[cmp_op]       ::= < | <= | > | >= | ==
 
 ### Typing
 
-All operands in a chained expression must have compatible types (the same rules apply
-pairwise as for non-chained comparisons). The expression returns `bool`.
+All operands in a chained expression must be [integer types](./reference-types.md#integer-types).
+The expression returns `bool`.
 
 Chained operators are only available in spec mode.
 
