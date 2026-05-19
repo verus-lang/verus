@@ -10,9 +10,8 @@ Both `forall` and `exists` are **spec-mode only** expressions with type `bool`.
 
 **Syntax:**
 
-```
-ForallExpr ::= "forall" "|" BoundVar ("," BoundVar)* "|" SpecExpr
-BoundVar   ::= Ident ":" Type
+```verus-grammar
+V@[forall_expr] ::= forall |R@[binders...]| V@[spec_expr]
 ```
 
 `SpecExpr` is a spec-mode `bool` expression. The bound variables are in scope in `SpecExpr`

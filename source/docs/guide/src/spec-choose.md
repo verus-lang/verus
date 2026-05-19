@@ -8,9 +8,8 @@ a given predicate. It is the Hilbert choice operator (also known as epsilon or t
 
 ## Syntax
 
-```
-ChooseExpr ::= "choose" "|" BoundVar ("," BoundVar)* "|" SpecExpr
-BoundVar   ::= Ident ":" Type
+```verus-grammar
+V@[choose_expr] ::= choose |R@[binders...]| V@[spec_expr]
 ```
 
 `SpecExpr` is a spec-mode `bool` expression. When multiple variables are bound, the result
