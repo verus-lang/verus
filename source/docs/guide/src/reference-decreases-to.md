@@ -13,6 +13,12 @@ is used to check the `decreases` measure for spec functions.
 See [this tutorial chapter](./lex_mutual.md) for an introductory discussion of
 lexicographic-decreases.
 
+## Syntax
+
+```verus-grammar
+V@[decreases_to_expr] ::= decreases_to!( V@[spec_expr] (, V@[spec_expr])* => V@[spec_expr] (, V@[spec_expr])* )
+```
+
 ## Definition
 
 We say that

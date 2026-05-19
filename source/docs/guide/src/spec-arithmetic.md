@@ -6,6 +6,17 @@ This page is **does not apply** to arithmetic is _executable Rust code_.
 For an introduction to Verus arithmetic, see
 [Integers and arithmetic](./integers.md).
 
+## Syntax
+
+```verus-grammar
+V@[arith_expr] ::= V@[spec_expr] + V@[spec_expr]
+                 | V@[spec_expr] - V@[spec_expr]
+                 | - V@[spec_expr]
+                 | V@[spec_expr] * V@[spec_expr]
+                 | V@[spec_expr] / V@[spec_expr]
+                 | V@[spec_expr] % V@[spec_expr]
+```
+
 ## Type widening
 
 In spec code, the results of arithmetic are automatically widened to avoid overflow or wrapping.

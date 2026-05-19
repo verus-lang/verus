@@ -3,6 +3,24 @@
 Much of the spec language looks like a subset of the Rust language, though
 there are some subtle differences.
 
+## Syntax
+
+```verus-grammar
+V@[rust_subset_expr] ::= R@[literal]
+                       | R@[path]
+                       | R@[path] ( V@[spec_expr]* )
+                       | V@[spec_expr] . R@[field]
+                       | let R@[pattern] = V@[spec_expr]; V@[spec_expr]
+                       | if V@[spec_expr] { V@[spec_expr] } else { V@[spec_expr] }
+                       | if let R@[pattern] = R@[expr] { V@[spec_expr] } else { V@[spec_expr] }
+                       | match R@[expr] { R@[match_arms] }
+                       | V@[spec_expr] && V@[spec_expr]
+                       | V@[spec_expr] || V@[spec_expr]
+                       | ! V@[spec_expr]
+                       | & V@[spec_expr]
+                       | * V@[spec_expr]
+```
+
 ### Function calls
 
 Only pure function calls are allowed (i.e., calls to other `spec` functions or

@@ -1,5 +1,15 @@
 # Operator Precedence
 
+## Syntax
+
+```verus-grammar
+V@[spec_expr] ::= V@[spec_expr] R@[binary_op] V@[spec_expr]
+                | R@[unary_op] V@[spec_expr]
+                | ( V@[spec_expr] )
+```
+
+The table below defines operator precedence from tightest-binding (top) to loosest-binding (bottom).
+
 | Operator                 | Associativity         |
 |--------------------------|-----------------------|
 | **Binds tighter**                                |

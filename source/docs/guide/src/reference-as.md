@@ -1,5 +1,11 @@
 # Coercion with `as`
 
+## Syntax
+
+```verus-grammar
+V@[as_expr] ::= V@[spec_expr] as R@[type]
+```
+
 ## Coercions on integer types and `char`
 
 Any of the following types may be coerced to any of the other types:

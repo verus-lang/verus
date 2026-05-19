@@ -1,5 +1,11 @@
 # Spec index operator []
 
+## Syntax
+
+```verus-grammar
+V@[spec_index_expr] ::= V@[spec_expr] [ V@[spec_expr] ]
+```
+
 In spec expressions, the index operator is treated differently than
 in exec expressions, where it corresponds to the [usual Rust index operator](https://doc.rust-lang.org/std/ops/trait.Index.html).
 
