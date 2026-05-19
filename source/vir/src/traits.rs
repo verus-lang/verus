@@ -40,8 +40,7 @@ fn demote_one_expr(
                 fun,
                 _typs,
                 _impl_paths,
-                autospec_usage,
-                const_var,
+                attrs,
             ),
             args,
             post_args,
@@ -61,8 +60,7 @@ fn demote_one_expr(
                 resolved_fun.clone(),
                 resolved_typs.clone(),
                 impl_paths.clone(),
-                *autospec_usage,
-                *const_var,
+                attrs.clone(),
             );
             Ok(expr.new_x(ExprX::Call(ct, args.clone(), post_args.clone())))
         }
@@ -77,8 +75,7 @@ fn demote_one_expr(
                 fun,
                 typs,
                 impl_paths,
-                autospec_usage,
-                const_var,
+                attrs,
             ),
             args,
             post_args,
@@ -94,8 +91,7 @@ fn demote_one_expr(
                 fun.clone(),
                 typs.clone(),
                 impl_paths.clone(),
-                *autospec_usage,
-                *const_var,
+                attrs.clone(),
             );
             Ok(expr.new_x(ExprX::Call(ct, args.clone(), post_args.clone())))
         }
@@ -110,8 +106,7 @@ fn demote_one_expr(
                 fun,
                 typs,
                 impl_paths,
-                autospec_usage,
-                const_var,
+                attrs,
             ),
             args,
             post_args,
@@ -126,8 +121,7 @@ fn demote_one_expr(
                 fun.clone(),
                 typs.clone(),
                 impl_paths.clone(),
-                *autospec_usage,
-                *const_var,
+                attrs.clone(),
             );
             Ok(expr.new_x(ExprX::Call(ct, args.clone(), post_args.clone())))
         }
@@ -306,11 +300,7 @@ pub fn rewrite_one_external_expr(
             expr.new_x(ExprX::ExecFnByName(fun))
         }
         (
-            ExprX::Call(
-                CallTarget::Fun(kind, fun, typs, impl_paths, auto, const_var),
-                args,
-                post_args,
-            ),
+            ExprX::Call(CallTarget::Fun(kind, fun, typs, impl_paths, attrs), args, post_args),
             Some(to_spec),
         ) => {
             let fun = rewrite_fun(from_path, to_spec, fun);
@@ -332,7 +322,7 @@ pub fn rewrite_one_external_expr(
                 },
             };
             expr.new_x(ExprX::Call(
-                CallTarget::Fun(kind, fun, typs.clone(), impl_paths.clone(), *auto, *const_var),
+                CallTarget::Fun(kind, fun, typs.clone(), impl_paths.clone(), attrs.clone()),
                 args.clone(),
                 post_args.clone(),
             ))

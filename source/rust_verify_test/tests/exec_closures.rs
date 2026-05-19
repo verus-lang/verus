@@ -1002,12 +1002,12 @@ test_verify_one_file_with_options! {
 
         fn test() {
             let f = |x: u64| -> (res: ())
-                ensures res === ()
+                ensures res == ()
             {
             };
 
             let f1 = |x: u64| -> (res: ())
-                ensures res === ()
+                ensures res == ()
             {
                 ()
             };

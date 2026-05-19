@@ -2,6 +2,18 @@ use vstd::prelude::*;
 
 verus! {
 
+#[verifier::external_trait_specification]
+#[verifier::external_trait_private_bound(spec_def::Seal)]
+trait ExT {
+    type ExternalTraitSpecificationFor: spec_def::T;
+}
+
+fn t_test<A: spec_def::T>(x: A) {
+}
+
+fn vt_test<A: spec_def::VT>(x: A) {
+}
+
 pub fn concrete_b(x: u16) -> u16 
     requires spec_def::double(x) < 100,
 {

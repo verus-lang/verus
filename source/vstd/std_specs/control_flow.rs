@@ -20,7 +20,7 @@ pub assume_specification<T, E>[ Result::<T, E>::branch ](result: Result<T, E>) -
     <Result<T, E> as Try>::Output,
 >)
     ensures
-        cf === match result {
+        cf == match result {
             Ok(v) => ControlFlow::Continue(v),
             Err(e) => ControlFlow::Break(Err(e)),
         },
@@ -31,7 +31,7 @@ pub assume_specification<T>[ Option::<T>::branch ](option: Option<T>) -> (cf: Co
     <Option<T> as Try>::Output,
 >)
     ensures
-        cf === match option {
+        cf == match option {
             Some(v) => ControlFlow::Continue(v),
             None => ControlFlow::Break(None),
         },

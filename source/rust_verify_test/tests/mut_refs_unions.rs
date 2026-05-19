@@ -567,7 +567,7 @@ test_verify_one_file_with_options! {
         union V { a: &'static [u64], b: bool }
 
         #[verifier::external_body]
-        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == &*b { Box::leak(b) }
 
         // fails, field access UB
         fn test_union_slice_issue() {
@@ -590,7 +590,7 @@ test_verify_one_file_with_options! {
         union V { a: &'static [u64], b: bool }
 
         #[verifier::external_body]
-        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == &*b { Box::leak(b) }
 
         // ok
         fn test_union_slice_issue2() {
@@ -613,7 +613,7 @@ test_verify_one_file_with_options! {
         union V { a: &'static [u64], b: bool }
 
         #[verifier::external_body]
-        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == &*b { Box::leak(b) }
 
         // UB happens before bounds-check
         // because reading from u.a is needed to do the bounds-check
@@ -637,7 +637,7 @@ test_verify_one_file_with_options! {
         union V { a: &'static [u64], b: bool }
 
         #[verifier::external_body]
-        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == &*b { Box::leak(b) }
 
         // UB happens before bounds-check
         // because reading from u.a is needed to do the bounds-check
@@ -729,7 +729,7 @@ test_verify_one_file_with_options! {
         union Y { a: &'static [(u64, u64)], b: bool }
 
         #[verifier::external_body]
-        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == &*b { Box::leak(b) }
 
         // UB
         fn pattern_test_union_slice_issue1() {
@@ -752,7 +752,7 @@ test_verify_one_file_with_options! {
         union Y { a: &'static [(u64, u64)], b: bool }
 
         #[verifier::external_body]
-        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == &*b { Box::leak(b) }
 
         // ok
         fn pattern_test_union_slice_issue2() {
@@ -775,7 +775,7 @@ test_verify_one_file_with_options! {
         union Y { a: &'static [(u64, u64)], b: bool }
 
         #[verifier::external_body]
-        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == &*b { Box::leak(b) }
 
         // UB happens before bounds-check
         // because reading from u.a is needed to do the bounds-check
@@ -799,7 +799,7 @@ test_verify_one_file_with_options! {
         union Y { a: &'static [(u64, u64)], b: bool }
 
         #[verifier::external_body]
-        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == b { Box::leak(b) }
+        fn leak<B: ?Sized>(b: Box<B>) -> (ret: &'static B) ensures ret == &*b { Box::leak(b) }
 
         // UB happens before bounds-check
         // because reading from u.a is needed to do the bounds-check
@@ -835,7 +835,7 @@ test_verify_one_file_with_options! {
                 upd(&mut x.a, 20);
             }
             assert(is_variant(x, "a"));
-            assert(get_union_field::<X, u64>(x, "a") === 20);
+            assert(get_union_field::<X, u64>(x, "a") == 20);
         }
 
         fn test2() {
@@ -843,7 +843,7 @@ test_verify_one_file_with_options! {
             let x_ref = unsafe { &mut x.a };
             upd(x_ref, *x_ref + 1);
             assert(is_variant(x, "a"));
-            assert(get_union_field::<X, u64>(x, "a") === 19);
+            assert(get_union_field::<X, u64>(x, "a") == 19);
         }
 
         fn test1_fails() {
@@ -852,7 +852,7 @@ test_verify_one_file_with_options! {
                 upd(&mut x.a, 20);
             }
             assert(is_variant(x, "a"));
-            assert(get_union_field::<X, u64>(x, "a") === 20);
+            assert(get_union_field::<X, u64>(x, "a") == 20);
             assert(false); // FAILS
         }
 
@@ -861,7 +861,7 @@ test_verify_one_file_with_options! {
             let x_ref = unsafe { &mut x.a };
             upd(x_ref, *x_ref + 1);
             assert(is_variant(x, "a"));
-            assert(get_union_field::<X, u64>(x, "a") === 19);
+            assert(get_union_field::<X, u64>(x, "a") == 19);
             assert(false); // FAILS
         }
 
@@ -877,7 +877,7 @@ test_verify_one_file_with_options! {
             let x_ref = unsafe { &mut x.a }; // FAILS
             upd(x_ref, *x_ref + 1);
             assert(is_variant(x, "a"));
-            assert(get_union_field::<X, u64>(x, "a") === 19);
+            assert(get_union_field::<X, u64>(x, "a") == 19);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 4)
@@ -915,7 +915,7 @@ test_verify_one_file_with_options! {
                 x.y.upd(x.y.e + 10);
             }
             assert(is_variant(x, "y"));
-            assert(get_union_field::<X, Y>(x, "y") === Y { e: 10, f: 1 });
+            assert(get_union_field::<X, Y>(x, "y") == Y { e: 10, f: 1 });
         }
 
         fn test2_fails() {
@@ -924,7 +924,7 @@ test_verify_one_file_with_options! {
                 x.y.upd(x.y.e + 10);
             }
             assert(is_variant(x, "y"));
-            assert(get_union_field::<X, Y>(x, "y") === Y { e: 10, f: 1 });
+            assert(get_union_field::<X, Y>(x, "y") == Y { e: 10, f: 1 });
             assert(false); // FAILS
         }
 

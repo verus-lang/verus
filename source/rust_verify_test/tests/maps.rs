@@ -104,7 +104,7 @@ test_verify_one_file! {
             let m1 = s.mk_map(|x: int| x + 4);
             let m2 = s.mk_map(|y: int| (2 + 2) + y);
             // would require extensional equality:
-            assert(m1 === m2); // FAILS
+            assert(m1 == m2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

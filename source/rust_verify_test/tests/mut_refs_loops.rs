@@ -1202,7 +1202,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         #[verifier::loop_isolation(true)]
         fn test3(a: &mut (u64, u64))
-            ensures *final(a) === (5, 6),
+            ensures *final(a) == (5, 6),
         {
             loop {
                 a.0 = 20;
@@ -1883,7 +1883,7 @@ test_verify_one_file_with_options! {
         #[verifier::loop_isolation(true)]
         fn test3() {
             let c = |a: &mut (u64, u64)|
-                ensures *final(a) === (5, 6),
+                ensures *final(a) == (5, 6),
             {
                 loop {
                     a.0 = 20;
@@ -2065,7 +2065,7 @@ test_verify_one_file_with_options! {
         #[verifier::loop_isolation(false)]
         fn test3() {
             let c = |a: &mut (u64, u64)|
-                ensures *final(a) === (5, 6),
+                ensures *final(a) == (5, 6),
             {
                 loop {
                     a.0 = 20;

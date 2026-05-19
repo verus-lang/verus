@@ -82,7 +82,7 @@ tokenized_state_machine!{
 
         #[invariant]
         pub fn un_vis(&self) -> bool {
-            self.unvisited === self.visited.complement()
+            self.unvisited == self.visited.complement()
         }
 
         #[invariant]
@@ -113,14 +113,14 @@ tokenized_state_machine!{
             assert forall |a| #[trigger] post.visited.contains(a) implies
                 post.top_sort.contains(a)
             by {
-                if a === v {
-                    assert(post.top_sort.last() === a);
+                if a == v {
+                    assert(post.top_sort.last() == a);
                     assert(post.top_sort.contains(a));
                 } else {
                     assert(pre.visited.contains(a));
                     assert(pre.top_sort.contains(a));
-                    let i = choose |i| 0 <= i < pre.top_sort.len() && pre.top_sort.index(i) === a;
-                    assert(post.top_sort.index(i) === a);
+                    let i = choose |i| 0 <= i < pre.top_sort.len() && pre.top_sort.index(i) == a;
+                    assert(post.top_sort.index(i) == a);
                     assert(post.top_sort.contains(a));
                 }
             }
@@ -215,9 +215,9 @@ impl DfsState {
         &&& self.node_states@.len() == graph.edges@.len()
         &&& forall|i|
             0 <= i < self.node_states@.len() ==> self.node_states@[i].well_formed(i, self.instance@)
-        &&& self.top_sort_token@.instance_id() === self.instance@.id()
-        &&& self.top_sort_token@.value() === self.top_sort@
-        &&& self.instance@.graph() === graph@
+        &&& self.top_sort_token@.instance_id() == self.instance@.id()
+        &&& self.top_sort_token@.value() == self.top_sort@
+        &&& self.instance@.graph() == graph@
         &&& valid_stack(self.cur_stack@, graph@)
         &&& forall|i: usize|
             0 <= i < self.node_states@.len() ==> (self.node_states@[i as int].in_stack

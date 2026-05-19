@@ -277,7 +277,7 @@ test_verify_one_file_with_options! {
         use vstd::*;
 
         fn test() -> (res: Result<u32, bool>)
-            ensures res === Err(false),
+            ensures res == Err(false),
         {
             let x: Result<u8, bool> = Err(false);
             let y = x?;
@@ -453,7 +453,7 @@ test_verify_one_file! {
         }
 
         proof fn test<A: Allocator>(b: Box<u8, A>, c: Box<u8>)
-            requires b == c
+            requires *b == *c
         {
             assert(some_int(b) == some_int(c)); // FAILS
         }
@@ -519,7 +519,7 @@ test_verify_one_file! {
 
         fn test5(a: Box<X>) {
             let b = a.clone();
-            assert(b == X { i: 5 } || b == a);
+            assert(*b == X { i: 5 } || b == a);
         }
     } => Err(err) => assert_fails(err, 3)
 }
@@ -725,27 +725,27 @@ test_verify_one_file! {
             let mut a = vec![1, 2];
             let b: &mut [u64] = &mut a;
             b[0] = 10;
-            assert(a@ === seq![10, 2]);
+            assert(a@ == seq![10, 2]);
         }
 
         fn test_overloaded_star_operator() {
             let mut a = vec![1, 2];
             let b: &mut [u64] = &mut *a;
             b[0] = 10;
-            assert(a@ === seq![10, 2]);
+            assert(a@ == seq![10, 2]);
         }
 
         fn test_overloaded_star_operator2() {
             let mut a = vec![1, 2];
             (*a)[1] = 20;
-            assert(a@ === seq![1, 20]);
+            assert(a@ == seq![1, 20]);
         }
 
         fn fails_implicit_via_adjustment() {
             let mut a = vec![1, 2];
             let b: &mut [u64] = &mut a;
             b[0] = 10;
-            assert(a@ === seq![10, 2]);
+            assert(a@ == seq![10, 2]);
             assert(false); // FAILS
         }
 
@@ -753,15 +753,176 @@ test_verify_one_file! {
             let mut a = vec![1, 2];
             let b: &mut [u64] = &mut *a;
             b[0] = 10;
-            assert(a@ === seq![10, 2]);
+            assert(a@ == seq![10, 2]);
             assert(false); // FAILS
         }
 
         fn fails_overloaded_star_operator2() {
             let mut a = vec![1, 2];
             (*a)[1] = 20;
-            assert(a@ === seq![1, 20]);
+            assert(a@ == seq![1, 20]);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] hash_map_entry_api verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::*;
+        use std::collections::hash_map::*;
+        use std::hash::*;
+
+        fn test1() {
+            let mut m = HashMap::<u64, u64>::new();
+
+            // Use entry API to insert to the map
+
+            let entry = m.entry(5);
+            assert(entry.key() == 5 && entry.value() == None);
+
+            let value_ref = entry.or_insert(20);
+            assert(*value_ref == 20);
+
+            *value_ref = 40;
+
+            assert(m@.dom().contains(5) && m@[5] == 40);
+
+            // Use entry API to remove from the map
+
+            let entry = m.entry(5);
+            match entry {
+                Entry::Occupied(occupied_entry) => {
+                    let (k, v) = occupied_entry.remove_entry();
+                    assert(k == 5);
+                    assert(v == 40);
+                }
+                Entry::Vacant(_) => {
+                    assert(false);
+                }
+            }
+
+            assert(!m@.dom().contains(5));
+
+            assert(false); // FAILS
+        }
+
+        fn test_occupied_entry() {
+            let mut m = HashMap::<u64, u64>::new();
+            let entry = m.entry(5);
+            let mut occ_entry = entry.insert_entry(20);
+
+            assert(occ_entry.key() == 5);
+            assert(occ_entry.value() == 20);
+
+            let x = occ_entry.get();
+            assert(*x == 20);
+
+            let x = occ_entry.get_mut();
+            assert(*x == 20);
+            *x = 30;
+
+            assert(occ_entry.key() == 5);
+            assert(occ_entry.value() == 30);
+
+            let x = occ_entry.into_mut();
+            assert(*x == 30);
+            *x = 40;
+
+            assert(m@.dom().contains(5));
+            assert(m@[5] == 40);
+
+            // Now let's remove it
+
+            let entry = m.entry(5);
+            let mut occ_entry = entry.insert_entry(60);
+
+            let (removed_key, removed_value) = occ_entry.remove_entry();
+            assert(removed_key == 5);
+            assert(removed_value == 60);
+
+            assert(m@ =~= Map::empty());
+
+            assert(false); // FAILS
+        }
+
+        fn test_occupied_entry2() {
+            let mut m = HashMap::<u64, u64>::new();
+            let entry = m.entry(5);
+            let mut occ_entry = entry.insert_entry(20);
+
+            let old_value = occ_entry.insert(17);
+            assert(old_value == 20);
+
+            assert(m@.dom().contains(5));
+            assert(m@[5] == 17);
+
+            let entry = m.entry(5);
+            let mut occ_entry = entry.insert_entry(20);
+            let mut old_value = occ_entry.remove();
+            assert(old_value == 20);
+
+            assert(m@ =~= Map::empty());
+
+            assert(false); // FAILS
+        }
+
+        fn test_vacant_entry() {
+            let mut m = HashMap::<u64, u64>::new();
+            let entry = m.entry(5);
+
+            let Entry::Vacant(vac_entry) = entry else { assert(false); return; };
+
+            let k = vac_entry.into_key();
+            assert(k == 5);
+
+            assert(m@ =~= Map::empty());
+
+            assert(false); // FAILS
+        }
+
+        fn test_vacant_entry2() {
+            let mut m = HashMap::<u64, u64>::new();
+            let entry = m.entry(5);
+
+            let Entry::Vacant(vac_entry) = entry else { assert(false); return; };
+
+            // do nothing
+
+            assert(m@ =~= Map::empty());
+
+            assert(false); // FAILS
+        }
+
+        fn test_vacant_entry3() {
+            let mut m = HashMap::<u64, u64>::new();
+            let entry = m.entry(5);
+
+            let Entry::Vacant(vac_entry) = entry else { assert(false); return; };
+
+            let r = vac_entry.insert(20);
+            assert(*r == 20);
+            *r = 30;
+
+            assert(m@.dom().contains(5) && m[5] == 30);
+
+            assert(false); // FAILS
+        }
+
+        fn test_vacant_entry4() {
+            let mut m = HashMap::<u64, u64>::new();
+            let entry = m.entry(5);
+
+            let Entry::Vacant(vac_entry) = entry else { assert(false); return; };
+
+            let mut occ_entry = vac_entry.insert_entry(20);
+            let r = occ_entry.get_mut();
+            assert(*r == 20);
+            *r = 30;
+
+            assert(m@.dom().contains(5) && m[5] == 30);
+
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 7)
 }

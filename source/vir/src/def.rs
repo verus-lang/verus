@@ -365,7 +365,7 @@ impl NameCtxt {
 // Only use this for printing diagnostics
 // Do not use this to generate AIR -- it is unsound to ignore the id
 // (However, it's always ok to use this when the krate is not CrateId::Id)
-pub(crate) fn krate_to_string_ignore_stable_id(krate: &CrateId) -> String {
+pub fn krate_to_string_ignore_stable_id(krate: &CrateId) -> String {
     match krate {
         CrateId::Internal => "crate".to_string(),
         CrateId::Core => "core".to_string(),

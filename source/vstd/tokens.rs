@@ -289,7 +289,7 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
     pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
             s.instance_id() == instance_id,
-            s.map() === IMap::empty(),
+            s.map() == IMap::empty(),
     {
         let tracked s = Self { inst: instance_id, m: IMap::tracked_empty(), _v: PhantomData };
         assert(s.map() =~= IMap::empty());
@@ -392,7 +392,7 @@ impl<Element, Token> SetToken<Element, Token>
     pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
             s.instance_id() == instance_id,
-            s.set() === ISet::empty(),
+            s.set() == ISet::empty(),
     {
         let tracked s = Self { inst: instance_id, m: IMap::tracked_empty() };
         assert(s.set() =~= ISet::empty());
@@ -533,7 +533,7 @@ impl<Element, Token> MultisetToken<Element, Token>
     pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
             s.instance_id() == instance_id,
-            s.multiset() === Multiset::empty(),
+            s.multiset() == Multiset::empty(),
     {
         let tracked s = Self { inst: instance_id, m: IMap::tracked_empty(), _v: PhantomData, };
         broadcast use super::set::fold::lemma_fold_empty;

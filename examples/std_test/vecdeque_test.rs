@@ -51,8 +51,8 @@ fn vec_deque_test()
     let mut i: usize = 0;
     for x in it: v1.iter()
         invariant
-            i == it.pos,
-            it.elements == seq![10u32, 11u32],
+            i == it.index@,
+            v1@ == seq![10u32, 11u32],
     {
         assert(x > 9);
         assert(x < 12);

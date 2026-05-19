@@ -38,7 +38,6 @@ use std::sync::Arc;
 struct ClosureDatatype {
     enclosing_fun: Fun,
     args: Typs,
-    #[allow(dead_code)]
     output: Typ,
     kind: ClosureKind,
     path: Path,
@@ -360,26 +359,26 @@ fn simplify_one_expr(
             Ok(expr.clone())
         }
         ExprX::ConstVar(x, autospec) => {
+            let call_target_attrs = crate::ast::CallTargetAttrs {
+                autospec: *autospec,
+                const_var: true,
+                assume_external_allowed: false,
+            };
             let call = ExprX::Call(
                 CallTarget::Fun(
                     CallTargetKind::Static,
                     x.clone(),
                     Arc::new(vec![]),
                     Arc::new(vec![]),
-                    *autospec,
-                    true,
+                    call_target_attrs,
                 ),
                 Arc::new(vec![]),
                 None,
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Call(
-            CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage, const_var),
-            args,
-            post_args,
-        ) => {
-            assert!(*autospec_usage == AutospecUsage::Final);
+        ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, attrs), args, post_args) => {
+            assert!(attrs.autospec == AutospecUsage::Final);
 
             let is_trait_impl = match kind {
                 CallTargetKind::Static => false,
@@ -405,8 +404,7 @@ fn simplify_one_expr(
                     tgt.clone(),
                     typs.clone(),
                     impl_paths.clone(),
-                    *autospec_usage,
-                    *const_var,
+                    attrs.clone(),
                 ),
                 args,
                 post_args.clone(),
@@ -1348,7 +1346,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     );
     let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let mut trait_impls = vec_map_result(&trait_impls, |t| simplify_trait_impl(&mut state, t))?;
-    let assoc_type_impls =
+    let mut assoc_type_impls =
         vec_map_result(&assoc_type_impls, |a| simplify_assoc_type_impl(&mut state, a))?;
 
     let functions = vec_map_result(&functions, |f: &Function| {
@@ -1469,31 +1467,54 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
 
-        // Add a trait bound, `ClosureType: {Fn, FnMut, FnOnce}`
-        // TODO: include Output associated type
+        // Add a trait bound, `ClosureType: {Fn, FnMut, FnOnce}`, and the corresponding
+        // `<ClosureType as FnOnce<Args>>::Output = ReturnType` associated-type impl.
 
         let typ_args: Typs = Arc::new(
             function.x.typ_params.iter().map(|tb| Arc::new(TypX::TypParam(tb.clone()))).collect(),
         );
-        let self_typ = Arc::new(TypX::Datatype(Dt::Path(closure.path), typ_args, Arc::new(vec![])));
-        let args_tuple_typ =
-            Arc::new(TypX::Datatype(Dt::Tuple(closure.args.len()), closure.args, Arc::new(vec![])));
+        let self_typ =
+            Arc::new(TypX::Datatype(Dt::Path(closure.path.clone()), typ_args, Arc::new(vec![])));
+        let args_tuple_typ = Arc::new(TypX::Datatype(
+            Dt::Tuple(closure.args.len()),
+            closure.args.clone(),
+            Arc::new(vec![]),
+        ));
         let impl_path = Arc::new(crate::ast::PathX {
             krate: CrateId::Internal,
             segments: Arc::new(vec![crate::def::impl_closure(closure.kind, id)]),
         });
+        let trait_typ_args = Arc::new(vec![self_typ.clone(), args_tuple_typ.clone()]);
         let trait_implx = crate::ast::TraitImplX {
-            impl_path,
+            impl_path: impl_path.clone(),
             typ_params: function.x.typ_params.clone(),
             typ_bounds: function.x.typ_bounds.clone(),
             trait_path: closure.kind.trait_path(),
-            trait_typ_args: Arc::new(vec![self_typ, args_tuple_typ]),
+            trait_typ_args: trait_typ_args.clone(),
             trait_typ_arg_impls: Spanned::new(ctx.no_span.clone(), Arc::new(vec![])),
             owning_module: None,
             auto_imported: true,
             external_trait_blanket: false,
         };
         trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
+
+        // The `Output` associated type is defined on the `FnOnce` trait (and
+        // inherited by `Fn` and `FnMut`), so we always use the `FnOnce` trait
+        // path for the associated-type impl, regardless of the closure's kind.
+        let fn_once_trait_path = crate::ast::ClosureKind::FnOnce.trait_path();
+        if traits.iter().any(|t| &t.x.name == &fn_once_trait_path) {
+            let assoc_typ_implx = crate::ast::AssocTypeImplX {
+                name: Arc::new("Output".to_string()),
+                impl_path,
+                typ_params: function.x.typ_params.clone(),
+                typ_bounds: function.x.typ_bounds.clone(),
+                trait_path: fn_once_trait_path,
+                trait_typ_args,
+                typ: closure.output.clone(),
+                impl_paths: Arc::new(vec![]),
+            };
+            assoc_type_impls.push(Spanned::new(ctx.no_span.clone(), assoc_typ_implx));
+        }
     }
 
     let traits = traits.clone();

@@ -145,7 +145,7 @@ impl<K, V> Map<K, V> {
         requires
             self.dom().contains(key),
         ensures
-            *v === self.index(key),
+            *v == self.index(key),
     ;
 
     /// Index into a tracked map, getting a tracked mutable borrow of the value
@@ -153,8 +153,8 @@ impl<K, V> Map<K, V> {
         requires
             self.dom().contains(key),
         ensures
-            *v === old(self).index(key),
-            *final(self) === old(self).insert(key, *final(v))
+            *v == old(self).index(key),
+            *final(self) == old(self).insert(key, *final(v))
     ;
 
     /// Split a mutable borrow of a map into two.

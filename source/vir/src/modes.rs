@@ -1701,7 +1701,11 @@ fn check_expr(
         }
         ExprX::ConstVar(x, _)
         | ExprX::StaticVar(x)
-        | ExprX::Call(CallTarget::Fun(_, x, _, _, _, true), _, _) => {
+        | ExprX::Call(
+            CallTarget::Fun(_, x, _, _, crate::ast::CallTargetAttrs { const_var: true, .. }),
+            _,
+            _,
+        ) => {
             let function = match ctxt.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
@@ -1737,7 +1741,7 @@ fn check_expr(
             Ok((mode, Proph::No))
         }
         ExprX::Call(
-            CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _, _),
+            CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),
             es,
             None,
         ) => {
@@ -1785,9 +1789,9 @@ fn check_expr(
 
             Ok((*ret_mode, Proph::No))
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage, const_var), es, None) => {
-            assert!(*autospec_usage == AutospecUsage::Final);
-            assert!(!const_var); // const_var is handled in ConstVar/StaticVar case
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), es, None) => {
+            assert!(attrs.autospec == AutospecUsage::Final);
+            assert!(!attrs.const_var); // const_var is handled in ConstVar/StaticVar case
 
             let function = match ctxt.funs.get(x) {
                 None => {
@@ -1924,6 +1928,23 @@ fn check_expr(
             }
             Ok((Mode::Spec, proph))
         }
+        ExprX::Call(CallTarget::AssumeExternal, es, None) => {
+            if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
+                return Err(error(&expr.span, "cannot call external function from non-exec mode"));
+            }
+            for arg in es.iter() {
+                check_expr_has_mode(
+                    ctxt,
+                    record,
+                    typing,
+                    Mode::Exec,
+                    arg,
+                    Mode::Exec,
+                    outer_proph,
+                )?;
+            }
+            Ok((Mode::Exec, Proph::No))
+        }
         ExprX::Call(_, _, Some(_)) => {
             return Err(error(&expr.span, "ExprX::Call should not have post_args at this point"));
         }
@@ -2044,14 +2065,17 @@ fn check_expr(
                 if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
                     return Err(error(
                         &expr.span,
-                        format!("cannot perform operation with mode {}", op_mode),
+                        format!(
+                            "cannot perform operation with mode {}, {:?},\n{:?}",
+                            op_mode, &expr.x, &e1
+                        ),
                     ));
                 }
             }
             if !mode_le(outer_mode, *op_mode) {
                 return Err(error(
                     &expr.span,
-                    format!("cannot perform operation with mode {}", op_mode),
+                    format!("cannot perform operation with mode {}, {:?}", op_mode, &expr.x),
                 ));
             }
             let param_mode = mode_join(outer_mode, *from_mode);
@@ -2171,7 +2195,9 @@ fn check_expr(
                 check_expr(ctxt, record, typing, joined_mode, Expect(*min_mode), e1, outer_proph)?;
             Ok((mode_join(*min_mode, mode), proph))
         }
-        ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1) => {
+        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1)
+        | ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1)
+        | ExprX::UnaryOpr(UnaryOpr::AutoDecreases | UnaryOpr::AutoLoopEnsures, e1) => {
             let proph =
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
             Ok((Mode::Spec, proph))

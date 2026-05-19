@@ -281,6 +281,7 @@ pub fn run(
         tc_end_time: None,
         verus_externs,
         spans: None,
+        unresolved_import_deps: std::collections::HashSet::new(),
     };
     let status = run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
     let VerifierCallbacksEraseMacro {

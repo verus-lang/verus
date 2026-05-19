@@ -112,25 +112,25 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] returning_named_unit_issue1108 verus_code! {
         proof fn f() -> (n: ())
-            ensures n === ()
+            ensures n == ()
         {
             return ();
         }
 
         proof fn g() -> (n: ())
-            ensures n === ()
+            ensures n == ()
         {
             return;
         }
 
         proof fn f2() -> (n: ())
-            ensures n === ()
+            ensures n == ()
         {
             return ();
         }
 
         proof fn g2() -> (n: ())
-            ensures n === ()
+            ensures n == ()
         {
             return;
         }

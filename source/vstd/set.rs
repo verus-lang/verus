@@ -336,7 +336,7 @@ pub mod fold {
     spec fn fold_graph<A, B>(z: B, f: spec_fn(B, A) -> B, s: Set<A>, y: B, d: nat) -> bool
         decreases d,
     {
-        if s === Set::empty() {
+        if s == Set::empty() {
             &&& z == y
             &&& d == 0
         } else {
@@ -446,7 +446,7 @@ pub mod fold {
                 &&& y == f(yr, aa)
             };
         assert(trigger_fold_graph(yr, a));
-        if s.remove(aa) === Set::empty() {
+        if s.remove(aa) == Set::empty() {
         } else {
             if a == aa {
             } else {
@@ -494,7 +494,7 @@ pub mod fold {
         broadcast use group_set_lemmas_early;
 
         reveal(fold_graph);
-        if s === Set::empty() {
+        if s == Set::empty() {
             lemma_fold_graph_empty_elim(z, f, y, d);
         } else {
             let a = s.choose();
