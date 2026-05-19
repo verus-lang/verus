@@ -1807,12 +1807,7 @@ pub(crate) fn check_item_fn<'tcx>(
     if header.ensure.0.len() + header.ensure.1.len() > 0 {
         match (is_async, &header.ensure_id_typ, ret_typ_mode.as_ref()) {
             (_, None, None) => {}
-            (_, None, Some(_)) => {
-                return err_span(
-                    sig.span,
-                    "the return value must be named in a function with an ensures clause",
-                );
-            }
+            (_, None, Some(_)) => {}
             (_, Some(_), None) => {
                 return err_span(
                     sig.span,
