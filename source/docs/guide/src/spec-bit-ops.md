@@ -3,11 +3,11 @@
 ## Syntax
 
 ```verus-grammar
-V@[bit_and_expr] ::= V@[spec_expr] &  V@[spec_expr]
-V@[bit_or_expr]  ::= V@[spec_expr] |  V@[spec_expr]
-V@[bit_xor_expr] ::= V@[spec_expr] ^  V@[spec_expr]
-V@[shl_expr]     ::= V@[spec_expr] << V@[spec_expr]
-V@[shr_expr]     ::= V@[spec_expr] >> V@[spec_expr]
+V@[bit_expr] ::= V@[spec_expr]  &  V@[spec_expr]
+           | V@[spec_expr]  |  V@[spec_expr]
+           | V@[spec_expr]  ^  V@[spec_expr]
+           | V@[spec_expr]  << V@[spec_expr]
+           | V@[spec_expr]  >> V@[spec_expr]
 ```
 
 ## Definitions

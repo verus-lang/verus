@@ -10,11 +10,11 @@ For an introduction to Verus arithmetic, see
 
 ```verus-grammar
 V@[arith_expr] ::= V@[spec_expr] + V@[spec_expr]
-                 | V@[spec_expr] - V@[spec_expr]
-                 | - V@[spec_expr]
-                 | V@[spec_expr] * V@[spec_expr]
-                 | V@[spec_expr] / V@[spec_expr]
-                 | V@[spec_expr] % V@[spec_expr]
+             | V@[spec_expr] - V@[spec_expr]
+             | - V@[spec_expr]
+             | V@[spec_expr] * V@[spec_expr]
+             | V@[spec_expr] / V@[spec_expr]
+             | V@[spec_expr] % V@[spec_expr]
 ```
 
 ## Type widening

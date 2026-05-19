@@ -6,7 +6,7 @@ For an introduction, see [Equality](./equality.md).
 
 ```verus-grammar
 V@[equality_expr] ::= V@[spec_expr] == V@[spec_expr]
-                    | V@[spec_expr] != V@[spec_expr]
+                | V@[spec_expr] != V@[spec_expr]
 ```
 
 In spec mode, `==` is mathematical equality — it is not the same as `==` in exec code,
