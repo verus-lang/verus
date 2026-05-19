@@ -1,4 +1,4 @@
-# Spec interpretations of types
+# Mathematical interpretations of types
 
 ## Integer types
 

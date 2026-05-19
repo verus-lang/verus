@@ -10,9 +10,18 @@ Specifically, the use of the `=~=` and `=~~=` operators will trigger the applica
 
 See [the guide page](extensional_equality.md) for an introductory explanation.
 
-## Syntax
+### Syntax
 
 ```verus-grammar
 V@[ext_eq_expr] ::= V@[spec_expr] =~=  V@[spec_expr]
               | V@[spec_expr] =~~= V@[spec_expr]
 ```
+
+### Typing
+
+The extensional equality operator requires both the left-hand side and right-hand side
+to have the same type. The expression returns a [`bool`](./reference-types#bool).
+
+### Semantics
+
+The operator is equivalent to [spec equality](./spec-equality.md).
