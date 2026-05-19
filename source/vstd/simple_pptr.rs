@@ -293,7 +293,7 @@ impl<V> PointsTo<V> {
 
     /// Guarantees that the memory ranges associated with two permissions will not overlap,
     /// provided that both `S` and `V` are non-zero-sized.
-    /// This is true because you cannot have two permissions to the same memory, 
+    /// This is true because you cannot have two permissions to the same memory,
     /// and it implies the pointers have distinct addresses.
     pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
         requires

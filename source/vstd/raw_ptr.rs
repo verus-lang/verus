@@ -948,29 +948,6 @@ impl<T> PointsTo<[T]> {
         use_type_invariant(&self);
         self.inner.into_seq_pt()
     }
-
-    /// We can always convert a `PointsTo<[T]>` into a `SeqPointsTo<T>` for the same pointer,
-    /// whose elements are individual `PointsTo<T>` with the memory contents of the corresponding index.
-    pub proof fn into_seq_pt(tracked self) -> (tracked s: SeqPointsTo<T>)
-        ensures
-            forall|i|
-                #![trigger s[i].mem_contents()]
-                #![trigger self.mem_contents_seq()[i as int]]
-                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
-                    == self.mem_contents_seq()[i as int],
-            // Do I need to specify the ptrs? Or does this follow from the invariant?
-            // && s.pt_seq()[i].ptr() == self.ptr()
-            s.ptr() == self.ptr() as *mut T,
-            s.len() == self.mem_contents_seq().len(),
-    {
-        broadcast use layout_of_sized;
-        broadcast use layout_of_slices;
-
-        let ghost v: &[T] = arbitrary();
-        assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
-        use_type_invariant(&self);
-        self.inner.into_seq_pt()
-    }
 }
 
 // PointsToUnaligned<[T]>: the unaligned slice permission that PointsTo<[T]> delegates to.
@@ -1205,23 +1182,6 @@ impl<T> PointsToUnaligned<[T]> {
     //         m.ptr() == self.ptr() as *mut T,
     //         m.len() == self.ptr()@.metadata,
     // ;
-    /// We can always convert a `PointsToUnaligned<[T]>` into a `SeqPointsTo<T>` for the same pointer,
-    /// whose elements are individual `PointsToUnaligned<T>` with the memory contents of the corresponding index.
-    pub axiom fn into_seq_pt(tracked self) -> (tracked s: SeqPointsTo<T>)
-        requires
-            self.ptr()@.addr as int % align_of::<T>() as int == 0,
-        ensures
-            forall|i|
-                #![trigger s[i].mem_contents()]
-                #![trigger self.mem_contents_seq()[i as int]]
-                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
-                    == self.mem_contents_seq()[i as int],
-            // Do I need to specify the ptrs? Or does this follow from the invariant?
-            // && s.pt_seq()[i].ptr() == self.ptr()
-            s.ptr() == self.ptr() as *mut T,
-            s.len() == self.mem_contents_seq().len(),
-    ;
-
     /// We can always convert a `PointsToUnaligned<[T]>` into a `SeqPointsTo<T>` for the same pointer,
     /// whose elements are individual `PointsToUnaligned<T>` with the memory contents of the corresponding index.
     pub axiom fn into_seq_pt(tracked self) -> (tracked s: SeqPointsTo<T>)
