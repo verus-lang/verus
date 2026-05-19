@@ -13,7 +13,7 @@ V@[forall_expr] ::= forall |R@[binders...]| V@[spec_expr]
 V@[exists_expr] ::= exists |R@[binders...]| V@[spec_expr]
 ```
 
-The body V@[spec_expr] may be preceded by [trigger annotations](./trigger-annotations.md).
+The body V@[spec_expr] may include [trigger annotations](./trigger-annotations.md).
 
 ### Typing
 

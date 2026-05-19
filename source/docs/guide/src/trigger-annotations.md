@@ -19,8 +19,8 @@ V@[inner_trigger_attr_expr] ::= #[trigger] V@[spec_expr]
                           | #[trigger(R@[n])] V@[spec_expr]
 ```
 
-V@[root_trigger_attr] annotations appear at the start of the quantifier body and configure
-trigger selection for the whole quantifier. V@[inner_trigger_attr] annotations appear on
+V@[root_trigger_attr_expr] annotations appear at the start of the quantifier body and configure
+trigger selection for the whole quantifier. V@[inner_trigger_attr_expr] annotations appear on
 specific sub-expressions within the body to mark them individually as triggers.
 
 ## Terminology: trigger groups and trigger expressions

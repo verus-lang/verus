@@ -15,10 +15,11 @@ V@[arith_expr] ::= V@[spec_expr] + V@[spec_expr]
              | V@[spec_expr] * V@[spec_expr]
              | V@[spec_expr] / V@[spec_expr]
              | V@[spec_expr] % V@[spec_expr]
-             | V@[spec_expr] <= V@[spec_expr]
-             | V@[spec_expr] <  V@[spec_expr]
-             | V@[spec_expr] >= V@[spec_expr]
-             | V@[spec_expr] >  V@[spec_expr]
+
+V@[ineq_expr] ::= | V@[spec_expr] <= V@[spec_expr]
+              | V@[spec_expr] <  V@[spec_expr]
+              | V@[spec_expr] >= V@[spec_expr]
+              | V@[spec_expr] >  V@[spec_expr]
 ```
 
 ### Typing
