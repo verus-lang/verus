@@ -589,11 +589,9 @@ impl<T> PointsTo<[T]> {
 
     /// Returns `true` if all of the permission's associated memory in the given subrange is initialized.
     #[verifier::inline]
-    pub open spec fn is_init_subrange(&self, start_index: int, len: nat) -> bool
-        recommends
-            0 <= start_index <= start_index + len <= self.mem_contents_seq().len(),
-    {
-        forall|i|
+    pub open spec fn is_init_subrange(&self, start_index: int, len: nat) -> bool {
+        &&& 0 <= start_index <= start_index + len <= self.mem_contents_seq().len()
+        &&& forall|i|
             start_index <= i < start_index + len ==> self.mem_contents_seq().index(i).is_init()
     }
 
@@ -2080,7 +2078,7 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
-pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
+pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
     requires
         perm.ptr() == ptr,
         perm.is_init(),
@@ -2092,7 +2090,40 @@ pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T
     unsafe { &*ptr }
 }
 
-/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>) -> (v: &str)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v == perm.value(),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &*ptr }
+}
+
+/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v@ == perm.value(),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &*ptr }
+}
+
+/* coming soon
+/// Equivalent to &mut *X, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
@@ -2683,7 +2714,7 @@ impl<'a, T> SharedReference<'a, [T]> {
         self.as_ref().len()
     }
 
-    pub fn index(self, idx: usize) -> (out: &'a T)
+    pub const fn index(self, idx: usize) -> (out: &'a T)
         requires
             0 <= idx < self.value()@.len(),
         ensures
@@ -2813,6 +2844,10 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     SharedReference(unsafe { &*ptr })
 }
 
+} // verus!
+/// Trusted wrapper around `ptr_ref`, due to
+/// [current limitations](https://verus-lang.github.io/verus/guide/exec_attr.html?highlight=verus_spec#using-a-mix-of-verus_spec-and-verus)
+/// with mixing `verus!` and `#[verus_spec`].
 #[verus_spec(v =>
     with
         Tracked(perm): Tracked<&'a PointsTo<T>>
@@ -2824,12 +2859,9 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     opens_invariants none
     no_unwind
 )]
-/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
-#[verifier::external_body]
-pub fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T {
+#[verus_verify(external_body)]
+#[allow(non_snake_case)]
+pub const fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T {
     ptr_ref(ptr, Tracked::assume_new())
 }
-
-} // verus!

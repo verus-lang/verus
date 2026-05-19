@@ -1417,6 +1417,26 @@ pub broadcast proof fn lemma_mul_mod_noop_general(x: int, y: int, m: int)
     lemma_mul_mod_noop_right(x % m, y, m);
 }
 
+/// Proof that if `x` is divisible by `m`, then `x * y` is divisible by `m`.
+pub broadcast proof fn lemma_mul_mod_equiv_zero(x: int, y: int, m: int)
+    requires
+        m > 0,
+        x % m == 0,
+    ensures
+        #[trigger] ((x * y) % m) == 0,
+{
+    assert((x % m) * y == 0);
+    calc! {
+        (==)
+        0; {}
+        ((x % m) * y) % m; {
+            broadcast use lemma_mul_mod_noop_left;
+
+        }
+        x * y % m;
+    }
+}
+
 /// Proof that modulo distributes over multiplication, provided you do
 /// an extra modulo operation after multiplying the remainders. Specifically,
 /// `(x % m) * (y % m) % m == (x * y) % m`.

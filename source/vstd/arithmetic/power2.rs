@@ -117,6 +117,19 @@ proof fn is_pow2_equiv_reverse(n: int)
     }
 }
 
+/// Proof that if `n` is a power of 2, `n` is positive.
+pub broadcast proof fn lemma_is_pow2_pos(n: int)
+    requires
+        #[trigger] is_pow2(n),
+    ensures
+        n > 0,
+{
+    broadcast use is_pow2_equiv;
+
+    let exp = choose|i: nat| pow(2, i) == n;
+    lemma_pow_positive(2, exp);
+}
+
 /// Proof that 2 to the power of any natural number (specifically,
 /// `e`) is positive.
 pub broadcast proof fn lemma_pow2_pos(e: nat)

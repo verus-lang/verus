@@ -11,6 +11,13 @@ verus! {
 pub struct ExRange<Idx>(Range<Idx>);
 
 #[verifier::external_type_specification]
+#[verifier::reject_recursive_types_in_ground_variants(Idx)]
+pub struct ExRangeFrom<Idx>(RangeFrom<Idx>);
+
+#[verifier::external_type_specification]
+pub struct ExRangeFull(RangeFull);
+
+#[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::reject_recursive_types_in_ground_variants(Idx)]
 pub struct ExRangeInclusive<Idx>(RangeInclusive<Idx>);
@@ -20,6 +27,20 @@ pub struct RangeInclusiveView<Idx> {
     pub end: Idx,
     pub exhausted: bool,
 }
+
+impl<Idx> View for RangeInclusive<Idx> {
+    type V = RangeInclusiveView<Idx>;
+
+    uninterp spec fn view(&self) -> Self::V;
+}
+
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types_in_ground_variants(Idx)]
+pub struct ExRangeTo<Idx>(RangeTo<Idx>);
+
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types_in_ground_variants(Idx)]
+pub struct ExRangeToInclusive<Idx>(RangeToInclusive<Idx>);
 
 pub trait ContainsSpec<Idx, U> where Idx: PartialOrd<U>, U: ?Sized + PartialOrd<Idx> {
     spec fn obeys_contains() -> bool;
