@@ -694,6 +694,15 @@ pub broadcast proof fn lemma_set_new_some<A>(f: spec_fn(A) -> bool)
 {
 }
 
+pub broadcast proof fn lemma_set_new_assuming_finite<A>(f: spec_fn(A) -> bool, a: A)
+    ensures
+        Set::<A>::new(f) is Some,
+        #[trigger] Set::<A>::new(f).unwrap().contains(a) == f(a),
+{
+    assume(ISet::<A>::new(f).finite());    // This is what "assuming_finite" means.
+    super::iset::lemma_iset_new(f, a);
+}
+
 /// The result of inserting element `a` into set `s` must contains `a`.
 pub broadcast proof fn lemma_set_insert_same<A>(s: Set<A>, a: A)
     ensures
@@ -784,8 +793,18 @@ pub broadcast proof fn lemma_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A)
 
 /// The complement of set `s` contains element `a` if and only if `s` does not contain `a`.
 pub broadcast proof fn lemma_set_complement<A>(s: Set<A>, a: A)
+    requires
+        ISet::new(|a| !s.contains(a)).finite(),
     ensures
         #[trigger] s.complement().unwrap().contains(a) == !s.contains(a),
+{
+}
+
+/// The filter of set `s` using function `f` contains element `a` if and only if `s` contains `a`
+/// and `f(a)` is true.
+pub broadcast proof fn lemma_set_filter<A>(s: Set<A>, f: spec_fn(A) -> bool, a: A)
+    ensures
+        #[trigger] s.filter(f).contains(a) == (s.contains(a) && f(a))
 {
 }
 
@@ -900,9 +919,36 @@ pub broadcast proof fn lemma_set_choose_len<A>(s: Set<A>)
     fold::lemma_finite_set_induct(s, pred);
 }
 
+pub broadcast proof fn lemma_to_iset_finite<A>(s: Set<A>)
+    ensures
+        (#[trigger] s.to_iset().finite()),
+    decreases
+        s.len(),
+{
+    broadcast use lemma_iset_empty;
+    broadcast use lemma_iset_empty_finite;
+    broadcast use lemma_iset_ext_equal;
+    broadcast use lemma_iset_insert_different;
+    broadcast use lemma_iset_insert_same;
+    broadcast use lemma_iset_insert_finite;
+    broadcast use lemma_iset_new;
+
+    if forall|a: A| !s.contains(a) {
+        assert(s.to_iset() =~= ISet::<A>::empty());
+    }
+    else {
+        let a: A = choose|a: A| s.contains(a);
+        lemma_set_remove_len(s, a);
+        lemma_to_iset_finite(s.remove(a));
+        assert(s.to_iset() =~= s.remove(a).to_iset().insert(a));
+        assert(s.to_iset().finite());
+    }
+}
+
 pub broadcast group group_set_lemmas {
     lemma_set_empty,
     lemma_set_new,
+    lemma_set_new_assuming_finite,
     lemma_set_new_some,
     lemma_set_insert_same,
     lemma_set_insert_different,
@@ -913,6 +959,7 @@ pub broadcast group group_set_lemmas {
     lemma_set_intersect,
     lemma_set_difference,
     lemma_set_complement,
+    lemma_set_filter,
     lemma_set_ext_equal,
     lemma_set_ext_equal_deep,
     lemma_set_mk_map_domain,
@@ -923,6 +970,7 @@ pub broadcast group group_set_lemmas {
     lemma_set_contains_len,
     lemma_set_choose_len,
     lemma_set_new,
+    lemma_to_iset_finite,
 }
 
 // Macros

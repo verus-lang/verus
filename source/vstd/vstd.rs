@@ -103,6 +103,8 @@ pub broadcast group group_vstd_default {
     seq_lib::group_seq_lib_default,
     map::group_map_lemmas,
     set::group_set_lemmas,
+    imap::group_imap_lemmas,
+    iset::group_iset_lemmas,
     set_lib::group_set_lib_default,
     multiset::group_multiset_axioms,
     compute::all_spec_ensures,

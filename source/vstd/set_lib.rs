@@ -14,7 +14,10 @@ use super::set::*;
 
 verus! {
 
-broadcast use super::set::group_set_lemmas;
+broadcast use {
+    super::iset::group_iset_lemmas,
+    super::set::group_set_lemmas,
+};
 
 impl<A> Set<A> {
     /// Is `true` if called by an "empty" set, i.e., a set containing no elements and has length 0
@@ -27,30 +30,35 @@ impl<A> Set<A> {
         |b: B| exists|a: A| self.contains(a) && b == f(a)
     }
 
+    /// Returns the set contains an element `f(x)` for every element `x` in `self`.
+    pub closed spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
+        Set::new(self.map_inner::<B>(f)).unwrap()
+    }
+
     /// The function used by `map` is finite
     proof fn lemma_map_inner_finite<B>(self, f: spec_fn(A) -> B)        
         ensures
             ISet::<B>::new(self.map_inner::<B>(f)).finite(),
         decreases self.len(),
     {
-        let map_f: spec_fn(B) -> bool = self.map_inner::<B>(f);
-        let map_i: ISet<B> = ISet::<B>::new(map_f);
-        let s: Seq<A> = self.to_seq();
-        let map_s: Seq<B> = s.map_values(f);
-        assert forall|b: B| map_i.contains(b) implies map_s.contains(b) by {
-            assert(map_f(b));
-            let a = choose|a: A| self.contains(a) && b == f(a);
-            assert(self.contains(a) && b == f(a));
-            assert(s.contains(a));
-            let j = choose|j: int| 0 <= j < s.len() && s[j] == a;
-            assert(map_s[j] == b);
+        if self == Self::empty() {
+            assert(ISet::<B>::new(self.map_inner::<B>(f)) =~= ISet::<B>::empty());
         }
-        lemma_iset_finite_if_subset_of_seq(map_i, map_s);
+        else {
+            axiom_is_empty(self);
+            let a: A = choose|a: A| self.contains(a);
+            self.remove(a).lemma_map_inner_finite(f);
+            assert(ISet::<B>::new(self.map_inner::<B>(f)) =~=
+                   ISet::<B>::new(self.remove(a).map_inner::<B>(f)).insert(f(a)));
+        }
     }
 
-    /// Returns the set contains an element `f(x)` for every element `x` in `self`.
-    pub closed spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
-        Set::new(self.map_inner::<B>(f)).unwrap()
+    pub broadcast proof fn lemma_map_contains<B>(self, f: spec_fn(A) -> B, b: B)
+        ensures
+            #[trigger] self.map(f).contains(b) <==> exists|a: A| self.contains(a) && b == f(a)
+        decreases self.len(),
+    {
+        self.lemma_map_inner_finite(f);
     }
 
     /// `Set::map_by` is like `Set::map`, but `map` only takes a forward function `fwd: spec_fn(A) -> B`,
@@ -109,25 +117,28 @@ impl<A> Set<A> {
         fwd: spec_fn(A) -> Set<B>,
         rev: spec_fn(B) -> A,
     )
+        requires
+            forall|a: A, b: B| #[trigger]
+                self.contains(a) && fwd(a).contains(b) ==> #[trigger] rev(b) == a,
         ensures
             ISet::new(self.map_flatten_by_inner(fwd, rev)).finite(),
+        decreases
+            self.len(),
     {
-        let map_f: spec_fn(B) -> bool = self.map_flatten_by_inner::<B>(fwd, rev);
-        let map_i: ISet<B> = ISet::<B>::new(map_f);
-        let s: Seq<A> = self.to_seq();
-        let map_s: Seq<Set<B>> = s.map_values(fwd);
-        let map_s_seqs: Seq<Seq<B>> = map_s.map_values(|inner: Set<B>| inner.to_seq());
-        let map_flatten_s: Seq<B> = map_s_seqs.flatten();
-
-        assert forall|b: B| map_i.contains(b) implies map_flatten_s.contains(b) by {
-            assert(map_f(b));
-            assert(self.contains(rev(b)) && fwd(rev(b)).contains(b));
-            assert(s.contains(rev(b)));
-            assert(map_s.contains(fwd(rev(b))));
-            map_s_seqs.lemma_flatten_contains(fwd(rev(b)).to_seq(), b);
-            assert(map_flatten_s.contains(b));
+        if self == Self::empty() {
+            assert(ISet::<B>::new(self.map_flatten_by_inner(fwd, rev)) =~= ISet::<B>::empty());
+            assert(ISet::new(self.map_flatten_by_inner(fwd, rev)).finite());
         }
-        lemma_iset_finite_if_subset_of_seq(map_i, map_flatten_s);
+        else {
+            axiom_is_empty(self);
+            let a: A = choose|a: A| self.contains(a);
+            self.remove(a).lemma_map_flatten_by_inner_finite(fwd, rev);
+            assert(ISet::<B>::new(self.map_flatten_by_inner(fwd, rev)) =~=
+                   ISet::<B>::new(self.remove(a).map_flatten_by_inner(fwd, rev)).union(fwd(a).to_iset()));
+            lemma_to_iset_finite(fwd(a));
+            assert(fwd(a).to_iset().finite());
+            assert(ISet::new(self.map_flatten_by_inner(fwd, rev)).finite());
+        }
     }
 
     pub closed spec fn map_flatten_by<B>(
@@ -142,6 +153,23 @@ impl<A> Set<A> {
         Set::new(self.map_flatten_by_inner::<B>(fwd, rev)).unwrap()
     }
 
+    pub broadcast proof fn lemma_map_flatten_by_contains<B>(
+        self,
+        fwd: spec_fn(A) -> Set<B>,
+        rev: spec_fn(B) -> A,
+        b: B
+    )
+        requires
+            forall|a: A, b: B| #[trigger]
+                self.contains(a) && fwd(a).contains(b) ==> #[trigger] rev(b) == a,
+        ensures
+            #[trigger] self.map_flatten_by(fwd, rev).contains(b) <==>
+                self.contains(rev(b)) && fwd(rev(b)).contains(b),
+        decreases self.len(),
+    {
+        self.lemma_map_flatten_by_inner_finite(fwd, rev);
+    }
+
     pub proof fn map_flatten_by_is_map_flatten<B>(
         self,
         fwd: spec_fn(A) -> Set<B>,
@@ -153,10 +181,13 @@ impl<A> Set<A> {
         ensures
             self.map_flatten_by(fwd, rev) == self.map(fwd).flatten(),
     {
+        broadcast use Set::lemma_map_flatten_by_contains;
+        broadcast use Set::lemma_map_contains;
+        broadcast use Set::lemma_flatten_contains;
+
         self.lemma_map_flatten_by_inner_finite(fwd, rev);
-        assert forall|b: B| self.map_flatten_by(fwd, rev).contains(b) implies #[trigger] self.map(
-            fwd,
-        ).flatten().contains(b) by {
+        assert forall|b: B| self.map_flatten_by(fwd, rev).contains(b)
+               implies #[trigger] self.map(fwd).flatten().contains(b) by {
             let bs = choose|bs: Set<B>|
                 (exists|a: A| self.contains(a) && bs == fwd(a)) && bs.contains(b);
             assert(self.map(fwd).contains(bs) <==> (exists|a: A| self.contains(a) && bs == fwd(a)));
@@ -623,8 +654,6 @@ impl<A> Set<A> {
         ensures
             (self.union(t)).map(f) =~= self.map(f).union(t.map(f)),
     {
-        broadcast use group_set_lemmas;
-
         let lhs = self.union(t).map(f);
         let rhs = self.map(f).union(t.map(f));
 
@@ -764,34 +793,12 @@ impl<A> Set<A> {
         assert(lhs =~= rhs);
     }
 
-    pub broadcast proof fn lemma_map_contains<B>(self, f: spec_fn(A) -> B, b: B)
-        ensures
-            #[trigger] self.map(f).contains(b) <==> exists|a: A| self.contains(a) && b == f(a)
-        decreases self.len(),
-    {
-        self.lemma_map_inner_finite(f);
-    }
-
     pub broadcast proof fn lemma_map_by_contains<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A, b: B)
         ensures
             #[trigger] self.map_by(fwd, rev).contains(b) <==> self.contains(rev(b)) && b == fwd(rev(b)),
         decreases self.len(),
     {
         self.lemma_map_by_inner_finite(fwd, rev);
-    }
-
-    pub broadcast proof fn lemma_map_flatten_by_contains<B>(
-        self,
-        fwd: spec_fn(A) -> Set<B>,
-        rev: spec_fn(B) -> A,
-        b: B
-    )
-        ensures
-            #[trigger] self.map_flatten_by(fwd, rev).contains(b) <==>
-                self.contains(rev(b)) && fwd(rev(b)).contains(b),
-        decreases self.len(),
-    {
-        self.lemma_map_flatten_by_inner_finite(fwd, rev);
     }
 
     pub broadcast proof fn lemma_set_all_subset(self, s2: Set<A>, p: spec_fn(A) -> bool)
@@ -811,8 +818,8 @@ impl<A> Set<A> {
             #[trigger] self.to_seq().to_set() =~= self,
         decreases self.len(),
     {
-        broadcast use group_set_lemmas;
         broadcast use lemma_set_empty_equivalency_len;
+        broadcast use Seq::to_set_ensures;
         broadcast use super::seq_lib::group_seq_properties;
 
         if self.len() == 0 {
@@ -838,17 +845,19 @@ impl<A> Set<Set<A>> {
     proof fn lemma_flatten_inner_finite(self)
         ensures
             ISet::new(self.flatten_inner()).finite(),
+        decreases
+            self.len(),
     {
-        let flatten_f: spec_fn(A) -> bool = self.flatten_inner();
-        let flatten_i: ISet<A> = ISet::<A>::new(flatten_f);
-        let s: Seq<Set<A>> = self.to_seq();
-        let flatten_s: Seq<A> = s.map_values(|inner: Set<A>| inner.to_seq()).flatten();
-
-        assert forall|a: A| flatten_i.contains(a) implies flatten_s.contains(a) by {
-            assert(flatten_f(a));
-            let elem_s = choose|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(a);
+        if forall|s: Set<A>| !self.contains(s) {
+            assert(self =~= Set::<Set<A>>::empty());
+            assert(ISet::new(self.flatten_inner()) =~= ISet::<A>::empty());
         }
-        lemma_iset_finite_if_subset_of_seq(flatten_i, flatten_s);
+        else {
+            let s = choose|s: Set<A>| self.contains(s);
+            self.remove(s).lemma_flatten_inner_finite();
+            assert(s.to_iset().finite());
+            assert(ISet::new(self.flatten_inner()) =~= ISet::new(self.remove(s).flatten_inner()).union(s.to_iset()));
+        }
     }
 
     pub broadcast proof fn lemma_flatten_contains(self, elem: A)
@@ -863,8 +872,6 @@ impl<A> Set<Set<A>> {
         ensures
             self.flatten().union(other) =~= #[trigger] self.insert(other).flatten(),
     {
-        broadcast use group_set_lemmas;
-
         let lhs = self.flatten().union(other);
         let rhs = self.insert(other).flatten();
 
@@ -899,7 +906,7 @@ pub trait FiniteRange: Sized {
 
 pub broadcast proof fn range_set_properties<A: FiniteRange>(lo: A, hi: A)
     ensures
-        forall|i: A| A::range_set(lo, hi).contains(i) <==> A::in_range(i, lo, hi),
+        forall|i: A| #[trigger] A::range_set(lo, hi).contains(i) <==> A::in_range(i, lo, hi),
         (#[trigger] A::range_set(lo, hi)).len() == A::range_len(lo, hi),
 {
     A::range_properties(lo, hi);
@@ -949,9 +956,8 @@ macro_rules! range_impls {
                     open spec fn in_range(i: Self, lo: Self, hi: Self) -> bool {
                         lo <= i < hi
                     }
-                    #[allow(deprecated)]
                     open spec fn range_set(lo: Self, hi: Self) -> Set<Self> {
-                        Set::new(|i: Self| lo <= i < hi).unwrap()
+                        Set::new(|i: Self| Self::in_range(i, lo, hi)).unwrap()
                     }
                     open spec fn range_len(lo: Self, hi: Self) -> nat {
                         if lo <= hi { (hi - lo) as nat } else { 0 }
@@ -959,21 +965,14 @@ macro_rules! range_impls {
                     proof fn range_properties(lo: Self, hi: Self)
                         decreases hi - lo
                     {
-                        broadcast use lemma_set_empty_len;
-
-                        let s = Seq::new((hi - lo) as nat, |i: int| (lo + i) as Self);
-                        let f = |i: Self| lo <= i && i < hi;
-                        let i = ISet::new(f);
-                        assert(forall|a| i.contains(a) ==> s.contains(a));
-                        lemma_iset_finite_if_subset_of_seq(i, s);
-                        assert(set_function_finite(f));
-                        assert(forall|j: Self| Self::range_set(lo, hi).contains(j) <==> lo <= j < hi);
-
                         if hi <= lo {
+                            assert(ISet::new(|i: Self| Self::in_range(i, lo, hi)).is_empty());
                             assert(Self::range_set(lo, hi).is_empty());
                         } else {
                             let hi1 = (hi - 1) as $t;
                             Self::range_properties(lo, hi1);
+                            assert(ISet::new(|i: Self| Self::in_range(i, lo, hi)) =~=
+                                   ISet::new(|i: Self| Self::in_range(i, lo, hi1)).insert(hi1));
                             assert(Self::range_set(lo, hi) == Self::range_set(lo, hi1).insert(hi1));
                         }
                     }
@@ -989,8 +988,31 @@ macro_rules! full_impls {
             verus! {
                 impl FiniteFull for $t {
                     proof fn full_properties() {
+                        proof fn full_properties_helper(lo: $t, hi: $t)
+                            requires
+                                lo <= hi,
+                            ensures
+                                ISet::<$t>::new(|a: $t| lo <= a && a <= hi).finite(),
+                            decreases
+                                hi - lo,
+                        {
+                            if lo == hi {
+                                assert(ISet::<$t>::new(|a: $t| lo <= a && a <= hi) =~= iset![lo]);
+                            }
+                            else {
+                                let hi_minus_1: $t = (hi - 1) as $t;
+                                assert(hi_minus_1 == hi - 1);
+                                full_properties_helper(lo, hi_minus_1);
+                                assert(ISet::<$t>::new(|a: $t| lo <= a && a <= hi) =~=
+                                       ISet::<$t>::new(|a: $t| lo <= a && a <= hi_minus_1).insert(hi));
+                            }
+                        }
+
+                        full_properties_helper($t::MIN, $t::MAX);
+                        assert(ISet::<$t>::new(|a: $t| true) =~=
+                               ISet::<$t>::new(|a: $t| $t::MIN <= a && a <= $t::MAX));
+                        assert(Set::<$t>::full() is Some);
                         assert(Set::<$t>::full().unwrap() == Set::range_inclusive($t::MIN, $t::MAX));
-                        <$t as FiniteRange>::range_properties($t::MIN, $t::MAX);
                     }
                 }
             } // verus!
@@ -1156,23 +1178,6 @@ pub proof fn lemma_int_range(lo: int, hi: int)
     decreases hi - lo,
 {
     broadcast use range_set_properties;
-
-    /* TODO: Remove this body
-    let s = Seq::new((hi - lo) as nat, |i: int| lo + i);
-    let f = |i: int| lo <= i && i < hi;
-    let i = ISet::new(f);
-    assert(forall|a| i.contains(a) ==> s.contains(a));
-    lemma_iset_finite_if_subset_of_seq(i, s);
-    assert(set_function_finite(f));
-    assert(forall|j: int| set_int_range(lo, hi).contains(j) <==> lo <= j < hi);
-
-    if lo == hi {
-        assert(set_int_range(lo, hi) =~= Set::empty());
-    } else {
-        lemma_int_range(lo, hi - 1);
-        assert(set_int_range(lo, hi - 1).insert(hi - 1) =~= set_int_range(lo, hi));
-    }
-    */
 }
 
 /// If x is a subset of y and the size of x is equal to the size of y, x is equal to y.
