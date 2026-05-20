@@ -18,7 +18,7 @@ The general form of this directive is:
 
 ```verus-grammar
 assume_specification_item ::=
-    visibility? assume_specification R@[generics]? [ R@[function_path] ] (R@[args...]) ( -> V@[return_type_and_name] )?
+    visibility? assume_specification R@[generics]? [ R@[function_path] ] (R@[args...]) ( -> V@[exec_return_type] )?
         R@[where_clause]?
         V@[requires_clause]?
         V@[ensures_clause]?

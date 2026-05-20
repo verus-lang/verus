@@ -37,6 +37,8 @@ V@[spec_expr] ::= V@[fn_call_expr]
             | V@[view_expr]
             | V@[spec_index_expr]
             | V@[has_expr]
+            | V@[is_expr]
+            | V@[matches_expr]
             | V@[decreases_to_expr]
             | ( V@[spec_expr] )
 ```

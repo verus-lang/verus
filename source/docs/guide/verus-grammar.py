@@ -92,7 +92,10 @@ def collect_definitions(book):
             for sub in chapter.get('sub_items', []):
                 walk(sub)
 
+    # sometimes it's 'sections' and sometimes it's 'items', might depend on the mdbook version?
     for section in book.get('sections', []):
+        walk(section)
+    for section in book.get('items', []):
         walk(section)
     return definitions
 
@@ -308,6 +311,8 @@ def main():
     _context, book = json.load(sys.stdin)
     definitions = collect_definitions(book)
     for section in book.get('sections', []):
+        walk_item(section, definitions)
+    for section in book.get('items', []):
         walk_item(section, definitions)
     print(json.dumps(book))
 
