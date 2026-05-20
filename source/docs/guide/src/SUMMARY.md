@@ -40,15 +40,12 @@
     - [Executable libraries: Vec](exec_lib.md)
 - [Spec closures](spec_closures.md)
 
-# Tutorial: Best Practices
+# Tutorial: Proofs and Proof Development
 
 - [Developing proofs](develop_proofs.md)
     - [Using assert and assume](assert_assume.md)
     - [Devising loop invariants](invariants.md)
     - [Proving absence of overflow](overflow.md)
-- [Using LLM assistants](llms.md)
-    - [Using LLMs to develop proofs](llmforverusproof.md)
-    - [Using LLMs to develop specifications]()
 - [Quantifiers](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
@@ -73,6 +70,9 @@
     - [Proof by computation](assert_by_compute.md)
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces](breaking_proofs_into_pieces.md)
+- [Using LLM assistants](llms.md)
+    - [Using LLMs to develop proofs](llmforverusproof.md)
+    - [Using LLMs to develop specifications]()
 - [Checklist: what to do when proofs go wrong](checklist.md)
 
 # Tutorial: Verification and Rust
