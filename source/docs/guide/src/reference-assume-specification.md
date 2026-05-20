@@ -16,23 +16,23 @@ as its corresponding function. However:
 
 The general form of this directive is:
 
-<pre>
-<code class="hljs">assume_specification <span style="color: #800000; font-style: italic">generics</span><sup>?</sup> [ <span style="color: #800000; font-style: italic">function_path</span> ] (<span style="color: #800000; font-style: italic">args...</span>) -&gt; <span style="color: #800000; font-style: italic">return_type_and_name</span><sup>?</sup>
-    <span style="color: #800000; font-style: italic">where_clause</span><sup>?</sup>
-    <span style="color: #800000; font-style: italic">requires_clause</span><sup>?</sup>
-    <span style="color: #800000; font-style: italic">ensures_clause</span><sup>?</sup>
-    <span style="color: #800000; font-style: italic">returns_clause</span><sup>?</sup>
-    <span style="color: #800000; font-style: italic">invariants_clause</span><sup>?</sup>
-    <span style="color: #800000; font-style: italic">unwind_clause</span><sup>?</sup>
-    ;
-</code>
-</pre>
+```verus-grammar
+assume_specification_item ::=
+    visibility? assume_specification R@[generics]? [ R@[function_path] ] (R@[args...]) ( -> V@[return_type_and_name] )?
+        R@[where_clause]?
+        V@[requires_clause]?
+        V@[ensures_clause]?
+        V@[returns_clause]?
+        V@[invariants_clause]?
+        V@[unwind_clause]?
+        ;
+```
 
 It is intended to look like an ordinary Rust function signature with a [Verus specification](./reference-exec-signature.md), except instead of having a name, it refers to a different function by path.
 
 For associated functions and methods, the <code><span style="color: #800000; font-style: italic">function_path</span></code> should have the form `Type::method_name`,
 using "turbofish syntax" for the type (e.g., `Vec::<T>`).
-For trait methods, the <code><span style="color: #800000; font-style: italic">function_path</span></code> should use the "qualified self" form, `<Type as Trait>::method_name`.
+For trait methods, the <code><span style="color: #800000; font-style: italic">function_path</span></code> should use the ["qualified self"](https://doc.rust-lang.org/reference/paths.html#qualified-paths) form, `<Type as Trait>::method_name`.
 
 The signature must be the same as the function in question, including arguments, return type, generics, and trait bounds.
 All arguments should be named and should _not_ use `self`.
@@ -72,3 +72,26 @@ To apply to `clone` for a specific type:
 pub assume_specification [<bool as Clone>::clone](b: &bool) -> (res: bool)
     ensures res == b;
 ```
+
+### Type signature matching
+
+Verus requires the type signature and trait bounds to match exactly.
+If these do not line up, you will get an error message displaying the mismatched signature or mismatched trait bounds.
+It can sometimes be nontrivial to get these to line up due to differences in the source form and the internal form.
+
+Tips:
+
+1. It usually helps to make all lifetime variables (e.g., `'a`) explicit.
+
+2. The `Sized` trait is somewhat complex, as the source form of `Sized`-bounds doesn't always look like
+   Rust's internal represenation of the trait bound. This is also complicated by unstable `Sized` features.
+   As of Rust 1.95.0, these are related as follows:
+
+| Source bound      | Internal bound |
+|-------------------|----------------|
+| No bound          | `T: Sized`     |
+| `T: Sized`        | `T: Sized`     |
+| `T: ?Sized`       | `T: MetaSized` |
+| `T: PointeeSized` | No bound       |
+
+
