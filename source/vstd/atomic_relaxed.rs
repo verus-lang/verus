@@ -115,6 +115,16 @@ impl<T> History<T> {
         History(self.0.insert(timestamp, (val, view)))
     }
 
+    pub open spec fn disjoint(&self, other: History<T>) -> bool {
+        self.dom().disjoint(other.dom())
+    }
+
+    pub open spec fn join(&self, other: History<T>) -> Self 
+        recommends self.disjoint(other)
+    {
+        History(self.0.union_prefer_right(other.0))
+    }
+
     pub open spec fn is_singleton(&self, timestamp: nat, val: (T, ThreadView)) -> bool {
         &&& self.contains_timestamp(timestamp)
         &&& forall|ts| #[trigger] self.contains_timestamp(ts) ==> ts == timestamp && self.get(ts) == Some(val)
