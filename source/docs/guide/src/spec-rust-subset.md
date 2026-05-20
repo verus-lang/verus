@@ -8,7 +8,7 @@ there are some subtle differences.
 **Syntax:**
 
 ```verus-grammar
-V@[fn_call_expr] ::= R@[path] ( V@[spec_expr]* )
+V@[fn_call_expr] ::= R@[path] ( V@[spec_expr],* )
 ```
 
 Only pure function calls are allowed (i.e., calls to other `spec` functions or
