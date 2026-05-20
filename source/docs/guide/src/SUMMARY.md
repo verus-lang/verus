@@ -152,6 +152,8 @@
   - [The view function `@`](./reference-at-sign.md)
   - [Spec index operator `[]`](./reference-spec-index.md)
   - [The `has` operator](./reference-has.md)
+  - [The `is` operator](./reference-is.md)
+  - [The `matches` operator](./reference-matches.md)
   - [`decreases_to!`](./reference-decreases-to.md)
 - [Types](./reference-types.md)
 - [Proof features]()
