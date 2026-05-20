@@ -2,13 +2,13 @@
 
 The general form of a `spec` function signature takes the form:
 
-<pre>
-<code class="hljs">spec fn <span style="color: #800000; font-style: italic">function_name</span> <span style="color: #800000; font-style: italic">generics</span><sup>?</sup>(<span style="color: #800000; font-style: italic">args...</span>) -&gt; <span style="color: #800000; font-style: italic">return_type</span><sup>?</sup>
-    <span style="color: #800000; font-style: italic">where_clause</span><sup>?</sup>
-    <span style="color: #000080; font-style: italic">recommends_clause</span><sup>?</sup>
-    <span style="color: #000080; font-style: italic">decreases_clause</span><sup>?</sup>
-</code>
-</pre>
+```verus-grammar
+V@[spec_fn_with_verus_sig] ::=
+    R@[visibility]? spec fn R@[function_name] R@[generics]?(R@[args...]) -> R@[type]
+        R@[where_clause]?
+        V@[recommends_clause]?
+        V@[decreases_clause]?
+```
 
 ## The `recommends` clause
 
