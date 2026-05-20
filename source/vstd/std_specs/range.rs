@@ -78,12 +78,6 @@ impl<Idx, U> ContainsSpec<Idx, U> for Range<Idx> where
     }
 }
 
-impl<Idx> View for RangeInclusive<Idx> {
-    type V = RangeInclusiveView<Idx>;
-
-    uninterp spec fn view(&self) -> Self::V;
-}
-
 pub uninterp spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
 
 /// Range::contains method is valid and safe to use only when cmp operations are implemented to satisfy

@@ -114,22 +114,6 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
     &slice[i..j]
 }
 
-// TODO-Elanor: Figure out what to do with duplicates
-#[verifier::external_trait_specification]
-#[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
-pub trait ExSliceIndex<T> where T: ?Sized {
-    type ExternalTraitSpecificationFor: SliceIndex<T>;
-
-    type Output: ?Sized;
-
-    spec fn index_req(&self, slice: &T) -> bool;
-
-    fn index(self, slice: &T) -> &Self::Output
-        requires
-            self.index_req(slice),
-    ;
-}
-
 pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Option<
     &<I as SliceIndex<[T]>>::Output,
 >) where I: SliceIndex<[T]>
