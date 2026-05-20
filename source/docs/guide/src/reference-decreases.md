@@ -13,10 +13,9 @@ A function is _recursive_ if it is in some mutually recursive collection.
 A recursive spec function is required to supply a `decreases` clause, which takes
 the form:
 
-```rust
-decreases EXPR_1, ...
-    [ when BOOL_EXPR ]?
-    [ via FUNCTION_NAME ]?
+```verus-grammar
+V@[spec_decreases_clause] ::=
+    decreases V@[verus_expr],+ ( when V@[verus_expr] )?  ( via R@[function_ident] )?
 ```
 
 The sequence of expressions in the decreases clause is the _decreases-measure_.

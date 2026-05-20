@@ -3,14 +3,18 @@
 The general form of an `exec` function signature takes the form:
 
 ```verus-grammar
-V@[exec_fn_with_verus_sig] ::=
-    R@[visibility]? exec? fn R@[function_name] R@[generics]?(R@[args...]) ( -> V@[return_type_and_name] )?
+V@[exec_fn_item] ::=
+    R@[visibility]? exec? fn R@[function_name] R@[generics]?(R@[args...]) ( -> V@[exec_return_type] )?
         R@[where_clause]?
         V@[requires_clause]?
         V@[ensures_clause]?
         V@[returns_clause]?
         V@[invariants_clause]?
         V@[unwind_clause]?
+
+V@[exec_return_type]       ::= V@[exec_return_type_named] | V@[exec_return_type_anon]
+V@[exec_return_type_named] ::= ( R@[pattern] : R@[type] )
+V@[exec_return_type_anon]  ::= R@[type]
 ```
 
 ## Function specification

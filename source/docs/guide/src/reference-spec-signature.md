@@ -3,11 +3,15 @@
 The general form of a `spec` function signature takes the form:
 
 ```verus-grammar
-V@[spec_fn_with_verus_sig] ::=
-    R@[visibility]? spec fn R@[function_name] R@[generics]?(R@[args...]) -> R@[type]
+V@[spec_fn_item] ::=
+    R@[visibility]? uninterp? V@[openness]? spec fn R@[function_name] R@[generics]?(R@[args...]) -> R@[type]
         R@[where_clause]?
         V@[recommends_clause]?
-        V@[decreases_clause]?
+        V@[spec_decreases_clause]?
+
+V@[openness] ::= closed
+           | open
+           | open ( R@[visibility] )
 ```
 
 ## The `recommends` clause
@@ -25,3 +29,27 @@ to the domain.
 
 See [the reference page for `decreases`](./reference-decreases.md) for more information,
 or see [the guide page on recursive functions](./recursion.md) for motivation and overview.
+
+## The openness clause
+
+Openness defines the visibility of the body, which may be more restricted than the visibility
+of the function name. Specifically:
+
+ * `open` means the body is visible everywhere, to all crates.
+ * <code>open(R@[visibility])</code> means the body is visible to the given visibility specifier.
+   * e.g., `open(crate)`, `open(self)`, `open(super)`, `open(in some::module::path)`
+ * `closed` means the body is visible only to module where the function is defined, i.e., it is equivalent to `open(self)`.
+
+The openness specifier is required whenever the body is given.
+
+## The `uninterp` specifier
+
+The `uninterp` specifier declares the function as _uninterpreted_, meaning the body of the 
+spec function is not given.
+
+> **Note.** Uninterpreted functions are usually not useful unless they are used
+> in combination with axioms that define the properties of the function. A common use case
+> for an interpreted function is to define the spec interpretation of a type from a
+> trusted (i.e., unverified) library.
+>
+> Do note, however, that `uninterp` functions are always sound to _declare_.

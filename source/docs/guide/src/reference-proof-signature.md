@@ -3,10 +3,10 @@
 The general form of a `proof` function signature takes the form:
 
 ```verus-grammar
-V@[proof_fn_with_verus_sig] ::= V@[proof_fn_proved] | V@[proof_fn_axiom]
+V@[proof_fn_item] ::= V@[proof_fn_proved] | V@[proof_fn_axiom]
 
 V@[proof_fn_proved] ::=
-    R@[visibility]? proof fn R@[function_name] R@[generics]?(R@[args...]) ( -> V@[return_type_and_name] )?
+    R@[visibility]? broadcast? proof fn R@[function_name] R@[generics]?(R@[args...]) ( -> V@[proof_return_type] )?
         R@[where_clause]?
         V@[requires_clause]?
         V@[ensures_clause]?
@@ -16,7 +16,7 @@ V@[proof_fn_proved] ::=
     { V@[proof_stmt]* }
 
 V@[proof_fn_axiom] ::=
-    R@[visibility]? axiom fn R@[function_name] R@[generics]?(R@[args...]) ( -> V@[return_type_and_name] )?
+    R@[visibility]? broadcast? axiom fn R@[function_name] R@[generics]?(R@[args...]) ( -> V@[proof_return_type] )?
         R@[where_clause]?
         V@[requires_clause]?
         V@[ensures_clause]?
@@ -24,6 +24,10 @@ V@[proof_fn_axiom] ::=
         V@[invariants_clause]?
         V@[decreases_clause]?
         ;
+
+V@[proof_return_type]       ::= V@[proof_return_type_named] | V@[proof_return_type_anon]
+V@[proof_return_type_named] ::= ( tracked? R@[pattern] : R@[type] )
+V@[proof_return_type_anon]  ::= R@[type]
 ```
 
 ## Function specification
