@@ -316,6 +316,45 @@ impl<A> Seq<A> {
         }
     }
 
+    /// Returns the sequence containing each element at index `i` of the original sequence
+    /// such that pred(i) is true.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// proof fn filter_test() {
+    ///    let seq: Seq<int> = seq![1, 2, 3, 4, 5];
+    ///    let even_indexed_vals: Seq<int> = seq.filter_index(|i:int| i % 2 == 0);
+    ///    reveal_with_fuel(Seq::<_>::filter_index, 6); // Needed for Verus to unfold the recursive definition of filter_index
+    ///    assert(even_indexed_vals =~= seq![1, 3, 5]);
+    /// } 
+    /// ```
+    /// Note that the predicate can also refer to elements of the sequence:
+    /// 
+    /// ```rust
+    /// proof fn filter_test() {
+    ///    let seq: Seq<int> = seq![1, 2, 3, 4, 5];
+    ///    let big_even_indexed_vals: Seq<int> = seq.filter_index(|i:int| i % 2 == 0 && seq[i] >= 3);
+    ///    reveal_with_fuel(Seq::<_>::filter_index, 6); // Needed for Verus to unfold the recursive definition of filter_index
+    ///    assert(big_even_indexed_vals =~= seq![3, 5]);
+    /// } 
+    /// ```
+    #[verifier::opaque]
+    pub open spec fn filter_index(self, pred: spec_fn(int) -> bool) -> Self
+        decreases self.len(),
+    {
+        if self.len() == 0 {
+            self
+        } else {
+            let subseq = self.drop_last().filter_index(pred);
+            if pred(self.len()-1) {
+                subseq.push(self.last())
+            } else {
+                subseq
+            }
+        }
+    }
+
     pub broadcast proof fn add_empty_left(a: Self, b: Self)
         requires
             a.len() == 0,
