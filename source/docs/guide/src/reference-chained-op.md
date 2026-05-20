@@ -3,7 +3,7 @@
 ### Syntax
 
 ```verus-grammar
-V@[chained_expr] ::= V@[spec_expr] (V@[cmp_op] V@[spec_expr])+
+V@[chained_expr] ::= V@[spec_expr] V@[cmp_op] V@[spec_expr] (V@[cmp_op] V@[spec_expr])+
 V@[cmp_op]       ::= < | <= | > | >= | ==
 ```
 
