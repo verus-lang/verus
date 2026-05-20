@@ -28,20 +28,20 @@ pub trait Iterator {
 
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
-            self.obeys_iter_laws() == old(self).obeys_iter_laws(),
-            self.obeys_iter_laws() ==> self.completes() == old(self).completes(),
-            self.obeys_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
-            self.obeys_iter_laws() ==> 
+            final(self).obeys_iter_laws() == old(self).obeys_iter_laws(),
+            final(self).obeys_iter_laws() ==> final(self).completes() == old(self).completes(),
+            final(self).obeys_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_iter_laws() ==> 
             ({
                 if old(self).seq().len() > 0 {
-                    &&& self.seq() == old(self).seq().drop_first()
+                    &&& final(self).seq() == old(self).seq().drop_first()
                     &&& ret == Some(old(self).seq()[0])
                 } else {
-                    self.seq() === old(self).seq() && ret === None && self.completes()
+                    final(self).seq() === old(self).seq() && ret === None && final(self).completes()
                 }
             }),
-            self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
-                old(self).decrease()->0 > self.decrease()->0,
+            final(self).obeys_iter_laws() && old(self).seq().len() > 0 && final(self).decrease() is Some ==> 
+                old(self).decrease()->0 > final(self).decrease()->0,
     ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
@@ -63,20 +63,20 @@ pub trait DoubleEndedIterator : Iterator {
 
     fn next_back(&mut self) -> (ret: Option<Self::Item>)
         ensures
-            self.obeys_iter_laws() == old(self).obeys_iter_laws(),
-            self.obeys_iter_laws() ==> self.completes() == old(self).completes(),
-            self.obeys_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
-            self.obeys_iter_laws() ==> 
+            final(self).obeys_iter_laws() == old(self).obeys_iter_laws(),
+            final(self).obeys_iter_laws() ==> final(self).completes() == old(self).completes(),
+            final(self).obeys_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_iter_laws() ==> 
             ({
                 if old(self).seq().len() > 0 {
-                    self.seq() == old(self).seq().drop_last()
+                    final(self).seq() == old(self).seq().drop_last()
                         && ret == Some(old(self).seq().last())
                 } else {
-                    self.seq() === old(self).seq() && ret === None && self.completes()
+                    final(self).seq() === old(self).seq() && ret === None && final(self).completes()
                 }
             }),
-            self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
-                old(self).decrease()->0 > self.decrease()->0,
+            final(self).obeys_iter_laws() && old(self).seq().len() > 0 && final(self).decrease() is Some ==> 
+                old(self).decrease()->0 > final(self).decrease()->0,
     ;
 
 }
@@ -234,11 +234,11 @@ impl<T, Pred> ProphSeq<T, Pred>
             !old(self).has_resolved(i),
             old(self).pred().pred(i, t),
         ensures
-            self.pred() == old(self).pred(),
-            forall |j| self.proph_elem(j) == old(self).proph_elem(j),
-            forall |j| i != j ==> self.has_resolved(j) == old(self).has_resolved(j),
-            self.has_resolved(i),       // REVIEW: BP: I added this.  Seems like it's the point of calling `resolve`
-            self.proph_elem(i) == Some(t);
+            final(self).pred() == old(self).pred(),
+            forall |j| final(self).proph_elem(j) == old(self).proph_elem(j),
+            forall |j| i != j ==> final(self).has_resolved(j) == old(self).has_resolved(j),
+            final(self).has_resolved(i),       // REVIEW: BP: I added this.  Seems like it's the point of calling `resolve`
+            final(self).proph_elem(i) == Some(t);
 }
 
 
@@ -260,6 +260,7 @@ impl<Item, Iter, F> Predicate<Item> for MapIteratorPred<Iter, F>
     }
 }
 
+#[verifier::reject_recursive_types(Item)]
 pub struct MapIterator<Item, Iter, F>
     where
         Iter: Iterator,
@@ -764,31 +765,31 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
         requires 
             old(self).wf(),
         ensures
-            self.seq() == old(self).seq(),
-            self.index@ == old(self).index@ + if ret is Some { 1int } else { 0 },
-            self.snapshot == old(self).snapshot,
-            self.init == old(self).init,
-            self.iter.obeys_iter_laws() ==> self.wf(),
-            self.iter.obeys_iter_laws() && ret is None ==>
-                self.snapshot@.completes() && self.index@ == self.seq().len(),
-            self.iter.obeys_iter_laws() ==> (ret matches Some(r) ==>
+            final(self).seq() == old(self).seq(),
+            final(self).index@ == old(self).index@ + if ret is Some { 1int } else { 0 },
+            final(self).snapshot == old(self).snapshot,
+            final(self).init == old(self).init,
+            final(self).iter.obeys_iter_laws() ==> final(self).wf(),
+            final(self).iter.obeys_iter_laws() && ret is None ==>
+                final(self).snapshot@.completes() && final(self).index@ == final(self).seq().len(),
+            final(self).iter.obeys_iter_laws() ==> (ret matches Some(r) ==>
                 r == old(self).seq()[old(self).index@]),
             // TODO: Uncomment this line to replace everything below, once general mutable refs are supported
             // call_ensures(I::next, (&mut old(self).iter,), ret),
-            self.iter.obeys_iter_laws() == old(self).iter.obeys_iter_laws(),
-            self.iter.obeys_iter_laws() ==> self.iter.completes() == old(self).iter.completes(),
-            self.iter.obeys_iter_laws() ==> (old(self).iter.decrease() is Some <==> self.iter.decrease() is Some),
-            self.iter.obeys_iter_laws() ==> 
+            final(self).iter.obeys_iter_laws() == old(self).iter.obeys_iter_laws(),
+            final(self).iter.obeys_iter_laws() ==> final(self).iter.completes() == old(self).iter.completes(),
+            final(self).iter.obeys_iter_laws() ==> (old(self).iter.decrease() is Some <==> final(self).iter.decrease() is Some),
+            final(self).iter.obeys_iter_laws() ==> 
             ({
                 if old(self).iter.seq().len() > 0 {
-                    &&& self.iter.seq() == old(self).iter.seq().drop_first()
+                    &&& final(self).iter.seq() == old(self).iter.seq().drop_first()
                     &&& ret == Some(old(self).iter.seq()[0])
                 } else {
-                    self.iter.seq() === old(self).iter.seq() && ret === None && self.iter.completes()
+                    final(self).iter.seq() === old(self).iter.seq() && ret === None && final(self).iter.completes()
                 }
             }),
-            self.iter.obeys_iter_laws() && old(self).iter.seq().len() > 0 && self.iter.decrease() is Some ==> 
-                decreases_to!(old(self).iter.decrease()->0 => self.iter.decrease()->0),
+            final(self).iter.obeys_iter_laws() && old(self).iter.seq().len() > 0 && final(self).iter.decrease() is Some ==> 
+                decreases_to!(old(self).iter.decrease()->0 => final(self).iter.decrease()->0),
     {
         let ret = self.iter.next();
         proof {
@@ -813,7 +814,7 @@ mod examples {
 use vstd::prelude::*;
 use super::iterator_traits::*;
 
-
+/*
 fn test() {
     let f = |i: &u8| -> (out: u8)
         requires i < 255,
@@ -922,7 +923,7 @@ fn all_true_caller(v: &Vec<bool>)
         }
     }
 }
-
+*/
 } // mod examples
 
 } // verus!

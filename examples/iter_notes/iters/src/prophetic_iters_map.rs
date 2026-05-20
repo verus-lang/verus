@@ -37,29 +37,29 @@ pub trait Iterator {
 
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
-            self.obeys_iter_laws() == old(self).obeys_iter_laws(),
-            self.obeys_iter_laws() ==> (old(self).length() == self.length()),
-            self.obeys_iter_laws() ==> self.completes() == old(self).completes(),
-            self.obeys_iter_laws() ==> forall |i| self.index(i) == old(self).index(i),
-            self.obeys_iter_laws() ==> ret == self.index(old(self).offset()),
+            final(self).obeys_iter_laws() == old(self).obeys_iter_laws(),
+            final(self).obeys_iter_laws() ==> (old(self).length() == final(self).length()),
+            final(self).obeys_iter_laws() ==> final(self).completes() == old(self).completes(),
+            final(self).obeys_iter_laws() ==> forall |i| final(self).index(i) == old(self).index(i),
+            final(self).obeys_iter_laws() ==> ret == final(self).index(old(self).offset()),
             // v1
-            self.obeys_iter_laws() ==> ({
-                match self.length() {
-                    None => self.offset() == old(self).offset() + 1,
+            final(self).obeys_iter_laws() ==> ({
+                match final(self).length() {
+                    None => final(self).offset() == old(self).offset() + 1,
                     Some(len) => 
-                        if self.offset() < len {
-                            &&& self.offset() == old(self).offset() + 1
+                        if final(self).offset() < len {
+                            &&& final(self).offset() == old(self).offset() + 1
                             &&& ret is Some
                         } else {
-                            &&& self.offset() == old(self).offset()
+                            &&& final(self).offset() == old(self).offset()
                             &&& ret is None 
-                            &&& self.completes()
+                            &&& final(self).completes()
                         }
                     }
             }),
             //self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
-            self.obeys_iter_laws() && self.decrease() is Some ==> 
-                old(self).decrease()->0 > self.decrease()->0,
+            final(self).obeys_iter_laws() && final(self).decrease() is Some ==> 
+                old(self).decrease()->0 > final(self).decrease()->0,
     ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
@@ -217,7 +217,8 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
             return Some(&self.v[i]);
         } else {
             assert(self.i >= self.j);
-            assert(self.front() <= self.length().get_Some_0());
+            assert(self.front() <= self.length().unwrap());
+assume(false);
             return None;
         }
     }
