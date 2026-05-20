@@ -13,7 +13,7 @@ use super::set_lib::*;
 
 verus! {
 
-broadcast use {super::map::group_map_lemmas, super::set::group_set_lemmas};
+broadcast use {super::map::group_map_lemmas, super::set::group_set_lemmas, super::set_lib::group_set_lib_default};
 
 impl<K, V> Map<K, V> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
@@ -249,9 +249,11 @@ impl<K, V> Map<K, V> {
             x != y && self.invert().dom().contains(x) && self.invert().dom().contains(
                 y,
             ) implies #[trigger] self.invert()[x] != #[trigger] self.invert()[y] by {
+            assert(exists|i: K| #[trigger] self.dom().contains(i) && self[i] == x);
             let i = choose|i: K| #[trigger] self.dom().contains(i) && self[i] == x;
             assert(self.contains_pair(i, x));
             let j = choose|j: K| self.contains_pair(j, x) && self.invert()[x] == j;
+            assert(exists|k: K| #[trigger] self.dom().contains(k) && self[k] == y);
             let k = choose|k: K| #[trigger] self.dom().contains(k) && self[k] == y;
             assert(self.contains_pair(k, y));
             let l = choose|l: K| self.contains_pair(l, y) && self.invert()[y] == l && l != j;

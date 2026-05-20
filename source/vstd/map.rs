@@ -226,7 +226,8 @@ pub broadcast proof fn lemma_map_empty<K, V>()
 {
     broadcast use super::set::group_set_lemmas;
 
-    assert(Set::new(|k: K| (|k| None::<V>)(k) is Some) == Some(Set::<K>::empty()));
+    Map::<K, V>::empty().axiom_dom_internal_finite();
+    assert(Set::new(|k: K| (|k| None::<V>)(k) is Some) =~= Some(Set::<K>::empty()));
 }
 
 /// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
