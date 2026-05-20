@@ -51,7 +51,7 @@ pub trait Iterator {
                             &&& final(self).offset() == old(self).offset() + 1
                             &&& ret is Some
                         } else {
-                            &&& final(self).offset() == old(self).offset()
+                            &&& final(self).offset() == old(self).offset() + 1
                             &&& ret is None 
                             &&& final(self).completes()
                         }
@@ -128,7 +128,8 @@ impl <'a, T> VecIterator<'a, T> {
 
     #[verifier::type_invariant]
     pub closed spec fn vec_iterator_type_inv(self) -> bool {
-        &&& self.i <= self.j <= self.v.len()
+        &&& self.i <= self.j <= self.v.len() 
+        &&& self.j == self.v.len()
         &&& self.front() <= self.back() <= self.elts().len()
     }
 }
@@ -213,12 +214,14 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
         if self.i < self.j {
             let i = self.i;
             self.i = self.i + 1;
-            assume(false);
+assume(false);
             return Some(&self.v[i]);
         } else {
-            assert(self.i >= self.j);
+            assert(self.v.len() >= self.i >= self.j);
+            assert(self.j == self.v.len());
+            self.i = self.i + 1;
             assert(self.front() <= self.length().unwrap());
-assume(false);
+//assume(false);
             return None;
         }
     }
