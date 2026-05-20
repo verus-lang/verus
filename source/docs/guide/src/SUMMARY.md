@@ -152,6 +152,7 @@
   - [Trigger annotations](./trigger-annotations.md)
   - [The view function `@`](./reference-at-sign.md)
   - [Spec index operator `[]`](./reference-spec-index.md)
+  - [The `has` operator](./reference-has.md)
   - [`decreases_to!`](./reference-decreases-to.md)
 - [Types](./reference-types.md)
 - [Proof features]()
