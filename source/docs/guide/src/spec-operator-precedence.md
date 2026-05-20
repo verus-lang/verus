@@ -6,7 +6,7 @@ The table below defines operator precedence from tightest-binding (top) to loose
 |--------------------------------------------------------------------------------------|----------------------|---------------------------------------------------------|
 | **Binds tighter**                                                                    |                      |                                                         |
 | [`.` `->`](./datatypes_struct.md)                                                    | left                 |                                                         |
-| [`is` `matches`](./datatypes_enum.md)                                                | left                 |                                                         |
+| `has`, [`is`, `matches`](./datatypes_enum.md)                                        | left                 | V@[has_expr] V@[is_expr] V@[matches_expr]               |
 | [`*` `/` `%`](./spec-arithmetic.md)                                                  | left                 | V@[arith_expr]                                          |
 | [`+` `-`](./spec-arithmetic.md)                                                      | left                 | V@[arith_expr]                                          |
 | [`<<` `>>`](./spec-bit-ops.md)                                                       | left                 | V@[bit_expr]                                            |
