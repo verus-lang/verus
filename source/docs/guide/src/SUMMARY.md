@@ -39,13 +39,6 @@
     - [Specification libraries: Seq, Set, Map](spec_lib.md)
     - [Executable libraries: Vec](exec_lib.md)
 - [Spec closures](spec_closures.md)
-
-# Tutorial: Proofs and Proof Development
-
-- [Developing proofs](develop_proofs.md)
-    - [Using assert and assume](assert_assume.md)
-    - [Devising loop invariants](invariants.md)
-    - [Proving absence of overflow](overflow.md)
 - [Quantifiers](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
@@ -53,6 +46,13 @@
     - [Proofs about forall and exists](quantproofs.md)
     - [Example: binary search](binary_search.md)
     - [Ambient (`broadcast`) lemmas](broadcast_proof.md)
+
+# Tutorial: Proof Development
+
+- [Developing proofs](develop_proofs.md)
+    - [Using assert and assume](assert_assume.md)
+    - [Devising loop invariants](invariants.md)
+    - [Proving absence of overflow](overflow.md)
 - [SMT solving, automation, and where automation fails](smt_failures.md)
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
     - [Integers and nonlinear arithmetic](nonlinear.md)
