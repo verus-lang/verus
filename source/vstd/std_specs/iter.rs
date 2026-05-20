@@ -88,10 +88,10 @@ pub trait ExIterator {
     fn collect<B>(self) -> (collection: B)
         where
             B: FromIterator<Self::Item>,
-            Self: Sized,
+            Self: Sized, // + IntoIterator<Item = <Self as Iterator>::Item>,
         default_ensures
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
-                FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
+            //call_ensures(B::from_iter::<Self>, (self,), collection),
+            collect_post(self, collection),
     ;
 }
 
@@ -169,18 +169,12 @@ pub broadcast axiom fn axiom_from_iterator_ensures<A, I: Iterator<Item = A> + It
 ;
 
 #[verifier::external_trait_specification]
-#[verifier::external_trait_extension(FromIteratorSpec via FromIteratorSpecImpl)]
 pub trait ExFromIterator<A>: Sized {
     type ExternalTraitSpecificationFor: FromIterator<A>;
 
-    spec fn obeys_from_iterator_spec() -> bool;
-
-    spec fn from_iter_ensures(remaining: Seq<A>, s: Self) -> bool;
 
     fn from_iter<T>(iter: T) -> (s: Self)
        where T: IntoIterator<Item = A>
-        ensures
-            Self::obeys_from_iterator_spec() ==> Self::from_iter_ensures(into_iter_remaining(iter), s),
     ;
 }
 
@@ -258,6 +252,29 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
         rev_iter(*self).peek(index)
     }
 }
+
+/********************************************************************************
+ * Definitions for `collect()`
+ ********************************************************************************/
+
+// Ideally, we would write this postcondition directly on the definition of
+// Iterator::collect above.  However, to do so, we need to know that `self`
+// is an Iterator, so that we can pass it to `from_iter`.  However, due
+// to our use of trait extension, `self` is not actually Iterator, and
+// attempting to add such a bound creates Verus/Rust problems.  Hence,
+// we introduce a layer of indirection via this uninterp spec function.
+pub uninterp spec fn collect_post<I, B>(i: I, r: B) -> bool;
+
+pub broadcast axiom fn collect_postcondition<I, B>(i: I, collection: B)
+    where
+        B: FromIterator<I::Item>,
+        I: IteratorSpec, // + IntoIterator<Item = I::Item>,
+    requires
+        #[trigger] collect_post(i, collection),
+    ensures
+        i.will_return_none(),
+        call_ensures(B::from_iter, (i, ), collection),
+;
 
 /********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
