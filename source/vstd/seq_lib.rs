@@ -355,6 +355,74 @@ impl<A> Seq<A> {
         }
     }
 
+    pub broadcast proof fn lemma_filter_index(self, pred: spec_fn(int) -> bool)
+        ensures
+            // Filtering can't increase the sequence's length
+            (#[trigger] self.filter_index(pred)).len() <= self.len(),
+            // Every resulting value came from source at an acceptable index
+            forall |i| 0 <= i < self.filter_index(pred).len() ==>
+                (exists |j| 0 <= j < self.len() && #[trigger] self.filter_index(pred)[i] == #[trigger] self[j] && pred(j)),
+            // Every value in self at an acceptable index is in the result
+            forall |j| 0 <= j < self.len() && pred(j) ==>
+                (exists |i| 0 <= i < self.filter_index(pred).len() && #[trigger] self[j] == self.filter_index(pred)[i]),
+        decreases self.len(),
+    {
+        reveal(Seq::filter_index);
+        if self.len() == 0 {
+        } else {
+            let s_rest = self.drop_last();
+            assert(s_rest.len() == self.len() - 1);
+            s_rest.lemma_filter_index(pred);
+            let rest = s_rest.filter_index(pred);
+            let result = self.filter_index(pred);
+            let last_idx = (self.len() - 1) as int;
+            // Make the index-by-index relationship between s_rest and self explicit;
+            // without this, the recursive call's `s_rest[j]`-triggered facts fail to fire.
+            assert(forall |k: int| 0 <= k < s_rest.len() ==> #[trigger] s_rest[k] == self[k]);
+
+            // Trigger seq extensionality so the SMT knows how result decomposes.
+            if pred(last_idx) {
+                assert(result =~= rest.push(self.last()));
+            } else {
+                assert(result =~= rest);
+            }
+
+            // Second postcondition: every value in result came from a valid j in self.
+            assert forall |i: int| 0 <= i < result.len() implies
+                (exists |j: int| 0 <= j < self.len()
+                    && #[trigger] result[i] == #[trigger] self[j] && pred(j))
+            by {
+                if pred(last_idx) && i == rest.len() {
+                    // Witness: j = last_idx.
+                    assert(result[i] == self[last_idx]);
+                } else {
+                    // Witness comes from the recursive call's existential.
+                    assert(result[i] == rest[i]);
+                    let j_rest = choose |j: int| 0 <= j < s_rest.len()
+                        && rest[i] == s_rest[j] && pred(j);
+                    assert(self[j_rest] == s_rest[j_rest]);
+                }
+            }
+
+            // Third postcondition: every j in self with pred(j) appears in result.
+            assert forall |j: int| 0 <= j < self.len() && pred(j) implies
+                (exists |i: int| 0 <= i < self.filter_index(pred).len()
+                    && #[trigger] self[j] == self.filter_index(pred)[i])
+            by {
+                if j == last_idx {
+                    // Witness: rest.len() (the just-pushed index).
+                    assert(result =~= rest.push(self.last()));
+                    assert(self.filter_index(pred)[rest.len() as int] == self[j]);
+                } else {
+                    // Witness comes from the recursive call.
+                    assert(rest.contains(s_rest[j]));
+                    let w = choose |i: int| 0 <= i < rest.len() && rest[i] == s_rest[j];
+                    assert(self.filter_index(pred)[w] == self[j]);
+                }
+            }
+        }
+    }
+
     pub broadcast proof fn add_empty_left(a: Self, b: Self)
         requires
             a.len() == 0,
