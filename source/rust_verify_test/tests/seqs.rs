@@ -132,5 +132,19 @@ test_verify_one_file! {
             // Test for successful broadcast of push_distributes_over_add
             assert((s2 + s4).push(120) == s2 + s4.push(120));
         }
+
+        proof fn filter_index_test1() {
+           let seq: Seq<int> = seq![1, 2, 3, 4, 5];
+           let even_indexed_vals: Seq<int> = seq.filter_index(|i:int| i % 2 == 0);
+           reveal_with_fuel(Seq::<_>::filter_index, 6); // Needed for Verus to unfold the recursive definition of filter_index
+           assert(even_indexed_vals =~= seq![1, 3, 5]);
+        }
+
+        proof fn filter_index_test2() {
+           let seq: Seq<int> = seq![1, 2, 3, 4, 5];
+           let even_indexed_vals: Seq<int> = seq.filter_index(|i:int| i % 2 == 0 && seq[i] >= 3);
+           reveal_with_fuel(Seq::<_>::filter_index, 6); // Needed for Verus to unfold the recursive definition of filter_index
+           assert(even_indexed_vals =~= seq![3, 5]);
+        }
     } => Ok(())
 }
