@@ -15,7 +15,7 @@ the form:
 
 ```verus-grammar
 V@[spec_decreases_clause] ::=
-    decreases V@[verus_expr],+ ( when V@[verus_expr] )?  ( via R@[function_ident] )?
+    decreases V@[spec_expr],+ ( when V@[spec_expr] )?  ( via R@[function_ident] )?
 ```
 
 The sequence of expressions in the decreases clause is the _decreases-measure_.
