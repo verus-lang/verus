@@ -45,19 +45,14 @@ impl<K, V> Map<K, V> {
         s.mk_map(fv)
     }
 
-    spec fn dom_internal(self) -> Option<Set<K>>
-    {
-        Set::new(|k| (self.mapping)(k) is Some)
-    }
-
-    broadcast axiom fn axiom_dom_internal_finite(self)
+    axiom fn axiom_dom_finite(self)
         ensures
-            #[trigger] self.dom_internal() is Some,
+            ISet::new(|k| (self.mapping)(k) is Some).finite(),
     ;
 
     /// The domain of the map as a set.
     pub closed spec fn dom(self) -> Set<K> {
-        self.dom_internal().unwrap()
+        Set::new(|k| (self.mapping)(k) is Some).unwrap()
     }
 
     /// Gets the value that the given key `key` maps to.
@@ -226,7 +221,7 @@ pub broadcast proof fn lemma_map_empty<K, V>()
 {
     broadcast use super::set::group_set_lemmas;
 
-    Map::<K, V>::empty().axiom_dom_internal_finite();
+    Map::<K, V>::empty().axiom_dom_finite();
     assert(Set::new(|k: K| (|k| None::<V>)(k) is Some) =~= Some(Set::<K>::empty()));
 }
 
@@ -237,8 +232,8 @@ pub broadcast proof fn lemma_map_insert_domain<K, V>(m: Map<K, V>, key: K, value
         #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
     broadcast use super::set::group_set_lemmas;
-    broadcast use Map::axiom_dom_internal_finite;
 
+    m.axiom_dom_finite();
     assert(m.insert(key, value).dom() =~= m.dom().insert(key));
 }
 
@@ -288,7 +283,9 @@ pub broadcast proof fn lemma_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
         },
 {
     broadcast use super::set::group_set_lemmas;
-    broadcast use Map::axiom_dom_internal_finite;
+
+    m1.axiom_dom_finite();
+    m2.axiom_dom_finite();
 
     if m1 =~= m2 {
         assert(m1.dom() =~= m2.dom());

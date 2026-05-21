@@ -25,31 +25,28 @@ impl<A> Set<A> {
         self =~= Set::<A>::empty()
     }
 
-    /// Returns an indicator function used by `map`.
-    spec fn map_inner<B>(self, f: spec_fn(A) -> B) -> (spec_fn(B) -> bool) {
-        |b: B| exists|a: A| self.contains(a) && b == f(a)
-    }
-
     /// Returns the set contains an element `f(x)` for every element `x` in `self`.
     pub closed spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
-        Set::new(self.map_inner::<B>(f)).unwrap()
+        Set::new(|b: B| exists|a: A| self.contains(a) && b == f(a)).unwrap()
     }
 
     /// The function used by `map` is finite
-    proof fn lemma_map_inner_finite<B>(self, f: spec_fn(A) -> B)        
+    proof fn lemma_map_finite<B>(self, f: spec_fn(A) -> B)        
         ensures
-            ISet::<B>::new(self.map_inner::<B>(f)).finite(),
+            ISet::<B>::new(|b: B| exists|a: A| self.contains(a) && b == f(a)).finite(),
         decreases self.len(),
     {
+        let map_f = |b: B| exists|a: A| self.contains(a) && b == f(a);
+
         if self == Self::empty() {
-            assert(ISet::<B>::new(self.map_inner::<B>(f)) =~= ISet::<B>::empty());
+            assert(ISet::<B>::new(map_f) =~= ISet::<B>::empty());
         }
         else {
             axiom_is_empty(self);
-            let a: A = choose|a: A| self.contains(a);
-            self.remove(a).lemma_map_inner_finite(f);
-            assert(ISet::<B>::new(self.map_inner::<B>(f)) =~=
-                   ISet::<B>::new(self.remove(a).map_inner::<B>(f)).insert(f(a)));
+            let x: A = choose|x: A| self.contains(x);
+            self.remove(x).lemma_map_finite(f);
+            let map_remove_f = |b: B| exists|a: A| self.remove(x).contains(a) && b == f(a);
+            assert(ISet::<B>::new(map_f) =~= ISet::<B>::new(map_remove_f).insert(f(x)));
         }
     }
 
@@ -58,7 +55,7 @@ impl<A> Set<A> {
             #[trigger] self.map(f).contains(b) <==> exists|a: A| self.contains(a) && b == f(a)
         decreases self.len(),
     {
-        self.lemma_map_inner_finite(f);
+        self.lemma_map_finite(f);
     }
 
     /// `Set::map_by` is like `Set::map`, but `map` only takes a forward function `fwd: spec_fn(A) -> B`,
@@ -73,26 +70,31 @@ impl<A> Set<A> {
     /// If the recommendation `forall|a: A| self.contains(a) ==> rev(fwd(a)) == a` is satisfied,
     /// it is trivially guaranteed that `self.map_by(fwd, rev) == self.map(fwd)`.
     /// Also see the `set_build!` macro for a convenient interface to `map_by`.
-    pub closed spec fn map_by_inner<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A) -> (spec_fn(B) -> bool)
-    {
-        |b: B| self.contains(rev(b)) && b == fwd(rev(b))
-    }
-
-    proof fn lemma_map_by_inner_finite<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A)
-        ensures
-            ISet::new(self.map_by_inner(fwd, rev)).finite(),
-    {
-        broadcast use super::iset_lib::lemma_iset_subset_finite;
-
-        assert(ISet::new(self.map_by_inner(fwd, rev)).subset_of(ISet::new(self.map_inner(fwd))));
-        self.lemma_map_inner_finite(fwd);
-    }
-
     pub closed spec fn map_by<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A) -> Set<B>
         recommends
             forall|a: A| self.contains(a) ==> rev(fwd(a)) == a,
     {
-        Set::new(self.map_by_inner::<B>(fwd, rev)).unwrap()
+        Set::new(|b: B| self.contains(rev(b)) && b == fwd(rev(b))).unwrap()
+    }
+
+    proof fn lemma_map_by_finite<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A)
+        ensures
+            ISet::new(|b: B| self.contains(rev(b)) && b == fwd(rev(b))).finite(),
+    {
+        broadcast use super::iset_lib::lemma_iset_subset_finite;
+
+        let map_by_f = |b: B| self.contains(rev(b)) && b == fwd(rev(b));
+        let map_f = |b: B| exists|a: A| self.contains(a) && b == fwd(a);
+        assert(ISet::new(map_by_f).subset_of(ISet::new(map_f)));
+        self.lemma_map_finite(fwd);
+    }
+
+    pub broadcast proof fn lemma_map_by_contains<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A, b: B)
+        ensures
+            #[trigger] self.map_by(fwd, rev).contains(b) <==> self.contains(rev(b)) && b == fwd(rev(b)),
+        decreases self.len(),
+    {
+        self.lemma_map_by_finite(fwd, rev);
     }
 
     /// Similar to `Set::map_by`, but the forward function returns `Set<B>` rather than `B`,
@@ -100,47 +102,6 @@ impl<A> Set<A> {
     /// This can be easier to work with in proofs than calling `map` and `flatten` separately,
     /// since `map` and `flatten` introduce "exists", while `map_flatten_by` does not.
     /// Also see the `set_build!` macro for a convenient interface to `map_flatten_by`.
-    pub closed spec fn map_flatten_by_inner<B>(
-        self,
-        fwd: spec_fn(A) -> Set<B>,
-        rev: spec_fn(B) -> A,
-    ) -> (spec_fn(B) -> bool)
-        recommends
-            forall|a: A, b: B| #[trigger]
-                self.contains(a) && fwd(a).contains(b) ==> #[trigger] rev(b) == a,
-    {
-        |b: B| self.contains(rev(b)) && fwd(rev(b)).contains(b)
-    }
-
-    proof fn lemma_map_flatten_by_inner_finite<B>(
-        self,
-        fwd: spec_fn(A) -> Set<B>,
-        rev: spec_fn(B) -> A,
-    )
-        requires
-            forall|a: A, b: B| #[trigger]
-                self.contains(a) && fwd(a).contains(b) ==> #[trigger] rev(b) == a,
-        ensures
-            ISet::new(self.map_flatten_by_inner(fwd, rev)).finite(),
-        decreases
-            self.len(),
-    {
-        if self == Self::empty() {
-            assert(ISet::<B>::new(self.map_flatten_by_inner(fwd, rev)) =~= ISet::<B>::empty());
-            assert(ISet::new(self.map_flatten_by_inner(fwd, rev)).finite());
-        }
-        else {
-            axiom_is_empty(self);
-            let a: A = choose|a: A| self.contains(a);
-            self.remove(a).lemma_map_flatten_by_inner_finite(fwd, rev);
-            assert(ISet::<B>::new(self.map_flatten_by_inner(fwd, rev)) =~=
-                   ISet::<B>::new(self.remove(a).map_flatten_by_inner(fwd, rev)).union(fwd(a).to_iset()));
-            lemma_to_iset_finite(fwd(a));
-            assert(fwd(a).to_iset().finite());
-            assert(ISet::new(self.map_flatten_by_inner(fwd, rev)).finite());
-        }
-    }
-
     pub closed spec fn map_flatten_by<B>(
         self,
         fwd: spec_fn(A) -> Set<B>,
@@ -150,7 +111,34 @@ impl<A> Set<A> {
             forall|a: A, b: B| #[trigger]
                 self.contains(a) && fwd(a).contains(b) ==> #[trigger] rev(b) == a,
     {
-        Set::new(self.map_flatten_by_inner::<B>(fwd, rev)).unwrap()
+        Set::new(|b: B| self.contains(rev(b)) && fwd(rev(b)).contains(b)).unwrap()
+    }
+
+    proof fn lemma_map_flatten_by_finite<B>(
+        self,
+        fwd: spec_fn(A) -> Set<B>,
+        rev: spec_fn(B) -> A,
+    )
+        requires
+            forall|a: A, b: B| #[trigger]
+                self.contains(a) && fwd(a).contains(b) ==> #[trigger] rev(b) == a,
+        ensures
+            ISet::new(|b: B| self.contains(rev(b)) && fwd(rev(b)).contains(b)).finite(),
+        decreases
+            self.len(),
+    {
+        let map_f = |b: B| self.contains(rev(b)) && fwd(rev(b)).contains(b);
+        if self == Self::empty() {
+            assert(ISet::<B>::new(map_f) =~= ISet::<B>::empty());
+        }
+        else {
+            axiom_is_empty(self);
+            let a: A = choose|a: A| self.contains(a);
+            self.remove(a).lemma_map_flatten_by_finite(fwd, rev);
+            let map_remove_f = |b: B| self.remove(a).contains(rev(b)) && fwd(rev(b)).contains(b);
+            assert(ISet::<B>::new(map_f) =~= ISet::<B>::new(map_remove_f).union(fwd(a).to_iset()));
+            lemma_to_iset_finite(fwd(a));
+        }
     }
 
     pub broadcast proof fn lemma_map_flatten_by_contains<B>(
@@ -167,7 +155,7 @@ impl<A> Set<A> {
                 self.contains(rev(b)) && fwd(rev(b)).contains(b),
         decreases self.len(),
     {
-        self.lemma_map_flatten_by_inner_finite(fwd, rev);
+        self.lemma_map_flatten_by_finite(fwd, rev);
     }
 
     pub proof fn map_flatten_by_is_map_flatten<B>(
@@ -185,7 +173,7 @@ impl<A> Set<A> {
         broadcast use Set::lemma_map_contains;
         broadcast use Set::lemma_flatten_contains;
 
-        self.lemma_map_flatten_by_inner_finite(fwd, rev);
+        self.lemma_map_flatten_by_finite(fwd, rev);
         assert forall|b: B| self.map_flatten_by(fwd, rev).contains(b)
                implies #[trigger] self.map(fwd).flatten().contains(b) by {
             let bs = choose|bs: Set<B>|
@@ -793,14 +781,6 @@ impl<A> Set<A> {
         assert(lhs =~= rhs);
     }
 
-    pub broadcast proof fn lemma_map_by_contains<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A, b: B)
-        ensures
-            #[trigger] self.map_by(fwd, rev).contains(b) <==> self.contains(rev(b)) && b == fwd(rev(b)),
-        decreases self.len(),
-    {
-        self.lemma_map_by_inner_finite(fwd, rev);
-    }
-
     pub broadcast proof fn lemma_set_all_subset(self, s2: Set<A>, p: spec_fn(A) -> bool)
         requires
             #[trigger] self.subset_of(s2),
@@ -834,29 +814,28 @@ impl<A> Set<A> {
 }
 
 impl<A> Set<Set<A>> {
-    spec fn flatten_inner(self) -> (spec_fn(A) -> bool) {
-        |elem| exists|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem)
-    }
-
     pub closed spec fn flatten(self) -> Set<A> {
-        Set::new(self.flatten_inner()).unwrap()
+        Set::new(|elem| exists|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem)).unwrap()
     }
 
-    proof fn lemma_flatten_inner_finite(self)
+    proof fn lemma_flatten_finite(self)
         ensures
-            ISet::new(self.flatten_inner()).finite(),
+            ISet::new(|elem| exists|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem)).finite(),
         decreases
             self.len(),
     {
+        let flatten_f = |elem| exists|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem);
         if forall|s: Set<A>| !self.contains(s) {
             assert(self =~= Set::<Set<A>>::empty());
-            assert(ISet::new(self.flatten_inner()) =~= ISet::<A>::empty());
+            assert(ISet::new(flatten_f) =~= ISet::<A>::empty());
         }
         else {
             let s = choose|s: Set<A>| self.contains(s);
-            self.remove(s).lemma_flatten_inner_finite();
+            self.remove(s).lemma_flatten_finite();
+            let flatten_remove_f =
+                |elem| exists|elem_s: Set<A>| #[trigger] self.remove(s).contains(elem_s) && elem_s.contains(elem);
             assert(s.to_iset().finite());
-            assert(ISet::new(self.flatten_inner()) =~= ISet::new(self.remove(s).flatten_inner()).union(s.to_iset()));
+            assert(ISet::new(flatten_f) =~= ISet::new(flatten_remove_f).union(s.to_iset()));
         }
     }
 
@@ -865,7 +844,7 @@ impl<A> Set<Set<A>> {
             #[trigger] self.flatten().contains(elem) <==>
                 (exists|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem))
     {
-        self.lemma_flatten_inner_finite();
+        self.lemma_flatten_finite();
     }
 
     pub broadcast proof fn flatten_insert_union_commute(self, other: Set<A>)
