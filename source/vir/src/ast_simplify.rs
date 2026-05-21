@@ -1002,7 +1002,7 @@ fn add_fndef_axioms_to_function(
     state: &mut State,
     function: &Function,
     fn_once_trait_in_scope: bool,
-) -> Result<(Function, Option<TraitImpl>, Option<AssocTypeImpl>), VirErr> {
+) -> Result<(Function, Vec<TraitImpl>, Option<AssocTypeImpl>), VirErr> {
     state.reset_for_function();
 
     let params: Vec<_> = function
@@ -1036,11 +1036,20 @@ fn add_fndef_axioms_to_function(
         ExprX::ExecFnByName(fun.clone()),
     );
 
-    // Emit `FnDef : Fn<Args>` and `<FnDef as FnOnce<Args>>::Output = Ret`. Subsumption
-    // axioms downstream derive FnMut/FnOnce from Fn. Without these, projections of
-    // FnOnce::Output through this function item have no SMT binding and Z3 cannot connect
-    // an associated-type chain that bottoms out at the closure/fn item's Output.
-    let (trait_impl, assoc_type_impl) = if fn_once_trait_in_scope {
+    // Emit `FnDef : {Fn, FnMut, FnOnce}<Args>` and `<FnDef as FnOnce<Args>>::Output = Ret`.
+    //
+    // We emit a TraitImpl for each of the three Fn-family traits — not just Fn — because
+    // the Verus emission for generic functions produces *quantified* trait-bound axioms
+    // triggered on the specific trait. Z3 E-matching only fires a trigger when a term of
+    // that exact shape appears in the proof state. Code that queries `tr_bound%FnOnce.`
+    // through an associated-type projection (e.g. `Map::Item = F::Output`) never causes a
+    // `tr_bound%Fn.` term to appear, so a Fn-only axiom would never instantiate. Emitting
+    // all three is the cheap, robust answer.
+    //
+    // Without these, projections of `FnOnce::Output` through this function item have no
+    // SMT binding and Z3 cannot connect an associated-type chain that bottoms out at the
+    // fn item's `Output`.
+    let (trait_impls_out, assoc_type_impl) = if fn_once_trait_in_scope {
         let self_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), None));
         let arg_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
         let args_tuple_typ = Arc::new(TypX::Datatype(
@@ -1048,43 +1057,45 @@ fn add_fndef_axioms_to_function(
             Arc::new(arg_typs),
             Arc::new(vec![]),
         ));
-        let impl_path = Arc::new(crate::ast::PathX {
-            krate: CrateId::Internal,
-            segments: Arc::new(vec![crate::def::impl_fndef(&function.x.name)]),
-        });
         let trait_typ_args = Arc::new(vec![self_typ, args_tuple_typ]);
 
-        let fn_trait_path = ClosureKind::Fn.trait_path();
-        let trait_implx = crate::ast::TraitImplX {
-            impl_path: impl_path.clone(),
-            typ_params: function.x.typ_params.clone(),
-            typ_bounds: function.x.typ_bounds.clone(),
-            trait_path: fn_trait_path,
-            trait_typ_args: trait_typ_args.clone(),
-            trait_typ_arg_impls: Spanned::new(function.span.clone(), Arc::new(vec![])),
-            owning_module: None,
-            auto_imported: true,
-            external_trait_blanket: false,
+        let mk_impl_path = |kind: ClosureKind| {
+            Arc::new(crate::ast::PathX {
+                krate: CrateId::Internal,
+                segments: Arc::new(vec![crate::def::impl_fndef(&function.x.name, kind)]),
+            })
         };
 
-        let fn_once_trait_path = ClosureKind::FnOnce.trait_path();
+        let mut trait_impls_out: Vec<TraitImpl> = Vec::new();
+        for kind in [ClosureKind::Fn, ClosureKind::FnMut, ClosureKind::FnOnce] {
+            let trait_implx = crate::ast::TraitImplX {
+                impl_path: mk_impl_path(kind),
+                typ_params: function.x.typ_params.clone(),
+                typ_bounds: function.x.typ_bounds.clone(),
+                trait_path: kind.trait_path(),
+                trait_typ_args: trait_typ_args.clone(),
+                trait_typ_arg_impls: Spanned::new(function.span.clone(), Arc::new(vec![])),
+                owning_module: None,
+                auto_imported: true,
+                external_trait_blanket: false,
+            };
+            trait_impls_out.push(Spanned::new(function.span.clone(), trait_implx));
+        }
+
         let assoc_typ_implx = crate::ast::AssocTypeImplX {
             name: Arc::new("Output".to_string()),
-            impl_path,
+            impl_path: mk_impl_path(ClosureKind::FnOnce),
             typ_params: function.x.typ_params.clone(),
             typ_bounds: function.x.typ_bounds.clone(),
-            trait_path: fn_once_trait_path,
+            trait_path: ClosureKind::FnOnce.trait_path(),
             trait_typ_args,
             typ: function.x.ret.x.typ.clone(),
             impl_paths: Arc::new(vec![]),
         };
 
-        (
-            Some(Spanned::new(function.span.clone(), trait_implx)),
-            Some(Spanned::new(function.span.clone(), assoc_typ_implx)),
-        )
+        (trait_impls_out, Some(Spanned::new(function.span.clone(), assoc_typ_implx)))
     } else {
-        (None, None)
+        (Vec::new(), None)
     };
 
     let mut fndef_axioms = vec![];
@@ -1139,7 +1150,7 @@ fn add_fndef_axioms_to_function(
     let mut functionx = function.x.clone();
     assert!(functionx.fndef_axioms.is_none());
     functionx.fndef_axioms = Some(Arc::new(fndef_axioms));
-    Ok((Spanned::new(function.span.clone(), functionx), trait_impl, assoc_type_impl))
+    Ok((Spanned::new(function.span.clone(), functionx), trait_impls_out, assoc_type_impl))
 }
 
 fn simplify_function(
@@ -1407,11 +1418,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let mut new_functions: Vec<Function> = Vec::with_capacity(functions.len());
     for f in functions.iter() {
         if need_fndef_axiom(&state.fndef_typs, f) {
-            let (f2, ti, ai) =
+            let (f2, tis, ai) =
                 add_fndef_axioms_to_function(ctx, &mut state, f, fn_once_trait_in_scope)?;
-            if let Some(ti) = ti {
-                trait_impls.push(ti);
-            }
+            trait_impls.extend(tis);
             if let Some(ai) = ai {
                 assoc_type_impls.push(ai);
             }
