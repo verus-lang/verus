@@ -12,9 +12,9 @@ verus_! {
 
 #[verusfmt::skip]
 broadcast use {
-    super::set_lib::group_set_lib_default,
-    super::set::group_set_lemmas,
-    super::map::group_map_lemmas };
+    super::iset_lib::group_iset_lib_default,
+    super::iset::group_iset_lemmas,
+    super::imap::group_imap_lemmas };
 
 /// Unique identifier for every VerusSync instance.
 /// Every "Token" and "Instance" object has an `InstanceId`. These ID values must agree
@@ -536,7 +536,7 @@ impl<Element, Token> MultisetToken<Element, Token>
             s.multiset() == Multiset::empty(),
     {
         let tracked s = Self { inst: instance_id, m: IMap::tracked_empty(), _v: PhantomData, };
-        broadcast use super::set::fold::lemma_fold_empty;
+        broadcast use super::iset::fold::lemma_fold_empty;
         assert(Self::map_elems(IMap::empty()) =~= IMap::empty());
         return s;
     }
