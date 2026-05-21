@@ -694,6 +694,7 @@ pub broadcast proof fn lemma_set_new_some<A>(f: spec_fn(A) -> bool)
 {
 }
 
+#[allow(deprecated)]
 pub broadcast proof fn lemma_set_new_assuming_finite<A>(f: spec_fn(A) -> bool, a: A)
     ensures
         #[trigger] Set::<A>::new_assuming_finite(f).contains(a) == f(a),

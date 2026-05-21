@@ -232,8 +232,10 @@ pub broadcast proof fn lemma_map_insert_domain<K, V>(m: Map<K, V>, key: K, value
         #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
     broadcast use super::set::group_set_lemmas;
+    broadcast use super::set_lib::group_set_lib_default;
 
     m.axiom_dom_finite();
+    m.insert(key, value).axiom_dom_finite();
     assert(m.insert(key, value).dom() =~= m.dom().insert(key));
 }
 
@@ -260,7 +262,10 @@ pub broadcast proof fn lemma_map_remove_domain<K, V>(m: Map<K, V>, key: K)
         #[trigger] m.remove(key).dom() == m.dom().remove(key),
 {
     broadcast use super::set::group_set_lemmas;
+    broadcast use super::set_lib::group_set_lib_default;
 
+    m.axiom_dom_finite();
+    m.remove(key).axiom_dom_finite();
     assert(m.remove(key).dom() =~= m.dom().remove(key));
 }
 

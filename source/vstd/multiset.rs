@@ -182,22 +182,16 @@ impl<V> Multiset<V> {
         forall|x: V| self.count(x) == 0 || other.count(x) == 0
     }
 
-    /// Returns the set of all elements that have a count greater than 0, but only
-    /// if that set is finite.
-    spec fn dom_internal(self) -> Option<Set<V>> {
-        Set::new(|v: V| self.count(v) > 0)
-    }
-
-    broadcast axiom fn axiom_dom_internal_finite(self)
+    // This module assumes that all well-formed multisets have finite footprint,
+    // so this axiom is reasonable.
+    axiom fn axiom_dom_finite(self)
         ensures
-            #[trigger] self.dom_internal() is Some,
+            #[trigger] ISet::new(|v: V| self.count(v) > 0).finite(),
     ;
 
     /// Returns the set of all elements that have a count greater than 0
     pub closed spec fn dom(self) -> Set<V> {
-        // This module assumes that all well-formed multisets have finite footprint,
-        // so new_assuming_finite() here is reasonable.
-        self.dom_internal().unwrap()
+        Set::new(|v: V| self.count(v) > 0).unwrap()
     }
 
     // dom() won't mean anything unless we know our domain is finite, which is a soundness
@@ -208,7 +202,7 @@ impl<V> Multiset<V> {
             forall|v: V| #[trigger]
                 self.dom().contains(v) <==> self.count(v) > 0,
     {
-        self.axiom_dom_internal_finite();
+        self.axiom_dom_finite();
         assert forall|v: V| #[trigger] self.dom().contains(v) <==> self.count(v) > 0 by {
             super::iset::lemma_iset_new(|vv: V| self.count(vv) > 0, v);
         }

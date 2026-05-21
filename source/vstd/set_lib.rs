@@ -169,9 +169,9 @@ impl<A> Set<A> {
         ensures
             self.map_flatten_by(fwd, rev) == self.map(fwd).flatten(),
     {
+        broadcast use Set::lemma_flatten_contains;
         broadcast use Set::lemma_map_flatten_by_contains;
         broadcast use Set::lemma_map_contains;
-        broadcast use Set::lemma_flatten_contains;
 
         self.lemma_map_flatten_by_finite(fwd, rev);
         assert forall|b: B| self.map_flatten_by(fwd, rev).contains(b)
@@ -625,6 +625,8 @@ impl<A> Set<A> {
         ensures
             #[trigger] self.insert(elt).map(f) =~= self.map(f).insert(f(elt)),
     {
+        broadcast use Set::lemma_map_contains;
+
         assert forall|x: B| self.map(f).insert(f(elt)).contains(x) implies self.insert(elt).map(
             f,
         ).contains(x) by {
@@ -642,6 +644,8 @@ impl<A> Set<A> {
         ensures
             (self.union(t)).map(f) =~= self.map(f).union(t.map(f)),
     {
+        broadcast use Set::lemma_map_contains;
+
         let lhs = self.union(t).map(f);
         let rhs = self.map(f).union(t.map(f));
 
@@ -680,6 +684,8 @@ impl<A> Set<A> {
         ensures
             #[trigger] self.map(f).any(q),
     {
+        broadcast use Set::lemma_map_contains;
+
         let x = choose|x: A| self.contains(x) && p(x);
         assert(self.map(f).contains(f(x)));
     }
@@ -708,6 +714,8 @@ impl<A> Set<A> {
             }),
     {
         broadcast use group_set_lemmas;
+        broadcast use Set::lemma_flatten_contains;
+        broadcast use Set::lemma_map_contains;
         broadcast use Set::lemma_set_map_insert_commute;
 
         let lhs = s.insert(elem).filter_map(f);
@@ -746,6 +754,8 @@ impl<A> Set<A> {
             #[trigger] self.union(t).filter_map(f) == self.filter_map(f).union(t.filter_map(f)),
     {
         broadcast use group_set_lemmas;
+        broadcast use Set::lemma_flatten_contains;
+        broadcast use Set::lemma_map_contains;
 
         let lhs = self.union(t).filter_map(f);
         let rhs = self.filter_map(f).union(t.filter_map(f));
@@ -851,6 +861,9 @@ impl<A> Set<Set<A>> {
         ensures
             self.flatten().union(other) =~= #[trigger] self.insert(other).flatten(),
     {
+        broadcast use Set::lemma_flatten_contains;
+        broadcast use Set::lemma_map_contains;
+
         let lhs = self.flatten().union(other);
         let rhs = self.insert(other).flatten();
 
@@ -944,9 +957,27 @@ macro_rules! range_impls {
                     proof fn range_properties(lo: Self, hi: Self)
                         decreases hi - lo
                     {
+                        proof fn range_properties_helper(lo: $t, hi: $t)
+                            ensures
+                                ISet::<$t>::new(|i: $t| $t::in_range(i, lo, hi)).finite(),
+                            decreases
+                                hi - lo,
+                        {
+                            if lo >= hi {
+                                assert(ISet::<$t>::new(|i: $t| $t::in_range(i, lo, hi)) =~= ISet::<$t>::empty());
+                            }
+                            else {
+                                let hi_minus_1: $t = (hi - 1) as $t;
+                                assert(hi_minus_1 == hi - 1);
+                                range_properties_helper(lo, hi_minus_1);
+                                assert(ISet::<$t>::new(|i: $t| $t::in_range(i, lo, hi)) =~=
+                                       ISet::<$t>::new(|i: $t| $t::in_range(i, lo, hi_minus_1)).insert(hi_minus_1));
+                            }
+                        }
+
+                        range_properties_helper(lo, hi);
                         if hi <= lo {
-                            assert(ISet::new(|i: Self| Self::in_range(i, lo, hi)).is_empty());
-                            assert(Self::range_set(lo, hi).is_empty());
+                            assert(Self::range_set(lo, hi) =~= Set::<Self>::empty());
                         } else {
                             let hi1 = (hi - 1) as $t;
                             Self::range_properties(lo, hi1);
@@ -991,6 +1022,7 @@ macro_rules! full_impls {
                         assert(ISet::<$t>::new(|a: $t| true) =~=
                                ISet::<$t>::new(|a: $t| $t::MIN <= a && a <= $t::MAX));
                         assert(Set::<$t>::full() is Some);
+                        Self::range_properties($t::MIN, $t::MAX);
                         assert(Set::<$t>::full().unwrap() == Set::range_inclusive($t::MIN, $t::MAX));
                     }
                 }
@@ -1020,6 +1052,7 @@ pub proof fn lemma_sets_eq_iff_injective_map_eq<T, S>(s1: Set<T>, s2: Set<T>, f:
         (s1 == s2) <==> (s1.map(f) == s2.map(f)),
 {
     broadcast use group_set_lemmas;
+    broadcast use Set::lemma_map_contains;
 
     if (s1.map(f) == s2.map(f)) {
         assert(s1.map(f).len() == s2.map(f).len());
@@ -1042,6 +1075,7 @@ pub proof fn lemma_sets_eq_iff_injective_map_on_eq<T, S>(s1: Set<T>, s2: Set<T>,
         (s1 == s2) <==> (s1.map(f) == s2.map(f)),
 {
     broadcast use group_set_lemmas;
+    broadcast use Set::lemma_map_contains;
 
     if (s1.map(f) == s2.map(f)) {
         assert(s1.map(f).len() == s2.map(f).len());
@@ -1188,6 +1222,7 @@ pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
     decreases x.len(),
 {
     broadcast use group_set_properties;
+    broadcast use Set::lemma_map_contains;
 
     if x.len() == 0 {
         if !y.is_empty() {
@@ -1211,6 +1246,7 @@ pub proof fn lemma_map_size_bound<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B
     decreases x.len(),
 {
     broadcast use group_set_properties;
+    broadcast use Set::lemma_map_contains;
 
     if x.is_empty() {
         if !y.is_empty() {

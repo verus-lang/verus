@@ -1,6 +1,5 @@
 #[macro_use]
 use super::map::{Map, assert_maps_equal, assert_maps_equal_internal};
-use super::imap::{IMap, assert_imaps_equal, assert_imaps_equal_internal};
 #[allow(unused_imports)]
 use super::pervasive::*;
 #[allow(unused_imports)]
@@ -13,7 +12,12 @@ use super::set_lib::*;
 
 verus! {
 
-broadcast use {super::map::group_map_lemmas, super::set::group_set_lemmas, super::set_lib::group_set_lib_default};
+broadcast use {
+    super::map::group_map_lemmas,
+    super::set::group_set_lemmas,
+    super::set_lib::group_set_lib_default,
+    super::iset::group_iset_lemmas,
+};
 
 impl<K, V> Map<K, V> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
@@ -517,6 +521,58 @@ impl<K, V> Map<Seq<K>, V> {
         )
     }
 
+    proof fn lemma_ne_implies_prefixed_ne(prefix: Seq<K>, s1: Seq<K>, s2: Seq<K>)
+        requires
+            s1 != s2,
+        ensures
+            prefix + s1 != prefix + s2,
+        decreases
+            prefix.len(),
+    {
+        broadcast use super::seq::group_seq_axioms;
+
+        if s1.len() == s2.len() {
+            if forall|i: int| 0 <= i < s1.len() ==> s1[i] == s2[i] {
+                assert(s1 =~= s2);
+            }
+            else {
+                let i: int = choose|i: int| 0 <= i < s1.len() && s1[i] != s2[i];
+                assert((prefix + s1)[prefix.len() + i] == s1[i]);
+                assert((prefix + s2)[prefix.len() + i] == s2[i]);
+            }
+        }
+        else {
+            assert((prefix + s1).len() == prefix.len() + s1.len());
+            assert((prefix + s2).len() == prefix.len() + s2.len());
+        }
+    }
+
+    proof fn lemma_prefixed_entries_dom_finite(self, prefix: Seq<K>)
+        ensures
+            ISet::new(|k: Seq<K>| self.contains_key(prefix + k)).finite(),
+        decreases
+            self.dom().len(),
+    {
+        let f = |k: Seq<K>| self.contains_key(prefix + k);
+        if forall|k: Seq<K>| !(#[trigger] self.contains_key(prefix + k)) {
+            assert(ISet::new(f) =~= ISet::empty());
+        }
+        else {
+            let s: Seq<K> = choose|s: Seq<K>| #[trigger] self.contains_key(prefix + s);
+            self.remove(prefix + s).lemma_prefixed_entries_dom_finite(prefix);
+            let set_remove_f = |k: Seq<K>| self.remove(prefix + s).contains_key(prefix + k);
+            let is1 = ISet::new(f);
+            let is2 = ISet::new(set_remove_f).insert(s);
+            assert forall|x| is1.contains(x) implies is2.contains(x) by {
+                if x != s {
+                    Self::lemma_ne_implies_prefixed_ne(prefix, s, x);
+                    assert(self.remove(prefix + s).contains_key(prefix + x));
+                }
+            }
+            assert(ISet::new(f) =~= ISet::new(set_remove_f).insert(s));
+        }
+    }
+
     /// For every key `k` kept by `prefixed_entries(prefix)`,
     /// the associated value is the one stored at `prefix + k` in the original map.
     ///
@@ -539,6 +595,7 @@ impl<K, V> Map<Seq<K>, V> {
     {
         broadcast use group_map_properties;
 
+        self.lemma_prefixed_entries_dom_finite(prefix);
     }
 
     /// A key `k` is in `prefixed_entries(prefix)` exactly when the original map
@@ -569,6 +626,8 @@ impl<K, V> Map<Seq<K>, V> {
 
         let lhs = self.prefixed_entries(prefix);
         let rhs = self;
+
+        self.lemma_prefixed_entries_dom_finite(prefix);
     }
 
     /// Inserting `(prefix + k, v)` before taking `prefixed_entries(prefix)`

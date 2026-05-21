@@ -540,6 +540,7 @@ impl<A> Seq<A> {
             forall|a| #[trigger] self.to_set().contains(a) <==> self.contains(a),
     {
         broadcast use super::set::group_set_lemmas;
+        broadcast use super::set_lib::range_set_properties;
 
         assert forall|i| 0 <= i < self.len() implies #[trigger] self.to_set().contains(self[i]) by {
             Set::range(0, self.len() as int).lemma_map_contains(|i: int| self.index(i), self[i]);
