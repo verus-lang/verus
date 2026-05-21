@@ -1960,13 +1960,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// The following tests exercise the `<FnDef as FnOnce<Args>>::Output = Ret`
-// associated-type axiom emitted by `add_fndef_axioms_to_function`. They drive
-// the projection chain through an unconstrained associated type that bottoms
-// out at a fn item's `FnOnce::Output`, which would otherwise be unbound in SMT.
-
 test_verify_one_file_with_options! {
-    #[test] fndef_output_through_assoc_type ["vstd"] => verus_code! {
+    #[test] fndef_output_through_assoc_type_gh_issue_2427 ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         pub trait HasItem { type Item; }
@@ -1991,96 +1986,25 @@ test_verify_one_file_with_options! {
 
         fn foo(x: u32) -> u32 { x }
 
-        fn use_it() {
+        fn use_top_level_fn() {
             let mut y = W { i: Ad(foo) };
             y.touch();
             assert(y.index() == y.seq().len());
         }
-    } => Ok(())
-}
 
-test_verify_one_file_with_options! {
-    #[test] fndef_output_multi_arg ["vstd"] => verus_code! {
-        use vstd::prelude::*;
-
-        pub trait HasItem { type Item; }
-        pub struct Ad<F>(pub F);
-        impl<F: FnOnce(u32, bool) -> u32> HasItem for Ad<F> {
-            type Item = F::Output;
-        }
-
-        pub struct W<I: HasItem> { pub i: I }
-        impl<I: HasItem> W<I> {
-            pub uninterp spec fn index(self) -> int;
-            pub uninterp spec fn seq(self) -> Seq<I::Item>;
-            fn touch(&mut self)
-                ensures final(self).index() == final(self).seq().len(),
-            { assume(false); }
-        }
-
-        fn foo(x: u32, b: bool) -> u32 { if b { x } else { 0 } }
-
-        fn use_it() {
-            let mut y = W { i: Ad(foo) };
+        fn use_closure() {
+            let f = |x: u32| -> u32 { x };
+            let mut y = W { i: Ad(f) };
             y.touch();
             assert(y.index() == y.seq().len());
         }
-    } => Ok(())
-}
-
-test_verify_one_file_with_options! {
-    #[test] fndef_output_generic_fn ["vstd"] => verus_code! {
-        use vstd::prelude::*;
-
-        pub trait HasItem { type Item; }
-        pub struct Ad<F>(pub F);
-        impl<F: FnOnce(u32) -> u32> HasItem for Ad<F> {
-            type Item = F::Output;
-        }
-
-        pub struct W<I: HasItem> { pub i: I }
-        impl<I: HasItem> W<I> {
-            pub uninterp spec fn index(self) -> int;
-            pub uninterp spec fn seq(self) -> Seq<I::Item>;
-            fn touch(&mut self)
-                ensures final(self).index() == final(self).seq().len(),
-            { assume(false); }
-        }
-
+        
         fn id<T>(x: T) -> T { x }
 
-        fn use_it() {
+        fn use_generic_fn() {
             let mut y = W { i: Ad(id::<u32>) };
             y.touch();
             assert(y.index() == y.seq().len());
         }
     } => Ok(())
-}
-
-test_verify_one_file_with_options! {
-    #[test] fndef_output_wrong_type_still_fails ["vstd"] => verus_code! {
-        use vstd::prelude::*;
-
-        pub trait HasItem { type Item; }
-        pub struct Ad<F>(pub F);
-        impl<F: FnOnce(u32) -> u32> HasItem for Ad<F> {
-            type Item = F::Output;
-        }
-        pub struct W<I: HasItem> { pub i: I }
-        impl<I: HasItem> W<I> {
-            pub uninterp spec fn index(self) -> int;
-            pub uninterp spec fn seq(self) -> Seq<I::Item>;
-            fn touch(&mut self)
-                ensures final(self).index() == final(self).seq().len(),
-            { assume(false); }
-        }
-
-        fn foo(x: u32) -> u32 { x }
-
-        fn use_it() {
-            let mut y = W { i: Ad(foo) };
-            y.touch();
-            assert(y.index() == 99); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
 }

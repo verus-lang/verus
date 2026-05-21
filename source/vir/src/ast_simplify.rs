@@ -1038,17 +1038,9 @@ fn add_fndef_axioms_to_function(
 
     // Emit `FnDef : {Fn, FnMut, FnOnce}<Args>` and `<FnDef as FnOnce<Args>>::Output = Ret`.
     //
-    // We emit a TraitImpl for each of the three Fn-family traits — not just Fn — because
-    // the Verus emission for generic functions produces *quantified* trait-bound axioms
-    // triggered on the specific trait. Z3 E-matching only fires a trigger when a term of
-    // that exact shape appears in the proof state. Code that queries `tr_bound%FnOnce.`
-    // through an associated-type projection (e.g. `Map::Item = F::Output`) never causes a
-    // `tr_bound%Fn.` term to appear, so a Fn-only axiom would never instantiate. Emitting
-    // all three is the cheap, robust answer.
-    //
-    // Without these, projections of `FnOnce::Output` through this function item have no
-    // SMT binding and Z3 cannot connect an associated-type chain that bottoms out at the
-    // fn item's `Output`.
+    // We emit a TraitImpl for each of the three Fn-family traits (not just Fn), because
+    // code that mentions only one through an associated-type projection (e.g. `Map::Item = F::Output`) 
+    // never creates a Fn term for the Fn-related axioms to trigger on.
     let (trait_impls_out, assoc_type_impl) = if fn_once_trait_in_scope {
         let self_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), None));
         let arg_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
