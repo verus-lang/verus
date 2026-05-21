@@ -10,7 +10,7 @@ test_verify_one_file! {
 
         proof fn test_map_new() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
-            let m1 = Map::from_set(s1, |k: int| 10 * k);
+            let m1 = Map::new(s1, |k: int| 10 * k);
             assert(m1[2] == 20);
         }
     } => Ok(())
