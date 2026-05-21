@@ -696,11 +696,8 @@ pub broadcast proof fn lemma_set_new_some<A>(f: spec_fn(A) -> bool)
 
 pub broadcast proof fn lemma_set_new_assuming_finite<A>(f: spec_fn(A) -> bool, a: A)
     ensures
-        Set::<A>::new(f) is Some,
-        #[trigger] Set::<A>::new(f).unwrap().contains(a) == f(a),
+        #[trigger] Set::<A>::new_assuming_finite(f).contains(a) == f(a),
 {
-    assume(ISet::<A>::new(f).finite());    // This is what "assuming_finite" means.
-    super::iset::lemma_iset_new(f, a);
 }
 
 /// The result of inserting element `a` into set `s` must contains `a`.
