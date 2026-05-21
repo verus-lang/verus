@@ -9,7 +9,7 @@ use super::relations::*;
 
 verus! {
 
-broadcast use super::super::set::group_set_lemmas;
+broadcast use super::super::iset::group_iset_lemmas;
 
 /// Interface for Resource Algebra ghost state.
 #[verifier::accept_recursive_types(RA)]

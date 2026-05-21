@@ -84,7 +84,7 @@ pub proof fn lemma_frame_preserving_update_nondeterministic_opt<RA: ResourceAlge
     ensures
         frame_preserving_update_nondeterministic::<Option<RA>>(Some(a), bs.map(|b| Some(b))),
 {
-    broadcast use super::super::set::group_set_lemmas;
+    broadcast use super::super::iset::group_iset_lemmas;
 
     let bs_mapped = bs.map(|b| Some(b));
     assert forall|c|

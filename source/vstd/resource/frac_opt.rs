@@ -5,7 +5,7 @@ use super::storage_protocol::*;
 
 verus! {
 
-broadcast use {super::super::map::group_map_lemmas, super::super::set::group_set_lemmas};
+broadcast use {super::super::imap::group_imap_lemmas, super::super::iset::group_iset_lemmas};
 
 /////// Fractional tokens that allow borrowing of resources
 enum FractionalCarrierOpt<T> {
@@ -36,12 +36,12 @@ impl<T> Protocol<(), T> for FractionalCarrierOpt<T> {
         }
     }
 
-    closed spec fn rel(self, s: Map<(), T>) -> bool {
+    closed spec fn rel(self, s: IMap<(), T>) -> bool {
         match self {
             FractionalCarrierOpt::Value { v, frac } => {
                 (match v {
                     Some(v0) => s.dom().contains(()) && s[()] == v0,
-                    None => s =~= map![],
+                    None => s =~= imap![],
                 }) && frac == 1 as real
             },
             FractionalCarrierOpt::Empty => false,
@@ -106,7 +106,7 @@ impl<T> Frac<T> {
             result.resource() == v,
     {
         let f = FractionalCarrierOpt::<T>::Value { v: Some(v), frac: (1 as real) };
-        let tracked mut m = Map::<(), T>::tracked_empty();
+        let tracked mut m = IMap::<(), T>::tracked_empty();
         m.tracked_insert((), v);
         let tracked r = StorageResource::alloc(f, m);
         Self { r }
@@ -145,7 +145,7 @@ impl<T> Frac<T> {
         r.validate();
         let tracked mut r1 = StorageResource::alloc(
             FractionalCarrierOpt::Value { v: None, frac: (1 as real) },
-            Map::tracked_empty(),
+            IMap::tracked_empty(),
         );
         tracked_swap(r, &mut r1);
         let tracked (r1, r2) = r1.split(
@@ -224,7 +224,7 @@ impl<T> Frac<T> {
         r.validate();
         let tracked mut r1 = StorageResource::alloc(
             FractionalCarrierOpt::Value { v: None, frac: (1 as real) },
-            Map::tracked_empty(),
+            IMap::tracked_empty(),
         );
         tracked_swap(r, &mut r1);
         r1.validate_with_shared(&other.r);
@@ -246,7 +246,7 @@ impl<T> Frac<T> {
             ret == self.resource(),
     {
         use_type_invariant(self);
-        StorageResource::guard(&self.r, map![() => self.resource()]).tracked_borrow(())
+        StorageResource::guard(&self.r, imap![() => self.resource()]).tracked_borrow(())
     }
 
     /// Reclaim full ownership of the underlying resource.
@@ -262,17 +262,17 @@ impl<T> Frac<T> {
 
         let p1 = self.r.value();
         let p2 = FractionalCarrierOpt::Value { v: None, frac: (1 as real) };
-        let b2 = map![() => self.resource()];
-        assert forall|q: FractionalCarrierOpt<T>, t1: Map<(), T>|
+        let b2 = imap![() => self.resource()];
+        assert forall|q: FractionalCarrierOpt<T>, t1: IMap<(), T>|
             #![all_triggers]
             FractionalCarrierOpt::rel(FractionalCarrierOpt::op(p1, q), t1) implies exists|
-            t2: Map<(), T>,
+            t2: IMap<(), T>,
         |
             #![all_triggers]
             FractionalCarrierOpt::rel(FractionalCarrierOpt::op(p2, q), t2) && t2.dom().disjoint(
                 b2.dom(),
             ) && t1 =~= t2.union_prefer_right(b2) by {
-            let t2 = map![];
+            let t2 = imap![];
             assert(FractionalCarrierOpt::rel(FractionalCarrierOpt::op(p2, q), t2));
             assert(t2.dom().disjoint(b2.dom()));
             assert(t1 =~= t2.union_prefer_right(b2));
@@ -299,7 +299,7 @@ impl<T> Empty<T> {
 
     pub proof fn new(tracked v: T) -> (tracked result: Self) {
         let f = FractionalCarrierOpt::<T>::Value { v: None, frac: (1 as real) };
-        let tracked mut m = Map::<(), T>::tracked_empty();
+        let tracked mut m = IMap::<(), T>::tracked_empty();
         let tracked r = StorageResource::alloc(f, m);
         Self { r }
     }
@@ -315,24 +315,24 @@ impl<T> Empty<T> {
         self.r.validate();
 
         let p1 = self.r.value();
-        let b1 = map![() => resource];
+        let b1 = imap![() => resource];
         let p2 = FractionalCarrierOpt::Value { v: Some(resource), frac: (1 as real) };
 
-        assert forall|q: FractionalCarrierOpt<T>, t1: Map<(), T>|
+        assert forall|q: FractionalCarrierOpt<T>, t1: IMap<(), T>|
             #![all_triggers]
             FractionalCarrierOpt::rel(FractionalCarrierOpt::op(p1, q), t1) implies exists|
-            t2: Map<(), T>,
+            t2: IMap<(), T>,
         |
             #![all_triggers]
             FractionalCarrierOpt::rel(FractionalCarrierOpt::op(p2, q), t2) && t1.dom().disjoint(
                 b1.dom(),
             ) && t1.union_prefer_right(b1) =~= t2 by {
-            let t2 = map![() => resource];
+            let t2 = imap![() => resource];
             assert(FractionalCarrierOpt::rel(FractionalCarrierOpt::op(p2, q), t2)
                 && t1.dom().disjoint(b1.dom()) && t1.union_prefer_right(b1) =~= t2);
         }
 
-        let tracked mut m = Map::tracked_empty();
+        let tracked mut m = IMap::tracked_empty();
         m.tracked_insert((), resource);
         let tracked Self { r } = self;
         let tracked new_r = r.deposit(m, p2);

@@ -1312,7 +1312,7 @@ pub broadcast proof fn lemma_iset_disjoint_lens<A>(a: ISet<A>, b: ISet<A>)
 }
 
 /// Two sets are disjoint iff their intersection is empty
-pub proof fn lemma_disjoint_iff_empty_intersection<T>(a: ISet<T>, b: ISet<T>)
+pub proof fn lemma_iset_disjoint_iff_empty_intersection<T>(a: ISet<T>, b: ISet<T>)
     ensures
         a.disjoint(b) <==> a.intersect(b).is_empty(),
 {

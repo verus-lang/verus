@@ -73,12 +73,11 @@
 //!     // clients that might need to operate on different keys in this map.
 //! }
 //! ```
-use super::super::map::*;
-use super::super::map_lib::*;
+use super::super::imap::*;
+use super::super::imap_lib::*;
+use super::super::iset_lib::*;
 use super::super::modes::*;
 use super::super::prelude::*;
-use super::super::set_lib::*;
-use super::super::iset_lib::lemma_disjoint_iff_empty_intersection as lemma_iset_disjoint_iff_empty_intersection;
 use super::Loc;
 use super::algebra::ResourceAlgebra;
 #[cfg(verus_keep_ghost)]

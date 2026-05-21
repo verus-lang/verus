@@ -8,7 +8,7 @@ use super::super::modes::tracked_swap;
 
 verus! {
 
-broadcast use super::super::set::group_set_lemmas;
+broadcast use super::super::iset::group_iset_lemmas;
 
 /// Interface for PCM / Resource Algebra ghost state.
 ///

@@ -90,7 +90,7 @@ pub proof fn lemma_set_op_opt<RA: ResourceAlgebra>(s: ISet<RA>, t: RA)
     ensures
         set_op(s, t).map(|b| Some(b)) == set_op(s.map(|x| Some(x)), Some(t)),
 {
-    broadcast use super::super::set::group_set_lemmas;
+    broadcast use super::super::iset::group_iset_lemmas;
 
     let s_mapped = s.map(|x| Some(x));
     let original = set_op(s, t);
