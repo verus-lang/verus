@@ -371,8 +371,8 @@ fn function_allows_proph(function: &Function) -> (Option<NoProphReason>, Option<
     }
 }
 
-/// Carries the mode of an expression together with an optional explanation of why the mode
-/// is non-exec.  Mirrors the `Proph`/`ProphReason` system for prophecy checking.
+/// Carries the mode of an expression together
+/// with an optional explanation of why the mode is non-exec.
 #[derive(Clone, Debug)]
 enum ModeSource {
     /// The expression has mode Exec; no explanation needed.
@@ -390,15 +390,15 @@ struct ModeSourceReason {
 
 #[derive(Clone, Debug)]
 enum ModeSourceReasonKind {
-    /// A local variable whose declared mode is non-exec was read.
+    /// A local variable or param with declared mode. Span is the variable declaration.
     Var(VarIdent, Span),
-    /// A function whose return type is non-exec was called.
+    /// A function call.
     FunctionReturn(Fun, Span),
-    /// A struct/enum field whose declared mode is non-exec was accessed.
+    /// A struct/enum field with a declared mode of ghost or tracked
     Field(crate::ast::Ident, Span),
-    /// The datatype of a constructor has non-exec mode.
+    /// The datatype of a constructor whose type has a declared mode
     DatatypeMode(Path, Span),
-    /// A const or static with non-exec mode was read.
+    /// A const with a declared mode
     Const(Fun, Span),
 }
 
@@ -425,23 +425,11 @@ impl ModeSource {
     }
 
     /// Wrap a `Mode` together with a specific reason (only stored when mode != Exec).
-    fn from_mode_with_reason(mode: Mode, reason: ModeSourceReason) -> Self {
+    fn new(mode: Mode, reason: ModeSourceReason) -> Self {
         if mode == Mode::Exec { ModeSource::Exec } else { ModeSource::NonExec(mode, Some(reason)) }
     }
 
-    /// Change the stored mode while keeping the existing reason chain.
-    fn with_mode(self, mode: Mode) -> Self {
-        if mode == Mode::Exec {
-            ModeSource::Exec
-        } else {
-            match self {
-                ModeSource::Exec => ModeSource::NonExec(mode, None),
-                ModeSource::NonExec(_, reason) => ModeSource::NonExec(mode, reason),
-            }
-        }
-    }
-
-    /// Combine two sources, analogous to `Proph::join`.
+    /// Combine two sources.
     /// The result mode is `mode_join(self.mode(), other.mode())`.
     /// The reason is taken from whichever source has the higher (joined) mode; on a tie
     /// the source with higher priority reason wins.
@@ -492,6 +480,7 @@ impl ModeSource {
                 )
             }
             ModeSourceReasonKind::FunctionReturn(fun, def_span) => {
+                // TODO: give information if autospec was used
                 let name = crate::ast_util::path_as_friendly_rust_name(&fun.path);
                 let err = err.secondary_label(
                     &reason.span,
@@ -676,8 +665,8 @@ struct Record {
 enum VarMode {
     Infer(Span),
     /// We know mode to be spec, but propheticness hasn't been inferred yet.
-    /// Carries the declaration span so we can report it in errors after inference.
     SpecInferProph(Span),
+    /// We know the exact mode and propheticness
     Mode(Span, Mode, ProphVar),
 }
 
@@ -1308,9 +1297,16 @@ fn check_place(
             // We also apply coerce to the "expected mode" here in order to compute the optimal
             // mode to put into var_modes (see below)
 
-            let mut coerced_mode = mode_join(place_mode, expect.0);
+            let mut coerced_mode = ModeSource::from_mode(mode_join(place_mode, expect.0));
             if typing.in_forall_stmt || typing.in_proof_in_spec || typing.in_pure {
-                coerced_mode = Mode::Spec;
+                let reason = if typing.in_forall_stmt {
+                    ModeSourceReason::InForallStmt
+                } else if typing.in_proof_in_spec {
+                    ModeSourceReason::InProofInSpec
+                } else if typing.in_pure {
+                    ModeSourceReason::InPure
+                };
+                coerced_mode = ModeSource::new(Mode::Spec, reasons);
             }
             // Preserve the reason from the place source, but use the coerced mode.
             place_ms.with_mode(coerced_mode)
@@ -1343,15 +1339,16 @@ fn check_place(
                     }
                     return Err(e);
                 }
+                ModeSource::from_mode(Mode::Proof)
             } else if coerced_mode != place_mode {
                 return Err(error_with_label(
                     &place.span,
                     format!("cannot mutate {place_mode}-mode place in {context_mode}-code"),
                     "this place has mode {place_mode}",
                 ));
+            } else {
+                place_ms
             }
-
-            place_ms.with_mode(coerced_mode)
         }
         PlaceAccess::MutBorrow(None) => {
             let found = record.mut_bor_place_modes.insert(place.span.id, (place_mode, note));
@@ -1509,7 +1506,7 @@ fn check_place_rec_inner(
             };
 
             let field_ms = if field_mode != Mode::Exec {
-                ModeSource::from_mode_with_reason(
+                ModeSource::new(
                     field_mode,
                     ModeSourceReason {
                         span: place.span.clone(),
@@ -1552,8 +1549,11 @@ fn check_place_rec_inner(
                 *note = Some(ProofModeMutRefNote(place.typ.clone(), p.span.clone()));
             }
 
-            let deref_mode = if mode == Mode::Spec { Mode::Spec } else { Mode::Exec };
-            Ok((ms.with_mode(deref_mode), proph))
+            if mode == Mode::Spec {
+                ms
+            } else {
+                ModeSource::Exec
+            }
         }
         PlaceX::Local(var) => {
             let (decl_span, mode, proph) = typing.get(var, &place.span)?;
@@ -1564,17 +1564,13 @@ fn check_place_rec_inner(
                 record.erasure_modes.var_modes.push((place.span.clone(), (mode, mode)));
             }
 
-            let ms = if mode != Mode::Exec {
-                ModeSource::from_mode_with_reason(
-                    mode,
-                    ModeSourceReason {
-                        span: place.span.clone(),
-                        kind: ModeSourceReasonKind::Var(var.clone(), decl_span),
-                    },
-                )
-            } else {
-                ModeSource::Exec
-            };
+            let ms = ModeSource::new(
+                mode,
+                ModeSourceReason {
+                    span: place.span.clone(),
+                    kind: ModeSourceReasonKind::Var(var.clone(), decl_span),
+                },
+            );
             Ok((ms, proph))
         }
         PlaceX::Temporary(e) => {
@@ -1604,7 +1600,9 @@ fn check_place_rec_inner(
                 expect,
                 outer_proph,
             )?;
-            let wrapper_ms = ModeSource::from_mode(wrapper_mode.to_mode());
+            let wrapper_ms = ModeSource::new(wrapper_mode.to_mode(), ModeSourceReason {
+                span: place.span.clone(), kind: ModeSourceReasonKind::ModeUnwrap
+            });
             Ok((ms.join(wrapper_ms), proph))
         }
         PlaceX::WithExpr(..) => {
@@ -1929,7 +1927,7 @@ fn check_expr(
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
             record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
             let ms = if mode != Mode::Exec && !matches!(&expr.x, ExprX::VarAt(..)) {
-                ModeSource::from_mode_with_reason(
+                ModeSource::new(
                     mode,
                     ModeSourceReason {
                         span: expr.span.clone(),
@@ -1981,7 +1979,7 @@ fn check_expr(
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
             record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
             let ms = if mode != Mode::Exec {
-                ModeSource::from_mode_with_reason(
+                ModeSource::new(
                     mode,
                     ModeSourceReason {
                         span: expr.span.clone(),
@@ -2142,7 +2140,7 @@ fn check_expr(
             }
             let ret_mode = function.x.ret.x.mode;
             let ret_ms = if ret_mode != Mode::Exec {
-                ModeSource::from_mode_with_reason(
+                ModeSource::new(
                     ret_mode,
                     ModeSourceReason {
                         span: expr.span.clone(),
@@ -2320,7 +2318,7 @@ fn check_expr(
 
             let ctor_ms = if mode != Mode::Exec {
                 match dt {
-                    Dt::Path(path) => ModeSource::from_mode_with_reason(
+                    Dt::Path(path) => ModeSource::new(
                         mode,
                         ModeSourceReason {
                             span: expr.span.clone(),
