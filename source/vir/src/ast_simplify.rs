@@ -1039,7 +1039,7 @@ fn add_fndef_axioms_to_function(
     // Emit `FnDef : {Fn, FnMut, FnOnce}<Args>` and `<FnDef as FnOnce<Args>>::Output = Ret`.
     //
     // We emit a TraitImpl for each of the three Fn-family traits (not just Fn), because
-    // code that mentions only one through an associated-type projection (e.g. `Map::Item = F::Output`) 
+    // code that mentions only one through an associated-type projection (e.g. `Map::Item = F::Output`)
     // never creates a Fn term for the Fn-related axioms to trigger on.
     let (trait_impls_out, assoc_type_impl) = if fn_once_trait_in_scope {
         let self_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), None));

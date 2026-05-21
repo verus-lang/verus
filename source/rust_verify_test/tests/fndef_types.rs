@@ -1998,7 +1998,7 @@ test_verify_one_file_with_options! {
             y.touch();
             assert(y.index() == y.seq().len());
         }
-        
+
         fn id<T>(x: T) -> T { x }
 
         fn use_generic_fn() {
