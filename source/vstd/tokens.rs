@@ -12,9 +12,13 @@ verus_! {
 
 #[verusfmt::skip]
 broadcast use {
-    super::iset_lib::group_iset_lib_default,
     super::iset::group_iset_lemmas,
-    super::imap::group_imap_lemmas };
+    super::iset_lib::group_iset_lib_default,
+    super::imap::group_imap_lemmas,
+    super::map::group_map_lemmas,
+    super::set::group_set_lemmas,
+    super::set_lib::group_set_lib_default,
+};
 
 /// Unique identifier for every VerusSync instance.
 /// Every "Token" and "Instance" object has an `InstanceId`. These ID values must agree
@@ -65,10 +69,12 @@ pub trait UniqueValueToken<Value> : ValueToken<Value> {
 /// Interface for VerusSync tokens created for a field marked with the
 /// `map` or `persistent_map` strategies.
 ///
-/// | VerusSync Strategy  | Field type  | Token trait            |
-/// |---------------------|-------------|------------------------|
-/// | `map`               | `IMap<K, V>` | [`UniqueKeyValueToken<K, V>`](`UniqueKeyValueToken`) |
-/// | `persistent_map`    | `IMap<K, V>` | `KeyValueToken<V> + Copy` |
+/// | VerusSync Strategy  | Field type   | Token trait            |
+/// |---------------------|--------------|------------------------|
+/// | `map`               | `Map<K, V> ` | [`UniqueKeyValueToken<K, V>`](`UniqueKeyValueToken`) |
+/// | `imap`              | `IMap<K, V>` | [`UniqueKeyValueToken<K, V>`](`UniqueKeyValueToken`) |
+/// | `persistent_map`    | `Map<K, V>`  | `KeyValueToken<V> + Copy` |
+/// | `persistent_imap`   | `IMap<K, V>` | `KeyValueToken<V> + Copy` |
 ///
 /// For the cases where the tokens are not `Copy`, then token is necessarily _unique_
 /// per-instance, per-key; the sub-trait, [`UniqueKeyValueToken<V>`](`UniqueKeyValueToken`), provides
@@ -172,10 +178,12 @@ pub trait MonotonicCountToken : Sized {
 /// Interface for VerusSync tokens created for a field marked with the
 /// `set`, `persistent_set` or `multiset` strategies.
 ///
-/// | VerusSync Strategy  | Field type  | Token trait            |
-/// |---------------------|-------------|------------------------|
-/// | `set`               | `ISet<V>`    | [`UniqueElementToken<V>`](`UniqueElementToken`) |
-/// | `persistent_set`    | `ISet<V>`    | `ElementToken<V> + Copy` |
+/// | VerusSync Strategy  | Field type   | Token trait            |
+/// |---------------------|--------------|------------------------|
+/// | `set`               | `Set<V>`     | [`UniqueElementToken<V>`](`UniqueElementToken`) |
+/// | `iset`              | `ISet<V>`    | [`UniqueElementToken<V>`](`UniqueElementToken`) |
+/// | `persistent_set`    | `Set<V>`     | `ElementToken<V> + Copy` |
+/// | `persistent_iset`   | `ISet<V>`    | `ElementToken<V> + Copy` |
 /// | `multiset`          | `Multiset<V>` | `ElementToken<V>`      |
 ///
 /// Each token represents a single element of the set or multiset.
@@ -243,7 +251,7 @@ pub trait UniqueSimpleToken : SimpleToken {
 }
 
 #[verifier::reject_recursive_types(Key)]
-pub tracked struct MapToken<Key, Value, Token>
+pub tracked struct IMapToken<Key, Value, Token>
     where Token: KeyValueToken<Key, Value>
 {
     ghost _v: PhantomData<Value>,
@@ -251,7 +259,7 @@ pub tracked struct MapToken<Key, Value, Token>
     tracked m: IMap<Key, Token>,
 }
 
-impl<Key, Value, Token> MapToken<Key, Value, Token>
+impl<Key, Value, Token> IMapToken<Key, Value, Token>
     where Token: KeyValueToken<Key, Value>
 {
     #[verifier::type_invariant]
@@ -336,12 +344,127 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
                  && map[key].value() == self.map()[key]
     {
         use_type_invariant(&self);
-        let tracked MapToken { inst, m, _v } = self;
+        let tracked IMapToken { inst, m, _v } = self;
         assert(m.dom() =~= self.map().dom());
         return m;
     }
 
     pub proof fn from_map(instance_id: InstanceId, tracked map: IMap<Key, Token>) -> (tracked s: Self)
+        requires
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].key() == key,
+        ensures
+            s.instance_id() == instance_id,
+            s.map().dom() == map.dom(),
+            forall |key| #[trigger] map.dom().contains(key)
+                ==> s.map()[key] == map[key].value()
+    {
+        let tracked s = IMapToken { inst: instance_id, m: map, _v: PhantomData };
+        assert(map.dom() == s.map().dom());
+        s
+    }
+}
+
+#[verifier::reject_recursive_types(Key)]
+pub tracked struct MapToken<Key, Value, Token>
+    where Token: KeyValueToken<Key, Value>
+{
+    ghost _v: PhantomData<Value>,
+    ghost inst: InstanceId,
+    tracked m: Map<Key, Token>,
+}
+
+impl<Key, Value, Token> MapToken<Key, Value, Token>
+    where Token: KeyValueToken<Key, Value>
+{
+    #[verifier::type_invariant]
+    spec fn wf(self) -> bool {
+        forall |k| #[trigger] self.m.dom().contains(k) ==> self.m[k].key() == k
+            && self.m[k].instance_id() == self.inst
+    }
+
+    pub closed spec fn instance_id(self) -> InstanceId {
+        self.inst
+    }
+
+    pub closed spec fn map(self) -> Map<Key, Value> {
+        Map::new(
+            self.m.dom(),
+            |k: Key| self.m[k].value(),
+        )
+    }
+
+    #[verifier::inline]
+    pub open spec fn dom(self) -> Set<Key> {
+        self.map().dom()
+    }
+
+    #[verifier::inline]
+    pub open spec fn spec_index(self, k: Key) -> Value {
+        self.map()[k]
+    }
+
+    #[verifier::inline]
+    pub open spec fn index(self, k: Key) -> Value {
+        self.map()[k]
+    }
+
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
+        ensures
+            s.instance_id() == instance_id,
+            s.map() == Map::empty(),
+    {
+        let tracked s = Self { inst: instance_id, m: Map::tracked_empty(), _v: PhantomData };
+        assert(s.map() =~= Map::empty());
+        return s;
+    }
+
+    pub proof fn insert(tracked &mut self, tracked token: Token)
+        requires
+            old(self).instance_id() == token.instance_id(),
+        ensures
+            final(self).instance_id() == old(self).instance_id(),
+            final(self).map() == old(self).map().insert(token.key(), token.value()),
+    {
+        use_type_invariant(&*self);
+        self.m.tracked_insert(token.key(), token);
+        assert(self.map() =~= old(self).map().insert(token.key(), token.value()));
+    }
+
+    pub proof fn remove(tracked &mut self, key: Key) -> (tracked token: Token)
+        requires
+            old(self).map().dom().contains(key)
+        ensures
+            final(self).instance_id() == old(self).instance_id(),
+            final(self).map() == old(self).map().remove(key),
+            token.instance_id() == final(self).instance_id(),
+            token.key() == key,
+            token.value() == old(self).map()[key]
+    {
+        use_type_invariant(&*self);
+        let tracked t = self.m.tracked_remove(key);
+        assert(self.map() =~= old(self).map().remove(key));
+        t
+    }
+
+    pub proof fn into_map(tracked self) -> (tracked map: Map<Key, Token>)
+        ensures
+            map.dom() == self.map().dom(),
+            forall |key|
+                #![trigger(map.dom().contains(key))]
+                #![trigger(map.index(key))]
+              map.dom().contains(key)
+                ==> map[key].instance_id() == self.instance_id()
+                 && map[key].key() == key
+                 && map[key].value() == self.map()[key]
+    {
+        use_type_invariant(&self);
+        let tracked MapToken { inst, m, _v } = self;
+        assert(m.dom() =~= self.map().dom());
+        return m;
+    }
+
+    pub proof fn from_map(instance_id: InstanceId, tracked map: Map<Key, Token>) -> (tracked s: Self)
         requires
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].key() == key,
@@ -358,14 +481,14 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
 }
 
 #[verifier::reject_recursive_types(Element)]
-pub tracked struct SetToken<Element, Token>
+pub tracked struct ISetToken<Element, Token>
     where Token: ElementToken<Element>
 {
     ghost inst: InstanceId,
     tracked m: IMap<Element, Token>,
 }
 
-impl<Element, Token> SetToken<Element, Token>
+impl<Element, Token> ISetToken<Element, Token>
     where Token: ElementToken<Element>
 {
     #[verifier::type_invariant]
@@ -437,12 +560,109 @@ impl<Element, Token> SetToken<Element, Token>
                      && map[key].element() == key
     {
         use_type_invariant(&self);
-        let tracked SetToken { inst, m } = self;
+        let tracked ISetToken { inst, m } = self;
         assert(m.dom() =~= self.set());
         return m;
     }
 
     pub proof fn from_map(instance_id: InstanceId, tracked map: IMap<Element, Token>) -> (tracked s: Self)
+        requires
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].element() == key,
+        ensures
+            s.instance_id() == instance_id,
+            s.set() == map.dom(),
+    {
+        let tracked s = ISetToken { inst: instance_id, m: map };
+        assert(s.set() =~= map.dom());
+        s
+    }
+}
+
+#[verifier::reject_recursive_types(Element)]
+pub tracked struct SetToken<Element, Token>
+    where Token: ElementToken<Element>
+{
+    ghost inst: InstanceId,
+    tracked m: Map<Element, Token>,
+}
+
+impl<Element, Token> SetToken<Element, Token>
+    where Token: ElementToken<Element>
+{
+    #[verifier::type_invariant]
+    spec fn wf(self) -> bool {
+        forall |k| #[trigger] self.m.dom().contains(k) ==> self.m[k].element() == k
+            && self.m[k].instance_id() == self.inst
+    }
+
+    pub closed spec fn instance_id(self) -> InstanceId {
+        self.inst
+    }
+
+    pub closed spec fn set(self) -> Set<Element> {
+        self.m.dom()
+    }
+
+    #[verifier::inline]
+    pub open spec fn contains(self, element: Element) -> bool {
+        self.set().contains(element)
+    }
+
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
+        ensures
+            s.instance_id() == instance_id,
+            s.set() == Set::empty(),
+    {
+        let tracked s = Self { inst: instance_id, m: Map::tracked_empty() };
+        assert(s.set() =~= Set::empty());
+        return s;
+    }
+
+    pub proof fn insert(tracked &mut self, tracked token: Token)
+        requires
+            old(self).instance_id() == token.instance_id(),
+        ensures
+            final(self).instance_id() == old(self).instance_id(),
+            final(self).set() == old(self).set().insert(token.element()),
+    {
+        use_type_invariant(&*self);
+        self.m.tracked_insert(token.element(), token);
+        assert(self.set() =~= old(self).set().insert(token.element()));
+    }
+
+    pub proof fn remove(tracked &mut self, element: Element) -> (tracked token: Token)
+        requires
+            old(self).set().contains(element)
+        ensures
+            final(self).instance_id() == old(self).instance_id(),
+            final(self).set() == old(self).set().remove(element),
+            token.instance_id() == final(self).instance_id(),
+            token.element() == element,
+    {
+        use_type_invariant(&*self);
+        let tracked t = self.m.tracked_remove(element);
+        assert(self.set() =~= old(self).set().remove(element));
+        t
+    }
+
+    pub proof fn into_map(tracked self) -> (tracked map: Map<Element, Token>)
+        ensures
+            map.dom() == self.set(),
+            forall |key|
+                #![trigger(map.dom().contains(key))]
+                #![trigger(map.index(key))]
+                map.dom().contains(key)
+                    ==> map[key].instance_id() == self.instance_id()
+                     && map[key].element() == key
+    {
+        use_type_invariant(&self);
+        let tracked SetToken { inst, m } = self;
+        assert(m.dom() =~= self.set());
+        return m;
+    }
+
+    pub proof fn from_map(instance_id: InstanceId, tracked map: Map<Element, Token>) -> (tracked s: Self)
         requires
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].element() == key,
@@ -501,7 +721,7 @@ proof fn fresh_is_fresh(s: ISet<int>)
 }
 
 proof fn get_key_for_value<K, V>(m: IMap<K, V>, value: V) -> (k: K)
-    requires map_values(m).contains(value), m.dom().finite(),
+    requires map_values(m).contains(value),
     ensures m.dom().contains(k), m[k] == value,
 {
     assume(false);
