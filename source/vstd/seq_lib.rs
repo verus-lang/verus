@@ -355,72 +355,10 @@ impl<A> Seq<A> {
         }
     }
 
-    // Per-element helper for the source direction: given an index i into the
-    // filtered sequence, return a source index j.
-    proof fn lemma_filter_index_source_one(self, pred: spec_fn(int) -> bool, i: int) -> (j: int)
-        requires
-            0 <= i < self.filter_index(pred).len(),
+    /// Filtering can't increase the sequence's length
+    broadcast proof fn lemma_filter_index_len(self, pred: spec_fn(int) -> bool)
         ensures
-            0 <= j < self.len(),
-            self.filter_index(pred)[i] == self[j],
-            pred(j),
-        decreases self.len(),
-    {
-        reveal(Seq::filter_index);
-        let s_rest = self.drop_last();
-        let rest = s_rest.filter_index(pred);
-        let last_idx = (self.len() - 1) as int;
-        if pred(last_idx) {
-            assert(self.filter_index(pred) =~= rest.push(self.last()));
-            if i == rest.len() {
-                last_idx
-            } else {
-                let j_rest = s_rest.lemma_filter_index_source_one(pred, i);
-                assert(self[j_rest] == s_rest[j_rest]);
-                j_rest
-            }
-        } else {
-            assert(self.filter_index(pred) =~= rest);
-            let j_rest = s_rest.lemma_filter_index_source_one(pred, i);
-            assert(self[j_rest] == s_rest[j_rest]);
-            j_rest
-        }
-    }
-
-    // Per-element helper for the witness direction: given a source index j with
-    // pred(j), return an index i into the filtered sequence.
-    proof fn lemma_filter_index_witness_one(self, pred: spec_fn(int) -> bool, j: int) -> (i: int)
-        requires
-            0 <= j < self.len(),
-            pred(j),
-        ensures
-            0 <= i < self.filter_index(pred).len(),
-            self[j] == self.filter_index(pred)[i],
-        decreases self.len(),
-    {
-        reveal(Seq::filter_index);
-        let s_rest = self.drop_last();
-        let rest = s_rest.filter_index(pred);
-        let last_idx = (self.len() - 1) as int;
-        if j == last_idx {
-            assert(self.filter_index(pred) =~= rest.push(self.last()));
-            rest.len() as int
-        } else {
-            assert(self[j] == s_rest[j]);
-            let i_rest = s_rest.lemma_filter_index_witness_one(pred, j);
-            if pred(last_idx) {
-                assert(self.filter_index(pred) =~= rest.push(self.last()));
-            } else {
-                assert(self.filter_index(pred) =~= rest);
-            }
-            i_rest
-        }
-    }
-
-    // Helper for the length postcondition.
-    proof fn lemma_filter_index_len(self, pred: spec_fn(int) -> bool)
-        ensures
-            self.filter_index(pred).len() <= self.len(),
+            #[trigger](self.filter_index(pred).len()) <= self.len(),
         decreases self.len(),
     {
         reveal(Seq::filter_index);
@@ -429,11 +367,10 @@ impl<A> Seq<A> {
         }
     }
 
-    // Helper for the source postcondition (forall i, exists j).
+    // Helper for one of lemma_filter_index's postconditions
     proof fn lemma_filter_index_source(self, pred: spec_fn(int) -> bool)
         ensures
-            forall |i| 0 <= i < self.filter_index(pred).len() ==>
-                (exists |j| 0 <= j < self.len() && #[trigger] self.filter_index(pred)[i] == #[trigger] self[j] && pred(j)),
+            self.filter_index_range(pred),
         decreases self.len(),
     {
         reveal(Seq::filter_index);
@@ -468,11 +405,10 @@ impl<A> Seq<A> {
         }
     }
 
-    // Helper for the witness postcondition (forall j with pred(j), exists i).
+    // Helper for another one of lemma_filter_index's postconditions
     proof fn lemma_filter_index_witness(self, pred: spec_fn(int) -> bool)
         ensures
-            forall |j| 0 <= j < self.len() && pred(j) ==>
-                (exists |i| 0 <= i < self.filter_index(pred).len() && #[trigger] self[j] == self.filter_index(pred)[i]),
+            self.filter_index_domain(pred),
         decreases self.len(),
     {
         reveal(Seq::filter_index);
@@ -526,24 +462,31 @@ impl<A> Seq<A> {
         }
     }
 
+    /// Every resulting value of filter_index came from self at an acceptable index
+    pub open spec fn filter_index_range(self, pred: spec_fn(int) -> bool) -> bool {
+        forall |i| 0 <= i < self.filter_index(pred).len() ==>
+            (exists |j| 0 <= j < self.len() && #[trigger] self.filter_index(pred)[i] == #[trigger] self[j] && pred(j))
+    }
+
+    /// Every value in self at an acceptable index is in the result of filter_index
+    pub open spec fn filter_index_domain(self, pred: spec_fn(int) -> bool) -> bool {
+        forall |j| 0 <= j < self.len() && pred(j) ==> #[trigger] self.filter_index(pred).contains(self[j])
+    }
+
+    /// Properties of filter_index
     pub broadcast proof fn lemma_filter_index(self, pred: spec_fn(int) -> bool)
         ensures
             // Filtering can't increase the sequence's length
             (#[trigger] self.filter_index(pred)).len() <= self.len(),
             // Every resulting value came from source at an acceptable index
-            forall |i| 0 <= i < self.filter_index(pred).len() ==>
-                (exists |j| 0 <= j < self.len() && #[trigger] self.filter_index(pred)[i] == #[trigger] self[j] && pred(j)),
+            self.filter_index_range(pred),
             // Every value in self at an acceptable index is in the result
-            forall |j| 0 <= j < self.len() && pred(j) ==>
-                (exists |i| 0 <= i < self.filter_index(pred).len() && #[trigger] self[j] == self.filter_index(pred)[i]),
+            self.filter_index_domain(pred),
+        decreases self.len(),
     {
         self.lemma_filter_index_len(pred);
         self.lemma_filter_index_source(pred);
         self.lemma_filter_index_witness(pred);
-        assert(forall |i| 0 <= i < self.filter_index(pred).len() ==>
-            (exists |j| 0 <= j < self.len() && #[trigger] self.filter_index(pred)[i] == #[trigger] self[j] && pred(j)));
-        assert(forall |j| 0 <= j < self.len() && pred(j) ==>
-            (exists |i| 0 <= i < self.filter_index(pred).len() && #[trigger] self[j] == self.filter_index(pred)[i]));
     }
 
     pub broadcast proof fn add_empty_left(a: Self, b: Self)
