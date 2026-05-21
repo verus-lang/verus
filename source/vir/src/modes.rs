@@ -371,8 +371,175 @@ fn function_allows_proph(function: &Function) -> (Option<NoProphReason>, Option<
     }
 }
 
-fn mode_proph_join(m1: (Mode, Proph), m2: (Mode, Proph)) -> (Mode, Proph) {
-    (mode_join(m1.0, m2.0), m1.1.join(m2.1))
+/// Carries the mode of an expression together with an optional explanation of why the mode
+/// is non-exec.  Mirrors the `Proph`/`ProphReason` system for prophecy checking.
+#[derive(Clone, Debug)]
+enum ModeSource {
+    /// The expression has mode Exec; no explanation needed.
+    Exec,
+    /// The expression has mode Proof or Spec, with an optional root-cause reason.
+    NonExec(Mode, Option<ModeSourceReason>),
+}
+
+#[derive(Clone, Debug)]
+struct ModeSourceReason {
+    /// Span of the use site (where the elevated-mode value appears in source).
+    span: Span,
+    kind: ModeSourceReasonKind,
+}
+
+#[derive(Clone, Debug)]
+enum ModeSourceReasonKind {
+    /// A local variable whose declared mode is non-exec was read.
+    Var(VarIdent, Span),
+    /// A function whose return type is non-exec was called.
+    FunctionReturn(Fun, Span),
+    /// A struct/enum field whose declared mode is non-exec was accessed.
+    Field(crate::ast::Ident, Span),
+    /// The datatype of a constructor has non-exec mode.
+    DatatypeMode(Path, Span),
+    /// A const or static with non-exec mode was read.
+    Const(Fun, Span),
+}
+
+fn reason_priority(kind: &ModeSourceReasonKind) -> u32 {
+    match kind {
+        ModeSourceReasonKind::Var(..) => 4,
+        ModeSourceReasonKind::FunctionReturn(..) => 3,
+        ModeSourceReasonKind::Field(..) => 2,
+        ModeSourceReasonKind::DatatypeMode(..) | ModeSourceReasonKind::Const(..) => 1,
+    }
+}
+
+impl ModeSource {
+    fn mode(&self) -> Mode {
+        match self {
+            ModeSource::Exec => Mode::Exec,
+            ModeSource::NonExec(m, _) => *m,
+        }
+    }
+
+    /// Wrap a plain `Mode` with no specific reason.
+    fn from_mode(mode: Mode) -> Self {
+        if mode == Mode::Exec { ModeSource::Exec } else { ModeSource::NonExec(mode, None) }
+    }
+
+    /// Wrap a `Mode` together with a specific reason (only stored when mode != Exec).
+    fn from_mode_with_reason(mode: Mode, reason: ModeSourceReason) -> Self {
+        if mode == Mode::Exec { ModeSource::Exec } else { ModeSource::NonExec(mode, Some(reason)) }
+    }
+
+    /// Change the stored mode while keeping the existing reason chain.
+    fn with_mode(self, mode: Mode) -> Self {
+        if mode == Mode::Exec {
+            ModeSource::Exec
+        } else {
+            match self {
+                ModeSource::Exec => ModeSource::NonExec(mode, None),
+                ModeSource::NonExec(_, reason) => ModeSource::NonExec(mode, reason),
+            }
+        }
+    }
+
+    /// Combine two sources, analogous to `Proph::join`.
+    /// The result mode is `mode_join(self.mode(), other.mode())`.
+    /// The reason is taken from whichever source has the higher (joined) mode; on a tie
+    /// the source with higher priority reason wins.
+    fn join(self, other: ModeSource) -> ModeSource {
+        let m1 = self.mode();
+        let m2 = other.mode();
+        let joined = mode_join(m1, m2);
+        if joined == Mode::Exec {
+            return ModeSource::Exec;
+        }
+        let r1 = if let ModeSource::NonExec(_, r) = &self { r.as_ref() } else { None };
+        let r2 = if let ModeSource::NonExec(_, r) = &other { r.as_ref() } else { None };
+        let reason = match (m1 == joined, m2 == joined) {
+            (true, false) => r1.cloned(),
+            (false, true) => r2.cloned(),
+            (true, true) => match (r1, r2) {
+                (None, r) => r.cloned(),
+                (r, None) => r.cloned(),
+                (Some(ra), Some(rb)) => {
+                    if reason_priority(&ra.kind) >= reason_priority(&rb.kind) {
+                        Some(ra.clone())
+                    } else {
+                        Some(rb.clone())
+                    }
+                }
+            },
+            (false, false) => unreachable!("mode_join result must equal one of its inputs"),
+        };
+        ModeSource::NonExec(joined, reason)
+    }
+
+    /// Add secondary labels to an error explaining why the mode is elevated.
+    fn annotate_err(&self, err: crate::messages::Message) -> crate::messages::Message {
+        let ModeSource::NonExec(mode, Some(reason)) = self else { return err; };
+        match &reason.kind {
+            ModeSourceReasonKind::Var(name, decl_span) => {
+                let err = err.secondary_label(
+                    &reason.span,
+                    format!("variable `{}` has mode `{}`", user_local_name(name), mode),
+                );
+                err.secondary_label(
+                    decl_span,
+                    format!(
+                        "variable `{}` is declared with mode `{}` here",
+                        user_local_name(name),
+                        mode
+                    ),
+                )
+            }
+            ModeSourceReasonKind::FunctionReturn(fun, def_span) => {
+                let name = crate::ast_util::path_as_friendly_rust_name(&fun.path);
+                let err = err.secondary_label(
+                    &reason.span,
+                    format!("call to `{}` returns mode `{}`", name, mode),
+                );
+                err.secondary_label(
+                    def_span,
+                    format!("`{}` is declared with return mode `{}` here", name, mode),
+                )
+            }
+            ModeSourceReasonKind::Field(field, dt_def_span) => {
+                let err = err.secondary_label(
+                    &reason.span,
+                    format!("field `{}` has mode `{}`", field, mode),
+                );
+                err.secondary_label(dt_def_span, "field declared in this type")
+            }
+            ModeSourceReasonKind::DatatypeMode(path, def_span) => {
+                let name = crate::ast_util::path_as_friendly_rust_name(path);
+                let err = err.secondary_label(
+                    &reason.span,
+                    format!("`{}` has mode `{}`", name, mode),
+                );
+                err.secondary_label(
+                    def_span,
+                    format!("`{}` is declared with mode `{}` here", name, mode),
+                )
+            }
+            ModeSourceReasonKind::Const(fun, def_span) => {
+                let name = crate::ast_util::path_as_friendly_rust_name(&fun.path);
+                let err = err.secondary_label(
+                    &reason.span,
+                    format!("`{}` has mode `{}`", name, mode),
+                );
+                err.secondary_label(
+                    def_span,
+                    format!("`{}` is declared with mode `{}` here", name, mode),
+                )
+            }
+        }
+    }
+}
+
+fn mode_source_proph_join(
+    m1: (ModeSource, Proph),
+    m2: (ModeSource, Proph),
+) -> (ModeSource, Proph) {
+    (m1.0.join(m2.0), m1.1.join(m2.1))
 }
 
 /// Represents Rust ghost blocks
@@ -508,9 +675,10 @@ struct Record {
 #[derive(Debug)]
 enum VarMode {
     Infer(Span),
-    /// We know mode to be spec, but propheticness hasn't been inferred yet
-    SpecInferProph,
-    Mode(Mode, ProphVar),
+    /// We know mode to be spec, but propheticness hasn't been inferred yet.
+    /// Carries the declaration span so we can report it in errors after inference.
+    SpecInferProph(Span),
+    Mode(Span, Mode, ProphVar),
 }
 
 // Temporary state pushed and popped during mode checking
@@ -700,7 +868,7 @@ mod typing {
         }
 
         pub(super) fn proph_to_be_inferred(&self, x: &VarIdent) -> bool {
-            if let VarMode::SpecInferProph =
+            if let VarMode::SpecInferProph(_) =
                 self.internal_state.vars.get(x).expect("internal error: missing mode")
             {
                 true
@@ -716,26 +884,42 @@ mod typing {
                 .expect("internal error: Typing insert");
         }
 
-        pub(super) fn insert(&mut self, x: &VarIdent, mode: Mode, pv: Option<ProphVar>) {
+        pub(super) fn insert(
+            &mut self,
+            x: &VarIdent,
+            decl_span: Span,
+            mode: Mode,
+            pv: Option<ProphVar>,
+        ) {
             if let Some(pv) = pv {
-                self.insert_var_mode(x, VarMode::Mode(mode, pv))
+                self.insert_var_mode(x, VarMode::Mode(decl_span, mode, pv))
             } else {
                 assert!(mode == Mode::Spec);
-                self.insert_var_mode(x, VarMode::SpecInferProph);
+                self.insert_var_mode(x, VarMode::SpecInferProph(decl_span));
             }
         }
 
         pub(super) fn infer_as(&mut self, x: &VarIdent, mode: Mode, pv: ProphVar) {
-            assert!(self.to_be_inferred(x).is_some());
-            self.internal_state.vars.replace(x.clone(), VarMode::Mode(mode, pv)).expect("infer_as");
+            let span = self.to_be_inferred(x).expect("infer_as: variable must be in Infer state");
+            self.internal_state
+                .vars
+                .replace(x.clone(), VarMode::Mode(span, mode, pv))
+                .expect("infer_as");
         }
 
         pub(super) fn infer_proph_as(&mut self, x: &VarIdent, pv: ProphVar) {
             assert!(self.proph_to_be_inferred(x));
+            let span = if let VarMode::SpecInferProph(span) =
+                self.internal_state.vars.get(x).expect("internal error: missing mode")
+            {
+                span.clone()
+            } else {
+                unreachable!("infer_proph_as: expected SpecInferProph")
+            };
             self.internal_state
                 .vars
-                .replace(x.clone(), VarMode::Mode(Mode::Spec, pv))
-                .expect("infer_as");
+                .replace(x.clone(), VarMode::Mode(span, Mode::Spec, pv))
+                .expect("infer_proph_as");
         }
 
         pub(super) fn update_atomic_insts<'a>(&'a mut self) -> &'a mut Option<AtomicInstCollector> {
@@ -754,10 +938,15 @@ mod typing {
 use typing::Typing;
 
 impl State {
-    fn get<'a>(&'a self, x: &VarIdent, span: &Span) -> Result<(Mode, &'a ProphVar), VirErr> {
-        if let VarMode::Mode(mode, proph) = self.vars.get(x).expect("internal error: missing mode")
+    fn get<'a>(
+        &'a self,
+        x: &VarIdent,
+        span: &Span,
+    ) -> Result<(Span, Mode, &'a ProphVar), VirErr> {
+        if let VarMode::Mode(decl_span, mode, proph) =
+            self.vars.get(x).expect("internal error: missing mode")
         {
-            Ok((*mode, proph))
+            Ok((decl_span.clone(), *mode, proph))
         } else {
             return Err(error(span, "uninitialized infer-mode variable"));
         }
@@ -857,8 +1046,8 @@ fn add_pattern(
     let mut decls = vec![];
     add_pattern_rec(ctxt, record, typing, &mut decls, mode, pattern, false)?;
     for decl in decls {
-        let PatternBoundDecl { span: _, name, mode } = decl;
-        typing.insert(&name, mode, proph_var.clone());
+        let PatternBoundDecl { span, name, mode } = decl;
+        typing.insert(&name, span, mode, proph_var.clone());
         record.var_modes.insert(name.clone(), mode);
     }
     Ok(())
@@ -1036,7 +1225,7 @@ fn check_place_has_mode(
     access: PlaceAccess,
     outer_proph: &Proph,
 ) -> Result<Proph, VirErr> {
-    let (mode, p) = check_place(
+    let (ms, p) = check_place(
         ctxt,
         record,
         typing,
@@ -1049,8 +1238,16 @@ fn check_place_has_mode(
     if is_unit(&place.typ) {
         return Ok(Proph::No);
     }
+    let mode = ms.mode();
     if !mode_le(mode, expected) {
-        Err(error(&place.span, format!("expression has mode {}, expected mode {}", mode, expected)))
+        let mut err =
+            error(&place.span, format!("expression has mode {}, expected mode {}", mode, expected));
+        err = err.primary_label(
+            &place.span,
+            format!("this expression has mode `{}`", mode),
+        );
+        err = ms.annotate_err(err);
+        Err(err)
     } else {
         Ok(p)
     }
@@ -1084,9 +1281,9 @@ fn check_place(
     access: PlaceAccess,
     expect: Expect,
     outer_proph: &Proph,
-) -> Result<(Mode, Proph), VirErr> {
+) -> Result<(ModeSource, Proph), VirErr> {
     let mut note = None;
-    let (place_mode, proph) = check_place_rec(
+    let (place_ms, proph) = check_place_rec(
         ctxt,
         record,
         typing,
@@ -1097,13 +1294,14 @@ fn check_place(
         expect,
         outer_proph,
     )?;
+    let place_mode = place_ms.mode();
 
     let mut context_mode = typing.block_ghostness.join_mode(outer_mode);
     if typing.in_forall_stmt || typing.in_proof_in_spec {
         context_mode = Mode::Spec;
     }
 
-    let final_mode = match &access {
+    let final_ms = match &access {
         PlaceAccess::Read => {
             // For non-mutating: coerce the mode to whatever is necessary for the context.
 
@@ -1114,7 +1312,8 @@ fn check_place(
             if typing.in_forall_stmt || typing.in_proof_in_spec || typing.in_pure {
                 coerced_mode = Mode::Spec;
             }
-            coerced_mode
+            // Preserve the reason from the place source, but use the coerced mode.
+            place_ms.with_mode(coerced_mode)
         }
         PlaceAccess::MutAssign(typ) => {
             // If mutating assignment: we can't coerce the mode;
@@ -1152,7 +1351,7 @@ fn check_place(
                 ));
             }
 
-            coerced_mode
+            place_ms.with_mode(coerced_mode)
         }
         PlaceAccess::MutBorrow(None) => {
             let found = record.mut_bor_place_modes.insert(place.span.id, (place_mode, note));
@@ -1166,7 +1365,7 @@ fn check_place(
             // Don't coerce because we want to be able to take
             // mut-borrows to exec places from proof code.
             // (This is safe because we still cannot modify the exec state through the reference)
-            place_mode
+            place_ms
         }
         PlaceAccess::MutBorrow(Some(mut_ref_tracked_typ)) => {
             let found =
@@ -1198,9 +1397,10 @@ fn check_place(
                 }
             }
 
-            place_mode
+            place_ms
         }
     };
+    let final_mode = final_ms.mode();
 
     // How we do erasure depends on whether we are accessing the place mutably or not.
     // For an expression like `x.f`, if the local variable `x` is non-spec and `x.f` is spec,
@@ -1208,18 +1408,18 @@ fn check_place(
     // So then `consume(x); x.f = ...` will give an "x has been moved" error.
     // However, if we're just reading from the place, we want to erase the whole expression.
     // Thus, for non-mut, we record the mode of the *whole expression*, and for mut,
-    // we stor the mode of the local (the second case is in `check_place_rec`).
+    // we store the mode of the local (the second case is in `check_place_rec`).
     if !access.is_mut() {
         if let Some(var_place) = crate::ast_util::place_get_local(place) {
             let var_mode = match &var_place.x {
-                PlaceX::Local(var) => typing.get(var, &place.span)?.0,
+                PlaceX::Local(var) => typing.get(var, &place.span)?.1,
                 _ => unreachable!(),
             };
             record.erasure_modes.var_modes.push((var_place.span.clone(), (var_mode, final_mode)));
         }
     }
 
-    Ok((final_mode, proph))
+    Ok((final_ms, proph))
 }
 
 fn check_place_rec(
@@ -1232,8 +1432,8 @@ fn check_place_rec(
     access: &PlaceAccess,
     expect: Expect,
     outer_proph: &Proph,
-) -> Result<(Mode, Proph), VirErr> {
-    let (mode, proph) = check_place_rec_inner(
+) -> Result<(ModeSource, Proph), VirErr> {
+    let (ms, proph) = check_place_rec_inner(
         ctxt,
         record,
         typing,
@@ -1244,6 +1444,7 @@ fn check_place_rec(
         expect,
         outer_proph,
     )?;
+    let mode = ms.mode();
     if ctxt.check_ghost_blocks
         && matches!(typing.block_ghostness, Ghost::Exec)
         && mode != Mode::Exec
@@ -1258,7 +1459,7 @@ fn check_place_rec(
             },
         ));
     }
-    Ok((mode, proph))
+    Ok((ms, proph))
 }
 
 fn check_place_rec_inner(
@@ -1271,10 +1472,10 @@ fn check_place_rec_inner(
     access: &PlaceAccess,
     expect: Expect,
     outer_proph: &Proph,
-) -> Result<(Mode, Proph), VirErr> {
+) -> Result<(ModeSource, Proph), VirErr> {
     match &place.x {
         PlaceX::Field(FieldOpr { datatype, variant, field, get_variant, check }, p) => {
-            let (mode, proph) = check_place_rec(
+            let (ms, proph) = check_place_rec(
                 ctxt,
                 record,
                 typing,
@@ -1298,19 +1499,31 @@ fn check_place_rec_inner(
                 ));
             }
 
-            let field_mode = match datatype {
+            let (field_mode, field_decl_span) = match datatype {
                 Dt::Path(path) => {
                     let datatype = &ctxt.datatypes[path];
-                    let field = get_field(&datatype.x.get_variant(variant).fields, field);
-                    field.a.1
+                    let f = get_field(&datatype.x.get_variant(variant).fields, field);
+                    (f.a.1, datatype.span.clone())
                 }
-                Dt::Tuple(_) => Mode::Exec,
+                Dt::Tuple(_) => (Mode::Exec, place.span.clone()),
             };
 
-            Ok((mode_join(mode, field_mode), proph))
+            let field_ms = if field_mode != Mode::Exec {
+                ModeSource::from_mode_with_reason(
+                    field_mode,
+                    ModeSourceReason {
+                        span: place.span.clone(),
+                        kind: ModeSourceReasonKind::Field(field.clone(), field_decl_span),
+                    },
+                )
+            } else {
+                ModeSource::Exec
+            };
+
+            Ok((ms.join(field_ms), proph))
         }
         PlaceX::DerefMut(p) => {
-            let (mode, proph) = check_place_rec(
+            let (ms, proph) = check_place_rec(
                 ctxt,
                 record,
                 typing,
@@ -1321,6 +1534,7 @@ fn check_place_rec_inner(
                 expect,
                 outer_proph,
             )?;
+            let mode = ms.mode();
             if mode == Mode::Spec && access.is_mut() {
                 // In principle we could allow mutating the 'current' field a ghost mutable
                 // reference. However, this probably has unintuitive behavior (i.e., it wouldn't
@@ -1339,10 +1553,10 @@ fn check_place_rec_inner(
             }
 
             let deref_mode = if mode == Mode::Spec { Mode::Spec } else { Mode::Exec };
-            Ok((deref_mode, proph))
+            Ok((ms.with_mode(deref_mode), proph))
         }
         PlaceX::Local(var) => {
-            let (mode, proph) = typing.get(var, &place.span)?;
+            let (decl_span, mode, proph) = typing.get(var, &place.span)?;
             let proph = proph.to_proph(var, &place.span);
 
             // Other case is handled in `check_place`; see the explanation there.
@@ -1350,11 +1564,23 @@ fn check_place_rec_inner(
                 record.erasure_modes.var_modes.push((place.span.clone(), (mode, mode)));
             }
 
-            Ok((mode, proph))
+            let ms = if mode != Mode::Exec {
+                ModeSource::from_mode_with_reason(
+                    mode,
+                    ModeSourceReason {
+                        span: place.span.clone(),
+                        kind: ModeSourceReasonKind::Var(var.clone(), decl_span),
+                    },
+                )
+            } else {
+                ModeSource::Exec
+            };
+            Ok((ms, proph))
         }
         PlaceX::Temporary(e) => {
-            let (mode, proph) =
+            let (ms, proph) =
                 check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;
+            let mode = ms.mode();
 
             if record.temporary_modes.contains_key(&place.span.id) {
                 return Err(error(
@@ -1364,10 +1590,10 @@ fn check_place_rec_inner(
             }
             record.temporary_modes.insert(place.span.id, mode);
 
-            Ok((mode, proph))
+            Ok((ms, proph))
         }
         PlaceX::ModeUnwrap(p, wrapper_mode) => {
-            let (mode, proph) = check_place_rec(
+            let (ms, proph) = check_place_rec(
                 ctxt,
                 record,
                 typing,
@@ -1378,8 +1604,8 @@ fn check_place_rec_inner(
                 expect,
                 outer_proph,
             )?;
-            let mode = mode_join(mode, wrapper_mode.to_mode());
-            Ok((mode, proph))
+            let wrapper_ms = ModeSource::from_mode(wrapper_mode.to_mode());
+            Ok((ms.join(wrapper_ms), proph))
         }
         PlaceX::WithExpr(..) => {
             return Err(error(
@@ -1401,7 +1627,7 @@ fn check_place_rec_inner(
                 Ghost::Ghost => Expect(Mode::Spec),
             };
 
-            let (place_mode, place_proph) = check_place_rec(
+            let (place_ms, place_proph) = check_place_rec(
                 ctxt,
                 record,
                 typing,
@@ -1412,8 +1638,9 @@ fn check_place_rec_inner(
                 expect,
                 outer_proph,
             )?;
-            let (idx_mode, idx_proph) =
+            let (idx_ms, idx_proph) =
                 check_expr(ctxt, record, typing, outer_mode, idx_expect, idx, outer_proph)?;
+            let idx_mode = idx_ms.mode();
 
             if ctxt.check_ghost_blocks
                 && matches!(typing.block_ghostness, Ghost::Exec)
@@ -1436,7 +1663,7 @@ fn check_place_rec_inner(
             //   exec[spec] -> exec
             // If we try to do `exec[spec]` outside a ghost block, it will get caught by
             // the above check.
-            Ok((place_mode, place_proph))
+            Ok((place_ms, place_proph))
         }
     }
 }
@@ -1623,13 +1850,17 @@ fn check_expr_has_mode(
     expected: Mode,
     outer_proph: &Proph,
 ) -> Result<Proph, VirErr> {
-    let (mode, proph) =
+    let (ms, proph) =
         check_expr(ctxt, record, typing, outer_mode, Expect(expected), expr, outer_proph)?;
     if is_unit(&expr.typ) {
         return Ok(Proph::No);
     }
+    let mode = ms.mode();
     if !mode_le(mode, expected) {
-        Err(error(&expr.span, format!("expression has mode {}, expected mode {}", mode, expected)))
+        let mut err =
+            error(&expr.span, format!("expression has mode {}, expected mode {}", mode, expected));
+        err = ms.annotate_err(err);
+        Err(err)
     } else {
         Ok(proph)
     }
@@ -1643,15 +1874,15 @@ fn check_expr(
     expect: Expect,
     expr: &Expr,
     outer_proph: &Proph,
-) -> Result<(Mode, Proph), VirErr> {
+) -> Result<(ModeSource, Proph), VirErr> {
     if let Some(r) = outer_reason_by_expr_kind(expr) {
         outer_proph.outer_check(&expr.span, r)?;
     }
 
     match &expr.x {
-        ExprX::Const(_) => Ok((Mode::Exec, Proph::No)),
+        ExprX::Const(_) => Ok((ModeSource::Exec, Proph::No)),
         ExprX::Var(x) | ExprX::VarAt(x, _) => {
-            let (x_mode, proph) = typing.get(x, &expr.span)?;
+            let (decl_span, x_mode, proph) = typing.get(x, &expr.span)?;
             let proph = proph.to_proph(x, &expr.span);
 
             if matches!(&expr.x, ExprX::VarAt(..)) {
@@ -1668,7 +1899,7 @@ fn check_expr(
                 // This protects against effectively consuming a linear proof variable
                 // multiple times for different instantiations of the forall variables.
                 record.erasure_modes.var_modes.push((expr.span.clone(), (Mode::Spec, Mode::Spec)));
-                return Ok((Mode::Spec, proph));
+                return Ok((ModeSource::from_mode(Mode::Spec), proph));
             }
 
             if ctxt.check_ghost_blocks
@@ -1697,7 +1928,18 @@ fn check_expr(
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
             record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
-            return Ok((mode, proph));
+            let ms = if mode != Mode::Exec && !matches!(&expr.x, ExprX::VarAt(..)) {
+                ModeSource::from_mode_with_reason(
+                    mode,
+                    ModeSourceReason {
+                        span: expr.span.clone(),
+                        kind: ModeSourceReasonKind::Var(x.clone(), decl_span),
+                    },
+                )
+            } else {
+                ModeSource::from_mode(mode)
+            };
+            return Ok((ms, proph));
         }
         ExprX::ConstVar(x, _)
         | ExprX::StaticVar(x)
@@ -1738,7 +1980,18 @@ fn check_expr(
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
             record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
-            Ok((mode, Proph::No))
+            let ms = if mode != Mode::Exec {
+                ModeSource::from_mode_with_reason(
+                    mode,
+                    ModeSourceReason {
+                        span: expr.span.clone(),
+                        kind: ModeSourceReasonKind::Const(x.clone(), function.span.clone()),
+                    },
+                )
+            } else {
+                ModeSource::Exec
+            };
+            Ok((ms, Proph::No))
         }
         ExprX::Call(
             CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),
@@ -1787,7 +2040,7 @@ fn check_expr(
                 p.check(&expr.span, NoProphReason::ProofFnCall)?;
             }
 
-            Ok((*ret_mode, Proph::No))
+            Ok((ModeSource::from_mode(*ret_mode), Proph::No))
         }
         ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), es, None) => {
             assert!(attrs.autospec == AutospecUsage::Final);
@@ -1887,7 +2140,22 @@ fn check_expr(
                 }
                 check_tracked_swap(ctxt, record, &expr, function.x.attrs.tracked_take_option)?;
             }
-            Ok((function.x.ret.x.mode, out_proph))
+            let ret_mode = function.x.ret.x.mode;
+            let ret_ms = if ret_mode != Mode::Exec {
+                ModeSource::from_mode_with_reason(
+                    ret_mode,
+                    ModeSourceReason {
+                        span: expr.span.clone(),
+                        kind: ModeSourceReasonKind::FunctionReturn(
+                            x.clone(),
+                            function.span.clone(),
+                        ),
+                    },
+                )
+            } else {
+                ModeSource::Exec
+            };
+            Ok((ret_ms, out_proph))
         }
         ExprX::Call(CallTarget::FnSpec(e0), es, None) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -1907,7 +2175,7 @@ fn check_expr(
                 )?;
                 proph = proph.join(p);
             }
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::Call(CallTarget::BuiltinSpecFun(_f, _typs, _impl_paths), es, None) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -1926,7 +2194,7 @@ fn check_expr(
                 )?;
                 proph = proph.join(p);
             }
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::Call(CallTarget::AssumeExternal, es, None) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
@@ -1943,26 +2211,26 @@ fn check_expr(
                     outer_proph,
                 )?;
             }
-            Ok((Mode::Exec, Proph::No))
+            Ok((ModeSource::Exec, Proph::No))
         }
         ExprX::Call(_, _, Some(_)) => {
             return Err(error(&expr.span, "ExprX::Call should not have post_args at this point"));
         }
         ExprX::ArrayLiteral(es) => {
-            let modes = vec_map_result(es, |e| {
+            let mss = vec_map_result(es, |e| {
                 check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)
             })?;
-            Ok(modes.into_iter().fold((Mode::Exec, Proph::No), mode_proph_join))
+            Ok(mss.into_iter().fold((ModeSource::Exec, Proph::No), mode_source_proph_join))
         }
         ExprX::Ctor(dt, variant, binders, update) => {
-            let (variant_opt, mut mode) = match dt {
+            let (variant_opt, mut mode, dt_def_span) = match dt {
                 Dt::Path(path) => {
                     let datatype = &ctxt.datatypes[path];
                     let variant = datatype.x.get_variant(variant);
                     let mode = datatype.x.mode;
-                    (Some(variant), mode)
+                    (Some(variant), mode, datatype.span.clone())
                 }
-                Dt::Tuple(_) => (None, Mode::Exec),
+                Dt::Tuple(_) => (None, Mode::Exec, expr.span.clone()),
             };
 
             let get_field_mode = |field_ident: &crate::ast::Ident| {
@@ -1977,7 +2245,7 @@ fn check_expr(
             for arg in binders.iter() {
                 let field_mode = get_field_mode(&arg.name);
                 let field_expect = Expect(expect.join(field_mode));
-                let (arg_mode, arg_proph) = check_expr(
+                let (arg_ms, arg_proph) = check_expr(
                     ctxt,
                     record,
                     typing,
@@ -1986,6 +2254,7 @@ fn check_expr(
                     &arg.a,
                     outer_proph,
                 )?;
+                let arg_mode = arg_ms.mode();
                 if !mode_le(arg_mode, field_mode) {
                     // allow this arg by weakening whole struct's mode
                     mode = mode_join(mode, arg_mode);
@@ -2005,7 +2274,7 @@ fn check_expr(
                     place_expect
                 };
 
-                let (place_mode, place_proph) = check_place(
+                let (place_ms, place_proph) = check_place(
                     ctxt,
                     record,
                     typing,
@@ -2015,6 +2284,7 @@ fn check_expr(
                     place_expect,
                     outer_proph,
                 )?;
+                let place_mode = place_ms.mode();
 
                 for (taken_field, _) in taken_fields.iter() {
                     let field_mode = get_field_mode(taken_field);
@@ -2048,16 +2318,34 @@ fn check_expr(
                 }
             }
 
-            Ok((mode, proph))
+            let ctor_ms = if mode != Mode::Exec {
+                match dt {
+                    Dt::Path(path) => ModeSource::from_mode_with_reason(
+                        mode,
+                        ModeSourceReason {
+                            span: expr.span.clone(),
+                            kind: ModeSourceReasonKind::DatatypeMode(path.clone(), dt_def_span),
+                        },
+                    ),
+                    Dt::Tuple(_) => ModeSource::from_mode(mode),
+                }
+            } else {
+                ModeSource::Exec
+            };
+            Ok((ctor_ms, proph))
         }
-        ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok((Mode::Exec, Proph::No)),
-        ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => Ok((Mode::Spec, Proph::No)),
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok((ModeSource::Exec, Proph::No)),
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => {
+            Ok((ModeSource::from_mode(Mode::Spec), Proph::No))
+        }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => {
-            Ok((Mode::Spec, Proph::No))
+            Ok((ModeSource::from_mode(Mode::Spec), Proph::No))
         }
-        ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => Ok((Mode::Spec, Proph::No)),
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => {
+            Ok((ModeSource::from_mode(Mode::Spec), Proph::No))
+        }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
-            Ok((Mode::Spec, Proph::No))
+            Ok((ModeSource::from_mode(Mode::Spec), Proph::No))
         }
         ExprX::Unary(UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind }, e1) => {
             // same as a call to an op_mode function with parameter from_mode and return to_mode
@@ -2081,7 +2369,7 @@ fn check_expr(
             let param_mode = mode_join(outer_mode, *from_mode);
             match kind {
                 ModeCoercion::Constructor | ModeCoercion::Field => {
-                    let (mode, proph) = check_expr(
+                    let (ms, proph) = check_expr(
                         ctxt,
                         record,
                         typing,
@@ -2090,6 +2378,7 @@ fn check_expr(
                         e1,
                         outer_proph,
                     )?;
+                    let mode = ms.mode();
                     if *kind == ModeCoercion::Constructor {
                         let m = if !mode_le(mode, *from_mode) { mode } else { *to_mode };
                         let m = expect.join(m);
@@ -2101,9 +2390,9 @@ fn check_expr(
                             };
                             proph.check(&expr.span, reason)?;
                         }
-                        Ok((m, proph))
+                        Ok((ModeSource::from_mode(m), proph))
                     } else {
-                        Ok((mode_join(mode, *to_mode), proph))
+                        Ok((ModeSource::from_mode(mode_join(mode, *to_mode)), proph))
                     }
                 }
             }
@@ -2127,7 +2416,8 @@ fn check_expr(
                 e1,
                 outer_proph,
             );
-            let (mode, proph) = mode_opt.unwrap_or((Mode::Exec, Proph::No));
+            let (ms, proph) = mode_opt.unwrap_or((ModeSource::Exec, Proph::No));
+            let mode = ms.mode();
             if let Some(infer_spec) = record.infer_spec_for_loop_iter_modes.as_mut() {
                 record
                     .erasure_modes
@@ -2140,7 +2430,7 @@ fn check_expr(
                     "infer_spec_for_loop_iter is only allowed in function body",
                 ));
             }
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::Unary(UnaryOp::MutRefFuture(source_name), e1) => {
             check_expr(ctxt, record, typing, Mode::Spec, Expect(Mode::Spec), e1, outer_proph)?;
@@ -2148,12 +2438,12 @@ fn check_expr(
                 span: expr.span.clone(),
                 kind: ProphReasonKind::MutRefFuture(*source_name),
             });
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::Unary(UnaryOp::MutRefCurrent, e1) => {
-            let (_m, proph) =
+            let (_ms, proph) =
                 check_expr(ctxt, record, typing, Mode::Spec, Expect(Mode::Spec), e1, outer_proph)?;
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::Unary(_, e1) => {
             check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
@@ -2183,24 +2473,23 @@ fn check_expr(
             if *get_variant && ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot get variant in exec mode"));
             }
-            let (_e1_mode, proph) =
+            let (_e1_ms, proph) =
                 check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
 
-            let mode_read = Mode::Spec;
-            Ok((mode_read, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(_kind, min_mode), e1) => {
             let joined_mode = mode_join(outer_mode, *min_mode);
-            let (mode, proph) =
+            let (ms, proph) =
                 check_expr(ctxt, record, typing, joined_mode, Expect(*min_mode), e1, outer_proph)?;
-            Ok((mode_join(*min_mode, mode), proph))
+            Ok((ModeSource::from_mode(*min_mode).join(ms), proph))
         }
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1)
         | ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1)
         | ExprX::UnaryOpr(UnaryOpr::AutoDecreases | UnaryOpr::AutoLoopEnsures, e1) => {
             let proph =
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::Binary(op, e1, e2) => {
             let op_mode = match op {
@@ -2215,23 +2504,23 @@ fn check_expr(
                 BinaryOp::HeightCompare { .. } => Mode::Spec,
                 _ => outer_mode,
             };
-            let (mode1, proph1) =
+            let (ms1, proph1) =
                 check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e1, outer_proph)?;
             let outer_proph2 = if op.short_circuits() {
                 outer_proph.clone().join(proph1.clone())
             } else {
                 outer_proph.clone()
             };
-            let (mode2, proph2) =
+            let (ms2, proph2) =
                 check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e2, &outer_proph2)?;
-            Ok((mode_join(op_mode, mode_join(mode1, mode2)), proph1.join(proph2)))
+            Ok((ModeSource::from_mode(op_mode).join(ms1).join(ms2), proph1.join(proph2)))
         }
         ExprX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
             let proph1 =
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
             let proph2 =
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e2, Mode::Spec, outer_proph)?;
-            Ok((Mode::Spec, proph1.join(proph2)))
+            Ok((ModeSource::from_mode(Mode::Spec), proph1.join(proph2)))
         }
         ExprX::Multi(MultiOp::Chained(_), es) => {
             let mut proph = Proph::No;
@@ -2247,7 +2536,7 @@ fn check_expr(
                 )?;
                 proph = proph.join(p);
             }
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::Quant(_, binders, e1) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -2255,7 +2544,7 @@ fn check_expr(
             }
             let mut typing = typing.push_var_scope();
             for binder in binders.iter() {
-                typing.insert(&binder.name, Mode::Spec, Some(ProphVar::No));
+                typing.insert(&binder.name, expr.span.clone(), Mode::Spec, Some(ProphVar::No));
             }
             let mut typing = typing.push_in_pure(true);
             let proph = check_expr_has_mode(
@@ -2267,7 +2556,7 @@ fn check_expr(
                 Mode::Spec,
                 outer_proph,
             )?;
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::Closure(params, body) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -2275,7 +2564,7 @@ fn check_expr(
             }
             let mut typing = typing.push_var_scope();
             for binder in params.iter() {
-                typing.insert(&binder.name, Mode::Spec, Some(ProphVar::No));
+                typing.insert(&binder.name, expr.span.clone(), Mode::Spec, Some(ProphVar::No));
             }
             let mut typing = typing.push_in_pure(true);
             let mut typing = typing.push_atomic_insts(None);
@@ -2288,7 +2577,7 @@ fn check_expr(
                 Mode::Spec,
                 outer_proph,
             )?;
-            Ok((Mode::Spec, p))
+            Ok((ModeSource::from_mode(Mode::Spec), p))
         }
         ExprX::NonSpecClosure {
             params,
@@ -2321,7 +2610,7 @@ fn check_expr(
             let mut typing = typing.push_var_scope();
             assert!(param_modes.len() == params.len());
             for (param_mode, binder) in param_modes.iter().zip(params.iter()) {
-                typing.insert(&binder.name, *param_mode, Some(ProphVar::No));
+                typing.insert(&binder.name, expr.span.clone(), *param_mode, Some(ProphVar::No));
             }
             let mut typing = typing.push_atomic_insts(None);
             let mut typing = typing.push_ret_mode(Some(ret_mode));
@@ -2342,7 +2631,7 @@ fn check_expr(
                 }
 
                 let mut ens_typing = ghost_typing.push_var_scope();
-                ens_typing.insert(&ret.name, Mode::Spec, Some(ProphVar::No));
+                ens_typing.insert(&ret.name, expr.span.clone(), Mode::Spec, Some(ProphVar::No));
                 for ens in ensures.iter() {
                     check_expr_has_mode(
                         ctxt,
@@ -2367,7 +2656,7 @@ fn check_expr(
             )?;
             p.check(&expr.span, NoProphReason::Return)?;
 
-            Ok((closure_mode, Proph::No))
+            Ok((ModeSource::from_mode(closure_mode), Proph::No))
         }
         ExprX::ExecFnByName(fun) => {
             let function = ctxt.funs.get(fun).unwrap();
@@ -2381,7 +2670,7 @@ fn check_expr(
 
             record.erasure_modes.var_modes.push((expr.span.clone(), (Mode::Exec, Mode::Exec)));
 
-            Ok((outer_mode, Proph::No))
+            Ok((ModeSource::from_mode(outer_mode), Proph::No))
         }
         ExprX::Choose { params, cond, body } => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -2389,7 +2678,7 @@ fn check_expr(
             }
             let mut typing = typing.push_var_scope();
             for binder in params.iter() {
-                typing.insert(&binder.name, Mode::Spec, Some(ProphVar::No));
+                typing.insert(&binder.name, expr.span.clone(), Mode::Spec, Some(ProphVar::No));
             }
             let mut typing = typing.push_in_pure(true);
             let proph1 = check_expr_has_mode(
@@ -2411,7 +2700,7 @@ fn check_expr(
                 &outer_proph,
             )?;
             let proph = proph1.join(proph2);
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::WithTriggers { triggers, body } => {
             for trigger in triggers.iter() {
@@ -2436,7 +2725,7 @@ fn check_expr(
                 Mode::Spec,
                 outer_proph,
             )?;
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::AssignToPlace { place, rhs, op: _, resolve: _, typ } => {
             if typing.in_forall_stmt {
@@ -2456,7 +2745,7 @@ fn check_expr(
                     // Special case mode inference just for our encoding of "let tracked pat = ..."
                     // in Rust as "let xl; ... { let pat ... xl = xr; }".
                     if let Some(span) = typing.to_be_inferred(xl) {
-                        let (mode, pv) = typing.get(xr, &rhs.span)?;
+                        let (_, mode, pv) = typing.get(xr, &rhs.span)?;
                         typing.infer_as(xl, mode, pv.clone());
                         record.var_modes.insert(xl.clone(), mode);
                         record.erasure_modes.var_modes.push((span, (mode, mode)));
@@ -2464,7 +2753,7 @@ fn check_expr(
                 }
             }
 
-            let (lhs_mode, lhs_proph, rhs_proph) = match &place.x {
+            let (lhs_ms, lhs_proph, rhs_proph) = match &place.x {
                 PlaceX::Local(xl) if typing.proph_to_be_inferred(xl) => {
                     // Special case the delayed inference of a variable's propheticness
                     let rhs_proph = check_expr_has_mode(
@@ -2478,7 +2767,7 @@ fn check_expr(
                     )?;
                     let pv = rhs_proph.to_inferred_proph_var();
                     typing.infer_proph_as(xl, pv);
-                    let (lhs_mode, lhs_proph) = check_place(
+                    let (lhs_ms, lhs_proph) = check_place(
                         ctxt,
                         record,
                         typing,
@@ -2488,10 +2777,10 @@ fn check_expr(
                         Expect::none(),
                         outer_proph,
                     )?;
-                    (lhs_mode, lhs_proph, rhs_proph)
+                    (lhs_ms, lhs_proph, rhs_proph)
                 }
                 _ => {
-                    let (lhs_mode, lhs_proph) = check_place(
+                    let (lhs_ms, lhs_proph) = check_place(
                         ctxt,
                         record,
                         typing,
@@ -2501,6 +2790,7 @@ fn check_expr(
                         Expect::none(),
                         outer_proph,
                     )?;
+                    let lhs_mode = lhs_ms.mode();
                     let rhs_proph = check_expr_has_mode(
                         ctxt,
                         record,
@@ -2510,7 +2800,7 @@ fn check_expr(
                         lhs_mode,
                         outer_proph,
                     )?;
-                    (lhs_mode, lhs_proph, rhs_proph)
+                    (lhs_ms, lhs_proph, rhs_proph)
                 }
             };
 
@@ -2519,26 +2809,26 @@ fn check_expr(
                 rhs_proph.check(&expr.span, NoProphReason::AssignToNonProphPlace)?;
             }
 
-            Ok((lhs_mode, Proph::No))
+            Ok((lhs_ms, Proph::No))
         }
         ExprX::Fuel(_, _, _) => {
             if typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use reveal/hide in exec mode")
                     .help("wrap the reveal call in a `proof` block"));
             }
-            Ok((outer_mode, Proph::No))
+            Ok((ModeSource::from_mode(outer_mode), Proph::No))
         }
         ExprX::RevealString(_) => {
             if typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use reveal_strlit in exec mode")
                     .help("wrap the reveal_strlit call in a `proof` block"));
             }
-            Ok((outer_mode, Proph::No))
+            Ok((ModeSource::from_mode(outer_mode), Proph::No))
         }
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
         ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: true, expr, fun: _ } => {
             check_expr_has_mode(ctxt, record, typing, outer_mode, expr, Mode::Proof, outer_proph)?;
-            Ok((outer_mode, Proph::No))
+            Ok((ModeSource::from_mode(outer_mode), Proph::No))
         }
         ExprX::AssertAssumeUserDefinedTypeInvariant { .. } => {
             panic!("internal error: AssertAssumeUserDefinedTypeInvariant shouldn't exist here")
@@ -2549,7 +2839,7 @@ fn check_expr(
             }
             let mut typing = typing.push_in_pure(true);
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
-            Ok((outer_mode, Proph::No))
+            Ok((ModeSource::from_mode(outer_mode), Proph::No))
         }
         ExprX::AssertBy { vars, require, ensure, proof } => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -2561,7 +2851,7 @@ fn check_expr(
             let mut typing = typing.push_in_forall_stmt(true);
             let mut typing = typing.push_var_scope();
             for var in vars.iter() {
-                typing.insert(&var.name, Mode::Spec, Some(ProphVar::No));
+                typing.insert(&var.name, expr.span.clone(), Mode::Spec, Some(ProphVar::No));
             }
             {
                 let mut typing0 = typing.push_in_pure(true);
@@ -2593,7 +2883,7 @@ fn check_expr(
                 Mode::Proof,
                 outer_proph,
             )?;
-            Ok((Mode::Proof, Proph::No))
+            Ok((ModeSource::from_mode(Mode::Proof), Proph::No))
         }
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -2634,7 +2924,7 @@ fn check_expr(
                 Mode::Proof,
                 outer_proph,
             )?;
-            Ok((Mode::Proof, Proph::No))
+            Ok((ModeSource::from_mode(Mode::Proof), Proph::No))
         }
         ExprX::AssertCompute(e, _) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -2642,33 +2932,33 @@ fn check_expr(
             }
             let mut typing = typing.push_in_pure(true);
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
-            Ok((Mode::Proof, Proph::No))
+            Ok((ModeSource::from_mode(Mode::Proof), Proph::No))
         }
         ExprX::If(e1, e2, e3) => {
             let condition_expect = match typing.block_ghostness {
                 Ghost::Exec => Expect(Mode::Exec),
                 Ghost::Ghost => Expect(Mode::Spec),
             };
-            let (mode1, cond_proph) =
+            let (ms1, cond_proph) =
                 check_expr(ctxt, record, typing, outer_mode, condition_expect, e1, outer_proph)?;
             if ctxt.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
-                && mode1 != Mode::Exec
+                && ms1.mode() != Mode::Exec
             {
                 return Err(error(&expr.span, "condition must have mode exec"));
             }
 
-            let mode_branch = match (outer_mode, mode1) {
+            let mode_branch = match (outer_mode, ms1.mode()) {
                 (Mode::Exec, Mode::Spec) => Mode::Proof,
                 _ => outer_mode,
             };
             let outer_proph_branch = outer_proph.clone().join(cond_proph.clone());
-            let (mode2, proph2) =
+            let (ms2, proph2) =
                 check_expr(ctxt, record, typing, mode_branch, expect, e2, &outer_proph_branch)?;
             match e3 {
-                None => Ok((mode2, cond_proph.join(proph2))),
+                None => Ok((ms2, cond_proph.join(proph2))),
                 Some(e3) => {
-                    let (mode3, proph3) = check_expr(
+                    let (ms3, proph3) = check_expr(
                         ctxt,
                         record,
                         typing,
@@ -2677,7 +2967,7 @@ fn check_expr(
                         e3,
                         &outer_proph_branch,
                     )?;
-                    Ok((mode_join(mode2, mode3), cond_proph.join(proph2).join(proph3)))
+                    Ok((ms2.join(ms3), cond_proph.join(proph2).join(proph3)))
                 }
             }
         }
@@ -2688,7 +2978,7 @@ fn check_expr(
                 Ghost::Ghost => Expect(Mode::Spec),
             };
 
-            let (mode1, proph1) = check_place(
+            let (ms1, proph1) = check_place(
                 ctxt,
                 record,
                 typing,
@@ -2700,12 +2990,12 @@ fn check_expr(
             )?;
             if ctxt.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
-                && mode1 != Mode::Exec
+                && ms1.mode() != Mode::Exec
             {
                 return Err(error(&expr.span, "exec code cannot match on non-exec value"));
             }
 
-            match (mode1, arms.len()) {
+            match (ms1.mode(), arms.len()) {
                 (Mode::Spec, 0) => {
                     // We treat spec types as inhabited,
                     // so empty matches on spec values would be unsound.
@@ -2713,7 +3003,7 @@ fn check_expr(
                 }
                 _ => {}
             }
-            let mut final_mode = outer_mode;
+            let mut final_ms = ModeSource::from_mode(outer_mode);
             let mut final_proph = proph1.clone();
             let mut arm_outer_proph = outer_proph.clone().join(proph1);
             let proph_for_binders = match &arm_outer_proph {
@@ -2728,15 +3018,15 @@ fn check_expr(
                     ctxt,
                     record,
                     &mut typing,
-                    mode1,
+                    ms1.mode(),
                     Some(proph_for_binders.clone()),
                     &arm.x.pattern,
                 )?;
-                let arm_outer_mode = match (outer_mode, mode1) {
+                let arm_outer_mode = match (outer_mode, ms1.mode()) {
                     (Mode::Exec, Mode::Spec | Mode::Proof) => Mode::Proof,
                     (m, _) => m,
                 };
-                let (guard_mode, guard_proph) = check_expr(
+                let (guard_ms, guard_proph) = check_expr(
                     ctxt,
                     record,
                     &mut typing,
@@ -2749,11 +3039,11 @@ fn check_expr(
                 // REVIEW: does this need to accumulate modes from previous guards?
                 // By the formalism, yes, but right now it seems to be redundant with
                 // the ghost-blocks check.
-                let arm_outer_mode = match (arm_outer_mode, guard_mode) {
+                let arm_outer_mode = match (arm_outer_mode, guard_ms.mode()) {
                     (Mode::Exec, Mode::Spec | Mode::Proof) => Mode::Proof,
                     (m, _) => m,
                 };
-                let (arm_mode, arm_proph) = check_expr(
+                let (arm_ms, arm_proph) = check_expr(
                     ctxt,
                     record,
                     &mut typing,
@@ -2762,10 +3052,10 @@ fn check_expr(
                     &arm.x.body,
                     &arm_outer_proph,
                 )?;
-                final_mode = mode_join(final_mode, arm_mode);
+                final_ms = final_ms.join(arm_ms);
                 final_proph = final_proph.join(guard_proph).join(arm_proph);
             }
-            Ok((final_mode, final_proph))
+            Ok((final_ms, final_proph))
         }
         ExprX::Loop {
             cond,
@@ -2825,7 +3115,7 @@ fn check_expr(
                 )?;
                 dec_proph.check(&dec.span, NoProphReason::DecreasesClause)?;
             }
-            Ok((Mode::Exec, Proph::No))
+            Ok((ModeSource::Exec, Proph::No))
         }
         ExprX::Return(e1) => {
             if ctxt.check_ghost_blocks {
@@ -2870,25 +3160,28 @@ fn check_expr(
                     Some(mode) => Expect(mode),
                     None => Expect::none(),
                 };
-                let (mode, proph) =
+                let (ms, proph) =
                     check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
                 if is_unit(&e1.typ) {
-                    return Ok((Mode::Exec, Proph::No));
+                    return Ok((ModeSource::Exec, Proph::No));
                 }
                 match typing.ret_mode {
                     None => return Err(internal_error(&expr.span, "missing return type")),
                     Some(ret_mode) => {
+                        let mode = ms.mode();
                         if !mode_le(mode, ret_mode) {
-                            return Err(error(
+                            let mut err = error(
                                 &expr.span,
                                 format!("expression has mode {}, expected mode {}", mode, ret_mode),
-                            ));
+                            );
+                            err = ms.annotate_err(err);
+                            return Err(err);
                         }
                     }
                 }
                 proph.check(&expr.span, NoProphReason::Return)?;
             }
-            Ok((Mode::Exec, Proph::No))
+            Ok((ModeSource::Exec, Proph::No))
         }
         ExprX::BreakOrContinue { label: _, is_break: _ } => {
             if typing.in_forall_stmt {
@@ -2903,7 +3196,7 @@ fn check_expr(
             if typing.in_pure {
                 return Err(error(&expr.span, "break/continue is not allowed in pure context"));
             }
-            Ok((Mode::Exec, Proph::No))
+            Ok((ModeSource::Exec, Proph::No))
         }
         ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let block_ghostness = match (typing.block_ghostness, alloc_wrapper, tracked) {
@@ -2937,7 +3230,7 @@ fn check_expr(
                 _ => outer_mode,
             };
             let m = if *tracked { Mode::Proof } else { Mode::Spec };
-            let inner_mode = check_expr(
+            let (inner_ms, inner_proph) = check_expr(
                 ctxt,
                 record,
                 &mut typing,
@@ -2947,22 +3240,22 @@ fn check_expr(
                 outer_proph,
             )?;
             let mode = if *alloc_wrapper {
-                let (inner_read, inner_proph) = inner_mode;
                 let target_mode = if *tracked { Mode::Proof } else { Mode::Spec };
-                if !mode_le(inner_read, target_mode) {
+                if !mode_le(inner_ms.mode(), target_mode) {
                     return Err(error(
                         &expr.span,
                         format!(
                             "expression has mode {}, expected mode {}",
-                            inner_read, target_mode
+                            inner_ms.mode(),
+                            target_mode
                         ),
                     ));
                 }
-                (Mode::Exec, inner_proph)
+                (ModeSource::Exec, inner_proph)
             } else {
-                inner_mode
+                (inner_ms, inner_proph)
             };
-            if mode.0 != Mode::Spec {
+            if mode.0.mode() != Mode::Spec {
                 mode.1.check(
                     &expr.span,
                     if *tracked { NoProphReason::TrackedWrap } else { NoProphReason::GhostWrap },
@@ -2997,7 +3290,7 @@ fn check_expr(
                 check_stmt(ctxt, record, &mut typing, outer_mode, stmt, outer_proph)?;
             }
             let mode = match e1 {
-                None => (outer_mode, Proph::No),
+                None => (ModeSource::from_mode(outer_mode), Proph::No),
                 Some(expr) => {
                     check_expr(ctxt, record, &mut typing, outer_mode, expect, expr, outer_proph)?
                 }
@@ -3012,7 +3305,7 @@ fn check_expr(
             record.var_modes.insert(binder.name.clone(), Mode::Proof);
 
             let mut ghost_typing = typing.push_block_ghostness(Ghost::Ghost);
-            let (mode1, proph1) = check_expr(
+            let (ms1, proph1) = check_expr(
                 ctxt,
                 record,
                 &mut ghost_typing,
@@ -3024,12 +3317,12 @@ fn check_expr(
             proph1.check(&expr.span, NoProphReason::OpenInvariantArg)?;
             drop(ghost_typing);
 
-            if mode1 != Mode::Proof {
+            if ms1.mode() != Mode::Proof {
                 return Err(error(&inv.span, "Invariant must be Proof mode."));
             }
             let mut typing = typing.push_var_scope();
 
-            typing.insert(&binder.name, Mode::Proof, Some(ProphVar::No));
+            typing.insert(&binder.name, expr.span.clone(), Mode::Proof, Some(ProphVar::No));
 
             if *atomicity == InvAtomicity::NonAtomic
                 || typing.atomic_insts.is_some()
@@ -3068,16 +3361,16 @@ fn check_expr(
                     .validate(&body.span, false)?;
             }
 
-            Ok((Mode::Exec, Proph::No))
+            Ok((ModeSource::Exec, Proph::No))
         }
-        ExprX::AirStmt(_) => Ok((Mode::Exec, Proph::No)),
+        ExprX::AirStmt(_) => Ok((ModeSource::Exec, Proph::No)),
         ExprX::NeverToAny(e) => {
             let expect = Expect(expect.meet(Mode::Proof));
-            let (mode, _p) = check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;
-            if mode == Mode::Spec {
+            let (ms, _p) = check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;
+            if ms.mode() == Mode::Spec {
                 return Err(error(&expr.span, "never-to-any coercion is not allowed in spec mode"));
             }
-            Ok((mode, Proph::No))
+            Ok((ms, Proph::No))
         }
         ExprX::Nondeterministic => {
             panic!("Nondeterministic is not created by user code right now");
@@ -3090,7 +3383,7 @@ fn check_expr(
                 assert!(found.is_none());
             }
 
-            let (_mode, proph) = check_place(
+            let (_ms, proph) = check_place(
                 ctxt,
                 record,
                 typing,
@@ -3100,7 +3393,7 @@ fn check_expr(
                 Expect(Mode::Spec),
                 outer_proph,
             )?;
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::BorrowMut(place)
         | ExprX::TwoPhaseBorrowMut(place)
@@ -3140,7 +3433,7 @@ fn check_expr(
 
             outer_proph.outer_check(&expr.span, OuterProphReason::MutBorrow)?;
 
-            let (mode, proph) = check_place(
+            let (ms, proph) = check_place(
                 ctxt,
                 record,
                 typing,
@@ -3151,7 +3444,7 @@ fn check_expr(
                 outer_proph,
             )?;
 
-            match mode {
+            match ms.mode() {
                 Mode::Exec => {}
                 Mode::Proof => {}
                 Mode::Spec => {
@@ -3163,11 +3456,11 @@ fn check_expr(
             }
             proph.check(&expr.span, NoProphReason::MutBorrow)?;
 
-            let mut ref_mode = mode_join(mode, typing.block_ghostness.join_mode(outer_mode));
+            let mut ref_mode = mode_join(ms.mode(), typing.block_ghostness.join_mode(outer_mode));
             if borrow_mut_tracked {
                 ref_mode = mode_join(ref_mode, Mode::Proof);
             }
-            Ok((ref_mode, Proph::No))
+            Ok((ModeSource::from_mode(ref_mode), Proph::No))
         }
         ExprX::UnaryOpr(UnaryOpr::HasResolved(_t), e) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -3179,7 +3472,7 @@ fn check_expr(
                 span: expr.span.clone(),
                 kind: ProphReasonKind::HasResolved,
             });
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::ReadPlace(place, read_kind) => {
             let expect =
@@ -3190,7 +3483,7 @@ fn check_expr(
                     expect
                 };
 
-            let (mode, proph) = check_place(
+            let (ms, proph) = check_place(
                 ctxt,
                 record,
                 typing,
@@ -3201,7 +3494,7 @@ fn check_expr(
                 outer_proph,
             )?;
 
-            let final_read_kind = match mode {
+            let final_read_kind = match ms.mode() {
                 Mode::Spec => ReadKind::Spec,
                 _ => read_kind.preliminary_kind,
             };
@@ -3221,10 +3514,10 @@ fn check_expr(
                 {
                     Mode::Spec
                 } else {
-                    mode
+                    ms.mode()
                 };
 
-            Ok((mode, p))
+            Ok((ModeSource::from_mode(mode), p))
         }
         ExprX::EvalAndResolve(..) => {
             panic!("EvalAndResolve shouldn't be created yet");
@@ -3243,7 +3536,7 @@ fn check_expr(
                 Mode::Spec,
                 outer_proph,
             )?;
-            Ok((Mode::Spec, proph))
+            Ok((ModeSource::from_mode(Mode::Spec), proph))
         }
         ExprX::Await(e) => {
             match (ctxt.fun_mode, outer_mode) {
@@ -3299,7 +3592,7 @@ fn check_expr(
             let proph2 =
                 check_expr_has_mode(ctxt, record, typing, outer_mode, e2, Mode::Spec, outer_proph)?;
             proph2.check(&expr.span, NoProphReason::ShrRefStructWrap)?;
-            Ok((Mode::Proof, Proph::No))
+            Ok((ModeSource::from_mode(Mode::Proof), Proph::No))
         }
     }
 }
@@ -3507,7 +3800,7 @@ fn check_function(
         }
         let inner_param_mode =
             if let Some((mode, _)) = param.x.unwrapped_info { mode } else { param.x.mode };
-        fun_typing.insert(&param.x.name, inner_param_mode, Some(ProphVar::No));
+        fun_typing.insert(&param.x.name, param.span.clone(), inner_param_mode, Some(ProphVar::No));
     }
 
     for expr in function.x.require.iter() {
@@ -3526,7 +3819,7 @@ fn check_function(
 
     let mut ens_typing = fun_typing.push_var_scope();
     if function.x.ens_has_return {
-        ens_typing.insert(&function.x.ret.x.name, Mode::Spec, Some(ProphVar::No));
+        ens_typing.insert(&function.x.ret.x.name, function.span.clone(), Mode::Spec, Some(ProphVar::No));
     }
 
     for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
