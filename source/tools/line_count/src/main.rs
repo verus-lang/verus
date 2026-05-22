@@ -385,7 +385,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                     _ => None,
                 })
             {
-                self.mark_with_additional_kind(
+                self.mark(
                     i,
                     wrapper_code_kind,
                     LineContent::GhostTracked(wrapper_code_kind),
@@ -856,6 +856,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
             || outer_last_segment == Some("segment_get_mut_main".into())
             || outer_last_segment == Some("segment_get_mut_main2".into())
             || outer_last_segment == Some("segment_get_mut_local".into())
+            || outer_last_segment == Some("tld_get_mut".into())
         {
             for tok in i.tokens.clone().into_iter() {
                 match tok.clone() {
@@ -865,6 +866,30 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                                 verus_syn::parse2(tok.into()).ok();
                             if let Some(content_as_block) = content_as_block {
                                 self.visit_block(&content_as_block);
+                            }
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        } else if outer_last_segment == Some("open_atomic_invariant".into())
+            || outer_last_segment == Some("open_local_invariant".into())
+            || outer_last_segment == Some("open_atomic_update".into())
+            || outer_last_segment == Some("try_open_atomic_update".into())
+        {
+            for tok in i.tokens.clone().into_iter() {
+                self.mark(&tok.span(), CodeKind::Proof, LineContent::Atomic);
+            }
+            for tok in i.tokens.clone().into_iter() {
+                match tok.clone() {
+                    proc_macro2::TokenTree::Group(g) => {
+                        if g.delimiter() == proc_macro2::Delimiter::Brace {
+                            let content_as_block: Option<verus_syn::Block> =
+                                verus_syn::parse2(tok.into()).ok();
+                            if let Some(content_as_block) = content_as_block {
+                                for stmt in content_as_block.stmts.iter() {
+                                    self.visit_stmt(stmt);
+                                }
                             }
                         }
                     }
