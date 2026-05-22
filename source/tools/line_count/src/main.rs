@@ -443,6 +443,8 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
         for it in &i.attrs {
             self.visit_attribute(it);
         }
+        self.visit_expr(&i.cond);
+        self.visit_block(&i.body);
         if let Some(decreases) = &i.decreases {
             self.mark(
                 decreases,
@@ -463,6 +465,13 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                 self.mode_or_trusted(CodeKind::Proof),
                 LineContent::ProofDirective,
             );
+            for e in invariant.exprs.exprs.iter() {
+                self.mark(
+                    &e,
+                    self.mode_or_trusted(CodeKind::Proof),
+                    LineContent::ProofDirective,
+                );
+            }
         }
         if let Some(invariant_ensures) = &i.invariant_ensures {
             self.mark(
@@ -474,8 +483,6 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
         if let Some(ensures) = &i.ensures {
             self.mark(&ensures, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
         }
-        self.visit_expr(&i.cond);
-        self.visit_block(&i.body);
     }
 
     fn visit_expr_for_loop(&mut self, i: &'ast verus_syn::ExprForLoop) {
@@ -1397,6 +1404,13 @@ impl<'f> Visitor<'f> {
             if let Some(decreases) = &sig.spec.decreases {
                 self.mark(
                     decreases,
+                    self.mode_or_trusted(CodeKind::Spec),
+                    LineContent::FunctionSpec,
+                );
+            }
+            if let Some(ato) = &sig.spec.atomic_spec {
+                self.mark(
+                    ato,
                     self.mode_or_trusted(CodeKind::Spec),
                     LineContent::FunctionSpec,
                 );

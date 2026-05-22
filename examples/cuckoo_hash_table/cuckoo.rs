@@ -561,7 +561,7 @@ impl MyHashMap {
                     && lock_stores[lock_for_row(k)].rows[k].token.instance_id() == instance.id()
                     && lock_stores[lock_for_row(k)].rows[k].token.key() == k
                     && lock_stores[lock_for_row(k)].rows[k].token.value()
-                        === Seq::new(WIDTH as nat, |w| None)
+                        === Seq::new(WIDTH as nat, |w| None),
             decreases LOCKS_LEN - i,
         {
             let tracked mut store = lock_stores.tracked_remove(i as nat);
