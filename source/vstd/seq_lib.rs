@@ -327,17 +327,17 @@ impl<A> Seq<A> {
     ///    let even_indexed_vals: Seq<int> = seq.filter_index(|i:int| i % 2 == 0);
     ///    reveal_with_fuel(Seq::<_>::filter_index, 6); // Needed for Verus to unfold the recursive definition of filter_index
     ///    assert(even_indexed_vals =~= seq![1, 3, 5]);
-    /// } 
+    /// }
     /// ```
     /// Note that the predicate can also refer to elements of the sequence:
-    /// 
+    ///
     /// ```rust
     /// proof fn filter_test() {
     ///    let seq: Seq<int> = seq![1, 2, 3, 4, 5];
     ///    let big_even_indexed_vals: Seq<int> = seq.filter_index(|i:int| i % 2 == 0 && seq[i] >= 3);
     ///    reveal_with_fuel(Seq::<_>::filter_index, 6); // Needed for Verus to unfold the recursive definition of filter_index
     ///    assert(big_even_indexed_vals =~= seq![3, 5]);
-    /// } 
+    /// }
     /// ```
     #[verifier::opaque]
     pub open spec fn filter_index(self, pred: spec_fn(int) -> bool) -> Self
@@ -347,7 +347,7 @@ impl<A> Seq<A> {
             self
         } else {
             let subseq = self.drop_last().filter_index(pred);
-            if pred(self.len()-1) {
+            if pred(self.len() - 1) {
                 subseq.push(self.last())
             } else {
                 subseq
@@ -358,7 +358,7 @@ impl<A> Seq<A> {
     /// Filtering can't increase the sequence's length
     broadcast proof fn lemma_filter_index_len(self, pred: spec_fn(int) -> bool)
         ensures
-            #[trigger](self.filter_index(pred).len()) <= self.len(),
+            #[trigger] (self.filter_index(pred).len()) <= self.len(),
         decreases self.len(),
     {
         reveal(Seq::filter_index);
@@ -381,7 +381,7 @@ impl<A> Seq<A> {
             let rest = s_rest.filter_index(pred);
             let result = self.filter_index(pred);
             let last_idx = (self.len() - 1) as int;
-            assert(forall |k: int| 0 <= k < s_rest.len() ==> #[trigger] s_rest[k] == self[k]);
+            assert(forall|k: int| 0 <= k < s_rest.len() ==> #[trigger] s_rest[k] == self[k]);
 
             if pred(last_idx) {
                 assert(result =~= rest.push(self.last()));
@@ -389,16 +389,14 @@ impl<A> Seq<A> {
                 assert(result =~= rest);
             }
 
-            assert forall |i: int| 0 <= i < result.len() implies
-                (exists |j: int| 0 <= j < self.len()
-                    && #[trigger] result[i] == #[trigger] self[j] && pred(j))
-            by {
+            assert forall|i: int| 0 <= i < result.len() implies (exists|j: int|
+                0 <= j < self.len() && #[trigger] result[i] == #[trigger] self[j] && pred(j)) by {
                 if pred(last_idx) && i == rest.len() {
                     assert(result[i] == self[last_idx]);
                 } else {
                     assert(result[i] == rest[i]);
-                    let j_rest = choose |j: int| 0 <= j < s_rest.len()
-                        && rest[i] == s_rest[j] && pred(j);
+                    let j_rest = choose|j: int|
+                        0 <= j < s_rest.len() && rest[i] == s_rest[j] && pred(j);
                     assert(self[j_rest] == s_rest[j_rest]);
                 }
             }
@@ -420,7 +418,7 @@ impl<A> Seq<A> {
             let rest = s_rest.filter_index(pred);
             let result = self.filter_index(pred);
             let last_idx = (self.len() - 1) as int;
-            assert(forall |k: int| 0 <= k < s_rest.len() ==> #[trigger] s_rest[k] == self[k]);
+            assert(forall|k: int| 0 <= k < s_rest.len() ==> #[trigger] s_rest[k] == self[k]);
 
             if pred(last_idx) {
                 assert(result =~= rest.push(self.last()));
@@ -428,34 +426,29 @@ impl<A> Seq<A> {
                 assert(result =~= rest);
             }
 
-            // Dummy assert-forall mirroring the source postcondition's structure,
-            // included to populate the SMT context the same way the original
-            // combined proof did.
             s_rest.lemma_filter_index_source(pred);
-            assert forall |i: int| 0 <= i < result.len() implies
-                (exists |j: int| 0 <= j < self.len()
-                    && #[trigger] result[i] == #[trigger] self[j] && pred(j))
-            by {
+            assert forall|i: int| 0 <= i < result.len() implies (exists|j: int|
+                0 <= j < self.len() && #[trigger] result[i] == #[trigger] self[j] && pred(j)) by {
                 if pred(last_idx) && i == rest.len() {
                     assert(result[i] == self[last_idx]);
                 } else {
                     assert(result[i] == rest[i]);
-                    let j_rest = choose |j: int| 0 <= j < s_rest.len()
-                        && rest[i] == s_rest[j] && pred(j);
+                    let j_rest = choose|j: int|
+                        0 <= j < s_rest.len() && rest[i] == s_rest[j] && pred(j);
                     assert(self[j_rest] == s_rest[j_rest]);
                 }
             }
 
-            assert forall |j: int| 0 <= j < self.len() && pred(j) implies
-                (exists |i: int| 0 <= i < self.filter_index(pred).len()
-                    && #[trigger] self[j] == self.filter_index(pred)[i])
-            by {
+            assert forall|j: int| 0 <= j < self.len() && pred(j) implies (exists|i: int|
+                0 <= i < self.filter_index(pred).len() && #[trigger] self[j] == self.filter_index(
+                    pred,
+                )[i]) by {
                 if j == last_idx {
                     assert(result =~= rest.push(self.last()));
                     assert(self.filter_index(pred)[rest.len() as int] == self[j]);
                 } else {
                     assert(rest.contains(s_rest[j]));
-                    let w = choose |i: int| 0 <= i < rest.len() && rest[i] == s_rest[j];
+                    let w = choose|i: int| 0 <= i < rest.len() && rest[i] == s_rest[j];
                     assert(self.filter_index(pred)[w] == self[j]);
                 }
             }
@@ -464,19 +457,23 @@ impl<A> Seq<A> {
 
     /// Every resulting value of filter_index came from self at an acceptable index
     pub open spec fn filter_index_range(self, pred: spec_fn(int) -> bool) -> bool {
-        forall |i| 0 <= i < self.filter_index(pred).len() ==>
-            (exists |j| 0 <= j < self.len() && #[trigger] self.filter_index(pred)[i] == #[trigger] self[j] && pred(j))
+        forall|i|
+            0 <= i < self.filter_index(pred).len() ==> (exists|j|
+                0 <= j < self.len() && #[trigger] self.filter_index(pred)[i] == #[trigger] self[j]
+                    && pred(j))
     }
 
     /// Every value in self at an acceptable index is in the result of filter_index
     pub open spec fn filter_index_domain(self, pred: spec_fn(int) -> bool) -> bool {
-        forall |j| 0 <= j < self.len() && pred(j) ==> #[trigger] self.filter_index(pred).contains(self[j])
+        forall|j|
+            0 <= j < self.len() && pred(j) ==> #[trigger] self.filter_index(pred).contains(self[j])
     }
 
     /// Properties of filter_index
     pub broadcast proof fn lemma_filter_index(self, pred: spec_fn(int) -> bool)
         ensures
-            // Filtering can't increase the sequence's length
+    // Filtering can't increase the sequence's length
+
             (#[trigger] self.filter_index(pred)).len() <= self.len(),
             // Every resulting value came from source at an acceptable index
             self.filter_index_range(pred),

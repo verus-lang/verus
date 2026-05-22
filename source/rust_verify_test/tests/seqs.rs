@@ -146,5 +146,28 @@ test_verify_one_file! {
            reveal_with_fuel(Seq::<_>::filter_index, 6); // Needed for Verus to unfold the recursive definition of filter_index
            assert(even_indexed_vals =~= seq![3, 5]);
         }
+
+        proof fn filter_index_test1a() {
+            let seq: Seq<int> = seq![1, 2, 3, 4, 5];
+            let even_indexed_vals: Seq<int> = seq.filter_index(|i:int| i % 2 == 0);
+            broadcast use Seq::lemma_filter_index;
+
+            assert(even_indexed_vals.contains(1));
+            assert(!even_indexed_vals.contains(2));
+            assert(even_indexed_vals.contains(3));
+            assert(!even_indexed_vals.contains(4));
+            assert(even_indexed_vals.contains(5));
+        }
+
+        proof fn filter_index_test2a() {
+            let seq: Seq<int> = seq![1, 2, 3, 4, 5];
+            let even_indexed_vals: Seq<int> = seq.filter_index(|i:int| i % 2 == 0 && seq[i] >= 3);
+            broadcast use Seq::lemma_filter_index;
+            assert(!even_indexed_vals.contains(1));
+            assert(!even_indexed_vals.contains(2));
+            assert(even_indexed_vals.contains(3));
+            assert(!even_indexed_vals.contains(4));
+            assert(even_indexed_vals.contains(5));
+        }
     } => Ok(())
 }
