@@ -33,14 +33,14 @@ test_verify_one_file! {
             assert(s8[0] == 5);
             assert(s8.len() == 10);
 
-            assert(s1.to_set().finite()) by {
-                seq_to_set_is_finite(s1);
+            assert(s1.to_iset().finite()) by {
+                seq_to_iset_is_finite(s1);
             }
-            assert(s6.to_set().finite()) by {
-                seq_to_set_is_finite(s6);
+            assert(s6.to_iset().finite()) by {
+                seq_to_iset_is_finite(s6);
             }
-            assert(s7.to_set().finite()) by {
-                seq_to_set_is_finite(s7);
+            assert(s7.to_iset().finite()) by {
+                seq_to_iset_is_finite(s7);
             }
         }
     } => Ok(())
