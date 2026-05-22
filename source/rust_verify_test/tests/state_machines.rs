@@ -7,6 +7,7 @@ const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use vstd::{atomic::*};
     #[allow(unused_imports)] use vstd::{modes::*};
     #[allow(unused_imports)] use vstd::prelude::*;
+    #[allow(unused_imports)] use vstd::imap::*;
     #[allow(unused_imports)] use vstd::map::*;
     #[allow(unused_imports)] use vstd::set::*;
     #[allow(unused_imports)] use vstd::multiset::*;
@@ -5294,7 +5295,7 @@ test_verify_one_file! {
                 rel_tr3(pre, post) == Y::State::tr3(pre, post),
                 rel_tr3_strong(pre, post) == Y::State::tr3_strong(pre, post),
         {
-            assert_maps_equal!(
+            assert_imaps_equal!(
                 pre.c.insert(5, 9).insert(12, 15),
                 pre.c.union_prefer_right(
                     IMap::empty().insert(5, 9).insert(12, 15)
