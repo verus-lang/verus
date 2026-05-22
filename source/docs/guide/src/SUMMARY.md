@@ -39,13 +39,6 @@
     - [Specification libraries: Seq, Set, Map](spec_lib.md)
     - [Executable libraries: Vec](exec_lib.md)
 - [Spec closures](spec_closures.md)
-
-# Tutorial: Understanding the prover
-
-- [Developing proofs](develop_proofs.md)
-    - [Using assert and assume](assert_assume.md)
-    - [Devising loop invariants](invariants.md)
-    - [Proving absence of overflow](overflow.md)
 - [Quantifiers](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
@@ -53,6 +46,13 @@
     - [Proofs about forall and exists](quantproofs.md)
     - [Example: binary search](binary_search.md)
     - [Ambient (`broadcast`) lemmas](broadcast_proof.md)
+
+# Tutorial: Proof Development
+
+- [Developing proofs](develop_proofs.md)
+    - [Using assert and assume](assert_assume.md)
+    - [Devising loop invariants](invariants.md)
+    - [Proving absence of overflow](overflow.md)
 - [SMT solving, automation, and where automation fails](smt_failures.md)
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
     - [Integers and nonlinear arithmetic](nonlinear.md)
@@ -70,6 +70,9 @@
     - [Proof by computation](assert_by_compute.md)
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces](breaking_proofs_into_pieces.md)
+- [Using LLM assistants](llms.md)
+    - [Using LLMs to develop proofs](llmforverusproof.md)
+    - [Using LLMs to develop specifications]()
 - [Checklist: what to do when proofs go wrong](checklist.md)
 
 # Tutorial: Verification and Rust
@@ -98,6 +101,7 @@
   - [Encapsulating well-formedness with type invariants](./container_bst_type_invariant.md)
   - [Making it generic](./container_bst_generic.md)
   - [Implementing `Clone`](./container_bst_clone.md)
+  - [Mutable references in a container](./container_bst_mut_refs.md)
   - [Full source for the examples](./container_bst_all_source.md)
 
 - [Interacting with unverified code](./interacting-with-unverified-code.md)

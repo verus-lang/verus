@@ -412,7 +412,10 @@ When applied to a tuple, struct, or enum, `has_resolved` means that all _nested_
 references have been resolved. Such properties are provided by axioms like the following:
 
  * `has_resolved::<(T, U)>((t, u)) ==> has_resolved::<T>(t) && has_resolved::<U>(u)`
- * `has_resolved::<Vec<T>>(vec) ==> has_resolved::<T>(vec[i])`
+ * `has_resolved::<Vec<T>>(vec) ==> has_resolved::<T>(vec[i])` ([`axiom_vec_has_resolved`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/vec/fn.axiom_vec_has_resolved.html))
+
+See [this later chapter](./container_bst_mut_refs.md)
+for more on using containers of mutable references.
 
 ## Advanced application: Building a list
 

@@ -69,6 +69,7 @@ const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 pub(crate) const PREFIX_IMPL_TUPLE: &str = "impl_tuple&%";
 pub(crate) const PREFIX_IMPL_CLOSURE: &str = "impl_closure&%";
+pub(crate) const PREFIX_IMPL_FNDEF: &str = "impl_fndef&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 pub(crate) const PREFIX_DEFAULT_TYP_PARAM: &str = "def_typ_param%";
@@ -365,7 +366,7 @@ impl NameCtxt {
 // Only use this for printing diagnostics
 // Do not use this to generate AIR -- it is unsound to ignore the id
 // (However, it's always ok to use this when the krate is not CrateId::Id)
-pub(crate) fn krate_to_string_ignore_stable_id(krate: &CrateId) -> String {
+pub fn krate_to_string_ignore_stable_id(krate: &CrateId) -> String {
     match krate {
         CrateId::Internal => "crate".to_string(),
         CrateId::Core => "core".to_string(),
@@ -642,6 +643,12 @@ pub(crate) fn impl_tuple(trait_suffix: &str, arity: usize) -> Ident {
 
 pub(crate) fn impl_closure(kind: ClosureKind, id: usize) -> Ident {
     Arc::new(format!("{}{}{}", PREFIX_IMPL_CLOSURE, kind, id))
+}
+
+pub(crate) fn impl_fndef(fun: &Fun, kind: ClosureKind) -> Ident {
+    let joined =
+        fun.path.segments.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(PATH_SEPARATOR);
+    Arc::new(format!("{}{}{}", PREFIX_IMPL_FNDEF, kind, joined))
 }
 
 impl NameCtxt {

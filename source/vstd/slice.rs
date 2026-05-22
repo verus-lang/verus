@@ -116,6 +116,7 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
+#[verifier::external_trait_private_bound(core::slice::index::private_slice_index::Sealed)]
 pub trait ExSliceIndex<T> where T: ?Sized {
     type ExternalTraitSpecificationFor: SliceIndex<T>;
 
@@ -142,7 +143,7 @@ pub uninterp spec fn spec_slice_get<T: ?Sized, I: SliceIndex<T>>(val: &T, idx: I
 
 pub broadcast axiom fn axiom_slice_get_usize<T>(v: &[T], i: usize)
     ensures
-        i < v.len() ==> #[trigger] spec_slice_get(v, i) === Some(&v[i as int]),
+        i < v.len() ==> #[trigger] spec_slice_get(v, i) == Some(&v[i as int]),
         i >= v.len() ==> spec_slice_get(v, i).is_none(),
 ;
 

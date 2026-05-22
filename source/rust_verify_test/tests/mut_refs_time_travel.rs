@@ -159,7 +159,7 @@ test_verify_one_file_with_options! {
         fn test2() {
             let mut x = (0, 1);
             let (x_ref, _) = &mut x;
-            assert(x === (0, 1));
+            assert(x == (0, 1));
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed(err, "x")
@@ -171,7 +171,7 @@ test_verify_one_file_with_options! {
             let mut x = (0, 1);
             let z = &mut x;
             let (x_ref, _) = z;
-            assert(x === (0, 1));
+            assert(x == (0, 1));
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed(err, "x")
@@ -184,7 +184,7 @@ test_verify_one_file_with_options! {
             let mut x = Option::Some(0);
             let z = &mut x;
             let Option::Some(x_ref) = z else { loop{} };
-            assert(x === Option::Some(0));
+            assert(x == Option::Some(0));
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed(err, "x")
@@ -197,7 +197,7 @@ test_verify_one_file_with_options! {
             let mut x = Option::Some(0);
             match x {
                 Option::Some(ref mut x_ref) => {
-                    assert(x === Option::Some(0));
+                    assert(x == Option::Some(0));
                     *x_ref = 20;
                 }
                 Option::None => { }
@@ -212,7 +212,7 @@ test_verify_one_file_with_options! {
         fn test_let_expr() {
             let mut o = Option::Some(0);
             if let Option::Some(ref mut x_ref) = o {
-                assert(o === Option::Some(0));
+                assert(o == Option::Some(0));
                 *x_ref = 20;
             }
         }
@@ -224,7 +224,7 @@ test_verify_one_file_with_options! {
         fn test13() {
             let mut x = (0, 1);
             let (ref mut x_ref, l) = x;
-            assert(x === (0, 1));
+            assert(x == (0, 1));
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed(err, "x")
@@ -678,7 +678,7 @@ test_verify_one_file_with_options! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x.0;
-            assert(x === (0, 1));
+            assert(x == (0, 1));
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed(err, "x")
@@ -689,7 +689,7 @@ test_verify_one_file_with_options! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x;
-            assert(x.0 === 0);
+            assert(x.0 == 0);
             *x_ref = (20, 21);
         }
     } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".0")
@@ -700,7 +700,7 @@ test_verify_one_file_with_options! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x.0;
-            assert(x.0 === 0);
+            assert(x.0 == 0);
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".0")
@@ -711,7 +711,7 @@ test_verify_one_file_with_options! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x.0;
-            assert(x.1 === 1);
+            assert(x.1 == 1);
             *x_ref = 20;
         }
     } => Ok(())
@@ -734,7 +734,7 @@ test_verify_one_file_with_options! {
             let mut y = (0, 1);
             let mut x = &mut y;
             let x_ref = &mut x.0;
-            assert(x.1 === 1);
+            assert(x.1 == 1);
             *x_ref = 20;
         }
     } => Ok(())
@@ -758,7 +758,7 @@ test_verify_one_file_with_options! {
             let mut y = (0, 1);
             let mut x = &mut y;
             let x_ref = &mut x.1;
-            assert(x.1 === 1);
+            assert(x.1 == 1);
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".1")
@@ -782,7 +782,7 @@ test_verify_one_file_with_options! {
             let mut y = (0, 1);
             let mut x = &mut y;
             let x_ref = &mut x.1;
-            assert((*x).1 === 1);
+            assert((*x).1 == 1);
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".1")
@@ -806,7 +806,7 @@ test_verify_one_file_with_options! {
             let mut y = (0, 1);
             let mut x = &mut y;
             let x_ref = &mut x.0;
-            assert((*x).1 === 1);
+            assert((*x).1 == 1);
             *x_ref = 20;
         }
     } => Ok(())
@@ -1537,7 +1537,7 @@ test_verify_one_file_with_options! {
             let mut pair = (0, 1);
             let r = c(&mut pair);
 
-            assert(pair === (0, 1));
+            assert(pair == (0, 1));
 
             *r = 20;
         }

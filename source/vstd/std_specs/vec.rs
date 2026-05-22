@@ -336,7 +336,7 @@ impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
     }
 
     open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ === self@.update(index as int, val)
+        new_container@ == self@.update(index as int, val)
     }
 }
 

@@ -1409,7 +1409,7 @@ pub assume_specification<'a, K, V, A: Allocator>[ OccupiedEntry::remove_entry ](
     entry: OccupiedEntry::<'a, K, V, A>,
 ) -> (kv: (K, V))
     ensures
-        entry.final_value() === None,
+        entry.final_value() == None,
     returns
         (*entry.key(), entry.value()),
 ;
@@ -1435,7 +1435,7 @@ pub assume_specification<'a, K, V, A: Allocator>[ OccupiedEntry::into_mut ](
     entry: OccupiedEntry::<'a, K, V, A>,
 ) -> (value: &mut V)
     ensures
-        *value === entry.value(),
+        *value == entry.value(),
         entry.final_value() == Some(*final(value)),
 ;
 
@@ -1455,7 +1455,7 @@ pub assume_specification<'a, K, V, A: Allocator>[ OccupiedEntry::remove ](
 ) -> (value: V)
     ensures
         value == entry.value(),
-        entry.final_value() === None,
+        entry.final_value() == None,
 ;
 
 //// VacantEntry
@@ -1478,7 +1478,7 @@ pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::into_key 
 ) -> (key: K)
     ensures
         key == entry.key(),
-        entry.final_value() === None,
+        entry.final_value() == None,
 ;
 
 pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::insert ](

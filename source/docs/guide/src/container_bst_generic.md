@@ -30,7 +30,7 @@ This isn't always suitable; some datatypes may have more than one way to represe
 logical value. A more general specification would allow an ordering that respects
 some arbitrary equivalence relation.
 This is how [`vstd::hash_map::HashMapWithView`](https://verus-lang.github.io/verus/verusdoc/vstd/hash_map/struct.HashMapWithView.html) works, for example.
-To keep things simple for this demonstration though, we'll use a total ordering that respects
+To keep things simple for this demonstration, though, we'll use a total ordering that respects
 spec equality.
 
 ### Updating the struct and definitions
@@ -75,7 +75,7 @@ But we already established that `key < self.key`. Contradiction.
 {{#include ../../../../examples/guide/bst_map_generic.rs:node_get}}
 ```
 
-We can update `insert` and `delete` similarly, manually inserting lemma calls to invoke
+We can update `insert`, `delete`, and `get_mut` similarly, manually inserting lemma calls to invoke
 the total-ordering properties where necessary.
 
 ## Full source

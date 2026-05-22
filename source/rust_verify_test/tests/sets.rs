@@ -39,7 +39,7 @@ test_verify_one_file! {
             }
             assert(forall|i: int| pos2.contains(i) == (i > 0));
             assert(pos1 =~= pos2);
-            assert(pos1 === pos2);
+            assert(pos1 == pos2);
         }
     } => Ok(())
 }
@@ -49,7 +49,7 @@ test_verify_one_file! {
         use vstd::set::*;
 
         pub closed spec fn set_map<A>(s: Set<A>, f: spec_fn(A) -> A) -> Set<A> {
-            Set::new(|a: A| exists|x: A| s.contains(x) && a === f(x))
+            Set::new(|a: A| exists|x: A| s.contains(x) && a == f(x))
         }
 
         proof fn test_set() {
@@ -61,7 +61,7 @@ test_verify_one_file! {
             assert forall|i: int| pos2.contains(i) == (i > 0) by {} // FAILS
             assert(forall|i: int| pos2.contains(i) == (i > 0));
             assert(pos1 =~= pos2);
-            assert(pos1 === pos2);
+            assert(pos1 == pos2);
         }
     } => Err(err) => assert_one_fails(err)
 }

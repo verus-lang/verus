@@ -15,6 +15,10 @@ enum AttrTree {
     Fun(Span, String, Option<Box<[AttrTree]>>),
     /// A literal, e.g. `42`, `42.0`, `"forty-two"`, etc.
     Lit(LitKind, String),
+    /// A path with at least one "::" (Vec length is always >= 2)
+    /// (Usually, any attribute accepting PathSegments should also accept Fun(_, segment, None)
+    /// for the case of a path with only one segment, unless the path must be >= 2 segments)
+    PathSegments(Vec<String>),
     //Eq(Span, String, String), // TODO(main_new)
 }
 
@@ -37,15 +41,42 @@ fn token_stream_to_trees(span: Span, stream: &TokenStream) -> Result<Box<[AttrTr
             }
             TokenKind::Ident(symbol, _) => {
                 let name = symbol.as_str().to_string();
-                let fargs = if let Some(TokenTree::Delimited(_, _, _, token_stream)) =
-                    &token_trees.get(i + 1)
-                {
-                    i += 1;
-                    Some(token_stream_to_trees(span, token_stream)?)
-                } else {
-                    None
-                };
-                trees.push(AttrTree::Fun(span, name, fargs));
+                match &token_trees.get(i + 1) {
+                    Some(TokenTree::Delimited(_, _, _, token_stream)) => {
+                        i += 1;
+                        let fargs = Some(token_stream_to_trees(span, token_stream)?);
+                        trees.push(AttrTree::Fun(span, name, fargs));
+                    }
+                    Some(TokenTree::Token(token, _spacing)) if token.kind == TokenKind::PathSep => {
+                        let mut segments: Vec<String> = vec![name];
+                        loop {
+                            match &token_trees.get(i + 1) {
+                                Some(TokenTree::Token(token, _spacing))
+                                    if token.kind == TokenKind::PathSep =>
+                                {
+                                    match &token_trees.get(i + 2) {
+                                        Some(TokenTree::Token(token, _spacing)) => match token.kind
+                                        {
+                                            TokenKind::Ident(symbol, _) => {
+                                                i += 2;
+                                                segments.push(symbol.as_str().to_string());
+                                            }
+                                            _ => return Err(()),
+                                        },
+                                        _ => return Err(()),
+                                    }
+                                }
+                                _ => {
+                                    trees.push(AttrTree::PathSegments(segments));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        trees.push(AttrTree::Fun(span, name, None));
+                    }
+                }
             }
             TokenKind::Comma => {}
             _ => return Err(()),
@@ -309,6 +340,10 @@ pub(crate) enum Attr {
     ExternalTraitSpecification(String),
     // A trait or impl of a trait that extends an external_type_specification trait with ghost items
     ExternalTraitExtension(String, String),
+    // Declare a bound of an external trait as being a private bound, which Verus will ignore
+    // (in practice, this is for the Rust sealed trait idiom)
+    // The private bound is a path (a Vec of segments)
+    ExternalTraitPrivateBound(Vec<String>),
     // Mark the blanket trait impl for the external_type_specification trait
     // (needed so that trait_conflicts.rs knows to ignore it.)
     ExternalTraitBlanket,
@@ -333,6 +368,8 @@ pub(crate) enum Attr {
     // Marks a trait as "sealed", i.e. not implementable in Verus code
     // requires it to also be marked `unsafe`
     Sealed,
+    // Marks a trait as "internal_trait", i.e. not usable in Verus code
+    InternalTrait,
     // Marks spec functions that depend on resolved prophecies
     Prophetic,
     // Unrecognized attribute that starts with 'rustc_', internal to the stdlib
@@ -662,7 +699,18 @@ pub(crate) fn parse_attrs(
                 ) if arg == "external_trait_extension" && via == "via" => {
                     v.push(Attr::ExternalTraitExtension(s.clone(), i.clone()))
                 }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::PathSegments(segments)]))
+                    if arg == "external_trait_private_bound" =>
+                {
+                    // The path must include the crate name,
+                    // and so must be at least two segments,
+                    // so we don't have to cover the one-segment case with AttrTree::Fun
+                    v.push(Attr::ExternalTraitPrivateBound(segments.clone()))
+                }
                 AttrTree::Fun(_, arg, None) if arg == "sealed" => v.push(Attr::Sealed),
+                AttrTree::Fun(_, arg, None) if arg == "internal_trait" => {
+                    v.push(Attr::InternalTrait)
+                }
                 AttrTree::Fun(_, arg, None) if arg == "prophetic" => v.push(Attr::Prophetic),
                 AttrTree::Fun(_, arg, None) if arg == "type_invariant" => {
                     v.push(Attr::TypeInvariantFn)
@@ -1134,6 +1182,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external_trait_specification: Option<String>,
     pub(crate) external_trait_extension: Option<(String, String)>,
     pub(crate) external_trait_blanket: bool,
+    pub(crate) external_trait_private_bounds: Vec<Vec<String>>,
     pub(crate) unwrapped_binding: bool,
     pub(crate) sets_mode: bool,
     pub(crate) internal_reveal_fn: bool,
@@ -1142,7 +1191,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) trusted: bool,
     pub(crate) internal_get_field_many_variants: bool,
     pub(crate) size_of_global: bool,
-    pub(crate) sealed: bool,
     pub(crate) prophecy_dependent: bool,
     pub(crate) item_broadcast_use: bool,
     pub(crate) size_of_broadcast_proof: bool,
@@ -1187,6 +1235,24 @@ pub(crate) fn is_sealed(
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
             Attr::Sealed => {
+                return Ok(true);
+            }
+            _ => {}
+        }
+    }
+    Ok(false)
+}
+
+// Check for the `internal_trait` attribute
+// Skips additional checks that are meant to be applied only during the 'main' processing
+// of an item.
+pub(crate) fn is_internal_trait(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<bool, VirErr> {
+    for attr in parse_attrs(attrs, diagnostics)? {
+        match attr {
+            Attr::InternalTrait => {
                 return Ok(true);
             }
             _ => {}
@@ -1309,6 +1375,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         external_trait_specification: None,
         external_trait_extension: None,
         external_trait_blanket: false,
+        external_trait_private_bounds: vec![],
         unwrapped_binding: false,
         sets_mode: false,
         internal_reveal_fn: false,
@@ -1317,7 +1384,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         trusted: false,
         size_of_global: false,
         internal_get_field_many_variants: false,
-        sealed: false,
         prophecy_dependent: false,
         item_broadcast_use: false,
         size_of_broadcast_proof: false,
@@ -1345,6 +1411,9 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             }
             Attr::ExternalTraitExtension(s, i) => vs.external_trait_extension = Some((s, i)),
             Attr::ExternalTraitBlanket => vs.external_trait_blanket = true,
+            Attr::ExternalTraitPrivateBound(bound) => {
+                vs.external_trait_private_bounds.push(bound.clone());
+            }
             Attr::Opaque => vs.opaque = true,
             Attr::Publish(open) => vs.publish = Some(open),
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
@@ -1396,7 +1465,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::SizeOfGlobal => vs.size_of_global = true,
             Attr::ItemBroadcastUse => vs.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => vs.internal_get_field_many_variants = true,
-            Attr::Sealed => vs.sealed = true,
             Attr::Prophetic => vs.prophecy_dependent = true,
             Attr::UnsupportedRustcAttr(name, span) => {
                 unsupported_rustc_attr = Some((name.clone(), span))

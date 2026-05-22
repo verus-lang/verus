@@ -1120,10 +1120,86 @@ pub const fn spec_cast_float<From: Copy + IeeeFloatCast<To>, To: Decimal>(_from:
     To::CONST_DEFAULT
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+#[cfg_attr(verus_keep_ghost, verifier::internal_trait)]
+pub trait SpecEq<Rhs: ?Sized> {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<A> for A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<&A> for A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<A> for &A {}
+
+// TODO: when new-mut-ref entirely replaces old &mut, this can be removed
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<&mut A> for A {}
+
+// TODO: when new-mut-ref entirely replaces old &mut, this can be removed
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<A> for &mut A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A> SpecEq<Ghost<A>> for A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A> SpecEq<A> for Ghost<A> {}
+
+#[cfg(verus_keep_ghost)]
+impl<A> SpecEq<Tracked<A>> for A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A> SpecEq<A> for Tracked<A> {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<*const A> for *mut A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<*mut A> for *const A {}
+
+macro_rules! impl_spec_eq {
+    ($lhs:ty, [$($rhs:ty)*]) => {
+        $(
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<$rhs> for $lhs {}
+
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<&$rhs> for $lhs {}
+
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<$rhs> for &$lhs {}
+
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<Ghost<$rhs>> for $lhs {}
+
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<$rhs> for Ghost<$lhs> {}
+        )*
+    }
+}
+
+impl_spec_eq!(int, [nat usize isize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(nat, [int usize isize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(usize, [int nat isize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(isize, [int nat usize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(u8, [int nat usize isize i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(i8, [int nat usize isize u8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(u16, [int nat usize isize u8 i8 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(i16, [int nat usize isize u8 i8 u16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(u32, [int nat usize isize u8 i8 u16 i16 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(i32, [int nat usize isize u8 i8 u16 i16 u32 u64 i64 u128 i128 char]);
+impl_spec_eq!(u64, [int nat usize isize u8 i8 u16 i16 u32 i32 i64 u128 i128 char]);
+impl_spec_eq!(i64, [int nat usize isize u8 i8 u16 i16 u32 i32 u64 u128 i128 char]);
+impl_spec_eq!(u128, [int nat usize isize u8 i8 u16 i16 u32 i32 u64 i64 i128 char]);
+impl_spec_eq!(i128, [int nat usize isize u8 i8 u16 i16 u32 i32 u64 i64 u128 char]);
+impl_spec_eq!(char, [int nat usize isize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128]);
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_eq"]
 #[verifier::spec]
-pub fn spec_eq<Lhs, Rhs>(_lhs: Lhs, _rhs: Rhs) -> bool {
+pub fn spec_eq<Lhs: SpecEq<Rhs>, Rhs>(_lhs: Lhs, _rhs: Rhs) -> bool {
     unimplemented!()
 }
 
