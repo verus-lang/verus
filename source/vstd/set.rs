@@ -53,11 +53,6 @@ pub struct Set<A> {
     set: spec_fn(A) -> bool,
 }
 
-pub open spec fn set_function_finite<A>(f: spec_fn(A) -> bool) -> bool
-{
-    ISet::<A>::new(f).finite()
-}
-
 impl<A> Set<A> {
     /// The "empty" set.
     ///
@@ -88,12 +83,12 @@ impl<A> Set<A> {
     /// ```rust
     /// let set_a = Set::new(|x : nat| x < 42);
     /// let set_b = Set::<A>::new(|x| some_predicate(x));
-    /// assert(set_function_finite(|x| some_predicate(x)) ==>
+    /// assert(ISet::new(|x| some_predicate(x)).finite()) ==>
     ///        set_b matches Some(s) &&
     ///        forall|x| some_predicate(x) <==> s.contains(x));
     /// ```
     pub closed spec fn new(f: spec_fn(A) -> bool) -> Option<Set<A>> {
-        if set_function_finite(f) {
+        if ISet::new(f).finite() {
             Some(Set { set: f })
         }
         else {
