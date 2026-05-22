@@ -31,20 +31,8 @@ pub fn namespace_id_typ() -> Typ {
     Arc::new(TypX::Int(IntRange::Int))
 }
 
-pub fn set_finite_type() -> Typ {
-    Arc::new(TypX::Datatype(
-        Dt::Path(crate::def::set_finite_type_path()),
-        Arc::new(vec![]),
-        Arc::new(vec![]),
-    ))
-}
-
 pub fn namespace_set_typs() -> Typs {
-    Arc::new(vec![namespace_id_typ(), set_finite_type()])
-}
-
-pub fn namespace_set_typs2() -> Typs {
-    Arc::new(vec![namespace_id_typ(), set_finite_type(), set_finite_type()])
+    Arc::new(vec![namespace_id_typ()])
 }
 
 pub fn namespace_set_typ() -> Typ {
@@ -246,7 +234,7 @@ impl MaskSet {
                     let other_exp = other.to_exp(ctx);
                     let subset_of_expx = ExpX::Call(
                         subset_of_fun,
-                        namespace_set_typs2(),
+                        namespace_set_typs(),
                         Arc::new(vec![self_exp.clone(), other_exp.clone()]),
                     );
                     let subset_of_exp =
