@@ -15,7 +15,6 @@ test_verify_one_file! {
             let x: Vec<u32> = w.into_iter().rev().collect();
             assert(x@ == seq![4u32, 3, 2, 1]);
 
-
             let y: Vec<u32> = vec![1, 2, 3, 4];
             let z: Vec<u32> = y.into_iter().rev().rev().collect();
             assert(z@ == y@);

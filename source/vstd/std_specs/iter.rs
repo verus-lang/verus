@@ -90,6 +90,7 @@ pub trait ExIterator {
             B: FromIterator<Self::Item>,
             Self: Sized,
         default_ensures
+            self.will_return_none(),
             self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
     ;
@@ -173,14 +174,12 @@ pub broadcast axiom fn axiom_from_iterator_ensures<A, I: Iterator<Item = A> + It
 pub trait ExFromIterator<A>: Sized {
     type ExternalTraitSpecificationFor: FromIterator<A>;
 
-    spec fn obeys_from_iterator_spec() -> bool;
-
     spec fn from_iter_ensures(remaining: Seq<A>, s: Self) -> bool;
 
     fn from_iter<T>(iter: T) -> (s: Self)
        where T: IntoIterator<Item = A>
         ensures
-            Self::obeys_from_iterator_spec() ==> Self::from_iter_ensures(into_iter_remaining(iter), s),
+            Self::from_iter_ensures(into_iter_remaining(iter), s),
     ;
 }
 

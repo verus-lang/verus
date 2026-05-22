@@ -463,10 +463,6 @@ pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::Int
 ;
 
 impl<T>  FromIteratorSpecImpl<T> for Vec<T> {
-    open spec fn obeys_from_iterator_spec() -> bool {
-        true
-    }
-
     open spec fn from_iter_ensures(remaining: Seq<T>, s: Self) -> bool {
         remaining == s@
     }
