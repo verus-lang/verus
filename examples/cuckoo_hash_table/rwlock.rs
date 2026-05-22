@@ -2,14 +2,14 @@
 #![allow(unused_imports)]
 #![allow(non_shorthand_field_patterns)]
 
+use core::marker::PhantomData;
+use verus_state_machines_macros::tokenized_state_machine;
 use vstd::atomic_ghost::*;
 use vstd::invariant::InvariantPredicate;
 use vstd::modes::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
 use vstd::set::*;
-use core::marker::PhantomData;
-use verus_state_machines_macros::tokenized_state_machine;
 
 tokenized_state_machine!(
 RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {

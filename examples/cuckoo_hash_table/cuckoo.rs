@@ -4,16 +4,16 @@
 #[path = "rwlock.rs"]
 pub mod rwlock;
 
-use vstd::prelude::*;
-use vstd::atomic::*;
+use rwlock::*;
 use verus_state_machines_macros::tokenized_state_machine;
+use vstd::atomic::*;
 use vstd::cell::CellId;
 use vstd::cell::pcell as pc;
 use vstd::invariant::*;
+use vstd::prelude::*;
 use vstd::tokens::*;
-use rwlock::*;
 
-verus!{
+verus! {
 
 type Key = u64;
 type Value = u64;
@@ -60,7 +60,7 @@ fn compute_hash2(key: Key) -> (h: usize)
     (compute_hash1(key) + j as usize + 1) % HEIGHT
 }
 
-    
+
 
 tokenized_state_machine!{ Cuckoo {
     fields {
@@ -237,7 +237,7 @@ tokenized_state_machine!{ Cuckoo {
 
     #[inductive(initialize)]
     fn initialize_inductive(post: Self) { }
-   
+
     #[inductive(delete_key_value)]
     fn delete_key_value_inductive(pre: Self, post: Self, key: Key, row: Row, col: Col) {
         assert forall |key0| (#[trigger] post.frag[key0]).is_some() implies
@@ -258,7 +258,7 @@ tokenized_state_machine!{ Cuckoo {
             }
         }
     }
-   
+
     #[inductive(update_key_value)]
     fn update_key_value_inductive(pre: Self, post: Self, key: Key, new_val: Value, row: Row, col: Col) {
         assert forall |key0| (#[trigger] post.frag[key0]).is_some() implies
@@ -279,7 +279,7 @@ tokenized_state_machine!{ Cuckoo {
             }
         }
     }
-   
+
     #[inductive(insert_key_value)]
     fn insert_key_value_inductive(pre: Self, post: Self, key: Key, new_val: Value, row: Row, col: Col) {
         assert forall |key0| (#[trigger] post.frag[key0]).is_some() implies
@@ -300,7 +300,7 @@ tokenized_state_machine!{ Cuckoo {
             }
         }
     }
-   
+
     #[inductive(swing)]
     fn swing_inductive(pre: Self, post: Self, key: Key, row: Row, col: Col, row2: Row, col2: Col) {
         assert forall |key0| (#[trigger] post.frag[key0]).is_some() implies
@@ -471,14 +471,14 @@ impl MyHashMap {
                 cell_ids.len() == i,
                 matrix.len() == i,
                 forall |j| i <= j < HEIGHT ==> matrix_toks.map().dom().contains(j),
-                forall |j| i <= j < HEIGHT ==> 
+                forall |j| i <= j < HEIGHT ==>
                     matrix_toks.map()[j] === Seq::new(WIDTH as nat, |w| None),
                 matrix_toks.instance_id() == instance.id(),
                 forall |j| 0 <= j < LOCKS_LEN ==> lock_stores.dom().contains(j),
                 forall |k: nat| 0 <= k < i ==>
                     lock_stores[#[trigger] lock_for_row(k)].rows.dom().contains(k)
                     && lock_stores[lock_for_row(k)].rows[k].pt.id() == cell_ids[k as int]
-                    && lock_stores[lock_for_row(k)].rows[k].pt.value()@ === 
+                    && lock_stores[lock_for_row(k)].rows[k].pt.value()@ ===
                        lock_stores[lock_for_row(k)].rows[k].token.value()
                     && lock_stores[lock_for_row(k)].rows[k].token.instance_id() == instance.id()
                     && lock_stores[lock_for_row(k)].rows[k].token.key() == k
@@ -510,7 +510,7 @@ impl MyHashMap {
             /*assert forall |k: nat| 0 <= k < i implies
                     lock_stores[#[trigger] lock_for_row(k)].rows.dom().contains(k)
                     && lock_stores[lock_for_row(k)].rows[k].pt.id() == cell_ids[k as int]
-                    && lock_stores[lock_for_row(k)].rows[k].pt.value()@ === 
+                    && lock_stores[lock_for_row(k)].rows[k].pt.value()@ ===
                        lock_stores[lock_for_row(k)].rows[k].token.value()
                     && lock_stores[lock_for_row(k)].rows[k].token.instance_id() == instance.id()
                     && lock_stores[lock_for_row(k)].rows[k].token.key() == k
@@ -521,7 +521,7 @@ impl MyHashMap {
                 assert(lock_stores.dom().contains(lock_for_row(k)));
                 assert(lock_stores[lock_for_row(k)].rows.dom().contains(k));
                 assert(lock_stores[lock_for_row(k)].rows[k].pt.id() == cell_ids[k as int]);
-                assert(lock_stores[lock_for_row(k)].rows[k].pt.value()@ === 
+                assert(lock_stores[lock_for_row(k)].rows[k].pt.value()@ ===
                        lock_stores[lock_for_row(k)].rows[k].token.value());
                 assert(lock_stores[lock_for_row(k)].rows[k].token.instance_id() == instance.id());
                 assert(lock_stores[lock_for_row(k)].rows[k].token.key() == k);
@@ -530,7 +530,7 @@ impl MyHashMap {
                 } else {
                 assert(lock_stores[lock_for_row(k)].rows.dom().contains(k));
                 assert(lock_stores[lock_for_row(k)].rows[k].pt.id() == cell_ids[k as int]);
-                assert(lock_stores[lock_for_row(k)].rows[k].pt.value()@ === 
+                assert(lock_stores[lock_for_row(k)].rows[k].pt.value()@ ===
                        lock_stores[lock_for_row(k)].rows[k].token.value());
                 assert(lock_stores[lock_for_row(k)].rows[k].token.instance_id() == instance.id());
                 assert(lock_stores[lock_for_row(k)].rows[k].token.key() == k);
@@ -556,7 +556,7 @@ impl MyHashMap {
                     lock_stores.dom().contains(lock_for_row(k)) ==>
                     lock_stores[#[trigger] lock_for_row(k)].rows.dom().contains(k)
                     && lock_stores[lock_for_row(k)].rows[k].pt.id() == cell_ids[k as int]
-                    && lock_stores[lock_for_row(k)].rows[k].pt.value()@ === 
+                    && lock_stores[lock_for_row(k)].rows[k].pt.value()@ ===
                        lock_stores[lock_for_row(k)].rows[k].token.value()
                     && lock_stores[lock_for_row(k)].rows[k].token.instance_id() == instance.id()
                     && lock_stores[lock_for_row(k)].rows[k].token.key() == k
@@ -897,7 +897,7 @@ impl MyHashMap {
                 proof {
                     lock1x.rows.tracked_insert(h1x as nat, r);
                 }
-                
+
                 handle1x.release_write(Tracked(lock1x));
                 main_handle.release_write(Tracked(()));
                 return true;
@@ -1042,7 +1042,7 @@ impl MyHashMap {
         let r = rand_u8();
         let first_row = if r % 2 == 0 { h1 } else { h2 };
         let first_col = (r >> 1) as usize % WIDTH;
-        let first_key = 
+        let first_key =
             self.matrix[first_row].borrow(
                 Tracked(if first_row == h1x { &lock1x.rows.tracked_borrow(h1x as nat).pt } else { &lock2x.rows.tracked_borrow(h2x as nat).pt })
             )[first_col].unwrap().0;
@@ -1074,7 +1074,7 @@ impl MyHashMap {
                 0 <= path[path.len() - 1].col < WIDTH,
                 path[path.len() - 1].row == hash1(path[path.len() - 1].key)
                   || path[path.len() - 1].row == hash2(path[path.len() - 1].key),
-                
+
             decreases i
         {
             let ghost old_path = path;
@@ -1192,7 +1192,7 @@ impl MyHashMap {
                 proof {
                     lock1x.rows.tracked_insert(h1x as nat, r);
                 }
-                
+
                 handle1x.release_write(Tracked(lock1x));
                 main_handle.release_write(Tracked(()));
                 return true;
@@ -1420,7 +1420,7 @@ impl MyHashMap {
         if entry1[old_col].is_some() && entry1[old_col].unwrap().0 == key && entry2[new_col].is_none() {
             entry2[new_col] = entry1[old_col];
             entry1[old_col] = None;
-            
+
             self.matrix[old_row].write(Tracked(&mut r1.pt), entry1);
             self.matrix[new_row].write(Tracked(&mut r2.pt), entry2);
 
