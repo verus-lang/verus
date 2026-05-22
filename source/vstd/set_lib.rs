@@ -908,6 +908,7 @@ pub trait FiniteFull: Sized {
     proof fn full_properties()
         ensures
             Set::<Self>::full() is Some,
+            forall|a: Self| Set::<Self>::full().unwrap().contains(a),
     ;
 }
 
@@ -915,6 +916,7 @@ pub broadcast proof fn full_set_properties<A: FiniteFull>()
     ensures
         #![trigger Set::<A>::full()]
         Set::<A>::full() is Some,
+        forall|a: A| Set::<A>::full().unwrap().contains(a),
 {
     A::full_properties();
 }
