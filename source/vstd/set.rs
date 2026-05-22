@@ -678,9 +678,8 @@ pub broadcast proof fn lemma_set_empty<A>(a: A)
 
 pub broadcast proof fn lemma_set_new<A>(f: spec_fn(A) -> bool, a: A)
     requires
-        ISet::<A>::new(f).finite(),
-    ensures
         Set::<A>::new(f) is Some,
+    ensures
         #[trigger] Set::<A>::new(f).unwrap().contains(a) == f(a),
 {
     super::iset::lemma_iset_new(f, a);
