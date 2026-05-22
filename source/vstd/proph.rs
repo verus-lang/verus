@@ -285,7 +285,7 @@ impl<T> ProphecySeq<T> {
 
     pub proof fn resolve_nil(tracked self)
         ensures
-            self.seq() === seq![],
+            self.seq() == seq![],
     {
         let tracked ProphecySeq { var } = self;
         var.resolve(seq![]);

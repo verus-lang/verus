@@ -24,7 +24,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(o === Foo(20));
+            assert(o == Foo(20));
         }
 
         fn test_foo_fails(o: Foo, orig: Foo) {
@@ -57,7 +57,7 @@ test_verify_one_file_with_options! {
             }
 
             assert(orig is None ==> o is None);
-            assert(orig is Some ==> o === Some(20));
+            assert(orig is Some ==> o == Some(20));
         }
 
         fn test_opt_fails1(o: Option<u64>, orig: Option<u64>) {
@@ -76,7 +76,7 @@ test_verify_one_file_with_options! {
             }
 
             assert(orig is None ==> o is None);
-            assert(orig is Some ==> o === Some(20));
+            assert(orig is Some ==> o == Some(20));
 
             assert(o is Some); // FAILS
             assert(o is None); // FAILS
@@ -97,7 +97,7 @@ test_verify_one_file_with_options! {
             assert(orig == Foo(*i));
             *i = 20;
 
-            assert(o === Foo(20));
+            assert(o == Foo(20));
         }
 
         fn test_foo_fails(o: Foo, orig: Foo) {
@@ -278,7 +278,7 @@ test_verify_one_file_with_options! {
             *ref2 = 200;
 
             assert(x == 0);
-            assert(pair === (100, 200));
+            assert(pair == (100, 200));
         }
 
         fn test2() {
@@ -292,7 +292,7 @@ test_verify_one_file_with_options! {
             *ref2 = 200;
 
             assert(x == 0);
-            assert(pair === (100, 200));
+            assert(pair == (100, 200));
         }
 
         fn test_fails() {
@@ -306,7 +306,7 @@ test_verify_one_file_with_options! {
             *ref2 = 200;
 
             assert(x == 0);
-            assert(pair === (100, 200));
+            assert(pair == (100, 200));
             assert(false); // FAILS
         }
 
@@ -321,7 +321,7 @@ test_verify_one_file_with_options! {
             *ref2 = 200;
 
             assert(x == 0);
-            assert(pair === (100, 200));
+            assert(pair == (100, 200));
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
@@ -348,7 +348,7 @@ test_verify_one_file_with_options! {
             }
 
             assert(orig is None ==> o is None);
-            assert(orig is Some ==> o === Some(20));
+            assert(orig is Some ==> o == Some(20));
         }
 
         fn test_explicit_ref_mut_fails(o: Option<u64>, orig: Option<u64>) {
@@ -366,7 +366,7 @@ test_verify_one_file_with_options! {
             }
 
             assert(orig is None ==> o is None);
-            assert(orig is Some ==> o === Some(20));
+            assert(orig is Some ==> o == Some(20));
 
             assert(o is Some); // FAILS
             assert(o is None); // FAILS
@@ -389,7 +389,7 @@ test_verify_one_file_with_options! {
             }
 
             assert(orig is None ==> o is None);
-            assert(orig is Some ==> o === Some(20));
+            assert(orig is Some ==> o == Some(20));
         }
 
         fn test_explicit_redundant_ref_mut_fails(o: Option<u64>, orig: Option<u64>) {
@@ -409,7 +409,7 @@ test_verify_one_file_with_options! {
             }
 
             assert(orig is None ==> o is None);
-            assert(orig is Some ==> o === Some(20));
+            assert(orig is Some ==> o == Some(20));
 
             assert(o is Some); // FAILS
             assert(o is None); // FAILS
@@ -430,7 +430,7 @@ test_verify_one_file_with_options! {
             assert(orig == Some(*i));
             *i = 20;
 
-            assert(o === Some(20));
+            assert(o == Some(20));
         }
 
         fn test_explicit_redundant_ref_mut(o: Foo<u64>, orig: Foo<u64>) {
@@ -442,7 +442,7 @@ test_verify_one_file_with_options! {
             assert(orig == Some(*i));
             *i = 20;
 
-            assert(o === Some(20));
+            assert(o == Some(20));
         }
 
         fn test_explicit_ref_mut_fails(o: Foo<u64>, orig: Foo<u64>) {
@@ -453,7 +453,7 @@ test_verify_one_file_with_options! {
             assert(orig == Some(*i));
             *i = 20;
 
-            assert(o === Some(20));
+            assert(o == Some(20));
             assert(false); // FAILS
         }
 
@@ -466,7 +466,7 @@ test_verify_one_file_with_options! {
             assert(orig == Some(*i));
             *i = 20;
 
-            assert(o === Some(20));
+            assert(o == Some(20));
             assert(false); // FAILS
         }
 
@@ -528,7 +528,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(o === match orig {
+            assert(o == match orig {
                 Some(x) => Some(20),
                 None => None,
             });
@@ -559,7 +559,7 @@ test_verify_one_file_with_options! {
             }
 
             assert(orig is None ==> o is None);
-            assert(orig is Some ==> o === Option::Some(20));
+            assert(orig is Some ==> o == Option::Some(20));
         }
 
         fn test_mut_mut_fails(o: Option<u64>, orig: Option<u64>) {
@@ -579,7 +579,7 @@ test_verify_one_file_with_options! {
             }
 
             assert(orig is None ==> o is None);
-            assert(orig is Some ==> o === Some(20));
+            assert(orig is Some ==> o == Some(20));
 
             assert(o is Some); // FAILS
             assert(o is None); // FAILS
@@ -645,7 +645,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(o === match orig {
+            assert(o == match orig {
                 Some(Some(x)) => Some(Some((x+1) as u64)),
                 Some(None) => Some(Some(0)),
                 None => None,
@@ -672,7 +672,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(o === match orig {
+            assert(o == match orig {
                 Some(Some(x)) => Some(Some((x+1) as u64)),
                 Some(None) => Some(Some(0)),
                 None => None,
@@ -701,7 +701,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(o === match orig {
+            assert(o == match orig {
                 Some(Some(x)) => Some(Some((x+1) as u64)),
                 Some(None) => Some(Some(0)),
                 None => None,
@@ -1279,7 +1279,7 @@ test_verify_one_file_with_options! {
 
             assert(x == 0);
             assert(big.0 == 4);
-            assert(big.1 === &(2, 3));
+            assert(big.1 == &(2, 3));
         }
 
         fn test_mut_ref_to_struct_with_immut_refs_fails() {
@@ -1303,7 +1303,7 @@ test_verify_one_file_with_options! {
 
             assert(x == 0);
             assert(big.0 == 4);
-            assert(big.1 === &(2, 3));
+            assert(big.1 == &(2, 3));
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
@@ -1331,7 +1331,7 @@ test_verify_one_file_with_options! {
 
             assert(x == 0);
             assert(big.0 == 4);
-            assert(big.1 === &(2, 3));
+            assert(big.1 == &(2, 3));
         }
 
         fn test_mut_ref_to_struct_with_immut_refs_fails() {
@@ -1352,7 +1352,7 @@ test_verify_one_file_with_options! {
 
             assert(x == 0);
             assert(big.0 == 4);
-            assert(big.1 === &(2, 3));
+            assert(big.1 == &(2, 3));
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
@@ -1397,7 +1397,7 @@ test_verify_one_file_with_options! {
             assert(v == 5);
             if cond {
                 assert(big->A_0 == 4);
-                assert(big->A_1 === &(2, 3));
+                assert(big->A_1 == &(2, 3));
             } else {
                 assert(big->B_0 == 4);
             }
@@ -1435,7 +1435,7 @@ test_verify_one_file_with_options! {
             assert(v == 5);
             if cond {
                 assert(big->A_0 == 4);
-                assert(big->A_1 === &(2, 3));
+                assert(big->A_1 == &(2, 3));
                 assert(false); // FAILS
             } else {
                 assert(big->B_0 == 4);
@@ -1465,9 +1465,9 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(pair === (2, 3));
-            assert(big_pair.0 === 5);
-            assert(big_pair === (5, &(2, 3)));
+            assert(pair == (2, 3));
+            assert(big_pair.0 == 5);
+            assert(big_pair == (5, &(2, 3)));
         }
 
         fn test_struct_fails() {
@@ -1486,9 +1486,9 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(pair === (2, 3));
-            assert(big_pair.0 === 5);
-            assert(big_pair === (5, &(2, 3)));
+            assert(pair == (2, 3));
+            assert(big_pair.0 == 5);
+            assert(big_pair == (5, &(2, 3)));
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
@@ -1523,12 +1523,12 @@ test_verify_one_file_with_options! {
             }
 
             if cond {
-                assert(pair === (2, 3));
-                assert(big_pair.0 === 5);
-                assert(big_pair === (5, &(2, 3)));
+                assert(pair == (2, 3));
+                assert(big_pair.0 == 5);
+                assert(big_pair == (5, &(2, 3)));
             } else {
-                assert(pair === (2, 3));
-                assert(big_pair === (4, &(2, 3)));
+                assert(pair == (2, 3));
+                assert(big_pair == (4, &(2, 3)));
             }
         }
 
@@ -1554,13 +1554,13 @@ test_verify_one_file_with_options! {
             }
 
             if cond {
-                assert(pair === (2, 3));
-                assert(big_pair.0 === 5);
-                assert(big_pair === (5, &(2, 3)));
+                assert(pair == (2, 3));
+                assert(big_pair.0 == 5);
+                assert(big_pair == (5, &(2, 3)));
                 assert(false); // FAILS
             } else {
-                assert(pair === (2, 3));
-                assert(big_pair === (4, &(2, 3)));
+                assert(pair == (2, 3));
+                assert(big_pair == (4, &(2, 3)));
                 assert(false); // FAILS
             }
         }
@@ -1585,8 +1585,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(pair === (2, 3));
-            assert(big_pair.0 === 4);
+            assert(pair == (2, 3));
+            assert(big_pair.0 == 4);
         }
 
         fn test_struct2() {
@@ -1605,8 +1605,8 @@ test_verify_one_file_with_options! {
 
             *big_pair.1 = (10, 11);
 
-            assert(pair === (10, 11));
-            assert(big_pair.0 === 4);
+            assert(pair == (10, 11));
+            assert(big_pair.0 == 4);
         }
 
         fn test_struct_fails() {
@@ -1623,8 +1623,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(pair === (2, 3));
-            assert(big_pair.0 === 4);
+            assert(pair == (2, 3));
+            assert(big_pair.0 == 4);
             assert(false); // FAILS
         }
 
@@ -1644,8 +1644,8 @@ test_verify_one_file_with_options! {
 
             *big_pair.1 = (10, 11);
 
-            assert(pair === (10, 11));
-            assert(big_pair.0 === 4);
+            assert(pair == (10, 11));
+            assert(big_pair.0 == 4);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
@@ -1677,12 +1677,12 @@ test_verify_one_file_with_options! {
             }
 
             if cond {
-                assert(pair === (2, 3));
-                assert(big_pair.0 === 4);
+                assert(pair == (2, 3));
+                assert(big_pair.0 == 4);
             } else {
                 assert(has_resolved(big_pair.1)); // TODO(new_mut_ref): triggering
-                assert(pair === (2, 3));
-                assert(big_pair.0 === 4);
+                assert(pair == (2, 3));
+                assert(big_pair.0 == 4);
             }
         }
 
@@ -1707,11 +1707,11 @@ test_verify_one_file_with_options! {
             *big_pair.1 = (10, 11);
 
             if cond {
-                assert(pair === (10, 11));
-                assert(big_pair.0 === 4);
+                assert(pair == (10, 11));
+                assert(big_pair.0 == 4);
             } else {
-                assert(pair === (10, 11));
-                assert(big_pair.0 === 4);
+                assert(pair == (10, 11));
+                assert(big_pair.0 == 4);
             }
         }
 
@@ -1734,13 +1734,13 @@ test_verify_one_file_with_options! {
             }
 
             if cond {
-                assert(pair === (2, 3));
-                assert(big_pair.0 === 4);
+                assert(pair == (2, 3));
+                assert(big_pair.0 == 4);
                 assert(false); // FAILS
             } else {
                 assert(has_resolved(big_pair.1));
-                assert(pair === (2, 3));
-                assert(big_pair.0 === 4);
+                assert(pair == (2, 3));
+                assert(big_pair.0 == 4);
                 assert(false); // FAILS
             }
         }
@@ -1766,12 +1766,12 @@ test_verify_one_file_with_options! {
             *big_pair.1 = (10, 11);
 
             if cond {
-                assert(pair === (10, 11));
-                assert(big_pair.0 === 4);
+                assert(pair == (10, 11));
+                assert(big_pair.0 == 4);
                 assert(false); // FAILS
             } else {
-                assert(pair === (10, 11));
-                assert(big_pair.0 === 4);
+                assert(pair == (10, 11));
+                assert(big_pair.0 == 4);
                 assert(false); // FAILS
             }
         }
@@ -1799,7 +1799,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(pair === (2, 3));
+            assert(pair == (2, 3));
         }
 
         fn test_struct_fails() {
@@ -1814,7 +1814,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(pair === (2, 3));
+            assert(pair == (2, 3));
             assert(false); // FAILS
         }
 
@@ -1946,11 +1946,11 @@ test_verify_one_file_with_options! {
             }
 
             if cond {
-                assert(x === (70,));
-                assert(y === (90,));
+                assert(x == (70,));
+                assert(y == (90,));
             } else {
-                assert(x === (90,));
-                assert(y === (70,));
+                assert(x == (90,));
+                assert(y == (70,));
             }
         }
 
@@ -1987,12 +1987,12 @@ test_verify_one_file_with_options! {
             }
 
             if cond {
-                assert(x === (70,));
-                assert(y === (90,));
+                assert(x == (70,));
+                assert(y == (90,));
                 assert(false); // FAILS
             } else {
-                assert(x === (90,));
-                assert(y === (70,));
+                assert(x == (90,));
+                assert(y == (70,));
                 assert(false); // FAILS
             }
         }
@@ -2627,7 +2627,7 @@ test_verify_one_file_with_options! {
             }
 
             assert(orig is None ==> o is None);
-            assert(orig is Some ==> o === Some(20));
+            assert(orig is Some ==> o == Some(20));
         }
 
         fn test_opt_fails1(o: Option<u64>, orig: Option<u64>) {
@@ -2642,7 +2642,7 @@ test_verify_one_file_with_options! {
             }
 
             assert(orig is None ==> o is None);
-            assert(orig is Some ==> o === Some(20));
+            assert(orig is Some ==> o == Some(20));
 
             assert(o is Some); // FAILS
             assert(o is None); // FAILS
@@ -2659,7 +2659,7 @@ test_verify_one_file_with_options! {
             }
 
             assert(orig is None ==> o is None);
-            assert(orig is Some ==> o === Some(20));
+            assert(orig is Some ==> o == Some(20));
         }
 
         fn test_explicit_ref_mut_fails(o: Option<u64>, orig: Option<u64>) {
@@ -2673,7 +2673,7 @@ test_verify_one_file_with_options! {
             }
 
             assert(orig is None ==> o is None);
-            assert(orig is Some ==> o === Some(20));
+            assert(orig is Some ==> o == Some(20));
 
             assert(o is Some); // FAILS
             assert(o is None); // FAILS
@@ -2871,10 +2871,10 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (if cond { 100 } else { 0 }));
-            assert(b === (if cond { 101 } else { 1 }));
-            assert(c === 2);
-            assert(d === (if cond { 3 } else { 103 }));
+            assert(a == (if cond { 100i32 } else { 0 }));
+            assert(b == (if cond { 101i32 } else { 1 }));
+            assert(c == 2);
+            assert(d == (if cond { 3i32 } else { 103 }));
         }
 
         fn test_fails<A, B>(cond: bool) {
@@ -2902,10 +2902,10 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (if cond { 100 } else { 0 }));
-            assert(b === (if cond { 101 } else { 1 }));
-            assert(c === 2);
-            assert(d === (if cond { 3 } else { 103 }));
+            assert(a == (if cond { 100i32 } else { 0 }));
+            assert(b == (if cond { 101i32 } else { 1 }));
+            assert(c == 2);
+            assert(d == (if cond { 3i32 } else { 103 }));
 
             if cond {
                 assert(false); // FAILS
@@ -2946,8 +2946,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (if cond { 100 } else { 0 }));
-            assert(c === 2);
+            assert(a == (if cond { 100i32 } else { 0 }));
+            assert(c == 2);
 
             if cond {
                 assert(m_ref->Bar_1 == 101);
@@ -2979,8 +2979,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (if cond { 100 } else { 0 }));
-            assert(c === 2);
+            assert(a == (if cond { 100i32 } else { 0 }));
+            assert(c == 2);
 
             if cond {
                 assert(m_ref->Bar_1 == 101);
@@ -3647,7 +3647,7 @@ test_verify_one_file_with_options! {
             let Foo(i) = o_ref else { assert(false); loop{} };
             assert(orig == Foo(*i));
             *i = 20;
-            assert(o === Foo(20));
+            assert(o == Foo(20));
         }
 
         #[allow(irrefutable_let_patterns)]
@@ -3675,7 +3675,7 @@ test_verify_one_file_with_options! {
             };
             assert(orig == Some(*i));
             *i = 20;
-            assert(o === Some(20));
+            assert(o == Some(20));
         }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -3691,7 +3691,7 @@ test_verify_one_file_with_options! {
             };
             assert(orig == Some(*i));
             *i = 20;
-            assert(o === Some(20));
+            assert(o == Some(20));
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
@@ -3848,7 +3848,7 @@ test_verify_one_file_with_options! {
             };
             assert(orig == Some(*i));
             *i = 20;
-            assert(o === Some(20));
+            assert(o == Some(20));
         }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -3864,7 +3864,7 @@ test_verify_one_file_with_options! {
             assert(orig == Some(*i));
             *i = 20;
 
-            assert(o === Some(20));
+            assert(o == Some(20));
             assert(false); // FAILS
         }
 
@@ -3881,7 +3881,7 @@ test_verify_one_file_with_options! {
             };
             assert(orig == Some(*i));
             *i = 20;
-            assert(o === Some(20));
+            assert(o == Some(20));
         }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -3898,7 +3898,7 @@ test_verify_one_file_with_options! {
             };
             assert(orig == Some(*i));
             *i = 20;
-            assert(o === Some(20));
+            assert(o == Some(20));
             assert(false); // FAILS
         }
 
@@ -3948,7 +3948,7 @@ test_verify_one_file_with_options! {
 
             *i = 20;
 
-            assert(o === match orig {
+            assert(o == match orig {
                 Some(x) => Some(20),
                 None => None,
             });
@@ -3977,7 +3977,7 @@ test_verify_one_file_with_options! {
             assert(orig == Option::Some(*i));
             *i = 20;
             assert(orig is Some);
-            assert(o === Option::Some(20));
+            assert(o == Option::Some(20));
         }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -3996,7 +3996,7 @@ test_verify_one_file_with_options! {
             assert(orig == Option::Some(*i));
             *i = 20;
             assert(orig is Some);
-            assert(o === Option::Some(20));
+            assert(o == Option::Some(20));
             assert(false); // FAILS
         }
 
@@ -4211,7 +4211,7 @@ test_verify_one_file_with_options! {
             };
             *a1 = 11;
             *b1 = 12;
-            assert(x === Option::Some((11, 12)));
+            assert(x == Option::Some((11, 12)));
         }
     } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot use `x` because it was mutably borrowed")
 }
@@ -4231,7 +4231,7 @@ test_verify_one_file_with_options! {
             };
             *a1 = 11;
             *b1 = 12;
-            assert(x === Option::Some((11, 12)));
+            assert(x == Option::Some((11, 12)));
         }
         fn test_fails() {
             let mut x = Option::Some((1, 2));
@@ -4245,7 +4245,7 @@ test_verify_one_file_with_options! {
             };
             *a1 = 11;
             *b1 = 12;
-            assert(x === Option::Some((11, 12)));
+            assert(x == Option::Some((11, 12)));
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)

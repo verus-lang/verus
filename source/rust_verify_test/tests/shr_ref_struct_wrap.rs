@@ -277,7 +277,7 @@ test_verify_one_file! {
         uninterp spec fn arbitrary<A>() -> A;
 
         proof fn test(tracked y: &Y) -> (tracked x: &X)
-            ensures x is Foo && x->Foo_y == y && x->Foo_g == 0 && x->Foo_g2 === Ghost(0),
+            ensures x is Foo && x->Foo_y == y && x->Foo_g == 0 && x->Foo_g2 == Ghost(0int),
         {
             shr_ref_struct_wrap(y, &X::Foo { g: 0, g2: Ghost(0), y: arbitrary() }, "Foo", "y")
         }
@@ -310,8 +310,8 @@ test_verify_one_file! {
             let tracked r: &X = shr_ref_struct_wrap(y, &arbitrary(), "Foo", "y");
             assert(r is Foo);
             let arbx = arbitrary::<X>();
-            assert(r->Foo_g === arbx->Foo_g);
-            assert(r->Foo_g2 === arbx->Foo_g2);
+            assert(r->Foo_g == arbx->Foo_g);
+            assert(r->Foo_g2 == arbx->Foo_g2);
             assert(r->Foo_y == y);
         }
     } => Ok(())

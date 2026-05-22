@@ -3366,6 +3366,7 @@ where
     v.visit_attributes_mut(&mut node.attrs);
     skip!(node.defaultness);
     skip!(node.unsafety);
+    skip!(node.constness);
     skip!(node.impl_token);
     v.visit_generics_mut(&mut node.generics);
     if let Some(it) = &mut node.trait_ {
@@ -3463,6 +3464,7 @@ where
     v.visit_visibility_mut(&mut node.vis);
     skip!(node.unsafety);
     skip!(node.auto_token);
+    skip!(node.constness);
     if let Some(it) = &mut node.restriction {
         v.visit_impl_restriction_mut(it);
     }

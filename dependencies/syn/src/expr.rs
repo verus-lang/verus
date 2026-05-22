@@ -2208,7 +2208,7 @@ pub(crate) mod parsing {
     // (i) without the diagnostic, syn's error message would otherwise be baffling
     //
     // (ii) this case is a little more relevant due to verus specifications in
-    //      function signatures, e.g., `requires x === Foo { a: 5 }` is not allowed
+    //      function signatures, e.g., `requires x == Foo { a: 5 }` is not allowed
     //      without additional parentheses.
     fn is_certainly_not_a_block(input: ParseStream) -> bool {
         let input = input.fork();

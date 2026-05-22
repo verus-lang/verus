@@ -1012,6 +1012,7 @@ fn handle_external_fn<'tcx>(
     remove_ignored_trait_bounds_from_predicates(
         ctxt,
         in_trait,
+        None,
         &[ctxt.tcx.parent(external_id), ctxt.tcx.parent(id)],
         None,
         &mut proxy_preds,
@@ -1019,6 +1020,7 @@ fn handle_external_fn<'tcx>(
     remove_ignored_trait_bounds_from_predicates(
         ctxt,
         in_trait,
+        None,
         &[ctxt.tcx.parent(external_id)],
         None,
         &mut external_preds,
@@ -1812,12 +1814,7 @@ pub(crate) fn check_item_fn<'tcx>(
     if header.ensure.0.len() + header.ensure.1.len() > 0 {
         match (is_async, &header.ensure_id_typ, ret_typ_mode.as_ref()) {
             (_, None, None) => {}
-            (_, None, Some(_)) => {
-                return err_span(
-                    sig.span,
-                    "the return value must be named in a function with an ensures clause",
-                );
-            }
+            (_, None, Some(_)) => {}
             (_, Some(_), None) => {
                 return err_span(
                     sig.span,
@@ -2446,6 +2443,7 @@ fn is_mut_ty<'tcx>(
 pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
     ctxt: &Context<'tcx>,
     in_trait: bool,
+    mut external_trait_private_bounds: Option<&mut Vec<Vec<String>>>,
     trait_ids: &[DefId],
     ex_trait_assoc: Option<rustc_middle::ty::GenericArg<'tcx>>,
     preds: &mut Vec<Clause<'tcx>>,
@@ -2474,16 +2472,48 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
                     true
                 }
             } else {
-                use crate::verus_items::{BuiltinTraitItem, RustItem, VerusItem};
-                let rust_item = crate::verus_items::get_rust_item(tcx, tp.trait_ref.def_id);
-                let verus_item = ctxt.verus_items.id_to_name.get(&tp.trait_ref.def_id);
+                use crate::rust_to_vir_base::def_path_to_vir_path;
+                use crate::verus_items::RustItem;
+                use vir::def::krate_to_string_ignore_stable_id;
+                let id = tp.trait_ref.def_id;
+                let rust_item = crate::verus_items::get_rust_item(tcx, id);
+                let is_local = id.is_local();
+                let mut is_external_trait_private_bound = false;
+                let is_match = |ignore: &Vec<String>| -> bool {
+                    if let Some(path) = def_path_to_vir_path(tcx, tcx.def_path(id)) {
+                        ignore.len() == path.segments.len() + 1
+                            && ignore[0] == krate_to_string_ignore_stable_id(&path.krate)
+                            && (0..path.segments.len())
+                                .into_iter()
+                                .all(|i| ignore[i + 1] == path.segments[i].to_string())
+                    } else {
+                        false
+                    }
+                };
+                if let Some(external_trait_private_bounds) = &mut external_trait_private_bounds {
+                    if let Some(i) = external_trait_private_bounds.iter().position(is_match) {
+                        // external_trait_private_bound should be for non-public bounds only.
+                        // It's hard to check whether id is really "effectively" non-public,
+                        // because of re-exports, but we can easily do a minimal sanity check to
+                        // see that it's not obviously public:
+                        let mut is_public = true;
+                        let mut ancestor = Some(id);
+                        while let Some(a) = ancestor {
+                            is_public = is_public && tcx.visibility(a).is_public();
+                            ancestor = tcx.opt_parent(a);
+                        }
+
+                        if !is_public && !is_local {
+                            external_trait_private_bounds.remove(i);
+                            is_external_trait_private_bound = true;
+                        }
+                    }
+                }
+
                 match rust_item {
                     Some(RustItem::Destruct) => false, // https://github.com/verus-lang/verus/pull/726
-                    Some(RustItem::SliceSealed) => false, // https://github.com/verus-lang/verus/pull/1434
-                    _ => match verus_item {
-                        Some(VerusItem::BuiltinTrait(BuiltinTraitItem::Sealed)) => false,
-                        _ => true,
-                    },
+                    _ if is_external_trait_private_bound => false,
+                    _ => true,
                 }
             }
         }

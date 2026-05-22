@@ -3510,6 +3510,7 @@ where
     }
     skip!(node.defaultness);
     skip!(node.unsafety);
+    skip!(node.constness);
     skip!(node.impl_token);
     v.visit_generics(&node.generics);
     if let Some(it) = &node.trait_ {
@@ -3617,6 +3618,7 @@ where
     v.visit_visibility(&node.vis);
     skip!(node.unsafety);
     skip!(node.auto_token);
+    skip!(node.constness);
     if let Some(it) = &node.restriction {
         v.visit_impl_restriction(it);
     }

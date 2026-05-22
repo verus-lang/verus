@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
@@ -78,13 +78,13 @@ jobs:
       cargo_verus: ${{ steps.filter.outputs.cargo_verus }}
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: detect changed paths
         id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             cargo_verus:
@@ -101,7 +101,7 @@ jobs:
 
       - name: checkout
         if: needs.change_filter.outputs.cargo_verus == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: setup rust
         if: needs.change_filter.outputs.cargo_verus == 'true'
@@ -125,7 +125,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: get z3
         working-directory: ./source
@@ -188,7 +188,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: get z3
         working-directory: ./source
@@ -235,7 +235,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: get z3
         working-directory: ./source
@@ -307,7 +307,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: setup rust
         uses: dtolnay/rust-toolchain@master

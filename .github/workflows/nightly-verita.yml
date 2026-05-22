@@ -56,7 +56,7 @@ jobs:
 
       - name: try to download previous results
         id: previous
-        uses: dawidd6/action-download-artifact@v17
+        uses: dawidd6/action-download-artifact@v21
         with:
           workflow: nightly-verita.yml
           name: verita-results

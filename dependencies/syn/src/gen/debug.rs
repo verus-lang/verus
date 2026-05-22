@@ -2477,6 +2477,7 @@ impl crate::ItemImpl {
         formatter.field("attrs", &self.attrs);
         formatter.field("defaultness", &self.defaultness);
         formatter.field("unsafety", &self.unsafety);
+        formatter.field("constness", &self.constness);
         formatter.field("impl_token", &self.impl_token);
         formatter.field("generics", &self.generics);
         formatter.field("trait_", &self.trait_);
@@ -2590,6 +2591,7 @@ impl crate::ItemTrait {
         formatter.field("vis", &self.vis);
         formatter.field("unsafety", &self.unsafety);
         formatter.field("auto_token", &self.auto_token);
+        formatter.field("constness", &self.constness);
         formatter.field("restriction", &self.restriction);
         formatter.field("trait_token", &self.trait_token);
         formatter.field("ident", &self.ident);

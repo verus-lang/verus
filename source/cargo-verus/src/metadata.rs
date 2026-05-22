@@ -96,6 +96,42 @@ impl<'a> MetadataIndex<'a> {
         }
         visited
     }
+
+    /// Names to pass via `--import-dep-if-present` for every `verify=true`
+    /// crate transitively reachable from `root` (excluding `root` itself).
+    ///
+    /// rustc only exposes direct deps as `--extern`, but when a re-exporting
+    /// facade pulls items in by canonical path rustc still loads the deeper
+    /// crate's metadata and Verus needs the matching `.vir`. Direct deps use
+    /// the consumer-side dep name (so `package = "..."` renames are honored);
+    /// deeper deps fall back to the lib target name, since there is no alias
+    /// from the consumer's perspective. Crates with no lib target are skipped.
+    pub fn transitive_verified_import_names(&self, root: &PackageId) -> Vec<String> {
+        let mut visited: Set<&PackageId> = Set::new();
+        let mut queue: VecDeque<(&PackageId, Option<String>)> = VecDeque::new();
+        for dep in self.get(root).deps.values() {
+            queue.push_back((&dep.pkg, Some(dep.name.clone())));
+        }
+        let mut names = Vec::new();
+        while let Some((pkg_id, name_override)) = queue.pop_front() {
+            if !visited.insert(pkg_id) {
+                continue;
+            }
+            let entry = self.get(pkg_id);
+            if entry.verus_metadata.verify {
+                let import_name = name_override.or_else(|| {
+                    entry.package.targets.iter().find(|t| t.is_lib()).map(|t| t.name.clone())
+                });
+                if let Some(name) = import_name {
+                    names.push(name);
+                }
+            }
+            for dep in entry.deps.values() {
+                queue.push_back((&dep.pkg, None));
+            }
+        }
+        names
+    }
 }
 
 impl<'a> MetadataIndexEntry<'a> {
@@ -105,10 +141,6 @@ impl<'a> MetadataIndexEntry<'a> {
 
     pub fn verus_metadata(&self) -> &VerusMetadata {
         &self.verus_metadata
-    }
-
-    pub fn deps(&self) -> impl Iterator<Item = &&'a cargo_metadata::NodeDep> {
-        self.deps.values()
     }
 }
 
@@ -164,5 +196,51 @@ mod tests {
         .unwrap();
 
         let _index = MetadataIndex::new(&metadata).unwrap();
+    }
+
+    #[test]
+    fn transitive_verified_import_names_walks_closure() {
+        let workspace = MockWorkspace::new()
+            .members([
+                MockPackage::new("deeper").lib().verify(true),
+                MockPackage::new("mid").lib().verify(true).deps([MockDep::workspace("deeper")]),
+                MockPackage::new("not_verified")
+                    .lib()
+                    .verify(false)
+                    .deps([MockDep::workspace("deeper")]),
+                MockPackage::new("consumer").lib().verify(true).deps([
+                    MockDep::path("mid", "../mid").alias("renamed"),
+                    MockDep::workspace("not_verified"),
+                ]),
+            ])
+            .materialize();
+
+        let manifest_path: String =
+            workspace.path().join("Cargo.toml").to_string_lossy().to_string();
+        let metadata = fetch_metadata(
+            vec!["--manifest-path".to_string(), manifest_path],
+            workspace.path().to_path_buf(),
+        )
+        .unwrap();
+        let index = MetadataIndex::new(&metadata).unwrap();
+
+        let consumer_id = &metadata
+            .packages
+            .iter()
+            .find(|p| p.name.as_str() == "consumer")
+            .expect("consumer package")
+            .id;
+
+        let mut names = index.transitive_verified_import_names(consumer_id);
+        names.sort();
+
+        // - `mid` (a direct verified dep) is emitted using the consumer-side
+        //   alias `renamed`, not the package name `mid`.
+        // - `deeper` (a deeper verified dep, only reachable through `mid` /
+        //   `not_verified`) is emitted using its lib target name. It appears
+        //   exactly once even though two paths reach it.
+        // - `not_verified` is not emitted, but the walk still descends into
+        //   its deps to reach `deeper`.
+        assert_eq!(names, vec!["deeper".to_string(), "renamed".to_string()]);
     }
 }

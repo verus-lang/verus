@@ -26,9 +26,24 @@ pub(crate) trait Scoper {
 pub(crate) struct NoScoper;
 impl Scoper for NoScoper {}
 
-pub type VisitorScopeMap = ScopeMap<VarIdent, bool>;
+pub enum BndKind {
+    Let,
+    Quant,
+    Lambda,
+    Choose,
+    /// Used by a pass in triggers.rs to distinguish trigger variables of interest
+    /// that are bound outside the walked expression.
+    OuterTrigger,
+}
 
-impl Scoper for ScopeMap<VarIdent, bool> {
+pub(crate) struct ScopeEntry {
+    /// Is this a Quant, Choose, or Let?
+    pub bnd_kind: BndKind,
+}
+
+pub type VisitorScopeMap = ScopeMap<VarIdent, ScopeEntry>;
+
+impl Scoper for ScopeMap<VarIdent, ScopeEntry> {
     fn push_scope(&mut self) {
         self.push_scope(true);
     }
@@ -38,17 +53,20 @@ impl Scoper for ScopeMap<VarIdent, bool> {
     }
 
     fn insert_binding_typ(&mut self, binder: &VarBinder<Typ>, bnd_source: &Bnd) {
-        let is_triggered = match bnd_source.x {
-            BndX::Quant(..) | BndX::Choose(..) => true,
-            BndX::Lambda(..) => false,
+        let bnd_kind = match bnd_source.x {
+            BndX::Quant(..) => BndKind::Quant,
+            BndX::Choose(..) => BndKind::Choose,
+            BndX::Lambda(..) => BndKind::Lambda,
             BndX::Let(..) => unreachable!(),
         };
-        let _ = self.insert(binder.name.clone(), is_triggered);
+        let entry = ScopeEntry { bnd_kind: bnd_kind };
+        let _ = self.insert(binder.name.clone(), entry);
     }
 
     fn insert_binding_exp(&mut self, binder: &VarBinder<Exp>, bnd_source: &Bnd) {
         assert!(matches!(bnd_source.x, BndX::Let(..)));
-        let _ = self.insert(binder.name.clone(), true);
+        let entry = ScopeEntry { bnd_kind: BndKind::Let };
+        let _ = self.insert(binder.name.clone(), entry);
     }
 }
 

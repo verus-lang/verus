@@ -40,21 +40,21 @@ test_verify_one_file! {
         // Generics
 
         fn foo_generic<T>(x: &[T])
-            requires x@.len() === 2, x[0] === x[1],
+            requires x@.len() == 2, x[0] == x[1],
         {
             let t = slice_index_get(x, 0);
-            assert(*t === x[1]);
+            assert(*t == x[1]);
         }
 
         fn foo_generic_index<T>(x: &[T])
-            requires x@.len() === 2, x[0] === x[1],
+            requires x@.len() == 2, x[0] == x[1],
         {
             let t = &x[0];
-            assert(*t === x[1]);
+            assert(*t == x[1]);
         }
 
         fn foo_generic2<T>(x: Vec<T>)
-            requires x@.len() === 2, x[0] === x[1],
+            requires x@.len() == 2, x[0] == x[1],
         {
             foo_generic(x.as_slice());
         }

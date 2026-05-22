@@ -212,7 +212,7 @@ RwLock {
 
     transition!{
         take_exc_lock_finish_writeback(clean: bool) {
-            require pre.flag !== Flag::Writeback && pre.flag !== Flag::WritebackAndPendingExcLock;
+            require pre.flag != Flag::Writeback && pre.flag != Flag::WritebackAndPendingExcLock;
 
             remove exc_state -= Some(let ExcState::PendingAwaitWriteback{bucket, value});
             add exc_state += Some(ExcState::Pending{bucket, visited_count: 0, clean, value});
@@ -429,7 +429,7 @@ RwLock {
     transition!{
         shared_check_loading(bucket: BucketId) {
             require bucket < RC_WIDTH;
-            require pre.flag !== Flag::Loading;
+            require pre.flag != Flag::Loading;
 
             remove shared_state -= { SharedState::Pending2{bucket} };
             birds_eye let value = pre.storage.get_Some_0();
@@ -538,8 +538,8 @@ RwLock {
 
     pub open spec fn count_loading_refs(loading_state: Option<LoadingState>, match_bucket: BucketId) -> nat {
         match loading_state {
-            Some(LoadingState::PendingCounted{bucket}) => if bucket===Some(match_bucket) { 1 } else { 0 },
-            Some(LoadingState::Obtained{bucket}) => if bucket===Some(match_bucket) { 1 } else { 0 },
+            Some(LoadingState::PendingCounted{bucket}) => if bucket == Some(match_bucket) { 1 } else { 0 },
+            Some(LoadingState::Obtained{bucket}) => if bucket == Some(match_bucket) { 1 } else { 0 },
             _ => 0
         }
     }
@@ -650,7 +650,7 @@ RwLock {
                     Some(LoadingState::PendingCounted{..}) => false,
                     _ => true
                 }
-                &&& self.flag !== Flag::Unmapped
+                &&& self.flag != Flag::Unmapped
             }
             SharedState::Obtained{bucket, value} => {
                 &&& Some(value) == self.storage
@@ -660,7 +660,7 @@ RwLock {
                     _ => true
                 }
                 &&& self.loading_state.is_None()
-                &&& self.flag !== Flag::Unmapped
+                &&& self.flag != Flag::Unmapped
             }
         }
     }
@@ -853,7 +853,7 @@ RwLock {
         // shared_storage_invariant
         let new_ss = SharedState::Obtained{bucket: pre_exc.get_Obtained_bucket().get_Some_0(), value};
         assert forall |ss| post.shared_state.count(ss) > 0 implies post.shared_state_valid(ss) by {
-            if ss !== new_ss {
+            if ss != new_ss {
                 assert(pre.shared_state_valid(ss));
             }
         }
