@@ -216,6 +216,7 @@ impl FileStats {
         }
     }
 
+    #[allow(unused)]
     fn mark_with_additional_kind(
         &mut self,
         spanned: &impl Spanned,
@@ -273,6 +274,7 @@ impl<'f> Visitor<'f> {
         }
     }
 
+    #[allow(unused)]
     fn mark_with_additional_kind(
         &mut self,
         spanned: &impl Spanned,
@@ -385,11 +387,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                     _ => None,
                 })
             {
-                self.mark(
-                    i,
-                    wrapper_code_kind,
-                    LineContent::GhostTracked(wrapper_code_kind),
-                );
+                self.mark(i, wrapper_code_kind, LineContent::GhostTracked(wrapper_code_kind));
                 return;
             }
         }
@@ -466,11 +464,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                 LineContent::ProofDirective,
             );
             for e in invariant.exprs.exprs.iter() {
-                self.mark(
-                    &e,
-                    self.mode_or_trusted(CodeKind::Proof),
-                    LineContent::ProofDirective,
-                );
+                self.mark(&e, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
             }
         }
         if let Some(invariant_ensures) = &i.invariant_ensures {
@@ -1409,11 +1403,7 @@ impl<'f> Visitor<'f> {
                 );
             }
             if let Some(ato) = &sig.spec.atomic_spec {
-                self.mark(
-                    ato,
-                    self.mode_or_trusted(CodeKind::Spec),
-                    LineContent::FunctionSpec,
-                );
+                self.mark(ato, self.mode_or_trusted(CodeKind::Spec), LineContent::FunctionSpec);
             }
         }
         for p in &sig.inputs {
