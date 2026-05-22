@@ -890,6 +890,8 @@ test_verify_one_file_with_options! {
 
             m.insert(3, 4);
             m.insert(6, -8);
+            assert(m@.dom().contains(3));
+            assert(m@.dom().contains(6));
 
             let mut idx = 0;
             for (k, v) in iter: m.iter()
