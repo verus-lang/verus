@@ -1095,7 +1095,7 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
             #vstd::map::Map<#key, #val>
         })),
         ShardableType::StorageIMap(key, val) => Some(Type::Verbatim(quote_vstd! { vstd =>
-            #vstd::map::IMap<#key, #val>
+            #vstd::imap::IMap<#key, #val>
         })),
     }
 }
@@ -1248,7 +1248,7 @@ fn relation_for_collection_of_internal_tokens(
             let fncall = if strict {
                 quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
             } else {
-                quote_spanned_vstd! { vstd, span => #vstd::set::ISet::spec_le }
+                quote_spanned_vstd! { vstd, span => #vstd::iset::ISet::spec_le }
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
                 #fncall(#given_value, (#param_value).set())
@@ -1270,7 +1270,7 @@ fn relation_for_collection_of_internal_tokens(
             let fncall = if strict {
                 quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
             } else {
-                quote_spanned_vstd! { vstd, span => #vstd::map::IMap::spec_le }
+                quote_spanned_vstd! { vstd, span => #vstd::imap::IMap::spec_le }
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
                 #fncall(#given_value, (#param_value).map())

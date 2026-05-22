@@ -3,7 +3,7 @@
 use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::atomic_ghost::*;
-use vstd::map::*;
+use vstd::imap::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
 

@@ -1054,7 +1054,7 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
             Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::set::Set<#ty> })
         }
         ShardableType::ISet(ty) | ShardableType::PersistentISet(ty) => {
-            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::set::ISet<#ty> })
+            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::iset::ISet<#ty> })
         }
         ShardableType::Map(key, val)
         | ShardableType::PersistentMap(key, val)
@@ -1064,7 +1064,7 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
         ShardableType::IMap(key, val)
         | ShardableType::PersistentIMap(key, val)
         | ShardableType::StorageIMap(key, val) => {
-            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::map::IMap<#key, #val> })
+            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::imap::IMap<#key, #val> })
         }
         ShardableType::Multiset(ty) => {
             Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::multiset::Multiset<#ty> })

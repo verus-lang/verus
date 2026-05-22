@@ -1,7 +1,7 @@
 // rust_verify/tests/example.rs
 #[allow(unused_imports)]
 use verus_builtin::*;
-use vstd::map::*;
+use vstd::imap::*;
 use vstd::{pervasive::*, *};
 
 use verus_state_machines_macros::tokenized_state_machine;

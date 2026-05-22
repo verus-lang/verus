@@ -1,11 +1,11 @@
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 #![allow(unused_imports)]
 use verus_state_machines_macros::tokenized_state_machine;
-use vstd::map::*;
+use vstd::imap::*;
+use vstd::iset::*;
 use vstd::modes::*;
 use vstd::prelude::*;
 use vstd::seq::*;
-use vstd::set::*;
 use vstd::slice::*;
 use vstd::{pervasive::*, prelude::*, *};
 
@@ -108,7 +108,7 @@ tokenized_state_machine!{
 
         #[inductive(push_into_top_sort)]
         fn push_into_top_sort_inductive(pre: Self, post: Self, v: V) {
-            assert_sets_equal!(post.unvisited, post.visited.complement());
+            assert_isets_equal!(post.unvisited, post.visited.complement());
 
             assert forall |a| #[trigger] post.visited.contains(a) implies
                 post.top_sort.contains(a)
