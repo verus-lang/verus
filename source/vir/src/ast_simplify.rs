@@ -1044,11 +1044,9 @@ fn add_fndef_axioms_to_function(
     let (trait_impls_out, assoc_type_impl) = if fn_once_trait_in_scope {
         let self_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), None));
         let arg_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
-        let args_tuple_typ = Arc::new(TypX::Datatype(
-            Dt::Tuple(arg_typs.len()),
-            Arc::new(arg_typs),
-            Arc::new(vec![]),
-        ));
+        let tuple_dt = state.tuple_type_name(arg_typs.len());
+        let args_tuple_typ =
+            Arc::new(TypX::Datatype(tuple_dt, Arc::new(arg_typs), Arc::new(vec![])));
         let trait_typ_args = Arc::new(vec![self_typ, args_tuple_typ]);
 
         let mk_impl_path = |kind: ClosureKind| {
