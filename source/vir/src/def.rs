@@ -1070,95 +1070,10 @@ pub fn fn_namespace_name(atomicity: InvAtomicity) -> Fun {
     })
 }
 
-pub fn set_type_path() -> Path {
-    Arc::new(PathX {
-        krate: CrateId::Vstd,
-        segments: Arc::new(vec![Arc::new("set".to_string()), Arc::new("Set".to_string())]),
-    })
-}
-
 pub fn iset_type_path() -> Path {
     Arc::new(PathX {
         krate: CrateId::Vstd,
         segments: Arc::new(vec![Arc::new("iset".to_string()), Arc::new("ISet".to_string())]),
-    })
-}
-
-pub fn fn_set_empty_name() -> Fun {
-    Arc::new(FunX {
-        path: Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: Arc::new(vec![
-                Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
-                Arc::new("empty".to_string()),
-            ]),
-        }),
-    })
-}
-
-pub fn fn_set_full_name() -> Fun {
-    Arc::new(FunX {
-        path: Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: Arc::new(vec![
-                Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
-                Arc::new("full".to_string()),
-            ]),
-        }),
-    })
-}
-
-pub fn fn_set_subset_of_name() -> Fun {
-    Arc::new(FunX {
-        path: Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: Arc::new(vec![
-                Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
-                Arc::new("subset_of".to_string()),
-            ]),
-        }),
-    })
-}
-
-pub fn fn_set_insert_name() -> Fun {
-    Arc::new(FunX {
-        path: Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: Arc::new(vec![
-                Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
-                Arc::new("insert".to_string()),
-            ]),
-        }),
-    })
-}
-
-pub fn fn_set_remove_name() -> Fun {
-    Arc::new(FunX {
-        path: Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: Arc::new(vec![
-                Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
-                Arc::new("remove".to_string()),
-            ]),
-        }),
-    })
-}
-
-pub fn fn_set_contains_name() -> Fun {
-    Arc::new(FunX {
-        path: Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: Arc::new(vec![
-                Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
-                Arc::new("contains".to_string()),
-            ]),
-        }),
     })
 }
 

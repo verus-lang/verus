@@ -824,7 +824,7 @@ impl Visitor {
                 }
                 InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
                     self.visit_expr_mut(&mut expr);
-                    let typ = quote_vstd! { vstd => #vstd::set::Set<int> };
+                    let typ = quote_vstd! { vstd => #vstd::iset::ISet<int> };
                     spec_stmts.push(Stmt::Expr(
                         Expr::Verbatim(
                             quote_spanned_builtin!(verus_builtin, expr.span() => #verus_builtin::opens_invariants_set::<#typ>(#expr)),

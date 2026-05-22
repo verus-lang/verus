@@ -9,7 +9,7 @@ use std::sync::Arc;
 /// The idea is to keep a "mask" at every program point, the set of invariants
 /// which are allowed to be opened.
 ///
-/// In general, the mask set is represented by a vstd::set::Set.  As an optimization,
+/// In general, the mask set is represented by a vstd::iset::ISet.  As an optimization,
 /// we keep track of whether the mask is empty or full, and elide certain checks in
 /// those cases.
 
@@ -37,7 +37,7 @@ pub fn namespace_set_typs() -> Typs {
 
 pub fn namespace_set_typ() -> Typ {
     Arc::new(TypX::Datatype(
-        Dt::Path(crate::def::set_type_path()),
+        Dt::Path(crate::def::iset_type_path()),
         namespace_set_typs(),
         Arc::new(vec![]),
     ))
@@ -47,19 +47,19 @@ impl MaskSet {
     pub fn to_exp(self: &Self, ctx: &Ctx) -> Exp {
         match self {
             MaskSet::Empty { span } => {
-                let empty_fun = CallFun::Fun(crate::def::fn_set_empty_name(), None);
+                let empty_fun = CallFun::Fun(crate::def::fn_iset_empty_name(), None);
                 let empty_expx = ExpX::Call(empty_fun, namespace_set_typs(), Arc::new(vec![]));
                 let empty_exp = SpannedTyped::new(&span, &namespace_set_typ(), empty_expx);
                 empty_exp
             }
             MaskSet::Full { span } => {
-                let full_fun = CallFun::Fun(crate::def::fn_set_full_name(), None);
+                let full_fun = CallFun::Fun(crate::def::fn_iset_full_name(), None);
                 let full_expx = ExpX::Call(full_fun, namespace_set_typs(), Arc::new(vec![]));
                 let full_exp = SpannedTyped::new(&span, &namespace_set_typ(), full_expx);
                 full_exp
             }
             MaskSet::Insert { base, elem } => {
-                let insert_fun = CallFun::Fun(crate::def::fn_set_insert_name(), None);
+                let insert_fun = CallFun::Fun(crate::def::fn_iset_insert_name(), None);
                 let insert_expx = ExpX::Call(
                     insert_fun,
                     namespace_set_typs(),
@@ -70,7 +70,7 @@ impl MaskSet {
                 insert_exp
             }
             MaskSet::Remove { base, elem } => {
-                let remove_fun = CallFun::Fun(crate::def::fn_set_remove_name(), None);
+                let remove_fun = CallFun::Fun(crate::def::fn_iset_remove_name(), None);
                 let remove_expx = ExpX::Call(
                     remove_fun,
                     namespace_set_typs(),
@@ -155,7 +155,7 @@ impl MaskSet {
                 asserts
             }
             _ => {
-                let contains_fun = CallFun::Fun(crate::def::fn_set_contains_name(), None);
+                let contains_fun = CallFun::Fun(crate::def::fn_iset_contains_name(), None);
                 let contains_expx = ExpX::Call(
                     contains_fun,
                     namespace_set_typs(),
@@ -229,7 +229,7 @@ impl MaskSet {
                     asserts
                 }
                 _ => {
-                    let subset_of_fun = CallFun::Fun(crate::def::fn_set_subset_of_name(), None);
+                    let subset_of_fun = CallFun::Fun(crate::def::fn_iset_subset_of_name(), None);
                     let self_exp = self.to_exp(ctx);
                     let other_exp = other.to_exp(ctx);
                     let subset_of_expx = ExpX::Call(
