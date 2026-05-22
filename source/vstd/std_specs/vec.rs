@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use super::iter::IteratorSpec;
+use super::iter::{FromIteratorSpecImpl, IteratorSpec};
 use verus_builtin::*;
 
 use super::super::slice::SliceIndexSpec;
@@ -462,13 +462,15 @@ pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::Int
         IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
+impl<T>  FromIteratorSpecImpl<T> for Vec<T> {
+    open spec fn obeys_from_iterator_spec() -> bool {
+        true
+    }
 
-pub assume_specification<T, I>[<Vec<T> as core::iter::FromIterator<T>>::from_iter](iter: I) -> (vec: Vec<T>)
-    where
-        I: IntoIterator<Item = T>,
-    ensures
-        vec@ == super::iter::into_iter_remaining::<T, I>(iter),
-;
+    open spec fn from_iter_ensures(remaining: Seq<T>, s: Self) -> bool {
+        remaining == s@
+    }
+}
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
     requires
