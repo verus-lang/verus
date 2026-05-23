@@ -106,17 +106,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_set_fold verus_code! {
-        use vstd::set::*;
+    #[test] test_iset_fold verus_code! {
+        use vstd::iset::*;
 
         proof fn test() {
-            let s: Set<nat> = set![9];
+            let s: ISet<nat> = iset![9];
             broadcast use {fold::lemma_fold_insert, fold::lemma_fold_empty};
             assert(s.finite());
             assert(s.len() > 0);
             assert(s.fold(0, |p: nat, a: nat| p + a) == 9);
 
-            assert(set![].fold(0, |p: nat, a: nat| p + a) == 0);
+            assert(iset![].fold(0, |p: nat, a: nat| p + a) == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_set_fold verus_code! {
+        use vstd::iset::*;
+        use vstd::set::*;
+
+        proof fn test() {
+            let s: Set<nat> = set![9];
+            assert(s.to_iset() =~= iset![9]);
+            broadcast use {vstd::iset::fold::lemma_fold_insert, vstd::iset::fold::lemma_fold_empty};
+            assert(s.len() > 0);
+            assert(s.fold(0, |p: nat, a: nat| p + a) == 9);
+
+            let s2: Set<nat> = set![];
+            assert(s2.to_iset() =~= iset![]);
+            assert(s2.fold(0, |p: nat, a: nat| p + a) == 0);
         }
     } => Ok(())
 }

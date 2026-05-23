@@ -176,11 +176,11 @@ impl<A> ISet<A> {
             }
     }
 
-    pub closed spec fn to_set(self) -> Option<Set<A>>
+    pub open spec fn to_set(self) -> Option<Set<A>>
         recommends
             self.finite(),
     {
-        Set::new(self.set)
+        Set::<A>::new_from_iset(self)
     }
 
     /// Cardinality of the set. (Only meaningful if a set is finite.)
@@ -211,7 +211,7 @@ impl<A> ISet<A> {
     /// Returns `true` if this set is congruent to (contains the same elements as)
     /// a given finite Set.
     pub open spec fn congruent(self, s2: Set<A>) -> bool {
-        forall|a: A| self.contains(a) <==> s2.contains(a)
+        forall|a: A| #![all_triggers] self.contains(a) <==> s2.contains(a)
     }
 }
 
@@ -1011,15 +1011,6 @@ pub broadcast proof fn lemma_iset_choose_len<A>(s: ISet<A>)
     fold::lemma_finite_set_induct(s, pred);
 }
 
-pub broadcast proof fn lemma_iset_to_set_contains<A>(s: ISet<A>, a: A)
-    requires
-        s.finite(),
-    ensures
-        #[trigger] s.to_set().unwrap().contains(a) == s.contains(a),
-{
-    broadcast use super::set::group_set_lemmas;
-}
-
 pub proof fn lemma_iset_finite_if_subset_of_seq<A>(i: ISet<A>, s: Seq<A>)
     requires
         forall|a| i.contains(a) ==> s.contains(a),
@@ -1072,7 +1063,6 @@ pub broadcast group group_iset_lemmas {
     lemma_iset_remove_len,
     lemma_iset_contains_len,
     lemma_iset_choose_len,
-    lemma_iset_to_set_contains,
 }
 
 // Macros

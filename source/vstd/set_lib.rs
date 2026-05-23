@@ -137,7 +137,7 @@ impl<A> Set<A> {
             self.remove(a).lemma_map_flatten_by_finite(fwd, rev);
             let map_remove_f = |b: B| self.remove(a).contains(rev(b)) && fwd(rev(b)).contains(b);
             assert(ISet::<B>::new(map_f) =~= ISet::<B>::new(map_remove_f).union(fwd(a).to_iset()));
-            lemma_to_iset_finite(fwd(a));
+            lemma_to_iset(fwd(a));
         }
     }
 
@@ -177,7 +177,7 @@ impl<A> Set<A> {
         assert forall|b: B| self.map_flatten_by(fwd, rev).contains(b)
                implies #[trigger] self.map(fwd).flatten().contains(b) by {
             let bs = choose|bs: Set<B>|
-                (exists|a: A| self.contains(a) && bs == fwd(a)) && bs.contains(b);
+                (exists|a: A| self.contains(a) && bs == fwd(a)) && #[trigger] bs.contains(b);
             assert(self.map(fwd).contains(bs) <==> (exists|a: A| self.contains(a) && bs == fwd(a)));
         }
     }
@@ -870,7 +870,7 @@ impl<A> Set<Set<A>> {
         assert forall|elem: A| lhs.contains(elem) implies rhs.contains(elem) by {
             if self.flatten().contains(elem) {
                 self.lemma_flatten_contains(elem);
-                let s = choose|s: Set<A>| self.contains(s) && s.contains(elem);
+                let s = choose|s: Set<A>| #[trigger] self.contains(s) && s.contains(elem);
                 assert(self.insert(other).contains(s));
                 assert(s.contains(elem));
             } else {
