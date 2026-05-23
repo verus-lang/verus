@@ -47,13 +47,54 @@ verus! {
 // sets, which creates a different problem with extensional equality.
 //////////////////////////////////////////////////////////////////////////////
 
+/// `Set` only holds finite sets, so it can be used in recursive types.
+/// For instance, a type `T` can contain a `Set<T>`.
+///
+/// To prevent Verus's internal checks from rejecting such recursive
+/// types, we use an artificial definition of `Set` that hides its inclusion
+/// of an `ISet`.
+///
+/// To make sure that proofs in this file don't take advantage of
+/// this artificial structure (e.g., to prove that any two `Set`s are
+/// equal), we mark this definition as `external_body`.
 #[verifier::ext_equal]
-#[verifier::reject_recursive_types(A)]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(A)]
 pub struct Set<A> {
-    set: ISet<A>,
+    dummy: core::marker::PhantomData<A>,
 }
 
 impl<A> Set<A> {
+    /// Generates an `ISet` with the same elements
+    pub uninterp spec fn to_iset(self) -> ISet<A>;
+
+    /// Generates a `Set` from the given `ISet`, governed by
+    /// `axiom_make_set`. Thanks to the axiom `axiom_make_set`, this
+    /// function is known to produce a `Set` with the same elements as
+    /// the given `ISet`, provided that `ISet` is finite. If the given
+    /// `ISet` is infinite, it produces an arbitrary finite set.
+    uninterp spec fn make_set(s: ISet<A>) -> Set<A>;
+
+    /// This axiom says that `make_set` produces a `Set` with the same
+    /// elements as the given `ISet`, provided that `ISet` is finite.
+    /// (If the given `ISet` is infinite, `make_set` produces an
+    /// arbitrary finite set.)
+    broadcast axiom fn axiom_make_set(s: ISet<A>)
+        requires
+            s.finite(),
+        ensures
+            #![trigger Self::make_set(s).to_iset()]
+            Self::make_set(s).to_iset() == s,
+    ;
+
+    /// This axiom says that the set represented by a `Set` is always
+    /// finite.
+    broadcast axiom fn axiom_is_finite(self)
+        ensures
+            #![trigger self.to_iset().finite()]
+            self.to_iset().finite(),
+    ;
+
     /// The "empty" set.
     ///
     /// Usage Example: <br>
@@ -72,7 +113,18 @@ impl<A> Set<A> {
     /// * [`lemma_set_empty`]
     #[rustc_diagnostic_item = "verus::vstd::set::Set::empty"]
     pub closed spec fn empty() -> Set<A> {
-        Set { set: ISet::<A>::empty() }
+        Self::make_set(ISet::<A>::empty())
+    }
+
+    /// Set whose membership is determined by the given `ISet`,
+    /// but only if that `ISet` is finite.
+    pub closed spec fn new_from_iset(s: ISet<A>) -> Option<Set<A>> {
+        if s.finite() {
+            Some(Self::make_set(s))
+        }
+        else {
+            None
+        }
     }
 
     /// Set whose membership is determined by the given boolean predicate,
@@ -88,12 +140,7 @@ impl<A> Set<A> {
     ///        forall|x| some_predicate(x) <==> s.contains(x));
     /// ```
     pub closed spec fn new(f: spec_fn(A) -> bool) -> Option<Set<A>> {
-        if ISet::new(f).finite() {
-            Some(Set { set: ISet::new(f) })
-        }
-        else {
-            None
-        }
+        Self::new_from_iset(ISet::new(f))
     }
 
     /// Set whose membership is determined by the given boolean predicate,
@@ -107,18 +154,7 @@ impl<A> Set<A> {
     /// ```
     #[deprecated(note = "Set::new_assuming_finite is helpful for incremental porting of existing code to the new version of Verus supporting finite sets. But it's dangerous since it assumes the given function describes a finite set.")]
     pub closed spec fn new_assuming_finite(f: spec_fn(A) -> bool) -> Set<A> {
-        Set { set: ISet::new(f) }
-    }
-
-    /// Set whose membership is determined by the given `ISet`,
-    /// but only if that `ISet` is finite.
-    pub open spec fn new_from_iset(s: ISet<A>) -> Option<Set<A>> {
-        Self::new(|a: A| s.contains(a))
-    }
-
-    /// Generates an `ISet` with the same elements
-    pub closed spec fn to_iset(self) -> ISet<A> {
-        self.set
+        Self::make_set(ISet::new(f))
     }
 
     /// The "full" set, i.e., set containing every element of type `A`.
@@ -156,19 +192,19 @@ impl<A> Set<A> {
     /// If that element is already in the set, then an identical set is returned.
     #[rustc_diagnostic_item = "verus::vstd::set::Set::insert"]
     pub closed spec fn insert(self, a: A) -> Set<A> {
-        Set { set: self.set.insert(a) }
+        Self::make_set(self.to_iset().insert(a))
     }
 
     /// Returns a new set with the given element removed.
     /// If that element is already absent from the set, then an identical set is returned.
     #[rustc_diagnostic_item = "verus::vstd::set::Set::remove"]
     pub closed spec fn remove(self, a: A) -> Set<A> {
-        Set { set: self.set.remove(a) }
+        Self::make_set(self.to_iset().remove(a))
     }
 
     /// Union of two sets.
     pub closed spec fn union(self, s2: Set<A>) -> Set<A> {
-        Set { set: self.set.union(s2.set) }
+        Self::make_set(self.to_iset().union(s2.to_iset()))
     }
 
     /// `+` operator, synonymous with `union`
@@ -179,7 +215,7 @@ impl<A> Set<A> {
 
     /// Intersection of two sets.
     pub closed spec fn intersect(self, s2: Set<A>) -> Set<A> {
-        Set { set: self.set.intersect(s2.set) }
+        Self::make_set(self.to_iset().intersect(s2.to_iset()))
     }
 
     /// `*` operator, synonymous with `intersect`
@@ -190,7 +226,7 @@ impl<A> Set<A> {
 
     /// Set difference, i.e., the set of all elements in the first one but not in the second.
     pub closed spec fn difference(self, s2: Set<A>) -> Set<A> {
-        Set { set: self.set.difference(s2.set) }
+        Self::make_set(self.to_iset().difference(s2.to_iset()))
     }
 
     /// `-` operator, synonymous with `difference`
@@ -207,7 +243,7 @@ impl<A> Set<A> {
 
     /// Set of all elements in the given set which satisfy the predicate `f`.
     pub closed spec fn filter(self, f: spec_fn(A) -> bool) -> Set<A> {
-        Set { set: self.set.filter(f) }
+        Self::make_set(self.to_iset().filter(f))
     }
 
     /// Returns `true` if the set is finite.
@@ -215,14 +251,6 @@ impl<A> Set<A> {
     pub open spec fn finite(self) -> bool {
         true
     }
-
-    /// Since we only allow construction of finite `Set`s, we can have this
-    /// axiom saying that the given `Set` is finite. More precisely, if you
-    /// use `to_iset()` to turn it into an `ISet`, then that `ISet` is finite.
-    axiom fn axiom_is_finite(self)
-        ensures
-            self.to_iset().finite(),
-    ;
 
     /// Returns `true` if this set is congruent to (contains the same elements as)
     /// a given ISet.
@@ -232,7 +260,7 @@ impl<A> Set<A> {
 
     /// Cardinality of the set.
     pub closed spec fn len(self) -> nat {
-        self.set.len()
+        self.to_iset().len()
     }
 
     /// Chooses an arbitrary element of the set.
@@ -254,6 +282,24 @@ impl<A> Set<A> {
     pub open spec fn disjoint(self, s2: Self) -> bool {
         forall|a: A| self.contains(a) ==> !s2.contains(a)
     }
+}
+
+/// Sets `s1` and `s2` are considered equal if and only if they contain all of the same elements.
+/// This has to be an axiom because `Set` is `external_body`.
+pub broadcast proof fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>)
+    ensures
+        #[trigger] (s1 =~= s2) <==> (forall|a: A| s1.contains(a) == s2.contains(a)),
+{
+    admit();
+}
+
+/// Sets `s1` and `s2` are considered equal if and only if they contain all of the same elements.
+/// This has to be an axiom because `Set` is `external_body`.
+pub broadcast proof fn axiom_set_ext_equal_deep<A>(s1: Set<A>, s2: Set<A>)
+    ensures
+        #[trigger] (s1 =~~= s2) <==> s1 =~= s2,
+{
+    admit();
 }
 
 broadcast use super::iset::group_iset_lemmas;
@@ -282,6 +328,7 @@ pub broadcast proof fn lemma_set_empty<A>(a: A)
     ensures
         !(#[trigger] Set::empty().contains(a)),
 {
+    broadcast use Set::axiom_make_set;
 }
 
 /// If `Set::<A>::new(f)` produces `Some(s)`, then `s` contains `a`
@@ -292,7 +339,7 @@ pub broadcast proof fn lemma_set_new<A>(f: spec_fn(A) -> bool, a: A)
     ensures
         #[trigger] Set::<A>::new(f).unwrap().contains(a) == f(a),
 {
-    super::iset::lemma_iset_new(f, a);
+    broadcast use Set::axiom_make_set;
 }
 
 /// If `ISet::<A>::new(f)` is finite, then `Set::<A>::new(f)`
@@ -304,6 +351,7 @@ pub broadcast proof fn lemma_set_new_some<A>(f: spec_fn(A) -> bool)
     ensures
         #[trigger] Set::<A>::new(f) is Some,
 {
+    broadcast use Set::axiom_make_set;
 }
 
 /// Shows that `Set::<A>::new_assuming_finite(f)` contains `a`
@@ -313,6 +361,8 @@ pub broadcast proof fn lemma_set_new_assuming_finite<A>(f: spec_fn(A) -> bool, a
     ensures
         #[trigger] Set::<A>::new_assuming_finite(f).contains(a) == f(a),
 {
+    broadcast use Set::axiom_make_set;
+    assume(ISet::new(f).finite()); // This is the assumption
 }
 
 /// If an iset `s` is finite, then `Set::new_from_iset(s)` has the same
@@ -325,6 +375,7 @@ pub broadcast proof fn lemma_set_new_from_iset<A>(s: ISet<A>)
         Set::<A>::new_from_iset(s) is Some,
         Set::<A>::new_from_iset(s).unwrap().to_iset() == s,
 {
+    broadcast use Set::axiom_make_set;
     assert(ISet::new(|a: A| s.contains(a)) =~= s);
 }
 
@@ -333,6 +384,8 @@ pub broadcast proof fn lemma_set_insert_same<A>(s: Set<A>, a: A)
     ensures
         #[trigger] s.insert(a).contains(a),
 {
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 /// If `a1` does not equal `a2`, then the result of inserting element `a2` into set `s`
@@ -343,6 +396,8 @@ pub broadcast proof fn lemma_set_insert_different<A>(s: Set<A>, a1: A, a2: A)
     ensures
         #[trigger] s.insert(a2).contains(a1) == s.contains(a1),
 {
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 /// The result of removing element `a` from set `s` must not contain `a`.
@@ -350,6 +405,8 @@ pub broadcast proof fn lemma_set_remove_same<A>(s: Set<A>, a: A)
     ensures
         !(#[trigger] s.remove(a).contains(a)),
 {
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 /// Removing an element `a` from a set `s` and then inserting `a` back into the set`
@@ -379,7 +436,7 @@ pub broadcast proof fn lemma_set_remove_insert<A>(s: Set<A>, a: A)
             lemma_set_insert_different(s.remove(a), aa, a);
         }
     };
-    lemma_set_ext_equal(s.remove(a).insert(a), s);
+    axiom_set_ext_equal(s.remove(a).insert(a), s);
 }
 
 /// If `a1` does not equal `a2`, then the result of removing element `a2` from set `s`
@@ -390,6 +447,9 @@ pub broadcast proof fn lemma_set_remove_different<A>(s: Set<A>, a1: A, a2: A)
     ensures
         #[trigger] s.remove(a2).contains(a1) == s.contains(a1),
 {
+    broadcast use axiom_set_ext_equal;
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 /// The union of sets `s1` and `s2` contains element `a` if and only if
@@ -398,6 +458,9 @@ pub broadcast proof fn lemma_set_union<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
         #[trigger] s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
 {
+    broadcast use axiom_set_ext_equal;
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 /// The intersection of sets `s1` and `s2` contains element `a` if and only if
@@ -406,6 +469,9 @@ pub broadcast proof fn lemma_set_intersect<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
         #[trigger] s1.intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)),
 {
+    broadcast use axiom_set_ext_equal;
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 /// The set difference between `s1` and `s2` contains element `a` if and only if
@@ -414,6 +480,8 @@ pub broadcast proof fn lemma_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
         #[trigger] s1.difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
 {
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 /// The complement of set `s` contains element `a` if and only if `s` does not contain `a`.
@@ -423,6 +491,7 @@ pub broadcast proof fn lemma_set_complement<A>(s: Set<A>, a: A)
     ensures
         #[trigger] s.complement().unwrap().contains(a) == !s.contains(a),
 {
+    broadcast use Set::axiom_make_set;
 }
 
 /// The filter of set `s` using function `f` contains element `a` if and only if `s` contains `a`
@@ -431,21 +500,8 @@ pub broadcast proof fn lemma_set_filter<A>(s: Set<A>, f: spec_fn(A) -> bool, a: 
     ensures
         #[trigger] s.filter(f).contains(a) == (s.contains(a) && f(a))
 {
-}
-
-/// Sets `s1` and `s2` are equal if and only if they contain all of the same elements.
-pub broadcast proof fn lemma_set_ext_equal<A>(s1: Set<A>, s2: Set<A>)
-    ensures
-        #[trigger] (s1 =~= s2) <==> (forall|a: A| s1.contains(a) == s2.contains(a)),
-{
-    s1.axiom_is_finite();
-    s2.axiom_is_finite();
-}
-
-pub broadcast proof fn lemma_set_ext_equal_deep<A>(s1: Set<A>, s2: Set<A>)
-    ensures
-        #[trigger] (s1 =~~= s2) <==> s1 =~= s2,
-{
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 pub broadcast axiom fn lemma_set_mk_map_domain<K, V>(s: Set<K>, f: spec_fn(K) -> V)
@@ -462,12 +518,13 @@ pub broadcast axiom fn lemma_set_mk_map_index<K, V>(s: Set<K>, f: spec_fn(K) -> 
 
 // Trusted axioms about len
 // Note: we could add more axioms about len, but they would be incomplete.
-// The following, with lemma_set_ext_equal, are enough to build libraries about len.
+// The following, with axiom_set_ext_equal, are enough to build libraries about len.
 /// The empty set has length 0.
 pub broadcast proof fn lemma_set_empty_len<A>()
     ensures
         #[trigger] Set::<A>::empty().len() == 0,
 {
+    broadcast use Set::axiom_make_set;
 }
 
 /// The result of inserting an element `a` into a finite set `s` has length
@@ -480,7 +537,8 @@ pub broadcast proof fn lemma_set_insert_len<A>(s: Set<A>, a: A)
             1
         }),
 {
-    s.axiom_is_finite();
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 /// The result of removing an element `a` from a finite set `s` has length
@@ -493,7 +551,8 @@ pub broadcast proof fn lemma_set_remove_len<A>(s: Set<A>, a: A)
             0
         }),
 {
-    s.axiom_is_finite();
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 /// If a finite set `s` contains any element, it has length greater than 0.
@@ -503,7 +562,8 @@ pub broadcast proof fn lemma_set_contains_len<A>(s: Set<A>, a: A)
     ensures
         #[trigger] s.len() != 0,
 {
-    s.axiom_is_finite();
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 /// A finite set `s` contains the element `s.choose()` if it has length greater than 0.
@@ -513,7 +573,6 @@ pub broadcast proof fn lemma_set_choose_len<A>(s: Set<A>)
     ensures
         #[trigger] s.contains(s.choose()),
 {
-    s.axiom_is_finite();
     assert(s.to_iset().contains(s.to_iset().choose()));
 }
 
@@ -525,10 +584,13 @@ pub broadcast proof fn lemma_to_iset<A>(s: Set<A>)
     decreases
         s.len(),
 {
-    s.axiom_is_finite();
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 pub broadcast group group_set_lemmas {
+    axiom_set_ext_equal,
+    axiom_set_ext_equal_deep,
     lemma_set_empty,
     lemma_set_new,
     lemma_set_new_assuming_finite,
@@ -544,8 +606,6 @@ pub broadcast group group_set_lemmas {
     lemma_set_difference,
     lemma_set_complement,
     lemma_set_filter,
-    lemma_set_ext_equal,
-    lemma_set_ext_equal_deep,
     lemma_set_mk_map_domain,
     lemma_set_mk_map_index,
     lemma_set_empty_len,

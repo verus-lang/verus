@@ -283,7 +283,7 @@ pub broadcast proof fn lemma_from_map_dom<V>(mymap: Map<V, nat>)
             assert(lhs.contains(v));
         }
     };
-    lemma_set_ext_equal(lhs, rhs);
+    axiom_set_ext_equal(lhs, rhs);
 }
 
 // Specification of `singleton`
