@@ -150,6 +150,61 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
     }
 }
 
+impl<A: core::iter::Step> super::iter::IteratorSpecImpl for RangeInclusive<A> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
+
+    open spec fn remaining(&self) -> Seq<Self::Item> {
+        Seq::new(
+            (self@.start.spec_steps_between_int(self@.end) + 1) as nat,
+            |i: int| self@.start.spec_forward_checked_int(i).unwrap(),
+        )
+    }
+
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        // Standard invariant for the iterator itself:
+        //   If there are no steps between start and end, then remaining is empty;
+        //   otherwise it contains all of the steps in between start and end
+        &&& (self@.start.spec_steps_between_int(self@.end) + 1 <= 0 && IteratorSpec::remaining(
+            self,
+        ).len() == 0) || (self@.start.spec_steps_between_int(self@.end) + 1
+            == IteratorSpec::remaining(self).len() as int)
+        &&& forall|i: int|
+            0 <= i < IteratorSpec::remaining(self).len() ==> #[trigger] IteratorSpec::remaining(
+                self,
+            )[i] == self@.start.spec_forward_checked_int(
+                i,
+            ).unwrap()
+        // Connections to init
+        &&& self@.start == init@.start
+        &&& self@.end == init@.end
+        &&& (init@.start.spec_steps_between_int(init@.end) + 1 <= 0 && IteratorSpec::remaining(
+            self,
+        ).len() == 0) || (init@.start.spec_steps_between_int(self@.end) + 1
+            == IteratorSpec::remaining(self).len() as int)
+        &&& forall|i: int|
+            0 <= i < IteratorSpec::remaining(self).len() ==> #[trigger] IteratorSpec::remaining(
+                self,
+            )[i] == init@.start.spec_forward_checked_int(i).unwrap()
+    }
+
+    open spec fn decrease(&self) -> Option<nat> {
+        Some((self@.start.spec_steps_between_int(self@.end) + 1) as nat)
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index <= self@.start.spec_steps_between_int(self@.end) {
+            Some(self@.start.spec_forward_checked_int(index).unwrap())
+        } else {
+            None
+        }
+    }
+}
+
 pub assume_specification<A: core::iter::Step>[ <Range<A> as Iterator>::next ](
     range: &mut Range<A>,
 ) -> (r: Option<A>)
