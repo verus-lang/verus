@@ -562,6 +562,8 @@ fn e13_pass() {
 
 test_verify_one_file! {
     #[test] e14_pass verus_code! {
+        use vstd::iset::*;
+        use vstd::iset_lib::*;
         use vstd::set::*;
         use vstd::set_lib::*;
         use vstd::map::*;
@@ -576,7 +578,7 @@ test_verify_one_file! {
             assert(modest_evens =~= iset![0, 2, 4, 6, 8]);
 
             /* This is beyond summer school, but shows a verus-preferred style */
-            let equivalent_evens = Set::range(0, 10int).filter(|x: int| is_even(x)).to_infinite();
+            let equivalent_evens = Set::range(0, 10int).filter(|x: int| is_even(x)).to_iset();
             assert(modest_evens =~= equivalent_evens);
         }
 
@@ -611,6 +613,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e14_fail verus_code! {
+        use vstd::iset::*;
+        use vstd::iset_lib::*;
         use vstd::set::*;
         use vstd::set_lib::*;
         use vstd::seq::*;
@@ -652,6 +656,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e15_pass verus_code! {
+        use vstd::iset::*;
+        use vstd::iset_lib::*;
         use vstd::set::*;
         use vstd::set_lib::*;
 
@@ -667,11 +673,11 @@ test_verify_one_file! {
             let modest_evens = ISet::new(|x: int| is_modest(x) && is_even(x));
             // In verus, unlike Dafny, it's fine to have infinite sets, but you may want a finite
             // one (say because you're using it as a decreases to well-found an induction).
-            let modest_numbers = Set::range(0, 10int).to_infinite();
+            let modest_numbers = Set::range(0, 10int).to_iset();
             assert( modest_numbers.finite() );
             // TODO(chris): don't want to have type annotation on this lemma, but there's an
             // erasure bug.
-            lemma_len_subset::<int, _, _>(modest_evens, modest_numbers);
+            vstd::iset_lib::lemma_len_subset::<int>(modest_evens, modest_numbers);
             assert(modest_evens.finite());
         }
     } => Ok(())
@@ -679,7 +685,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] e15_fail verus_code! {
-        use vstd::set::*;
+        use vstd::iset::*;
 
         spec fn is_modest(x: int) -> bool {
             0 <= x < 10
