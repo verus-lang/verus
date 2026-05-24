@@ -1417,16 +1417,14 @@ pub broadcast group group_iset_properties {
     lemma_iset_empty_equivalency_len,
 }
 
-pub broadcast proof fn axiom_iset_is_empty<A>(s: ISet<A>)
+pub broadcast axiom fn axiom_iset_is_empty<A>(s: ISet<A>)
     requires
         !(#[trigger] s.is_empty()),
     ensures
         exists|a: A| s.contains(a),
-{
-    admit();  // REVIEW, should this be in `set`, or have a proof?
-}
+; // REVIEW, should this be in `set`, or have a proof?
 
-pub broadcast proof fn axiom_iset_is_empty_len0<A>(s: ISet<A>)
+pub broadcast proof fn lemma_iset_is_empty_len0<A>(s: ISet<A>)
     ensures
         #[trigger] s.is_empty() <==> (s.finite() && s.len() == 0),
 {
@@ -1501,7 +1499,7 @@ macro_rules! assert_isets_equal_internal {
 
 pub broadcast group group_iset_lib_default {
     axiom_iset_is_empty,
-    axiom_iset_is_empty_len0,
+    lemma_iset_is_empty_len0,
     lemma_iset_subset_finite,
     ISet::lemma_map_by_finite,
     ISet::lemma_map_flatten_by_finite,

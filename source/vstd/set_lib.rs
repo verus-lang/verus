@@ -99,7 +99,7 @@ impl<A> Set<A> {
             assert(ISet::<B>::new(map_f) =~= ISet::<B>::empty());
         }
         else {
-            axiom_is_empty(self);
+            lemma_set_is_empty(self);
             let a: A = choose|a: A| self.contains(a);
             self.remove(a).lemma_map_flatten_by_finite(fwd, rev);
             let map_remove_f = |b: B| self.remove(a).contains(rev(b)) && fwd(rev(b)).contains(b);
@@ -173,8 +173,7 @@ impl<A> Set<A> {
     }
 
     pub open spec fn injective_on<B>(self, r: spec_fn(A) -> B) -> bool {
-        forall|x1: A, x2: A|
-            self.contains(x1) && self.contains(x2) && #[trigger] r(x1) == #[trigger] r(x2) ==> x1 == x2
+        self.to_iset().injective_on(r)
     }
 
     /// An element in an ordered set is called a least element (or a minimum), if it is less than
@@ -182,25 +181,23 @@ impl<A> Set<A> {
     ///
     /// change f to leq bc it is a relation. also these are an ordering relation
     pub open spec fn has_least(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
-        self.contains(min) && forall|x: A| self.contains(x) ==> #[trigger] leq(min, x)
+        self.to_iset().has_least(leq, min)
     }
 
     /// An element in an ordered set is called a minimal element, if no other element is less than it.
     pub open spec fn has_minimum(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
-        self.contains(min) && forall|x: A|
-            self.contains(x) && #[trigger] leq(x, min) ==> #[trigger] leq(min, x)
+        self.to_iset().has_minimum(leq, min)
     }
 
     /// An element in an ordered set is called a greatest element (or a maximum), if it is greater than
     ///every other element of the set.
     pub open spec fn has_greatest(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
-        self.contains(max) && forall|x: A| self.contains(x) ==> #[trigger] leq(x, max)
+        self.to_iset().has_greatest(leq, max)
     }
 
     /// An element in an ordered set is called a maximal element, if no other element is greater than it.
     pub open spec fn has_maximum(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
-        self.contains(max) && forall|x: A|
-            self.contains(x) && #[trigger] leq(max, x) ==> #[trigger] leq(x, max)
+        self.to_iset().has_maximum(leq, max)
     }
 
     /// If a function is injective on the set `self`, then it is also injective on any subset `other` of `self`.
@@ -211,12 +208,7 @@ impl<A> Set<A> {
         ensures
             other.injective_on(r),
     {
-        assert forall|a1: A, a2: A| other.contains(a1) && other.contains(a2) && #[trigger] r(a1) == #[trigger] r(a2)
-               implies a1 == a2 by {
-            assert(self.contains(a1));
-            assert(self.contains(a2));
-            assert(r(a1) == r(a2));
-        }
+        self.to_iset().lemma_injective_on_subset(r, other.to_iset());
     }
 
     /// Any totally-ordered set contains a unique minimal (equivalently, least) element.
@@ -227,20 +219,7 @@ impl<A> Set<A> {
             self.len() > 0,
         decreases self.len(),
     {
-        proof {
-            broadcast use group_set_properties;
-        }
-        if self.len() <= 1 {
-            self.choose()
-        } else {
-            let x = choose|x: A| self.contains(x);
-            let min = self.remove(x).find_unique_minimal(r);
-            if r(min, x) {
-                min
-            } else {
-                x
-            }
-        }
+        self.to_iset().find_unique_minimal(r)
     }
 
     /// Proof of correctness and expected behavior for `Set::find_unique_minimal`.
@@ -251,50 +230,8 @@ impl<A> Set<A> {
         ensures
             self.has_minimum(r, self.find_unique_minimal(r)) && (forall|min: A|
                 self.has_minimum(r, min) ==> self.find_unique_minimal(r) == min),
-        decreases self.len(),
     {
-        broadcast use group_set_properties;
-
-        if self.len() == 1 {
-            let x = choose|x: A| self.contains(x);
-            assert(self.remove(x).insert(x) =~= self);
-            assert(self.has_minimum(r, self.find_unique_minimal(r)));
-        } else {
-            let x = choose|x: A| self.contains(x);
-            self.remove(x).find_unique_minimal_ensures(r);
-            assert(self.remove(x).has_minimum(r, self.remove(x).find_unique_minimal(r)));
-            let y = self.remove(x).find_unique_minimal(r);
-            let min_updated = self.find_unique_minimal(r);
-            assert(!r(y, x) ==> min_updated == x);
-            assert(forall|elt: A|
-                self.remove(x).contains(elt) && #[trigger] r(elt, y) ==> #[trigger] r(y, elt));
-            assert forall|elt: A|
-                self.contains(elt) && #[trigger] r(elt, min_updated) implies #[trigger] r(
-                min_updated,
-                elt,
-            ) by {
-                assert(r(min_updated, x) || r(min_updated, y));
-                if min_updated == y {  // Case where the new min is the old min
-                    assert(self.has_minimum(r, self.find_unique_minimal(r)));
-                } else {  //Case where the new min is the newest element
-                    assert(self.remove(x).contains(elt) || elt == x);
-                    assert(min_updated == x);
-                    assert(r(x, y) || r(y, x));
-                    assert(!r(x, y) || !r(y, x));
-                    assert(!(min_updated == y) ==> !r(y, x));
-                    assert(r(x, y));
-                    if (self.remove(x).contains(elt)) {
-                        assert(r(elt, y) && r(y, elt) ==> elt == y);
-                    } else {
-                    }
-                }
-            }
-            assert forall|min_poss: A|
-                self.has_minimum(r, min_poss) implies self.find_unique_minimal(r) == min_poss by {
-                assert(self.remove(x).has_minimum(r, min_poss) || x == min_poss);
-                assert(r(min_poss, self.find_unique_minimal(r)));
-            }
-        }
+        self.to_iset().find_unique_minimal_ensures(r);
     }
 
     /// Any totally-ordered set contains a unique maximal (equivalently, greatest) element.
@@ -303,23 +240,8 @@ impl<A> Set<A> {
         recommends
             total_ordering(r),
             self.len() > 0,
-        decreases self.len(),
     {
-        proof {
-            broadcast use group_set_properties;
-
-        }
-        if self.len() <= 1 {
-            self.choose()
-        } else {
-            let x = choose|x: A| self.contains(x);
-            let max = self.remove(x).find_unique_maximal(r);
-            if r(x, max) {
-                max
-            } else {
-                x
-            }
-        }
+        self.to_iset().find_unique_maximal(r)
     }
 
     /// Proof of correctness and expected behavior for `Set::find_unique_maximal`.
@@ -330,56 +252,8 @@ impl<A> Set<A> {
         ensures
             self.has_maximum(r, self.find_unique_maximal(r)) && (forall|max: A|
                 self.has_maximum(r, max) ==> self.find_unique_maximal(r) == max),
-        decreases self.len(),
     {
-        broadcast use group_set_properties;
-
-        if self.len() == 1 {
-            let x = choose|x: A| self.contains(x);
-            assert(self.remove(x) =~= Set::<A>::empty());
-            assert(self.contains(self.find_unique_maximal(r)));
-        } else {
-            let x = choose|x: A| self.contains(x);
-            self.remove(x).find_unique_maximal_ensures(r);
-            assert(self.remove(x).has_maximum(r, self.remove(x).find_unique_maximal(r)));
-            assert(self.remove(x).insert(x) =~= self);
-            let y = self.remove(x).find_unique_maximal(r);
-            let max_updated = self.find_unique_maximal(r);
-            assert(max_updated == x || max_updated == y);
-            assert(!r(x, y) ==> max_updated == x);
-            assert forall|elt: A|
-                self.contains(elt) && #[trigger] r(max_updated, elt) implies #[trigger] r(
-                elt,
-                max_updated,
-            ) by {
-                assert(r(x, max_updated) || r(y, max_updated));
-                if max_updated == y {  // Case where the new max is the old max
-                    assert(r(elt, max_updated));
-                    assert(r(x, max_updated));
-                    assert(self.has_maximum(r, self.find_unique_maximal(r)));
-                } else {  //Case where the new max is the newest element
-                    assert(self.remove(x).contains(elt) || elt == x);
-                    assert(max_updated == x);
-                    assert(r(x, y) || r(y, x));
-                    assert(!r(x, y) || !r(y, x));
-                    assert(!(max_updated == y) ==> !r(x, y));
-                    assert(r(y, x));
-                    if (self.remove(x).contains(elt)) {
-                        assert(r(y, elt) ==> r(elt, y));
-                        assert(r(y, elt) && r(elt, y) ==> elt == y);
-                        assert(r(elt, x));
-                        assert(r(elt, max_updated))
-                    } else {
-                    }
-                }
-            }
-            assert forall|max_poss: A|
-                self.has_maximum(r, max_poss) implies self.find_unique_maximal(r) == max_poss by {
-                assert(self.remove(x).has_maximum(r, max_poss) || x == max_poss);
-                assert(r(max_poss, self.find_unique_maximal(r)));
-                assert(r(self.find_unique_maximal(r), max_poss));
-            }
-        }
+        self.to_iset().find_unique_maximal_ensures(r);
     }
 
     /// Converts a set into a multiset where each element from the set has
@@ -481,8 +355,7 @@ impl<A> Set<A> {
         ensures
             self.has_greatest(r, max) <==> self.has_maximum(r, max),
     {
-        assert(self.has_maximum(r, max) ==> forall|x: A|
-            !self.contains(x) || !r(max, x) || r(x, max));
+        self.to_iset().lemma_maximal_equivalent_greatest(r, max);
     }
 
     /// In a totally-ordered set, an element is maximal if and only if it is a greatest element.
@@ -492,8 +365,7 @@ impl<A> Set<A> {
         ensures
             self.has_least(r, min) <==> self.has_minimum(r, min),
     {
-        assert(self.has_minimum(r, min) ==> forall|x: A|
-            !self.contains(x) || !r(x, min) || r(min, x));
+        self.to_iset().lemma_minimal_equivalent_least(r, min);
     }
 
     /// In a partially-ordered set, there exists at most one least element.
@@ -504,11 +376,7 @@ impl<A> Set<A> {
             forall|min: A, min_prime: A|
                 self.has_least(r, min) && self.has_least(r, min_prime) ==> min == min_prime,
     {
-        assert forall|min: A, min_prime: A|
-            self.has_least(r, min) && self.has_least(r, min_prime) implies min == min_prime by {
-            assert(r(min, min_prime));
-            assert(r(min_prime, min));
-        }
+        self.to_iset().lemma_least_is_unique(r);
     }
 
     /// In a partially-ordered set, there exists at most one greatest element.
@@ -519,12 +387,7 @@ impl<A> Set<A> {
             forall|max: A, max_prime: A|
                 self.has_greatest(r, max) && self.has_greatest(r, max_prime) ==> max == max_prime,
     {
-        assert forall|max: A, max_prime: A|
-            self.has_greatest(r, max) && self.has_greatest(r, max_prime) implies max
-            == max_prime by {
-            assert(r(max_prime, max));
-            assert(r(max, max_prime));
-        }
+        self.to_iset().lemma_greatest_is_unique(r);
     }
 
     /// In a totally-ordered set, there exists at most one minimal element.
@@ -535,12 +398,7 @@ impl<A> Set<A> {
             forall|min: A, min_prime: A|
                 self.has_minimum(r, min) && self.has_minimum(r, min_prime) ==> min == min_prime,
     {
-        assert forall|min: A, min_prime: A|
-            self.has_minimum(r, min) && self.has_minimum(r, min_prime) implies min == min_prime by {
-            self.lemma_minimal_equivalent_least(r, min);
-            self.lemma_minimal_equivalent_least(r, min_prime);
-            self.lemma_least_is_unique(r);
-        }
+        self.to_iset().lemma_minimal_is_unique(r);
     }
 
     /// In a totally-ordered set, there exists at most one maximal element.
@@ -551,12 +409,7 @@ impl<A> Set<A> {
             forall|max: A, max_prime: A|
                 self.has_maximum(r, max) && self.has_maximum(r, max_prime) ==> max == max_prime,
     {
-        assert forall|max: A, max_prime: A|
-            self.has_maximum(r, max) && self.has_maximum(r, max_prime) implies max == max_prime by {
-            self.lemma_maximal_equivalent_greatest(r, max);
-            self.lemma_maximal_equivalent_greatest(r, max_prime);
-            self.lemma_greatest_is_unique(r);
-        }
+        self.to_iset().lemma_maximal_is_unique(r);
     }
 
     /// Set difference with an additional element inserted decreases the size of
@@ -1444,16 +1297,16 @@ pub broadcast group group_set_properties {
     lemma_set_empty_equivalency_len,
 }
 
-pub broadcast proof fn axiom_is_empty<A>(s: Set<A>)
+pub broadcast proof fn lemma_set_is_empty<A>(s: Set<A>)
     requires
         !(#[trigger] s.is_empty()),
     ensures
         exists|a: A| s.contains(a),
 {
-    admit();  // REVIEW, should this be in `set`, or have a proof?
+    super::iset_lib::axiom_iset_is_empty(s.to_iset());
 }
 
-pub broadcast proof fn axiom_is_empty_len0<A>(s: Set<A>)
+pub broadcast proof fn lemma_set_is_empty_len0<A>(s: Set<A>)
     ensures
         #[trigger] s.is_empty() <==> s.len() == 0,
 {
@@ -1527,8 +1380,8 @@ macro_rules! assert_sets_equal_internal {
 }
 
 pub broadcast group group_set_lib_default {
-    axiom_is_empty,
-    axiom_is_empty_len0,
+    lemma_set_is_empty,
+    lemma_set_is_empty_len0,
     Set::lemma_map_contains,
     Set::lemma_map_by_contains,
     Set::lemma_map_flatten_by_contains,

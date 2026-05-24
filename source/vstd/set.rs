@@ -564,6 +564,7 @@ pub broadcast proof fn lemma_to_iset<A>(s: Set<A>)
     ensures
         #![trigger s.to_iset()]
         s.to_iset().finite(),
+        s.to_iset().len() == s.len(),
         forall|a: A| #[trigger] s.to_iset().contains(a) <==> s.contains(a),
     decreases
         s.len(),
