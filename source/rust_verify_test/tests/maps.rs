@@ -23,10 +23,10 @@ test_verify_one_file! {
 
         proof fn test_map() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
-            let m1 = s1.mk_map(|k: int| 10 * k);
+            let m1 = Map::new(s1, |k: int| 10 * k);
             assert(m1.index(2) == 20);
             let s2 = Set::<int>::empty().insert(1).insert(3).insert(2);
-            let m2 = s2.mk_map(|k: int| 3 * k + 7 * k);
+            let m2 = Map::new(s2, |k: int| 3 * k + 7 * k);
             assert(m1 =~= m2);
             let m3 = map![10int => true ==> false, 20int => false ==> true];
             assert(!m3.index(10));
@@ -38,8 +38,8 @@ test_verify_one_file! {
 
         proof fn testfun_eq() {
             let s = Set::<int>::empty().insert(1).insert(2).insert(3);
-            let m1 = s.mk_map(|x: int| x + 4);
-            let m2 = s.mk_map(|y: int| y + (2 + 2));
+            let m1 = Map::new(s, |x: int| x + 4);
+            let m2 = Map::new(s, |y: int| y + (2 + 2));
             // m1 and m2 are equal even without extensional equality:
             assert(equal(m1, m2));
         }
@@ -53,11 +53,11 @@ test_verify_one_file! {
 
         proof fn test_map() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
-            let m1 = s1.mk_map(|k: int| 10 * k);
+            let m1 = Map::new(s1, |k: int| 10 * k);
             assert(m1.index(2) == 20);
             assert(m1.index(4) == 40); // FAILS
             let s2 = Set::<int>::empty().insert(1).insert(3).insert(2);
-            let m2 = s2.mk_map(|k: int| 3 * k + 7 * k);
+            let m2 = Map::new(s2, |k: int| 3 * k + 7 * k);
             assert(m1 =~= m2);
         }
     } => Err(err) => assert_one_fails(err)
@@ -70,10 +70,10 @@ test_verify_one_file! {
 
         proof fn test_map() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
-            let m1 = s1.mk_map(|k: int| 10 * k);
+            let m1 = Map::new(s1, |k: int| 10 * k);
             assert(m1.index(2) == 20);
             let s2 = Set::<int>::empty().insert(1).insert(3).insert(2);
-            let m2 = s2.mk_map(|k: int| 3 * k + 8 * k);
+            let m2 = Map::new(s2, |k: int| 3 * k + 8 * k);
             assert(equal(m1, m2)) by {} // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -86,7 +86,7 @@ test_verify_one_file! {
 
         proof fn test_map() {
             let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
-            let m1 = s1.mk_map(|k: int| 10 * k);
+            let m1 = Map::new(s1, |k: int| 10 * k);
             let m3: Map<int, int> = m1;
             let m4: Map<nat, int> = m1; // FAILS: see https://github.com/FStarLang/FStar/issues/1542
         }
@@ -101,8 +101,8 @@ test_verify_one_file! {
         #[verifier::auto_ext_equal(/* no auto_ext_equal */)]
         proof fn testfun_eq() {
             let s = Set::<int>::empty().insert(1).insert(2).insert(3);
-            let m1 = s.mk_map(|x: int| x + 4);
-            let m2 = s.mk_map(|y: int| (2 + 2) + y);
+            let m1 = Map::new(s, |x: int| x + 4);
+            let m2 = Map::new(s, |y: int| (2 + 2) + y);
             // would require extensional equality:
             assert(m1 == m2); // FAILS
         }

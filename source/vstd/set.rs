@@ -273,10 +273,6 @@ impl<A> Set<A> {
         choose|a: A| self.contains(a)
     }
 
-    /// Creates a [`Map`] whose domain is the given set.
-    /// The values of the map are given by `f`, a function of the keys.
-    pub uninterp spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> Map<A, V>;
-
     /// Returns `true` if the sets are disjoint, i.e., if their interesection is
     /// the empty set.
     pub open spec fn disjoint(self, s2: Self) -> bool {
@@ -504,18 +500,6 @@ pub broadcast proof fn lemma_set_filter<A>(s: Set<A>, f: spec_fn(A) -> bool, a: 
     broadcast use Set::axiom_is_finite;
 }
 
-pub broadcast axiom fn lemma_set_mk_map_domain<K, V>(s: Set<K>, f: spec_fn(K) -> V)
-    ensures
-        #[trigger] s.mk_map(f).dom() == s,
-;
-
-pub broadcast axiom fn lemma_set_mk_map_index<K, V>(s: Set<K>, f: spec_fn(K) -> V, key: K)
-    requires
-        s.contains(key),
-    ensures
-        #[trigger] s.mk_map(f)[key] == f(key),
-;
-
 // Trusted axioms about len
 // Note: we could add more axioms about len, but they would be incomplete.
 // The following, with axiom_set_ext_equal, are enough to build libraries about len.
@@ -606,8 +590,6 @@ pub broadcast group group_set_lemmas {
     lemma_set_difference,
     lemma_set_complement,
     lemma_set_filter,
-    lemma_set_mk_map_domain,
-    lemma_set_mk_map_index,
     lemma_set_empty_len,
     lemma_set_insert_len,
     lemma_set_remove_len,

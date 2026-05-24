@@ -461,7 +461,7 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
         } else {
             m.count(key)
         };
-    let map = key_set.mk_map(fv);
+    let map = Map::new(key_set, fv);
     crate::vstd::map_lib::lemma_map_new_domain(key_set, fv);
     if map.dom().contains(v2) {
         assert(map[v2] == m.count(v2));

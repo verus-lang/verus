@@ -593,12 +593,12 @@ test_verify_one_file! {
             assert(replace_map[3] == 7);
 
             /* This is beyond summer school, but shows a verus-preferred style */
-            let equivalent_double_map = Set::range(1, 5int).mk_map(|x: int| x * 2);
+            let equivalent_double_map = Map::new(Set::range(1, 5int), |x: int| x * 2);
             assert(equivalent_double_map =~= double_map);
         }
 
         proof fn map_comprehension() {
-            let doubly_map = Set::range(0, 5int).mk_map(|x: int| 2 * x);
+            let doubly_map = Map::new(Set::range(0, 5int), |x: int| 2 * x);
             assert(doubly_map[1] == 2);
             assert(doubly_map[4] == 8);
         }
@@ -641,7 +641,7 @@ test_verify_one_file! {
         }
 
         proof fn map_comprehension() {
-            let doubly_map = Set::range(0, 5int).mk_map(|x: int| 2 * x);
+            let doubly_map = Map::new(Set::range(0, 5int), |x: int| 2 * x);
             assert(doubly_map[1] == 2);
             assert(doubly_map[4] == 4);   // FAILS
         }

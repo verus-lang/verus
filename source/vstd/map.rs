@@ -41,8 +41,8 @@ impl<K, V> Map<K, V> {
     }
 
     /// Gives a `Map<K, V>` whose domain is given, mapping each key to the value given by `fv`.
-    pub open spec fn new(s: Set<K>, fv: spec_fn(K) -> V) -> Map<K, V> {
-        s.mk_map(fv)
+    pub closed spec fn new(s: Set<K>, fv: spec_fn(K) -> V) -> Map<K, V> {
+        Map { mapping: |k: K| if s.contains(k) { Some(fv(k)) } else { None } }
     }
 
     axiom fn axiom_dom_finite(self)
@@ -214,6 +214,28 @@ pub broadcast axiom fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
     ensures
         #[trigger](decreases_to!(m => m[key]));
 
+pub broadcast proof fn lemma_map_new_domain<K, V>(s: Set<K>, fv: spec_fn(K) -> V)
+    ensures
+        #![trigger Map::new(s, fv)]
+        Map::new(s, fv).dom() == s,
+{
+    broadcast use super::iset::group_iset_lemmas;
+    broadcast use super::set::group_set_lemmas;
+
+    let m = Map::new(s, fv);
+    assert(ISet::new(|k| (m.mapping)(k) is Some) =~= s.to_iset());
+    assert(s.to_iset().finite());
+}
+
+pub broadcast proof fn lemma_map_new_index<K, V>(s: Set<K>, fv: spec_fn(K) -> V, k: K)
+    requires
+        s.contains(k),
+    ensures
+        #![trigger Map::new(s, fv)[k]]
+        Map::new(s, fv)[k] == fv(k)
+{
+}
+
 /// The domain of the empty map is the empty set
 pub broadcast proof fn lemma_map_empty<K, V>()
     ensures
@@ -324,6 +346,8 @@ pub broadcast proof fn lemma_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, 
 
 pub broadcast group group_map_lemmas {
     axiom_map_index_decreases,
+    lemma_map_new_domain,
+    lemma_map_new_index,
     lemma_map_empty,
     lemma_map_insert_domain,
     lemma_map_insert_same,
