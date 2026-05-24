@@ -27,35 +27,14 @@ impl<A> Set<A> {
 
     /// Returns the set contains an element `f(x)` for every element `x` in `self`.
     pub closed spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
-        Set::new(|b: B| exists|a: A| self.contains(a) && b == f(a)).unwrap()
-    }
-
-    /// The function used by `map` is finite
-    proof fn lemma_map_finite<B>(self, f: spec_fn(A) -> B)        
-        ensures
-            ISet::<B>::new(|b: B| exists|a: A| self.contains(a) && b == f(a)).finite(),
-        decreases self.len(),
-    {
-        let map_f = |b: B| exists|a: A| self.contains(a) && b == f(a);
-
-        if self == Self::empty() {
-            assert(ISet::<B>::new(map_f) =~= ISet::<B>::empty());
-        }
-        else {
-            axiom_is_empty(self);
-            let x: A = choose|x: A| self.contains(x);
-            self.remove(x).lemma_map_finite(f);
-            let map_remove_f = |b: B| exists|a: A| self.remove(x).contains(a) && b == f(a);
-            assert(ISet::<B>::new(map_f) =~= ISet::<B>::new(map_remove_f).insert(f(x)));
-        }
+        Set::new_from_iset(self.to_iset().map(f)).unwrap()
     }
 
     pub broadcast proof fn lemma_map_contains<B>(self, f: spec_fn(A) -> B, b: B)
         ensures
             #[trigger] self.map(f).contains(b) <==> exists|a: A| self.contains(a) && b == f(a)
-        decreases self.len(),
     {
-        self.lemma_map_finite(f);
+        self.to_iset().lemma_map_finite(f);
     }
 
     /// `Set::map_by` is like `Set::map`, but `map` only takes a forward function `fwd: spec_fn(A) -> B`,
@@ -74,19 +53,7 @@ impl<A> Set<A> {
         recommends
             forall|a: A| self.contains(a) ==> rev(fwd(a)) == a,
     {
-        Set::new(|b: B| self.contains(rev(b)) && b == fwd(rev(b))).unwrap()
-    }
-
-    proof fn lemma_map_by_finite<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A)
-        ensures
-            ISet::new(|b: B| self.contains(rev(b)) && b == fwd(rev(b))).finite(),
-    {
-        broadcast use super::iset_lib::lemma_iset_subset_finite;
-
-        let map_by_f = |b: B| self.contains(rev(b)) && b == fwd(rev(b));
-        let map_f = |b: B| exists|a: A| self.contains(a) && b == fwd(a);
-        assert(ISet::new(map_by_f).subset_of(ISet::new(map_f)));
-        self.lemma_map_finite(fwd);
+        Set::new_from_iset(self.to_iset().map_by(fwd, rev)).unwrap()
     }
 
     pub broadcast proof fn lemma_map_by_contains<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A, b: B)
@@ -94,7 +61,7 @@ impl<A> Set<A> {
             #[trigger] self.map_by(fwd, rev).contains(b) <==> self.contains(rev(b)) && b == fwd(rev(b)),
         decreases self.len(),
     {
-        self.lemma_map_by_finite(fwd, rev);
+        self.to_iset().lemma_map_by_finite(fwd, rev);
     }
 
     /// Similar to `Set::map_by`, but the forward function returns `Set<B>` rather than `B`,
