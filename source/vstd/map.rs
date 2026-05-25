@@ -45,6 +45,9 @@ impl<K, V> Map<K, V> {
         Map { mapping: |k: K| if s.contains(k) { Some(fv(k)) } else { None } }
     }
 
+    /// All operations allowed on `Map` preserve its domain's
+    /// finiteness, justifying this axiom that a `Map` always has a
+    /// finite domain.
     axiom fn axiom_dom_finite(self)
         ensures
             ISet::new(|k| (self.mapping)(k) is Some).finite(),
@@ -214,6 +217,8 @@ pub broadcast axiom fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
     ensures
         #[trigger](decreases_to!(m => m[key]));
 
+/// Since `Map::new` is closed, this broadcast lemma is needed to establish
+/// that it produces a map with the given set as its domain.
 pub broadcast proof fn lemma_map_new_domain<K, V>(s: Set<K>, fv: spec_fn(K) -> V)
     ensures
         #![trigger Map::new(s, fv)]
@@ -227,6 +232,8 @@ pub broadcast proof fn lemma_map_new_domain<K, V>(s: Set<K>, fv: spec_fn(K) -> V
     assert(s.to_iset().finite());
 }
 
+/// Since `Map::new` is closed, this broadcast lemma is needed to establish
+/// that it produces a map that maps elements using the given function.
 pub broadcast proof fn lemma_map_new_index<K, V>(s: Set<K>, fv: spec_fn(K) -> V, k: K)
     requires
         s.contains(k),

@@ -30,6 +30,8 @@ impl<A> Set<A> {
         Set::new_from_iset(self.to_iset().map(f)).unwrap()
     }
 
+    /// Since `Self::map` is `closed`, this broadcast lemma is needed
+    /// to make its semantics visible to the verifier.
     pub broadcast proof fn lemma_map_contains<B>(self, f: spec_fn(A) -> B, b: B)
         ensures
             #[trigger] self.map(f).contains(b) <==> exists|a: A| self.contains(a) && b == f(a)
@@ -56,6 +58,8 @@ impl<A> Set<A> {
         Set::new_from_iset(self.to_iset().map_by(fwd, rev)).unwrap()
     }
 
+    /// Since `Self::map_by` is `closed`, this broadcast lemma is needed
+    /// to make its semantics visible to the verifier.
     pub broadcast proof fn lemma_map_by_contains<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A, b: B)
         ensures
             #[trigger] self.map_by(fwd, rev).contains(b) <==> self.contains(rev(b)) && b == fwd(rev(b)),
@@ -81,6 +85,8 @@ impl<A> Set<A> {
         Set::new(|b: B| self.contains(rev(b)) && fwd(rev(b)).contains(b)).unwrap()
     }
 
+    /// This helper lemma demonstrates that the result of calling `Self::map_by` produces
+    /// a finite, and thus valid, `Set`.
     proof fn lemma_map_flatten_by_finite<B>(
         self,
         fwd: spec_fn(A) -> Set<B>,
@@ -108,6 +114,8 @@ impl<A> Set<A> {
         }
     }
 
+    /// Since `Self::map_flatten_by` is `closed`, this broadcast lemma is needed
+    /// to make its semantics visible to the verifier.
     pub broadcast proof fn lemma_map_flatten_by_contains<B>(
         self,
         fwd: spec_fn(A) -> Set<B>,
@@ -125,6 +133,8 @@ impl<A> Set<A> {
         self.lemma_map_flatten_by_finite(fwd, rev);
     }
 
+    /// This proof demonstrates that calling `map_flatten_by` is equivalent to
+    /// first calling `map`, then calling `flatten`.
     pub proof fn map_flatten_by_is_map_flatten<B>(
         self,
         fwd: spec_fn(A) -> Set<B>,
@@ -172,14 +182,15 @@ impl<A> Set<A> {
         &&& (forall|x: A, y: A| self.contains(x) && self.contains(y) ==> x == y)
     }
 
+    /// Indicates if the function given by `r` is injective on this set,
+    /// i.e., whether each element of this set is mapped to a different
+    /// value by `r`.
     pub open spec fn injective_on<B>(self, r: spec_fn(A) -> B) -> bool {
         self.to_iset().injective_on(r)
     }
 
     /// An element in an ordered set is called a least element (or a minimum), if it is less than
     /// every other element of the set.
-    ///
-    /// change f to leq bc it is a relation. also these are an ordering relation
     pub open spec fn has_least(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
         self.to_iset().has_least(leq, min)
     }
@@ -611,6 +622,9 @@ impl<A> Set<A> {
         assert(lhs =~= rhs);
     }
 
+    /// If `self` is a subset of `s2`, and all elements of `s2`
+    /// satisfy predicate `p`, then all elements of `self` satisfy
+    /// predicate `p`.
     pub broadcast proof fn lemma_set_all_subset(self, s2: Set<A>, p: spec_fn(A) -> bool)
         requires
             #[trigger] self.subset_of(s2),
@@ -644,10 +658,14 @@ impl<A> Set<A> {
 }
 
 impl<A> Set<Set<A>> {
+    /// This function creates a set from all the elements of all the elements
+    /// of `self`.
     pub closed spec fn flatten(self) -> Set<A> {
         Set::new(|elem| exists|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem)).unwrap()
     }
 
+    /// This helper lemma demonstrates that `Self::flatten` is finite,
+    /// so it produces a valid `Set`.
     proof fn lemma_flatten_finite(self)
         ensures
             ISet::new(|elem| exists|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem)).finite(),
@@ -669,6 +687,8 @@ impl<A> Set<Set<A>> {
         }
     }
 
+    /// Since `Self::flatten` is `closed`, this broadcast lemma is
+    /// needed to make its semantics visible to the verifier.
     pub broadcast proof fn lemma_flatten_contains(self, elem: A)
         ensures
             #[trigger] self.flatten().contains(elem) <==>
@@ -677,6 +697,8 @@ impl<A> Set<Set<A>> {
         self.lemma_flatten_finite();
     }
 
+    /// Flattening then unioning with another set is equivalent to
+    /// inserting that other set and then flattening.
     pub broadcast proof fn flatten_insert_union_commute(self, other: Set<A>)
         ensures
             self.flatten().union(other) =~= #[trigger] self.insert(other).flatten(),
@@ -716,6 +738,10 @@ pub trait FiniteRange: Sized {
     ;
 }
 
+/// This public broadcast lemma shows that when `A` has trait
+/// `FiniteRange`, `A::range_set(lo, hi)` has the expected properties.
+/// That is, it contains all values `a: A` such that `lo <= a < hi`,
+/// and its length is `hi - lo`.
 pub broadcast proof fn range_set_properties<A: FiniteRange>(lo: A, hi: A)
     ensures
         forall|i: A| #[trigger] A::range_set(lo, hi).contains(i) <==> A::in_range(i, lo, hi),
@@ -731,6 +757,9 @@ pub trait FiniteFull: Sized {
     ;
 }
 
+/// This public broadcast lemma shows that when `A` has trait
+/// `FiniteRange`, `A::full()` has the expected propery of containing
+/// all values of type `A`.
 pub broadcast proof fn full_set_properties<A: FiniteFull>()
     ensures
         #![trigger Set::<A>::full()]

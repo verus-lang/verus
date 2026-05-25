@@ -68,6 +68,8 @@ impl<A> ISet<A> {
         ISet::new(|b: B| self.contains(rev(b)) && fwd(rev(b)).contains(b))
     }
 
+    /// This proof demonstrates that calling `map_flatten_by` is equivalent to
+    /// first calling `map`, then calling `flatten`.
     pub proof fn map_flatten_by_is_map_flatten<B>(
         self,
         fwd: spec_fn(A) -> ISet<B>,
@@ -114,6 +116,9 @@ impl<A> ISet<A> {
         &&& (forall|x: A, y: A| self.contains(x) && self.contains(y) ==> x == y)
     }
 
+    /// Indicates if the function given by `r` is injective on this set,
+    /// i.e., whether each element of this set is mapped to a different
+    /// value by `r`.
     pub open spec fn injective_on<B>(self, r: spec_fn(A) -> B) -> bool {
         forall|x1: A, x2: A|
             self.contains(x1) && self.contains(x2) && #[trigger] r(x1) == #[trigger] r(x2) ==> x1 == x2
@@ -121,8 +126,6 @@ impl<A> ISet<A> {
 
     /// An element in an ordered set is called a least element (or a minimum), if it is less than
     /// every other element of the set.
-    ///
-    /// change f to leq bc it is a relation. also these are an ordering relation
     pub open spec fn has_least(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
         self.contains(min) && forall|x: A| self.contains(x) ==> #[trigger] leq(min, x)
     }
@@ -734,6 +737,7 @@ impl<A> ISet<A> {
         }
     }
 
+    /// `map_by` preserves finiteness.
     pub broadcast proof fn lemma_map_by_finite<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A)
         requires
             self.finite(),
@@ -746,6 +750,7 @@ impl<A> ISet<A> {
         self.lemma_map_finite(fwd);
     }
 
+    /// `map_flatten_by` preserves finiteness.
     pub broadcast proof fn lemma_map_flatten_by_finite<B>(
         self,
         fwd: spec_fn(A) -> ISet<B>,
@@ -769,6 +774,9 @@ impl<A> ISet<A> {
         self.map(fwd).lemma_flatten_finite();
     }
 
+    /// If `self` is a subset of `s2`, and all elements of `s2`
+    /// satisfy predicate `p`, then all elements of `self` satisfy
+    /// predicate `p`.
     pub broadcast proof fn lemma_iset_all_subset(self, s2: ISet<A>, p: spec_fn(A) -> bool)
         requires
             #[trigger] self.subset_of(s2),
@@ -827,12 +835,16 @@ impl<A> ISet<A> {
 }
 
 impl<A> ISet<ISet<A>> {
+    /// This function creates a set from all the elements of all the elements
+    /// of `self`.
     pub open spec fn flatten(self) -> ISet<A> {
         ISet::new(
             |elem| exists|elem_s: ISet<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem),
         )
     }
 
+    /// Flattening then unioning with another set is equivalent to
+    /// inserting that other set and then flattening.
     pub broadcast proof fn flatten_insert_union_commute(self, other: ISet<A>)
         ensures
             self.flatten().union(other) =~= #[trigger] self.insert(other).flatten(),
@@ -853,6 +865,8 @@ impl<A> ISet<ISet<A>> {
         }
     }
 
+    /// If `self` is finite and all its elements are finite, then `self.flatten()`
+    /// is also finite.
     pub proof fn lemma_flatten_finite(self)
         requires
             self.finite(),
@@ -957,6 +971,8 @@ pub broadcast proof fn lemma_iset_union_finite_iff<A>(s1: ISet<A>, s2: ISet<A>)
     }
 }
 
+/// If the union of two `ISet`s is finite, then each of those `ISet`s
+/// is also finite.    
 pub proof fn lemma_iset_union_finite_implies_sets_finite<A>(s1: ISet<A>, s2: ISet<A>)
     requires
         s1.union(s2).finite(),

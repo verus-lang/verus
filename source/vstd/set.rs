@@ -29,13 +29,13 @@ verus! {
 // Important soundness note!
 //
 // In this file, one can construct `Set`s directly with
-// `Set{set:...}`, Since we make the assumption that all Sets are
+// `Set::make_set`, Since we make the assumption that all Sets are
 // finite, we must be careful to only allow functions in this file
 // that construct `Set`s to admit a finite number of elements.
 // Otherwise, one could prove that set both finite and infinite and
 // introduce false. The danger of this soundness risk is encapsulated
-// in the axiom `lemma_set_is_finite`, which assumes that the set
-// function is finite.
+// in the axiom `Set::axiom_is_finite`, which assumes that the set
+// is finite.
 //
 // Outside of this file, callers only have access to `Set`
 // constructors that create only finite sets.
@@ -118,6 +118,15 @@ impl<A> Set<A> {
 
     /// Set whose membership is determined by the given `ISet`,
     /// but only if that `ISet` is finite.
+    ///
+    /// Usage Examples:
+    /// ```rust
+    /// let iset_a = ISet::new(|x : nat| x < 42);
+    /// let option_set_b = Set::<A>::new(iset_a);
+    /// assert(iset_a.finite() ==>
+    ///        option_set_b matches Some(s) &&
+    ///        forall|x| x < 42 <==> s.contains(x));
+    /// ```
     pub closed spec fn new_from_iset(s: ISet<A>) -> Option<Set<A>> {
         if s.finite() {
             Some(Self::make_set(s))
@@ -133,10 +142,10 @@ impl<A> Set<A> {
     ///
     /// Usage Examples:
     /// ```rust
-    /// let set_a = Set::new(|x : nat| x < 42);
-    /// let set_b = Set::<A>::new(|x| some_predicate(x));
+    /// let option_set_a = Set::new(|x : nat| x < 42);
+    /// let option_set_b = Set::<A>::new(|x| some_predicate(x));
     /// assert(ISet::new(|x| some_predicate(x)).finite()) ==>
-    ///        set_b matches Some(s) &&
+    ///        option_set_b matches Some(s) &&
     ///        forall|x| some_predicate(x) <==> s.contains(x));
     /// ```
     pub closed spec fn new(f: spec_fn(A) -> bool) -> Option<Set<A>> {
@@ -500,9 +509,9 @@ pub broadcast proof fn lemma_set_filter<A>(s: Set<A>, f: spec_fn(A) -> bool, a: 
     broadcast use Set::axiom_is_finite;
 }
 
-// Trusted axioms about len
-// Note: we could add more axioms about len, but they would be incomplete.
-// The following, with axiom_set_ext_equal, are enough to build libraries about len.
+// Lemmas about len
+// The following, with lemma_set_ext_equal, are enough to build libraries about len.
+
 /// The empty set has length 0.
 pub broadcast proof fn lemma_set_empty_len<A>()
     ensures
@@ -560,6 +569,8 @@ pub broadcast proof fn lemma_set_choose_len<A>(s: Set<A>)
     assert(s.to_iset().contains(s.to_iset().choose()));
 }
 
+/// Converting a `Set` to an `ISet` produces a finite result with the same contents
+/// and length. That is, `contains` and `len` produce the same results.
 pub broadcast proof fn lemma_to_iset<A>(s: Set<A>)
     ensures
         #![trigger s.to_iset()]

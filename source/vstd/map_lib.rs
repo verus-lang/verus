@@ -521,6 +521,9 @@ impl<K, V> Map<Seq<K>, V> {
         )
     }
 
+    /// This internal helper lemma says that if sequences `s1` and
+    /// `s2` differ, then they differ when prefixed by the sequence
+    /// `prefix`.
     proof fn lemma_ne_implies_prefixed_ne(prefix: Seq<K>, s1: Seq<K>, s2: Seq<K>)
         requires
             s1 != s2,
@@ -547,6 +550,8 @@ impl<K, V> Map<Seq<K>, V> {
         }
     }
 
+    /// This helper lemma establishes that the set used in the body of
+    /// `prefixed_entries` is finite, so the set it produces is valid.
     proof fn lemma_prefixed_entries_dom_finite(self, prefix: Seq<K>)
         ensures
             ISet::new(|k: Seq<K>| self.contains_key(prefix + k)).finite(),
