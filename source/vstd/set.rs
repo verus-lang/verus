@@ -106,7 +106,6 @@ impl<A> Set<A> {
     /// assert(forall |x: A| !Set::<A>::empty().contains(x));
     /// ```
     /// Axioms around the empty set are: <br>
-    /// * [`lemma_set_empty_finite`]
     /// * [`lemma_set_empty_len`] <br>
     /// * [`lemma_set_empty`]
     #[rustc_diagnostic_item = "verus::vstd::set::Set::empty"]

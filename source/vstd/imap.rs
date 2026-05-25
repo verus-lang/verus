@@ -15,7 +15,7 @@ verus_! {
 /// appears in at most entry.
 ///
 /// In general, a map might be infinite.
-/// To work specifically with finite maps, see the [`self.finite()`](IMap::finite) predicate.
+/// To work specifically with finite maps, use `Map`.
 ///
 /// IMaps can be constructed in a few different ways:
 ///  * [`IMap::empty()`] constructs an empty map.

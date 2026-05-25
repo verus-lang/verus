@@ -21,7 +21,7 @@ verus_! {
 ///
 /// Maps can be constructed in a few different ways:
 ///  * [`Map::empty()`] constructs an empty map.
-///  * [`Map::new`] and [`Map::total`] construct a map given functions that specify its domain and the mapping
+///  * [`Map::new`] constructs a map given a `Set` that specifies its domain and the mapping
 ///     from keys to values (a _map comprehension_).
 ///  * The [`map!`] macro, to construct small maps of a fixed size.
 ///  * By manipulating an existing map with [`Map::insert`] or [`Map::remove`].
