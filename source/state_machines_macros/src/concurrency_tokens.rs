@@ -255,7 +255,7 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
             }
         }
         ShardableType::IMap(key, val) | ShardableType::PersistentIMap(key, val) => {
-            let name = Ident::new(&format!("{:}_map", field.name.to_string()), field.name.span());
+            let name = Ident::new(&format!("{:}_map", field.name), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
             quote_vstd! { vstd =>
@@ -275,7 +275,7 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
             }
         }
         ShardableType::ISet(elem) | ShardableType::PersistentISet(elem) => {
-            let name = Ident::new(&format!("{:}_set", field.name.to_string()), field.name.span());
+            let name = Ident::new(&format!("{:}_set", field.name), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
             quote_vstd! { vstd =>
