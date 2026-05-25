@@ -19,7 +19,7 @@ pub open spec fn obeys_eq<T: PartialEq>() -> bool {
     &&& obeys_eq_spec_properties::<T>()
 }
 
-#[deprecated(note = "`laws_eq::obeys_eq_spec` has been renamed to `laws_eq::obeys_eq`")]
+#[cfg_attr(not(verus_verify_core), deprecated = "`laws_eq::obeys_eq_spec` has been renamed to `laws_eq::obeys_eq`")]
 #[verifier::inline]
 pub open spec fn obeys_eq_spec<T: PartialEq>() -> bool {
     obeys_eq::<T>()

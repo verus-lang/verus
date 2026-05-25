@@ -51,7 +51,7 @@ pub open spec fn obeys_cmp<T: Ord>() -> bool {
     &&& obeys_partial_cmp_spec_properties::<T>()
 }
 
-#[deprecated(note = "`laws_cmp::obeys_cmp_spec` has been renamed to `laws_cmp::obeys_cmp`")]
+#[cfg_attr(not(verus_verify_core), deprecated = "`laws_cmp::obeys_cmp_spec` has been renamed to `laws_cmp::obeys_cmp`")]
 #[verifier::inline]
 pub open spec fn obeys_cmp_spec<T: Ord>() -> bool {
     obeys_cmp::<T>()

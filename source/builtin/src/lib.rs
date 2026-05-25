@@ -1,16 +1,15 @@
 #![cfg_attr(not(verus_verify_core), no_std)]
 #![allow(internal_features)]
 #![cfg_attr(
-    verus_keep_ghost,
+    all(verus_keep_ghost, not(verus_verify_core)),
     feature(rustc_attrs),
     feature(negative_impls),
     feature(unboxed_closures),
     feature(fn_traits),
     feature(register_tool),
-    feature(tuple_trait),
-    register_tool(verus),
-    register_tool(verifier)
+    feature(tuple_trait)
 )]
+#![cfg_attr(verus_keep_ghost, register_tool(verus), register_tool(verifier))]
 
 #[cfg(verus_keep_ghost)]
 use core::future::Future;
