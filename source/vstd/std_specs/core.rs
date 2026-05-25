@@ -107,6 +107,11 @@ pub trait ExPtrPointee: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
+pub trait ExThin: core::ptr::Pointee<Metadata = ()> + PointeeSized {
+    type ExternalTraitSpecificationFor: core::ptr::Thin;
+}
+
+#[verifier::external_trait_specification]
 pub trait ExBorrow<Borrowed> where Borrowed: ?Sized {
     type ExternalTraitSpecificationFor: core::borrow::Borrow<Borrowed>;
 }
