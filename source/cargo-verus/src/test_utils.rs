@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::BTreeMap as Map;
 use std::fs;
 use std::path::Path;
 
@@ -84,18 +84,18 @@ impl MockWorkspace {
         let root = tempfile::tempdir().expect("create temp dir");
 
         let mut member_names = vec![];
-        let mut workspace_aliases = vec![];
+        let mut workspace_aliases = Map::<String, String>::new();
         for member in self.members {
-            let name = member.name.clone();
-            let package_name = name.clone();
-            let aliases = member.aliases.clone();
-            let package_dir = root.path().join(&name);
+            let package_name = &member.name;
+            member_names.push(package_name.clone());
+            for alias in &member.aliases {
+                if workspace_aliases.insert(alias.clone(), package_name.clone()).is_some() {
+                    panic!("workspace-level alias `{alias}` already exists for `{package_name}`");
+                }
+            }
+            let package_dir = root.path().join(&package_name);
             std::fs::create_dir(&package_dir).expect("create package dir {package_dir:?}");
             member.materialize_in_dir(&package_dir);
-            member_names.push(name);
-            for alias in aliases {
-                workspace_aliases.push((alias, package_name.clone()));
-            }
         }
 
         let mut manifest_lines = vec!["[workspace]".to_owned()];
@@ -221,7 +221,7 @@ impl MockPackage {
         let mut normal = vec![];
         let mut build = vec![];
         let mut dev = vec![];
-        let mut targets: BTreeMap<String, Vec<String>> = Default::default();
+        let mut targets = Map::<String, Vec<String>>::new();
         for (kind, cfg, dep) in self.deps {
             let name = dep.alias.as_ref().unwrap_or(&dep.package);
             let package_part = dep
