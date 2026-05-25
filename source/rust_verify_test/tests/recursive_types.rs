@@ -352,3 +352,32 @@ test_verify_one_file! {
         struct X<A, B, C> { a: A, b: B, c: C, d: bool }
     } => Err(err) => assert_vir_error_msg(err, "duplicate parameter attribute A")
 }
+
+test_verify_one_file! {
+    #[test] test_recursive_set_ok verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::Set;
+
+        struct TreeNode {
+            value: int,
+            children: Set<TreeNode>,
+        }
+
+        enum RecursiveValue {
+            SingleValue { value: int },
+            MultipleValues { values: Set<RecursiveValue> },
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_iset_bad verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::ISet;
+
+        enum RecursiveValue {
+            SingleValue { value: int },
+            MultipleValues { values: ISet<RecursiveValue> },
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
+}
