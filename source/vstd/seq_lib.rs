@@ -550,8 +550,8 @@ impl<A> Seq<A> {
         assert forall|a| #[trigger] self.to_set().contains(a) <==> self.contains(a) by {
             Set::range(0, self.len() as int).lemma_map_contains(|i: int| self.index(i), a);
             if self.to_set().contains(a) {
-                let i = choose|i: int|
-                    #[trigger] Set::range(0, self.len() as int).contains(i) && self.index(i) == a;
+                let i = choose|i: int| #[trigger]
+                    Set::range(0, self.len() as int).contains(i) && self.index(i) == a;
                 assert(0 <= i < self.len());
                 assert(self.contains(a));
             }
@@ -1107,7 +1107,7 @@ impl<A> Seq<A> {
         super::set_lib::lemma_map_size_bound::<int, A>(
             Set::range(0, self.len() as int),
             self.to_set(),
-            |i: int| self.index(i)
+            |i: int| self.index(i),
         );
     }
 
@@ -1198,6 +1198,7 @@ impl<A> Seq<A> {
         broadcast use lemma_seq_contains_after_push;
         broadcast use super::seq::group_seq_axioms;
         broadcast use super::set_lib::group_set_properties;
+
     }
 
     /// Update a subrange of a sequence starting at `off` to values `vs`.

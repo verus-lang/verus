@@ -24,7 +24,6 @@ verus! {
 ///
 /// To prove that two sequences are equal, it is usually easiest to use the extensionality
 /// operator `=~=`.
-
 //////////////////////////////////////////////////////////////////////////////
 // Important soundness note!
 //
@@ -46,7 +45,6 @@ verus! {
 // introduce the problem of multiple representations of equivalent
 // sets, which creates a different problem with extensional equality.
 //////////////////////////////////////////////////////////////////////////////
-
 /// `Set` only holds finite sets, so it can be used in recursive types.
 /// For instance, a type `T` can contain a `Set<T>`.
 ///
@@ -130,8 +128,7 @@ impl<A> Set<A> {
     pub closed spec fn new_from_iset(s: ISet<A>) -> Option<Set<A>> {
         if s.finite() {
             Some(Self::make_set(s))
-        }
-        else {
+        } else {
             None
         }
     }
@@ -326,6 +323,7 @@ pub mod fold {
             self.to_iset().fold(z, f)
         }
     }
+
 }
 
 /// The empty set contains no elements
@@ -334,6 +332,7 @@ pub broadcast proof fn lemma_set_empty<A>(a: A)
         !(#[trigger] Set::empty().contains(a)),
 {
     broadcast use Set::axiom_make_set;
+
 }
 
 /// If `Set::<A>::new(f)` produces `Some(s)`, then `s` contains `a`
@@ -345,6 +344,7 @@ pub broadcast proof fn lemma_set_new<A>(f: spec_fn(A) -> bool, a: A)
         #[trigger] Set::<A>::new(f).unwrap().contains(a) == f(a),
 {
     broadcast use Set::axiom_make_set;
+
 }
 
 /// If `ISet::<A>::new(f)` is finite, then `Set::<A>::new(f)`
@@ -357,6 +357,7 @@ pub broadcast proof fn lemma_set_new_some<A>(f: spec_fn(A) -> bool)
         #[trigger] Set::<A>::new(f) is Some,
 {
     broadcast use Set::axiom_make_set;
+
 }
 
 /// Shows that `Set::<A>::new_assuming_finite(f)` contains `a`
@@ -367,7 +368,8 @@ pub broadcast proof fn lemma_set_new_assuming_finite<A>(f: spec_fn(A) -> bool, a
         #[trigger] Set::<A>::new_assuming_finite(f).contains(a) == f(a),
 {
     broadcast use Set::axiom_make_set;
-    assume(ISet::new(f).finite()); // This is the assumption
+
+    assume(ISet::new(f).finite());  // This is the assumption
 }
 
 /// If an iset `s` is finite, then `Set::new_from_iset(s)` has the same
@@ -381,6 +383,7 @@ pub broadcast proof fn lemma_set_new_from_iset<A>(s: ISet<A>)
         Set::<A>::new_from_iset(s).unwrap().to_iset() == s,
 {
     broadcast use Set::axiom_make_set;
+
     assert(ISet::new(|a: A| s.contains(a)) =~= s);
 }
 
@@ -391,6 +394,7 @@ pub broadcast proof fn lemma_set_insert_same<A>(s: Set<A>, a: A)
 {
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 /// If `a1` does not equal `a2`, then the result of inserting element `a2` into set `s`
@@ -403,6 +407,7 @@ pub broadcast proof fn lemma_set_insert_different<A>(s: Set<A>, a1: A, a2: A)
 {
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 /// The result of removing element `a` from set `s` must not contain `a`.
@@ -412,6 +417,7 @@ pub broadcast proof fn lemma_set_remove_same<A>(s: Set<A>, a: A)
 {
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 /// Removing an element `a` from a set `s` and then inserting `a` back into the set`
@@ -455,6 +461,7 @@ pub broadcast proof fn lemma_set_remove_different<A>(s: Set<A>, a1: A, a2: A)
     broadcast use axiom_set_ext_equal;
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 /// The union of sets `s1` and `s2` contains element `a` if and only if
@@ -466,6 +473,7 @@ pub broadcast proof fn lemma_set_union<A>(s1: Set<A>, s2: Set<A>, a: A)
     broadcast use axiom_set_ext_equal;
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 /// The intersection of sets `s1` and `s2` contains element `a` if and only if
@@ -477,6 +485,7 @@ pub broadcast proof fn lemma_set_intersect<A>(s1: Set<A>, s2: Set<A>, a: A)
     broadcast use axiom_set_ext_equal;
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 /// The set difference between `s1` and `s2` contains element `a` if and only if
@@ -487,6 +496,7 @@ pub broadcast proof fn lemma_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A)
 {
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 /// The complement of set `s` contains element `a` if and only if `s` does not contain `a`.
@@ -497,27 +507,29 @@ pub broadcast proof fn lemma_set_complement<A>(s: Set<A>, a: A)
         #[trigger] s.complement().unwrap().contains(a) == !s.contains(a),
 {
     broadcast use Set::axiom_make_set;
+
 }
 
 /// The filter of set `s` using function `f` contains element `a` if and only if `s` contains `a`
 /// and `f(a)` is true.
 pub broadcast proof fn lemma_set_filter<A>(s: Set<A>, f: spec_fn(A) -> bool, a: A)
     ensures
-        #[trigger] s.filter(f).contains(a) == (s.contains(a) && f(a))
+        #[trigger] s.filter(f).contains(a) == (s.contains(a) && f(a)),
 {
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 // Lemmas about len
 // The following, with lemma_set_ext_equal, are enough to build libraries about len.
-
 /// The empty set has length 0.
 pub broadcast proof fn lemma_set_empty_len<A>()
     ensures
         #[trigger] Set::<A>::empty().len() == 0,
 {
     broadcast use Set::axiom_make_set;
+
 }
 
 /// The result of inserting an element `a` into a finite set `s` has length
@@ -532,6 +544,7 @@ pub broadcast proof fn lemma_set_insert_len<A>(s: Set<A>, a: A)
 {
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 /// The result of removing an element `a` from a finite set `s` has length
@@ -546,6 +559,7 @@ pub broadcast proof fn lemma_set_remove_len<A>(s: Set<A>, a: A)
 {
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 /// If a finite set `s` contains any element, it has length greater than 0.
@@ -557,6 +571,7 @@ pub broadcast proof fn lemma_set_contains_len<A>(s: Set<A>, a: A)
 {
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 /// A finite set `s` contains the element `s.choose()` if it has length greater than 0.
@@ -577,11 +592,11 @@ pub broadcast proof fn lemma_to_iset<A>(s: Set<A>)
         s.to_iset().finite(),
         s.to_iset().len() == s.len(),
         forall|a: A| #[trigger] s.to_iset().contains(a) <==> s.contains(a),
-    decreases
-        s.len(),
+    decreases s.len(),
 {
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 pub broadcast group group_set_lemmas {

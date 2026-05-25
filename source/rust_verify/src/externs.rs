@@ -33,11 +33,7 @@ pub enum VerusExtern {
 
 fn verus_builtin_std() -> Box<[(VerusExtern, &'static str, String)]> {
     vec![
-        (
-            VerusExtern::Macros,
-            "builtin_macros",
-            format!("{LIB_PRE}verus_builtin_macros.{LIB_DL}"),
-        ),
+        (VerusExtern::Macros, "builtin_macros", format!("{LIB_PRE}verus_builtin_macros.{LIB_DL}")),
         (
             VerusExtern::Macros,
             "verus_builtin_macros",

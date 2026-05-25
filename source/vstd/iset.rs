@@ -1020,7 +1020,9 @@ pub proof fn lemma_iset_finite_if_subset_of_seq<A>(i: ISet<A>, s: Seq<A>)
     let f = |a: A| (s.index_of(a) as nat);
     let ub = s.len();
     assert(surj_on(f, i)) by {
-        assert forall|a1, a2| #![all_triggers] i.contains(a1) && i.contains(a2) && a1 != a2 implies f(a1) != f(a2) by {
+        assert forall|a1, a2|
+            #![all_triggers]
+            i.contains(a1) && i.contains(a2) && a1 != a2 implies f(a1) != f(a2) by {
             assert(s.contains(a1));
             assert(s.contains(a2));
             assert(0 <= f(a1) < s.len() && s[f(a1) as int] == a1);

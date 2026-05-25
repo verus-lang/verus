@@ -12,9 +12,9 @@ use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{
-    Spanned, fn_array_update, fn_inv_name, fn_namespace_name, fn_iset_contains_name,
-    fn_iset_empty_name, fn_iset_full_name, fn_iset_insert_name, fn_iset_remove_name,
-    fn_iset_subset_of_name, fn_slice_index, fn_slice_len, fn_slice_update,
+    Spanned, fn_array_update, fn_inv_name, fn_iset_contains_name, fn_iset_empty_name,
+    fn_iset_full_name, fn_iset_insert_name, fn_iset_remove_name, fn_iset_subset_of_name,
+    fn_namespace_name, fn_slice_index, fn_slice_len, fn_slice_update,
 };
 use crate::poly::MonoTyp;
 use crate::resolve_axioms::{ResolvableType, ResolvedTypeCollection};

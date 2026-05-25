@@ -3,10 +3,7 @@ use super::Loc;
 
 verus! {
 
-broadcast use {
-    super::super::iset::group_iset_lemmas,
-    super::super::imap::group_imap_lemmas,
-};
+broadcast use {super::super::iset::group_iset_lemmas, super::super::imap::group_imap_lemmas};
 
 /// Interface for "storage protocol" ghost state.
 /// This is an extension-slash-variant on the more well-known concept
@@ -193,7 +190,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         Self::exchange_nondeterministic(p, s, se)
     }
 
-    pub proof fn deposit(tracked self, tracked base: IMap<K, V>, new_value: P) -> (tracked out: Self)
+    pub proof fn deposit(tracked self, tracked base: IMap<K, V>, new_value: P) -> (tracked out:
+        Self)
         requires
             deposits(self.value(), base, new_value),
         ensures

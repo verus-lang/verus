@@ -1,4 +1,6 @@
 #[allow(unused_imports)]
+use super::iset::*;
+#[allow(unused_imports)]
 use super::multiset::Multiset;
 #[allow(unused_imports)]
 use super::pervasive::*;
@@ -7,8 +9,6 @@ use super::prelude::Seq;
 use super::prelude::*;
 #[allow(unused_imports)]
 use super::relations::*;
-#[allow(unused_imports)]
-use super::iset::*;
 #[allow(unused_imports)]
 use super::set::*;
 
@@ -121,7 +121,8 @@ impl<A> ISet<A> {
     /// value by `r`.
     pub open spec fn injective_on<B>(self, r: spec_fn(A) -> B) -> bool {
         forall|x1: A, x2: A|
-            self.contains(x1) && self.contains(x2) && #[trigger] r(x1) == #[trigger] r(x2) ==> x1 == x2
+            self.contains(x1) && self.contains(x2) && #[trigger] r(x1) == #[trigger] r(x2) ==> x1
+                == x2
     }
 
     /// An element in an ordered set is called a least element (or a minimum), if it is less than
@@ -156,8 +157,10 @@ impl<A> ISet<A> {
         ensures
             other.injective_on(r),
     {
-        assert forall|a1: A, a2: A| other.contains(a1) && other.contains(a2) && #[trigger] r(a1) == #[trigger] r(a2)
-               implies a1 == a2 by {
+        assert forall|a1: A, a2: A|
+            other.contains(a1) && other.contains(a2) && #[trigger] r(a1) == #[trigger] r(
+                a2,
+            ) implies a1 == a2 by {
             assert(self.contains(a1));
             assert(self.contains(a2));
             assert(r(a1) == r(a2));
@@ -176,6 +179,7 @@ impl<A> ISet<A> {
     {
         proof {
             broadcast use group_iset_properties;
+
         }
         if self.len() <= 1 {
             self.choose()
@@ -243,8 +247,7 @@ impl<A> ISet<A> {
                 if self.remove(x).has_minimum(r, min_poss) {
                     assert(r(x, min_poss) ==> r(min_poss, x));
                     assert(r(min_poss, self.find_unique_minimal(r)));
-                }
-                else {
+                } else {
                     assert(x == min_poss);
                     assert(r(x, y));
                 }
@@ -839,7 +842,8 @@ impl<A> ISet<ISet<A>> {
     /// of `self`.
     pub open spec fn flatten(self) -> ISet<A> {
         ISet::new(
-            |elem| exists|elem_s: ISet<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem),
+            |elem|
+                exists|elem_s: ISet<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem),
         )
     }
 
@@ -911,7 +915,11 @@ pub proof fn lemma_isets_eq_iff_injective_map_eq<T, S>(s1: ISet<T>, s2: ISet<T>,
 }
 
 /// Two sets are equal iff applying an injective (in the union of the sets) function `f` to each set produces equal sets.
-pub proof fn lemma_isets_eq_iff_injective_map_on_eq<T, S>(s1: ISet<T>, s2: ISet<T>, f: spec_fn(T) -> S)
+pub proof fn lemma_isets_eq_iff_injective_map_on_eq<T, S>(
+    s1: ISet<T>,
+    s2: ISet<T>,
+    f: spec_fn(T) -> S,
+)
     requires
         (s1 + s2).injective_on(f),
     ensures
@@ -972,7 +980,7 @@ pub broadcast proof fn lemma_iset_union_finite_iff<A>(s1: ISet<A>, s2: ISet<A>)
 }
 
 /// If the union of two `ISet`s is finite, then each of those `ISet`s
-/// is also finite.    
+/// is also finite.
 pub proof fn lemma_iset_union_finite_implies_sets_finite<A>(s1: ISet<A>, s2: ISet<A>)
     requires
         s1.union(s2).finite(),
@@ -1285,7 +1293,8 @@ pub broadcast proof fn lemma_iset_empty_equivalency_len<A>(s: ISet<A>)
         s.finite(),
     ensures
         #![trigger s.len()]
-        (s.len() == 0 <==> s == ISet::<A>::empty()) && (s.len() != 0 ==> exists|x: A| s.contains(x)),
+        (s.len() == 0 <==> s == ISet::<A>::empty()) && (s.len() != 0 ==> exists|x: A|
+            s.contains(x)),
 {
     assert(s.len() == 0 ==> s =~= ISet::empty()) by {
         if s.len() == 0 {
@@ -1437,8 +1446,13 @@ pub broadcast axiom fn axiom_iset_is_empty<A>(s: ISet<A>)
     requires
         !(#[trigger] s.is_empty()),
     ensures
-        exists|a: A| s.contains(a),
-; // REVIEW, should this be in `set`, or have a proof?
+        exists|a: A|
+            s.contains(
+                a,
+            ),
+// REVIEW, should this be in `set`, or have a proof?
+
+;
 
 pub broadcast proof fn lemma_iset_is_empty_len0<A>(s: ISet<A>)
     ensures

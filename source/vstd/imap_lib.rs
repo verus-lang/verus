@@ -1,15 +1,15 @@
 #[macro_use]
 use super::imap::{IMap, assert_imaps_equal, assert_imaps_equal_internal};
+#[cfg(verus_keep_ghost)]
+use super::iset::*;
+#[cfg(verus_keep_ghost)]
+use super::iset_lib::*;
 #[allow(unused_imports)]
 use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
 #[allow(unused_imports)]
 use super::relations::*;
-#[cfg(verus_keep_ghost)]
-use super::iset::*;
-#[cfg(verus_keep_ghost)]
-use super::iset_lib::*;
 
 verus! {
 

@@ -168,10 +168,7 @@ impl<V> Multiset<V> {
     /// Returns a multiset containing the difference between the count of a
     /// given element of the two sets.
     pub open spec fn difference_with(self, other: Self) -> Self {
-        let m = Map::<V, nat>::new(
-            self.dom(),
-            |v: V| clip(self.count(v) - other.count(v))
-        );
+        let m = Map::<V, nat>::new(self.dom(), |v: V| clip(self.count(v) - other.count(v)));
         Self::from_map(m)
     }
 
@@ -423,6 +420,7 @@ pub broadcast proof fn lemma_update_same<V>(m: Multiset<V>, v: V, mult: nat)
         group_multiset_axioms,
         Multiset::dom_ensures,
     };
+
     reveal(Multiset::update);
     let key_set = m.dom().insert(v);
     let fv = |key: V|
@@ -447,12 +445,9 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
     ensures
         #[trigger] m.update(v1, mult).count(v2) == m.count(v2),
 {
-    broadcast use {
-        group_set_lemmas,
-        super::map::group_map_lemmas,
-        group_multiset_axioms,
-    };
+    broadcast use {group_set_lemmas, super::map::group_map_lemmas, group_multiset_axioms};
     broadcast use {axiom_multiset_contained, Multiset::dom_ensures};
+
     reveal(Multiset::update);
     let key_set = m.dom().insert(v1);
     let fv = |key: V|
@@ -543,14 +538,14 @@ pub broadcast proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V
     ensures
         #[trigger] a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int),
 {
-    broadcast use {
-        group_set_lemmas,
-        super::map::group_map_lemmas,
-        group_multiset_axioms,
-    };
+    broadcast use {group_set_lemmas, super::map::group_map_lemmas, group_multiset_axioms};
     broadcast use {group_multiset_axioms, Multiset::dom_ensures};
+
     let m = Map::new(a.dom(), |v: V| min(a.count(v) as int, b.count(v) as int) as nat);
-    crate::vstd::map_lib::lemma_map_new_domain(a.dom(), |v: V| min(a.count(v) as int, b.count(v) as int) as nat);
+    crate::vstd::map_lib::lemma_map_new_domain(
+        a.dom(),
+        |v: V| min(a.count(v) as int, b.count(v) as int) as nat,
+    );
     if m.dom().contains(x) {
         assert(m[x] == min(a.count(x) as int, b.count(x) as int) as nat);
         axiom_multiset_contained(m, x);
@@ -635,6 +630,7 @@ pub broadcast proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>,
         group_multiset_axioms,
         Multiset::dom_ensures,
     };
+
     let map = Map::<V, nat>::new(a.dom(), |v: V| clip(a.count(v) - b.count(v)));
     crate::vstd::map_lib::lemma_map_new_domain(a.dom(), |v: V| clip(a.count(v) - b.count(v)));
     if map.dom().contains(x) {

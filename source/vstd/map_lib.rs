@@ -198,10 +198,7 @@ impl<K, V> Map<K, V> {
     /// Swaps map keys and values. Values are not required to be unique; no
     /// promises on which key is chosen on the intersection.
     pub open spec fn invert(self) -> Map<V, K> {
-        Map::<V, K>::new(
-            self.values(),
-            |v: V| choose|k: K| self.contains_pair(k, v),
-        )
+        Map::<V, K>::new(self.values(), |v: V| choose|k: K| self.contains_pair(k, v))
     }
 
     // Proven lemmas
@@ -517,7 +514,7 @@ impl<K, V> Map<Seq<K>, V> {
     pub open spec fn prefixed_entries(self, prefix: Seq<K>) -> Self {
         Map::new(
             Set::new(|k: Seq<K>| self.contains_key(prefix + k)).unwrap(),
-            |k: Seq<K>| self[prefix + k]
+            |k: Seq<K>| self[prefix + k],
         )
     }
 
@@ -529,22 +526,19 @@ impl<K, V> Map<Seq<K>, V> {
             s1 != s2,
         ensures
             prefix + s1 != prefix + s2,
-        decreases
-            prefix.len(),
+        decreases prefix.len(),
     {
         broadcast use super::seq::group_seq_axioms;
 
         if s1.len() == s2.len() {
             if forall|i: int| 0 <= i < s1.len() ==> s1[i] == s2[i] {
                 assert(s1 =~= s2);
-            }
-            else {
+            } else {
                 let i: int = choose|i: int| 0 <= i < s1.len() && s1[i] != s2[i];
                 assert((prefix + s1)[prefix.len() + i] == s1[i]);
                 assert((prefix + s2)[prefix.len() + i] == s2[i]);
             }
-        }
-        else {
+        } else {
             assert((prefix + s1).len() == prefix.len() + s1.len());
             assert((prefix + s2).len() == prefix.len() + s2.len());
         }
@@ -555,14 +549,12 @@ impl<K, V> Map<Seq<K>, V> {
     proof fn lemma_prefixed_entries_dom_finite(self, prefix: Seq<K>)
         ensures
             ISet::new(|k: Seq<K>| self.contains_key(prefix + k)).finite(),
-        decreases
-            self.dom().len(),
+        decreases self.dom().len(),
     {
         let f = |k: Seq<K>| self.contains_key(prefix + k);
         if forall|k: Seq<K>| !(#[trigger] self.contains_key(prefix + k)) {
             assert(ISet::new(f) =~= ISet::empty());
-        }
-        else {
+        } else {
             let s: Seq<K> = choose|s: Seq<K>| #[trigger] self.contains_key(prefix + s);
             self.remove(prefix + s).lemma_prefixed_entries_dom_finite(prefix);
             let set_remove_f = |k: Seq<K>| self.remove(prefix + s).contains_key(prefix + k);

@@ -6,11 +6,11 @@ use core::marker;
 use core::{mem, mem::MaybeUninit};
 
 use super::invariant::*;
+use super::iset::*;
 use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
 pub use super::raw_ptr::MemContents;
-use super::iset::*;
 use super::*;
 
 pub mod invcell;
