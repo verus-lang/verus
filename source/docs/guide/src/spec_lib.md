@@ -43,12 +43,12 @@ The macros above can only construct finite (literal) sequences, sets, and maps.
 Sequences can be constructed with `Seq::new`.
 Infinite-type sets and maps can be constructed with `ISet::new` and `IMap::new`.
 
-Finite-typed `Set`s can be constructed with `Set::<A>::range(lo, hi)`
+A finite-typed `Set` can be constructed with `Set::<A>::range(lo, hi)`
 or `Set::<A>::full()` for some finite type `A`, then modified as desired with
 `Set::map` and `Set::filter`.
-They can also be constructed by the `set_build!` macro defined
+One can also be constructed by the `set_build!` macro defined
 in the contributed library [set_build.rs](https://github.com/verus-lang/verus/tree/main/source/builtin_macros/src/contrib/set_build.rs)
-Finite-typed `Map::new` accepts any finite-type set as its domain.
+Finite-typed `Map::new` accepts any `Set` as its domain.
 
 ```rust
 {{#include ../../../../examples/guide/lib_examples.rs:new}}
