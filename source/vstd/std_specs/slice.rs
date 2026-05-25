@@ -39,6 +39,16 @@ impl<T> IndexSetTrustedSpec<usize> for [T] {
     }
 }
 
+// pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index ](i: usize, slice: &[T]) -> &T
+//     returns
+//         slice@[i as int],
+// ;
+
+// pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index ](i: Range<usize>, slice: &[T]) -> (r: &[T])
+//     ensures
+//         r@ == slice@.subrange(i.start as int, i.end as int),
+// ;
+
 impl<T, I: SliceIndex<[T]>> super::core::IndexSpecImpl<I> for [T] {
     open spec fn index_req(&self, index: &I) -> bool {
         valid_indices(index.spec_start(self), index.spec_end(self), self)
