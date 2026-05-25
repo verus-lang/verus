@@ -17,6 +17,7 @@ pub struct MockWorkspace {
 pub struct MockPackage {
     name: String,
     version: String,
+    aliases: Vec<String>,
     has_lib: bool,
     bin_names: Vec<String>,
     example_names: Vec<String>,
@@ -83,12 +84,18 @@ impl MockWorkspace {
         let root = tempfile::tempdir().expect("create temp dir");
 
         let mut member_names = vec![];
+        let mut workspace_aliases = vec![];
         for member in self.members {
             let name = member.name.clone();
+            let package_name = name.clone();
+            let aliases = member.aliases.clone();
             let package_dir = root.path().join(&name);
             std::fs::create_dir(&package_dir).expect("create package dir {package_dir:?}");
             member.materialize_in_dir(&package_dir);
             member_names.push(name);
+            for alias in aliases {
+                workspace_aliases.push((alias, package_name.clone()));
+            }
         }
 
         let mut manifest_lines = vec!["[workspace]".to_owned()];
@@ -104,6 +111,10 @@ impl MockWorkspace {
         manifest_lines.push("[workspace.dependencies]".to_owned());
         for name in &member_names {
             manifest_lines.push(format!("{name} = {{ path = \"{name}\" }}"));
+        }
+        for (alias, package) in &workspace_aliases {
+            manifest_lines
+                .push(format!("{alias} = {{ path = \"{package}\", package = \"{package}\" }}"));
         }
         manifest_lines.push("".to_owned());
 
@@ -126,6 +137,7 @@ impl MockPackage {
         MockPackage {
             name: name.to_owned(),
             version: "0.1.0".to_owned(),
+            aliases: vec![],
             has_lib: false,
             bin_names: vec![],
             example_names: vec![],
@@ -137,6 +149,11 @@ impl MockPackage {
 
     pub fn version(mut self, version: &str) -> Self {
         self.version = version.to_owned();
+        self
+    }
+
+    pub fn aliases(mut self, names: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        self.aliases.extend(names.into_iter().map(|n| n.as_ref().to_owned()));
         self
     }
 
