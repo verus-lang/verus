@@ -1,17 +1,18 @@
 #![cfg_attr(not(verus_verify_core), no_std)]
 #![allow(internal_features)]
 #![cfg_attr(
-    verus_keep_ghost,
+    all(verus_keep_ghost, not(verus_verify_core)),
     feature(rustc_attrs),
     feature(negative_impls),
     feature(unboxed_closures),
     feature(fn_traits),
     feature(register_tool),
-    feature(tuple_trait),
-    register_tool(verus),
-    register_tool(verifier)
+    feature(tuple_trait)
 )]
+#![cfg_attr(verus_keep_ghost, register_tool(verus), register_tool(verifier))]
 
+#[cfg(verus_keep_ghost)]
+use core::future::Future;
 use core::marker::PhantomData;
 
 #[cfg(verus_keep_ghost)]
@@ -246,6 +247,13 @@ pub fn constrain_type<T>(_x: T, _y: T) -> bool {
     true
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::get_future_output_type"]
+#[verifier::spec]
+pub fn get_future_output_type<T>(_x: impl Future<Output = T>) -> T {
+    unimplemented!()
+}
+
 // example: forall with three triggers [f(x), g(y)], [h(x, y)], [m(y, x)]:
 //   forall(|x: int, y: int| with_triggers!([f(x), g(y)], [h(x, y)], [m(y, x)] => body))
 #[macro_export]
@@ -386,10 +394,6 @@ pub fn use_type_invariant<A>(_a: A) {
 pub struct Ghost<A> {
     phantom: PhantomData<A>,
 }
-
-// Ghost structs are always Send and Sync, since they are spec
-unsafe impl<A> Send for Ghost<A> {}
-unsafe impl<A> Sync for Ghost<A> {}
 
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Tracked")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
@@ -604,6 +608,12 @@ impl<A: Copy> Clone for Tracked<A> {
 }
 
 impl<A: Copy> Copy for Tracked<A> {}
+
+/// `Ghost` structs are always `Send`, since they are spec mode.
+unsafe impl<A> Send for Ghost<A> {}
+
+/// `Ghost` structs are always `Sync`, since they are spec mode.
+unsafe impl<A> Sync for Ghost<A> {}
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::ghost_exec"]
@@ -1109,10 +1119,86 @@ pub const fn spec_cast_float<From: Copy + IeeeFloatCast<To>, To: Decimal>(_from:
     To::CONST_DEFAULT
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+#[cfg_attr(verus_keep_ghost, verifier::internal_trait)]
+pub trait SpecEq<Rhs: ?Sized> {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<A> for A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<&A> for A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<A> for &A {}
+
+// TODO: when new-mut-ref entirely replaces old &mut, this can be removed
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<&mut A> for A {}
+
+// TODO: when new-mut-ref entirely replaces old &mut, this can be removed
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<A> for &mut A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A> SpecEq<Ghost<A>> for A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A> SpecEq<A> for Ghost<A> {}
+
+#[cfg(verus_keep_ghost)]
+impl<A> SpecEq<Tracked<A>> for A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A> SpecEq<A> for Tracked<A> {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<*const A> for *mut A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<*mut A> for *const A {}
+
+macro_rules! impl_spec_eq {
+    ($lhs:ty, [$($rhs:ty)*]) => {
+        $(
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<$rhs> for $lhs {}
+
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<&$rhs> for $lhs {}
+
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<$rhs> for &$lhs {}
+
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<Ghost<$rhs>> for $lhs {}
+
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<$rhs> for Ghost<$lhs> {}
+        )*
+    }
+}
+
+impl_spec_eq!(int, [nat usize isize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(nat, [int usize isize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(usize, [int nat isize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(isize, [int nat usize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(u8, [int nat usize isize i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(i8, [int nat usize isize u8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(u16, [int nat usize isize u8 i8 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(i16, [int nat usize isize u8 i8 u16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(u32, [int nat usize isize u8 i8 u16 i16 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(i32, [int nat usize isize u8 i8 u16 i16 u32 u64 i64 u128 i128 char]);
+impl_spec_eq!(u64, [int nat usize isize u8 i8 u16 i16 u32 i32 i64 u128 i128 char]);
+impl_spec_eq!(i64, [int nat usize isize u8 i8 u16 i16 u32 i32 u64 u128 i128 char]);
+impl_spec_eq!(u128, [int nat usize isize u8 i8 u16 i16 u32 i32 u64 i64 i128 char]);
+impl_spec_eq!(i128, [int nat usize isize u8 i8 u16 i16 u32 i32 u64 i64 u128 char]);
+impl_spec_eq!(char, [int nat usize isize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128]);
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_eq"]
 #[verifier::spec]
-pub fn spec_eq<Lhs, Rhs>(_lhs: Lhs, _rhs: Rhs) -> bool {
+pub fn spec_eq<Lhs: SpecEq<Rhs>, Rhs>(_lhs: Lhs, _rhs: Rhs) -> bool {
     unimplemented!()
 }
 
@@ -2309,6 +2395,18 @@ pub fn erased_ghost_value<S, T>(_: S) -> T {
 }
 
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::shadow_ghost_value"]
+pub fn shadow_ghost_value<S, T>(_: S) -> T {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::verus_erasure_get_first"]
+pub fn verus_erasure_get_first<S, T>(s: S, _: T) -> S {
+    s
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::DummyCapture"]
 #[derive(Clone, Copy)]
 pub struct DummyCapture<'a> {
@@ -2330,6 +2428,15 @@ pub fn dummy_capture_consume<'a>(_dc: DummyCapture<'a>) {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::mutable_reference_tie"]
 pub fn mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(_a: &'a mut T, _b: &'a mut U) -> &'a mut T {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::two_phase_mutable_reference_tie"]
+pub fn two_phase_mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(
+    _a: &'a mut T,
+    _b: &'a mut U,
+) -> &'a mut T {
     unimplemented!()
 }
 
@@ -2376,5 +2483,22 @@ pub fn final_<T: ?Sized>(_mut_ref: &mut T) -> &mut T {
 #[rustc_diagnostic_item = "verus::verus_builtin::after_borrow"]
 #[verifier::spec]
 pub fn after_borrow<T>(_: T) -> T {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::mut_ref_tracked"]
+pub fn mut_ref_tracked<T>(_: &mut T) -> &mut Tracked<T> {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::shr_ref_struct_wrap"]
+pub fn shr_ref_struct_wrap<'a, 'b, A, B>(
+    _: &'a A,
+    _: &'b B,
+    _variant: &'static str,
+    _field: &'static str,
+) -> &'a B {
     unimplemented!()
 }

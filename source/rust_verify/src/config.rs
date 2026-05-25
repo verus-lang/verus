@@ -35,6 +35,7 @@ pub const SMT_TRANSCRIPT_FILE_SUFFIX: &str = ".smt_transcript";
 pub const PROFILE_FILE_SUFFIX: &str = ".profile";
 pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
+pub const IMPL_NAMES_SUFFIX: &str = ".impl_names";
 pub const CALL_GRAPH_FILE_SUFFIX_FULL_INITIAL: &str = "-call-graph-full-initial.dot";
 pub const CALL_GRAPH_FILE_SUFFIX_FULL_SIMPLIFIED: &str = "-call-graph-full-simplified.dot";
 pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_INITIAL: &str = "-call-graph-nostd-initial.dot";
@@ -54,6 +55,7 @@ pub struct LogArgs {
     pub log_smt: bool,
     pub log_smt_transcript: bool,
     pub log_triggers: bool,
+    pub log_impl_names: bool,
     pub log_call_graph: bool,
 }
 
@@ -115,7 +117,6 @@ pub struct ArgsX {
     pub solver: SmtSolver,
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
-    pub new_mut_ref: bool,
     pub no_bv_simplify: bool,
 }
 
@@ -163,7 +164,6 @@ impl ArgsX {
             solver: Default::default(),
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
-            new_mut_ref: Default::default(),
             no_bv_simplify: Default::default(),
         }
     }
@@ -338,6 +338,7 @@ pub fn parse_args_with_imports(
     const LOG_SMT: &str = "smt";
     const LOG_SMT_TRANSCRIPT: &str = "smt-transcript";
     const LOG_TRIGGERS: &str = "triggers";
+    const LOG_IMPL_NAMES: &str = "impl-names";
     const LOG_CALL_GRAPH: &str = "call-graph";
 
     const LOG_ITEMS: &[(&str, &str)] = &[
@@ -356,6 +357,7 @@ pub fn parse_args_with_imports(
         (LOG_SMT, "Log SMT queries"),
         (LOG_SMT_TRANSCRIPT, "Log complete SMT transcript"),
         (LOG_TRIGGERS, "Log automatically chosen triggers"),
+        (LOG_IMPL_NAMES, "Log rustc's internal trait impl names"),
         (LOG_CALL_GRAPH, "Log the call graph"),
     ];
 
@@ -405,7 +407,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
-    const EXTENDED_NEW_MUT_REF: &str = "new-mut-ref";
     const EXTENDED_NO_BV_SIMPLIFY: &str = "no-bv-simplify";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
@@ -430,7 +431,6 @@ pub fn parse_args_with_imports(
             EXTENDED_CHECK_API_SAFETY,
             "Check that the API is memory-safe when called from unverified, safe Rust code. Experimental.",
         ),
-        (EXTENDED_NEW_MUT_REF, "incomplete feature for developers only; do not use"),
         (
             EXTENDED_NO_BV_SIMPLIFY,
             "internal option to disable simplification of bit-vector assertions before sending to the SMT solver",
@@ -751,6 +751,7 @@ pub fn parse_args_with_imports(
             log_smt: log.contains_key(LOG_SMT),
             log_smt_transcript: log.contains_key(LOG_SMT_TRANSCRIPT),
             log_triggers: log.contains_key(LOG_TRIGGERS),
+            log_impl_names: log.contains_key(LOG_IMPL_NAMES),
             log_call_graph: log.contains_key(LOG_CALL_GRAPH),
         },
         show_triggers: if matches.opt_present(OPT_TRIGGERS) {
@@ -826,7 +827,6 @@ pub fn parse_args_with_imports(
         solver: if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         axiom_usage_info: extended.contains_key(EXTENDED_AXIOM_USAGE_INFO),
         check_api_safety: extended.contains_key(EXTENDED_CHECK_API_SAFETY),
-        new_mut_ref: extended.contains_key(EXTENDED_NEW_MUT_REF),
         no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
     };
 
@@ -834,16 +834,5 @@ pub fn parse_args_with_imports(
         error("--compile and --no-erasure-check are mutually exclusive".to_string())
     }
 
-    if args.new_mut_ref {
-        NEW_MUT_REF.store(true, std::sync::atomic::Ordering::SeqCst);
-    }
-
     (Arc::new(args), unmatched)
-}
-
-pub(crate) static NEW_MUT_REF: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-pub(crate) fn new_mut_ref() -> bool {
-    NEW_MUT_REF.load(std::sync::atomic::Ordering::SeqCst)
 }

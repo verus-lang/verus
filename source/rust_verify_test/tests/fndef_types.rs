@@ -325,17 +325,41 @@ test_verify_one_file! {
         spec fn test() -> bool {
             call_requires(foo, ())
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::foo` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::foo` which is ignored")
 }
 
 test_verify_one_file! {
     #[test] mut_params_error verus_code! {
-        fn stuff(x: &mut u8) { }
+        use vstd::prelude::*;
+
+        fn stuff(x: &mut u8)
+            requires *x < 5
+            ensures *final(x) == *old(x) + 1
+        {
+            *x += 1;
+        }
 
         fn test() {
-            let x = stuff;
+            let stuff_fn = stuff;
+            let mut x = 0;
+            stuff_fn(&mut x);
+            assert(x == 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "not supported: using a function that takes '&mut' params as a value")
+
+        fn test2() {
+            let stuff_fn = stuff;
+            let mut x = 0;
+            stuff_fn(&mut x);
+            assert(x == 1);
+            assert(false); // FAILS
+        }
+
+        fn test3() {
+            let stuff_fn = stuff;
+            let mut x = 20;
+            stuff_fn(&mut x); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {
@@ -1900,4 +1924,38 @@ test_verify_one_file! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] zero_arg_fn_issue2296 verus_code! {
+        use vstd::prelude::*;
+
+        pub fn f() -> bool {
+            true
+        }
+
+        pub fn call_f() -> (ret: bool)
+            ensures
+                f.ensures((), ret),
+        {
+            f()
+        }
+
+        pub uninterp spec fn foo() -> bool;
+
+        pub fn g() -> bool
+            requires foo()
+        {
+            true
+        }
+
+        pub fn call_g() -> (ret: bool)
+            requires
+                f.requires(()),
+            ensures
+                f.ensures((), ret),
+        {
+            f()
+        }
+    } => Ok(())
 }

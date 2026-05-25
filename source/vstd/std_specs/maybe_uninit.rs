@@ -32,7 +32,7 @@ pub assume_specification<T>[ MaybeUninit::<T>::new ](val: T) -> (res: MaybeUnini
     no_unwind;
 
 pub assume_specification<T>[ MaybeUninit::<T>::uninit ]() -> (res: MaybeUninit<T>)
-    ensures res.mem_contents() === MemContents::Uninit,
+    ensures res.mem_contents() == MemContents::Uninit,
     opens_invariants none
     no_unwind;
 
@@ -45,6 +45,14 @@ pub assume_specification<T>[ MaybeUninit::<T>::assume_init ](m: MaybeUninit<T>) 
 pub assume_specification<T>[ MaybeUninit::<T>::assume_init_ref ](m: &MaybeUninit<T>) -> (ret: &T)
     requires m.mem_contents().is_init(),
     ensures ret == m.mem_contents().value(),
+    opens_invariants none
+    no_unwind;
+
+pub assume_specification<T>[ MaybeUninit::<T>::assume_init_mut ](m: &mut MaybeUninit<T>) -> (ret: &mut T)
+    requires m.mem_contents().is_init(),
+    ensures *ret == old(m).mem_contents().value(),
+        final(m).mem_contents().is_init(),
+        final(m).mem_contents().value() == *final(ret),
     opens_invariants none
     no_unwind;
 

@@ -1,5 +1,6 @@
 //! See docs in build/expr/mod.rs
 
+use rustc_abi::FieldIdx;
 use rustc_ast::{AsmMacro, InlineAsmOptions};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::stack::ensure_sufficient_stack;
@@ -9,13 +10,14 @@ use rustc_middle::mir::*;
 use rustc_middle::span_bug;
 use rustc_middle::thir::*;
 use rustc_middle::ty::{self, CanonicalUserTypeAnnotation, Ty};
-use rustc_span::DUMMY_SP;
 use rustc_span::source_map::Spanned;
+use rustc_span::{DUMMY_SP, sym};
 use rustc_trait_selection::infer::InferCtxtExt;
 use tracing::{debug, instrument};
 
 use crate::builder::expr::category::{Category, RvalueFunc};
 use crate::builder::matches::{DeclareLetBindings, HasMatchGuard};
+use crate::builder::scope::LintLevel;
 use crate::builder::{BlockAnd, BlockAndExtension, BlockFrame, Builder, NeedsTemporary};
 use crate::errors::{LoopMatchArmWithGuard, LoopMatchUnsupportedType};
 
@@ -45,10 +47,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         }
 
         let block_and = match expr.kind {
-            ExprKind::Scope { region_scope, lint_level, value } => {
+            ExprKind::Scope { region_scope, hir_id, value } => {
                 let region_scope = (region_scope, source_info);
                 ensure_sufficient_stack(|| {
-                    this.in_scope(region_scope, lint_level, |this| {
+                    this.in_scope(region_scope, LintLevel::Explicit(hir_id), |this| {
                         this.expr_into_dest(destination, block, value)
                     })
                 })
@@ -365,14 +367,156 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     None
                 })
             }
+            // Some intrinsics are handled here because they desperately want to avoid introducing
+            // unnecessary copies.
+            ExprKind::Call { ty, fun, ref args, .. }
+                if let ty::FnDef(def_id, generic_args) = *ty.kind()
+                    && let Some(intrinsic) = this.tcx.intrinsic(def_id)
+                    && matches!(intrinsic.name, sym::write_via_move | sym::write_box_via_move) =>
+            {
+                // We still have to evaluate the callee expression as normal (but we don't care
+                // about its result).
+                let _fun = unpack!(block = this.as_local_operand(block, fun));
+
+                match intrinsic.name {
+                    sym::write_via_move => {
+                        // `write_via_move(ptr, val)` becomes `*ptr = val` but without any dropping.
+
+                        // The destination must have unit type (so we don't actually have to store anything
+                        // into it).
+                        assert!(destination.ty(&this.local_decls, this.tcx).ty.is_unit());
+
+                        // Compile this to an assignment of the argument into the destination.
+                        let [ptr, val] = **args else {
+                            span_bug!(expr_span, "invalid write_via_move call")
+                        };
+                        let Some(ptr) = unpack!(block = this.as_local_operand(block, ptr)).place()
+                        else {
+                            span_bug!(expr_span, "invalid write_via_move call")
+                        };
+                        let ptr_deref = ptr.project_deeper(&[ProjectionElem::Deref], this.tcx);
+                        this.expr_into_dest(ptr_deref, block, val)
+                    }
+                    sym::write_box_via_move => {
+                        // The signature is:
+                        // `fn write_box_via_move<T>(b: Box<MaybeUninit<T>>, val: T) -> Box<MaybeUninit<T>>`.
+                        // `write_box_via_move(b, val)` becomes
+                        // ```
+                        // (*b).value.value.value = val;
+                        // b
+                        // ```
+                        // One crucial aspect of this lowering is that the generated code must
+                        // cause the borrow checker to enforce that `val` lives sufficiently
+                        // long to be stored in `b`. The above lowering does this; anything that
+                        // involves a `*const T` or a `NonNull<T>` does not as those are covariant.
+
+                        // Extract the operands, compile `b`.
+                        let [b, val] = **args else {
+                            span_bug!(expr_span, "invalid init_box_via_move call")
+                        };
+                        let Some(b) = unpack!(block = this.as_local_operand(block, b)).place()
+                        else {
+                            span_bug!(expr_span, "invalid init_box_via_move call")
+                        };
+                        let tcx = this.tcx;
+                        let decls = &this.local_decls;
+
+                        // `b` is a `Box<MaybeUninit<T>>`.
+                        let place = b.project_deeper(&[ProjectionElem::Deref], tcx);
+                        // Current type: `MaybeUninit<T>`. Field #1 is `ManuallyDrop<T>`.
+                        let place = place.project_to_field(FieldIdx::from_u32(1), decls, tcx);
+                        // Current type: `ManuallyDrop<T>`. Field #0 is `MaybeDangling<T>`.
+                        let place = place.project_to_field(FieldIdx::ZERO, decls, tcx);
+                        // Current type: `MaybeDangling<T>`. Field #0 is `T`.
+                        let place = place.project_to_field(FieldIdx::ZERO, decls, tcx);
+                        // Sanity check.
+                        assert_eq!(place.ty(decls, tcx).ty, generic_args.type_at(0));
+
+                        // Store `val` into place.
+                        unpack!(block = this.expr_into_dest(place, block, val));
+
+                        // Return `b`
+                        this.cfg.push_assign(
+                            block,
+                            source_info,
+                            destination,
+                            // Move from `b` so that does not get dropped any more.
+                            Rvalue::Use(Operand::Move(b)),
+                        );
+                        block.unit()
+                    }
+                    _ => rustc_middle::bug!(),
+                }
+            }
             ExprKind::Call { ty: _, fun, ref args, from_hir_call, fn_span } => {
+                // VERUS: If any argument is to the function `two_phase_mutable_reference_tie`
+                // we need to reorder things, see the explanation in verus_time_travel_prevention.rs
+                // For `foo(two_phase_mutable_reference_tie(e1, e2), e3)` the evaluation order is:
+                // 1. e1
+                // 2. e2
+                // 3. e3
+                // 4. two_phase_mutable_reference_tie(_, _)
+                // 5. foo(_, _, _)
                 let fun = unpack!(block = this.as_local_operand(block, fun));
                 let args: Box<[_]> = args
                     .into_iter()
                     .copied()
-                    .map(|arg| Spanned {
-                        node: unpack!(block = this.as_local_call_operand(block, arg)),
-                        span: this.thir.exprs[arg].span,
+                    .map(|arg| {
+                        if let Some((fun, arg0, arg1, ty)) =
+                            crate::verus_time_travel_prevention::is_two_phase_mutable_reference_tie(
+                                &this.thir, arg,
+                            )
+                        {
+                            let fun = unpack!(block = this.as_local_operand(block, fun));
+                            let a0 = Spanned {
+                                node: unpack!(block = this.as_local_call_operand(block, arg0)),
+                                span: this.thir.exprs[arg].span,
+                            };
+                            let a1 = Spanned {
+                                node: unpack!(block = this.as_local_call_operand(block, arg1)),
+                                span: this.thir.exprs[arg].span,
+                            };
+                            (a0, Some((a1, fun, ty)))
+                        } else {
+                            // Normal arg
+                            let a = Spanned {
+                                node: unpack!(block = this.as_local_call_operand(block, arg)),
+                                span: this.thir.exprs[arg].span,
+                            };
+                            (a, None)
+                        }
+                    })
+                    .collect();
+
+                let args: Box<[_]> = args
+                    .into_iter()
+                    .map(|(arg0, arg1)| {
+                        if let Some((arg1, fun, ty)) = arg1 {
+                            // emit the call to `two_phase_mutable_reference_tie`
+                            let span = arg0.span;
+                            let success = this.cfg.start_new_block();
+                            let args = Box::new([arg0, arg1]);
+                            let temp_destination = this.temp(ty, span);
+                            this.record_operands_moved(&*args);
+                            this.cfg.terminate(
+                                block,
+                                source_info,
+                                TerminatorKind::Call {
+                                    func: fun,
+                                    args,
+                                    unwind: UnwindAction::Unreachable,
+                                    destination: temp_destination,
+                                    target: Some(success),
+                                    call_source: CallSource::Normal,
+                                    fn_span,
+                                },
+                            );
+                            this.diverge_from(block);
+                            block = success;
+                            Spanned { node: Operand::Move(temp_destination), span: span }
+                        } else {
+                            arg0
+                        }
                     })
                     .collect();
 
@@ -487,6 +631,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 ref fields,
                 ref base,
             }) => {
+                // VERUS: If any argument is to the function `two_phase_mutable_reference_tie`
+                // we need to reorder things, see the explanation in verus_time_travel_prevention.rs
+
                 // See the notes for `ExprKind::Array` in `as_rvalue` and for
                 // `ExprKind::Borrow` above.
                 let is_union = adt_def.is_union();
@@ -496,21 +643,77 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
                 // first process the set of fields that were provided
                 // (evaluating them in order given by user)
-                let fields_map: FxHashMap<_, _> = fields
+                let fields0: Box<[_]> = fields
                     .into_iter()
                     .map(|f| {
                         (
                             f.name,
-                            unpack!(
-                                block = this.as_operand(
-                                    block,
-                                    scope,
-                                    f.expr,
-                                    LocalInfo::AggregateTemp,
-                                    NeedsTemporary::Maybe,
-                                )
-                            ),
+                            if let Some((fun, arg0, arg1, ty)) = crate::verus_time_travel_prevention::is_two_phase_mutable_reference_tie(&this.thir, f.expr) {
+                                let fun = unpack!(block = this.as_local_operand(block, fun));
+                                let a0 = unpack!(block = this.as_operand(
+                                        block,
+                                        scope,
+                                        arg0,
+                                        LocalInfo::AggregateTemp,
+                                        NeedsTemporary::Maybe,
+                                    ));
+                                let a1 = unpack!(block = this.as_operand(
+                                        block,
+                                        scope,
+                                        arg1,
+                                        LocalInfo::AggregateTemp,
+                                        NeedsTemporary::Maybe,
+                                    ));
+                                let span = this.thir[f.expr].span;
+                                (a0, Some((a1, fun, ty, span)))
+                            } else {
+                                let a = unpack!(
+                                    block = this.as_operand(
+                                        block,
+                                        scope,
+                                        f.expr,
+                                        LocalInfo::AggregateTemp,
+                                        NeedsTemporary::Maybe,
+                                    )
+                                );
+                                (a, None)
+                            },
                         )
+                    })
+                    .collect();
+
+                let fields_map: FxHashMap<_, _> = fields0
+                    .into_iter()
+                    .map(|(field_name, (arg0, arg1))| {
+                        let arg = if let Some((arg1, fun, ty, span)) = arg1 {
+                            // emit the call to `two_phase_mutable_reference_tie`
+                            let success = this.cfg.start_new_block();
+                            let args = Box::new([
+                                Spanned { node: arg0, span: span },
+                                Spanned { node: arg1, span: span },
+                            ]);
+                            let temp_destination = this.temp(ty, span);
+                            this.record_operands_moved(&*args);
+                            this.cfg.terminate(
+                                block,
+                                source_info,
+                                TerminatorKind::Call {
+                                    func: fun,
+                                    args,
+                                    unwind: UnwindAction::Unreachable,
+                                    destination: temp_destination,
+                                    target: Some(success),
+                                    call_source: CallSource::Normal,
+                                    fn_span: span,
+                                },
+                            );
+                            this.diverge_from(block);
+                            block = success;
+                            Operand::Move(temp_destination)
+                        } else {
+                            arg0
+                        };
+                        (field_name, arg)
                     })
                     .collect();
 
@@ -769,7 +972,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             // these are the cases that are more naturally handled by some other mode
             ExprKind::Unary { .. }
             | ExprKind::Binary { .. }
-            | ExprKind::Box { .. }
             | ExprKind::Cast { .. }
             | ExprKind::PointerCoercion { .. }
             | ExprKind::Repeat { .. }

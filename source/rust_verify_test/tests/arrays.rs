@@ -58,8 +58,8 @@ test_verify_one_file! {
             old(ar)[0] == 1,
             old(ar)[2] == 2,
         ensures
-            ar[0] == 2,
-            ar[2] == 3,
+            final(ar)[0] == 2,
+            final(ar)[2] == 3,
         {
             ar[0] += 1;
             ar[ar[0]] += 1;
@@ -77,7 +77,7 @@ test_verify_one_file! {
             *old(i) < 10,
         ensures
             ret == *old(i),
-            *i == *old(i) + 1,
+            *final(i) == *old(i) + 1,
         {
             let oldi = *i;
             *i = *i + 1;
@@ -88,15 +88,15 @@ test_verify_one_file! {
         requires
             old(ar)[0] < 10,
         ensures
-            ar[0] == old(ar)[0] + 1,
-            ar[1] == 1,
+            final(ar)[0] == old(ar)[0] + 1,
+            final(ar)[1] == 1,
         {
             let mut i = 0usize;
             ar[potential_side_effect(&mut i)] += 1;
             ar[potential_side_effect(&mut i)] = 1;
+            assert(i == 2);
         }
-
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: assign op to index_mut with tgt/idx that could have side effects")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -138,7 +138,7 @@ test_verify_one_file! {
 
         fn test(ar: &mut [u8; 20])
         ensures
-            ar[0] == 1,
+            final(ar)[0] == 1,
         {
             ar[0] = 1;
         }
@@ -334,6 +334,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_array_index_generic verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test<A, const N: usize>(a: [A; N], i: int)
+            requires 0 <= i < N
+        {
+            use vstd::array::array_view;
+            assert(a@[i] == array_index(a, i));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_array_repeat verus_code! {
         use vstd::prelude::*;
 
@@ -470,5 +483,26 @@ test_verify_one_file! {
             assert(sl@.len() == N);
         }
 
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_array_for_loop verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let ar: [u32; 3] = [0u32, 2u32, 4u32];
+
+            let mut i: usize = 0;
+            for x in it: ar.iter()
+                invariant
+                    i == it.index(),
+                    it.seq().unref() == seq![0u32, 2u32, 4u32],
+            {
+                assert(x < 5);
+                assert(x % 2 == 0);
+                i = i + 1;
+            }
+        }
     } => Ok(())
 }

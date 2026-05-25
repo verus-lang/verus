@@ -19,7 +19,6 @@ pub(crate) struct CrateWithMetadata {
 }
 
 pub(crate) struct ImportOutput {
-    pub(crate) crate_names: Vec<String>,
     pub(crate) vir_crates: Vec<Krate>,
     pub(crate) metadatas: Vec<CrateMetadata>,
 }
@@ -29,10 +28,8 @@ pub(crate) fn import_crates(
     import_virs_via_cargo: Vec<(String, String)>,
 ) -> Result<ImportOutput, VirErr> {
     let mut metadatas = Vec::new();
-    let mut crate_names = Vec::new();
     let mut vir_crates = Vec::new();
-    for (crate_name, file_path) in args.import.iter().chain(import_virs_via_cargo.iter()) {
-        crate_names.push(crate_name.clone());
+    for (_, file_path) in args.import.iter().chain(import_virs_via_cargo.iter()) {
         let file = std::io::BufReader::new(match std::fs::File::open(file_path) {
             Ok(file) => file,
             Err(err) => {
@@ -55,7 +52,7 @@ pub(crate) fn import_crates(
         vir_crates.push(krate);
         metadatas.push(metadata);
     }
-    Ok(ImportOutput { crate_names, vir_crates, metadatas })
+    Ok(ImportOutput { vir_crates, metadatas })
 }
 
 pub(crate) fn export_crate(

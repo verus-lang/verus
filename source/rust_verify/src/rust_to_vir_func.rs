@@ -1,20 +1,20 @@
 use crate::attributes::{AttrPublish, VerifierAttrs, get_mode, get_ret_mode, get_var_mode};
 use crate::automatic_derive::AutomaticDeriveAction;
-use crate::config::Vstd;
 use crate::context::{BodyCtxt, Context, ContextX, HeaderSetting};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
-use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
-    check_fn_opaque_ty, check_generics_bounds_no_polarity, def_id_to_vir_path, no_body_param_to_var,
+    check_fn_opaque_ty, check_generics_bounds_no_polarity, def_id_to_vir_path, local_to_var,
+    no_body_param_to_var,
 };
-use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir_consume, pat_to_mut_var};
+use crate::rust_to_vir_base::{mk_visibility, qpath_to_ident};
+use crate::rust_to_vir_expr::{expr_to_vir_consume, pat_to_mut_var};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
-    Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
-    HirId, MaybeOwner, Param, Safety,
+    Attribute, Body, BodyId, Crate, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics,
+    HeaderSafety, HirId, MaybeOwner, Param, Safety,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, ConstKind, GenericArg,
@@ -27,20 +27,23 @@ use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::vec;
 use vir::ast::{
-    BodyVisibility, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind,
-    KrateX, Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX, VarIdent,
-    VirErr, Visibility,
+    BodyVisibility, CrateId, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, ItemKind, KrateX,
+    Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX, VarIdent, VirErr,
+    Visibility,
 };
 use vir::ast_util::{air_unique_var, unit_typ};
-use vir::def::{RETURN_VALUE, VERUS_SPEC};
+use vir::def::{RETURN_VALUE, Spanned, VERUS_SPEC};
 use vir::sst_util::subst_typ;
 
+#[derive(Debug)]
 enum FnOrConstSigEnum<'tcx> {
     Fn(&'tcx FnSig<'tcx>),
     ConstVar(Typ),
 }
 
+#[derive(Debug)]
 pub(crate) struct FnOrConstSig<'tcx> {
     span: Span,
     sig: FnOrConstSigEnum<'tcx>,
@@ -69,6 +72,13 @@ impl<'tcx> FnOrConstSig<'tcx> {
                 _ => Safety::Unsafe,
             },
             FnOrConstSigEnum::ConstVar(_) => Safety::Safe,
+        }
+    }
+
+    fn asyncness(&self) -> rustc_hir::IsAsync {
+        match &self.sig {
+            FnOrConstSigEnum::Fn(sig) => sig.header.asyncness,
+            FnOrConstSigEnum::ConstVar(_) => rustc_hir::IsAsync::NotAsync,
         }
     }
 
@@ -159,12 +169,6 @@ fn handle_autospec<'tcx>(
 
         let mut spec_params = vec![];
         for p in functionx.params.iter() {
-            if p.x.is_mut {
-                return err_span(
-                    span,
-                    format!("allow_in_spec not supported for function with &mut param"),
-                );
-            }
             if p.x.unwrapped_info.is_some() {
                 return err_span(
                     span,
@@ -179,7 +183,6 @@ fn handle_autospec<'tcx>(
                     name: p.x.name.clone(),
                     typ: p.x.typ.clone(),
                     mode: Mode::Spec,
-                    is_mut: false,
                     unwrapped_info: None,
                     user_mut: false,
                 },
@@ -192,7 +195,6 @@ fn handle_autospec<'tcx>(
                 name: air_unique_var(RETURN_VALUE),
                 typ: ret_param.x.typ.clone(),
                 mode: Mode::Spec,
-                is_mut: false,
                 unwrapped_info: None,
                 user_mut: false,
             },
@@ -237,7 +239,6 @@ fn handle_autospec<'tcx>(
                     broadcast_forall_only: false,
                     no_auto_trigger: false,
                     auto_ext_equal: functionx.attrs.auto_ext_equal.clone(),
-                    custom_req_err: None,
                     autospec: None,
                     bit_vector: false,
                     atomic: false,
@@ -257,10 +258,13 @@ fn handle_autospec<'tcx>(
                     is_unsafe: false,
                     exec_assume_termination: false,
                     exec_allows_no_decreases_clause: false,
-                    ignore_outside_new_mut_ref: functionx.attrs.ignore_outside_new_mut_ref,
+                    tracked_swap: false,
+                    tracked_take_option: false,
+                    is_async: false,
                 }),
                 body: Some(ret_clause.clone()),
                 extra_dependencies: functionx.extra_dependencies.clone(),
+                async_ret: functionx.async_ret.clone(),
             },
         );
 
@@ -277,30 +281,26 @@ pub(crate) fn body_id_to_types<'tcx>(
     tcx.typeck(id.hir_id.owner.def_id)
 }
 
-fn body_to_vir<'tcx>(
+fn mk_bctx<'tcx>(
     ctxt: &Context<'tcx>,
     fun_id: DefId,
-    id: &BodyId,
-    body: &Body<'tcx>,
+    body_id: &BodyId,
     mode: Mode,
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
-    new_mut_ref: bool,
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     param_names: Vec<VarIdent>,
     external_opaque_type_map: Option<HashMap<Path, Path>>,
-) -> Result<vir::ast::Expr, VirErr> {
-    let types = body_id_to_types(ctxt.tcx, id);
-    let bctx = BodyCtxt {
+) -> BodyCtxt<'tcx> {
+    BodyCtxt {
         ctxt: ctxt.clone(),
-        types,
+        types: body_id_to_types(ctxt.tcx, body_id),
         fun_id,
         external_trait_from_to: external_trait_from_to.as_ref().map(|e| Arc::new(e.clone())),
         mode,
         external_body,
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
-        new_mut_ref,
         migrate_postcondition_vars,
         in_fn_sig: false,
         in_postcondition: false,
@@ -310,8 +310,36 @@ fn body_to_vir<'tcx>(
         header_setting: HeaderSetting::Fn,
         unwrap_param_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
         external_opaque_type_map,
-    };
-    let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
+    }
+}
+
+fn body_to_vir<'tcx>(
+    ctxt: &Context<'tcx>,
+    fun_id: DefId,
+    id: &BodyId,
+    body: &Body<'tcx>,
+    mode: Mode,
+    external_body: bool,
+    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
+    migrate_postcondition_vars: Option<HashSet<VarIdent>>,
+    param_names: Vec<VarIdent>,
+    external_opaque_type_map: Option<HashMap<Path, Path>>,
+    is_async: bool,
+) -> Result<vir::ast::Expr, VirErr> {
+    let bctx = mk_bctx(
+        ctxt,
+        fun_id,
+        id,
+        mode,
+        external_body,
+        external_trait_from_to,
+        migrate_postcondition_vars,
+        param_names,
+        external_opaque_type_map,
+    );
+    let body_expr =
+        if is_async { extract_desugared_async_body(&bctx.ctxt, body)? } else { &body.value };
+    let e = expr_to_vir_consume(&bctx, body_expr)?;
 
     if external_body {
         match &e.x {
@@ -321,6 +349,55 @@ fn body_to_vir<'tcx>(
     } else {
         Ok(e)
     }
+}
+
+pub(crate) fn extract_desugared_async_body<'tcx>(
+    ctxt: &Context<'tcx>,
+    body: &Body<'tcx>,
+) -> Result<&'tcx rustc_hir::Expr<'tcx>, VirErr> {
+    let async_body_expr = match body.value.kind {
+        rustc_hir::ExprKind::Closure(cls)
+            if cls.kind
+                == rustc_hir::ClosureKind::Coroutine(rustc_hir::CoroutineKind::Desugared(
+                    rustc_hir::CoroutineDesugaring::Async,
+                    rustc_hir::CoroutineSource::Fn,
+                )) =>
+        {
+            let closure_body = crate::rust_to_vir_func::find_body(ctxt, &cls.body);
+            match closure_body.value.kind {
+                rustc_hir::ExprKind::Block(block, ..) => {
+                    let expr = block.expr.expect("async function block has no expression");
+                    match expr.kind {
+                        rustc_hir::ExprKind::DropTemps(expr) => expr,
+                        _ => {
+                            return err_span(
+                                body.value.span,
+                                format!(
+                                    "internal error: async function desugared closure expression is not `DropTemps`"
+                                ),
+                            );
+                        }
+                    }
+                }
+                _ => {
+                    return err_span(
+                        body.value.span,
+                        format!(
+                            "internal error: async function desugared closure doesn't have a block"
+                        ),
+                    );
+                }
+            }
+        }
+        _ => {
+            return err_span(
+                body.value.span,
+                format!("internal error: async function desugared body is not a closure"),
+            );
+        }
+    };
+
+    Ok(async_body_expr)
 }
 
 fn check_fn_decl<'tcx>(
@@ -348,13 +425,8 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = ctxt.mid_ty_to_vir(
-                id,
-                span,
-                &output_ty,
-                false,
-                assume_specification_opaque_type_map,
-            )?;
+            let typ =
+                ctxt.mid_ty_to_vir(id, span, &output_ty, assume_specification_opaque_type_map)?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -759,8 +831,10 @@ fn handle_external_fn<'tcx>(
     external_fn_specification_via_external_trait: Option<DefId>,
     external_info: &mut ExternalInfo,
     // This function is the proxy, and we need to look up the actual path.
-) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool, Safety, bool, DefId), VirErr>
-{
+) -> Result<
+    (vir::ast::Path, vir::ast::Visibility, FunctionKind, bool, Safety, bool, DefId, bool),
+    VirErr,
+> {
     let is_builtin_external = matches!(
         external_fn_specification_via_external_trait
             .and_then(|d| ctxt.verus_items.id_to_name.get(&d)),
@@ -804,15 +878,21 @@ fn handle_external_fn<'tcx>(
     let external_path = ctxt.def_id_to_vir_path(external_id);
     let external_item_visibility = mk_visibility(ctxt, external_id);
 
-    if external_path.krate == Some(Arc::new("verus_builtin".to_string()))
-        && &*external_path.last_segment() != "clone"
-        && !is_builtin_external
-    {
-        return err_span(
-            sig.span,
-            "cannot apply `assume_specification` to Verus verus_builtin functions",
-        );
+    match &external_path.krate {
+        CrateId::Id(name, _)
+            if name.to_string().as_str() == "verus_builtin"
+                && &*external_path.last_segment() != "clone"
+                && !is_builtin_external =>
+        {
+            return err_span(
+                sig.span,
+                "cannot apply `assume_specification` to Verus verus_builtin functions",
+            );
+        }
+        _ => {}
     }
+
+    let is_async = sig.asyncness().is_async();
 
     // The comparison is a little tricky because we could have a situation like this:
     //
@@ -873,6 +953,7 @@ fn handle_external_fn<'tcx>(
             Safety::Safe,
             true,
             external_id,
+            is_async,
         ));
     }
 
@@ -897,7 +978,6 @@ fn handle_external_fn<'tcx>(
             mismatch_type_error_user_str_early(ctxt, substs2_early, poly_sig2),
         );
     };
-
     let poly_sig1x = poly_sig1.instantiate(ctxt.tcx, substs1_early);
     let poly_sig1x =
         ctxt.tcx.instantiate_bound_regions(poly_sig1x, |br| substs1_late[usize::from(br.var)]).0;
@@ -979,6 +1059,7 @@ fn handle_external_fn<'tcx>(
         safety,
         false,
         external_id,
+        is_async,
     ))
 }
 
@@ -1189,15 +1270,15 @@ fn binders_to_string<'tcx>(
         let s = match &k {
             BoundVariableKind::Ty(BoundTyKind::Anon) => "_",
             BoundVariableKind::Ty(BoundTyKind::Param(def_id)) => {
-                sym = tcx.item_name(def_id);
+                sym = tcx.item_name(*def_id);
                 sym.as_str()
             }
             BoundVariableKind::Region(BoundRegionKind::Anon | BoundRegionKind::ClosureEnv) => "'_",
             BoundVariableKind::Region(BoundRegionKind::Named(def_id)) => {
-                sym = tcx.item_name(def_id);
+                sym = tcx.item_name(*def_id);
                 sym.as_str()
             }
-            BoundVariableKind::Region(BoundRegionKind::NamedAnon(sym)) => sym.as_str(),
+            BoundVariableKind::Region(BoundRegionKind::NamedForPrinting(sym)) => sym.as_str(),
             BoundVariableKind::Const => "CONST",
         };
         v.push(s.to_string());
@@ -1205,6 +1286,7 @@ fn binders_to_string<'tcx>(
     format!("{:}{:}{:}", "for<", v.join(", "), "> ")
 }
 
+#[derive(Debug)]
 pub enum CheckItemFnEither<A, B> {
     BodyId(A),
     ParamNames(B),
@@ -1262,13 +1344,12 @@ fn make_attributes<'tcx>(
     vattrs: &crate::attributes::VerifierAttrs,
     uses_ghost_blocks: bool,
     hidden: Arc<Vec<Fun>>,
-    custom_req_err: Option<String>,
     print_zero_args: bool,
     print_as_method: bool,
     safety: Safety,
+    is_async: bool,
     span: Span,
     is_trait_decl_no_default: bool,
-    ignore_outside_new_mut_ref: bool,
 ) -> Result<vir::ast::FunctionAttrs, VirErr> {
     if vattrs.nonlinear && vattrs.spinoff_prover {
         return err_span(
@@ -1280,7 +1361,6 @@ fn make_attributes<'tcx>(
         uses_ghost_blocks,
         inline: vattrs.inline,
         hidden,
-        custom_req_err,
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
         broadcast_forall_only: false,
@@ -1313,7 +1393,9 @@ fn make_attributes<'tcx>(
         } else {
             vattrs.exec_allows_no_decreases_clause
         },
-        ignore_outside_new_mut_ref,
+        tracked_swap: vattrs.tracked_swap,
+        tracked_take_option: vattrs.tracked_take_option,
+        is_async: is_async,
     };
     Ok(Arc::new(fattrs))
 }
@@ -1329,23 +1411,6 @@ pub(crate) fn fixup_unerased_proxy_path(
         Ok(p)
     } else {
         crate::internal_err!(span, "bad use of unerased_proxy attribute")
-    }
-}
-
-/// Yes this is extremely hackish, but it's only temporary for the new_mut_ref transition
-struct NewMutRefFixGlobal {
-    old: bool,
-}
-impl NewMutRefFixGlobal {
-    fn new(v: bool) -> Self {
-        let old = crate::config::new_mut_ref();
-        crate::config::NEW_MUT_REF.store(v, std::sync::atomic::Ordering::SeqCst);
-        Self { old }
-    }
-}
-impl Drop for NewMutRefFixGlobal {
-    fn drop(&mut self) {
-        crate::config::NEW_MUT_REF.store(self.old, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -1380,24 +1445,10 @@ pub(crate) fn check_item_fn<'tcx>(
         FnOrConstSigEnum::ConstVar(..) => get_mode(Mode::Spec, attrs),
     };
 
-    let do_migration = if ctxt.cmd_line_args.new_mut_ref {
-        if vattrs.ignore_outside_new_mut_ref_experiment {
-            false
-        } else {
-            let migration_attr =
-                crate::attributes::migrate_postconditions_walk_parents(ctxt.tcx, id);
-            migration_attr == Some(true)
-        }
-    } else {
-        false
+    let do_migration = {
+        let migration_attr = crate::attributes::migrate_postconditions_walk_parents(ctxt.tcx, id);
+        migration_attr == Some(true)
     };
-
-    let new_mut_ref = vattrs.ignore_outside_new_mut_ref_experiment;
-    if new_mut_ref && !matches!(ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore) {
-        return err_span(sig.span, "ignore_outside_new_mut_ref_experiment is only for vstd");
-    }
-    let new_mut_ref = new_mut_ref || ctxt.cmd_line_args.new_mut_ref;
-    let _new_mut_ref_fix_global = NewMutRefFixGlobal::new(new_mut_ref);
 
     if vattrs.encoded_const || vattrs.encoded_static {
         let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();
@@ -1413,7 +1464,7 @@ pub(crate) fn check_item_fn<'tcx>(
         };
 
         let ty = fn_sig.output().skip_binder();
-        let typ = ctxt.mid_ty_to_vir(id, sig.span, &ty, false, None)?;
+        let typ = ctxt.mid_ty_to_vir(id, sig.span, &ty, None)?;
 
         let fun = check_item_const_or_static(
             ctxt,
@@ -1426,7 +1477,6 @@ pub(crate) fn check_item_fn<'tcx>(
             &typ,
             body_id,
             vattrs.encoded_static,
-            new_mut_ref,
         )?;
         return Ok(Some(fun));
     }
@@ -1449,58 +1499,70 @@ pub(crate) fn check_item_fn<'tcx>(
         None
     };
 
-    let (path, proxy, visibility, kind, has_self_param, safety, is_external_const, proxy_id) =
-        if vattrs.external_fn_specification
-            || external_fn_specification_via_external_trait.is_some()
-        {
-            if is_verus_spec {
-                return err_span(
-                    sig.span,
-                    "assume_specification attribute not supported with VERUS_SPEC",
-                );
-            }
+    let (
+        path,
+        proxy,
+        visibility,
+        kind,
+        has_self_param,
+        safety,
+        is_external_const,
+        proxy_id,
+        is_async,
+    ) = if vattrs.external_fn_specification
+        || external_fn_specification_via_external_trait.is_some()
+    {
+        if is_verus_spec {
+            return err_span(
+                sig.span,
+                "assume_specification attribute not supported with VERUS_SPEC",
+            );
+        }
 
-            let (
-                external_path,
-                external_item_visibility,
-                kind,
-                has_self_param,
-                safety,
-                is_const,
-                external_id,
-            ) = handle_external_fn(
-                ctxt,
-                id,
-                kind,
-                visibility,
-                &sig,
-                self_generics,
-                &body_id,
-                mode,
-                &vattrs,
-                &external_trait_from_to,
-                external_fn_specification_via_external_trait,
-                external_info,
-            )?;
+        let (
+            external_path,
+            external_item_visibility,
+            kind,
+            has_self_param,
+            safety,
+            is_const,
+            external_id,
+            is_async,
+        ) = handle_external_fn(
+            ctxt,
+            id,
+            kind,
+            visibility,
+            &sig,
+            self_generics,
+            &body_id,
+            mode,
+            &vattrs,
+            &external_trait_from_to,
+            external_fn_specification_via_external_trait,
+            external_info,
+        )?;
 
-            let proxy = Some((*ctxt.spanned_new(sig.span, this_path.clone())).clone());
+        let proxy = Some((*ctxt.spanned_new(sig.span, this_path.clone())).clone());
 
-            (
-                external_path,
-                proxy,
-                external_item_visibility,
-                kind,
-                has_self_param,
-                safety,
-                is_const,
-                Some(external_id),
-            )
-        } else {
-            // No proxy.
-            let has_self_param = has_self_parameter(ctxt, id);
-            let safety = sig.safety();
-            (this_path.clone(), None, visibility, kind, has_self_param, safety, false, None)
-        };
+        (
+            external_path,
+            proxy,
+            external_item_visibility,
+            kind,
+            has_self_param,
+            safety,
+            is_const,
+            Some(external_id),
+            is_async,
+        )
+    } else {
+        // No proxy.
+        let has_self_param = has_self_parameter(ctxt, id);
+        let safety = sig.safety();
+        let is_async = sig.asyncness().is_async();
+        (this_path.clone(), None, visibility, kind, has_self_param, safety, false, None, is_async)
+    };
 
     let assume_specification_opaque_type_map = if let Some(proxy_id) = proxy_id {
         Some(check_fn_opaque_ty(ctxt, opaque_types, &proxy_id, sig.output_span(), Some(&id))?)
@@ -1589,7 +1651,7 @@ pub(crate) fn check_item_fn<'tcx>(
     };
 
     let mut migrate_postcondition_vars: HashSet<VarIdent> = HashSet::new();
-    let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
+    let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     assert!(params.len() == inputs.len());
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
         let param_mode = if let Some(hir_id) = hir_id {
@@ -1607,28 +1669,22 @@ pub(crate) fn check_item_fn<'tcx>(
             }
         }
 
-        let is_ref_mut = if new_mut_ref { None } else { is_mut_ty(ctxt, *input) };
-        if is_ref_mut.is_some() && mode == Mode::Spec {
-            return err_span(span, format!("&mut parameter not allowed for spec functions"));
-        }
+        let typ = ctxt.mid_ty_to_vir(id, span, input, None)?;
 
-        let typ = {
-            let typ = ctxt.mid_ty_to_vir(
-                id,
-                span,
-                is_ref_mut.map(|(t, _)| t).unwrap_or(input),
-                false,
-                None,
-            )?;
-            if let Some((_, decoration)) = is_ref_mut.and_then(|(_, w)| w) {
-                Arc::new(TypX::Decorate(decoration, None, typ))
-            } else {
-                typ
+        if matches!(&*typ, TypX::MutRef(_)) {
+            if vattrs.allow_in_spec {
+                return err_span(
+                    span,
+                    format!("allow_in_spec not supported for function with &mut param"),
+                );
             }
-        };
-
-        // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
-        let is_mut = is_ref_mut.is_some();
+            if vattrs.autospec.is_some() {
+                return err_span(
+                    span,
+                    format!("when_used_as_spec not supported for function with &mut param"),
+                );
+            }
+        }
 
         let vir_param = ctxt.spanned_new(
             span,
@@ -1636,29 +1692,24 @@ pub(crate) fn check_item_fn<'tcx>(
                 name: name.clone(),
                 typ: typ.clone(),
                 mode: param_mode,
-                is_mut,
                 unwrapped_info: None,
-                user_mut: is_mut_var || is_mut,
+                user_mut: is_mut_var,
             },
         );
-
-        // TODO(new_mut_ref): should probably error for mutable references in the dual exec/spec cases
 
         if is_mut_var {
             if mode == Mode::Spec {
                 return err_span(span, format!("mut argument not allowed for spec functions"));
             }
-            if is_mut {
-                // REVIEW
-                // For all mut params, we introduce a new variable that shadows the original mut
-                // param and assign the value of the param to the new variable. This does not
-                // work properly when the type of the param is a mutable reference because
-                // declaring and assigning to a variable of type `&mut T` is not implemented yet.
-                unsupported_err!(span, "mut parameters of &mut types")
-            }
         }
 
-        vir_params.push((vir_param, is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
+        vir_params.push(vir_param);
+    }
+
+    if is_async {
+        if let CheckItemFnEither::BodyId(body_id) = body_id {
+            vir_params = param_names_for_async_func(ctxt, find_body(ctxt, body_id), &vir_params)?;
+        }
     }
 
     let migrate_postcondition_vars =
@@ -1666,11 +1717,15 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let n_params = vir_params.len();
 
-    let (vir_body, header, body_hir_id) = match body_id {
+    let (vir_body, header, body_hir_id) = match &body_id {
         CheckItemFnEither::BodyId(body_id) => {
+            let is_async = match sig.asyncness() {
+                rustc_hir::IsAsync::NotAsync => false,
+                rustc_hir::IsAsync::Async(..) => true,
+            };
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
-            let param_names = vir_params.iter().map(|p| p.0.x.name.clone()).collect::<Vec<_>>();
+            let param_names = vir_params.iter().map(|p| p.x.name.clone()).collect::<Vec<_>>();
             let mut vir_body = body_to_vir(
                 ctxt,
                 id,
@@ -1679,10 +1734,10 @@ pub(crate) fn check_item_fn<'tcx>(
                 mode,
                 external_body,
                 &external_trait_from_to,
-                new_mut_ref,
-                migrate_postcondition_vars,
+                migrate_postcondition_vars.clone(),
                 param_names,
-                assume_specification_opaque_type_map,
+                assume_specification_opaque_type_map.clone(),
+                is_async,
             )?;
             let header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
@@ -1750,21 +1805,16 @@ pub(crate) fn check_item_fn<'tcx>(
         return err_span(sig.span, "assume_specification should be 'exec'");
     }
     if header.ensure.0.len() + header.ensure.1.len() > 0 {
-        match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
-            (None, None) => {}
-            (None, Some(_)) => {
-                return err_span(
-                    sig.span,
-                    "the return value must be named in a function with an ensures clause",
-                );
-            }
-            (Some(_), None) => {
+        match (is_async, &header.ensure_id_typ, ret_typ_mode.as_ref()) {
+            (_, None, None) => {}
+            (_, None, Some(_)) => {}
+            (_, Some(_), None) => {
                 return err_span(
                     sig.span,
                     "unexpected named return value for function with default return",
                 );
             }
-            (Some((_, Some(typ))), Some((ret_typ, _))) => {
+            (false, Some((_, Some(typ))), Some((ret_typ, _))) => {
                 if !vir::ast_util::types_equal(&typ, &ret_typ) {
                     return err_span(
                         sig.span,
@@ -1775,7 +1825,18 @@ pub(crate) fn check_item_fn<'tcx>(
                     );
                 }
             }
-            (Some(_), Some(_)) => {}
+            (true, Some((_, Some(_))), Some((ret_typ, _))) => {
+                if !matches!(**ret_typ, TypX::Opaque { .. }) {
+                    return err_span(
+                        sig.span,
+                        format!(
+                            "async function must return opaque type (impl Future) {:?}",
+                            &ret_typ,
+                        ),
+                    );
+                }
+            }
+            (_, Some(_), Some(_)) => {}
         }
     }
 
@@ -1787,7 +1848,7 @@ pub(crate) fn check_item_fn<'tcx>(
         all_param_names.push(unwrap.inner_name.clone());
         unwrap_param_map.insert(unwrap.outer_name.clone(), unwrap.clone());
     }
-    for (param, unwrap_mut) in vir_params.iter_mut() {
+    for param in vir_params.iter_mut() {
         all_param_names.push(param.x.name.clone());
         if let Some(unwrap) = unwrap_param_map.get(&param.x.name) {
             if mode != Mode::Exec {
@@ -1800,16 +1861,6 @@ pub(crate) fn check_item_fn<'tcx>(
             paramx.name = unwrap.inner_name.clone();
             paramx.unwrapped_info = Some((unwrap.mode, unwrap.outer_name.clone()));
             *param = vir::def::Spanned::new(param.span.clone(), paramx);
-        } else if vir_body.is_some() && unwrap_mut.is_some() {
-            let param_user_name = vir::def::user_local_name(&param.x.name);
-            return Err(vir::messages::error(
-                &param.span,
-                format!("parameter {} must be unwrapped", param_user_name),
-            )
-            .help(format!(
-                "use Tracked({}): Tracked<&mut T> to unwrap the tracked argument",
-                param_user_name
-            )));
         }
     }
     for name in all_param_names.iter() {
@@ -1818,26 +1869,46 @@ pub(crate) fn check_item_fn<'tcx>(
         }
         all_param_name_set.insert(name.clone());
     }
-    let params: vir::ast::Params = Arc::new(vir_params.into_iter().map(|(p, _)| p).collect());
+    let params: vir::ast::Params = Arc::new(vir_params);
 
-    let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode) {
+    let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode.clone()) {
         (None, None) => (air_unique_var(RETURN_VALUE), unit_typ(), mode),
         (None, Some((typ, mode))) => (air_unique_var(RETURN_VALUE), typ, mode),
-        (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
+        (Some((x, Some(typ))), Some((_, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
     };
     let ret_span = sig.output_span();
     let ret = ctxt.spanned_new(
         ret_span,
         ParamX {
-            name: ret_name,
+            name: ret_name.clone(),
             typ: ret_typ,
             mode: ret_mode,
-            is_mut: false,
             user_mut: false,
             unwrapped_info: None,
         },
     );
+
+    let async_ret = if is_async {
+        Some(
+            ctxt.spanned_new(
+                ret_span,
+                ParamX {
+                    name: air_unique_var(&vir::def::prefix_ensures_async_ret(&ret_name.0)),
+                    typ: ret_typ_mode
+                        .expect("internal error: Async function has no return value")
+                        .0
+                        .clone(),
+                    mode: ret_mode,
+                    unwrapped_info: None,
+                    user_mut: false,
+                },
+            ),
+        )
+    } else {
+        None
+    };
+
     let (typ_params, typ_bounds) = {
         let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
         let mut typ_bounds: Vec<vir::ast::GenericBound> = Vec::new();
@@ -1913,13 +1984,12 @@ pub(crate) fn check_item_fn<'tcx>(
         &vattrs,
         vattrs.verus_macro && !matches!(sig.sig, FnOrConstSigEnum::ConstVar(..)),
         Arc::new(header.hidden),
-        vattrs.custom_req_err.clone(),
         n_params == 0,
         has_self_param,
         safety,
+        is_async,
         sig.span,
         matches!(kind, FunctionKind::TraitMethodDecl { has_default: false, .. }),
-        new_mut_ref,
     )?;
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
@@ -1933,9 +2003,13 @@ pub(crate) fn check_item_fn<'tcx>(
     // mark it non-private in order to avoid errors down the line.
     let mut visibility = visibility;
     for b in [true, false] {
-        if path == vir::def::nonstatic_call_path(&Some(ctxt.vstd_crate_name.clone()), b) {
+        if path == vir::def::nonstatic_call_path(b) {
             visibility.restricted_to = None;
         }
+    }
+
+    if path == vir::def::exec_await_path() {
+        visibility.restricted_to = None;
     }
 
     // Note: ens_has_return isn't final; it may need to be changed later to make
@@ -2004,7 +2078,8 @@ pub(crate) fn check_item_fn<'tcx>(
         typ_bounds,
         params,
         ret,
-        ens_has_return,
+        // async function always refer to return value in ensures
+        ens_has_return: is_async || ens_has_return,
         require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
         returns,
         ensure,
@@ -2018,11 +2093,13 @@ pub(crate) fn check_item_fn<'tcx>(
         attrs: fattrs,
         body,
         extra_dependencies: header.extra_dependencies,
+        async_ret: async_ret,
     };
 
     if vattrs.external_fn_specification {
         func = fix_external_fn_specification_trait_method_decl_typs(sig.span, func)?;
     }
+
     if let Some(action) = autoderive_action {
         if let Some(body_hir_id) = body_hir_id {
             crate::automatic_derive::modify_derived_item(
@@ -2101,6 +2178,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             attrs,
             body,
             extra_dependencies,
+            async_ret,
         } = func;
 
         unsupported_err_unless!(typ_params.len() == 1, span, "type params");
@@ -2110,35 +2188,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             typ_params[0].clone(),
             Arc::new(TypX::TypParam(vir::def::trait_self_type_param())),
         );
-        typ_bounds = Arc::new(
-            typ_bounds
-                .iter()
-                .map(|typ_bound| {
-                    let gbx = match &**typ_bound {
-                        GenericBoundX::Trait(path, typs) => {
-                            let typs = typs.iter().map(|typ| subst_typ(&typ_substs, typ)).collect();
-                            GenericBoundX::Trait(path.clone(), Arc::new(typs))
-                        }
-                        GenericBoundX::TypEquality(path, typs, name, typ) => {
-                            let typs = typs.iter().map(|typ| subst_typ(&typ_substs, typ)).collect();
-                            let typ = subst_typ(&typ_substs, typ);
-                            GenericBoundX::TypEquality(
-                                path.clone(),
-                                Arc::new(typs),
-                                name.clone(),
-                                typ,
-                            )
-                        }
-                        GenericBoundX::ConstTyp(t1, t2) => {
-                            let t1 = subst_typ(&typ_substs, t1);
-                            let t2 = subst_typ(&typ_substs, t2);
-                            GenericBoundX::ConstTyp(t1, t2)
-                        }
-                    };
-                    Arc::new(gbx)
-                })
-                .collect(),
-        );
+        typ_bounds = vir::sst_util::subst_typ_in_bounds(&typ_substs, &typ_bounds);
 
         let mut typ_params = (*typ_params).clone();
         typ_params[0] = vir::def::trait_self_type_param();
@@ -2198,10 +2248,80 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             attrs,
             body,
             extra_dependencies,
+            async_ret,
         })
     } else {
         Ok(func)
     }
+}
+
+fn param_names_for_async_func<'tcx>(
+    ctxt: &Context<'tcx>,
+    body_hir: &Body<'tcx>,
+    params: &[vir::ast::Param],
+) -> Result<Vec<vir::ast::Param>, VirErr> {
+    // Each async function body is desugared into a closure.
+    // At the beginning of the async function
+    // each paramter is re-bound. We need to find thes rebindings and resolve them.
+    // For example fn foo(x:usize){} will have one rebinding:
+    // fn foo(x:usize){
+    //     ||{
+    //         let x = x;
+    //     }
+    // }
+    let async_body_bindings = match body_hir.value.kind {
+        rustc_hir::ExprKind::Closure(cls) => {
+            let closure_body = crate::rust_to_vir_func::find_body(ctxt, &cls.body);
+            match closure_body.value.kind {
+                rustc_hir::ExprKind::Block(block, ..) => block.stmts,
+                _ => {
+                    return err_span(
+                        body_hir.value.span,
+                        format!("internal error: async function doesn't have a function block"),
+                    );
+                }
+            }
+        }
+        _ => {
+            return err_span(
+                body_hir.value.span,
+                format!("internal error: async function doesn't have a function block"),
+            );
+        }
+    };
+
+    let mut async_body_modes = HashMap::new();
+
+    for stmt in async_body_bindings.iter() {
+        match stmt.kind {
+            rustc_hir::StmtKind::Let(rustc_hir::LetStmt {
+                pat: rustc_hir::Pat { kind: rustc_hir::PatKind::Binding(_, id, ident, _), .. },
+                init: Some(rustc_hir::Expr { kind: rustc_hir::ExprKind::Path(qpath), .. }),
+                ..
+            }) => {
+                let pat = local_to_var(ident, id.local_id);
+                let init = qpath_to_ident(ctxt.tcx, &qpath)
+                    .expect("internal error, async closure rebindings has no init value");
+                async_body_modes.insert(init.clone(), pat.clone());
+            }
+            _ => {}
+        }
+    }
+
+    let mut rewitten_params = vec![];
+    for param in params.iter() {
+        rewitten_params.push(Spanned::new(
+            param.span.clone(),
+            ParamX {
+                name: async_body_modes[&param.x.name].clone(),
+                typ: param.x.typ.clone(),
+                mode: param.x.mode,
+                unwrapped_info: param.x.unwrapped_info.clone(),
+                user_mut: param.x.user_mut,
+            },
+        ));
+    }
+    Ok(rewitten_params)
 }
 
 fn check_generics_for_invariant_fn<'tcx>(
@@ -2286,10 +2406,6 @@ fn check_generics_for_invariant_fn<'tcx>(
     }
 }
 
-// &mut T => Some(T, None)
-// Ghost<&mut T> => Some(T, Some(Spec))
-// Tracked<&mut T> => Some(T, Some(Proof))
-// _ => None
 fn is_mut_ty<'tcx>(
     ctxt: &Context<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
@@ -2477,15 +2593,30 @@ fn get_external_def_id<'tcx>(
         )
     };
 
+    let async_function_err = || {
+        err_span(
+            sig.span,
+            format!(
+                "assume_specification encoding error: async function body should end in await to a call expression"
+            ),
+        )
+    };
+
+    let body_expr = if sig.asyncness().is_async() {
+        extract_desugared_async_body(ctxt, body)?
+    } else {
+        &body.value
+    };
+
     // Get the 'body' of this function (skipping over header and unsafe-block if necessary)
-    let expr = match &body.value.kind {
+    let expr = match &body_expr.kind {
         ExprKind::Block(block_body, _) => match &block_body.expr {
             Some(body_value) => body_value,
             None => {
                 return err();
             }
         },
-        _ => &body.value,
+        _ => body_expr,
     };
     let expr = match &expr.kind {
         ExprKind::Block(block_body, _) => match &block_body.expr {
@@ -2495,6 +2626,21 @@ fn get_external_def_id<'tcx>(
             }
         },
         _ => &expr,
+    };
+
+    let expr = if sig.asyncness().is_async() {
+        match &expr.kind {
+            ExprKind::Match(
+                Expr { hir_id: _, kind: ExprKind::Call(_expr, call_args), span: _ },
+                _arms,
+                rustc_hir::MatchSource::AwaitDesugar,
+            ) => &call_args[0],
+            _ => {
+                return async_function_err();
+            }
+        }
+    } else {
+        expr
     };
 
     let types = body_id_to_types(tcx, body_id);
@@ -2585,7 +2731,7 @@ fn get_external_def_id<'tcx>(
                 let trait_ref = tcx.impl_trait_ref(impl_def_id);
 
                 for ty in trait_ref.instantiate(tcx, impl_args).args.types() {
-                    types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, false, None)?);
+                    types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, None)?);
                 }
 
                 let kind = FunctionKind::ForeignTraitMethodImpl {
@@ -2613,7 +2759,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     typ: &Typ,
     body_id: &BodyId,
     is_static: bool,
-    new_mut_ref: bool,
 ) -> Result<Fun, VirErr> {
     let mut path = ctxt.def_id_to_vir_path(id);
 
@@ -2623,6 +2768,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     }
 
     let name = Arc::new(FunX { path: path.clone() });
+
+    let is_async = ctxt.tcx.asyncness(id).is_async();
 
     let mode_opt = crate::attributes::get_mode_opt(attrs);
     let (func_mode, body_mode, ret_mode) = if is_static {
@@ -2665,10 +2812,10 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         body_mode,
         vattrs.external_body,
         &None,
-        new_mut_ref,
         None,
         vec![],
         None,
+        false,
     )?;
     let header = vir::headers::read_header(
         &mut vir_body,
@@ -2677,8 +2824,13 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     if header.require.len() + header.recommend.len() > 0 {
         return err_span(span, "consts cannot have requires/recommends");
     }
-    if ret_mode == Mode::Spec && (header.ensure.0.len() > 0 || header.ensure.1.len() > 0) {
-        return err_span(span, "spec consts cannot have ensures");
+
+    let spec_or_dual = ret_mode == Mode::Spec || func_mode == Mode::Spec;
+    if spec_or_dual && (header.ensure.0.len() > 0 || header.ensure.1.len() > 0) {
+        return err_span(span, "const cannot have `ensures` unless it is `exec const`");
+    }
+    if spec_or_dual && header.returns.is_some() {
+        return err_span(span, "const cannot have `returns` unless it is `exec const`");
     }
 
     let ret_name = air_unique_var(RETURN_VALUE);
@@ -2688,7 +2840,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             name: ret_name,
             typ: typ.clone(),
             mode: ret_mode,
-            is_mut: false,
             user_mut: false,
             unwrapped_info: None,
         },
@@ -2699,13 +2850,12 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         &vattrs,
         false,
         Arc::new(vec![]),
-        vattrs.custom_req_err.clone(),
         false,
         false,
         Safety::Safe,
+        is_async,
         span,
         false,
-        new_mut_ref,
     )?;
 
     let (ensure, ens_has_return) =
@@ -2755,6 +2905,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         attrs: fattrs,
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],
+        async_ret: None,
     };
 
     let autospec = handle_autospec(ctxt, span, id, &vattrs, &functionx)?;
@@ -2814,25 +2965,11 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = no_body_param_to_var(param);
-        let is_mut = is_mut_ty(ctxt, *input);
-        let typ = ctxt.mid_ty_to_vir(
-            id,
-            param.span,
-            is_mut.map(|(t, _)| t).unwrap_or(input),
-            false,
-            None,
-        )?;
+        let typ = ctxt.mid_ty_to_vir(id, param.span, input, None)?;
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,
-            ParamX {
-                name,
-                typ,
-                mode,
-                is_mut: is_mut.is_some(),
-                unwrapped_info: None,
-                user_mut: false,
-            },
+            ParamX { name, typ, mode, unwrapped_info: None, user_mut: false },
         );
         vir_params.push(vir_param);
     }
@@ -2845,7 +2982,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         name: air_unique_var(RETURN_VALUE),
         typ: ret_typ,
         mode: ret_mode,
-        is_mut: false,
         user_mut: false,
         unwrapped_info: None,
     };
@@ -2882,6 +3018,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         attrs: Default::default(),
         body: None,
         extra_dependencies: vec![],
+        async_ret: None,
     };
     let function = ctxt.spanned_new(span, func);
     vir.functions.push(function);

@@ -115,7 +115,7 @@ test_verify_one_file! {
         proof fn h<A>(tracked a: A) {
             g(f(a), f(a))
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::f` with mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::f` with mode proof")
 }
 
 test_verify_one_file! {
@@ -193,7 +193,7 @@ test_verify_one_file! {
         proof fn g(tracked x: &mut u8, tracked y: &mut u8) {
             f(x, x)
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `*x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `*x` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -215,7 +215,7 @@ test_verify_one_file! {
             let tracked mut y = b;
             borrow(&mut x, &mut x);
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -240,7 +240,7 @@ test_verify_one_file! {
                 f(x.borrow_mut(), x.borrow_mut());
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -400,6 +400,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] lifetime_bounds_exec verus_code! {
+        use vstd::prelude::*;
+
         #[verifier(external_body)]
         pub fn exec_to_ref<'a, T: 'a>(t: T) -> (t2: &'a T)
             ensures t == *t2
@@ -904,7 +906,7 @@ test_verify_one_file! {
                 l.use_shared();
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -1038,7 +1040,7 @@ test_verify_one_file! {
             })(5);
             consume(r);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::consume` with mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::consume` with mode proof")
 }
 
 test_verify_one_file! {
@@ -1087,7 +1089,7 @@ test_verify_one_file! {
             #[verifier::external_body]
             fn push(&mut self, elem: u64)
                 ensures
-                    self.seq() == old(self).seq().push(elem)
+                    final(self).seq() == old(self).seq().push(elem)
             {
                 unimplemented!();
             }
@@ -1132,7 +1134,7 @@ test_verify_one_file! {
         impl std::ops::AddAssign<u64> for X {
             #[verifier::external_body]
             fn add_assign(&mut self, rhs: u64)
-                ensures self.seq() == old(self).seq().push(rhs)
+                ensures final(self).seq() == old(self).seq().push(rhs)
             {
                 unimplemented!();
             }
@@ -1731,7 +1733,7 @@ test_verify_one_file! {
                 take_z_ref(&y_ref.z);
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x.a` because it is borrowed")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot assign to `x.a` because it is borrowed")
 }
 
 test_verify_one_file! {

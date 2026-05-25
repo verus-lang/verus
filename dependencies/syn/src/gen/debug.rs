@@ -2,7 +2,7 @@
 // It is not intended for manual editing.
 
 #![allow(unknown_lints, non_local_definitions)]
-use std::fmt::{self, Debug};
+use core::fmt::{self, Debug};
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::Abi {
@@ -1036,7 +1036,9 @@ impl crate::ExprForLoop {
         formatter.field("in_token", &self.in_token);
         formatter.field("expr_name", &self.expr_name);
         formatter.field("expr", &self.expr);
+        formatter.field("invariant_except_break", &self.invariant_except_break);
         formatter.field("invariant", &self.invariant);
+        formatter.field("ensures", &self.ensures);
         formatter.field("decreases", &self.decreases);
         formatter.field("body", &self.body);
         formatter.finish()
@@ -2409,6 +2411,7 @@ impl crate::ItemImpl {
         formatter.field("attrs", &self.attrs);
         formatter.field("defaultness", &self.defaultness);
         formatter.field("unsafety", &self.unsafety);
+        formatter.field("constness", &self.constness);
         formatter.field("impl_token", &self.impl_token);
         formatter.field("generics", &self.generics);
         formatter.field("trait_", &self.trait_);
@@ -2522,6 +2525,7 @@ impl crate::ItemTrait {
         formatter.field("vis", &self.vis);
         formatter.field("unsafety", &self.unsafety);
         formatter.field("auto_token", &self.auto_token);
+        formatter.field("constness", &self.constness);
         formatter.field("restriction", &self.restriction);
         formatter.field("trait_token", &self.trait_token);
         formatter.field("ident", &self.ident);
@@ -4279,6 +4283,7 @@ impl Debug for crate::WithSpecOnExpr {
         formatter.field("inputs", &self.inputs);
         formatter.field("outputs", &self.outputs);
         formatter.field("follows", &self.follows);
+        formatter.field("erased_fields", &self.erased_fields);
         formatter.finish()
     }
 }
