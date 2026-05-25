@@ -354,9 +354,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_recursive_set_ok verus_code! {
+    #[test] test_recursive_set_map_ok verus_code! {
         use vstd::std_specs::alloc::*;
         use vstd::prelude::Set;
+        use vstd::prelude::Map;
 
         struct TreeNode {
             value: int,
@@ -366,7 +367,10 @@ test_verify_one_file! {
         enum RecursiveValue {
             SingleValue { value: int },
             MultipleValues { values: Set<RecursiveValue> },
+            SingleMapping { mapping: Map<RecursiveValue, RecursiveValue> },
+            MultipleMappings { mappings: Set<Map<RecursiveValue, RecursiveValue>> },
         }
+
     } => Ok(())
 }
 
@@ -378,6 +382,31 @@ test_verify_one_file! {
         enum RecursiveValue {
             SingleValue { value: int },
             MultipleValues { values: ISet<RecursiveValue> },
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_imap_bad verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::IMap;
+
+        enum RecursiveValue {
+            Value { value: int },
+            Mapping { mapping: IMap<RecursiveValue, int> },
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_set_imap_bad verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::Set;
+        use vstd::prelude::IMap;
+
+        enum RecursiveValue {
+            Value { value: int },
+            Mappings { mapping_set: Set<IMap<RecursiveValue, int>> },
         }
     } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
 }
