@@ -19,9 +19,12 @@ This allows specifications to talk about collections that
 are larger than could be contained in the physical memory of a computer.
 
 Everything you can do with the finite version can also be done
-with the infinite version; the key benefit of the finite version
+with the infinite version. One key benefit of the finite version
 is that Verus knows the finite property at type time,
 which can prevent some SMT-time proof failure surprises.
+Another important benefit of the finite version is that you
+can use it to define recursive types, e.g., an `enum T`
+can contain a field of type `Set<T>`.
 
 Sequences are always finite.
 
@@ -40,13 +43,23 @@ The macros above can only construct finite (literal) sequences, sets, and maps.
 Sequences can be constructed with `Seq::new`.
 Infinite-type sets and maps can be constructed with `ISet::new` and `IMap::new`.
 
-Finite-typed `Set`s can be constructed with `Set::int_range` or `Set::nat_range`,
-then modified as desired with `Set::map` and `Set::filter`.
+Finite-typed `Set`s can be constructed with `Set::<A>::range(lo, hi)`
+or `Set::<A>::full()` for some finite type `A`, then modified as desired with
+`Set::map` and `Set::filter`.
+They can also be constructed by the `set_build!` macro defined
+in the contributed library [set_build.rs](https://github.com/verus-lang/verus/tree/main/source/builtin_macros/src/contrib/set_build.rs)
 Finite-typed `Map::new` accepts any finite-type set as its domain.
 
 ```rust
 {{#include ../../../../examples/guide/lib_examples.rs:new}}
 ```
+
+You can also create a `Set<T>` using `Set::<T>::new(f)`, where
+`f: spec_fn(T) -> bool` indicates what values of type `T` are in the set.
+But this isn't recommended because it produces an `Option<Set<T>>`
+that's `Some` if and only if `ISet::<T>::new(f).finite()` holds.
+So it's only useful if you can prove that the set is finite. If you can't
+(or don't need to) prove it's finite, just use `ISet::<T>::new(f)` instead.
 
 Each `Map<Key, Value>` value has a domain of type `Set<Key>` given by `.dom()`.
 In the `test_map2` example above, `m`'s domain is the finite set `{0, 10, 20, 30, 40}`,
@@ -113,9 +126,10 @@ so that, for example, `assert(s1 == s2)` actually means `assert(s1 =~= s2)`.
 See the [Equality via extensionality](extensional_equality.md) section for more details.)
 
 An `ISet` and a `Set` can never be equal because their types disagree;
-should you find yourself needing to relate them, consider the `GSet::congruent`
-predicate. (In non-library code, it is best practice to use exclusively the finite
-or infinite variant, if feasible.)
+should you find yourself needing to relate them, consider the `Set::congruent`
+predicate, or convert the `Set` to an `ISet` with `to_iset()` before
+checking for equality. (In non-library code, it is best practice to use
+exclusively the finite or infinite variant, if feasible.)
 
 Proofs about set cardinality (`Set::len`) and set finiteness (`ISet::finite`)
 often require inductive proofs.
