@@ -1,4 +1,4 @@
-use std::collections::BTreeMap as Map;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -84,7 +84,7 @@ impl MockWorkspace {
         let root = tempfile::tempdir().expect("create temp dir");
 
         let mut member_names = vec![];
-        let mut workspace_aliases = Map::<String, String>::new();
+        let mut workspace_aliases = BTreeMap::<String, String>::new();
         for member in self.members {
             let package_name = &member.name;
             member_names.push(package_name.clone());
@@ -221,7 +221,7 @@ impl MockPackage {
         let mut normal = vec![];
         let mut build = vec![];
         let mut dev = vec![];
-        let mut targets = Map::<String, Vec<String>>::new();
+        let mut targets: BTreeMap<String, Vec<String>> = Default::default();
         for (kind, cfg, dep) in self.deps {
             let name = dep.alias.as_ref().unwrap_or(&dep.package);
             let package_part = dep
