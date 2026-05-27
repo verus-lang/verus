@@ -325,6 +325,81 @@ impl VisitMut for ExecReplacer {
     }
 }
 
+/// Check for misuse of `#[verus_spec]` and `#[verus_verify]`.
+/// Returns `true` if a verus_macro has already been applied.
+///
+/// 1. Reject duplicate `#[verus_spec]` attributes.
+///    Duplicate `#[verus_spec]` attributes introduce unnecessary complexity
+///    and extra rewriting overhead.
+///
+/// 2. Reject `#[verus_verify]` applied after `#[verus_spec]`.
+///    `#[verus_verify]` invokes `prepare_verus_spec`, which inserts
+///    `#[verus_spec]` when needed. Applying it after an existing
+///    `#[verus_spec]` may accidentally introduce duplicate attributes.
+///
+/// 3. Warn when `#[verus_spec]` is used inside a `verus!` block.
+///    Using `#[verus_spec]` inside a `verus!` block may lead to problems since they are
+///    not designed to work together. If allow_verus_macro is false, we reject such usage.
+fn check_misuse_verus_spec(
+    attrs: &[syn::Attribute],
+    allow_verus_macro: bool,
+) -> Result<bool, proc_macro::TokenStream> {
+    let attr_span = proc_macro::Span::call_site();
+    let mut verus_macro_applied = false;
+    for attr in attrs {
+        if let Some(ident) = attr.path().get_ident() {
+            if ident == VERUS_SPEC {
+                return Err(quote_spanned! { attr_span.into() => compile_error!(
+                    "Multiple #[verus_spec] attributes are not allowed.
+                    This may be caused by incorrect usage or a bug in builtin_macros");
+                }
+                .into());
+            } else if ident == "verus_verify" {
+                return Err(quote_spanned! { attr_span.into() => compile_error!(
+                    "#[verus_verify] attributes should be applied before #[verus_spec].");
+                }
+                .into());
+            }
+        }
+        if is_verus_macro_applied(&attr) {
+            verus_macro_applied = true;
+            if !allow_verus_macro {
+                return Err(quote_spanned! { attr_span.into() => compile_error!(
+                    "verus! macro is already applied.");
+                }
+                .into());
+            }
+        }
+    }
+    if verus_macro_applied {
+        // Leave a warning when user mistakenly mixed them.
+        #[cfg(verus_keep_ghost)]
+        proc_macro::Diagnostic::spanned(
+            attr_span,
+            proc_macro::Level::Warning,
+            "#[verus_spec] is likely used inside a verus! block.
+            Consider move it out of verus! or remove #[verus_spec].",
+        )
+        .emit();
+    }
+    Ok(verus_macro_applied)
+}
+
+/// Check whether a Verus macro might have already been applied.
+///
+/// Both `#[verus_spec]` and `verus!` may be the source of the `#[verus::internal(...)]`.
+/// The source of #[verus_spec] is ruled out if it is applied in `verus_spec`
+/// rewriting and after `check_misuse_verus_spec` has been executed.
+fn is_verus_macro_applied(attrs: &syn::Attribute) -> bool {
+    attrs.path().segments.len() == 2
+        && attrs.path().segments[0].ident == "verus"
+        && attrs.path().segments[1].ident == "internal"
+}
+
+/// Adds a `#[verus_spec]` attribute to the given attributes if it's not already present.
+/// #[verus_spec] may be applied earlier or later than the current attribute.
+/// If it's applied earlier, we can infer it via verus::internal(xxx).
+/// If it's applied later, we can find it directly.
 fn add_verus_spec_if_needed(attrs: &mut Vec<syn::Attribute>, span: proc_macro2::Span) {
     if attrs.iter().any(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC)) {
         return;
@@ -444,9 +519,15 @@ pub(crate) fn rewrite_verus_spec(
             rewrite_verus_spec_on_fun_or_loop(erase, outer_attr_tokens, f)
         }
         VerusSpecTarget::ItemConst(i) => {
+            if let Err(error_tokens) = check_misuse_verus_spec(&i.attrs, true) {
+                return error_tokens;
+            }
             rewrite_verus_spec_on_item_const(erase, outer_attr_tokens, i)
         }
         VerusSpecTarget::ItemStatic(i) => {
+            if let Err(error_tokens) = check_misuse_verus_spec(&i.attrs, true) {
+                return error_tokens;
+            }
             rewrite_verus_spec_on_item_static(erase, outer_attr_tokens, i)
         }
         VerusSpecTarget::IOTarget(i) => {
@@ -571,6 +652,11 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
 ) -> proc_macro::TokenStream {
     match f {
         AnyFnOrLoop::Fn(mut fun) => {
+            let verus_applied = match check_misuse_verus_spec(&fun.attrs, true) {
+                Ok(verus_applied) => verus_applied,
+                Err(error_tokens) => return error_tokens,
+            };
+
             // Note: trait default methods appear in this case,
             // since they look syntactically like non-trait functions
             let spec_attr =
@@ -692,7 +778,8 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 return proc_macro::TokenStream::from(new_stream);
             }
             // Create const proxy function if it is a const function.
-            if fun.sig.constness.is_some() {
+            // Skip it if it is already inside verus!
+            if fun.sig.constness.is_some() && !verus_applied {
                 let proxy = rewrite_const_ret_proxy(&mut fun);
                 fun.to_tokens(&mut new_stream);
                 fun = proxy; // Add proof and spec on proxy func.
@@ -741,6 +828,9 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
         }
         AnyFnOrLoop::TraitMethod(mut method) => {
             // Note: default trait methods appear in the AnyFnOrLoop::Fn case, not here
+            if let Err(error_tokens) = check_misuse_verus_spec(&method.attrs, true) {
+                return error_tokens;
+            }
             let spec_attr =
                 verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
             let mut new_stream = TokenStream::new();
@@ -859,6 +949,9 @@ fn rewrite_verus_spec_on_expr_local(
     let call_with_spec = verus_syn::parse_macro_input!(attr_input as verus_syn::WithSpecOnExpr);
     let tokens = match io_target {
         VerusIOTarget::Local(mut local) => {
+            if let Err(error_tokens) = check_misuse_verus_spec(&local.attrs, true) {
+                return error_tokens;
+            }
             let syn::Local { init, .. } = &mut local;
             if let Some(syn::LocalInit { expr, .. }) = init {
                 let x_declares = rewrite_with_expr(erase, expr, call_with_spec);
