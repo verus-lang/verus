@@ -771,18 +771,29 @@ impl Visitor {
             GenericParam::Type(..) => true,
         });
 
-        let generics_params = &generics.params;
-        let where_clause = &generics.where_clause;
+
+        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+        let ty_generics_inner = {
+            let tokens = ty_generics.to_token_stream().into_iter().collect::<Vec<_>>();
+            let mut out = TokenStream::new();
+            if let [_, inner @ .., _] = &*tokens {
+                for tt in inner {
+                    tt.to_tokens(&mut out);
+                }
+            }
+
+            out
+        };
 
         self.additional_items.push(parse_quote_spanned!(full_span =>
-            #vis struct #pred_ident #generics #where_clause {
-                _marker: ::core::marker::PhantomData<( #generics_params )>,
+            #vis struct #pred_ident #impl_generics #where_clause {
+                _marker: ::core::marker::PhantomData<( #ty_generics_inner )>,
             }
         ));
 
         let update_arg: FnArg = parse_quote_spanned_vstd!(vstd, full_span =>
             tracked #atomic_update: #vstd::atomic::AtomicUpdate
-                < #old_ty, #new_ty, #pred_ident #generics >
+                < #old_ty, #new_ty, #pred_ident #ty_generics >
         );
 
         let mut old_pat = TokenStream::new();
@@ -813,7 +824,7 @@ impl Visitor {
         }
 
         self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
-            impl #generics #pred_ident #generics #where_clause {
+            impl #impl_generics #pred_ident #ty_generics #where_clause {
                 #[allow(private_interfaces)]
                 #vis open spec fn args(self, #args_full_tokens ) -> bool {
                     #vstd::atomic::pred_args::< Self, ( #args_ty_tokens ) >(self)
@@ -824,12 +835,12 @@ impl Visitor {
 
         let mut impl_members = quote_spanned_vstd!(vstd, full_span =>
             open spec fn req(self, #old_pat: #old_ty) -> bool {
-                let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #generics , ( #args_ty_tokens ) >(self);
+                let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
                 #atomic_req
             }
 
             open spec fn ens(self, #old_pat: #old_ty, #new_pat: #new_ty) -> bool {
-                let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #generics , ( #args_ty_tokens ) >(self);
+                let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
                 #atomic_ens
             }
         );
@@ -860,8 +871,8 @@ impl Visitor {
         }
 
         self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
-            impl #generics #vstd::atomic::UpdatePredicate<#old_ty, #new_ty>
-            for #pred_ident #generics #where_clause { #impl_members }
+            impl #impl_generics #vstd::atomic::UpdatePredicate<#old_ty, #new_ty>
+            for #pred_ident #ty_generics #where_clause { #impl_members }
         ));
 
         if self.erase_ghost == EraseGhost::Keep {

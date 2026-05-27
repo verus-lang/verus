@@ -3159,7 +3159,8 @@ impl parse::Parse for WithSpecOnFn {
 
         // Helper function to check if we're at next spec keyword
         let is_next_spec_keyword = |input: ParseStream| -> bool {
-            input.peek(Token![requires])
+            input.peek(Token![atomically])
+                || input.peek(Token![requires])
                 || input.peek(Token![invariant_except_break])
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
