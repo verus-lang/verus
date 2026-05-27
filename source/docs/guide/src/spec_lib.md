@@ -36,35 +36,51 @@ with particular contents:
 ```rust
 {{#include ../../../../examples/guide/lib_examples.rs:macro}}
 ```
-The `iset!` and `imap!` macros connstruct finite values of the possibly-infinite
+The `iset!` and `imap!` macros construct finite values of the possibly-infinite
 types `ISet` and `IMap`.
 
 The macros above can only construct finite (literal) sequences, sets, and maps.
 Sequences can be constructed with `Seq::new`.
 Infinite-type sets and maps can be constructed with `ISet::new` and `IMap::new`.
 
-A finite-typed `Set` can be constructed with `Set::<A>::range(lo, hi)`
-or `Set::<A>::full()` for some finite type `A`, then modified as desired with
-`Set::map` and `Set::filter`.
-One can also be constructed by the `set_build!` macro defined
-in the contributed library [set_build.rs](https://github.com/verus-lang/verus/tree/main/source/builtin_macros/src/contrib/set_build.rs)
-Finite-typed `Map::new` accepts any `Set` as its domain.
+A `Set` can only be constructed if it's provably finite. There are several
+ways to do this, including the following:
+* For numeric types `T` (e.g., `int`, `usize`, `i32`, `u64`, etc.),
+  `Set::<T>::range(lo, hi)` produces a set of `i: T` such that `lo <= i <
+  hi`. (See the `FiniteRange` trait.)
+* For numeric types `T` other than `int` and `nat`,
+  `Set::<T>::full().unwrap()` produces a set of all values of type `T`. (See
+  the `FiniteFull` trait.)
+* You can use one of the above techniques, then modify the `Set` as desired
+  using `Set::map`, `Set::map_by`, `Set::filter`, and/or `Set::filter_by`.
+* You can construct a `Set` using the `set_build!` macro defined
+in the contributed library [set_build.rs](https://github.com/verus-lang/verus/tree/main/source/builtin_macros/src/contrib/set_build.rs).
+
+To construct a `Map`, construct its domain as a `Set`, then pass that as
+the first parameter to `Map::new`.
 
 ```rust
 {{#include ../../../../examples/guide/lib_examples.rs:new}}
 ```
 
-You can also create a `Set<T>` using `Set::<T>::new(f)`, where
-`f: spec_fn(T) -> bool` indicates what values of type `T` are in the set.
-But this isn't recommended because it produces an `Option<Set<T>>`
-that's `Some` if and only if `ISet::<T>::new(f).finite()` holds.
-So it's only useful if you can prove that the set is finite. If you can't
-(or don't need to) prove it's finite, just use `ISet::<T>::new(f)` instead.
-
 Each `Map<Key, Value>` value has a domain of type `Set<Key>` given by `.dom()`.
 In the `test_map2` example above, `m`'s domain is the finite set `{0, 10, 20, 30, 40}`,
 while `m_infinite`'s domain is the infinite set `{..., -20, 10, 0, 10, 20, ...}`.
 Likewise, each `IMap<Key, Value>` has a domain of type `ISet<Key>`.
+
+Some constructors of `Set<T>` don't necessarily produce a finite set; they
+produce an `Option<Set<T>>` that's only `Some` when the set would be finite.
+So they're only useful if you can prove that they produce a finite set. If you
+can't (or don't need to) prove the set is finite, just use an `ISet` instead.
+Examples of functions that produce an `Option<Set<T>>` are:
+* `Set::<T>::new(f)` constructs a set of all members of `T` satisfying
+  predicate `f: spec_fn(T) -> bool`.
+* `Set::<T>::full()` constructs a set of all members of `T`. If `T` has trait
+  `FiniteFull`, an ambient broadcast lemma is sufficient to know it's `Some`.
+* `Set::<T>::complement(self)` constructs a set of all members of `T` not in
+  `self.`
+* `Set::<T>::new_from_iset(s)` constructs a set of all members of `T` in the
+  `ISet` s.
 
 For more operations, including sequence contenation (`.add` or `+`),
 sequence update,
