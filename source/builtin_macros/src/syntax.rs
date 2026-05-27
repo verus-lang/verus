@@ -771,7 +771,6 @@ impl Visitor {
             GenericParam::Type(..) => true,
         });
 
-
         let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
         let ty_generics_inner = {
             let tokens = ty_generics.to_token_stream().into_iter().collect::<Vec<_>>();

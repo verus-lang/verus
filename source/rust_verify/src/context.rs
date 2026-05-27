@@ -31,6 +31,7 @@ pub struct ErasureInfo {
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
     /// Extra nodes to erase, use this when an HIR tree gets dropped without becoming a VIR tree.
     pub(crate) extra_erase_hir_ids_including_adjustments: Vec<HirId>,
+    pub(crate) local_invariant_bodies: Vec<rustc_mir_build_verus::verus::LocalInvariantBody>,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;

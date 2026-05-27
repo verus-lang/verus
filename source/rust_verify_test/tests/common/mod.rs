@@ -449,6 +449,14 @@ pub fn run_verus(
 }
 
 pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    run_cargo_verus_with_target(args, dir, &dir.join("target"))
+}
+
+pub fn run_cargo_verus_with_target(
+    args: &[&str],
+    dir: &std::path::Path,
+    target_dir: &std::path::Path,
+) -> std::process::Output {
     if std::env::var("VERUS_IN_VARGO").is_err() {
         panic!("not running in vargo, read the README for instructions");
     }
@@ -476,6 +484,9 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
 
     let mut child = std::process::Command::new(bin);
     child.current_dir(dir);
+    child.env("CARGO_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_BUILD_DIR", target_dir);
 
     let z3 = std::env::var("VERUS_Z3_PATH")
         .map(|p| {
@@ -493,12 +504,6 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
     let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
     child.env("VERUS_Z3_PATH", z3);
 
-    // Reset build and target directory in case they have been set upstream
-    let target = dir.join("target");
-    child.env("CARGO_TARGET_DIR", &target);
-    child.env("CARGO_BUILD_TARGET_DIR", &target);
-    child.env("CARGO_BUILD_BUILD_DIR", &target);
-
     let child = child
         .args(args)
         .stdout(std::process::Stdio::piped())
@@ -515,6 +520,14 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
 
 // Assumes normal `cargo` is in the caller's path
 pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    run_cargo_with_target(args, dir, &dir.join("target"))
+}
+
+pub fn run_cargo_with_target(
+    args: &[&str],
+    dir: &std::path::Path,
+    target_dir: &std::path::Path,
+) -> std::process::Output {
     // if std::env::var("VERUS_IN_VARGO").is_err() {
     //     panic!("not running in vargo, read the README for instructions");
     // }
@@ -524,17 +537,9 @@ pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     // Remove Verus-specific RUSTFLAGS that are set by vargo, as they cause
     // verus_builtin and vstd to require unstable features not available on stable Rust
     child.env_remove("RUSTFLAGS");
-
-    // Reset build and target directory in case they have been set upstream
-    //
-    // The test setup we're using assumes that every crate has its own target
-    // directory, and that running `cargo clean` on one crate does not affect
-    // any other tests running concurrently, which may not be the case if the
-    // system has one unified target directory, so we must reset it manually.
-    let target = dir.join("target");
-    child.env("CARGO_TARGET_DIR", &target);
-    child.env("CARGO_BUILD_TARGET_DIR", &target);
-    child.env("CARGO_BUILD_BUILD_DIR", &target);
+    child.env("CARGO_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_BUILD_DIR", target_dir);
 
     let child = child
         .args(args)

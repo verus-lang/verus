@@ -210,6 +210,8 @@ macro_rules! declare_invariant_impl {
                     i.constant() == k,
                     i.namespace() == ns;
 
+            // TODO: the opens_invariants condition can be removed for LocalInvariant
+
             /// Destroys the `
             #[doc = stringify!($invariant)]
             ///`, returning the tracked value contained within.
@@ -228,7 +230,7 @@ declare_invariant_impl!(LocalInvariant);
 
 #[doc(hidden)]
 #[cfg_attr(verus_keep_ghost, verifier::proof)]
-pub struct InvariantBlockGuard;
+pub struct InvariantBlockGuard<'a>(core::marker::PhantomData<&'a ()>);
 
 // In the "Logical Paradoxes" section of the Iris 4.1 Reference
 // (`https://plv.mpi-sws.org/iris/appendix-4.1.pdf`), they show that
@@ -323,7 +325,7 @@ pub fn spend_open_invariant_credit(
 #[verifier::external] /* vattr */
 pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
     _inv: &'a AtomicInvariant<K, V, Pred>,
-) -> (InvariantBlockGuard, V) {
+) -> (InvariantBlockGuard<'static>, V) {
     unimplemented!();
 }
 
@@ -333,7 +335,7 @@ pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
 #[verifier::external] /* vattr */
 pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
     _inv: &'a LocalInvariant<K, V, Pred>,
-) -> (InvariantBlockGuard, V) {
+) -> (InvariantBlockGuard<'a>, V) {
     unimplemented!();
 }
 

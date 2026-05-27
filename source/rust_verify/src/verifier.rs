@@ -2729,6 +2729,7 @@ impl Verifier {
             shadow_check: vec![],
             extra_erase_ast_ids: vec![],
             extra_erase_hir_ids_including_adjustments: vec![],
+            local_invariant_bodies: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
 
@@ -2959,6 +2960,7 @@ impl Verifier {
         let extra_erase_ast_ids = erasure_info.extra_erase_ast_ids.clone();
         let extra_erase_hir_ids_including_adjustments =
             erasure_info.extra_erase_hir_ids_including_adjustments.clone();
+        let local_invariant_bodies = erasure_info.local_invariant_bodies.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate: unpruned_crate,
             hir_vir_ids,
@@ -2972,6 +2974,7 @@ impl Verifier {
             shadow_check,
             extra_erase_ast_ids,
             extra_erase_hir_ids_including_adjustments,
+            local_invariant_bodies,
         };
         self.erasure_hints = Some(erasure_hints);
 

@@ -46,6 +46,9 @@ use crate::builder::expr::as_place::PlaceBuilder;
 use crate::builder::scope::{DropKind, LintLevel};
 use crate::errors;
 
+#[path = "../../../rustc_mir_build_additional_files/verus_builder.rs"]
+pub mod verus_builder;
+
 pub(crate) fn closure_saved_names_of_captured_variables<'tcx>(
     tcx: TyCtxt<'tcx>,
     def_id: LocalDefId,
@@ -233,6 +236,8 @@ struct Builder<'a, 'tcx> {
     /// Collects additional coverage information during MIR building.
     /// Only present if coverage is enabled and this function is eligible.
     coverage_info: Option<coverageinfo::CoverageInfoBuilder>,
+
+    verus_extra_thir: Option<std::sync::Arc<crate::verus::ExtraThir>>,
 }
 
 type CaptureMap<'tcx> = SortedIndexMultiMap<usize, ItemLocalId, Capture<'tcx>>;
@@ -811,6 +816,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             var_debug_info: vec![],
             lint_level_roots_cache: GrowableBitSet::new_empty(),
             coverage_info: coverageinfo::CoverageInfoBuilder::new_if_enabled(tcx, def),
+            verus_extra_thir: crate::verus::get_extra_thir(def),
         };
 
         assert_eq!(builder.cfg.start_new_block(), START_BLOCK);

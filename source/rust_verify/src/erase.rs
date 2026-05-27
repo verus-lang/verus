@@ -9,8 +9,9 @@ use vir::modes::ErasureModes;
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
-    BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase, TreeErase,
-    VarErasure, VerusErasureCtxt, set_verus_aware_def_ids, set_verus_erasure_ctxt,
+    BodyErasure, CallErasure, LocalInvariantBody, LoopErasure, LoopSpecEvaluationLocation,
+    NodeErase, TreeErase, VarErasure, VerusErasureCtxt, set_verus_aware_def_ids,
+    set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -127,6 +128,7 @@ pub struct ErasureHints {
     pub(crate) shadow_check: Vec<HirId>,
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
     pub(crate) extra_erase_hir_ids_including_adjustments: Vec<HirId>,
+    pub(crate) local_invariant_bodies: Vec<LocalInvariantBody>,
 }
 
 /// How to erase the given var usage
@@ -385,12 +387,19 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         adjusted_node_erasure.insert(*hir_id);
     }
 
+    let mut local_invariant_bodies = HashMap::new();
+    for l in erasure_hints.local_invariant_bodies.iter() {
+        let found = local_invariant_bodies.insert(l.inner_block_hir_id, l.clone());
+        assert!(found.is_none());
+    }
+
     let verus_erasure_ctxt = VerusErasureCtxt {
         vars,
         calls,
         bodies,
         adjusted_node_erasure,
         loop_erasure,
+        local_invariant_bodies,
 
         erased_ghost_value_fn_def_id: *verus_items
             .name_to_id
