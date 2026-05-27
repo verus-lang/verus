@@ -154,11 +154,64 @@ pub broadcast axiom fn index_mut_result_str(start: int, end: int, old_slice: &st
         #[trigger] index_mut_result::<str, str>(start, end, old_slice, final_slice, final_output) <==> final_slice.spec_bytes() =~= old_slice.spec_bytes().subrange(0, start) + final_output.spec_bytes() + old_slice.spec_bytes().subrange(end, old_slice.spec_bytes().len() as int)
     ;
 
+// Version for inside of `core`, where we directly apply the bound
+#[cfg(verus_verify_core)]
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
-#[cfg_attr(not(verus_verify_core), verifier::external_trait_private_bound(core::slice::index::private_slice_index::Sealed))]
-// would be nice if you can cfg a bound but if not need to duplicate
 pub trait ExSliceIndex<T: ?Sized>: private_slice_index::Sealed {
+    type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
+
+    type Output: ?Sized;
+
+    /// Start index of this slice index on the given slice.
+    spec fn spec_start(&self, slice: &T) -> int;
+
+    /// End index (exclusive) of this slice index on the given slice.
+    spec fn spec_end(&self, slice: &T) -> int;
+
+    fn get(self, slice: &T) -> (out: Option<&Self::Output>)
+        requires
+            valid_slice::<T>(slice),
+        ensures
+            out.is_some() <==> valid_indices(self.spec_start(slice), self.spec_end(slice), slice),
+            out.is_some() ==> index_result(self.spec_start(slice), self.spec_end(slice), slice, out.unwrap())
+    ;
+
+    fn get_mut(self, slice: &mut T) -> (out: Option<&mut Self::Output>)
+        requires
+            valid_slice::<T>(old(slice)),
+        ensures
+            out.is_some() <==> valid_indices(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice)),
+            out.is_some() ==> {
+                &&& index_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), out.unwrap())
+                &&& index_mut_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), final(slice), final(out.unwrap()))
+            },
+    ;
+
+    fn index(self, slice: &T) -> (out: &Self::Output)
+        requires
+            valid_slice::<T>(slice),
+            valid_indices(self.spec_start(slice), self.spec_end(slice), slice)
+        ensures
+            index_result(self.spec_start(slice), self.spec_end(slice), slice, out)
+        ;
+
+    fn index_mut(self, slice: &mut T) -> (out: &mut Self::Output)
+        requires
+            valid_slice::<T>(old(slice)),
+            valid_indices(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice))
+        ensures
+            index_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), out),
+            index_mut_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), final(slice), final(out))
+        ;
+}
+
+// Version for outside of `core`, where we add an external_trait private bound
+#[cfg(not(verus_verify_core))]
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
+#[verifier::external_trait_private_bound(core::slice::index::private_slice_index::Sealed)]
+pub trait ExSliceIndex<T: ?Sized> {
     type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
 
     type Output: ?Sized;
