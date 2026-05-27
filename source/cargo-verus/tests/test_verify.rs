@@ -2,7 +2,7 @@ use cargo_verus::{
     BIN_NAME, ExecutionPlan,
     test_utils::{
         CARGO_DEFAULT_LIB_METADATA, MockDep, MockPackage, MockWorkspace, RUSTC_WRAPPER,
-        VERUS_DRIVER_ARGS_FOR, VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
+        VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR, VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
     },
 };
 
@@ -25,6 +25,69 @@ fn crate_optin_workdir() {
     cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
     cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
     cargo_plan.assert_env_sets_key_prefix(&verify_crate_prefix, "1");
+}
+
+#[test]
+fn single_v_verbosity_not_forwarded() {
+    let package_name = "foo";
+    let project_dir = MockPackage::new(package_name).lib().verify(true).materialize();
+
+    let args = [BIN_NAME, "verify", "-v"];
+    let plan = cargo_verus::plan_execution(Some(project_dir.path()), args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
+
+    assert_eq!(cargo_plan.args, ["check"]);
+
+    let common_driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
+    assert_eq!(
+        common_driver_args.iter().filter(|arg| **arg == "-v").count(),
+        0,
+        "expected no forwarded -v in common Verus driver args: {common_driver_args:?}",
+    );
+}
+
+#[test]
+fn double_v_verbosity_forwarded_to_cargo_and_verus() {
+    let package_name = "foo";
+    let project_dir = MockPackage::new(package_name).lib().verify(true).materialize();
+
+    let args = [BIN_NAME, "verify", "-vv"];
+    let plan = cargo_verus::plan_execution(Some(project_dir.path()), args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
+
+    assert_eq!(cargo_plan.args, ["check", "-v"]);
+
+    let common_driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
+    assert_eq!(
+        common_driver_args.iter().filter(|arg| **arg == "-v").count(),
+        1,
+        "expected at most one forwarded -v in common Verus driver args: {common_driver_args:?}",
+    );
+}
+
+#[test]
+fn triple_v_verbosity_forwarded_to_cargo_and_verus() {
+    let package_name = "foo";
+    let project_dir = MockPackage::new(package_name).lib().verify(true).materialize();
+
+    let args = [BIN_NAME, "verify", "-vvv"];
+    let plan = cargo_verus::plan_execution(Some(project_dir.path()), args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
+
+    assert_eq!(cargo_plan.args, ["check", "-v", "-v"]);
+
+    let common_driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
+    assert_eq!(
+        common_driver_args.iter().filter(|arg| **arg == "-v").count(),
+        1,
+        "expected exactly one forwarded -v in common Verus driver args: {common_driver_args:?}",
+    );
 }
 
 #[test]
