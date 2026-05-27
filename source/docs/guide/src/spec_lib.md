@@ -13,20 +13,19 @@ which is bounded,
 the `len()` methods of `Seq` and `Set` return
 lengths of type `nat`, which is unbounded.
 
-`Set` and `Map` represent finite sets and maps.
+`Seq`, `Set`, and `Map` objects are always finite.
 `ISet` and `IMap` represent possibly-infinite sets and maps.
 This allows specifications to talk about collections that
 are larger than could be contained in the physical memory of a computer.
 
-Everything you can do with the finite version can also be done
-with the infinite version. One key benefit of the finite version
-is that Verus knows the finite property at type time,
-which can prevent some SMT-time proof failure surprises.
-Another important benefit of the finite version is that you
-can use it to define recursive types, e.g., an `enum T`
-can contain a field of type `Set<T>`.
-
-Sequences are always finite.
+The possibly-infinite versions have one key benefit: You can construct them
+without proving they're finite. The finite versions have two key benefits.
+First, they can be used in recursive types; e.g., an `enum T` can contain
+fields of type `Set<T>` and `Map<T, U>` but not `ISet<T>` or `IMap<T, U>`.
+Second, the verifier knows the finiteness property always holds, which can
+prevent some SMT-time proof failure surprises. For instance, adding an element
+to a `Set` increases its `len()` by 1, but this doesn't always hold for an
+`ISet` since it might have an undefined length.
 
 ## Constructing and using Seq, Set, Map
 
@@ -52,7 +51,7 @@ ways to do this, including the following:
   `Set::<T>::full().unwrap()` produces a set of all values of type `T`. (See
   the `FiniteFull` trait.)
 * You can use one of the above techniques, then modify the `Set` as desired
-  using `Set::map`, `Set::map_by`, `Set::filter`, and/or `Set::filter_by`.
+  using `Set::map` and/or `Set::filter`.
 * You can construct a `Set` using the `set_build!` macro defined
 in the contributed library [set_build.rs](https://github.com/verus-lang/verus/tree/main/source/builtin_macros/src/contrib/set_build.rs).
 
