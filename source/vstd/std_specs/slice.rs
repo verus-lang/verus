@@ -156,6 +156,7 @@ pub broadcast axiom fn index_mut_result_str(start: int, end: int, old_slice: &st
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
+#[verifier::external_trait_private_bound(core::slice::index::private_slice_index::Sealed)]
 pub trait ExSliceIndex<T> where T: ?Sized {
     type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
 
