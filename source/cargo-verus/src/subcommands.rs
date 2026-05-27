@@ -184,7 +184,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
     }
     if cfg.options.verbosity >= 2 {
         common_verus_driver_args.push("-v".to_owned());
-        eprintln!("verbosity level >= 2; forwarding one -v to Verus");
+        eprintln!("verbosity level >= 2; forwarding 1 `-v` to Verus");
     } else if cfg.options.verbosity > 0 {
         eprintln!("verbosity level = 1; keeping Verus non-verbose");
     }
