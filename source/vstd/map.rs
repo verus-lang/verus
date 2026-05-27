@@ -7,6 +7,11 @@ use super::set::*;
 use verus as verus_; // skip verusfmt due to unhandled return-value-pattern
 verus_! {
 
+broadcast use {
+    super::set::group_set_lemmas,
+    super::set_lib::group_set_lib_default,
+};
+
 /// `Map<K, V>` is an abstract map type for specifications.
 /// To use a "map" in compiled code, use an `exec` type like HashMap
 /// that has a `Map<K, V>` as its specification type.
@@ -259,8 +264,6 @@ pub broadcast proof fn lemma_map_insert_domain<K, V>(m: Map<K, V>, key: K, value
         #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
     broadcast use Map::axiom_new;
-    broadcast use super::set::group_set_lemmas;
-    broadcast use super::set_lib::group_set_lib_default;
 }
 
 /// Inserting `value` at `key` in `m` results in a map that maps `key` to `value`
@@ -269,8 +272,6 @@ pub broadcast proof fn lemma_map_insert_same<K, V>(m: Map<K, V>, key: K, value: 
         #[trigger] m.insert(key, value)[key] == value,
 {
     broadcast use Map::axiom_new;
-    broadcast use super::set::group_set_lemmas;
-    broadcast use super::set_lib::group_set_lib_default;
 }
 
 /// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`
@@ -283,8 +284,6 @@ pub broadcast proof fn lemma_map_insert_different<K, V>(m: Map<K, V>, key1: K, k
         #[trigger] m.insert(key2, value)[key1] == m[key1],
 {
     broadcast use Map::axiom_new;
-    broadcast use super::set::group_set_lemmas;
-    broadcast use super::set_lib::group_set_lib_default;
 }
 
 /// The domain of a map after removing a key-value pair is equivalent to removing the key from
@@ -294,8 +293,6 @@ pub broadcast proof fn lemma_map_remove_domain<K, V>(m: Map<K, V>, key: K)
         #[trigger] m.remove(key).dom() == m.dom().remove(key),
 {
     broadcast use Map::axiom_new;
-    broadcast use super::set::group_set_lemmas;
-    broadcast use super::set_lib::group_set_lib_default;
 }
 
 /// Removing a key-value pair from a map does not change the value mapped to by
@@ -309,8 +306,6 @@ pub broadcast proof fn lemma_map_remove_different<K, V>(m: Map<K, V>, key1: K, k
         #[trigger] m.remove(key2)[key1] == m[key1],
 {
     broadcast use Map::axiom_new;
-    broadcast use super::set::group_set_lemmas;
-    broadcast use super::set_lib::group_set_lib_default;
 }
 
 /// Two maps are equivalent if their domains are equivalent and every key in their domains map to the same value.
