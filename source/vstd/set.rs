@@ -24,41 +24,26 @@ verus! {
 ///
 /// To prove that two sequences are equal, it is usually easiest to use the extensionality
 /// operator `=~=`.
-//////////////////////////////////////////////////////////////////////////////
-// Important soundness note!
-//
-// In this file, one can construct `Set`s directly with
-// `Set::make_set`, Since we make the assumption that all Sets are
-// finite, we must be careful to only allow functions in this file
-// that construct `Set`s to admit a finite number of elements.
-// Otherwise, one could prove that set both finite and infinite and
-// introduce false. The danger of this soundness risk is encapsulated
-// in the axiom `Set::axiom_is_finite`, which assumes that the set
-// is finite.
-//
-// Outside of this file, callers only have access to `Set`
-// constructors that create only finite sets.
-//
-// For future work, we may figure out how to have `Set` use a
-// `Seq`-like representation that is inherently finite, to eliminate
-// this risk. We haven't done this yet, though, because it would
-// introduce the problem of multiple representations of equivalent
-// sets, which creates a different problem with extensional equality.
-//////////////////////////////////////////////////////////////////////////////
+///
 /// `Set` only holds finite sets, so it can be used in recursive types.
 /// For instance, a type `T` can contain a `Set<T>`.
-///
-/// To prevent Verus's internal checks from rejecting such recursive
-/// types, we use an artificial definition of `Set` that hides its inclusion
-/// of an `ISet`.
-///
-/// To make sure that proofs in this file don't take advantage of
-/// this artificial structure (e.g., to prove that any two `Set`s are
-/// equal), we mark this definition as `external_body`.
 #[verifier::ext_equal]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(A)]
 pub struct Set<A> {
+    // To prevent Verus's internal checks from rejecting recursive types,
+    // we use an artificial definition of `Set` that hides its inclusion
+    // of a function from `A` to `bool`.
+    //
+    // To make sure that proofs in this file don't take advantage of
+    // this artificial structure (e.g., to prove that any two `Set`s are
+    // equal), we mark this definition as `external_body`.
+    //
+    // For future work, we may figure out how to have `Set` use a
+    // `Seq`-like representation that is inherently finite, to eliminate
+    // the need for this. We haven't done this yet, though, because it would
+    // introduce the problem of multiple representations of equivalent
+    // sets, which creates a different problem with extensional equality.
     dummy: core::marker::PhantomData<A>,
 }
 

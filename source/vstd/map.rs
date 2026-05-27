@@ -27,10 +27,21 @@ verus_! {
 ///  * By manipulating an existing map with [`Map::insert`] or [`Map::remove`].
 ///
 /// To prove that two maps are equal, it is usually easiest to use the extensionality operator `=~=`.
+///
+/// `Map` always has a finite domain, so it can be used in recursive types. For instance,
+/// a type `T` can contain a `Map<T, T>`.
 #[verifier::ext_equal]
+#[verifier::external_body]
 #[verifier::accept_recursive_types(K)]
 #[verifier::accept_recursive_types(V)]
 pub tracked struct Map<K, V> {
+    // To prevent Verus's internal checks from rejecting recursive types
+    // using `Map`, we use an artificial definition of `Map` that hides its
+    // inclusion of a function from keys to values.
+    //
+    // To make sure that proofs in this file don't take advantage of
+    // this artificial structure (e.g., to prove that any two `Map`s are
+    // equal), we mark this definition as `external_body`.
     dummy_key: core::marker::PhantomData<K>,
     dummy_value: core::marker::PhantomData<V>,
 }
@@ -266,10 +277,14 @@ pub broadcast proof fn lemma_map_insert_same<K, V>(m: Map<K, V>, key: K, value: 
 pub broadcast proof fn lemma_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
     requires
         key1 != key2,
+        m.dom().contains(key1),
     ensures
+        m.insert(key2, value).dom().contains(key1),
         #[trigger] m.insert(key2, value)[key1] == m[key1],
 {
     broadcast use Map::axiom_new;
+    broadcast use super::set::group_set_lemmas;
+    broadcast use super::set_lib::group_set_lib_default;
 }
 
 /// The domain of a map after removing a key-value pair is equivalent to removing the key from
@@ -288,10 +303,14 @@ pub broadcast proof fn lemma_map_remove_domain<K, V>(m: Map<K, V>, key: K)
 pub broadcast proof fn lemma_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
     requires
         key1 != key2,
+        m.dom().contains(key1),
     ensures
+        m.remove(key2).dom().contains(key1),
         #[trigger] m.remove(key2)[key1] == m[key1],
 {
     broadcast use Map::axiom_new;
+    broadcast use super::set::group_set_lemmas;
+    broadcast use super::set_lib::group_set_lib_default;
 }
 
 /// Two maps are equivalent if their domains are equivalent and every key in their domains map to the same value.
