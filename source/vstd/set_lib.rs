@@ -1419,6 +1419,7 @@ macro_rules! assert_sets_equal_internal {
 pub broadcast group group_set_lib_default {
     lemma_set_is_empty,
     lemma_set_is_empty_len0,
+    Set::lemma_flatten_contains,
     Set::lemma_map_contains,
     Set::lemma_map_by_contains,
     Set::lemma_map_flatten_by_contains,
