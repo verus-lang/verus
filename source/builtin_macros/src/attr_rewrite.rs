@@ -329,12 +329,26 @@ fn get_verus_spec(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
     // verus_spec may be applied earlier or later than the current attribute.
     // If verus_spec is applied later, we can find it directly;
     // If verus_spec is applied earlier, we can infer it via verus::internal(xxx).
-    attrs.iter().find(|attr|
-        attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC) ||
-        (attr.path().segments.len() == 2
+    attrs.iter().find(|attr| {
+        attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC)
+            || (attr.path().segments.len() == 2
                 && attr.path().segments[0].ident == "verus"
                 && attr.path().segments[1].ident == "internal")
-    )
+    })
+}
+
+fn verus_macro_applied(attrs: &[syn::Attribute]) -> bool {
+    // verus_spec may be applied earlier or later than the current attribute.
+    // If verus_spec is applied later, we can find it directly;
+    // If verus_spec is applied earlier, we can infer it via verus::internal(xxx).
+    attrs
+        .iter()
+        .find(|attr| {
+            attr.path().segments.len() == 2
+                && attr.path().segments[0].ident == "verus"
+                && attr.path().segments[1].ident == "internal"
+        })
+        .is_some()
 }
 
 fn add_verus_spec_if_needed(attrs: &mut Vec<syn::Attribute>, span: proc_macro2::Span) {
@@ -588,6 +602,8 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             let spec_attr =
                 verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
 
+            let verus_applied = verus_macro_applied(&fun.attrs);
+
             fun.attrs.push(mk_verus_attr_syn(fun.span(), quote! { verus_macro }));
 
             let is_hidden_impl_marker = |attr: &syn::Attribute| {
@@ -704,7 +720,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 return proc_macro::TokenStream::from(new_stream);
             }
             // Create const proxy function if it is a const function.
-            if fun.sig.constness.is_some() {
+            if fun.sig.constness.is_some() && !verus_applied {
                 let proxy = rewrite_const_ret_proxy(&mut fun);
                 fun.to_tokens(&mut new_stream);
                 fun = proxy; // Add proof and spec on proxy func.

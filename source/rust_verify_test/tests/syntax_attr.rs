@@ -829,8 +829,31 @@ test_verify_one_file! {
             }
             x
         }
+    } => Ok(())
+}
 
-        pub const X: u64 = const_fn(1);
+test_verify_one_file! {
+    /// This is a bad style to mix verus! and #[verus_spec]
+    /// and use duplicated verus_spec attributes,
+    /// but it works if they do not conflict.
+    #[test] test_const_fn_with_duplicated_verus_spec code!{
+        use vstd::prelude::*;
+        verus!{
+        #[verus_spec]
+        #[verus_spec(ret =>
+            ensures ret == x
+        )]
+        pub const fn const_fn(x: u64) -> u64
+        {
+            proof!{
+                assert(true);
+            }
+            {
+                proof!{assert(true);}
+            }
+            x
+        }
+        }
     } => Ok(())
 }
 
