@@ -159,7 +159,8 @@ fn func_body_to_sst(
         // "when" means the function is only defined if the requirements hold
 
         // first, set up proof_body
-        let mut reqs = crate::traits::trait_bounds_to_ast(ctx, &req.span, &function.x.typ_bounds);
+        let mut reqs =
+            crate::traits::trait_bounds_to_ast(&ctx.trait_map, &req.span, &function.x.typ_bounds);
         reqs.push(req.clone());
         for expr in reqs {
             let assumex = ExprX::AssertAssume { is_assume: true, expr: expr.clone(), msg: None };
@@ -566,7 +567,11 @@ pub fn func_axioms_to_sst(
             if function.x.attrs.broadcast_forall {
                 let span = &function.span;
                 let mut reqs: Vec<Expr> = Vec::new();
-                reqs.extend(crate::traits::trait_bounds_to_ast(ctx, span, &function.x.typ_bounds));
+                reqs.extend(crate::traits::trait_bounds_to_ast(
+                    &ctx.trait_map,
+                    span,
+                    &function.x.typ_bounds,
+                ));
                 reqs.extend((*function.x.require).clone());
                 let req = crate::ast_util::conjoin(span, &reqs);
                 assert!(function.x.ensure.1.len() == 0);

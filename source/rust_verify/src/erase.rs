@@ -110,6 +110,8 @@ pub struct ErasureHints {
     pub vir_crate: Krate,
     /// Connect expression and pattern HirId to corresponding vir AstId
     pub hir_vir_ids: Vec<(HirId, AstId)>,
+    /// For nodes that don't have an HirId source
+    pub nohir_vir_ids: Vec<AstId>,
     /// Details of each call in the first run's HIR
     pub resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
     /// Details of some patterns in first run's HIR
@@ -262,6 +264,11 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             id_to_hir.insert(*vir_id, vec![]);
         }
         id_to_hir.get_mut(vir_id).unwrap().push(*hir_id);
+    }
+    for vir_id in &erasure_hints.nohir_vir_ids {
+        if !id_to_hir.contains_key(vir_id) {
+            id_to_hir.insert(*vir_id, vec![]);
+        }
     }
 
     let mut vars = HashMap::<HirId, VarErasure>::new();

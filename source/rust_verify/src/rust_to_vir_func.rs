@@ -261,6 +261,7 @@ fn handle_autospec<'tcx>(
                     tracked_swap: false,
                     tracked_take_option: false,
                     is_async: false,
+                    trait_bound_conditional: None,
                 }),
                 body: Some(ret_clause.clone()),
                 extra_dependencies: functionx.extra_dependencies.clone(),
@@ -1352,6 +1353,7 @@ fn make_attributes<'tcx>(
     is_async: bool,
     span: Span,
     is_trait_decl_no_default: bool,
+    trait_bound_conditional: Option<Fun>,
 ) -> Result<vir::ast::FunctionAttrs, VirErr> {
     if vattrs.nonlinear && vattrs.spinoff_prover {
         return err_span(
@@ -1398,6 +1400,7 @@ fn make_attributes<'tcx>(
         tracked_swap: vattrs.tracked_swap,
         tracked_take_option: vattrs.tracked_take_option,
         is_async: is_async,
+        trait_bound_conditional,
     };
     Ok(Arc::new(fattrs))
 }
@@ -1719,7 +1722,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let n_params = vir_params.len();
 
-    let (vir_body, header, body_hir_id) = match &body_id {
+    let (vir_body, header) = match &body_id {
         CheckItemFnEither::BodyId(body_id) => {
             let is_async = match sig.asyncness() {
                 rustc_hir::IsAsync::NotAsync => false,
@@ -1743,12 +1746,12 @@ pub(crate) fn check_item_fn<'tcx>(
             )?;
             let header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
-            (Some(vir_body), header, Some(body.value.hir_id))
+            (Some(vir_body), header)
         }
         CheckItemFnEither::ParamNames(_params) => {
             let header =
                 vir::headers::read_header_block(&mut vec![], &vir::headers::HeaderAllows::All)?;
-            (None, header, None)
+            (None, header)
         }
     };
 
@@ -1980,6 +1983,10 @@ pub(crate) fn check_item_fn<'tcx>(
         check_generics_for_invariant_fn(ctxt.tcx, id, self_generics, generics, sig.span)?;
     }
 
+    let trait_bound_conditional = vattrs.trait_bound_spec_conditional.as_ref().map(|name| {
+        Arc::new(FunX { path: this_path.pop_segment().push_segment(Arc::new(name.clone())) })
+    });
+
     let fattrs = make_attributes(
         ctxt,
         id,
@@ -1992,6 +1999,7 @@ pub(crate) fn check_item_fn<'tcx>(
         is_async,
         sig.span,
         matches!(kind, FunctionKind::TraitMethodDecl { has_default: false, .. }),
+        trait_bound_conditional,
     )?;
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
@@ -2103,15 +2111,7 @@ pub(crate) fn check_item_fn<'tcx>(
     }
 
     if let Some(action) = autoderive_action {
-        if let Some(body_hir_id) = body_hir_id {
-            crate::automatic_derive::modify_derived_item(
-                ctxt,
-                sig.span,
-                body_hir_id,
-                action,
-                &mut func,
-            )?;
-        }
+        crate::automatic_derive::modify_derived_item(ctxt, sig.span, action, &mut func)?;
     }
 
     let function = ctxt.spanned_new(sig.span, func);
@@ -2891,6 +2891,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         is_async,
         span,
         false,
+        None,
     )?;
 
     let (ensure, ens_has_return) =

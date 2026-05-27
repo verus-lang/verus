@@ -789,13 +789,17 @@ fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {
     Ok(())
 }
 
-pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBounds) -> Vec<Expr> {
+pub fn trait_bounds_to_ast(
+    trait_map: &HashMap<Path, Trait>,
+    span: &Span,
+    typ_bounds: &GenericBounds,
+) -> Vec<Expr> {
     let mut bound_exprs: Vec<Expr> = Vec::new();
     for bound in typ_bounds.iter() {
         let exprx = match &**bound {
             GenericBoundX::Trait(trait_id, typ_args) => {
                 let skip = match trait_id {
-                    TraitId::Path(path) => !ctx.trait_map.contains_key(path),
+                    TraitId::Path(path) => !trait_map.contains_key(path),
                     TraitId::Sizedness(Sizedness::Sized) => false,
                     // we currently MetaSized and PointeeSized as equivalent (both representing
                     // size that's not known at compile time), so we don't emit a Sized bound

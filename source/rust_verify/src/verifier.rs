@@ -2720,6 +2720,7 @@ impl Verifier {
 
         let erasure_info = ErasureInfo {
             hir_vir_ids: vec![],
+            nohir_vir_ids: vec![],
             resolved_calls: vec![],
             resolved_pats: vec![],
             direct_var_modes: vec![],
@@ -2949,6 +2950,7 @@ impl Verifier {
 
         let erasure_info = ctxt.erasure_info.borrow();
         let hir_vir_ids = erasure_info.hir_vir_ids.clone();
+        let nohir_vir_ids = erasure_info.nohir_vir_ids.clone();
         let resolved_calls = erasure_info.resolved_calls.clone();
         let resolved_pats = erasure_info.resolved_pats.clone();
         let direct_var_modes = erasure_info.direct_var_modes.clone();
@@ -2962,6 +2964,7 @@ impl Verifier {
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate: unpruned_crate,
             hir_vir_ids,
+            nohir_vir_ids,
             resolved_calls,
             resolved_pats,
             erasure_modes,

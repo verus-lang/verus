@@ -68,6 +68,7 @@ pub mod rust_to_vir_trait;
 #[cfg(feature = "singular")]
 pub mod singular;
 mod spans;
+mod trait_bound_redirect;
 pub mod trait_check;
 mod trait_check_ast;
 mod trait_check_emit;
