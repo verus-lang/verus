@@ -59,21 +59,19 @@ fn run_cargo_verus_for_dir(dir: &str) {
         extra_verus_args.extend(args.split(" "));
     }
 
-    // Don't reuse any artifacts from previous runs
-    let args = vec!["clean"];
-    let run = run_cargo(&args, &test_dir.as_path());
-    assert!(run.status.success());
+    // Use a temp dir for the target dir to isolate each test run
+    let target_dir = tempdir().expect("Failed to create temporary target directory");
 
     let mut args = vec!["verify"];
     args.push("--");
     args.extend(&extra_verus_args);
-    let run = run_cargo_verus(&args, &test_dir.as_path());
+    let run = run_cargo_verus_with_target(&args, &test_dir, target_dir.path());
     assert!(run.status.success());
 
     let mut args = vec!["build"];
     args.push("--");
     args.extend(&extra_verus_args);
-    let run = run_cargo_verus(&args, &test_dir.as_path());
+    let run = run_cargo_verus_with_target(&args, &test_dir, target_dir.path());
     assert!(run.status.success());
 }
 
@@ -91,17 +89,15 @@ fn run_vanilla_cargo_for_dir(dir: &str) {
         return;
     }
 
-    // Don't reuse any artifacts from previous runs
-    let args = vec!["clean"];
-    let run = run_cargo(&args, &test_dir.as_path());
-    assert!(run.status.success());
+    // Use a temp dir for the target dir to isolate each test run
+    let target_dir = tempdir().expect("Failed to create temporary target directory");
 
     let args = vec!["check"];
-    let run = run_cargo(&args, &test_dir.as_path());
+    let run = run_cargo_with_target(&args, &test_dir, target_dir.path());
     assert!(run.status.success());
 
     let args = vec!["build"];
-    let run = run_cargo(&args, &test_dir.as_path());
+    let run = run_cargo_with_target(&args, &test_dir, target_dir.path());
     assert!(run.status.success());
 }
 

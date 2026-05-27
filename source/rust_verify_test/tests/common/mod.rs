@@ -444,6 +444,14 @@ pub fn run_verus(
 }
 
 pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    run_cargo_verus_with_target(args, dir, &dir.join("target"))
+}
+
+pub fn run_cargo_verus_with_target(
+    args: &[&str],
+    dir: &std::path::Path,
+    target_dir: &std::path::Path,
+) -> std::process::Output {
     if std::env::var("VERUS_IN_VARGO").is_err() {
         panic!("not running in vargo, read the README for instructions");
     }
@@ -471,6 +479,9 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
 
     let mut child = std::process::Command::new(bin);
     child.current_dir(dir);
+    child.env("CARGO_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_BUILD_DIR", target_dir);
 
     let z3 = std::env::var("VERUS_Z3_PATH")
         .map(|p| {
@@ -489,7 +500,7 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
     child.env("VERUS_Z3_PATH", z3);
 
     let child = child
-        .args(&args[..])
+        .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -504,6 +515,14 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
 
 // Assumes normal `cargo` is in the caller's path
 pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    run_cargo_with_target(args, dir, &dir.join("target"))
+}
+
+pub fn run_cargo_with_target(
+    args: &[&str],
+    dir: &std::path::Path,
+    target_dir: &std::path::Path,
+) -> std::process::Output {
     // if std::env::var("VERUS_IN_VARGO").is_err() {
     //     panic!("not running in vargo, read the README for instructions");
     // }
@@ -513,9 +532,12 @@ pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     // Remove Verus-specific RUSTFLAGS that are set by vargo, as they cause
     // verus_builtin and vstd to require unstable features not available on stable Rust
     child.env_remove("RUSTFLAGS");
+    child.env("CARGO_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_BUILD_DIR", target_dir);
 
     let child = child
-        .args(&args[..])
+        .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
