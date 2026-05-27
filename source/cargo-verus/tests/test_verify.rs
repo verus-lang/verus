@@ -342,3 +342,39 @@ fn workspace_emits_import_for_transitive_verified_dep() {
         "expected transitive dep by lib name in driver args, got: {driver_args:?}",
     );
 }
+
+#[test]
+fn workspace_renamed_dependency_import_uses_workspace_alias() {
+    let consumer = "consumer";
+    let dependency = "dependency";
+    let renamed_dep = "renamed_dep";
+
+    let workspace_dir = MockWorkspace::new()
+        .members([
+            MockPackage::new(consumer).lib().verify(true).deps([MockDep::workspace(renamed_dep)]),
+            MockPackage::new(dependency).lib().verify(true).aliases([renamed_dep]),
+        ])
+        .materialize();
+
+    let manifest_path = workspace_dir.path().join("Cargo.toml");
+    let manifest_path = manifest_path.to_str().expect("manifest path to string");
+    let consumer_args_prefix = format!("{VERUS_DRIVER_ARGS_FOR}{consumer}-0.1.0-");
+
+    let args = [BIN_NAME, "verify", "--manifest-path", manifest_path, "--package", consumer];
+    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
+
+    let driver_args = cargo_plan.parse_driver_args_for_key_prefix(&consumer_args_prefix);
+    let renamed_import = format!("import-dep-if-present={renamed_dep}");
+    let package_import = format!("import-dep-if-present={dependency}");
+    assert!(
+        driver_args.iter().any(|arg| *arg == renamed_import),
+        "expected renamed workspace dep alias in driver args, got: {driver_args:?}",
+    );
+    assert!(
+        !driver_args.iter().any(|arg| *arg == package_import),
+        "expected alias (not package name) for direct renamed workspace dep, got: {driver_args:?}",
+    );
+}
