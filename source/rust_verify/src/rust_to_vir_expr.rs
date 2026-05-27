@@ -1004,6 +1004,7 @@ pub(crate) fn invariant_block_open<'a>(
                     return None;
                 }
             };
+
             Some((*guard_hir, *inner_hir, inner_pat, arg, atomicity))
         }
         _ => {
@@ -1116,7 +1117,7 @@ fn invariant_block_to_vir<'tcx>(
         return malformed_inv_block_err(expr);
     }
 
-    let vir_body = match mid_stmt.kind {
+    let (vir_body, block_hir_id) = match mid_stmt.kind {
         StmtKind::Expr(e @ Expr { kind: ExprKind::Block(body, None), .. }) => {
             assert!(!is_invariant_block(bctx, e)?);
             let vir_stmts: Stmts = Arc::new(
@@ -1131,12 +1132,25 @@ fn invariant_block_to_vir<'tcx>(
             // body.span leads to better error messages
             // (e.g., the "Cannot show invariant holds at end of block" error)
             // (e.span or mid_stmt.span would expose macro internals)
-            bctx.spanned_typed_new(body.span, &ty, ExprX::Block(vir_stmts, vir_expr))
+            let vir_body =
+                bctx.spanned_typed_new(body.span, &ty, ExprX::Block(vir_stmts, vir_expr));
+            (vir_body, body.hir_id)
         }
         _ => {
             return malformed_inv_block_err(expr);
         }
     };
+
+    if matches!(atomicity, InvAtomicity::NonAtomic) {
+        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+        erasure_info.local_invariant_bodies.push(
+            rustc_mir_build_verus::verus::LocalInvariantBody {
+                inner_block_hir_id: block_hir_id,
+                span: expr.span,
+                guard_var: rustc_middle::thir::LocalVarId(guard_hir),
+            },
+        );
+    }
 
     let vir_arg = expr_to_vir_consume(bctx, &inv_arg)?;
 

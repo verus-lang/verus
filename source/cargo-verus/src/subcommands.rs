@@ -134,7 +134,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
     //////////////////////////////////////////////////
     let metadata_args = {
         let for_cargo_metadata = true;
-        make_cargo_args(&cfg.options.cargo_opts, for_cargo_metadata)
+        make_cargo_args(&cfg.options.cargo_opts, for_cargo_metadata, cfg.options.verbosity)
     };
     let metadata = fetch_metadata(metadata_args, cfg.current_dir.clone())?;
     let metadata_index = MetadataIndex::new(&metadata)?;
@@ -170,7 +170,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         }
 
         let for_cargo_metadata = false;
-        make_cargo_args(&options, for_cargo_metadata)
+        make_cargo_args(&options, for_cargo_metadata, cfg.options.verbosity)
     };
 
     let mut common_verus_driver_args: Vec<String> =
@@ -181,6 +181,12 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
             "--VIA-CARGO".to_owned(),
             "compile-when-primary-package".to_owned(),
         ]);
+    }
+    if cfg.options.verbosity >= 2 {
+        common_verus_driver_args.push("-v".to_owned());
+        eprintln!("verbosity level >= 2; forwarding 1 `-v` to Verus");
+    } else if cfg.options.verbosity > 0 {
+        eprintln!("verbosity level = 1; keeping Verus non-verbose");
     }
 
     let plan = make_cargo_plan(
@@ -195,7 +201,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         fwd_verus_args_packages,
     )?;
 
-    if cfg.options.verbose {
+    if cfg.options.verbosity > 0 {
         let command = plan.to_command();
         eprintln!(
             "forwarding Verus args to crates: <{}>",
@@ -220,8 +226,18 @@ WARNING: You asked for verification, but cargo did not find any crates that opte
     Ok(plan)
 }
 
-fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String> {
+fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8) -> Vec<String> {
     let mut args = vec![];
+
+    for _ in 1..verbosity {
+        args.push("-v".to_owned());
+    }
+    if verbosity > 0 {
+        eprintln!(
+            "verbosity level = {verbosity}; forwarding {} `-v` arg(s) to Cargo",
+            verbosity - 1,
+        );
+    }
 
     if opts.frozen {
         args.push("--frozen".to_owned());

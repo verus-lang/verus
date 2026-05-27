@@ -1,2 +1,3 @@
 /.github/CODEOWNERS @parno @Chris-Hawblitzel @tjhance
 /source/cargo-verus/** @mkovaxx
+/.zed/** @mkovaxx
