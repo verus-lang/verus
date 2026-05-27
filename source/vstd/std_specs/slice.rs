@@ -157,8 +157,8 @@ pub broadcast axiom fn index_mut_result_str(start: int, end: int, old_slice: &st
 // Version for inside of `core`, where we directly apply the bound
 #[cfg(verus_verify_core)]
 #[verifier::external_trait_specification]
-#[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
-pub trait ExSliceIndex<T: ?Sized>: private_slice_index::Sealed {
+#[cfg_attr(verus_verify_core, verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl))]
+pub trait ExSliceIndex<T: ?Sized>: core::slice::index::private_slice_index::Sealed {
     type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
 
     type Output: ?Sized;
