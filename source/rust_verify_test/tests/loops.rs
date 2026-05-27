@@ -1844,3 +1844,17 @@ test_verify_one_file! {
       }
   } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_for_loop_with_pattern_binding_issue2495 verus_code! {
+        use vstd::prelude::*;
+        fn foo(v: &Vec<(u32, u32)>) {
+            for (a, b) in iter: v
+                invariant iter.index() >= 0,
+            {
+                assert(iter.seq()[iter.index()].0 == a);
+                assert(iter.seq()[iter.index()].1 == b);
+            }
+        }
+    } => Ok(())
+}

@@ -1925,3 +1925,11 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] pattern_binding_of_ref_in_spec_code_issue2495 verus_code! {
+        fn test(x: &(u64, u64)) {
+            assert(({ let (a, b) = x; true }));
+        }
+    } => Ok(())
+}
