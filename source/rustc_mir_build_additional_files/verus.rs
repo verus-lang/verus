@@ -1085,7 +1085,8 @@ fn erase_let_for_pattern_checking<'tcx>(
 
     let pattern = erase_pat_all_binders(cx.pattern_from_hir(pat));
 
-    let init_ty = cx.typeck_results.node_type(pat.hir_id);
+    // Use the THIR pattern's type, which reflects any auto-deref adjustments applied to the pattern. 
+    let init_ty = pattern.ty;
     let init =
         init.map(|init| erased_ghost_value(cx, erasure_ctxt, root_hir_id, init.span, init_ty));
 

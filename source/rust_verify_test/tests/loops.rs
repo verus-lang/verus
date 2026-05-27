@@ -1844,3 +1844,17 @@ test_verify_one_file! {
       }
   } => Ok(())
 }
+
+test_verify_one_file! {
+  // https://github.com/verus-lang/verus/issues/2495
+  #[test] test_for_loop_tuple_destructure verus_code! {
+      use vstd::prelude::*;
+      fn foo(v: &Vec<(u32, u32)>) {
+          for (a, b) in iter: v
+              invariant iter.index() >= 0,
+          {
+              let _ = (a, b);
+          }
+      }
+  } => Ok(())
+}
