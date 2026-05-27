@@ -514,6 +514,15 @@ impl<A> Seq<A> {
 }
 
 #[doc(hidden)]
+impl<K, V> Map<K, V> {
+    // note that despite the name, this is allowed to insert
+    #[verifier::inline]
+    pub open spec fn update_at_index(self, k: K, v: V) -> Self {
+        self.insert(k, v)
+    }
+}
+
+#[doc(hidden)]
 impl<K, V> IMap<K, V> {
     // note that despite the name, this is allowed to insert
     #[verifier::inline]
