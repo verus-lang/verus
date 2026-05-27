@@ -702,7 +702,7 @@ test_verify_one_file! {
 
             let z = foo(x, ({ x = 60; y }));
 
-            assert(z === (60, 30)); // FAILS
+            assert(z == (60, 30)); // FAILS
         }
 
         fn test_ok() {
@@ -711,7 +711,7 @@ test_verify_one_file! {
 
             let z = foo(x, ({ x = 60; y }));
 
-            assert(z === (24, 30));
+            assert(z == (24, 30));
             assert(x == 60);
         }
 
@@ -721,7 +721,7 @@ test_verify_one_file! {
 
             let z = foo(({ x = 60; y }), x);
 
-            assert(z === (30, 24)); // FAILS
+            assert(z == (30, 24)); // FAILS
         }
 
         fn test3_ok() {
@@ -730,7 +730,7 @@ test_verify_one_file! {
 
             let z = foo(({ x = 60; x }), ({ x = 80; x }));
 
-            assert(z === (60, 80));
+            assert(z == (60, 80));
         }
     } => Err(err) => assert_fails(err, 2)
 }
@@ -743,7 +743,7 @@ test_verify_one_file! {
 
             let z = (x, ({ x = 60; y }));
 
-            assert(z === (60, 30)); // FAILS
+            assert(z == (60, 30)); // FAILS
         }
 
         fn test_ok() {
@@ -752,7 +752,7 @@ test_verify_one_file! {
 
             let z = (x, ({ x = 60; y }));
 
-            assert(z === (24, 30));
+            assert(z == (24, 30));
             assert(x == 60);
         }
 
@@ -762,7 +762,7 @@ test_verify_one_file! {
 
             let z = (({ x = 60; y }), x);
 
-            assert(z === (30, 24)); // FAILS
+            assert(z == (30, 24)); // FAILS
         }
 
         fn test2_ok() {
@@ -771,7 +771,7 @@ test_verify_one_file! {
 
             let z = (({ x = 60; y }), x);
 
-            assert(z === (30, 60));
+            assert(z == (30, 60));
             assert(x == 60);
         }
     } => Err(err) => assert_fails(err, 2)
@@ -787,7 +787,7 @@ test_verify_one_file! {
 
             let z = Foo(x, ({ x = 60; y }));
 
-            assert(z === Foo(60, 30)); // FAILS
+            assert(z == Foo(60, 30)); // FAILS
         }
 
         fn test_ok() {
@@ -796,7 +796,7 @@ test_verify_one_file! {
 
             let z = Foo(x, ({ x = 60; y }));
 
-            assert(z === Foo(24, 30));
+            assert(z == Foo(24, 30));
             assert(x == 60);
         }
 
@@ -806,7 +806,7 @@ test_verify_one_file! {
 
             let z = Foo(({ x = 60; y }), x);
 
-            assert(z === Foo(30, 24)); // FAILS
+            assert(z == Foo(30, 24)); // FAILS
         }
 
         fn test2_ok() {
@@ -815,7 +815,7 @@ test_verify_one_file! {
 
             let z = Foo(({ x = 60; y }), x);
 
-            assert(z === Foo(30, 60));
+            assert(z == Foo(30, 60));
             assert(x == 60);
         }
     } => Err(err) => assert_fails(err, 2)
@@ -831,7 +831,7 @@ test_verify_one_file! {
 
             let z = Foo { a: x, b: ({ x = 60; y }) };
 
-            assert(z === Foo { a: 60, b: 30 }); // FAILS
+            assert(z == Foo { a: 60, b: 30 }); // FAILS
         }
 
         fn test_ok() {
@@ -840,7 +840,7 @@ test_verify_one_file! {
 
             let z = Foo { a: x, b: ({ x = 60; y }) };
 
-            assert(z === Foo { a: 24, b: 30 });
+            assert(z == Foo { a: 24, b: 30 });
             assert(x == 60);
         }
 
@@ -850,7 +850,7 @@ test_verify_one_file! {
 
             let z = Foo { a: ({ x = 60; y }), b: x };
 
-            assert(z === Foo { a: 30, b: 24 }); // FAILS
+            assert(z == Foo { a: 30, b: 24 }); // FAILS
         }
 
         fn test2_ok() {
@@ -859,7 +859,7 @@ test_verify_one_file! {
 
             let z = Foo { a: ({ x = 60; y }), b: x };
 
-            assert(z === Foo { a: 30, b: 60 });
+            assert(z == Foo { a: 30, b: 60 });
             assert(x == 60);
         }
     } => Err(err) => assert_fails(err, 2)
@@ -877,7 +877,7 @@ test_verify_one_file! {
 
             let z = Foo { a: x, b: ({ x = 60; y }), ..foo0 };
 
-            assert(z === Foo { a: 60, b: 30, c: 19 }); // FAILS
+            assert(z == Foo { a: 60, b: 30, c: 19 }); // FAILS
         }
 
         fn test_ok() {
@@ -888,7 +888,7 @@ test_verify_one_file! {
 
             let z = Foo { a: x, b: ({ x = 60; y }), ..foo0 };
 
-            assert(z === Foo { a: 24, b: 30, c: 19 });
+            assert(z == Foo { a: 24, b: 30, c: 19 });
             assert(x == 60);
         }
 
@@ -900,7 +900,7 @@ test_verify_one_file! {
 
             let z = Foo { a: ({ x = 60; y }), b: x, ..foo0 };
 
-            assert(z === Foo { a: 30, b: 24, c: 19 }); // FAILS
+            assert(z == Foo { a: 30, b: 24, c: 19 }); // FAILS
         }
 
         fn test2_ok() {
@@ -911,7 +911,7 @@ test_verify_one_file! {
 
             let z = Foo { a: ({ x = 60; y }), b: x, ..foo0 };
 
-            assert(z === Foo { a: 30, b: 60, c: 19 });
+            assert(z == Foo { a: 30, b: 60, c: 19 });
             assert(x == 60);
         }
 
@@ -923,7 +923,7 @@ test_verify_one_file! {
 
             let z = Foo { a: x, b: y, ..({ x = 20; foo0 }) };
 
-            assert(z === Foo { a: 20, b: 30, c: 19 }); // FAILS
+            assert(z == Foo { a: 20, b: 30, c: 19 }); // FAILS
         }
 
         fn test3_ok() {
@@ -934,7 +934,7 @@ test_verify_one_file! {
 
             let z = Foo { a: x, b: y, ..({ x = 20; foo0 }) };
 
-            assert(z === Foo { a: 24, b: 30, c: 19 });
+            assert(z == Foo { a: 24, b: 30, c: 19 });
             assert(x == 20);
         }
 
@@ -946,7 +946,7 @@ test_verify_one_file! {
 
             let z = Foo { a: x, b: ({ foo0 = Foo { a: 13, b: 14, c: 199 }; 20  }), ..foo0 };
 
-            assert(z === Foo { a: 24, b: 20, c: 19 }); // FAILS
+            assert(z == Foo { a: 24, b: 20, c: 19 }); // FAILS
         }
 
         fn test4_ok() {
@@ -957,10 +957,63 @@ test_verify_one_file! {
 
             let z = Foo { a: x, b: ({ foo0 = Foo { a: 13, b: 14, c: 199 }; 20  }), ..foo0 };
 
-            assert(z === Foo { a: 24, b: 20, c: 199 });
-            assert(foo0 === Foo { a: 13, b: 14, c: 199 });
+            assert(z == Foo { a: 24, b: 20, c: 199 });
+            assert(foo0 == Foo { a: 13, b: 14, c: 199 });
         }
     } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] side_effects_in_arg_struct_style_ctor_with_update2 verus_code! {
+        struct X {
+            a: u64,
+            b: u64,
+            c: u64,
+            d: u64,
+        }
+
+        fn test1(x: X) {
+            let mut i = 0;
+            let y = X { a: 0, b: 1, ..({ i += 1; x }) };
+            assert(i == 1);
+            assert(y.a == 0);
+            assert(y.b == 1);
+            assert(y.c == x.c);
+            assert(y.d == x.d);
+        }
+
+        fn test2(x: X) {
+            let mut i = 0;
+            let y = X { a: 0, b: 1, c: 2, d: 3, ..({ i += 1; x }) };
+            assert(i == 1);
+            assert(y.a == 0);
+            assert(y.b == 1);
+            assert(y.c == 2);
+            assert(y.d == 3);
+        }
+
+        fn test1_fails(x: X) {
+            let mut i = 0;
+            let y = X { a: 0, b: 1, ..({ i += 1; x }) };
+            assert(i == 1);
+            assert(y.a == 0);
+            assert(y.b == 1);
+            assert(y.c == x.c);
+            assert(y.d == x.d);
+            assert(false); // FAILS
+        }
+
+        fn test2_fails(x: X) {
+            let mut i = 0;
+            let y = X { a: 0, b: 1, c: 2, d: 3, ..({ i += 1; x }) };
+            assert(i == 1);
+            assert(y.a == 0);
+            assert(y.b == 1);
+            assert(y.c == 2);
+            assert(y.d == 3);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {
@@ -973,7 +1026,7 @@ test_verify_one_file! {
 
             let z = [x, ({ x = 60; y })];
 
-            assert(z@[0] === 60); // FAILS
+            assert(z@[0] == 60); // FAILS
         }
 
         fn test_ok() {
@@ -982,7 +1035,7 @@ test_verify_one_file! {
 
             let z = [x, ({ x = 60; y })];
 
-            assert(z@[0] === 24 && z@[1] === 30);
+            assert(z@[0] == 24 && z@[1] == 30);
             assert(x == 60);
         }
 
@@ -992,7 +1045,7 @@ test_verify_one_file! {
 
             let z = [({ x = 60; y }), x];
 
-            assert(z@[1] === 24); // FAILS
+            assert(z@[1] == 24); // FAILS
         }
 
         fn test2_ok() {
@@ -1001,7 +1054,7 @@ test_verify_one_file! {
 
             let z = [({ x = 60; y }), x];
 
-            assert(z@[0] === 30 && z@[1] === 60);
+            assert(z@[0] == 30 && z@[1] == 60);
             assert(x == 60);
         }
     } => Err(err) => assert_fails(err, 2)

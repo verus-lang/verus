@@ -1,14 +1,19 @@
-use std::collections::BTreeSet as Set;
+use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::PackageId;
+use clap::ValueEnum;
 use colored::Colorize;
 
-use crate::cli::{CargoOptions, VerifyCommand};
+use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+
+pub const CARGO_DEFAULT_LIB_METADATA: &str = "__CARGO_DEFAULT_LIB_METADATA";
+
+pub const RUSTC_WRAPPER: &str = "RUSTC_WRAPPER";
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -18,8 +23,16 @@ pub const VERUS_DRIVER_IS_BUILTIN_MACROS: &str = " __VERUS_DRIVER_IS_BUILTIN_MAC
 pub const VERUS_DRIVER_VERIFY: &str = "__VERUS_DRIVER_VERIFY_";
 pub const VERUS_DRIVER_VIA_CARGO: &str = "__VERUS_DRIVER_VIA_CARGO__";
 
-pub fn create_new_project(name: &str, is_bin: bool) -> Result<()> {
-    let (src_rs, src_rs_data) = if is_bin {
+pub struct NewCreationPlan {
+    pub current_dir: PathBuf,
+    pub name: String,
+    pub is_bin: bool,
+}
+
+pub fn create_new_project(creation_plan: &NewCreationPlan) -> Result<ExitCode> {
+    let NewCreationPlan { current_dir, name, is_bin } = creation_plan;
+
+    let (src_rs, src_rs_data) = if *is_bin {
         (
             "main.rs",
             r#"
@@ -60,7 +73,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-03-15-0111"
+vstd = "=0.0.0-2026-05-17-0151"
 
 [package.metadata.verus]
 verify = true
@@ -82,7 +95,7 @@ unexpected_cfgs = {{ level = "warn", check-cfg = [
 ] }}"#
     );
 
-    let project_dir = PathBuf::from(name);
+    let project_dir = current_dir.join(name);
     if project_dir.exists() {
         bail!("Directory `{}` already exists", name);
     }
@@ -101,10 +114,11 @@ unexpected_cfgs = {{ level = "warn", check-cfg = [
 
     println!("Created new Verus project at {name}");
 
-    Ok(())
+    Ok(ExitCode::SUCCESS)
 }
 
-pub struct CargoRunConfig {
+pub struct VerusConfig {
+    pub current_dir: PathBuf,
     pub subcommand: &'static str,
     pub options: VerifyCommand,
     pub compile_primary: bool,
@@ -112,7 +126,9 @@ pub struct CargoRunConfig {
     pub warn_if_nothing_verified: bool,
 }
 
-pub fn run_cargo(cfg: CargoRunConfig) -> Result<ExitCode> {
+pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
+    let fwd_verus_args_to = cfg.options.fwd_verus_args_to.expect("fwd_verus_args_to must be set");
+
     //////////////////////////////////////////////////
     // Phase 1: fetch metadata via `cargo metadata` //
     //////////////////////////////////////////////////
@@ -120,7 +136,7 @@ pub fn run_cargo(cfg: CargoRunConfig) -> Result<ExitCode> {
         let for_cargo_metadata = true;
         make_cargo_args(&cfg.options.cargo_opts, for_cargo_metadata)
     };
-    let metadata = fetch_metadata(&metadata_args)?;
+    let metadata = fetch_metadata(metadata_args, cfg.current_dir.clone())?;
     let metadata_index = MetadataIndex::new(&metadata)?;
 
     let (included_packages, _excluded_packages) =
@@ -129,13 +145,20 @@ pub fn run_cargo(cfg: CargoRunConfig) -> Result<ExitCode> {
     let root_packages: Set<PackageId> =
         included_packages.iter().map(|package| package.id.clone()).collect();
     let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
+    let dep_packages: Set<PackageId> = all_packages.difference(&root_packages).cloned().collect();
 
     let packages_to_process = &all_packages;
     let packages_to_verify = if cfg.verify_deps { &all_packages } else { &root_packages };
 
-    /////////////////////////////////////////////////
-    // Phase 2: run Verus via `cargo {subcommand}` //
-    /////////////////////////////////////////////////
+    let fwd_verus_args_packages = match fwd_verus_args_to {
+        VerusArgFwdSelector::All => &all_packages,
+        VerusArgFwdSelector::Roots => &root_packages,
+        VerusArgFwdSelector::Deps => &dep_packages,
+    };
+
+    /////////////////////////////////////////////////////////
+    // Phase 2: plan to run Verus via `cargo {subcommand}` //
+    /////////////////////////////////////////////////////////
 
     let cargo_args = {
         let mut options = cfg.options.cargo_opts;
@@ -160,27 +183,28 @@ pub fn run_cargo(cfg: CargoRunConfig) -> Result<ExitCode> {
         ]);
     }
 
-    common_verus_driver_args.extend(cfg.options.verus_args.iter().cloned());
-    let (mut command, verified_something) = make_cargo_command(
+    let plan = make_cargo_plan(
+        cfg.current_dir,
         cfg.subcommand,
-        &cargo_args,
+        cargo_args,
         common_verus_driver_args,
         &metadata_index,
         packages_to_process,
         packages_to_verify,
+        &cfg.options.verus_args,
+        fwd_verus_args_packages,
     )?;
 
     if cfg.options.verbose {
+        let command = plan.to_command();
+        eprintln!(
+            "forwarding Verus args to crates: <{}>",
+            fwd_verus_args_to.to_possible_value().expect("arg value").get_name(),
+        );
         eprintln!("running cargo command:\n{command:?}");
     }
 
-    let exit_status = command
-        .spawn()
-        .context("Failed to spawn cargo")?
-        .wait()
-        .context("Failed to wait for cargo")?;
-
-    if cfg.warn_if_nothing_verified && !verified_something {
+    if cfg.warn_if_nothing_verified && !plan.verified_something {
         eprint!(
             "{}",
             "\
@@ -193,12 +217,7 @@ WARNING: You asked for verification, but cargo did not find any crates that opte
         );
     }
 
-    match exit_status.code() {
-        Some(code) => u8::try_from(code)
-            .map(From::from)
-            .map_err(|_| anyhow!("Command {command:?} terminated with an odd exit code: {code}")),
-        None => bail!("Command {command:?} was terminated by a signal: {exit_status}"),
-    }
+    Ok(plan)
 }
 
 fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String> {
@@ -231,6 +250,19 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String>
         args.push(path.to_string_lossy().into_owned());
     }
 
+    if opts.features.all_features {
+        args.push("--all-features".to_owned());
+    }
+
+    if opts.features.no_default_features {
+        args.push("--no-default-features".to_owned());
+    }
+
+    if !opts.features.features.is_empty() {
+        args.push("--features".to_owned());
+        args.push(opts.features.features.join(" "));
+    }
+
     if !for_cargo_metadata {
         if let Some(path) = &opts.target_dir {
             args.push("--target-dir".to_owned());
@@ -255,54 +287,62 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String>
             args.push(exclude.clone());
         }
 
-        if opts.features.all_features {
-            args.push("--all-features".to_owned());
-        }
-
-        if opts.features.no_default_features {
-            args.push("--no-default-features".to_owned());
-        }
-
-        if !opts.features.features.is_empty() {
-            args.push("--features".to_owned());
-            args.push(opts.features.features.join(" "));
-        }
-
         args.extend(opts.cargo_args.iter().cloned());
     }
 
     args
 }
 
-fn make_cargo_command(
-    subcommand: &str,
-    cargo_args: &[String],
+#[derive(Clone, Debug)]
+pub struct CargoRunPlan {
+    pub current_dir: PathBuf,
+    pub args: Vec<String>,
+    pub env: Map<String, String>,
+    pub verified_something: bool,
+}
+
+impl CargoRunPlan {
+    fn to_command(&self) -> Command {
+        let mut command = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
+        command.current_dir(&self.current_dir);
+        command.args(&self.args);
+        for (key, value) in &self.env {
+            command.env(key, value);
+        }
+        command
+    }
+}
+
+fn make_cargo_plan(
+    current_dir: PathBuf,
+    subcommand: &'static str,
+    mut cargo_args: Vec<String>,
     common_verus_driver_args: Vec<String>,
     metadata_index: &MetadataIndex,
     packages_to_process: &Set<PackageId>,
     packages_to_verify: &Set<PackageId>,
-) -> Result<(Command, bool)> {
-    // TODO: use the "+ ... toolchain" argument?
-    let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
-
-    cmd.arg(subcommand).args(cargo_args);
-
-    cmd.env("RUSTC_WRAPPER", get_verus_driver_path());
-
-    cmd.env(VERUS_DRIVER_VIA_CARGO, "1");
-
+    // Args forwarded to Verus
+    fwd_verus_args: &[String],
+    // Packages to receive forwarded Verus args
+    fwd_verus_args_packages: &Set<PackageId>,
+) -> Result<CargoRunPlan> {
+    let mut env_overrides = Map::new();
+    env_overrides
+        .insert(RUSTC_WRAPPER.to_owned(), get_verus_driver_path().to_string_lossy().into_owned());
+    env_overrides.insert(VERUS_DRIVER_VIA_CARGO.to_owned(), "1".to_owned());
     // See https://github.com/rust-lang/cargo/blob/94aa7fb1321545bbe922a87cb11f5f4559e3be63/src/cargo/core/compiler/fingerprint/mod.rs#L71
-    cmd.env("__CARGO_DEFAULT_LIB_METADATA", "verus");
+    env_overrides.insert(CARGO_DEFAULT_LIB_METADATA.to_owned(), "verus".to_owned());
 
     let common_verus_driver_args = pack_verus_driver_args_for_env(common_verus_driver_args.iter());
 
     if !common_verus_driver_args.is_empty() {
-        cmd.env(VERUS_DRIVER_ARGS, common_verus_driver_args);
+        env_overrides.insert(VERUS_DRIVER_ARGS.to_owned(), common_verus_driver_args);
     }
 
     let mut verified_something = false;
     for pkg_id in packages_to_process {
         let no_verify = !packages_to_verify.contains(&pkg_id);
+        let receives_fwd_verus_args = fwd_verus_args_packages.contains(&pkg_id);
 
         let entry = metadata_index.get(pkg_id);
         let package = entry.package();
@@ -318,11 +358,12 @@ fn make_cargo_command(
         // changes.
 
         if verus_metadata.is_builtin {
-            cmd.env(format!("{VERUS_DRIVER_IS_BUILTIN}{package_id}"), "1");
+            env_overrides.insert(format!("{VERUS_DRIVER_IS_BUILTIN}{package_id}"), "1".to_owned());
         }
 
         if verus_metadata.is_builtin_macros {
-            cmd.env(format!("{VERUS_DRIVER_IS_BUILTIN_MACROS}{package_id}"), "1");
+            env_overrides
+                .insert(format!("{VERUS_DRIVER_IS_BUILTIN_MACROS}{package_id}"), "1".to_owned());
         }
 
         if verus_metadata.verify {
@@ -330,7 +371,7 @@ fn make_cargo_command(
             if !verus_metadata.is_vstd && !no_verify {
                 verified_something = true;
             }
-            cmd.env(format!("{VERUS_DRIVER_VERIFY}{package_id}"), "1");
+            env_overrides.insert(format!("{VERUS_DRIVER_VERIFY}{package_id}"), "1".to_owned());
 
             let mut verus_driver_args_for_package = vec![];
 
@@ -350,17 +391,31 @@ fn make_cargo_command(
                 verus_driver_args_for_package.push("--no-verify".to_owned());
             }
 
-            for dep in entry.deps() {
-                if metadata_index.get(&dep.pkg).verus_metadata().verify {
+            for import_name in metadata_index.transitive_verified_import_names(pkg_id) {
+                verus_driver_args_for_package.extend_from_slice(&[
+                    "--VIA-CARGO".to_owned(),
+                    format!("import-dep-if-present={import_name}"),
+                ]);
+            }
+
+            // If the package has a lib target *and* a non-lib target, like a test or example,
+            // add the lib as a dependency so the auxiliary target can see it. This adds the lib
+            // as a dep to itself, but it will not be present in the externs, so will be ignored.
+            if let Some(lib_target) = package.targets.iter().find(|t| t.is_lib()) {
+                if package.targets.iter().any(|t| !t.is_lib()) {
                     verus_driver_args_for_package.extend_from_slice(&[
                         "--VIA-CARGO".to_owned(),
-                        format!("import-dep-if-present={}", dep.name),
-                    ]);
+                        format!("import-dep-if-present={}", lib_target.name),
+                    ])
                 }
             }
 
+            if receives_fwd_verus_args {
+                verus_driver_args_for_package.extend(fwd_verus_args.iter().cloned());
+            }
+
             if !verus_driver_args_for_package.is_empty() {
-                cmd.env(
+                env_overrides.insert(
                     format!("{VERUS_DRIVER_ARGS_FOR}{package_id}"),
                     pack_verus_driver_args_for_env(verus_driver_args_for_package.iter()),
                 );
@@ -368,7 +423,28 @@ fn make_cargo_command(
         }
     }
 
-    Ok((cmd, verified_something))
+    let mut args = vec![subcommand.to_owned()];
+    args.append(&mut cargo_args);
+
+    Ok(CargoRunPlan { current_dir, args, env: env_overrides, verified_something })
+}
+
+pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
+    // TODO: use the "+ ... toolchain" argument?
+    let mut command = plan.to_command();
+
+    let exit_status = command
+        .spawn()
+        .context("Failed to spawn cargo")?
+        .wait()
+        .context("Failed to wait for cargo")?;
+
+    match exit_status.code() {
+        Some(code) => u8::try_from(code)
+            .map(From::from)
+            .map_err(|_| anyhow!("Command {command:?} terminated with an odd exit code: {code}")),
+        None => bail!("Command {command:?} was terminated by a signal: {exit_status}"),
+    }
 }
 
 fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -> String {

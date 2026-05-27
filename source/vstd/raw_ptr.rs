@@ -393,8 +393,8 @@ impl<T> PointsTo<T> {
     /// Delegates to the underlying `PointsToUnaligned`.
     pub proof fn leak_contents(tracked &mut self)
         ensures
-            self.ptr() == old(self).ptr(),
-            self.is_uninit(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).is_uninit(),
     {
         broadcast use layout_of_sized;
 
@@ -412,20 +412,25 @@ impl<T> PointsTo<T> {
         self.as_unaligned().ptr_bounds()
     }
 
-    /// Guarantees that the memory ranges associated with two permissions will not overlap,
-    /// provided that both `S` and `T` are non-zero-sized.
-    /// This is true because you cannot have two permissions to the same memory,
-    /// and it implies the pointers have distinct addresses.
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since both S and T are non-zero-sized, this implies the pointers have distinct addresses.
     ///
-    /// Note: Here `self` is a &mut reference so that you cannot pass the same PointsTo as both arguments.
+    /// Note: If either S or T is zero-sized, we get disjointness "for free" without having to call this axiom,
+    /// since the empty memory range corresponding to a ZST cannot possibly intersect with any other memory.
+    /// However, note that if one type is a ZST and the other is a non-ZST,
+    /// the disjointness definition as stated here here does not hold,
+    /// since the ZST pointer could be in the middle of the non-ZST's range.
     pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
         requires
             size_of::<T>() != 0,
             size_of::<S>() != 0,
         ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= self.ptr() as int,
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= final(self).ptr() as int,
     {
         broadcast use layout_of_sized;
 
@@ -497,8 +502,8 @@ impl<T> PointsToUnaligned<T> {
     /// "Forgets" about the value stored behind the pointer.
     pub axiom fn leak_contents(tracked &mut self)
         ensures
-            self.ptr() == old(self).ptr(),
-            self.is_uninit(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).is_uninit(),
     ;
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
@@ -509,20 +514,25 @@ impl<T> PointsToUnaligned<T> {
                 + self.ptr()@.provenance.alloc_len(),
     ;
 
-    /// Guarantees that the memory ranges associated with two permissions will not overlap,
-    /// provided that both `S` and `T` are non-zero-sized.
-    /// This is true because you cannot have two permissions to the same memory,
-    /// and it implies the pointers have distinct addresses.
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since both S and T are non-zero-sized, this implies the pointers have distinct addresses.
     ///
-    /// Note: Here `self` is a &mut reference so that you cannot pass the same PointsToUnaligned as both arguments.
+    /// Note: If either S or T is zero-sized, we get disjointness "for free" without having to call this axiom,
+    /// since the empty memory range corresponding to a ZST cannot possibly intersect with any other memory.
+    /// However, note that if one type is a ZST and the other is a non-ZST,
+    /// the disjointness definition as stated here here does not hold,
+    /// since the ZST pointer could be in the middle of the non-ZST's range.
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsToUnaligned<S>)
         requires
             size_of::<T>() != 0,
             size_of::<S>() != 0,
         ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= self.ptr() as int,
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= final(self).ptr() as int,
     ;
 
     /// Convert PointsToUnaligned to an aligned PointsTo.
@@ -833,19 +843,26 @@ impl<T> PointsTo<[T]> {
         ua.cast_points_to_unaligned::<V>()
     }
 
-    /// Guarantees that the memory ranges associated with two permissions will not overlap,
-    /// provided that both `S` and `T` are non-zero-sized.
-    /// This is true because you cannot have two permissions to the same memory,
-    /// and it implies the pointers have distinct addresses.
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since both S and T are non-zero-sized, this implies the pointers have distinct addresses.
+    ///
+    /// Note: If either S or T is zero-sized, we get disjointness "for free" without having to call this axiom,
+    /// since the empty memory range corresponding to a ZST cannot possibly intersect with any other memory.
+    /// However, note that if one type is a ZST and the other is a non-ZST,
+    /// the disjointness definition as stated here here does not hold,
+    /// since the ZST pointer could be in the middle of the non-ZST's range.
     pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<[S]>)
         requires
             size_of::<T>() * old(self).mem_contents_seq().len() != 0,
             size_of::<S>() * other.mem_contents_seq().len() != 0,
         ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<T>() * self.mem_contents_seq().len() <= other.ptr() as int
-                || other.ptr() as int + size_of::<S>() * other.mem_contents_seq().len()
-                <= self.ptr() as int,
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() * final(self).mem_contents_seq().len()
+                <= other.ptr() as int || other.ptr() as int + size_of::<S>()
+                * other.mem_contents_seq().len() <= final(self).ptr() as int,
     {
         broadcast use layout_of_sized;
 
@@ -1026,19 +1043,26 @@ impl<T> PointsToUnaligned<[T]> {
                 <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     ;
 
-    /// Guarantees that the memory ranges associated with two permissions will not overlap,
-    /// provided that both `S` and `T` are non-zero-sized.
-    /// This is true because you cannot have two permissions to the same memory,
-    /// and it implies the pointers have distinct addresses.
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since both S and T are non-zero-sized, this implies the pointers have distinct addresses.
+    ///
+    /// Note: If either S or T is zero-sized, we get disjointness "for free" without having to call this axiom,
+    /// since the empty memory range corresponding to a ZST cannot possibly intersect with any other memory.
+    /// However, note that if one type is a ZST and the other is a non-ZST,
+    /// the disjointness definition as stated here here does not hold,
+    /// since the ZST pointer could be in the middle of the non-ZST's range.
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsToUnaligned<[S]>)
         requires
             size_of::<T>() * old(self).mem_contents_seq().len() != 0,
             size_of::<S>() * other.mem_contents_seq().len() != 0,
         ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<T>() * self.mem_contents_seq().len() <= other.ptr() as int
-                || other.ptr() as int + size_of::<S>() * other.mem_contents_seq().len()
-                <= self.ptr() as int,
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() * final(self).mem_contents_seq().len()
+                <= other.ptr() as int || other.ptr() as int + size_of::<S>()
+                * other.mem_contents_seq().len() <= final(self).ptr() as int,
     ;
 
     /// Convert `PointsToUnaligned<[\T\]>` to an aligned `PointsTo<[\T\]>`.
@@ -1620,7 +1644,7 @@ impl<T> MapPointsTo<T> {
                 |i: nat| 0 <= i < len,
                 |i: nat| old(self).points_to()[(i + begin) as nat],
             ),
-            self.points_to() == old(self).points_to().remove_keys(range_set(begin, len)),
+            final(self).points_to() == old(self).points_to().remove_keys(range_set(begin, len)),
             out_map.ptr() == ptr_mut_from_data(
                 PtrData::<T> {
                     addr: addr_from_index(old(self).ptr(), begin),
@@ -1628,9 +1652,9 @@ impl<T> MapPointsTo<T> {
                     metadata: (),
                 },
             ),
-            self.ptr() == old(self).ptr(),
             out_map.len() == len,
-            self.len() == old(self).len()
+            final(self).len() == old(self).len()
+            final(self).ptr() == old(self).ptr(),
     {
         broadcast use crate::vstd::group_vstd_default;
         use_type_invariant(&*self);
@@ -1703,10 +1727,10 @@ impl<T> MapPointsTo<T> {
                 |i: nat| i + get_index_offset(old(self).ptr(), other.ptr()),
             ).subset_of(old(self).all_indices()),
         ensures
-            self.points_to() == old(self).points_to().union_prefer_right(
-                map_keys(other.points_to(), get_index_offset(self.ptr(), other.ptr())),
+            final(self).points_to() == old(self).points_to().union_prefer_right(
+                map_keys(other.points_to(), get_index_offset(final(self).ptr(), other.ptr())),
             ),
-            self.ptr() == old(self).ptr(),
+            final(self).ptr() == old(self).ptr(),
     {
         broadcast use group_set_axioms;
         broadcast use group_vstd_default;
@@ -2057,8 +2081,8 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
     requires
         old(perm).ptr() == ptr,
     ensures
-        perm.ptr() == ptr,
-        perm.mem_contents() == MemContents::Init(v),
+        final(perm).ptr() == ptr,
+        final(perm).mem_contents() == MemContents::Init(v),
     opens_invariants none
     no_unwind
 {
@@ -2081,8 +2105,8 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
         old(perm).ptr() == ptr,
         old(perm).is_init(),
     ensures
-        perm.ptr() == ptr,
-        perm.is_uninit(),
+        final(perm).ptr() == ptr,
+        final(perm).is_uninit(),
         v == old(perm).value(),
     opens_invariants none
     no_unwind
@@ -2138,24 +2162,24 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
     unsafe { &*ptr }
 }
 
-/* coming soon
-/// Equivalent to &mut *X, passing in a permission `perm` to ensure safety.
+/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
 pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
     requires
         old(perm).ptr() == ptr,
-        old(perm).is_init()
+        old(perm).is_init(),
     ensures
-        perm.ptr() == ptr,
-        perm.is_init(),
-
-        old(perm).value() == *old(v),
-        new(perm).value() == *new(v),
-    unsafe { &*ptr }
+        final(perm).ptr() == ptr,
+        final(perm).is_init(),
+        old(perm).value() == *v,
+        final(perm).value() == *final(v),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
 }
-*/
 
 macro_rules! pointer_specs {
     ($mod_ident:ident, $ptr_from_data:ident, $mu:tt) => {

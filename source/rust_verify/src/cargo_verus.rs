@@ -116,7 +116,7 @@ pub fn is_compile(cargo_args: &CargoVerusArgs, dep_tracker: &mut DepTracker) -> 
 
 pub(crate) fn handle_externs(
     externs: &rustc_session::config::Externs,
-    mut import_deps_if_present: HashSet<String>,
+    import_deps_if_present: &mut HashSet<String>,
     dep_tracker: &mut DepTracker,
 ) -> Result<Vec<(String, String)>, String> {
     let mut extern_map = BTreeMap::<String, Vec<PathBuf>>::new();
@@ -145,6 +145,38 @@ pub(crate) fn handle_externs(
                 return Err(format!("could not find .vir file for '{key}'"));
             }
         }
+    }
+    Ok(imports)
+}
+
+/// Resolve transitive imports: for each name in `import_deps_if_present` that
+/// did not match an explicit `--extern`, locate the .vir alongside the actual
+/// crate source rustc loaded via the dep search path. Each resolved .vir is
+/// also registered in `psess.file_depinfo` so cargo invalidates the consumer
+/// when the dep's .vir changes (mirroring `dep_tracker.mark_file` for direct
+/// externs in `handle_externs`).
+pub(crate) fn handle_transitive_imports<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    import_deps_if_present: &HashSet<String>,
+) -> Result<Vec<(String, String)>, String> {
+    let mut imports = Vec::new();
+    for cnum in tcx.crates(()) {
+        let name = tcx.crate_name(*cnum).to_string();
+        if !import_deps_if_present.contains(&name) {
+            continue;
+        }
+        let source = tcx.used_crate_source(*cnum);
+        let artifact_path =
+            source.rlib.as_ref().or(source.rmeta.as_ref()).or(source.dylib.as_ref());
+        let Some(artifact_path) = artifact_path else { continue };
+        let vir_path = artifact_path.with_extension("vir");
+        if !vir_path.exists() {
+            return Err(format!("could not find .vir file for '{name}'"));
+        }
+        let vir_path_str =
+            vir_path.to_str().unwrap_or_else(|| panic!("path {:?} is not valid unicode", vir_path));
+        tcx.sess.psess.file_depinfo.lock().insert(rustc_span::Symbol::intern(vir_path_str));
+        imports.push((name, vir_path_str.to_owned()));
     }
     Ok(imports)
 }

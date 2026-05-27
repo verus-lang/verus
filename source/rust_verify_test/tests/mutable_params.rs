@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] mut_param_with_loops ["new-mut-ref"] => verus_code! {
+    #[test] mut_param_with_loops [] => verus_code! {
         fn cond() -> bool { true }
 
         fn test(mut x: u64) -> (y: u64)
@@ -85,7 +85,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_param_on_closure_with_loops ["new-mut-ref"] => verus_code! {
+    #[test] mut_param_on_closure_with_loops [] => verus_code! {
         fn cond() -> bool { true }
 
         fn test() {
@@ -180,7 +180,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_confusion_invariants_spec ["new-mut-ref"] => verus_code! {
+    #[test] no_confusion_invariants_spec [] => verus_code! {
         use vstd::prelude::*;
 
         struct X { }
@@ -201,7 +201,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_confusion_unwind_spec ["new-mut-ref"] => verus_code! {
+    #[test] no_confusion_unwind_spec [] => verus_code! {
         fn panic() { }
 
         fn open(mut x: u64)
@@ -214,7 +214,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_confusion_ensures_recommend_check ["new-mut-ref"] => verus_code! {
+    #[test] no_confusion_ensures_recommend_check [] => verus_code! {
         spec fn rec(x: int) -> bool
             recommends x == 2
         {
@@ -230,7 +230,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_confusion_ensures_recommend_check_closure ["new-mut-ref"] => verus_code! {
+    #[test] no_confusion_ensures_recommend_check_closure [] => verus_code! {
         spec fn rec(x: u64) -> bool
             recommends x == 2
         {
@@ -248,7 +248,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_confusion_decreases_clause ["new-mut-ref"] => verus_code! {
+    #[test] no_confusion_decreases_clause [] => verus_code! {
         #[allow(unconditional_recursion)]
         fn test(mut x: u64)
             decreases x
@@ -260,7 +260,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_param_with_loops_iso_false ["new-mut-ref"] => verus_code! {
+    #[test] mut_param_with_loops_iso_false [] => verus_code! {
         fn cond() -> bool { true }
 
         fn test(mut x: u64) -> (y: u64)
@@ -341,7 +341,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_param_on_closure_with_loops_iso_false ["new-mut-ref"] => verus_code! {
+    #[test] mut_param_on_closure_with_loops_iso_false [] => verus_code! {
         fn cond() -> bool { true }
 
         fn test() {
@@ -436,7 +436,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mutation_conditional_cases ["new-mut-ref"] => verus_code! {
+    #[test] mutation_conditional_cases [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::loop_isolation(true)]
@@ -562,7 +562,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mutation_nested_loop ["new-mut-ref"] => verus_code! {
+    #[test] mutation_nested_loop [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::loop_isolation(true)]

@@ -3,16 +3,6 @@
 mod common;
 use common::*;
 
-fn assert_spec_eq_type_err(err: TestErr, typ1: &str, typ2: &str) {
-    assert_eq!(err.errors.len(), 1);
-    let err0 = &err.errors[0];
-    assert!(err0.code.is_none());
-    assert!(err0.message.contains("mismatched types; types must be compatible to use == or !="));
-    assert!(err0.spans.len() == 2 || err0.spans.len() == 3);
-    assert_spans_contain(err0, typ1);
-    assert_spans_contain(err0, typ2);
-}
-
 test_verify_one_file! {
     #[test] test_return_opaque_type verus_code! {
         use vstd::prelude::*;
@@ -136,7 +126,7 @@ test_verify_one_file! {
         {
             true
         }
-    } => Err(err) => assert_spec_eq_type_err(err, "opaque_ty", "bool")
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound")
 }
 
 test_verify_one_file! {
@@ -157,7 +147,7 @@ test_verify_one_file! {
         {
             true
         }
-    } => Err(err) => assert_spec_eq_type_err(err, "<opaque_ty as test_crate::DummyTraitA>::Output", "bool")
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound")
 }
 
 test_verify_one_file! {

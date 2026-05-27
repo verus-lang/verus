@@ -50,12 +50,13 @@ pub trait OptionAdditionalFns<T>: Sized {
     ;
 
     #[allow(deprecated)]
+    #[verifier::tracked_take_option_primitive]
     proof fn tracked_take(tracked &mut self) -> (tracked t: T)
         requires
             old(self).is_Some(),
         ensures
             t == old(self)->0,
-            self.is_None(),
+            final(self).is_None(),
     ;
 }
 
@@ -107,11 +108,8 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     }
 
     /// Similar to `Option::take`
-    proof fn tracked_take(tracked &mut self) -> (tracked t: T) {
-        let tracked mut x = None::<T>;
-        super::super::modes::tracked_swap(self, &mut x);
-        x.tracked_unwrap()
-    }
+    #[verifier::tracked_take_option_primitive]
+    axiom fn tracked_take(tracked &mut self) -> (tracked t: T);
 }
 
 ////// Specs for std methods
@@ -200,7 +198,7 @@ pub assume_specification<T>[ Option::<T>::expect ](option: Option<T>, msg: &str)
 pub assume_specification<T>[ Option::<T>::take ](option: &mut Option<T>) -> (t: Option<T>)
     ensures
         t == *old(option),
-        *option is None,
+        *final(option) is None,
 ;
 
 // map
@@ -278,6 +276,7 @@ pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone ](opt: &Option<T
         opt.is_some() ==> res.is_some() && cloned::<T>(opt.unwrap(), res.unwrap()),
 ;
 
+// PartialEq and Eq
 impl<T: super::cmp::PartialEqSpec> super::cmp::PartialEqSpecImpl for Option<T> {
     open spec fn obeys_eq_spec() -> bool {
         T::obeys_eq_spec()
@@ -298,6 +297,7 @@ pub assume_specification<T: PartialEq>[ <Option<T> as PartialEq>::eq ](
 ) -> bool
 ;
 
+// PartialOrd and Ord
 impl<T: super::cmp::PartialOrdSpec> super::cmp::PartialOrdSpecImpl for Option<T> {
     open spec fn obeys_partial_cmp_spec() -> bool {
         T::obeys_partial_cmp_spec()
@@ -356,13 +356,12 @@ pub assume_specification<T, E>[ Option::ok_or ](option: Option<T>, err: E) -> (r
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::as_mut ](option: &mut Option<T>) -> (res: Option<&mut T>)
     ensures
         (match *old(option) {
             None => final(option).is_none() && res.is_none(),
-            Some(r) => final(option).is_some() && res.is_some() && *res.unwrap() === r
-                && *final(res.unwrap()) === final(option).unwrap(),
+            Some(r) => final(option).is_some() && res.is_some() && *res.unwrap() == r
+                && *final(res.unwrap()) == final(option).unwrap(),
         }),
 ;
 
@@ -375,7 +374,6 @@ pub assume_specification<T>[ Option::as_slice ](option: &Option<T>) -> (res: &[T
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::as_mut_slice ](option: &mut Option<T>) -> (res: &mut [T])
     ensures
         res@ == (match *old(option) {
@@ -390,7 +388,6 @@ pub assume_specification<T>[ Option::as_mut_slice ](option: &mut Option<T>) -> (
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::insert ](option: &mut Option<T>, value: T) -> (res: &mut T)
     ensures
         *res == value,
@@ -398,7 +395,6 @@ pub assume_specification<T>[ Option::insert ](option: &mut Option<T>, value: T) 
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::get_or_insert ](option: &mut Option<T>, value: T) -> (res:
     &mut T)
     ensures

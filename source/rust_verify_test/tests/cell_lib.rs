@@ -357,7 +357,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] cell_borrow_mut ["new-mut-ref"] => IMPORTS.to_string() + code_str! {
+    #[test] cell_borrow_mut [] => IMPORTS.to_string() + code_str! {
         verus!{
 
         fn cell_test() {

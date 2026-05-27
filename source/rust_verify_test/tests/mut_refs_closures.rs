@@ -4,7 +4,208 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] closure_resolve_basic_move ["new-mut-ref"] => verus_code! {
+    #[test] closure_with_mut_ref_arg_basic [] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let c = |a: &mut u64|
+                requires *a < 100,
+                ensures *final(a) == *old(a) + 1 // FAILS
+            {
+                return;
+            };
+        }
+
+        fn test1() {
+            let c = |a: &mut u64|
+                requires *a < 100,
+                ensures *final(a) == *old(a) + 1
+            {
+                *a += 1;
+            };
+
+            let mut x = 0;
+            c(&mut x);
+            assert(x == 1);
+
+            let mut y = 0;
+            c(&mut y);
+            assert(y == 1);
+        }
+
+        fn test2() {
+            let c = |a: &mut u64|
+                requires *a < 100,
+                ensures *final(a) == *old(a) + 1
+            {
+                *a += 1;
+            };
+
+            let mut x = 0;
+            c(&mut x);
+            assert(x == 1);
+            assert(false); // FAILS
+        }
+
+        fn test3() {
+            let c = |a: &mut u64|
+                requires *a < 100,
+                ensures *final(a) == *old(a) + 1
+            {
+                *a += 1;
+            };
+
+            let mut x = 100;
+            c(&mut x); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_returning_mut_ref_arg_basic [] => verus_code! {
+        use vstd::prelude::*;
+
+        fn constrain<T: Fn(&mut (u64, u64)) -> &mut u64>(t: T) -> T
+            returns t
+        { t }
+
+        fn test() {
+            let c = constrain(|pair: &mut (u64, u64)| -> (fst: &mut u64)
+                ensures
+                    *final(pair) == (*final(fst), old(pair).1), // FAILS
+            {
+                &mut pair.1
+            });
+        }
+
+        fn test1() {
+            let c = constrain(|pair: &mut (u64, u64)| -> (fst: &mut u64)
+                ensures
+                    *fst == old(pair).0,
+                    *final(pair) == (*final(fst), old(pair).1),
+            {
+                &mut pair.0
+            });
+
+            let mut x = (0, 1);
+            *c(&mut x) = 10;
+            assert(x == (10, 1));
+
+            let mut y = (2, 3);
+            let r = c(&mut y);
+            *r = 20;
+            assert(y == (20, 3));
+        }
+
+        fn test2() {
+            let c = constrain(|pair: &mut (u64, u64)| -> (fst: &mut u64)
+                ensures
+                    *fst == old(pair).0,
+                    *final(pair) == (*final(fst), old(pair).1),
+            {
+                &mut pair.0
+            });
+
+            let mut x = (0, 1);
+            *c(&mut x) = 10;
+            assert(x == (10, 1));
+
+            let mut y = (2, 3);
+            let r = c(&mut y);
+            *r = 20;
+            assert(y == (20, 3));
+
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_with_mut_ref_arg_pass_as_arg [] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test1() {
+            let c = |a: &mut u64|
+                requires *a < 100,
+                ensures *final(a) == *old(a) + 1
+            {
+                *a += 1;
+            };
+
+            assert(forall |x: &mut u64| *x < 100 ==> call_requires(c, (x,)));
+            assert(forall |x: &mut u64, y: ()| call_ensures(c, (x,), y) ==> *final(x) == *x + 1);
+        }
+
+        fn test_caller() {
+            let c = |a: &mut u64|
+                requires *a < 100,
+                ensures *final(a) == *old(a) + 1,
+            {
+                *a += 1;
+            };
+            test_callee(c);
+        }
+
+        fn test_callee(c: impl Fn(&mut u64))
+            requires
+                forall |x: &mut u64| *x < 100 ==> call_requires(c, (x,)),
+                forall |x: &mut u64, y: ()| call_ensures(c, (x,), y) ==> *final(x) == *x + 1,
+        {
+            let mut x = 0;
+            c(&mut x);
+            assert(x == 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_returning_mut_ref_arg_pass_as_arg [] => verus_code! {
+        use vstd::prelude::*;
+
+        fn constrain<T: Fn(&mut (u64, u64)) -> &mut u64>(t: T) -> T
+            returns t
+        { t }
+
+        fn test1() {
+            let c = constrain(|pair: &mut (u64, u64)| -> (fst: &mut u64)
+                ensures
+                    *fst == old(pair).0,
+                    *final(pair) == (*final(fst), old(pair).1),
+            {
+                &mut pair.0
+            });
+
+            assert(forall |x: &mut (u64, u64)| call_requires(c, (x,)));
+            assert(forall |x: &mut (u64, u64), y: &mut u64| call_ensures(c, (x,), y) ==>
+                    *y == x.0 && *final(x) == (*final(y), x.1));
+        }
+
+        fn test_caller() {
+            let c = constrain(|pair: &mut (u64, u64)| -> (fst: &mut u64)
+                ensures
+                    *fst == old(pair).0,
+                    *final(pair) == (*final(fst), old(pair).1),
+            {
+                &mut pair.0
+            });
+            test_callee(c);
+        }
+
+        fn test_callee(c: impl Fn(&mut (u64, u64)) -> &mut u64)
+            requires
+                forall |x: &mut (u64, u64)| call_requires(c, (x,)),
+                forall |x: &mut (u64, u64), y: &mut u64| call_ensures(c, (x,), y) ==>
+                        *y == x.0 && *final(x) == (*final(y), x.1),
+        {
+            let mut x = (0, 1);
+            *c(&mut x) = 30;
+            assert(x == (30, 1));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_resolve_basic_move [] => verus_code! {
         fn consume<T>(t: T) { }
 
         fn test<T>(t: T) {
@@ -72,7 +273,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_resolve_basic_move2 ["new-mut-ref"] => verus_code! {
+    #[test] closure_resolve_basic_move2 [] => verus_code! {
         fn consume<T>(t: T) { }
 
         fn test<T>(a: T) {
@@ -125,7 +326,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_resolve_basic_move_of_closure_param ["new-mut-ref"] => verus_code! {
+    #[test] closure_resolve_basic_move_of_closure_param [] => verus_code! {
         fn consume<T>(t: T) { }
 
         fn test<T>() {
@@ -188,7 +389,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] proof_closure_resolve_basic_move ["new-mut-ref"] => verus_code! {
+    #[test] proof_closure_resolve_basic_move [] => verus_code! {
         use vstd::prelude::*;
 
         proof fn consume<T>(tracked t: T) { }
@@ -248,7 +449,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_resolve_nested_move ["new-mut-ref"] => verus_code! {
+    #[test] closure_resolve_nested_move [] => verus_code! {
         use vstd::prelude::*;
 
         fn consume<T>(t: T) { }
@@ -317,7 +518,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_resolve_field_move ["new-mut-ref"] => verus_code! {
+    #[test] closure_resolve_field_move [] => verus_code! {
         fn consume<T>(t: T) { }
 
         fn test<T, U>(t: (T, U)) {
@@ -376,7 +577,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_resolve_overlapping_moves ["new-mut-ref"] => verus_code! {
+    #[test] closure_resolve_overlapping_moves [] => verus_code! {
         fn some_bool() -> bool {
             true
         }
@@ -531,7 +732,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_resolve_params ["new-mut-ref"] => verus_code! {
+    #[test] closure_resolve_params [] => verus_code! {
         use vstd::prelude::*;
 
         fn consume<T>(t: T) { }
@@ -572,7 +773,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_refs_in_closure ["new-mut-ref"] => verus_code! {
+    #[test] mut_refs_in_closure [] => verus_code! {
         fn test1() {
             let foo = || {
                 let mut x: u64 = 0;
@@ -628,9 +829,9 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 2)
 }
 
-// TODO(new_mut_ref): fix
 test_verify_one_file_with_options! {
-    #[ignore] #[test] spec_capture_of_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] spec_capture_of_mut_ref [] => verus_code! {
+        use vstd::prelude::*;
         fn test(x: &mut u64)
             requires *x == 0,
         {

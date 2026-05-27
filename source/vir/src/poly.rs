@@ -353,7 +353,15 @@ fn coerce_exps_to_agree(ctx: &Ctx, exp1: &Exp, exp2: &Exp) -> (Exp, Exp) {
     if typ_is_poly(ctx, &exp1.typ) && typ_is_poly(ctx, &exp2.typ) {
         (exp1.clone(), exp2.clone())
     } else {
-        (coerce_exp_to_native(ctx, exp1), coerce_exp_to_native(ctx, exp2))
+        match (&*exp1.typ, &*exp2.typ) {
+            (TypX::TypParam(_) | TypX::Projection { .. }, _)
+            | (_, TypX::TypParam(_) | TypX::Projection { .. }) => {
+                // See rust_verify_tests assoc_type_impls ensures_projection_poly
+                // (inherited ensures don't have projections substituted)
+                (coerce_exp_to_poly(ctx, exp1), coerce_exp_to_poly(ctx, exp2))
+            }
+            _ => (coerce_exp_to_native(ctx, exp1), coerce_exp_to_native(ctx, exp2)),
+        }
     }
 }
 
@@ -380,6 +388,7 @@ fn visit_and_insert_binders(
     Arc::new(new_bs)
 }
 
+#[derive(Debug)]
 enum InsertPars {
     Native,
     Poly,
@@ -398,7 +407,7 @@ fn visit_and_insert_pars(
     // Parameter types are made Poly for spec functions and trait methods
     let mut new_pars: Vec<Par> = Vec::new();
     for par in pars.iter() {
-        let ParX { name, typ, mode, is_mut, purpose } = &par.x;
+        let ParX { name, typ, mode, purpose } = &par.x;
         let is_poly = match poly {
             InsertPars::Native => false,
             InsertPars::Poly => true,
@@ -407,8 +416,7 @@ fn visit_and_insert_pars(
         let typ =
             if is_poly { coerce_typ_to_poly(ctx, typ) } else { coerce_typ_to_native(ctx, typ) };
         let _ = types.insert(name.clone(), typ.clone());
-        let parx =
-            ParX { name: name.clone(), typ, mode: *mode, is_mut: *is_mut, purpose: *purpose };
+        let parx = ParX { name: name.clone(), typ, mode: *mode, purpose: *purpose };
         new_pars.push(Spanned::new(par.span.clone(), parx));
     }
     Arc::new(new_pars)
@@ -513,13 +521,6 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 let exps = visit_exps_poly(ctx, state, exps);
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), exps))
             }
-            CallFun::InternalFun(InternalFun::CheckDecreaseInt) => {
-                assert!(exps.len() == 3);
-                let e0 = visit_exp_native(ctx, state, &exps[0]);
-                let e1 = visit_exp_native(ctx, state, &exps[1]);
-                let e2 = visit_exp_native(ctx, state, &exps[2]);
-                mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(vec![e0, e1, e2])))
-            }
             CallFun::InternalFun(InternalFun::CheckDecreaseHeight) => {
                 assert!(exps.len() == 3);
                 let e0 = visit_exp_poly(ctx, state, &exps[0]);
@@ -620,7 +621,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp(ExpX::UnaryOpr(op.clone(), e1))
                 }
-                UnaryOpr::CustomErr(_) | UnaryOpr::ProofNote(_) => {
+                UnaryOpr::CustomErr(_)
+                | UnaryOpr::ProofNote(_)
+                | UnaryOpr::AutoDecreases
+                | UnaryOpr::AutoLoopEnsures => {
                     mk_exp_typ(&e1.typ, ExpX::UnaryOpr(op.clone(), e1.clone()))
                 }
                 UnaryOpr::ToDyn(_) => {
@@ -830,13 +834,24 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             dest,
             assert_id,
         } => {
-            let function = &ctx.func_sst_map[fun].x;
-            let is_spec = function.mode == Mode::Spec;
-            let is_trait = !matches!(function.kind, FunctionKind::Static);
+            let (is_polys, function) = if let crate::sst::CallTarget::Fun(fun) = fun {
+                let function = &ctx.func_sst_map[fun].x;
+                let is_spec = function.mode == Mode::Spec;
+                let is_trait = !matches!(function.kind, FunctionKind::Static);
+                let is_polys: Vec<bool> = function
+                    .pars
+                    .iter()
+                    .map(|par| is_spec || is_trait || typ_is_poly(ctx, &par.x.typ))
+                    .collect();
+                (is_polys, Some(function))
+            } else {
+                let is_polys: Vec<bool> = args.iter().map(|_| false).collect();
+                (is_polys, None)
+            };
             let mut new_args: Vec<Exp> = Vec::new();
-            assert!(function.pars.len() == args.len());
-            for (par, arg) in function.pars.iter().zip(args.iter()) {
-                let arg = if is_spec || is_trait || typ_is_poly(ctx, &par.x.typ) {
+            assert!(is_polys.len() == args.len());
+            for (is_poly, arg) in is_polys.iter().zip(args.iter()) {
+                let arg = if *is_poly {
                     visit_exp_poly(ctx, state, arg)
                 } else {
                     visit_exp_native(ctx, state, arg)
@@ -845,7 +860,12 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             }
             let dest = if let Some(dest) = dest {
                 if let Some(x) = take_temp(state, dest) {
-                    let typ = return_typ(ctx, function, is_trait, &dest.dest.typ);
+                    let typ = if let Some(function) = function {
+                        let is_trait = !matches!(function.kind, FunctionKind::Static);
+                        return_typ(ctx, function, is_trait, &dest.dest.typ)
+                    } else {
+                        dest.dest.typ.clone()
+                    };
                     assert!(!state.temp_types.contains_key(&x));
                     assert!(!state.types.contains_key(&x));
                     let _ = state.temp_types.insert(x.clone(), typ.clone());
@@ -1212,6 +1232,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         ref exec_proof_check,
         ref recommends_check,
         ref safe_api_check,
+        ref async_ret,
     } = &function.x;
 
     if attrs.is_decrease_by {
@@ -1320,6 +1341,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        async_ret: async_ret.clone(),
     };
     Spanned::new(function.span.clone(), functionx)
 }

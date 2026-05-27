@@ -28,7 +28,7 @@ verus! {
 #[verifier::external_body]
 #[verifier::ext_equal]
 #[verifier::accept_recursive_types(A)]
-pub struct Seq<A> {
+pub tracked struct Seq<A> {
     dummy: marker::PhantomData<A>,
 }
 
@@ -168,7 +168,7 @@ impl<A> Seq<A> {
     #[verifier(external_body)]
     pub proof fn tracked_empty() -> (tracked ret: Self)
         ensures
-            ret === Seq::empty(),
+            ret == Seq::empty(),
     {
         unimplemented!()
     }
@@ -178,9 +178,9 @@ impl<A> Seq<A> {
         requires
             0 <= i < old(self).len(),
         ensures
-            ret === old(self)[i],
-            self.len() == old(self).len() - 1,
-            *self == old(self).remove(i),
+            ret == old(self)[i],
+            final(self).len() == old(self).len() - 1,
+            *final(self) == old(self).remove(i),
     {
         unimplemented!()
     }
@@ -190,8 +190,8 @@ impl<A> Seq<A> {
         requires
             0 <= i <= old(self).len(),
         ensures
-            self.len() == old(self).len() + 1,
-            *self == old(self).insert(i, v),
+            final(self).len() == old(self).len() + 1,
+            *final(self) == old(self).insert(i, v),
     {
         unimplemented!()
     }
@@ -201,15 +201,15 @@ impl<A> Seq<A> {
         requires
             0 <= i < self.len(),
         ensures
-            *ret === self[i],
+            *ret == self[i],
     {
         unimplemented!()
     }
 
     pub proof fn tracked_push(tracked &mut self, tracked v: A)
         ensures
-            *self == old(self).push(v),
-            self.len() == old(self).len() + 1,
+            *final(self) == old(self).push(v),
+            final(self).len() == old(self).len() + 1,
     {
         broadcast use group_seq_axioms;
 
@@ -221,9 +221,9 @@ impl<A> Seq<A> {
         requires
             old(self).len() > 0,
         ensures
-            ret === old(self).last(),
-            self.len() == old(self).len() - 1,
-            *self == old(self).take(old(self).len() - 1),
+            ret == old(self).last(),
+            final(self).len() == old(self).len() - 1,
+            *final(self) == old(self).take(old(self).len() - 1),
     {
         broadcast use group_seq_axioms;
 
@@ -235,9 +235,9 @@ impl<A> Seq<A> {
         requires
             old(self).len() > 0,
         ensures
-            ret === old(self).first(),
-            self.len() == old(self).len() - 1,
-            *self == old(self).drop_first(),
+            ret == old(self).first(),
+            final(self).len() == old(self).len() - 1,
+            *final(self) == old(self).drop_first(),
     {
         broadcast use group_seq_axioms;
 

@@ -9,8 +9,8 @@ use vir::modes::ErasureModes;
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
-    BodyErasure, CallErasure, NodeErase, TreeErase, VarErasure, VerusErasureCtxt,
-    set_verus_aware_def_ids, set_verus_erasure_ctxt,
+    BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase, TreeErase,
+    VarErasure, VerusErasureCtxt, set_verus_aware_def_ids, set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -36,6 +36,8 @@ pub enum CompilableOperator {
     UseTypeInvariant,
     ClosureToFnProof(Mode),
     GhostBorrowMut,
+    MutRefTracked,
+    ShrRefStructWrap,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).
@@ -48,9 +50,9 @@ pub enum ResolvedCall {
     /// The call is to an operator like == or + that should be compiled.
     CompilableOperator(CompilableOperator),
     /// The call is to a function, and we record the name of the function here
-    /// (both unresolved and resolved), as well as an in_ghost flag.
+    /// (both unresolved and resolved), as well as (in_ghost, assume_external) flags.
     /// This is replaced by CallModes as soon as the modes are available.
-    Call(Fun, Fun, bool),
+    Call(Fun, Fun, bool, bool),
     /// Path and variant of datatype constructor
     Ctor(Path, vir::ast::Ident),
     /// Path and variant of datatype constructor. Used for ExprKind::Struct nodes.
@@ -64,6 +66,42 @@ pub enum ResolvedCall {
     MiscEraseAbsolutely,
     /// InferSpecForLoopIter. May need to be erased depending on mode-checking results
     InferSpecForLoopIter(AstId),
+    /// Loop spec (invariant, decreases, etc.). HirId is the HirId of the loop body.
+    LoopSpec(HirId, LoopSpecKind),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LoopSpecKind {
+    Invariant,
+    Decreases,
+    Ensures,
+    InvariantExceptBreak,
+}
+
+impl LoopSpecKind {
+    /// For the given loop spec kind, at which program points is that expression "evaluated"?
+    ///
+    /// This is needed for the analysis to correctly determine whether the given expressions
+    /// are prophetic, since propheticness depends on the locations of the expressions relative
+    /// to borrows.
+    ///
+    /// For Invariant, our answer is an overapproximation, as the specifics of where
+    /// an 'invariant' is evaluated depend on fiddly variables like loop_isolation level
+    /// and whether the loop has a 'break' statement. However, the distinction only ever matters
+    /// for rare cases when the condition has side-effects, so it doesn't matter very much.
+    ///
+    /// For soundness purposes, the only one that really matters is the 'Decreases' case
+    /// (since it's the only clause which is restricted to be non-prophetic).
+    /// For the other cases, they only matter for the sake of matching the documented behavior
+    /// of requiring prophetic uses to be marked with 'after_borrow'.
+    fn loop_spec_evaluation_location(&self) -> LoopSpecEvaluationLocation {
+        match self {
+            LoopSpecKind::Invariant => LoopSpecEvaluationLocation::BodyStartAndPostLoop,
+            LoopSpecKind::Decreases => LoopSpecEvaluationLocation::BodyStart,
+            LoopSpecKind::Ensures => LoopSpecEvaluationLocation::PostLoop,
+            LoopSpecKind::InvariantExceptBreak => LoopSpecEvaluationLocation::BodyStart,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -130,11 +168,15 @@ fn resolved_call_to_call_erase(
     Ok(match resolved_call {
         ResolvedCall::SpecPure => CallErasure::EraseTree(TreeErase::IncludeBasicChecks),
         ResolvedCall::SpecAllowProofArgs => CallErasure::Call(NodeErase::Erase),
-        ResolvedCall::Call(ufun, rfun, in_ghost) => {
+        ResolvedCall::Call(ufun, rfun, in_ghost, assume_external) => {
             // Note: in principle, the unresolved function ufun should always be present,
             // but we currently allow external declarations of resolved trait functions
             // without a corresponding external trait declaration.
             let Some(f) = functions.get(ufun).or_else(|| functions.get(rfun)) else {
+                if *assume_external {
+                    let erase = CallErasure::Call(NodeErase::Keep);
+                    return Ok(erase);
+                }
                 dbg!(ufun, rfun);
                 panic!("internal Verus error: could not find mode declarations for function")
             };
@@ -172,9 +214,14 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::TrackedBorrow
             | CompilableOperator::TrackedBorrowMut
             | CompilableOperator::GhostBorrowMut
+            | CompilableOperator::MutRefTracked
+            | CompilableOperator::ShrRefStructWrap
             | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
         },
         ResolvedCall::MiscEraseAbsolutely => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
+        // LoopSpecs get special handling, so they are marked EraseAbsolutely to avoid
+        // double-handling.
+        ResolvedCall::LoopSpec(..) => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
         ResolvedCall::InferSpecForLoopIter(ast_id) => {
             if infer_spec_for_loop_iter_erase[ast_id] {
                 CallErasure::EraseTree(TreeErase::EraseAbsolutely)
@@ -302,10 +349,11 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
     }
 
     let mut calls = HashMap::<HirId, CallErasure>::new();
+    let mut loop_erasure = HashMap::<HirId, LoopErasure>::new();
     for (hir_id, span_data, resolved_call) in &erasure_hints.resolved_calls {
         let span = span_data.span();
         let ctor_mode = ctor_modes.get(hir_id).cloned();
-        calls.insert(
+        let _found = calls.insert(
             *hir_id,
             resolved_call_to_call_erase(
                 span,
@@ -316,6 +364,15 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
                 &infer_spec_for_loop_iter_erase,
             )?,
         );
+        // REVIEW: we should check that that there aren't conflicting entries, but right now,
+        // there are some redundant traversals
+        //assert!(found.is_none());
+
+        if let ResolvedCall::LoopSpec(loop_hir_id, loop_spec_kind) = resolved_call {
+            let l =
+                loop_erasure.entry(*loop_hir_id).or_insert_with(|| LoopErasure { specs: vec![] });
+            l.specs.push((*hir_id, loop_spec_kind.loop_spec_evaluation_location()));
+        }
     }
 
     let mut bodies = HashMap::<LocalDefId, BodyErasure>::new();
@@ -333,10 +390,15 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         calls,
         bodies,
         adjusted_node_erasure,
+        loop_erasure,
 
         erased_ghost_value_fn_def_id: *verus_items
             .name_to_id
             .get(&VerusItem::ErasedGhostValue)
+            .unwrap(),
+        shadow_ghost_value_fn_def_id: *verus_items
+            .name_to_id
+            .get(&VerusItem::ShadowGhostValue)
             .unwrap(),
         dummy_capture_struct_def_id: *verus_items
             .name_to_id
@@ -346,8 +408,11 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             .name_to_id
             .get(&VerusItem::MutableReferenceTie)
             .unwrap(),
-
-        new_mut_ref: crate::config::new_mut_ref(),
+        two_phase_mutable_reference_tie_fn_def_id: *verus_items
+            .name_to_id
+            .get(&VerusItem::TwoPhaseMutableReferenceTie)
+            .unwrap(),
+        get_first_fn_def_id: *verus_items.name_to_id.get(&VerusItem::GetFirst).unwrap(),
     };
     set_verus_erasure_ctxt(Arc::new(verus_erasure_ctxt));
 

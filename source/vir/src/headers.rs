@@ -484,6 +484,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         attrs: _,
         body: _,
         extra_dependencies,
+        async_ret: _,
     } = spec_method.x.clone();
     let mut methodx = method.x.clone();
     while typ_bounds.len() > methodx.typ_bounds.len() {
@@ -627,6 +628,15 @@ fn peel_mut(expr: &mut Expr) -> &mut Expr {
         }
         ExprX::ReadPlace(place, _) if matches!(place.x, PlaceX::Temporary(_)) => {
             let ExprX::ReadPlace(place, _) = &mut Arc::make_mut(expr).x else { unreachable!() };
+            let PlaceX::Temporary(e) = &mut Arc::make_mut(place).x else { unreachable!() };
+            peel_mut(e)
+        }
+        ExprX::ImplicitReborrowOrSpecRead(place, _, _)
+            if matches!(place.x, PlaceX::Temporary(_)) =>
+        {
+            let ExprX::ImplicitReborrowOrSpecRead(place, _, _) = &mut Arc::make_mut(expr).x else {
+                unreachable!()
+            };
             let PlaceX::Temporary(e) = &mut Arc::make_mut(place).x else { unreachable!() };
             peel_mut(e)
         }

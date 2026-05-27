@@ -39,12 +39,29 @@ test_verify_one_file! {
             let mut i: usize = 0;
             for x in it: v1
                 invariant
-                    i == it.pos,
-                    it.elements == seq![3u32, 4u32, 6u32, 7u32, 8u32],
+                    i == it.index(),
+                    it.seq() == seq![3u32, 4u32, 6u32, 7u32, 8u32],
             {
                 assert(x > 2);
                 assert(x < 10);
                 i = i + 1;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_vec_dec verus_code! {
+        use vstd::prelude::*;
+        struct Tree {
+            children: Vec<Tree>,
+        }
+
+        fn recurse(tree: &Tree)
+            decreases *tree
+        {
+            if tree.children.len() > 0 {
+                recurse(&tree.children[0]);
             }
         }
     } => Ok(())

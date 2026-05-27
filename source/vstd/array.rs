@@ -2,6 +2,8 @@
 use super::prelude::*;
 use super::seq::*;
 use super::slice::SliceAdditionalSpecFns;
+#[cfg(verus_keep_ghost)]
+use super::std_specs::iter::IteratorSpec;
 use super::view::*;
 
 verus! {
@@ -36,6 +38,7 @@ pub trait ArrayAdditionalSpecFns<T>: View<V = Seq<T>> {
 
 #[verifier::external]
 pub trait ArrayAdditionalExecFns<T> {
+    #[cfg_attr(not(verus_verify_core), deprecated = "use `array[i] = value` instead")]
     fn set(&mut self, idx: usize, t: T);
 }
 
@@ -62,7 +65,7 @@ impl<T, const N: usize> ArrayAdditionalExecFns<T> for [T; N] {
         requires
             0 <= idx < N,
         ensures
-            self@ == old(self)@.update(idx as int, t),
+            final(self)@ == old(self)@.update(idx as int, t),
     {
         self[idx] = t;
     }
@@ -91,6 +94,39 @@ pub broadcast axiom fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
         (#[trigger] spec_array_as_slice(ar))@ == ar@,
 ;
 
+// To allow reasoning about the returned iterator when the executable
+// function `iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: a.iter() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_array_iter)` to the specification for
+// the executable `into_iter` method and define that spec function here.
+pub uninterp spec fn spec_array_iter<T, const N: usize>(s: &[T; N]) -> (iter: core::slice::Iter<
+    '_,
+    T,
+>);
+
+pub broadcast proof fn axiom_spec_array_iter<T, const N: usize>(s: &[T; N])
+    ensures
+        #[trigger] spec_array_iter(s).remaining() == s@.as_ref(),
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_array_iter)]
+pub assume_specification<
+    'a,
+    T,
+    const N: usize,
+>[ <&'a [T; N] as core::iter::IntoIterator>::into_iter ](s: &'a [T; N]) -> (iter: core::slice::Iter<
+    'a,
+    T,
+>)
+    ensures
+        iter == spec_array_iter(s),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_relation(&iter, &iter),
+;
+
 // Referenced by Verus' internal encoding for array -> slice coercion
 #[doc(hidden)]
 #[verifier::external_body]
@@ -98,6 +134,7 @@ pub broadcast axiom fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_as_slice")]
 pub fn array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
     ensures
+        out == spec_array_as_slice(ar),
         ar@ == out@,
 {
     ar
@@ -154,12 +191,11 @@ pub broadcast axiom fn axiom_array_has_resolved<T, const N: usize>(array: [T; N]
 
 #[doc(hidden)]
 #[verifier::external_body]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::ref_mut_array_unsizing_coercion")]
 pub fn ref_mut_array_unsizing_coercion<T, const N: usize>(r: &mut [T; N]) -> (out: &mut [T])
     ensures
-        out.view() === old(r).view(),
-        final(out).view() === final(r).view(),
+        out.view() == old(r).view(),
+        final(out).view() == final(r).view(),
     opens_invariants none
     no_unwind
 {
@@ -172,6 +208,7 @@ pub broadcast group group_array_axioms {
     axiom_spec_array_as_slice,
     axiom_spec_array_fill_for_copy_type,
     axiom_array_ext_equal,
+    axiom_spec_array_iter,
     axiom_spec_array_update,
     axiom_array_has_resolved,
 }

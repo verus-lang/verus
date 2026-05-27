@@ -25,7 +25,7 @@ tokenized_state_machine!{ AuthFrag<#[verifier::reject_recursive_types] K, V> {
 
     #[invariant]
     pub fn the_inv(&self) -> bool {
-        self.fragments === self.auth
+        self.fragments == self.auth
     }
 
     init!{
@@ -48,7 +48,7 @@ tokenized_state_machine!{ AuthFrag<#[verifier::reject_recursive_types] K, V> {
         values_agree(key: K) {
             have fragments >= [ key => let frag_value ];
             assert(pre.auth.dom().contains(key)
-                && frag_value === pre.auth.index(key));
+                && frag_value == pre.auth.index(key));
         }
     }
 
@@ -165,7 +165,7 @@ spec fn tree_relation_rec(
         LinearTree::Leaf(frag) => {
             match tree {
                 Tree::Leaf(val) => {
-                    frag === AuthFrag![ inst => fragments => addr => Block::Leaf(val) ]
+                    frag == AuthFrag![ inst => fragments => addr => Block::Leaf(val) ]
                 },
                 Tree::Node(_, _) => false,
             }
@@ -174,8 +174,8 @@ spec fn tree_relation_rec(
             match tree {
                 Tree::Leaf(val) => false,
                 Tree::Node(tree_left, tree_right) => {
-                    &&& frag.instance === inst
-                    &&& frag.key === addr
+                    &&& frag.instance == inst
+                    &&& frag.key == addr
                     &&& frag.value.is_Node()
                     &&& tree_relation_rec(inst, *lt_left, *tree_left, frag.value.get_Node_0())
                     &&& tree_relation_rec(inst, *lt_right, *tree_right, frag.value.get_Node_1())
