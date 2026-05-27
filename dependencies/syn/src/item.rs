@@ -277,9 +277,9 @@ ast_struct! {
     pub struct ItemTrait {
         pub attrs: Vec<Attribute>,
         pub vis: Visibility,
+        pub constness: Option<Token![const]>,
         pub unsafety: Option<Token![unsafe]>,
         pub auto_token: Option<Token![auto]>,
-        pub constness: Option<Token![const]>,
         pub restriction: Option<ImplRestriction>,
         pub trait_token: Token![trait],
         pub ident: Ident,
@@ -1115,6 +1115,7 @@ pub(crate) mod parsing {
         } else if lookahead.peek(Token![const])
             && !ahead.peek2(Token![impl])
             && !ahead.peek2(Token![trait])
+            && !(ahead.peek2(Token![unsafe]) && ahead.peek3(Token![trait]))
         {
             let vis = input.parse()?;
             let publish = input.parse()?;
@@ -1206,6 +1207,11 @@ pub(crate) mod parsing {
         } else if lookahead.peek(Token![auto]) && ahead.peek2(Token![trait]) {
             input.parse().map(Item::Trait)
         } else if lookahead.peek(Token![const]) && ahead.peek2(Token![trait]) {
+            input.parse().map(Item::Trait)
+        } else if lookahead.peek(Token![const])
+            && ahead.peek2(Token![unsafe])
+            && ahead.peek3(Token![trait])
+        {
             input.parse().map(Item::Trait)
         } else if lookahead.peek(Token![impl])
             || lookahead.peek(Token![const]) && ahead.peek2(Token![impl])
@@ -2394,16 +2400,16 @@ pub(crate) mod parsing {
             || lookahead.peek(Token![:])
             || lookahead.peek(Token![where])
         {
+            let const_token = None;
             let unsafety = None;
             let auto_token = None;
-            let const_token = None;
             parse_rest_of_trait(
                 input,
                 attrs,
                 vis,
+                const_token,
                 unsafety,
                 auto_token,
-                const_token,
                 trait_token,
                 ident,
                 generics,
@@ -2422,9 +2428,9 @@ pub(crate) mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let outer_attrs = input.call(Attribute::parse_outer)?;
             let vis: Visibility = input.parse()?;
+            let constness: Option<Token![const]> = input.parse()?;
             let unsafety: Option<Token![unsafe]> = input.parse()?;
             let auto_token: Option<Token![auto]> = input.parse()?;
-            let constness: Option<Token![const]> = input.parse()?;
             let trait_token: Token![trait] = input.parse()?;
             let ident: Ident = input.parse()?;
             let generics: Generics = input.parse()?;
@@ -2432,9 +2438,9 @@ pub(crate) mod parsing {
                 input,
                 outer_attrs,
                 vis,
+                constness,
                 unsafety,
                 auto_token,
-                constness,
                 trait_token,
                 ident,
                 generics,
@@ -2446,9 +2452,9 @@ pub(crate) mod parsing {
         input: ParseStream,
         mut attrs: Vec<Attribute>,
         vis: Visibility,
+        constness: Option<Token![const]>,
         unsafety: Option<Token![unsafe]>,
         auto_token: Option<Token![auto]>,
-        constness: Option<Token![const]>,
         trait_token: Token![trait],
         ident: Ident,
         mut generics: Generics,
@@ -2486,9 +2492,9 @@ pub(crate) mod parsing {
         Ok(ItemTrait {
             attrs,
             vis,
+            constness,
             unsafety,
             auto_token,
-            constness,
             restriction: None,
             trait_token,
             ident,
@@ -3420,9 +3426,9 @@ pub(crate) mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(self.attrs.outer());
             self.vis.to_tokens(tokens);
+            self.constness.to_tokens(tokens);
             self.unsafety.to_tokens(tokens);
             self.auto_token.to_tokens(tokens);
-            self.constness.to_tokens(tokens);
             self.trait_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.generics.to_tokens(tokens);
@@ -3459,9 +3465,14 @@ pub(crate) mod printing {
             tokens.append_all(self.attrs.outer());
             self.defaultness.to_tokens(tokens);
             self.unsafety.to_tokens(tokens);
-            self.constness.to_tokens(tokens);
+            if self.unsafety.is_none() {
+                self.constness.to_tokens(tokens);
+            }
             self.impl_token.to_tokens(tokens);
             self.generics.to_tokens(tokens);
+            if self.unsafety.is_some() {
+                self.constness.to_tokens(tokens);
+            }
             if let Some((polarity, path, for_token)) = &self.trait_ {
                 polarity.to_tokens(tokens);
                 path.to_tokens(tokens);
