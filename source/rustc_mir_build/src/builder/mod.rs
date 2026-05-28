@@ -851,6 +851,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     fn lint_and_remove_uninhabited(&mut self) {
         let mut lints = vec![];
 
+        let mut basic_blocks_edited = vec![];
+
         for (bbindex, bbdata) in self.cfg.basic_blocks.iter_mut().enumerate() {
             let term = bbdata.terminator_mut();
             let TerminatorKind::Call { ref func, ref mut target, destination, .. } = term.kind
@@ -908,6 +910,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 // omit the return edge if a return type is visibly uninhabited to a module
                 // that makes the call.
                 *target = None;
+                basic_blocks_edited.push(bbindex);
             }
         }
 
@@ -968,6 +971,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 },
             );
         }
+
+        crate::builder::verus_builder::cfg_removal_fix_constraints(self, basic_blocks_edited);
     }
 
     fn finish(self) -> Body<'tcx> {

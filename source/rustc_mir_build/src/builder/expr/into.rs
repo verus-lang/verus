@@ -456,7 +456,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 }
             }
             ExprKind::Call { ty: _, fun, ref args, from_hir_call, fn_span } => {
-                crate::builder::verus_builder::record_call_inhabitedness(this, block, fun);
+                crate::builder::verus_builder::record_call_inhabitedness(this, block, expr_id, fun);
 
                 // VERUS: If any argument is to the function `two_phase_mutable_reference_tie`
                 // we need to reorder things, see the explanation in verus_time_travel_prevention.rs
@@ -555,6 +555,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     },
                 );
                 this.diverge_from(block);
+                crate::builder::verus_builder::emit_extra_constraints(this, success, expr_id);
                 success.unit()
             }
             ExprKind::ByUse { expr, span } => {
