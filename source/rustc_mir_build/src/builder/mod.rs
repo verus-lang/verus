@@ -859,7 +859,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             };
             let Some(target_bb) = *target else { continue };
 
-            if crate::builder::verus_builder::skip_edge_deletion_for_uninhabited_ty(&self.verus_mir_builder_ctxt,
+            if crate::builder::verus_builder::skip_edge_deletion_for_uninhabited_ty(
+                &self.verus_mir_builder_ctxt,
                 BasicBlock::from_usize(bbindex),
                 func.ty(&self.local_decls, self.tcx),
             ) {

@@ -246,7 +246,10 @@ impl VerusThirBuildCtxt {
             do_time_travel_prevention,
             guard_pattern_vars: vec![],
             local_invariants: vec![],
-            extra_thir: ExtraThir { local_invs_for_node: HashMap::new(), force_treat_inhabited: HashSet::new() },
+            extra_thir: ExtraThir {
+                local_invs_for_node: HashMap::new(),
+                force_treat_inhabited: HashSet::new(),
+            },
             local_def_id: local_def_id,
         }
     }

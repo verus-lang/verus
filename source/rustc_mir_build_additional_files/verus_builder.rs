@@ -28,7 +28,11 @@ pub(super) fn record_call_inhabitedness<'a, 'tcx>(
     }
 }
 
-pub(crate) fn skip_edge_deletion_for_uninhabited_ty<'a, 'tcx>(verus_mir_builder_ctxt: &VerusMirBuilderCtxt, block: rustc_middle::mir::BasicBlock, ty: Ty<'tcx>) -> bool {
+pub(crate) fn skip_edge_deletion_for_uninhabited_ty<'a, 'tcx>(
+    verus_mir_builder_ctxt: &VerusMirBuilderCtxt,
+    block: rustc_middle::mir::BasicBlock,
+    ty: Ty<'tcx>,
+) -> bool {
     func_ty_skip_edge_deletion_for_uninhabited_ty(ty)
         || verus_mir_builder_ctxt.force_treat_inhabited.contains(&block)
 }
@@ -50,7 +54,6 @@ pub fn func_ty_skip_edge_deletion_for_uninhabited_ty<'tcx>(ty: Ty<'tcx>) -> bool
         _ => false,
     }
 }
-
 
 pub(super) fn emit_extra_constraints<'a, 'tcx>(
     this: &mut Builder<'a, 'tcx>,
