@@ -13,14 +13,14 @@ use rustc_middle::thir::*;
 use rustc_middle::ty::{self, TyCtxt};
 
 /// Query implementation for [`TyCtxt::thir_body`].
-pub(crate) fn thir_body(
-    tcx: TyCtxt<'_>,
+pub(crate) fn thir_body<'tcx>(
+    tcx: TyCtxt<'tcx>,
     owner_def: LocalDefId,
-) -> Result<(&Steal<Thir<'_>>, ExprId), ErrorGuaranteed> {
+) -> Result<(&'tcx Steal<Thir<'tcx>>, ExprId), ErrorGuaranteed> {
     debug_assert!(!tcx.is_type_const(owner_def.to_def_id()), "thir_body queried for type_const");
 
     let body = tcx.hir_body_owned_by(owner_def);
-    let mut cx = ThirBuildCx::new(tcx, owner_def);
+    let mut cx: ThirBuildCx<'tcx> = ThirBuildCx::new(tcx, owner_def);
     if let Some(reported) = cx.typeck_results.tainted_by_errors {
         return Err(reported);
     }
@@ -123,7 +123,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             typing_env: ty::TypingEnv::non_body_analysis(tcx, def),
             typeck_results,
             body_owner: def.to_def_id(),
-            apply_adjustments: !find_attr!(tcx.hir_attrs(hir_id), CustomMir(..) => ()).is_some(),
+            apply_adjustments: !find_attr!(tcx, hir_id, CustomMir(..)),
             verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
         }
     }
@@ -140,6 +140,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         crate::verus::erase_pat(
             self,
             crate::thir::pattern::pat_from_hir(
+                self,
                 self.tcx,
                 self.typing_env,
                 self.typeck_results,
@@ -224,7 +225,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 fn_sig.inputs()[index]
             };
 
-            let pat = self.pattern_from_hir(param.pat);
+            let pat: Box<Pat<'tcx>> = self.pattern_from_hir(param.pat);
             Param { pat: Some(pat), ty, ty_span, self_kind, hir_id: Some(param.hir_id) }
         })
     }
