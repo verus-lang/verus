@@ -52,7 +52,7 @@ pub enum ResolvedCall {
     /// The call is to an operator like == or + that should be compiled.
     CompilableOperator(CompilableOperator),
     /// The call is to a function, and we record the name of the function here
-    /// (both unresolved and resolved), as well as (in_ghost, assume_external) flags.
+    /// (both unresolved and resolved), as well as the 'assume_external' flag.
     /// This is replaced by CallModes as soon as the modes are available.
     Call(Fun, Fun, bool),
     /// Path and variant of datatype constructor
