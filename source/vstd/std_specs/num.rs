@@ -79,22 +79,30 @@ macro_rules! num_specs {
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::wrapping_add](x: $uN, y: $uN) -> $uN
-                returns $mod_u::wrapping_add(x, y);
+                returns $mod_u::wrapping_add(x, y)
+                opens_invariants none
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::wrapping_add_signed](x: $uN, y: $iN) -> $uN
-                returns $mod_u::wrapping_add_signed(x, y);
+                returns $mod_u::wrapping_add_signed(x, y)
+                opens_invariants none
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::wrapping_sub](x: $uN, y: $uN) -> $uN
-                returns $mod_u::wrapping_sub(x, y);
+                returns $mod_u::wrapping_sub(x, y)
+                opens_invariants none
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::wrapping_mul](x: $uN, y: $uN) -> $uN
-                returns $mod_u::wrapping_mul(x, y);
+                returns $mod_u::wrapping_mul(x, y)
+                opens_invariants none
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -294,22 +302,30 @@ macro_rules! num_specs {
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::wrapping_add](x: $iN, y: $iN) -> $iN
-                returns $mod_i::wrapping_add(x, y);
+                returns $mod_i::wrapping_add(x, y)
+                opens_invariants none
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::wrapping_add_unsigned](x: $iN, y: $uN) -> $iN
-                returns $mod_i::wrapping_add_unsigned(x, y);
+                returns $mod_i::wrapping_add_unsigned(x, y)
+                opens_invariants none
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::wrapping_sub](x: $iN, y: $iN) -> (res: $iN)
-                returns $mod_i::wrapping_sub(x, y);
+                returns $mod_i::wrapping_sub(x, y)
+                opens_invariants none
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::wrapping_mul](x: $iN, y: $iN) -> $iN
-                returns $mod_i::wrapping_mul(x, y);
+                returns $mod_i::wrapping_mul(x, y)
+                opens_invariants none
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
