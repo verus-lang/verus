@@ -107,12 +107,16 @@ macro_rules! num_specs {
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::wrapping_shl](x: $uN, rhs: u32) -> $uN
-                returns $mod_u::wrapping_shl(x, rhs);
+                returns $mod_u::wrapping_shl(x, rhs)
+                opens_invariants none
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::wrapping_shr](x: $uN, rhs: u32) -> $uN
-                returns $mod_u::wrapping_shr(x, rhs);
+                returns $mod_u::wrapping_shr(x, rhs)
+                opens_invariants none
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -330,12 +334,16 @@ macro_rules! num_specs {
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::wrapping_shl](x: $iN, rhs: u32) -> $iN
-                returns $mod_i::wrapping_shl(x, rhs);
+                returns $mod_i::wrapping_shl(x, rhs)
+                opens_invariants none
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::wrapping_shr](x: $iN, rhs: u32) -> $iN
-                returns $mod_i::wrapping_shr(x, rhs);
+                returns $mod_i::wrapping_shr(x, rhs)
+                opens_invariants none
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
