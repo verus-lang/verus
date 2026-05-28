@@ -2408,6 +2408,11 @@ pub fn verus_erasure_get_first<S, T>(s: S, _: T) -> S {
 }
 
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::verus_erasure_check_static_reference"]
+pub fn verus_erasure_check_static_reference<T: 'static>(_: T) {
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::DummyCapture"]
 #[derive(Clone, Copy)]
 pub struct DummyCapture<'a> {

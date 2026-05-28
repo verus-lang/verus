@@ -444,6 +444,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             .get(&VerusItem::TwoPhaseMutableReferenceTie)
             .unwrap(),
         get_first_fn_def_id: *verus_items.name_to_id.get(&VerusItem::GetFirst).unwrap(),
+        check_static_reference_def_id: *verus_items.name_to_id.get(&VerusItem::CheckStaticReference).unwrap(),
     };
     set_verus_erasure_ctxt(Arc::new(verus_erasure_ctxt));
 

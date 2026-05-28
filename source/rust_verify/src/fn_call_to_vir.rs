@@ -2033,6 +2033,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::DummyCapture(_)
         | VerusItem::MutableReferenceTie
         | VerusItem::TwoPhaseMutableReferenceTie
+        | VerusItem::CheckStaticReference
         | VerusItem::GetFirst => {
             return err_span(
                 expr.span,

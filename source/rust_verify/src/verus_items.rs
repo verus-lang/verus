@@ -447,6 +447,7 @@ pub(crate) enum VerusItem {
     MutableReferenceTie,
     TwoPhaseMutableReferenceTie,
     GetFirst,
+    CheckStaticReference,
     DummyCapture(DummyCaptureItem),
     MutRefTracked,
 }
@@ -623,6 +624,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::mutable_reference_tie",   VerusItem::MutableReferenceTie),
         ("verus::verus_builtin::two_phase_mutable_reference_tie",   VerusItem::TwoPhaseMutableReferenceTie),
         ("verus::verus_builtin::verus_erasure_get_first", VerusItem::GetFirst),
+        ("verus::verus_builtin::verus_erasure_check_static_reference", VerusItem::CheckStaticReference),
         ("verus::verus_builtin::DummyCapture",            VerusItem::DummyCapture(DummyCaptureItem::Struct)),
         ("verus::verus_builtin::dummy_capture_new",       VerusItem::DummyCapture(DummyCaptureItem::New)),
         ("verus::verus_builtin::dummy_capture_consume",   VerusItem::DummyCapture(DummyCaptureItem::Consume)),

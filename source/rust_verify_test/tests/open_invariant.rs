@@ -924,7 +924,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] local_inv_lifetime_checking3 verus_code!{
+    #[test] local_inv_lifetime_checking3 verus_code!{
         use vstd::prelude::*;
         use vstd::invariant::*;
 
@@ -935,7 +935,8 @@ test_verify_one_file! {
             closed spec fn inv(k: (), v: X) -> bool { true }
         }
 
-        fn consume_and_never<A>(a: A) -> ! { }
+        #[verifier::exec_allows_no_decreases_clause]
+        fn consume_and_never<A>(a: A) -> ! { loop { } }
 
         fn hello(Tracked(l): Tracked<LocalInvariant<(), X, P>>) {
             open_local_invariant!(&l => i => {
@@ -968,3 +969,27 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot move out of `l` because it is borrowed")
 }
+
+test_verify_one_file! {
+    #[test] local_inv_lifetime_checking5 verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        tracked struct X { u: u64 }
+
+        struct P {}
+        impl InvariantPredicate<(), X> for P {
+            closed spec fn inv(k: (), v: X) -> bool { true }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn consume_and_never<A>() -> ! { loop { } }
+
+        fn hello(Tracked(l): Tracked<LocalInvariant<(), X, P>>) {
+            open_local_invariant!(&l => i => {
+                consume_and_never();
+            });
+        }
+    } => Ok(())
+}
+

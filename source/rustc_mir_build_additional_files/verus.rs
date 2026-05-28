@@ -129,6 +129,7 @@ pub struct VerusErasureCtxt {
     pub mutable_reference_tie_fn_def_id: DefId,
     pub two_phase_mutable_reference_tie_fn_def_id: DefId,
     pub get_first_fn_def_id: DefId,
+    pub check_static_reference_def_id: DefId,
 }
 
 /// Used to communicate the set of LocalDefIds that may require erasure.
