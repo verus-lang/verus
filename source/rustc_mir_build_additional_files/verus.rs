@@ -106,7 +106,8 @@ pub struct VerusErasureCtxt {
     /// This includes struct constructors as well. The "args" go in source order,
     /// i.e., same order as the fields on the Struct node.
     /// If there's a '..struct_tail' in the ctor, it's the last argument.
-    pub calls: HashMap<HirId, CallErasure>,
+    /// The bool indicates if we should force the return type to be treated as inhabited.
+    pub calls: HashMap<HirId, (CallErasure, bool)>,
 
     /// Node that should be erased (absolutely), including its adjustments.
     /// Useful, e.g., to erase a single argument of some call.
@@ -305,13 +306,13 @@ impl CallErasure {
 pub(crate) fn handle_call<'tcx>(
     verus_ctxt: &VerusThirBuildCtxt,
     expr: &'tcx hir::Expr<'tcx>,
-) -> CallErasure {
+) -> (CallErasure, bool) {
     let Some(erasure_ctxt) = verus_ctxt.ctxt.clone() else {
-        return CallErasure::keep_all();
+        return (CallErasure::keep_all(), false);
     };
 
     match erasure_ctxt.calls.get(&expr.hir_id) {
-        None => CallErasure::keep_all(),
+        None => (CallErasure::keep_all(), false),
         Some(call_erasure) => call_erasure.clone(),
     }
 }
@@ -897,7 +898,7 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tc
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
                     self.erasure_ctxt.calls.get(&expr.hir_id),
-                    Some(CallErasure::EraseTree(TreeErase::EraseAbsolutely))
+                    Some((CallErasure::EraseTree(TreeErase::EraseAbsolutely), _))
                 ) {
                     return;
                 }
@@ -950,7 +951,7 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForLocalUses<'a
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
                     self.erasure_ctxt.calls.get(&expr.hir_id),
-                    Some(CallErasure::EraseTree(TreeErase::EraseAbsolutely))
+                    Some((CallErasure::EraseTree(TreeErase::EraseAbsolutely), _))
                 ) {
                     return;
                 }

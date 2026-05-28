@@ -79,7 +79,7 @@ pub(crate) fn mirror_expr_pre<'tcx>(
 ) -> Option<rustc_middle::thir::ExprKind<'tcx>> {
     match expr.kind {
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
-            let call_erasure = handle_call(&cx.verus_ctxt, expr);
+            let (call_erasure, _) = handle_call(&cx.verus_ctxt, expr);
             match call_erasure {
                 CallErasure::EraseTree(t) => Some(erase_tree_kind(cx, expr, expr.hir_id, t)),
                 _ => None,
@@ -106,7 +106,8 @@ pub(crate) fn mirror_expr_post<'tcx>(
 
     let kind = match expr.kind {
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
-            let call_erasure = handle_call(&cx.verus_ctxt, expr);
+            let (call_erasure, force_treat_inhabited) = handle_call(&cx.verus_ctxt, expr);
+            if force_treat_inhabited {}
             if call_erasure.should_erase() { erase_node_unadjusted(cx, expr, kind) } else { kind }
         }
         ExprKind::Field(..) | ExprKind::AddrOf(..) => {
