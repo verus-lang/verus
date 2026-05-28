@@ -216,6 +216,8 @@ pub(crate) fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
 pub(crate) struct ExtraThir {
     /// Maps ExprId (Call node or a Loop) -> LocalInvariant bodies it is contained in
     pub local_invs_for_node: HashMap<ExprId, Vec<LocalInvariantBody>>,
+    /// Treat this call as having an inhabited return type (i.e., don't prune the CFG)
+    pub force_treat_inhabited: HashSet<ExprId>,
 }
 
 /// Per-body context (i.e., one for each function or closure).
@@ -244,7 +246,7 @@ impl VerusThirBuildCtxt {
             do_time_travel_prevention,
             guard_pattern_vars: vec![],
             local_invariants: vec![],
-            extra_thir: ExtraThir { local_invs_for_node: HashMap::new() },
+            extra_thir: ExtraThir { local_invs_for_node: HashMap::new(), force_treat_inhabited: HashSet::new() },
             local_def_id: local_def_id,
         }
     }

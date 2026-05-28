@@ -107,7 +107,12 @@ pub(crate) fn mirror_expr_post<'tcx>(
     let kind = match expr.kind {
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
             let (call_erasure, force_treat_inhabited) = handle_call(&cx.verus_ctxt, expr);
-            if force_treat_inhabited {}
+            if force_treat_inhabited {
+                // We use the id of the fun because we don't know the id of the call yet
+                if let thir::ExprKind::Call { fun, .. } = kind {
+                    cx.verus_ctxt.extra_thir.force_treat_inhabited.insert(fun);
+                }
+            }
             if call_erasure.should_erase() { erase_node_unadjusted(cx, expr, kind) } else { kind }
         }
         ExprKind::Field(..) | ExprKind::AddrOf(..) => {
