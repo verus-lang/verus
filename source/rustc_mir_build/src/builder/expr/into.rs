@@ -456,6 +456,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 }
             }
             ExprKind::Call { ty: _, fun, ref args, from_hir_call, fn_span } => {
+                crate::builder::verus_builder::record_call_inhabitedness(this, block, fun);
+
                 // VERUS: If any argument is to the function `two_phase_mutable_reference_tie`
                 // we need to reorder things, see the explanation in verus_time_travel_prevention.rs
                 // For `foo(two_phase_mutable_reference_tie(e1, e2), e3)` the evaluation order is:

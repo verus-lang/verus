@@ -238,6 +238,7 @@ struct Builder<'a, 'tcx> {
     coverage_info: Option<coverageinfo::CoverageInfoBuilder>,
 
     verus_extra_thir: Option<std::sync::Arc<crate::verus::ExtraThir>>,
+    verus_mir_builder_ctxt: crate::builder::verus_builder::VerusMirBuilderCtxt,
 }
 
 type CaptureMap<'tcx> = SortedIndexMultiMap<usize, ItemLocalId, Capture<'tcx>>;
@@ -817,6 +818,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             lint_level_roots_cache: GrowableBitSet::new_empty(),
             coverage_info: coverageinfo::CoverageInfoBuilder::new_if_enabled(tcx, def),
             verus_extra_thir: crate::verus::get_extra_thir(def),
+            verus_mir_builder_ctxt: crate::builder::verus_builder::VerusMirBuilderCtxt::new(),
         };
 
         assert_eq!(builder.cfg.start_new_block(), START_BLOCK);
@@ -849,7 +851,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     fn lint_and_remove_uninhabited(&mut self) {
         let mut lints = vec![];
 
-        for bbdata in self.cfg.basic_blocks.iter_mut() {
+        for (bbindex, bbdata) in self.cfg.basic_blocks.iter_mut().enumerate() {
             let term = bbdata.terminator_mut();
             let TerminatorKind::Call { ref func, ref mut target, destination, .. } = term.kind
             else {
@@ -857,7 +859,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             };
             let Some(target_bb) = *target else { continue };
 
-            if crate::verus::func_ty_skip_edge_deletion_for_uninhabited_ty(
+            if crate::builder::verus_builder::skip_edge_deletion_for_uninhabited_ty(&self.verus_mir_builder_ctxt,
+                BasicBlock::from_usize(bbindex),
                 func.ty(&self.local_decls, self.tcx),
             ) {
                 continue;

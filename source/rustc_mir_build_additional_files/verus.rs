@@ -1162,26 +1162,6 @@ fn erase_arm_for_pattern_checking<'tcx>(
     cx.thir.arms.push(arm)
 }
 
-/// This is used to inject logic in the MIR-builder code.
-///
-/// Typically, Rust removes part of the CFG if a function returns an uninhabited type.
-/// However, we might have erased code with uninhabited types, e.g.,
-/// `erased_ghost_value::<!>()`.
-/// To prevent such calls from influencing the CFG, we check if any call is to
-/// `erased_ghost_value`, and if so, skip the CFG trimming logic.
-pub(crate) fn func_ty_skip_edge_deletion_for_uninhabited_ty<'tcx>(ty: Ty<'tcx>) -> bool {
-    match ty.kind() {
-        TyKind::FnDef(fn_def_id, _) => {
-            let Some(erasure_ctxt) = get_verus_erasure_ctxt_option() else {
-                return false;
-            };
-            *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id
-                || *fn_def_id == erasure_ctxt.shadow_ghost_value_fn_def_id
-        }
-        _ => false,
-    }
-}
-
 /*////// Closures
 
 Welcome to closure handling.
