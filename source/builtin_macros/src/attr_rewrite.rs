@@ -259,22 +259,10 @@ impl VisitMut for ExecReplacer {
             let span = stmt.span();
             match stmt {
                 syn::Stmt::Item(Item::Fn(item)) => {
-                    if get_verus_spec(&item.attrs).is_none() {
-                        item.attrs.push(crate::syntax::mk_rust_attr_syn(
-                            span,
-                            VERUS_SPEC,
-                            TokenStream::new(),
-                        ));
-                    }
+                    add_verus_spec_if_needed(&mut item.attrs, span);
                 }
                 syn::Stmt::Item(Item::Const(item)) => {
-                    if get_verus_spec(&item.attrs).is_none() {
-                        item.attrs.push(crate::syntax::mk_rust_attr_syn(
-                            span,
-                            VERUS_SPEC,
-                            TokenStream::new(),
-                        ));
-                    }
+                    add_verus_spec_if_needed(&mut item.attrs, span);
                 }
                 _ => self.visit_stmt_mut(stmt),
             }
@@ -332,18 +320,16 @@ impl VisitMut for ExecReplacer {
         // In verification mode, even without verus spec on the loop, we still
         // need to desugar the for loop.
         // So, if there's no `verus_spec` attribute, we need to add an empty one.
-        if get_verus_spec(&for_loop.attrs).is_none() {
-            for_loop.attrs.push(crate::syntax::mk_rust_attr_syn(
-                for_loop.span(),
-                VERUS_SPEC,
-                TokenStream::new(),
-            ));
-        }
+        let span = for_loop.span();
+        add_verus_spec_if_needed(&mut for_loop.attrs, span);
     }
 }
 
-fn get_verus_spec(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
-    attrs.iter().find(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC))
+fn add_verus_spec_if_needed(attrs: &mut Vec<syn::Attribute>, span: proc_macro2::Span) {
+    if attrs.iter().any(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC)) {
+        return;
+    }
+    attrs.push(crate::syntax::mk_rust_attr_syn(span, VERUS_SPEC, TokenStream::new()));
 }
 
 /// Prepares items under `#[verus_verify]` for subsequent `#[verus_spec]` expansion.
@@ -365,34 +351,25 @@ fn get_verus_spec(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
 /// Recursion into nested items is intentionally skipped here; `#[verus_spec]`
 /// handles that during its own expansion pass.
 fn prepare_items_for_verus_spec(span: proc_macro2::Span, i: &mut syn::Item) {
-    let add_verus_spec_if_needed = |attrs: &mut Vec<syn::Attribute>| {
-        if get_verus_spec(attrs).is_some() {
-            return;
-        }
-        attrs.push(crate::syntax::mk_rust_attr_syn(span, VERUS_SPEC, TokenStream::new()));
-    };
     match i {
         syn::Item::Const(syn::ItemConst { attrs, .. })
         | syn::Item::Static(syn::ItemStatic { attrs, .. })
         | syn::Item::Fn(syn::ItemFn { attrs, .. }) => {
-            add_verus_spec_if_needed(attrs);
+            add_verus_spec_if_needed(attrs, span);
         }
         syn::Item::Impl(i) => {
             for item in &mut i.items {
                 match item {
                     syn::ImplItem::Const(syn::ImplItemConst { attrs, .. }) => {
-                        add_verus_spec_if_needed(attrs);
+                        add_verus_spec_if_needed(attrs, span);
                     }
                     syn::ImplItem::Fn(syn::ImplItemFn { attrs, .. }) => {
-                        add_verus_spec_if_needed(attrs);
-                        if let Some(verus_spec) = get_verus_spec(attrs) {
-                            let marker_span = verus_spec.span();
-                            attrs.push(crate::syntax::mk_rust_attr_syn(
-                                marker_span,
-                                "allow",
-                                quote_spanned! { marker_span => (unused, verus_impl_method_marker)},
-                            ));
-                        }
+                        add_verus_spec_if_needed(attrs, span);
+                        attrs.push(crate::syntax::mk_rust_attr_syn(
+                            span,
+                            "allow",
+                            quote_spanned! { span => (unused, verus_impl_method_marker)},
+                        ));
                     }
                     _ => {}
                 }
