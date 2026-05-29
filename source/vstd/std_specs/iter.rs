@@ -147,14 +147,21 @@ pub trait ExDoubleEndedIterator : Iterator {
     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
 }
 
+pub uninterp spec fn iter_len<I: ?Sized>(i: &I) -> usize;
+
+pub broadcast axiom fn iter_len_exact<I: ExactSizeIterator>(i: I)
+    requires
+        i.obeys_prophetic_iter_laws(),
+    ensures
+        #[trigger] iter_len(&i) == i.remaining().len();
+
 #[verifier::external_trait_specification]
 pub trait ExExactSizeIterator: Iterator {
     type ExternalTraitSpecificationFor: ExactSizeIterator;
 
     fn len(&self) -> (len: usize)
         ensures
-            self.obeys_prophetic_iter_laws() ==> len as int == self.remaining().len();
-
+            self.obeys_prophetic_iter_laws() ==> len as int == iter_len(self) == self.remaining().len();
 }
 
 /********************************************************************************
@@ -340,13 +347,19 @@ impl <I> IteratorSpecImpl for Take<I>
     }
 }
 
-// impl <I> DoubleEndedIteratorSpecImpl for Take<I>
-//     where I: DoubleEndedIterator + IteratorSpec {
+impl <I> DoubleEndedIteratorSpecImpl for Take<I>
+    where I: DoubleEndedIteratorSpec + ExactSizeIterator
+{
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        let len = iter_len(&take_iter(*self));
+        if len < take_count(*self) {
+            None
+        } else {
+            take_iter(*self).peek_back(len - take_count(*self) - index - 1)
+        }
+    }
+}
 
-//     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
-//         take_iter(*self).peek(index)
-//     }
-// }
 
 /********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
@@ -507,6 +520,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 pub broadcast group group_iter_axioms {
     rev_postcondition,
     take_postcondition,
+    iter_len_exact,
 }
 
 } // verus!

@@ -591,6 +591,13 @@ test_verify_one_file! {
                 w.push(x);
             }
             assert(w@ == seq![1, 2, 3]);
+            
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let w: Vec<u32> = v.into_iter().take(2).rev().collect();
+            assert(w@ == seq![2u32, 1]);
+        }
+    } => Ok(())
+}
         }
     } => Ok(())
 }
