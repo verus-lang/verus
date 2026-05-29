@@ -139,6 +139,16 @@ pub trait ExDoubleEndedIterator : Iterator {
     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
 }
 
+#[verifier::external_trait_specification]
+pub trait ExExactSizeIterator: Iterator {
+    type ExternalTraitSpecificationFor: ExactSizeIterator;
+
+    fn len(&self) -> (len: usize)
+        ensures
+            self.obeys_prophetic_iter_laws() ==> len as int == self.remaining().len();
+
+}
+
 /********************************************************************************
  * Definitions for `IntoIterator` and `FromIterator``
  ********************************************************************************/
