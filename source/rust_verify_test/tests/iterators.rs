@@ -288,7 +288,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-
 test_verify_one_file! {
     #[test] take_can_be_implemented verus_code! {
         use vstd::prelude::*;
@@ -307,7 +306,7 @@ test_verify_one_file! {
             pub closed spec fn count(self) -> usize {
                 self.count_remaining
             }
-            
+
             //#[verifier::type_invariant] // fake this (via assert/assume below) due to limitations:
             //  With this as a type invariantVerus won't let us call self.iter.next() unless it's marked no_unwind
             #[verifier::prophetic]
@@ -321,7 +320,7 @@ test_verify_one_file! {
 
             #[verifier::when_used_as_spec(my_take_new)]
             fn new(iter: I, n: usize) -> (t: MyTake<I>)
-                requires 
+                requires
                     iter.obeys_prophetic_iter_laws(),
                 ensures
                     t.remaining() == (if iter.remaining().len() < n { iter.remaining() } else { iter.remaining().take(n as int) }),
@@ -391,13 +390,13 @@ test_verify_one_file! {
             let v: Vec<u32> = vec![1, 2, 3, 4];
             let w: Vec<u32> = MyTake::new(v.into_iter(), 2).collect();
             assert(w@ == seq![1, 2]);
-        
+
             let v: Vec<u32> = vec![1, 2, 3, 4];
             let mut w: Vec<u32> = Vec::new();
             for x in it: MyTake::new(v.into_iter(), 3)
                 invariant
                     w.len() == it.index(),
-                    forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],            
+                    forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],
                     v@ == seq![1, 2, 3, 4],
             {
                 assert(x < 4);
@@ -407,7 +406,6 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
-
 
 test_verify_one_file! {
     #[test] skip_can_be_implemented verus_code! {
@@ -424,7 +422,7 @@ test_verify_one_file! {
             pub closed spec fn iter(self) -> I {
                 self.iter
             }
-            
+
             pub closed spec fn init_n(self) -> usize {
                 self.init_n
             }
@@ -486,7 +484,7 @@ test_verify_one_file! {
                         i += 1;
                     }
                     self.n = 0;
-                } 
+                }
 
                 let r = self.iter.next();
                 assert(self.skip_inv());
@@ -531,14 +529,14 @@ test_verify_one_file! {
             let v: Vec<u32> = vec![1, 2, 3, 4];
             let w: Vec<u32> = MySkip::new(v.into_iter(), 2).collect();
             assert(w@ == seq![3, 4]);
-        
-        
+
+
             let v: Vec<u32> = vec![1, 2, 3, 4];
             let mut w: Vec<u32> = Vec::new();
             for x in it: MySkip::new(v.into_iter(), 2)
                 invariant
                     w.len() == it.index(),
-                    forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],            
+                    forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],
                     v@ == seq![1, 2, 3, 4],
             {
                 assert(x > 2);
@@ -565,20 +563,20 @@ test_verify_one_file! {
             let v: Vec<u32> = vec![1, 2, 3, 4];
             let w: Vec<u32> = v.into_iter().take(2).collect();
             assert(w@ == seq![1, 2]);
-        
-        
+
+
             let v: Vec<u32> = vec![1, 2, 3, 4];
             let mut w: Vec<u32> = Vec::new();
 
             for x in it: v.into_iter().take(3)
                 invariant
                     w.len() == it.index(),
-                    forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],            
+                    forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],
             {
                 w.push(x);
             }
             assert(w@ == seq![1, 2, 3]);
-            
+
             let v: Vec<u32> = vec![1, 2, 3, 4];
             let w: Vec<u32> = v.into_iter().take(2).rev().collect();
             assert(w@ == seq![2u32, 1]);

@@ -302,7 +302,7 @@ pub struct ExTake<I>(Take<I>);
 // Ghost accessor for the inner iterator
 pub uninterp spec fn take_iter<I>(r: Take<I>) -> I;
 
-// Ghost accessor for the count 
+// Ghost accessor for the count
 pub uninterp spec fn take_count<I>(r: Take<I>) -> usize;
 
 // Spec version of Take::new
@@ -320,9 +320,9 @@ pub broadcast axiom fn take_postcondition<I: IteratorSpec>(i: I, n: usize)
     ensures
         {
             let r = #[trigger] into_take_spec(i, n);
-            &&& IteratorSpec::remaining(&r) == if i.remaining().len() < n { i.remaining() } else { i.remaining().take(n as int) } 
+            &&& IteratorSpec::remaining(&r) == if i.remaining().len() < n { i.remaining() } else { i.remaining().take(n as int) }
             &&& IteratorSpec::will_return_none(&r) <==> i.will_return_none() || i.remaining().len() >= n
-            &&& IteratorSpec::decrease(&r) is Some 
+            &&& IteratorSpec::decrease(&r) is Some
             &&& IteratorSpec::initial_value_relation(&r, &r)
         },
 ;
@@ -337,14 +337,14 @@ impl <I> IteratorSpecImpl for Take<I>
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
     #[verifier::prophetic]
-    uninterp spec fn will_return_none(&self) -> bool; 
+    uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
     open spec fn initial_value_relation(&self, init: &Self) -> bool {
         &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
         &&& take_iter(*self).initial_value_relation(&take_iter(*init))
         &&& take_iter(*self) == take_iter(*init)
-        &&& IteratorSpec::remaining(self) == if take_iter(*self).remaining().len() < take_count(*self) 
+        &&& IteratorSpec::remaining(self) == if take_iter(*self).remaining().len() < take_count(*self)
                 { take_iter(*self).remaining() } else { take_iter(*self).remaining().take(take_count(*self) as int) }
     }
 
