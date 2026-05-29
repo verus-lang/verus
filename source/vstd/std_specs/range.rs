@@ -197,7 +197,7 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for RangeInclusive<A> {
     }
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        if 0 <= index <= self@.start.spec_steps_between_int(self@.end) {
+        if 0 <= index <= self@.start.spec_steps_between_int(self@.end) + 1 {
             Some(self@.start.spec_forward_checked_int(index).unwrap())
         } else {
             None
