@@ -6,10 +6,10 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArithOp, ArrayKind, BinaryOp, BitwiseOp, ComputeMode, Constant, Div0Behavior, Dt,
-    Fun, FunX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind,
-    OverflowBehavior, PathX, Primitive, SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent,
-    VarIdentDisambiguate, VirErr,
+    ArchWordBits, ArithOp, ArrayKind, BinaryOp, BitwiseOp, ComputeMode, Constant, CrateId,
+    Div0Behavior, Dt, Fun, FunX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
+    IntegerTypeBoundKind, OverflowBehavior, PathX, Primitive, SpannedTyped, Typ, TypX, UnaryOp,
+    VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
@@ -669,7 +669,7 @@ fn display_perf_stats(state: &State) {
 
             let mut cache_stats: Vec<(&Fun, usize)> =
                 state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
-            cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
+            cache_stats.sort_by_key(|a| std::cmp::Reverse(a.1));
             for (fun, calls) in &cache_stats {
                 state.log(format!("{:?} cached {} distinct invocations", fun.path, calls));
             }
@@ -743,7 +743,7 @@ fn eval_array(
                                 ),
                             };
                             let seq_type_path = Arc::new(PathX {
-                                krate: Some(Arc::new("vstd".to_string())),
+                                krate: CrateId::Vstd,
                                 segments: strs_to_idents(vec!["seq", "Seq"]),
                             });
                             let seq_typ = Arc::new(TypX::Datatype(
@@ -822,10 +822,8 @@ pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
 /// macro definition in vstd's seq.rs.
 // TODO: More robust way of pointing to vstd's sequence functions
 fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
-    let seq_type_path = Arc::new(PathX {
-        krate: Some(Arc::new("vstd".to_string())),
-        segments: strs_to_idents(vec!["seq", "Seq"]),
-    });
+    let seq_type_path =
+        Arc::new(PathX { krate: CrateId::Vstd, segments: strs_to_idents(vec!["seq", "Seq"]) });
     let seq_typ = Arc::new(TypX::Datatype(
         Dt::Path(seq_type_path),
         Arc::new(vec![inner_typ.clone()]),
@@ -835,11 +833,11 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
     if s.len() <= 1 {
         let typs = Arc::new(vec![inner_typ.clone()]);
         let path_empty = Arc::new(PathX {
-            krate: Some(Arc::new("vstd".to_string())),
+            krate: CrateId::Vstd,
             segments: strs_to_idents(vec!["seq", "Seq", "empty"]),
         });
         let path_push = Arc::new(PathX {
-            krate: Some(Arc::new("vstd".to_string())),
+            krate: CrateId::Vstd,
             segments: strs_to_idents(vec!["seq", "Seq", "push"]),
         });
         let fun_empty = Arc::new(FunX { path: path_empty });
@@ -854,7 +852,7 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
     } else {
         // Describe the sequence in terms of a view on an array literal
         let path_view = Arc::new(PathX {
-            krate: Some(Arc::new("vstd".to_string())),
+            krate: CrateId::Vstd,
             segments: strs_to_idents(vec!["array", "array_view"]),
         });
         let fun_view = Arc::new(FunX { path: path_view });
@@ -1170,16 +1168,15 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         Not => bool_new(!b),
                         BitNot(..)
                         | Clip { .. }
-                        | FloatToBits
                         | IntToReal
                         | RealToInt
+                        | FloatToBits
+                        | IeeeFloat(_)
                         | HeightTrigger
                         | Trigger(_)
                         | CoerceMode { .. }
-                        | ToDyn
                         | StrLen
                         | Length(..)
-                        | StrIsAscii
                         | MutRefCurrent
                         | MutRefFuture(_)
                         | MutRefFinal(_)
@@ -1293,14 +1290,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         Not
                         | HeightTrigger
                         | Trigger(_)
-                        | FloatToBits
                         | IntToReal
                         | RealToInt
+                        | FloatToBits
+                        | IeeeFloat(_)
                         | CoerceMode { .. }
-                        | ToDyn
                         | StrLen
                         | Length(..)
-                        | StrIsAscii
                         | MutRefCurrent
                         | MutRefFuture(_)
                         | MutRefFinal(_)
@@ -1362,7 +1358,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => ok,
                     }
                 }
+                ToDyn(_) => Ok(e),
                 CustomErr(_) => Ok(e),
+                AutoDecreases => Ok(e),
+                AutoLoopEnsures => Ok(e),
                 ProofNote(_) => Ok(e),
                 HasResolved(_) => Ok(e),
             }
@@ -1624,9 +1623,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     let e2 = eval_expr_internal(ctx, state, e2)?;
                     eval_array_index(state, exp, &e1, &e2)
                 }
-                Index(ArrayKind::Slice, _) | HeightCompare { .. } | StrGetChar | RealArith(..) => {
-                    ok_e2(e2.clone())
-                }
+                Index(ArrayKind::Slice, _)
+                | HeightCompare { .. }
+                | StrGetChar
+                | RealArith(..)
+                | IeeeFloat(_) => ok_e2(eval_expr_internal(ctx, state, e2)?),
             }
         }
         BinaryOpr(op, e1, e2) => {
@@ -1868,8 +1869,10 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
         TypX::Datatype(_, typs, _) => {
             // Grab the type the sequence holds
             let inner_type = typs[0].clone();
+            // Clean up any nested Interp nodes in the sequence elements
+            let cleaned: Result<Vector<Exp>, VirErr> = v.iter().map(|e| cleanup_exp(e)).collect();
             // Convert back to a standard SST representation
-            Ok(seq_to_sst(span, inner_type.clone(), v))
+            Ok(seq_to_sst(span, inner_type.clone(), &cleaned?))
         }
         _ => Err(error(
             &span,

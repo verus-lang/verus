@@ -703,6 +703,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] supertrait_assoc_type_lifetime3 verus_code! {
+        use vstd::prelude::*;
+
         // https://github.com/verus-lang/verus/issues/1155
         trait T: Copy {}
         trait U: T {}
@@ -939,4 +941,103 @@ test_verify_one_file! {
             type K = R;
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trigger_from_assoc_type_constraint1 verus_code! {
+        // test vir::traits::fix_missing_trigger_params
+        trait T {
+            type X;
+        }
+
+        trait U<B> {
+            spec fn f() -> int;
+            type Y;
+        }
+
+        uninterp spec fn dummy<A>() -> int;
+
+        impl<A, B: T<X = A>> U<B> for u8 {
+            spec fn f() -> int { dummy::<A>() - dummy::<A>() + 3 }
+            type Y = A;
+        }
+
+        proof fn test<A, B: T<X = A>>() {
+            assert(<u8 as U<B>>::f() == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trigger_from_assoc_type_constraint2 verus_code! {
+        // test vir::traits::fix_missing_trigger_params
+        trait T {
+            type X;
+        }
+
+        trait U<B> {
+            spec fn f() -> int;
+        }
+
+        impl<A, B: T<X = A>> U<B> for u8 {
+            spec fn f() -> int { 3 }
+        }
+
+        proof fn test<A, B: T<X = A>>() {
+            assert(<u8 as U<B>>::f() == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_type_impl_axiom_depends_on_bounds verus_code! {
+        trait T {
+            type X;
+        }
+        trait U {}
+        trait V {
+            spec fn f() -> int;
+        }
+        impl U for () {
+        }
+        impl V for u8 {
+            spec fn f() -> int { 3 }
+        }
+        impl V for u16 {
+            spec fn f() -> int { 4 }
+        }
+
+        impl<A: U> T for A {
+            type X = u8;
+        }
+        impl T for bool {
+            type X = u16;
+        }
+
+        proof fn f<A: T>(x: &A) {
+        }
+
+        proof fn bad() {
+            f(&());
+            f(&true);
+            assert(<u8 as V>::f() == <u16 as V>::f()); // FAILS
+            assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] ensures_projection_poly verus_code! {
+        trait T {
+            type X;
+            spec fn f(&self) -> Self::X;
+            fn g(&self, z: &Self::X) ensures ({let x = z; x == self.f()}); // FAILS
+        }
+
+        impl T for bool {
+            type X = u8;
+            spec fn f(&self) -> Self::X { 0 }
+            fn g(&self, z: &Self::X) {}
+        }
+    } => Err(err) => assert_one_fails(err)
 }

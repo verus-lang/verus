@@ -2,7 +2,7 @@
 
 To show how `spec`, `proof`, and `exec` code work together, consider the example
 below of computing the n-th [triangular number](https://en.wikipedia.org/wiki/Triangular_number).
-We'll cover this example and the features it uses in more detail in [Chapter 4](recursion_loops.md),
+We'll cover this example and the features it uses in more detail in the [next chapter](recursion_loops.md),
 so for now, let's focus on the high-level structure of the code.
 
 We use a `spec` function `triangle` to mathematically define our specification using natural numbers (`nat`)
@@ -12,9 +12,7 @@ We connect the correctness of `loop_triangle`'s return value to our mathematical
 in `loop_triangle`'s `ensures` clause.
 
 However, to successfully verify `loop_triangle`, we need a few more things.  First, in executable
-code, we have to worry about the possibility of arithmetic overflow.  To keep things simple here,
-we add a precondition to `loop_triangle` saying that the result needs to be less than one million,
-which means it will certainly fit into a `u32`.
+code, we have to worry about the possibility of arithmetic overflow.  To keep the overflow reasoning simple, we add a precondition to `loop_triangle` saying that the result needs to fit within a `u32`.
 
 We also need to translate the knowledge that the final `triangle` result fits in a `u32`
 into the knowledge that each individual step of computing the result won't overflow,

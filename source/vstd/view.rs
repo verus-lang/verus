@@ -134,14 +134,40 @@ impl<T: DeepView> DeepView for alloc::vec::Vec<T> {
     }
 }
 
-#[cfg(all(feature = "std"))]
+#[cfg(all(feature = "alloc", feature = "std", any(verus_keep_ghost, feature = "allocator")))]
+impl<Key, Value, S, A: core::alloc::Allocator> View for std::collections::HashMap<
+    Key,
+    Value,
+    S,
+    A,
+> {
+    type V = Map<Key, Value>;
+
+    uninterp spec fn view(&self) -> Map<Key, Value>;
+}
+
+#[cfg(all(feature = "alloc", feature = "std", any(verus_keep_ghost, feature = "allocator")))]
+impl<
+    Key: DeepView,
+    Value: DeepView,
+    S,
+    A: core::alloc::Allocator,
+> DeepView for std::collections::HashMap<Key, Value, S, A> {
+    type V = Map<Key::V, Value::V>;
+
+    open spec fn deep_view(&self) -> Map<Key::V, Value::V> {
+        crate::std_specs::hash::hash_map_deep_view_impl(*self)
+    }
+}
+
+#[cfg(all(feature = "alloc", feature = "std", not(verus_keep_ghost), not(feature = "allocator")))]
 impl<Key, Value, S> View for std::collections::HashMap<Key, Value, S> {
     type V = Map<Key, Value>;
 
     uninterp spec fn view(&self) -> Map<Key, Value>;
 }
 
-#[cfg(all(feature = "std"))]
+#[cfg(all(feature = "alloc", feature = "std", not(verus_keep_ghost), not(feature = "allocator")))]
 impl<Key: DeepView, Value: DeepView, S> DeepView for std::collections::HashMap<Key, Value, S> {
     type V = Map<Key::V, Value::V>;
 
@@ -150,14 +176,34 @@ impl<Key: DeepView, Value: DeepView, S> DeepView for std::collections::HashMap<K
     }
 }
 
-#[cfg(all(feature = "std"))]
+#[cfg(all(feature = "alloc", feature = "std", any(verus_keep_ghost, feature = "allocator")))]
+impl<Key, S, A: core::alloc::Allocator> View for std::collections::HashSet<Key, S, A> {
+    type V = Set<Key>;
+
+    uninterp spec fn view(&self) -> Set<Key>;
+}
+
+#[cfg(all(feature = "alloc", feature = "std", any(verus_keep_ghost, feature = "allocator")))]
+impl<Key: DeepView, S, A: core::alloc::Allocator> DeepView for std::collections::HashSet<
+    Key,
+    S,
+    A,
+> {
+    type V = Set<Key::V>;
+
+    open spec fn deep_view(&self) -> Set<Key::V> {
+        self@.map(|x: Key| x.deep_view())
+    }
+}
+
+#[cfg(all(feature = "alloc", feature = "std", not(verus_keep_ghost), not(feature = "allocator")))]
 impl<Key, S> View for std::collections::HashSet<Key, S> {
     type V = Set<Key>;
 
     uninterp spec fn view(&self) -> Set<Key>;
 }
 
-#[cfg(all(feature = "std"))]
+#[cfg(all(feature = "alloc", feature = "std", not(verus_keep_ghost), not(feature = "allocator")))]
 impl<Key: DeepView, S> DeepView for std::collections::HashSet<Key, S> {
     type V = Set<Key::V>;
 
@@ -271,7 +317,6 @@ macro_rules! declare_tuple_view {
     }
 }
 
-// REVIEW: we can declare more, but let's check the vstd size and overhead first
 declare_tuple_view!([0], [A0]);
 
 declare_tuple_view!([0 1], [A0 A1]);
@@ -279,5 +324,21 @@ declare_tuple_view!([0 1], [A0 A1]);
 declare_tuple_view!([0 1 2], [A0 A1 A2]);
 
 declare_tuple_view!([0 1 2 3], [A0 A1 A2 A3]);
+
+declare_tuple_view!([0 1 2 3 4], [A0 A1 A2 A3 A4]);
+
+declare_tuple_view!([0 1 2 3 4 5], [A0 A1 A2 A3 A4 A5]);
+
+declare_tuple_view!([0 1 2 3 4 5 6], [A0 A1 A2 A3 A4 A5 A6]);
+
+declare_tuple_view!([0 1 2 3 4 5 6 7], [A0 A1 A2 A3 A4 A5 A6 A7]);
+
+declare_tuple_view!([0 1 2 3 4 5 6 7 8], [A0 A1 A2 A3 A4 A5 A6 A7 A8]);
+
+declare_tuple_view!([0 1 2 3 4 5 6 7 8 9], [A0 A1 A2 A3 A4 A5 A6 A7 A8 A9]);
+
+declare_tuple_view!([0 1 2 3 4 5 6 7 8 9 10], [A0 A1 A2 A3 A4 A5 A6 A7 A8 A9 A10]);
+
+declare_tuple_view!([0 1 2 3 4 5 6 7 8 9 10 11], [A0 A1 A2 A3 A4 A5 A6 A7 A8 A9 A10 A11]);
 
 } // verus!

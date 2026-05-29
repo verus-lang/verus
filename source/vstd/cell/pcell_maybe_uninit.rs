@@ -30,18 +30,18 @@ fn example_pcell_maybe_uninit() {
     let (cell, Tracked(mut points_to)) = un::PCell::new(5);
 
     assert(points_to.id() == cell.id());
-    assert(points_to.mem_contents() === MemContents::Init(5));
+    assert(points_to.mem_contents() == MemContents::Init(5));
 
     let x = cell.take(Tracked(&mut points_to));
     assert(x == 5);
 
     assert(points_to.id() == cell.id());
-    assert(points_to.mem_contents() === MemContents::Uninit);
+    assert(points_to.mem_contents() == MemContents::Uninit);
 
     cell.put(Tracked(&mut points_to), 17);
 
     assert(points_to.id() == cell.id());
-    assert(points_to.mem_contents() === MemContents::Init(17));
+    assert(points_to.mem_contents() == MemContents::Init(17));
 }
 
 } // verus!
@@ -85,6 +85,15 @@ impl<V> PointsTo<V> {
     {
         self.mem_contents().value()
     }
+
+    /// Guarantees that two permissions can not be associated with the same `CellId`.
+    pub proof fn is_exclusive(tracked &mut self, tracked other: &PointsTo<V>)
+    ensures
+        *final(self) == *old(self),
+        final(self).id() != other.id(),
+    {
+        self.0.is_exclusive(&other.0);
+    }
 }
 
 impl<V> PCell<V> {
@@ -98,7 +107,7 @@ impl<V> PCell<V> {
     pub const fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@.id() == pt.0.id(),
-            pt.1@.mem_contents() === MemContents::Uninit,
+            pt.1@.mem_contents() == MemContents::Uninit,
     {
         let (pcell, Tracked(pt)) = pc::PCell::new(MaybeUninit::uninit());
         (PCell(pcell), Tracked(PointsTo(pt)))
@@ -118,10 +127,10 @@ impl<V> PCell<V> {
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
         requires
             old(perm).id() == self.id(),
-            old(perm).mem_contents() === MemContents::Uninit,
+            old(perm).mem_contents() == MemContents::Uninit,
         ensures
-            perm.id() == self.id(),
-            perm.mem_contents() === MemContents::Init(in_v),
+            final(perm).id() == self.id(),
+            final(perm).mem_contents() == MemContents::Init(in_v),
         opens_invariants none
         no_unwind
     {
@@ -131,12 +140,12 @@ impl<V> PCell<V> {
     #[inline(always)]
     pub fn take(&self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (out_v: V)
         requires
-            self.id() === old(perm).id(),
+            self.id() == old(perm).id(),
             old(perm).is_init(),
         ensures
-            perm.id() === old(perm).id(),
-            perm.mem_contents() === MemContents::Uninit,
-            out_v === old(perm).value(),
+            final(perm).id() == old(perm).id(),
+            final(perm).mem_contents() == MemContents::Uninit,
+            out_v == old(perm).value(),
         opens_invariants none
         no_unwind
     {
@@ -148,12 +157,12 @@ impl<V> PCell<V> {
     #[inline(always)]
     pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
         requires
-            self.id() === old(perm).id(),
+            self.id() == old(perm).id(),
             old(perm).is_init(),
         ensures
-            perm.id() === old(perm).id(),
-            perm.mem_contents() === MemContents::Init(in_v),
-            out_v === old(perm).value(),
+            final(perm).id() == old(perm).id(),
+            final(perm).mem_contents() == MemContents::Init(in_v),
+            out_v == old(perm).value(),
         opens_invariants none
         no_unwind
     {
@@ -165,10 +174,10 @@ impl<V> PCell<V> {
     #[inline(always)]
     pub fn borrow<'a>(&'a self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
-            self.id() === perm.id(),
+            self.id() == perm.id(),
             perm.is_init(),
         ensures
-            *v === perm.value(),
+            *v == perm.value(),
         opens_invariants none
         no_unwind
     {
@@ -178,12 +187,29 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
+    pub fn borrow_mut<'a>(&'a self, Tracked(perm): Tracked<&'a mut PointsTo<V>>) -> (v: &'a mut V)
         requires
-            self.id() === perm.id(),
+            self.id() == perm.id(),
             perm.is_init(),
         ensures
-            v === perm.value(),
+            *v == old(perm).value(),
+            final(perm).is_init(),
+            final(perm).value() == *final(v),
+        opens_invariants none
+        no_unwind
+    {
+        unsafe {
+            self.0.borrow_mut(Tracked(&mut perm.0)).assume_init_mut()
+        }
+    }
+
+    #[inline(always)]
+    pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
+        requires
+            self.id() == perm.id(),
+            perm.is_init(),
+        ensures
+            v == perm.value(),
         opens_invariants none
         no_unwind
     {
@@ -194,10 +220,10 @@ impl<V> PCell<V> {
     #[inline(always)]
     pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
         requires
-            self.id() === old(perm).id(),
+            self.id() == old(perm).id(),
         ensures
-            perm.id() === old(perm).id(),
-            perm.mem_contents() === MemContents::Init(in_v),
+            final(perm).id() == old(perm).id(),
+            final(perm).mem_contents() == MemContents::Init(in_v),
         opens_invariants none
         no_unwind
     {
@@ -208,7 +234,7 @@ impl<V> PCell<V> {
     pub fn read(&self, Tracked(perm): Tracked<&PointsTo<V>>) -> (out_v: V)
         where V: Copy
         requires
-            self.id() === perm.id(),
+            self.id() == perm.id(),
             perm.is_init(),
         returns
             perm.value()

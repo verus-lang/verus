@@ -302,8 +302,6 @@ pub fn run_verus(
             verus_args.push("2".to_string());
         } else if *option == "--compile" {
             verus_args.push("--compile".to_string());
-            verus_args.push("-o".to_string());
-            verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
         } else if *option == "--no-external-by-default" {
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
@@ -331,12 +329,12 @@ pub fn run_verus(
             is_core = true;
         } else if *option == "--disable-internal-test-mode" {
             use_internal_test_mode = false;
-        } else if *option == "new-mut-ref" {
-            verus_args.push("-V".to_string());
-            verus_args.push("new-mut-ref".to_string());
         } else if *option == "no-bv-simplify" {
             verus_args.push("-V".to_string());
             verus_args.push("no-bv-simplify".to_string());
+        } else if *option == "--edition 2024" {
+            verus_args.push("--edition".to_string());
+            verus_args.push("2024".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
@@ -373,9 +371,24 @@ pub fn run_verus(
             // suppress Rust's generation of long-type files
             "-Z".to_string(),
             "write_long_types_to_disk=no".to_string(),
+            // suppress common warnings in examples and tests
+            "-A".to_string(),
+            "non_snake_case".to_string(),
+            "-A".to_string(),
+            "deprecated".to_string(),
         ]
         .into_iter(),
     );
+
+    let compile = options.contains(&"--compile");
+    verus_args.push("-o".to_string());
+    if compile {
+        verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
+    } else {
+        verus_args
+            .push(test_dir.join("libtest_crate.rmeta").to_str().expect("valid path").to_owned());
+        verus_args.push("--emit=metadata".to_string());
+    }
 
     if json_errors {
         verus_args.push("--error-format=json".to_string());
@@ -431,6 +444,14 @@ pub fn run_verus(
 }
 
 pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    run_cargo_verus_with_target(args, dir, &dir.join("target"))
+}
+
+pub fn run_cargo_verus_with_target(
+    args: &[&str],
+    dir: &std::path::Path,
+    target_dir: &std::path::Path,
+) -> std::process::Output {
     if std::env::var("VERUS_IN_VARGO").is_err() {
         panic!("not running in vargo, read the README for instructions");
     }
@@ -458,6 +479,9 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
 
     let mut child = std::process::Command::new(bin);
     child.current_dir(dir);
+    child.env("CARGO_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_BUILD_DIR", target_dir);
 
     let z3 = std::env::var("VERUS_Z3_PATH")
         .map(|p| {
@@ -476,7 +500,7 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
     child.env("VERUS_Z3_PATH", z3);
 
     let child = child
-        .args(&args[..])
+        .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -491,6 +515,14 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
 
 // Assumes normal `cargo` is in the caller's path
 pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    run_cargo_with_target(args, dir, &dir.join("target"))
+}
+
+pub fn run_cargo_with_target(
+    args: &[&str],
+    dir: &std::path::Path,
+    target_dir: &std::path::Path,
+) -> std::process::Output {
     // if std::env::var("VERUS_IN_VARGO").is_err() {
     //     panic!("not running in vargo, read the README for instructions");
     // }
@@ -500,9 +532,12 @@ pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     // Remove Verus-specific RUSTFLAGS that are set by vargo, as they cause
     // verus_builtin and vstd to require unstable features not available on stable Rust
     child.env_remove("RUSTFLAGS");
+    child.env("CARGO_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_BUILD_DIR", target_dir);
 
     let child = child
-        .args(&args[..])
+        .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -524,11 +559,18 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![allow(unused_imports)]
     #![allow(unused_macros)]
     #![allow(deprecated)]
+    #![allow(non_snake_case)]
+    #![allow(non_camel_case_types)]
+    #![allow(non_upper_case_globals)]
+    #![allow(unused_comparisons)]
+    #![allow(noop_method_call)]
     #![feature(allocator_api)]
     #![feature(proc_macro_hygiene)]
     #![feature(never_type)]
     #![feature(core_intrinsics)]
     #![feature(ptr_metadata)]
+    #![feature(sized_hierarchy)]
+    #![feature(const_destruct)]
 };
 
 #[allow(dead_code)]

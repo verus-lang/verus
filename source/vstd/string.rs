@@ -1,25 +1,32 @@
 #![feature(rustc_attrs)]
 #![allow(unused_imports)]
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 use alloc::str::Chars;
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 use alloc::string::{self, String, ToString};
 
-#[cfg(feature = "alloc")]
-use super::pervasive::{ForLoopGhostIterator, ForLoopGhostIteratorNew};
 use super::prelude::*;
 use super::seq::Seq;
+use super::slice::*;
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+use super::std_specs::iter::IteratorSpec;
+use super::utf8::*;
 use super::view::*;
 
 verus! {
 
+broadcast use {super::seq::group_seq_axioms, super::slice::group_slice_axioms};
+
+#[cfg(not(verus_verify_core))]
 impl View for str {
     type V = Seq<char>;
 
     uninterp spec fn view(&self) -> Seq<char>;
 }
 
+#[cfg(not(verus_verify_core))]
 impl DeepView for str {
     type V = Seq<char>;
 
@@ -28,44 +35,126 @@ impl DeepView for str {
     }
 }
 
-pub uninterp spec fn str_slice_is_ascii(s: &str) -> bool;
-
-#[verifier::when_used_as_spec(str_slice_is_ascii)]
-pub assume_specification[ str::is_ascii ](s: &str) -> (b: bool)
-    ensures
-        b == str_slice_is_ascii(s),
-;
-
-pub open spec fn new_strlit_spec(s: &str) -> &str {
-    s
+#[cfg(not(verus_verify_core))]
+pub trait StringSliceAdditionalSpecFns {
+    spec fn spec_bytes(&self) -> Seq<u8>;
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(not(verus_verify_core))]
+impl StringSliceAdditionalSpecFns for str {
+    open spec fn spec_bytes(&self) -> Seq<u8> {
+        encode_utf8(self@)
+    }
+}
+
+#[cfg(not(verus_verify_core))]
+pub open spec fn is_ascii(s: &str) -> bool {
+    is_ascii_chars(s@)
+}
+
+#[cfg(not(verus_verify_core))]
+pub broadcast proof fn is_ascii_spec_bytes(s: &str)
+    ensures
+        #[trigger] is_ascii(s) ==> #[trigger] s.spec_bytes() =~= Seq::new(
+            s@.len(),
+            |i| s@.index(i) as u8,
+        ),
+{
+    if (is_ascii(s)) {
+        is_ascii_chars_encode_utf8(s@);
+    }
+}
+
+#[cfg(not(verus_verify_core))]
+pub broadcast proof fn is_ascii_concat(s1: &str, s2: &str, s3: &str)
+    requires
+        s1@ =~= s2@ + s3@,
+    ensures
+        #![trigger s2@ + s3@, is_ascii(s1), is_ascii(s2), is_ascii(s3)]
+        is_ascii(s1) <==> is_ascii(s2) && is_ascii(s3),
+{
+    broadcast use is_ascii_chars_concat;
+
+    if (is_ascii(s1)) {
+        is_ascii_chars_concat(s1@, s2@, s3@);
+    }
+}
+
+#[cfg(not(verus_verify_core))]
+#[verifier::when_used_as_spec(is_ascii)]
+pub assume_specification[ str::is_ascii ](s: &str) -> (b: bool)
+    ensures
+        b == is_ascii(s),
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 use crate::alloc::borrow::ToOwned;
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification[ str::to_owned ](s: &str) -> (res: String)
     ensures
         s@ == res@,
-        s.is_ascii() == res.is_ascii(),
 ;
 
-#[cfg(feature = "alloc")]
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ str::as_bytes ](s: &str) -> (b: &[u8])
+    ensures
+        b@ == s.spec_bytes(),
+;
+
+#[cfg(not(verus_verify_core))]
+#[verifier::allow_in_spec]
+pub assume_specification[ str::len ](s: &str) -> usize
+    returns
+        s.spec_bytes().len() as usize,
+;
+
+#[cfg(not(verus_verify_core))]
+#[verifier::allow_in_spec]
+pub assume_specification[ str::is_empty ](s: &str) -> bool
+    returns
+        s@.len() == 0,
+;
+
+#[cfg(not(verus_verify_core))]
+#[verifier::allow_in_spec]
+pub assume_specification[ str::is_char_boundary ](s: &str, index: usize) -> bool
+    returns
+        is_char_boundary(s.spec_bytes(), index as int),
+;
+
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &str))
+    requires
+        is_char_boundary(s.spec_bytes(), mid as int),
+    ensures
+        res.0.spec_bytes() =~= s.spec_bytes().subrange(0, mid as int),
+        res.1.spec_bytes() =~= s.spec_bytes().subrange(mid as int, s.spec_bytes().len() as int),
+;
+
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ str::from_utf8_unchecked ](v: &[u8]) -> (res: &str)
+    requires
+        valid_utf8(v@),
+    ensures
+        res.spec_bytes() =~= v@,
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub uninterp spec fn to_string_from_display_ensures<T: core::fmt::Display + ?Sized>(
     t: &T,
     s: String,
 ) -> bool;
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub broadcast proof fn to_string_from_display_ensures_for_str(t: &str, res: String)
     ensures
-        #[trigger] to_string_from_display_ensures::<str>(t, res) <==> (t@ == res@ && t.is_ascii()
-            == res.is_ascii()),
+        #[trigger] to_string_from_display_ensures::<str>(t, res) <==> (t@ == res@),
 {
     admit();
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification<T: core::fmt::Display + ?Sized>[ <T as ToString>::to_string ](
     t: &T,
 ) -> (res: String)
@@ -73,6 +162,7 @@ pub assume_specification<T: core::fmt::Display + ?Sized>[ <T as ToString>::to_st
         to_string_from_display_ensures::<T>(t, res),
 ;
 
+#[cfg(not(verus_verify_core))]
 #[verifier::external]
 pub trait StrSliceExecFns {
     fn unicode_len(&self) -> usize;
@@ -89,6 +179,7 @@ pub trait StrSliceExecFns {
     fn as_bytes_vec(&self) -> alloc::vec::Vec<u8>;
 }
 
+#[cfg(not(verus_verify_core))]
 impl StrSliceExecFns for str {
     /// The len() function in rust returns the byte length.
     /// It is more useful to talk about the length of characters and therefore this function was added.
@@ -109,7 +200,6 @@ impl StrSliceExecFns for str {
             i < self@.len(),
         ensures
             self@.index(i as int) == c,
-            self.is_ascii() ==> forall|i: int| i < self@.len() ==> (self@.index(i) as nat) < 256,
     {
         self.chars().nth(i).unwrap()
     }
@@ -118,23 +208,21 @@ impl StrSliceExecFns for str {
     fn substring_ascii<'a>(&'a self, from: usize, to: usize) -> (ret: &'a str)
         requires
             self.is_ascii(),
-            from < self@.len(),
-            to <= self@.len(),
+            from <= to <= self@.len(),
         ensures
             ret@ == self@.subrange(from as int, to as int),
-            ret.is_ascii() == self.is_ascii(),
+            ret.is_ascii(),
     {
+        // Range::index panics if from > to or from > self@.len()
         &self[from..to]
     }
 
     #[verifier::external_body]
     fn substring_char<'a>(&'a self, from: usize, to: usize) -> (ret: &'a str)
         requires
-            from < self@.len(),
-            to <= self@.len(),
+            from <= to <= self@.len(),
         ensures
             ret@ == self@.subrange(from as int, to as int),
-            ret.is_ascii() == self.is_ascii(),
     {
         let mut char_pos = 0;
         let mut byte_start = None;
@@ -147,87 +235,82 @@ impl StrSliceExecFns for str {
             }
             if char_pos == to {
                 byte_end = Some(byte_pos);
-                break ;
+                break;
             }
             if let Some(c) = it.next() {
                 char_pos += 1;
                 byte_pos += c.len_utf8();
             } else {
-                break ;
+                break;
             }
         }
         let byte_start = byte_start.unwrap();
         let byte_end = byte_end.unwrap();
+        // Range::index panics if from > to or from > self@.len()
         &self[byte_start..byte_end]
     }
 
-    #[verifier::external_body]
     fn get_ascii(&self, i: usize) -> (b: u8)
         requires
             self.is_ascii(),
+            i < self@.len(),
         ensures
-            self.view().index(i as int) as u8 == b,
+            self@.index(i as int) as u8 == b,
     {
+        broadcast use is_ascii_spec_bytes;
+        // panics if i is not a valid index
+
         self.as_bytes()[i]
     }
 
-    // TODO:This should be the as_bytes function after
-    // slice support is added
-    // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
     #[cfg(feature = "alloc")]
-    #[verifier::external_body]
     fn as_bytes_vec(&self) -> (ret: alloc::vec::Vec<u8>)
-        requires
-            self.is_ascii(),
         ensures
-            ret.view() == Seq::new(self.view().len(), |i| self.view().index(i) as u8),
+            ret@ == self.spec_bytes(),
     {
-        let mut v = alloc::vec::Vec::new();
-        for c in self.as_bytes().iter() {
-            v.push(*c);
-        }
-        v
+        slice_to_vec(self.as_bytes())
     }
 }
 
-pub broadcast axiom fn axiom_str_literal_is_ascii<'a>(s: &'a str)
-    ensures
-        #[trigger] s.is_ascii() == strslice_is_ascii(s),
-;
-
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn axiom_str_literal_len<'a>(s: &'a str)
     ensures
         #[trigger] s@.len() == strslice_len(s),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
     ensures
         #[trigger] s@.index(i) == strslice_get_char(s, i),
 ;
 
-#[cfg(not(feature = "alloc"))]
+#[cfg(all(not(feature = "alloc"), not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
-    axiom_str_literal_is_ascii,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
+    is_ascii_spec_bytes,
+    is_ascii_concat,
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
-    axiom_str_literal_is_ascii,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
     to_string_from_display_ensures_for_str,
+    axiom_spec_iter,
+    next_postcondition,
+    is_ascii_spec_bytes,
+    is_ascii_concat,
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 impl View for String {
     type V = Seq<char>;
 
     uninterp spec fn view(&self) -> Seq<char>;
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 impl DeepView for String {
     type V = Seq<char>;
 
@@ -236,78 +319,71 @@ impl DeepView for String {
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 #[verifier::external_type_specification]
 #[verifier::external_body]
 pub struct ExString(String);
 
-#[cfg(feature = "alloc")]
-pub uninterp spec fn string_is_ascii(s: &String) -> bool;
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub open spec fn string_is_ascii(s: &String) -> bool {
+    is_ascii_chars(s@)
+}
 
-#[cfg(feature = "alloc")]
-#[verifier::when_used_as_spec(string_is_ascii)]
-pub assume_specification[ String::is_ascii ](s: &String) -> (b: bool)
-    ensures
-        b == string_is_ascii(s),
-;
-
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
-        s.is_ascii() == res.is_ascii(),
 ;
 
 // same as above
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification<'a>[ <String as core::ops::Deref>::deref ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
-        s.is_ascii() == res.is_ascii(),
 ;
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification[ <String as Clone>::clone ](s: &String) -> (res: String)
     ensures
         res == s,
 ;
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification[ <String as PartialEq>::eq ](s: &String, other: &String) -> (res: bool)
     ensures
         res == (s@ == other@),
 ;
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification[ String::new ]() -> (res: String)
     ensures
         res@ == Seq::<char>::empty(),
-        string_is_ascii(&res),
 ;
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification[ <String as core::default::Default>::default ]() -> (r: String)
     ensures
         r@ == Seq::<char>::empty(),
-        string_is_ascii(&r),
 ;
 
-#[cfg(feature = "alloc")]
-#[verifier::external]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub trait StringExecFnsIsAscii: Sized {
     fn is_ascii(&self) -> bool;
 }
 
-#[cfg(feature = "alloc")]
-#[verifier::external]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 impl StringExecFnsIsAscii for String {
     #[inline(always)]
-    fn is_ascii(&self) -> bool {
+    #[verifier::when_used_as_spec(string_is_ascii)]
+    fn is_ascii(&self) -> (ret: bool)
+        ensures
+            ret == string_is_ascii(self),
+    {
         self.as_str().is_ascii()
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 #[verifier::external]
 pub trait StringExecFns: Sized {
     fn from_str<'a>(s: &'a str) -> String;
@@ -317,13 +393,12 @@ pub trait StringExecFns: Sized {
     fn concat<'b>(self, other: &'b str) -> String;
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 impl StringExecFns for String {
     #[verifier::external_body]
     fn from_str<'a>(s: &'a str) -> (ret: String)
         ensures
             s@ == ret@,
-            s.is_ascii() == ret.is_ascii(),
     {
         s.to_string()
     }
@@ -331,8 +406,7 @@ impl StringExecFns for String {
     #[verifier::external_body]
     fn append<'a, 'b>(&'a mut self, other: &'b str)
         ensures
-            self@ == old(self)@ + other@,
-            self.is_ascii() == old(self).is_ascii() && other.is_ascii(),
+            final(self)@ == old(self)@ + other@,
     {
         *self += other;
     }
@@ -341,141 +415,130 @@ impl StringExecFns for String {
     fn concat<'b>(self, other: &'b str) -> (ret: String)
         ensures
             ret@ == self@ + other@,
-            ret.is_ascii() == self.is_ascii() && other.is_ascii(),
     {
         self + other
     }
 }
 
-#[cfg(feature = "alloc")]
-pub assume_specification[ str::chars ](s: &str) -> (chars: Chars<'_>)
-    ensures
-        ({
-            let (index, c) = chars@;
-            &&& index == 0
-            &&& c == s@
-        }),
-;
-
 // The `chars` method of a `str` returns an iterator of type `Chars`,
 // so we specify that type here.
 #[verifier::external_type_specification]
 #[verifier::external_body]
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub struct ExChars<'a>(Chars<'a>);
 
+// To allow reasoning about the "contents" of the string iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original string.
 #[cfg(feature = "alloc")]
-impl<'a> View for Chars<'a> {
-    type V = (int, Seq<char>);
+pub uninterp spec fn into_iter_elts<'a>(i: Chars<'a>) -> Seq<char>;
 
-    uninterp spec fn view(&self) -> (int, Seq<char>);
-}
-
+// To allow reasoning about the ghost iterator when the executable
+// function `iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: v.iter() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
+// the executable `iter` method and define that spec function here.
 #[cfg(feature = "alloc")]
-impl<'a> DeepView for Chars<'a> {
-    type V = <Self as View>::V;
-
-    open spec fn deep_view(&self) -> Self::V {
-        self@
-    }
-}
+pub uninterp spec fn spec_iter<'a>(s: &'a str) -> (r: Chars<'a>);
 
 #[cfg(feature = "alloc")]
-pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (r: Option<char>)
+pub broadcast proof fn axiom_spec_iter<'a>(s: &'a str)
     ensures
-        ({
-            let (old_index, old_seq) = old(chars)@;
-            match r {
-                None => {
-                    &&& chars@ == old(chars)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(k) => {
-                    let (new_index, new_seq) = chars@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& k == old_seq[old_index]
-                },
-            }
-        }),
+        #[trigger] spec_iter(s).remaining() == s@,
+{
+    admit();
+}
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ str::chars ](s: &str) -> (iter: Chars<'_>)
+    ensures
+        iter == spec_iter(s),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
+#[cfg(verus_keep_ghost)]
 #[cfg(feature = "alloc")]
-pub struct CharsGhostIterator<'a> {
-    pub pos: int,
-    pub chars: Seq<char>,
-    pub phantom: Option<&'a char>,
-}
-
-#[cfg(feature = "alloc")]
-impl<'a> ForLoopGhostIteratorNew for Chars<'a> {
-    type GhostIter = CharsGhostIterator<'a>;
-
-    open spec fn ghost_iter(&self) -> CharsGhostIterator<'a> {
-        CharsGhostIterator { pos: self@.0, chars: self@.1, phantom: None }
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl<'a> ForLoopGhostIterator for CharsGhostIterator<'a> {
-    type ExecIter = Chars<'a>;
-
-    type Item = char;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &Chars<'a>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.chars == exec_iter@.1
+impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.chars == self.chars
-            &&& 0 <= self.pos <= self.chars.len()
-        }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
     }
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.chars.len()
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.chars.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<char> {
-        if 0 <= self.pos < self.chars.len() {
-            Some(self.chars[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_elts(*self).len() {
+            Some(into_iter_elts(*self)[index])
         } else {
             None
         }
     }
-
-    open spec fn ghost_advance(&self, _exec_iter: &Chars<'a>) -> CharsGhostIterator<'a> {
-        Self { pos: self.pos + 1, ..*self }
-    }
 }
+
+// Ideally, we would write this postcondition directly on the definition of
+// next below.  However, Verus says that this introduces a cyclic  dependency.
+// Hence we introduce a layer of indirection via this uninterp spec function.
+#[cfg(feature = "alloc")]
+pub uninterp spec fn next_post<'a>(
+    old_chars: &Chars<'a>,
+    new_chars: &Chars<'a>,
+    ret: Option<char>,
+) -> bool;
 
 #[cfg(feature = "alloc")]
-impl<'a> View for CharsGhostIterator<'a> {
-    type V = Seq<char>;
+pub broadcast axiom fn next_postcondition<'a>(
+    old_chars: &Chars<'a>,
+    new_chars: &Chars<'a>,
+    ret: Option<char>,
+)
+    requires
+        #[trigger] next_post(
+            old_chars,
+            new_chars,
+            ret,
+        ),
+// TODO: These are copied from the Iterator::next function.  Eventually, we should
+//       relax Verus's retrictions and allow this function to inherit those specs.
 
-    open spec fn view(&self) -> Seq<char> {
-        self.chars.take(self.pos)
-    }
-}
+    ensures
+// The iterator consistently obeys, completes, and decreases throughout its lifetime
+
+        new_chars.obeys_prophetic_iter_laws() == old_chars.obeys_prophetic_iter_laws(),
+        new_chars.obeys_prophetic_iter_laws() ==> new_chars.will_return_none()
+            == old_chars.will_return_none(),
+        new_chars.obeys_prophetic_iter_laws() ==> (old_chars.decrease() is Some
+            <==> new_chars.decrease() is Some),
+        // `next` pops the head of the prophesized remaining(), or returns None
+        new_chars.obeys_prophetic_iter_laws() ==> ({
+            if old_chars.remaining().len() > 0 {
+                &&& new_chars.remaining() == old_chars.remaining().drop_first()
+                &&& ret == Some(old_chars.remaining()[0])
+            } else {
+                new_chars.remaining() == old_chars.remaining() && ret == None
+                    && new_chars.will_return_none()
+            }
+        }),
+        // If the iterator isn't done yet, then it successfully decreases its metric (if any)
+        new_chars.obeys_prophetic_iter_laws() && old_chars.remaining().len() > 0
+            && new_chars.decrease() is Some
+            ==> decreases_to!(old_chars.decrease()->0 => new_chars.decrease()->0),
+;
 
 #[cfg(feature = "alloc")]
-impl<'a> DeepView for CharsGhostIterator<'a> {
-    type V = Seq<char>;
-
-    open spec fn deep_view(&self) -> Seq<char> {
-        self.view()
-    }
-}
+pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (ret: Option<char>)
+    ensures
+        next_post(old(chars), final(chars), ret),
+;
 
 pub use super::view::View;
 

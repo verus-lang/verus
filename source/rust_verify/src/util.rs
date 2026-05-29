@@ -7,6 +7,10 @@ pub(crate) fn err_span<A, S: Into<String>>(span: Span, msg: S) -> Result<A, VirE
     Err(vir::messages::error(&crate::spans::err_air_span(span), msg))
 }
 
+pub(crate) fn err_span_vec<A, S: Into<String>>(span: Span, msg: S) -> Result<A, Vec<VirErr>> {
+    Err(vec![vir::messages::error(&crate::spans::err_air_span(span), msg)])
+}
+
 pub(crate) fn err_span_bare<S: Into<String>>(span: Span, msg: S) -> VirErr {
     vir::messages::error(&crate::spans::err_air_span(span), msg)
 }
@@ -41,6 +45,19 @@ macro_rules! unsupported_err {
 }
 
 #[macro_export]
+macro_rules! unsupported_err_vec {
+    ($span: expr, $msg: expr) => {{
+        $crate::util::unsupported_err_span($span, $msg.to_string()).map_err(|e| vec![e])?;
+        unreachable!()
+    }};
+    ($span: expr, $msg: expr, $info: expr) => {{
+        dbg!($info);
+        $crate::util::unsupported_err_span($span, $msg.to_string()).map_err(|e| vec![e])?;
+        unreachable!()
+    }};
+}
+
+#[macro_export]
 macro_rules! internal_err {
     ($span: expr, $msg: expr) => {{
         $crate::util::internal_err_span($span, $msg.to_string())?;
@@ -64,6 +81,21 @@ macro_rules! unsupported_err_unless {
         if (!$assertion) {
             dbg!($info);
             $crate::util::unsupported_err_span($span, $msg.to_string())?;
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! unsupported_err_vec_unless {
+    ($assertion: expr, $span: expr, $msg: expr) => {
+        if (!$assertion) {
+            $crate::util::unsupported_err_span($span, $msg.to_string()).map_err(|e| vec![e])?;
+        }
+    };
+    ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
+        if (!$assertion) {
+            dbg!($info);
+            $crate::util::unsupported_err_span($span, $msg.to_string()).map_err(|e| vec![e])?;
         }
     };
 }
@@ -328,4 +360,10 @@ where
             }
         }
     }
+}
+
+pub(crate) fn no_builtin_err(span: &vir::messages::Span) -> VirErr {
+    vir::messages::error(span,
+        "Error: The verus_builtin crate was not imported. This is usually imported via `vstd`, and it is necessary to run Verus.")
+    .help("For getting started with Verus, see: https://verus-lang.github.io/verus/guide/getting_started.html")
 }

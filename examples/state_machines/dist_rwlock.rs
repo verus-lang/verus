@@ -166,7 +166,7 @@ tokenized_state_machine!{
         #[invariant]
         pub fn shared_inv_agree(&self) -> bool {
             forall |v| #[trigger] self.shared_guard.count(v) > 0 ==>
-                self.storage === Option::Some(v.1)
+                self.storage == Option::Some(v.1)
         }
 
         pub closed spec fn filter_r(shared_guard: Multiset<(int, T)>, r: int) -> Multiset<(int, T)> {
@@ -299,7 +299,7 @@ struct_with_invariants!{
 
             &&& forall |i: int| (0 <= i && i < self.ref_counts@.len()) ==>
                 #[trigger] self.ref_counts@.index(i).well_formed()
-                && self.ref_counts@.index(i).constant() === (self.inst, i)
+                && self.ref_counts@.index(i).constant() == (self.inst, i)
         }
 
         invariant on exc_locked with (inst) is (b: bool, g: DistRwLock::exc_locked<T>) {

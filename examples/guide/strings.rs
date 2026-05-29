@@ -11,7 +11,7 @@ fn get_char() {
     }
     assert(x@.len() == 11);
     let val = x.get_char(0);
-    assert('h' === val);
+    assert('h' == val);
 }
 // ANCHOR_END: initial
 

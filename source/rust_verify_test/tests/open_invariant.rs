@@ -513,15 +513,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] opens_invariants_old_fail verus_code! {
-        fn stuff6(x: &mut u8)
-          opens_invariants [ ((*x) as int) ]
-        {
-        }
-    } => Err(err) => assert_vir_error_msg(err, "in opens_invariants clause, use `old(x)` to refer to the pre-state of an &mut variable")
-}
-
-test_verify_one_file! {
     #[test] opens_invariants_wrong_type verus_code! {
         fn stuff6(x: &mut u8)
           opens_invariants [ true ]
@@ -551,7 +542,7 @@ test_verify_one_file! {
             opens_invariants [ exec_int_fn() ]
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::exec_int_fn` with mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::exec_int_fn` with mode exec")
 }
 
 test_verify_one_file! {
@@ -782,12 +773,12 @@ test_verify_one_file! {
             }
         }
 
-        pub fn X(Tracked(i): Tracked<LocalInvariant<u8, u8, Pred>>) {
+        pub fn X(Tracked(i): Tracked<AtomicInvariant<u8, u8, Pred>>) {
             let tracked mut i = i;
-            open_local_invariant!(&i => inner => {
+            open_atomic_invariant!(&i => inner => {
                 proof {
                     inner = 7u8;
-                    i = LocalInvariant::new(7u8, 7u8, 1337);
+                    i = AtomicInvariant::new(7u8, 7u8, 1337);
                     assert(i.inv(inner));
                 }
             });
@@ -885,4 +876,95 @@ test_verify_one_file! {
         {
         }
     } => Err(err) => assert_vir_error_msg(err, "callee may open invariants disallowed at call-site")
+}
+
+test_verify_one_file! {
+    #[test] local_inv_lifetime_checking verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        tracked struct X { u: u64 }
+
+        struct P {}
+        impl InvariantPredicate<(), X> for P {
+            closed spec fn inv(k: (), v: X) -> bool { true }
+        }
+
+        proof fn consume<A>(tracked a: A) { }
+
+        fn hello(Tracked(l): Tracked<LocalInvariant<(), X, P>>) {
+            open_local_invariant!(&l => i => {
+                proof { consume(l); }
+            });
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `l` because it is borrowed")
+}
+
+test_verify_one_file! {
+    #[test] local_inv_lifetime_checking2 verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        tracked struct X { u: u64 }
+
+        struct P {}
+        impl InvariantPredicate<(), X> for P {
+            closed spec fn inv(k: (), v: X) -> bool { true }
+        }
+
+        proof fn consume<A>(tracked a: A) { }
+
+        fn hello(Tracked(l): Tracked<LocalInvariant<(), X, P>>) {
+            open_local_invariant!(&l => i => {
+                proof { consume(l); }
+                loop { }
+            });
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `l` because it is borrowed")
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] local_inv_lifetime_checking3 verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        tracked struct X { u: u64 }
+
+        struct P {}
+        impl InvariantPredicate<(), X> for P {
+            closed spec fn inv(k: (), v: X) -> bool { true }
+        }
+
+        fn consume_and_never<A>(a: A) -> ! { }
+
+        fn hello(Tracked(l): Tracked<LocalInvariant<(), X, P>>) {
+            open_local_invariant!(&l => i => {
+                consume_and_never(Tracked(l));
+            });
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `l` because it is borrowed")
+}
+
+test_verify_one_file! {
+    #[test] local_inv_lifetime_checking4 verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        tracked struct X { u: u64 }
+
+        struct P {}
+        impl InvariantPredicate<(), X> for P {
+            closed spec fn inv(k: (), v: X) -> bool { true }
+        }
+
+        proof fn consume<A>(tracked a: A) { }
+        fn never_return() -> ! { loop { } }
+
+        fn hello(Tracked(l): Tracked<LocalInvariant<(), X, P>>) {
+            open_local_invariant!(&l => i => {
+                proof { consume(l); }
+                never_return();
+            });
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `l` because it is borrowed")
 }

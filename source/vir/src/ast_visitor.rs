@@ -124,6 +124,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         })
     }
 
+    #[allow(dead_code)]
     fn visit_opt_typ(&mut self, typ_opt: &Option<Typ>) -> Result<R::Opt<Typ>, Err> {
         R::map_opt(typ_opt, &mut |t| self.visit_typ(t))
     }
@@ -201,7 +202,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
 
     fn visit_call_target(&mut self, call_target: &CallTarget) -> Result<R::Ret<CallTarget>, Err> {
         match call_target {
-            CallTarget::Fun(kind, fun, typs, impl_paths, au, const_var) => {
+            CallTarget::Fun(kind, fun, typs, impl_paths, attrs) => {
                 let kind = self.visit_call_target_kind(kind)?;
                 let typs = self.visit_typs(typs)?;
                 R::ret(|| {
@@ -210,8 +211,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         fun.clone(),
                         R::get_vec_a(typs),
                         impl_paths.clone(),
-                        *au,
-                        *const_var,
+                        attrs.clone(),
                     )
                 })
             }
@@ -225,6 +225,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     CallTarget::BuiltinSpecFun(bsf.clone(), R::get_vec_a(typs), impl_paths.clone())
                 })
             }
+            CallTarget::AssumeExternal => R::ret(|| call_target.clone()),
         }
     }
 
@@ -278,10 +279,16 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let t = self.visit_typ(t)?;
                 R::ret(|| UnaryOpr::HasResolved(R::get(t)))
             }
+            UnaryOpr::ToDyn(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| UnaryOpr::ToDyn(R::get(t)))
+            }
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
             | UnaryOpr::IntegerTypeBound(..)
             | UnaryOpr::CustomErr(..)
+            | UnaryOpr::AutoDecreases
+            | UnaryOpr::AutoLoopEnsures
             | UnaryOpr::ProofNote(..) => R::ret(|| uopr.clone()),
         }
     }
@@ -301,7 +308,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         match &expr.x {
             ExprX::Const(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Var(_) => R::ret(|| expr_new(expr.x.clone())),
-            ExprX::VarLoc(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::VarAt(_, _) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::ConstVar(_, _) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::StaticVar(_) => R::ret(|| expr_new(expr.x.clone())),
@@ -311,10 +317,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::BreakOrContinue { label: _, is_break: _ } => R::ret(|| expr_new(expr.x.clone())),
             ExprX::AirStmt(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Nondeterministic => R::ret(|| expr_new(expr.x.clone())),
-            ExprX::Loc(e) => {
-                let e1 = self.visit_expr(e)?;
-                R::ret(|| expr_new(ExprX::Loc(R::get(e1))))
-            }
             ExprX::Call(call_target, exprs, opt_e) => {
                 let ct = self.visit_call_target(call_target)?;
                 let es = self.visit_exprs(exprs)?;
@@ -455,21 +457,17 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
-            ExprX::Assign { lhs, rhs, op } => {
-                let lhs = self.visit_expr(lhs)?;
-                let rhs = self.visit_expr(rhs)?;
-                R::ret(|| expr_new(ExprX::Assign { lhs: R::get(lhs), rhs: R::get(rhs), op: *op }))
-            }
-            ExprX::AssignToPlace { place, rhs, op, resolve } => {
+            ExprX::AssignToPlace { place, rhs, op, resolve, typ } => {
                 let place = self.visit_place(place)?;
                 let rhs = self.visit_expr(rhs)?;
-                let resolve = self.visit_opt_typ(resolve)?;
+                let typ = self.visit_typ(typ)?;
                 R::ret(|| {
                     expr_new(ExprX::AssignToPlace {
                         place: R::get(place),
                         rhs: R::get(rhs),
                         op: *op,
-                        resolve: R::get_opt(resolve),
+                        resolve: *resolve,
+                        typ: R::get(typ),
                     })
                 })
             }
@@ -646,6 +644,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::TwoPhaseBorrowMut(R::get(p))))
             }
+            ExprX::BorrowMutTracked(p) => {
+                let p = self.visit_place(p)?;
+                R::ret(|| expr_new(ExprX::BorrowMutTracked(R::get(p))))
+            }
             ExprX::ImplicitReborrowOrSpecRead(p, two_phase, span) => {
                 let p = self.visit_place(p)?;
                 R::ret(|| {
@@ -664,6 +666,31 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::Old(e) => {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Old(R::get(e))))
+            }
+            ExprX::Await(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Await(R::get(e))))
+            }
+            ExprX::MatchGuardFreeze(p, e) => {
+                let p = self.visit_place(p)?;
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::MatchGuardFreeze(R::get(p), R::get(e))))
+            }
+            ExprX::ShrRefStructWrap(e1, e2, t1, t2, variant, field) => {
+                let e1 = self.visit_expr(e1)?;
+                let e2 = self.visit_expr(e2)?;
+                let t1 = self.visit_typ(t1)?;
+                let t2 = self.visit_typ(t2)?;
+                R::ret(|| {
+                    expr_new(ExprX::ShrRefStructWrap(
+                        R::get(e1),
+                        R::get(e2),
+                        R::get(t1),
+                        R::get(t2),
+                        variant.clone(),
+                        field.clone(),
+                    ))
+                })
             }
         }
     }
@@ -869,10 +896,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let tr = self.visit_typ(tr)?;
                 R::ret(|| Arc::new(TypX::SpecFn(R::get_vec_a(ts), R::get(tr))))
             }
-            TypX::AnonymousClosure(ts, tr, id) => {
+            TypX::AnonymousClosure(ts, tr, kind, id) => {
                 let ts = self.visit_typs(ts)?;
                 let tr = self.visit_typ(tr)?;
-                R::ret(|| Arc::new(TypX::AnonymousClosure(R::get_vec_a(ts), R::get(tr), *id)))
+                R::ret(|| {
+                    Arc::new(TypX::AnonymousClosure(R::get_vec_a(ts), R::get(tr), *kind, *id))
+                })
             }
             TypX::FnDef(fun, ts, res_fun) => {
                 let ts = self.visit_typs(ts)?;
@@ -961,14 +990,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
     }
 
     fn visit_param(&mut self, param: &Param) -> Result<R::Ret<Param>, Err> {
-        let ParamX { name, typ, mode, is_mut, user_mut, unwrapped_info } = &param.x;
+        let ParamX { name, typ, mode, user_mut, unwrapped_info } = &param.x;
         let typ = self.visit_typ(typ)?;
         R::ret(|| {
             param.new_x(ParamX {
                 name: name.clone(),
                 typ: R::get(typ),
                 mode: *mode,
-                is_mut: *is_mut,
                 user_mut: *user_mut,
                 unwrapped_info: unwrapped_info.clone(),
             })
@@ -1074,6 +1102,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             attrs,
             body,
             extra_dependencies,
+            async_ret,
         } = &function.x;
         let kind = self.visit_function_kind(kind)?;
         let type_bounds = self.visit_generic_bounds(typ_bounds)?;
@@ -1087,6 +1116,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         }
         let ret = self.visit_param(rt)?;
         let require = self.visit_exprs(require)?;
+        let async_ret = R::map_opt(async_ret, &mut |async_ret| self.visit_param(&async_ret))?;
 
         self.push_scope();
         if function.x.ens_has_return {
@@ -1137,6 +1167,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 attrs: attrs.clone(),
                 body: R::get_opt(body),
                 extra_dependencies: extra_dependencies.clone(),
+                async_ret: R::get_opt(async_ret),
             })
         })
     }

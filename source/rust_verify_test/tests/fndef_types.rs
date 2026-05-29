@@ -325,17 +325,41 @@ test_verify_one_file! {
         spec fn test() -> bool {
             call_requires(foo, ())
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::foo` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::foo` which is ignored")
 }
 
 test_verify_one_file! {
     #[test] mut_params_error verus_code! {
-        fn stuff(x: &mut u8) { }
+        use vstd::prelude::*;
+
+        fn stuff(x: &mut u8)
+            requires *x < 5
+            ensures *final(x) == *old(x) + 1
+        {
+            *x += 1;
+        }
 
         fn test() {
-            let x = stuff;
+            let stuff_fn = stuff;
+            let mut x = 0;
+            stuff_fn(&mut x);
+            assert(x == 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "not supported: using a function that takes '&mut' params as a value")
+
+        fn test2() {
+            let stuff_fn = stuff;
+            let mut x = 0;
+            stuff_fn(&mut x);
+            assert(x == 1);
+            assert(false); // FAILS
+        }
+
+        fn test3() {
+            let stuff_fn = stuff;
+            let mut x = 20;
+            stuff_fn(&mut x); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {
@@ -1900,4 +1924,116 @@ test_verify_one_file! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] zero_arg_fn_issue2296 verus_code! {
+        use vstd::prelude::*;
+
+        pub fn f() -> bool {
+            true
+        }
+
+        pub fn call_f() -> (ret: bool)
+            ensures
+                f.ensures((), ret),
+        {
+            f()
+        }
+
+        pub uninterp spec fn foo() -> bool;
+
+        pub fn g() -> bool
+            requires foo()
+        {
+            true
+        }
+
+        pub fn call_g() -> (ret: bool)
+            requires
+                f.requires(()),
+            ensures
+                f.ensures((), ret),
+        {
+            f()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] fndef_output_through_assoc_type_gh_issue_2427 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        pub trait HasItem { type Item; }
+
+        pub struct Ad<F>(pub F);
+        impl<F: FnOnce(u32) -> u32> HasItem for Ad<F> {
+            type Item = F::Output;
+        }
+
+        pub struct W<I: HasItem> { pub i: I }
+
+        impl<I: HasItem> W<I> {
+            pub uninterp spec fn index(self) -> int;
+            pub uninterp spec fn seq(self) -> Seq<I::Item>;
+
+            fn touch(&mut self)
+                ensures final(self).index() == final(self).seq().len(),
+            {
+                assume(false);
+            }
+        }
+
+        fn foo(x: u32) -> u32 { x }
+
+        fn use_top_level_fn() {
+            let mut y = W { i: Ad(foo) };
+            y.touch();
+            assert(y.index() == y.seq().len());
+        }
+
+        fn use_closure() {
+            let f = |x: u32| -> u32 { x };
+            let mut y = W { i: Ad(f) };
+            y.touch();
+            assert(y.index() == y.seq().len());
+        }
+
+        fn id<T>(x: T) -> T { x }
+
+        fn use_generic_fn() {
+            let mut y = W { i: Ad(id::<u32>) };
+            y.touch();
+            assert(y.index() == y.seq().len());
+        }
+
+
+        // Module `a` defines a struct with restricted visibility and a
+        // function whose signature mentions it. The function is used as an
+        // FnDef value, so Verus emits an auto-generated
+        // `<FnDef(takes_hidden) as FnOnce<(Hidden,)>>::Output = Hidden`
+        // AssocTypeImpl referencing `Hidden`.
+        mod a {
+            mod inner {
+                pub(super) struct Hidden { pub x: u32 }
+            }
+
+            fn takes_hidden(h: inner::Hidden) -> inner::Hidden { h }
+
+            fn use_as_fndef() {
+                let _f = takes_hidden;
+            }
+        }
+
+        // Module `b` cannot see `Hidden`.
+        // `b`'s code reaches the `FnOnce::Output` associated-type decl via
+        // the `F::Output` projection inside the `HasItem for Ad<F>` impl.
+        mod b {
+            fn foo(x: u32) -> u32 { x }
+
+            fn use_fn() {
+                let _y = crate::W { i: crate::Ad(foo) };
+            }
+        }
+    } => Ok(())
 }

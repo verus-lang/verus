@@ -115,7 +115,7 @@ test_verify_one_file! {
         proof fn h<A>(tracked a: A) {
             g(f(a), f(a))
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::f` with mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::f` with mode proof")
 }
 
 test_verify_one_file! {
@@ -193,7 +193,7 @@ test_verify_one_file! {
         proof fn g(tracked x: &mut u8, tracked y: &mut u8) {
             f(x, x)
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `*x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `*x` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -215,7 +215,7 @@ test_verify_one_file! {
             let tracked mut y = b;
             borrow(&mut x, &mut x);
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -240,7 +240,7 @@ test_verify_one_file! {
                 f(x.borrow_mut(), x.borrow_mut());
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -400,6 +400,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] lifetime_bounds_exec verus_code! {
+        use vstd::prelude::*;
+
         #[verifier(external_body)]
         pub fn exec_to_ref<'a, T: 'a>(t: T) -> (t2: &'a T)
             ensures t == *t2
@@ -904,7 +906,7 @@ test_verify_one_file! {
                 l.use_shared();
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -1038,7 +1040,7 @@ test_verify_one_file! {
             })(5);
             consume(r);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::consume` with mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::consume` with mode proof")
 }
 
 test_verify_one_file! {
@@ -1087,7 +1089,7 @@ test_verify_one_file! {
             #[verifier::external_body]
             fn push(&mut self, elem: u64)
                 ensures
-                    self.seq() == old(self).seq().push(elem)
+                    final(self).seq() == old(self).seq().push(elem)
             {
                 unimplemented!();
             }
@@ -1132,7 +1134,7 @@ test_verify_one_file! {
         impl std::ops::AddAssign<u64> for X {
             #[verifier::external_body]
             fn add_assign(&mut self, rhs: u64)
-                ensures self.seq() == old(self).seq().push(rhs)
+                ensures final(self).seq() == old(self).seq().push(rhs)
             {
                 unimplemented!();
             }
@@ -1152,7 +1154,10 @@ test_verify_one_file! {
             assert(x.seq() == x1.push(x1.len() as u64));
             assert(false); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: overloaded op-assignment operator")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "The verifier does not yet support the following Rust feature: overloaded op-assignment operator",
+        "The verifier does not yet support the following Rust feature: overloaded op-assignment operator"
+    ])
 }
 
 test_verify_one_file! {
@@ -1728,5 +1733,203 @@ test_verify_one_file! {
                 take_z_ref(&y_ref.z);
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x.a` because it is borrowed")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot assign to `x.a` because it is borrowed")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_checking_in_ghost verus_code! {
+        proof fn consume<A>(tracked a: A) { }
+        fn ghost_ctor_test<T>(Tracked(t): Tracked<T>) {
+            let t: Ghost<int> = Ghost({
+                consume(t);
+                consume(t);
+                0
+            });
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_checking_in_array_index verus_code! {
+        proof fn consume<A>(tracked a: A) { }
+        fn array_index_test<T>(Tracked(t): Tracked<T>, a: [u64; 2]) {
+            proof {
+                let t = array_index(a, {
+                    consume(t);
+                    consume(t);
+                    0
+                });
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness verus_code! {
+        proof fn test(nvr: !) { }
+        proof fn consume<T>(tracked t: T) { }
+        uninterp spec fn arbitrary<T>() -> T;
+
+        proof fn test2<T>(tracked t: T) {
+            test(arbitrary());
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness2 verus_code! {
+        proof fn test(nvr: !) { }
+        proof fn consume<T>(tracked t: T) { }
+
+        proof fn test2<T>(nvr: !, tracked t: T) {
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness3 verus_code! {
+        proof fn test(nvr: !) { }
+        proof fn consume<T>(tracked t: T) { }
+        uninterp spec fn spec_never() -> !;
+
+        proof fn test2<T>(tracked t: T) {
+            test(spec_never());
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "never-to-any coercion is not allowed in spec mode")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness4 verus_code! {
+        proof fn consume<T>(tracked t: T) { }
+        uninterp spec fn arbitrary<T>() -> T;
+
+        proof fn proof_fn_returns_spec_never() -> ! {
+            arbitrary()
+        }
+
+        proof fn test2<T>(tracked t: T) {
+            proof_fn_returns_spec_never();
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "never-to-any coercion is not allowed in spec mode")
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness5 verus_code! {
+        #[verifier::external]
+        enum X { }
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        struct ExX(X);
+
+        proof fn consume<T>(tracked t: T) { }
+        uninterp spec fn arbitrary<T>() -> T;
+
+        proof fn proof_fn_returns_spec_never() -> X {
+            arbitrary()
+        }
+
+        proof fn test2<T>(tracked t: T) {
+            proof_fn_returns_spec_never();
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness6 verus_code! {
+        tracked struct X {
+            ghost g: !,
+        }
+
+        proof fn consume<T>(tracked t: T) { }
+
+        axiom fn proof_fn_returns_spec_never() -> (tracked x: X);
+
+        proof fn test2<T>(tracked t: T) {
+            proof_fn_returns_spec_never();
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness7 verus_code! {
+        tracked struct X {
+            ghost g: !,
+        }
+
+        proof fn consume<T>(tracked t: T) { }
+
+        axiom fn proof_fn_returns_spec_never() -> (tracked x: X);
+
+        proof fn test2<T>(tracked t: T) {
+            proof_fn_returns_spec_never().g;
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_delete_nodes_due_to_tracked_never_ok verus_code! {
+        proof fn consume<T>(tracked t: T) { }
+
+        axiom fn proof_fn_returns_spec_never() -> (tracked x: !);
+
+        #[allow(unreachable_code)]
+        proof fn test2<T>(tracked t: T) {
+            proof_fn_returns_spec_never();
+
+            consume(t);
+            consume(t);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_delete_nodes_due_to_tracked_empty_ok verus_code! {
+        #[verifier::external]
+        enum X { }
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        struct ExX(X);
+
+        proof fn consume<T>(tracked t: T) { }
+
+        axiom fn proof_fn_returns_spec_never() -> (tracked x: X);
+
+        #[allow(unreachable_code)]
+        proof fn test2<T>(tracked t: T) {
+            proof_fn_returns_spec_never();
+
+            consume(t);
+            consume(t);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] pattern_binding_of_ref_in_spec_code_issue2495 verus_code! {
+        fn test(x: &(u64, u64)) {
+            assert(({ let (a, b) = x; true }));
+        }
+    } => Ok(())
 }

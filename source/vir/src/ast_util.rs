@@ -1,5 +1,4 @@
 use crate::ast::*;
-use crate::def::Spanned;
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -48,16 +47,16 @@ impl PathX {
 
     pub fn is_rust_std_path(&self) -> bool {
         match &self.krate {
-            Some(k) if &**k == "std" || &**k == "alloc" || &**k == "core" => true,
-            _ => false,
+            CrateId::Internal => false,
+            CrateId::Core => true,
+            CrateId::Alloc => true,
+            CrateId::Vstd => false,
+            CrateId::Id(x, _) => x.as_str() == "std",
         }
     }
 
     pub fn is_vstd_path(&self) -> bool {
-        match &self.krate {
-            Some(k) if &**k == "vstd" => true,
-            _ => false,
-        }
+        self.krate == CrateId::Vstd
     }
 }
 
@@ -77,12 +76,27 @@ pub fn parse_path_segments_from_user_str(s: &str) -> Result<Idents, crate::ast::
     Ok(Arc::new(arg_segments))
 }
 
+impl fmt::Display for CrateId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CrateId::Internal => write!(f, "crate"),
+            CrateId::Core => write!(f, "core"),
+            CrateId::Alloc => write!(f, "alloc"),
+            CrateId::Vstd => write!(f, "vstd"),
+            CrateId::Id(x, _) => write!(f, "{}", x),
+        }
+    }
+}
+
+impl fmt::Debug for CrateId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <CrateId as fmt::Display>::fmt(self, f)
+    }
+}
+
 impl fmt::Debug for PathX {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.krate {
-            None => write!(f, "Path(None, [")?,
-            Some(k) => write!(f, "Path(Some({:?}), [", k)?,
-        }
+        write!(f, "Path({:?}, [", &self.krate)?;
         for (i, s) in self.segments.iter().enumerate() {
             if i == 0 {
                 write!(f, "{:?}", s)?;
@@ -134,9 +148,10 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::SpecFn(ts1, t1), TypX::SpecFn(ts2, t2)) => {
             n_types_equal(ts1, ts2) && types_equal(t1, t2)
         }
-        (TypX::AnonymousClosure(ts1, t1, id1), TypX::AnonymousClosure(ts2, t2, id2)) => {
-            n_types_equal(ts1, ts2) && types_equal(t1, t2) && id1 == id2
-        }
+        (
+            TypX::AnonymousClosure(ts1, t1, id1, kind1),
+            TypX::AnonymousClosure(ts2, t2, id2, kind2),
+        ) => n_types_equal(ts1, ts2) && types_equal(t1, t2) && id1 == id2 && kind1 == kind2,
         (TypX::Datatype(path1, ts1, _), TypX::Datatype(path2, ts2, _)) => {
             path1 == path2 && n_types_equal(ts1, ts2)
         }
@@ -194,7 +209,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Real, _) => false,
         (TypX::Float(_), _) => false,
         (TypX::SpecFn(_, _), _) => false,
-        (TypX::AnonymousClosure(_, _, _), _) => false,
+        (TypX::AnonymousClosure(_, _, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
         (TypX::Dyn(_, _, _), _) => false,
         (TypX::Primitive(_, _), _) => false,
@@ -239,26 +254,9 @@ pub fn params_equal_opt(
     // the publicly visible parameters.
     // 'user_mut' also isn't important at this level since it is only used to determine
     // if mutation is allowed within the function
-    let ParamX {
-        name: name1,
-        typ: typ1,
-        mode: mode1,
-        is_mut: is_mut1,
-        unwrapped_info: _,
-        user_mut: _,
-    } = &param1.x;
-    let ParamX {
-        name: name2,
-        typ: typ2,
-        mode: mode2,
-        is_mut: is_mut2,
-        unwrapped_info: _,
-        user_mut: _,
-    } = &param2.x;
-    (!check_names || name1 == name2)
-        && types_equal(typ1, typ2)
-        && (!check_modes || mode1 == mode2)
-        && is_mut1 == is_mut2
+    let ParamX { name: name1, typ: typ1, mode: mode1, unwrapped_info: _, user_mut: _ } = &param1.x;
+    let ParamX { name: name2, typ: typ2, mode: mode2, unwrapped_info: _, user_mut: _ } = &param2.x;
+    (!check_names || name1 == name2) && types_equal(typ1, typ2) && (!check_modes || mode1 == mode2)
 }
 
 pub fn params_equal(param1: &Param, param2: &Param) -> bool {
@@ -288,12 +286,15 @@ pub fn undecorate_typ(typ: &Typ) -> Typ {
     if let TypX::Decorate(_, _, t) = &**typ { undecorate_typ(t) } else { typ.clone() }
 }
 
-pub fn allowed_bitvector_type(typ: &Typ) -> bool {
-    match &*undecorate_typ(typ) {
-        TypX::Bool => true,
-        TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize) => true,
+pub fn allowed_bitvector_type(typ: &Typ) -> Option<Typ> {
+    let u = undecorate_typ(typ);
+    match &*u {
+        TypX::Bool => Some(u),
+        TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize) => Some(u),
+        TypX::Float { .. } => Some(u),
+        TypX::Real => Some(u),
         TypX::Boxed(typ) => allowed_bitvector_type(typ),
-        _ => false,
+        _ => None,
     }
 }
 
@@ -394,10 +395,7 @@ pub(crate) fn dt_as_friendly_rust_name_raw(dt: &Dt) -> String {
 }
 
 pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
-    let krate = match &path.krate {
-        None => "crate".to_string(),
-        Some(krate) => crate::def::krate_to_string(krate),
-    };
+    let krate = crate::def::krate_to_string_ignore_stable_id(&path.krate);
     let mut strings: Vec<String> = vec![krate];
     for segment in path.segments.iter() {
         strings.push(segment.to_string());
@@ -421,12 +419,12 @@ pub fn set_path_as_rust_name(path: &Path, friendly: &Path) {
     }
 }
 
-pub fn get_path_as_rust_names_for_krate(krate: &Ident) -> Vec<(Path, String)> {
+pub fn get_path_as_rust_names_for_krate(krate: &CrateId) -> Vec<(Path, String)> {
     let mut v: Vec<(Path, String)> = Vec::new();
     if let Ok(guard) = PATH_AS_RUST_NAME_MAP.lock() {
         if let Some(map) = &*guard {
             for (path, name) in map {
-                if &path.krate == &Some(krate.clone()) {
+                if &path.krate == krate {
                     v.push((path.clone(), name.clone()));
                 }
             }
@@ -745,7 +743,8 @@ impl FunctionX {
 pub(crate) fn call_no_unwind(call_target: &CallTarget, funs: &HashMap<Fun, Function>) -> bool {
     match call_target {
         CallTarget::FnSpec(_) | CallTarget::BuiltinSpecFun(..) => true,
-        CallTarget::Fun(kind, fun, _, _, _, _) => match kind {
+        CallTarget::AssumeExternal => true,
+        CallTarget::Fun(kind, fun, _, _, _) => match kind {
             CallTargetKind::ProofFn(..) => true,
             CallTargetKind::Static
             | CallTargetKind::Dynamic
@@ -770,6 +769,28 @@ pub fn get_field<'a, A: Clone>(variant: &'a Binders<A>, field: &Ident) -> &'a Bi
     match variant.iter().find(|f| f.name == *field) {
         Some(field) => field,
         None => panic!("internal error: missing field {}", &field),
+    }
+}
+
+pub fn get_variant_or_err<'a>(
+    span: &Span,
+    variants: &'a Variants,
+    variant: &Ident,
+) -> Result<&'a Variant, VirErr> {
+    match variants.iter().find(|v| v.name == *variant) {
+        Some(variant) => Ok(variant),
+        None => Err(crate::messages::error(span, format!("no variant named `{:}`", variant))),
+    }
+}
+
+pub fn get_field_or_err<'a, A: Clone>(
+    span: &Span,
+    variant: &'a Binders<A>,
+    field: &Ident,
+) -> Result<&'a Binder<A>, VirErr> {
+    match variant.iter().find(|f| f.name == *field) {
+        Some(field) => Ok(field),
+        None => Err(crate::messages::error(span, format!("no field named `{:}`", field))),
     }
 }
 
@@ -802,7 +823,7 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
         &mut (),
         &mut |_, _, e| {
             match &e.x {
-                ExprX::Var(x) | ExprX::VarLoc(x) => {
+                ExprX::Var(x) => {
                     vars.borrow_mut().insert(x.clone());
                 }
                 _ => (),
@@ -903,11 +924,10 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
     )
 }
 
-pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<Arc<String>> {
+pub(crate) fn ast_expr_get_proof_note(expr: &Expr) -> Option<ProofNoteLabel> {
     match &expr.x {
         // NOTE: `UnaryOpr::Box` and `Unbox` not relevant; only introduced later in `ast_to_sst`.
-        ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => ast_expr_get_proof_note(e),
-        ExprX::UnaryOpr(UnaryOpr::ProofNote(s), _) => Some(s.clone()),
+        ExprX::UnaryOpr(UnaryOpr::ProofNote(label), _) => Some(label.clone()),
         _ => None,
     }
 }
@@ -938,21 +958,23 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)
         ),
-        TypX::AnonymousClosure(atyps, rtyp, _) => format!(
-            "AnonymousClosure({}) -> {}",
+        TypX::AnonymousClosure(atyps, rtyp, kind, _) => format!(
+            "AnonymousClosure({})({}) -> {}",
+            kind,
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)
         ),
-        TypX::Primitive(prim, typs) => {
-            let typs_str = typs_to_comma_separated_str(typs);
-            match prim {
-                crate::ast::Primitive::Array => format!("[{typs_str}; N]"),
-                crate::ast::Primitive::Slice => format!("[{typs_str}]"),
-                crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
-                crate::ast::Primitive::Ptr => format!("*mut {typs_str}"),
-                crate::ast::Primitive::Global => format!("Global"),
-            }
-        }
+        TypX::Primitive(prim, typs) => match prim {
+            crate::ast::Primitive::Array => format!(
+                "[{:}; {:}]",
+                &typ_to_diagnostic_str(&typs[0]),
+                &typ_to_diagnostic_str(&typs[1])
+            ),
+            crate::ast::Primitive::Slice => format!("[{:}]", &typ_to_diagnostic_str(&typs[0])),
+            crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
+            crate::ast::Primitive::Ptr => format!("*mut {:}", &typ_to_diagnostic_str(&typs[0])),
+            crate::ast::Primitive::Global => format!("Global"),
+        },
         TypX::Datatype(Dt::Tuple(_arity), typs, _) => {
             // 1-tuples should be formatted like `(T,)`
             let tup_string = typs_to_comma_separated_str(typs);
@@ -979,9 +1001,6 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         ),
         TypX::Decorate(TypDecoration::Ref, _, typ) => {
             format!("&{}", typ_to_diagnostic_str(typ))
-        }
-        TypX::Decorate(TypDecoration::MutRef, _, typ) => {
-            format!("&mut {}", typ_to_diagnostic_str(typ))
         }
         TypX::Decorate(TypDecoration::ConstPtr, _, typ) => match &**typ {
             TypX::Primitive(crate::ast::Primitive::Ptr, typs) => {
@@ -1025,8 +1044,8 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             )
         }
         TypX::TypeId => format!("typeid"),
-        TypX::ConstInt(_) => format!("constint"),
-        TypX::ConstBool(_) => format!("constbool"),
+        TypX::ConstInt(i) => format!("{i}"),
+        TypX::ConstBool(b) => format!("{b}"),
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::FnDef(f, typs, _res) => format!(
             "FnDef({}){}",
@@ -1219,9 +1238,9 @@ impl MaskSpec {
 
 #[macro_export]
 macro_rules! path {
-    [ $krate:literal => $( $segment:literal ),* ] => {
+    [ $krate:expr => $( $segment:literal ),* ] => {
         ::std::sync::Arc::new($crate::ast::PathX {
-            krate: ::std::option::Option::Some(::std::sync::Arc::new($krate.into())),
+            krate: $krate,
             segments: ::std::sync::Arc::new(
                 ::std::vec![
                     $(
@@ -1235,53 +1254,9 @@ macro_rules! path {
 
 #[macro_export]
 macro_rules! fun {
-    [ $krate:literal => $( $segment:literal ),* ] => {
+    [ $krate:expr => $( $segment:literal ),* ] => {
         Arc::new($crate::ast::FunX { path: $crate::path!($krate => $($segment),*) })
     };
-}
-
-/// If the function has a unit return type, then we will elide the return value
-/// in the AIR encoding later (e.g., in the %ens functions). However, it is still
-/// possible that the user refers to the unit return value by name, e.g.,
-/// ```
-/// fn example() -> (ret: ())
-///     ensures ret == (),
-/// ```
-/// Therefore, we substitute out the name here so it be safely elided.
-pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, bool) {
-    match &*undecorate_typ(&ret.x.typ) {
-        TypX::Datatype(Dt::Tuple(0), ..) => {
-            if ret.x.name == air_unique_var(crate::def::RETURN_VALUE) {
-                (ensure.clone(), false)
-            } else {
-                let mut es = vec![];
-                for e in ensure.iter() {
-                    let e1 = crate::ast_visitor::map_expr_place_visitor(
-                        e,
-                        &|expr| match &expr.x {
-                            ExprX::Var(ident) if ident == &ret.x.name => {
-                                assert!(is_unit(&undecorate_typ(&expr.typ)));
-                                Ok(mk_tuple(&expr.span, &Arc::new(vec![])))
-                            }
-                            _ => Ok(expr.clone()),
-                        },
-                        &|place| match &place.x {
-                            PlaceX::Local(ident) if ident == &ret.x.name => {
-                                assert!(is_unit(&undecorate_typ(&place.typ)));
-                                let e = mk_tuple(&place.span, &Arc::new(vec![]));
-                                Ok(PlaceX::spec_temporary(e))
-                            }
-                            _ => Ok(place.clone()),
-                        },
-                    )
-                    .unwrap();
-                    es.push(e1);
-                }
-                (Arc::new(es), false)
-            }
-        }
-        _ => (ensure.clone(), true),
-    }
 }
 
 impl Dt {
@@ -1430,46 +1405,6 @@ pub fn place_has_deref_mut(p: &Place) -> bool {
     }
 }
 
-/// Returns an expression that reads from the place
-pub fn place_to_expr(place: &Place) -> Expr {
-    let x = match &place.x {
-        PlaceX::Local(var_ident) => ExprX::Var(var_ident.clone()),
-        PlaceX::DerefMut(p) => {
-            let e = place_to_expr(p);
-            ExprX::Unary(UnaryOp::MutRefCurrent, e)
-        }
-        PlaceX::Field(opr, p) => {
-            let e = place_to_expr(p);
-            ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
-        }
-        PlaceX::Temporary(e) => {
-            return e.clone();
-        }
-        PlaceX::ModeUnwrap(p, _) => {
-            return place_to_expr(p);
-        }
-        PlaceX::WithExpr(e, p) => {
-            let e2 = place_to_expr(p);
-            ExprX::Block(
-                Arc::new(vec![Spanned::new(e.span.clone(), StmtX::Expr(e.clone()))]),
-                Some(e2),
-            )
-        }
-        PlaceX::Index(p, idx, kind, bounds_check) => {
-            let e = place_to_expr(p);
-            ExprX::Binary(BinaryOp::Index(*kind, *bounds_check), e, idx.clone())
-        }
-        PlaceX::UserDefinedTypInvariantObligation(..) => {
-            // place_to_expr should only be called for reading; this node should only
-            // appear in mutable contexts
-            panic!(
-                "Verus internal error: place_to_expr cannot handle UserDefinedTypInvariantObligation"
-            );
-        }
-    };
-    SpannedTyped::new(&place.span, &place.typ, x)
-}
-
 impl PatternX {
     /// Returns a Pattern Var that is valid post-simplification.
     pub(crate) fn simple_var(name: VarIdent, span: &Span, typ: &Typ) -> Pattern {
@@ -1544,8 +1479,38 @@ impl BinaryOp {
             | BinaryOp::Arith(_)
             | BinaryOp::RealArith(_)
             | BinaryOp::Bitwise(..)
+            | BinaryOp::IeeeFloat(_)
             | BinaryOp::StrGetChar
             | BinaryOp::Index(..) => false,
+        }
+    }
+}
+
+impl fmt::Display for ClosureKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ClosureKind::Fn => write!(f, "Fn"),
+            ClosureKind::FnOnce => write!(f, "FnOnce"),
+            ClosureKind::FnMut => write!(f, "FnMut"),
+        }
+    }
+}
+
+impl ClosureKind {
+    pub(crate) fn trait_path(&self) -> Path {
+        match self {
+            ClosureKind::Fn => crate::path![CrateId::Core => "ops", "function", "Fn"],
+            ClosureKind::FnMut => crate::path![CrateId::Core => "ops", "function", "FnMut"],
+            ClosureKind::FnOnce => crate::path![CrateId::Core => "ops", "function", "FnOnce"],
+        }
+    }
+}
+
+impl AssertQueryMode {
+    pub(crate) fn name(&self) -> &'static str {
+        match self {
+            AssertQueryMode::NonLinear => "nonlinear_arith",
+            AssertQueryMode::BitVector => "bit_vector",
         }
     }
 }

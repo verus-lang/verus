@@ -287,20 +287,29 @@ impl<T> PointsTo<T> {
     /// Only the proof-code representation changes.
     pub axiom fn leak_contents(tracked &mut self)
         ensures
-            self.ptr() == old(self).ptr(),
-            self.is_uninit(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).is_uninit(),
     ;
 
-    /// Guarantees that the memory ranges associated with two permissions will not overlap,
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since both S and T are non-zero-sized, this implies the pointers have distinct addresses.
     ///
-    /// Note: If both S and T are non-zero-sized, then this implies the pointers
-    /// have distinct addresses.
+    /// Note: If either S or T is zero-sized, we get disjointness "for free" without having to call this axiom,
+    /// since the empty memory range corresponding to a ZST cannot possibly intersect with any other memory.
+    /// However, note that if one type is a ZST and the other is a non-ZST,
+    /// the disjointness definition as stated here here does not hold,
+    /// since the ZST pointer could be in the middle of the non-ZST's range.
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
+        requires
+            size_of::<T>() != 0,
+            size_of::<S>() != 0,
         ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= self.ptr() as int,
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= final(self).ptr() as int,
     ;
 }
 
@@ -571,8 +580,8 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
     requires
         old(perm).ptr() == ptr,
     ensures
-        perm.ptr() == ptr,
-        perm.opt_value() == MemContents::Init(v),
+        final(perm).ptr() == ptr,
+        final(perm).opt_value() == MemContents::Init(v),
     opens_invariants none
     no_unwind
 {
@@ -595,8 +604,8 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
         old(perm).ptr() == ptr,
         old(perm).is_init(),
     ensures
-        perm.ptr() == ptr,
-        perm.is_uninit(),
+        final(perm).ptr() == ptr,
+        final(perm).is_uninit(),
         v == old(perm).value(),
     opens_invariants none
     no_unwind
@@ -620,24 +629,24 @@ pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T
     unsafe { &*ptr }
 }
 
-/* coming soon
-/// Equivalent to &mut *X, passing in a permission `perm` to ensure safety.
+/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
 pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
     requires
         old(perm).ptr() == ptr,
-        old(perm).is_init()
+        old(perm).is_init(),
     ensures
-        perm.ptr() == ptr,
-        perm.is_init(),
-
-        old(perm).value() == *old(v),
-        new(perm).value() == *new(v),
-    unsafe { &*ptr }
+        final(perm).ptr() == ptr,
+        final(perm).is_init(),
+        old(perm).value() == *v,
+        final(perm).value() == *final(v),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
 }
-*/
 
 macro_rules! pointer_specs {
     ($mod_ident:ident, $ptr_from_data:ident, $mu:tt) => {

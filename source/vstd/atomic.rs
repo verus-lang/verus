@@ -11,70 +11,26 @@ use core::sync::atomic::{AtomicI64, AtomicU64};
 use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
+use super::wrapping::*;
 
 macro_rules! make_unsigned_integer_atomic {
-    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
-        // TODO we could support `std::intrinsics::wrapping_add`
-        // and use that instead.
-
-        verus! {
-
-        pub open spec fn $wrap_add(a: int, b: int) -> int {
-            if a + b > (<$value_ty>::MAX as int) {
-                a + b - ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
-            } else {
-                a + b
-            }
-        }
-
-        pub open spec fn $wrap_sub(a: int, b: int) -> int {
-            if a - b < (<$value_ty>::MIN as int) {
-                a - b + ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
-            } else {
-                a - b
-            }
-        }
-
-        } // verus!
+    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $modname:ident) => {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
             atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
-            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
+            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $modname);
         }
     };
 }
 
 macro_rules! make_signed_integer_atomic {
-    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
-        verus! {
-
-        pub open spec fn $wrap_add(a: int, b: int) -> int {
-            if a + b > (<$value_ty>::MAX as int) {
-                a + b - ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
-            } else if a + b < (<$value_ty>::MIN as int) {
-                a + b + ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
-            } else {
-                a + b
-            }
-        }
-
-        pub open spec fn $wrap_sub(a: int, b: int) -> int {
-            if a - b > (<$value_ty>::MAX as int) {
-                a - b - ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
-            } else if a - b < (<$value_ty>::MIN as int) {
-                a - b + ((<$value_ty>::MAX as int) - (<$value_ty>::MIN as int) + 1)
-            } else {
-                a - b
-            }
-        }
-
-        } // verus!
+    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $modname:ident) => {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
             atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
-            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
+            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $modname);
         }
     };
 }
@@ -224,7 +180,7 @@ macro_rules! atomic_common_methods {
         pub fn store(&self, Tracked(perm): Tracked<&mut $p_ident>, v: $value_ty)
             requires
                 equal(self.id(), old(perm).view().patomic),
-            ensures equal(perm.view().value, v) && equal(self.id(), perm.view().patomic),
+            ensures equal(final(perm).view().value, v) && equal(self.id(), final(perm).view().patomic),
             opens_invariants none
             no_unwind
         {
@@ -238,15 +194,15 @@ macro_rules! atomic_common_methods {
             requires
                 equal(self.id(), old(perm).view().patomic),
             ensures
-                equal(self.id(), perm.view().patomic)
+                equal(self.id(), final(perm).view().patomic)
                 && match ret {
                     Result::Ok(r) =>
                            current $($addr)* == old(perm).view().value $($addr)*
-                        && equal(perm.view().value, new)
+                        && equal(final(perm).view().value, new)
                         && equal(r, old(perm).view().value),
                     Result::Err(r) =>
                            current $($addr)* != old(perm).view().value $($addr)*
-                        && equal(perm.view().value, old(perm).view().value)
+                        && equal(final(perm).view().value, old(perm).view().value)
                         && equal(r, old(perm).view().value),
                 },
             opens_invariants none
@@ -265,14 +221,14 @@ macro_rules! atomic_common_methods {
             requires
                 equal(self.id(), old(perm).view().patomic),
             ensures
-                equal(self.id(), perm.view().patomic)
+                equal(self.id(), final(perm).view().patomic)
                 && match ret {
                     Result::Ok(r) =>
                            current $($addr)* == old(perm).view().value $($addr)*
-                        && equal(perm.view().value, new)
+                        && equal(final(perm).view().value, new)
                         && equal(r, old(perm).view().value),
                     Result::Err(r) =>
-                           equal(perm.view().value, old(perm).view().value)
+                           equal(final(perm).view().value, old(perm).view().value)
                         && equal(r, old(perm).view().value),
                 },
             opens_invariants none
@@ -291,9 +247,9 @@ macro_rules! atomic_common_methods {
             requires
                 equal(self.id(), old(perm).view().patomic),
             ensures
-                   equal(perm.view().value, v)
+                   equal(final(perm).view().value, v)
                 && equal(old(perm).view().value, ret)
-                && equal(self.id(), perm.view().patomic),
+                && equal(self.id(), final(perm).view().patomic),
             opens_invariants none
             no_unwind
         {
@@ -317,7 +273,7 @@ macro_rules! atomic_common_methods {
 }
 
 macro_rules! atomic_integer_methods {
-    ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
+    ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $modname:ident) => {
         verus_impl!{
 
         // Note that wrapping-on-overflow is the defined behavior for fetch_add and fetch_sub
@@ -330,8 +286,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value as int == $wrap_add(old(perm).view().value as int, n as int),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value as int == $modname::wrapping_add(old(perm).view().value, n),
             opens_invariants none
             no_unwind
         {
@@ -345,8 +301,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value as int == $wrap_sub(old(perm).view().value as int, n as int),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value as int == $modname::wrapping_sub(old(perm).view().value, n),
             opens_invariants none
             no_unwind
         {
@@ -365,8 +321,8 @@ macro_rules! atomic_integer_methods {
                 old(perm).view().value + n <= (<$value_ty>::MAX as int),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == old(perm).view().value + n,
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == old(perm).view().value + n,
             opens_invariants none
             no_unwind
         {
@@ -382,8 +338,8 @@ macro_rules! atomic_integer_methods {
                 old(perm).view().value - n <= <$value_ty>::MAX as int,
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == old(perm).view().value - n,
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == old(perm).view().value - n,
             opens_invariants none
             no_unwind
         {
@@ -397,8 +353,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (old(perm).view().value & n),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == (old(perm).view().value & n),
             opens_invariants none
             no_unwind
         {
@@ -412,8 +368,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (old(perm).view().value | n),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == (old(perm).view().value | n),
             opens_invariants none
             no_unwind
         {
@@ -427,8 +383,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (old(perm).view().value ^ n),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == (old(perm).view().value ^ n),
             opens_invariants none
             no_unwind
         {
@@ -442,8 +398,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == !(old(perm).view().value & n),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == !(old(perm).view().value & n),
             opens_invariants none
             no_unwind
         {
@@ -457,8 +413,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (if old(perm).view().value > n { old(perm).view().value } else { n }),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == (if old(perm).view().value > n { old(perm).view().value } else { n }),
             opens_invariants none
             no_unwind
         {
@@ -472,8 +428,8 @@ macro_rules! atomic_integer_methods {
             requires equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (if old(perm).view().value < n { old(perm).view().value } else { n }),
+                final(perm).view().patomic == old(perm).view().patomic,
+                final(perm).view().value == (if old(perm).view().value < n { old(perm).view().value } else { n }),
             opens_invariants none
             no_unwind
         {
@@ -496,8 +452,8 @@ macro_rules! atomic_bool_methods {
                 equal(self.id(), old(perm).view().patomic),
             ensures
                    equal(old(perm).view().value, ret)
-                && perm.view().patomic == old(perm).view().patomic
-                && perm.view().value == (old(perm).view().value && n),
+                && final(perm).view().patomic == old(perm).view().patomic
+                && final(perm).view().value == (old(perm).view().value && n),
             opens_invariants none
             no_unwind
         {
@@ -512,8 +468,8 @@ macro_rules! atomic_bool_methods {
                 equal(self.id(), old(perm).view().patomic),
             ensures
                   equal(old(perm).view().value, ret)
-                && perm.view().patomic == old(perm).view().patomic
-                && perm.view().value == (old(perm).view().value || n),
+                && final(perm).view().patomic == old(perm).view().patomic
+                && final(perm).view().value == (old(perm).view().value || n),
             opens_invariants none
             no_unwind
         {
@@ -528,8 +484,8 @@ macro_rules! atomic_bool_methods {
                 equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret)
-                && perm.view().patomic == old(perm).view().patomic
-                && perm.view().value == ((old(perm).view().value && !n) || (!old(perm).view().value && n)),
+                && final(perm).view().patomic == old(perm).view().patomic
+                && final(perm).view().value == ((old(perm).view().value && !n) || (!old(perm).view().value && n)),
             opens_invariants none
             no_unwind
         {
@@ -544,8 +500,8 @@ macro_rules! atomic_bool_methods {
                 equal(self.id(), old(perm).view().patomic),
             ensures
                 equal(old(perm).view().value, ret)
-                && perm.view().patomic == old(perm).view().patomic
-                && perm.view().value == !(old(perm).view().value && n),
+                && final(perm).view().patomic == old(perm).view().patomic
+                && final(perm).view().value == !(old(perm).view().value && n),
             opens_invariants none
             no_unwind
         {
@@ -558,23 +514,14 @@ macro_rules! atomic_bool_methods {
 
 make_bool_atomic!(PAtomicBool, PermissionBool, PermissionDataBool, AtomicBool, bool);
 
-make_unsigned_integer_atomic!(
-    PAtomicU8,
-    PermissionU8,
-    PermissionDataU8,
-    AtomicU8,
-    u8,
-    wrapping_add_u8,
-    wrapping_sub_u8
-);
+make_unsigned_integer_atomic!(PAtomicU8, PermissionU8, PermissionDataU8, AtomicU8, u8, u8_specs);
 make_unsigned_integer_atomic!(
     PAtomicU16,
     PermissionU16,
     PermissionDataU16,
     AtomicU16,
     u16,
-    wrapping_add_u16,
-    wrapping_sub_u16
+    u16_specs
 );
 make_unsigned_integer_atomic!(
     PAtomicU32,
@@ -582,8 +529,7 @@ make_unsigned_integer_atomic!(
     PermissionDataU32,
     AtomicU32,
     u32,
-    wrapping_add_u32,
-    wrapping_sub_u32
+    u32_specs
 );
 
 #[cfg(target_has_atomic = "64")]
@@ -593,8 +539,7 @@ make_unsigned_integer_atomic!(
     PermissionDataU64,
     AtomicU64,
     u64,
-    wrapping_add_u64,
-    wrapping_sub_u64
+    u64_specs
 );
 make_unsigned_integer_atomic!(
     PAtomicUsize,
@@ -602,27 +547,17 @@ make_unsigned_integer_atomic!(
     PermissionDataUsize,
     AtomicUsize,
     usize,
-    wrapping_add_usize,
-    wrapping_sub_usize
+    usize_specs
 );
 
-make_signed_integer_atomic!(
-    PAtomicI8,
-    PermissionI8,
-    PermissionDataI8,
-    AtomicI8,
-    i8,
-    wrapping_add_i8,
-    wrapping_sub_i8
-);
+make_signed_integer_atomic!(PAtomicI8, PermissionI8, PermissionDataI8, AtomicI8, i8, i8_specs);
 make_signed_integer_atomic!(
     PAtomicI16,
     PermissionI16,
     PermissionDataI16,
     AtomicI16,
     i16,
-    wrapping_add_i16,
-    wrapping_sub_i16
+    i16_specs
 );
 make_signed_integer_atomic!(
     PAtomicI32,
@@ -630,8 +565,7 @@ make_signed_integer_atomic!(
     PermissionDataI32,
     AtomicI32,
     i32,
-    wrapping_add_i32,
-    wrapping_sub_i32
+    i32_specs
 );
 
 #[cfg(target_has_atomic = "64")]
@@ -641,8 +575,7 @@ make_signed_integer_atomic!(
     PermissionDataI64,
     AtomicI64,
     i64,
-    wrapping_add_i64,
-    wrapping_sub_i64
+    i64_specs
 );
 make_signed_integer_atomic!(
     PAtomicIsize,
@@ -650,8 +583,7 @@ make_signed_integer_atomic!(
     PermissionDataIsize,
     AtomicIsize,
     isize,
-    wrapping_add_isize,
-    wrapping_sub_isize
+    isize_specs
 );
 
 atomic_types_generic!(PAtomicPtr, PermissionPtr, PermissionDataPtr, AtomicPtr<T>, *mut T);
@@ -681,10 +613,10 @@ impl<T> PAtomicPtr<T> {
             equal(self.id(), old(perm).view().patomic),
         ensures
             equal(old(perm).view().value, ret),
-            perm.view().patomic == old(perm).view().patomic,
-            perm.view().value@.addr == (old(perm).view().value@.addr & n),
-            perm.view().value@.provenance == old(perm).view().value@.provenance,
-            perm.view().value@.metadata == old(perm).view().value@.metadata,
+            final(perm).view().patomic == old(perm).view().patomic,
+            final(perm).view().value@.addr == (old(perm).view().value@.addr & n),
+            final(perm).view().value@.provenance == old(perm).view().value@.provenance,
+            final(perm).view().value@.metadata == old(perm).view().value@.metadata,
         opens_invariants none
         no_unwind
     {
@@ -701,10 +633,10 @@ impl<T> PAtomicPtr<T> {
             equal(self.id(), old(perm).view().patomic),
         ensures
             equal(old(perm).view().value, ret),
-            perm.view().patomic == old(perm).view().patomic,
-            perm.view().value@.addr == (old(perm).view().value@.addr ^ n),
-            perm.view().value@.provenance == old(perm).view().value@.provenance,
-            perm.view().value@.metadata == old(perm).view().value@.metadata,
+            final(perm).view().patomic == old(perm).view().patomic,
+            final(perm).view().value@.addr == (old(perm).view().value@.addr ^ n),
+            final(perm).view().value@.provenance == old(perm).view().value@.provenance,
+            final(perm).view().value@.metadata == old(perm).view().value@.metadata,
         opens_invariants none
         no_unwind
     {
@@ -720,10 +652,10 @@ impl<T> PAtomicPtr<T> {
             equal(self.id(), old(perm).view().patomic),
         ensures
             equal(old(perm).view().value, ret),
-            perm.view().patomic == old(perm).view().patomic,
-            perm.view().value@.addr == (old(perm).view().value@.addr | n),
-            perm.view().value@.provenance == old(perm).view().value@.provenance,
-            perm.view().value@.metadata == old(perm).view().value@.metadata,
+            final(perm).view().patomic == old(perm).view().patomic,
+            final(perm).view().value@.addr == (old(perm).view().value@.addr | n),
+            final(perm).view().value@.provenance == old(perm).view().value@.provenance,
+            final(perm).view().value@.metadata == old(perm).view().value@.metadata,
         opens_invariants none
         no_unwind
     {

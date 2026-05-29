@@ -2,6 +2,14 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+use crate::subcommands::CargoRunPlan;
+
+pub use crate::subcommands::{
+    CARGO_DEFAULT_LIB_METADATA, RUSTC_WRAPPER, VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR,
+    VERUS_DRIVER_ARGS_SEP, VERUS_DRIVER_IS_BUILTIN, VERUS_DRIVER_IS_BUILTIN_MACROS,
+    VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
+};
+
 pub struct MockWorkspace {
     members: Vec<MockPackage>,
 }
@@ -9,9 +17,12 @@ pub struct MockWorkspace {
 pub struct MockPackage {
     name: String,
     version: String,
+    aliases: Vec<String>,
     has_lib: bool,
     bin_names: Vec<String>,
+    example_names: Vec<String>,
     deps: Vec<(DepKind, Option<String>, MockDep)>,
+    features: Vec<String>,
     verus_verify: Option<bool>,
 }
 
@@ -73,12 +84,18 @@ impl MockWorkspace {
         let root = tempfile::tempdir().expect("create temp dir");
 
         let mut member_names = vec![];
+        let mut workspace_aliases = BTreeMap::<String, String>::new();
         for member in self.members {
-            let name = member.name.clone();
-            let package_dir = root.path().join(&name);
+            let package_name = &member.name;
+            member_names.push(package_name.clone());
+            for alias in &member.aliases {
+                if workspace_aliases.insert(alias.clone(), package_name.clone()).is_some() {
+                    panic!("workspace-level alias `{alias}` already exists for `{package_name}`");
+                }
+            }
+            let package_dir = root.path().join(&package_name);
             std::fs::create_dir(&package_dir).expect("create package dir {package_dir:?}");
             member.materialize_in_dir(&package_dir);
-            member_names.push(name);
         }
 
         let mut manifest_lines = vec!["[workspace]".to_owned()];
@@ -95,6 +112,10 @@ impl MockWorkspace {
         for name in &member_names {
             manifest_lines.push(format!("{name} = {{ path = \"{name}\" }}"));
         }
+        for (alias, package) in &workspace_aliases {
+            manifest_lines
+                .push(format!("{alias} = {{ path = \"{package}\", package = \"{package}\" }}"));
+        }
         manifest_lines.push("".to_owned());
 
         manifest_lines.push("[patch.crates-io]".to_owned());
@@ -105,7 +126,7 @@ impl MockWorkspace {
 
         let manifest = root.path().join("Cargo.toml");
         std::fs::write(&manifest, manifest_lines.join("\n"))
-            .expect(&format!("write manifest to {manifest:?}"));
+            .unwrap_or_else(|_| panic!("write manifest to {manifest:?}"));
 
         root
     }
@@ -116,15 +137,23 @@ impl MockPackage {
         MockPackage {
             name: name.to_owned(),
             version: "0.1.0".to_owned(),
+            aliases: vec![],
             has_lib: false,
             bin_names: vec![],
+            example_names: vec![],
             deps: vec![],
+            features: vec![],
             verus_verify: None,
         }
     }
 
     pub fn version(mut self, version: &str) -> Self {
         self.version = version.to_owned();
+        self
+    }
+
+    pub fn aliases(mut self, names: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        self.aliases.extend(names.into_iter().map(|n| n.as_ref().to_owned()));
         self
     }
 
@@ -135,6 +164,16 @@ impl MockPackage {
 
     pub fn bin(mut self, name: &str) -> Self {
         self.bin_names.push(name.to_owned());
+        self
+    }
+
+    pub fn example(mut self, name: &str) -> Self {
+        self.example_names.push(name.to_owned());
+        self
+    }
+
+    pub fn features(mut self, names: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        self.features.extend(names.into_iter().map(|n| n.as_ref().to_owned()));
         self
     }
 
@@ -242,6 +281,12 @@ impl MockPackage {
             manifest_lines.push("".to_owned());
         }
 
+        if !self.features.is_empty() {
+            manifest_lines.push("[features]".to_owned());
+            manifest_lines.extend(self.features);
+            manifest_lines.push("".to_owned());
+        }
+
         if let Some(verus_verify) = self.verus_verify {
             manifest_lines.push("[package.metadata.verus]".to_owned());
             manifest_lines.push(format!("verify = {verus_verify}"));
@@ -250,7 +295,7 @@ impl MockPackage {
 
         let manifest = root.join("Cargo.toml");
         std::fs::write(&manifest, manifest_lines.join("\n"))
-            .expect(&format!("write manifest to {manifest:?}"));
+            .unwrap_or_else(|_| panic!("write manifest to {manifest:?}"));
 
         if !self.has_lib || self.bin_names.is_empty() {
             let src = root.join("src");
@@ -258,13 +303,70 @@ impl MockPackage {
 
             if self.has_lib {
                 let lib = src.join("lib.rs");
-                std::fs::write(&lib, "").expect(&format!("write {lib:?}"));
+                std::fs::write(&lib, "").unwrap_or_else(|_| panic!("write {lib:?}"));
             }
 
             for name in self.bin_names {
                 let bin = src.join(format!("{name}.rs"));
-                std::fs::write(&bin, "").expect(&format!("write {bin:?}"));
+                std::fs::write(&bin, "").unwrap_or_else(|_| panic!("write {bin:?}"));
             }
         }
+
+        if !self.example_names.is_empty() {
+            let examples = root.join("examples");
+            fs::create_dir(&examples).expect("create dir {examples}");
+
+            for name in self.example_names {
+                let example = examples.join(format!("{name}.rs"));
+                std::fs::write(&example, "fn main() {}")
+                    .unwrap_or_else(|_| panic!("write {example:?}"));
+            }
+        }
+    }
+}
+
+impl CargoRunPlan {
+    pub fn assert_env_has(&self, key: &str) {
+        assert!(self.env.contains_key(key), "Cargo env MUST have key {}", key);
+    }
+
+    pub fn assert_env_sets(&self, key: &str, value: &str) {
+        assert_eq!(
+            self.env.get(key).map(String::as_str),
+            Some(value),
+            "Cargo env MUST have entry {} = {}",
+            key,
+            value,
+        );
+    }
+
+    pub fn assert_env_sets_key_prefix(&self, key_prefix: &str, value: &str) {
+        assert!(
+            self.env.iter().any(|(k, v)| k.starts_with(key_prefix) && v == value),
+            "Cargo env MUST have entry with key prefix {}* = {}",
+            key_prefix,
+            value,
+        );
+    }
+
+    pub fn assert_env_has_no_key_prefix(&self, key_prefix: &str) {
+        assert!(
+            !self.env.keys().any(|k| k.starts_with(key_prefix)),
+            "Cargo env MUST NOT have a key with prefix {}*",
+            key_prefix,
+        );
+    }
+
+    pub fn parse_driver_args(&self, key: &str) -> Vec<&str> {
+        let encoded_args =
+            self.env.get(key).unwrap_or_else(|| panic!("retrieve env var `{}`", key));
+        encoded_args.split(VERUS_DRIVER_ARGS_SEP).collect()
+    }
+
+    pub fn parse_driver_args_for_key_prefix(&self, key_prefix: &str) -> Vec<&str> {
+        let Some((_, value)) = self.env.iter().find(|(k, _)| k.starts_with(key_prefix)) else {
+            return vec![];
+        };
+        value.split(VERUS_DRIVER_ARGS_SEP).collect()
     }
 }

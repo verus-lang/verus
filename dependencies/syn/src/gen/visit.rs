@@ -2150,8 +2150,14 @@ where
         skip!((* * it).1);
     }
     v.visit_expr(&*node.expr);
+    if let Some(it) = &node.invariant_except_break {
+        v.visit_invariant_except_break(it);
+    }
     if let Some(it) = &node.invariant {
         v.visit_invariant(it);
+    }
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
     }
     if let Some(it) = &node.decreases {
         v.visit_decreases(it);
@@ -3385,6 +3391,7 @@ where
     }
     skip!(node.defaultness);
     skip!(node.unsafety);
+    skip!(node.constness);
     skip!(node.impl_token);
     v.visit_generics(&node.generics);
     if let Some(it) = &node.trait_ {
@@ -3490,6 +3497,7 @@ where
         v.visit_attribute(it);
     }
     v.visit_visibility(&node.vis);
+    skip!(node.constness);
     skip!(node.unsafety);
     skip!(node.auto_token);
     if let Some(it) = &node.restriction {
@@ -5186,6 +5194,10 @@ where
     if let Some(it) = &node.follows {
         skip!((it).0);
         full!(v.visit_pat(& (it).1));
+    }
+    for el in Punctuated::pairs(&node.erased_fields) {
+        let it = el.value();
+        v.visit_field_value(it);
     }
 }
 pub fn visit_with_spec_on_fn<'ast, V>(v: &mut V, node: &'ast crate::WithSpecOnFn)

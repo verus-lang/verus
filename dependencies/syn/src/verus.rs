@@ -1,6 +1,9 @@
 use super::*;
 use crate::parse::ParseStream;
 use crate::punctuated::Punctuated;
+use alloc::boxed::Box;
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// The parsing context, used to support context-sensitive grammars.
 ///
@@ -266,6 +269,7 @@ ast_struct! {
         pub inputs: Punctuated<Expr, Token![,]>,
         pub outputs: Option<(Token![=>], Pat)>,
         pub follows: Option<(Token![|=], Pat)>,
+        pub erased_fields: Punctuated<FieldValue, Token![,]>, // only supported if applied to a struct construction expression
     }
 }
 
@@ -725,7 +729,14 @@ pub mod parsing {
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
             let mut exprs = Punctuated::new();
             while !input.is_empty() && Self::is_next_condition_valid(ctx, input) {
-                let expr = Expr::parse_without_eager_brace(input)?;
+                let inner_attrs = input.call(Attribute::parse_inner)?;
+                let mut expr = Expr::parse_without_eager_brace(input)?;
+                if !inner_attrs.is_empty() {
+                    let mut existing_attrs = expr.replace_attrs(Vec::new());
+                    let mut attrs = inner_attrs;
+                    attrs.append(&mut existing_attrs);
+                    expr.replace_attrs(attrs);
+                }
                 exprs.push(expr);
                 if !input.peek(Token![,]) {
                     break;
@@ -800,6 +811,41 @@ pub mod parsing {
                 || input.peek2(Token![when])
                 || input.peek2(Token![no_unwind])
                 || input.peek2(Token![opens_invariants])
+        }
+
+        /// Remove top-level attributes: `#![trigger ...]`, `#![all_triggers]`, and `#![auto]`.
+        ///
+        /// Those currently attach to the first clause as inner attributes,
+        /// even though semantically they apply to the entire `ensures` group.
+        fn remove_top_level_attrs(&mut self) -> Vec<Attribute> {
+            let Some(first_clause) = self.exprs.first_mut() else {
+                return Vec::new();
+            };
+
+            fn is_top_level_trigger_attr(attr: &Attribute) -> bool {
+                if !matches!(attr.style, AttrStyle::Inner(_)) {
+                    return false;
+                }
+                if attr.path().segments.len() != 1 {
+                    return false;
+                }
+                match attr.path().segments[0].ident.to_string().as_ref() {
+                    "trigger" | "all_triggers" | "auto" => true,
+                    _ => false,
+                }
+            }
+
+            let mut top_level_attrs = Vec::new();
+            let mut remaining_attrs = Vec::new();
+            for attr in first_clause.replace_attrs(Vec::new()) {
+                if is_top_level_trigger_attr(&attr) {
+                    top_level_attrs.push(attr);
+                } else {
+                    remaining_attrs.push(attr);
+                }
+            }
+            first_clause.replace_attrs(remaining_attrs);
+            top_level_attrs
         }
     }
 
@@ -891,13 +937,14 @@ pub mod parsing {
     impl Ensures {
         /// Parse an `ensures` clause group in a given context.
         pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
-            let mut attrs = Vec::new();
             let token = input.parse()?;
-            attr::parsing::parse_inner(input, &mut attrs)?;
+            let mut exprs = Specification::parse_in(ctx, input)?;
+            // Hoist attributes that semantically belong to the entire group.
+            let top_level_attrs = exprs.remove_top_level_attrs();
             Ok(Ensures {
-                attrs,
+                attrs: top_level_attrs,
                 token,
-                exprs: Specification::parse_in(ctx, input)?,
+                exprs,
             })
         }
 
@@ -2637,9 +2684,22 @@ impl parse::Parse for WithSpecOnExpr {
     fn parse(input: ParseStream) -> Result<Self> {
         let with = input.parse()?;
         let mut inputs = Punctuated::new();
-        while !input.peek(Token![=>]) && !input.peek(Token![|=]) {
-            let expr = input.parse()?;
-            inputs.push(expr);
+        let mut erased_fields = Punctuated::new();
+        while !input.is_empty() && !input.peek(Token![=>]) && !input.peek(Token![|=]) {
+            if input.peek2(Token![:]) && !input.peek2(Token![::]) {
+                let field_value: FieldValue = input.parse()?;
+                if field_value.colon_token.is_none() || !field_value.member.is_named() {
+                    return Err(input.error(
+                        "ghost/tracked struct fields should be of the form `$ident: $expr`",
+                    ));
+                }
+                if !field_value.attrs.is_empty() {
+                    return Err(input.error("ghost/tracked struct fields cannot have attributes"));
+                }
+                erased_fields.push(field_value);
+            } else {
+                inputs.push(input.parse()?);
+            }
             if !input.peek(Token![,]) {
                 break;
             }
@@ -2665,11 +2725,144 @@ impl parse::Parse for WithSpecOnExpr {
         } else {
             None
         };
+        let applied_to_struct = !erased_fields.is_empty();
+        let applied_to_function = outputs.is_some() || !inputs.is_empty();
+        if applied_to_struct && applied_to_function {
+            return Err(input.error(
+                "Misuse of `with`: cannot have both ghost/tracked fields and function inputs/outputs",
+            ));
+        }
         Ok(WithSpecOnExpr {
             with,
             inputs,
             outputs,
             follows,
+            erased_fields,
         })
     }
+}
+
+pub fn rejoin_tokens(stream: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    use proc_macro2::{Group, Punct, Spacing::*, Span, TokenTree};
+    let mut tokens: Vec<TokenTree> = stream.into_iter().collect();
+    let pun = |t: &TokenTree| match t {
+        TokenTree::Punct(p) => Some((p.as_char(), p.spacing(), p.span())),
+        _ => None,
+    };
+    let ident = |t: &TokenTree| match t {
+        TokenTree::Ident(p) => Some((p.to_string(), p.span())),
+        _ => None,
+    };
+    let adjacent = |s1: Span, s2: Span| {
+        let l1 = s1.end();
+        let l2 = s2.start();
+        s1.local_file() == s2.local_file() && l1.eq(&l2)
+    };
+    fn mk_joint_punct(t: Option<(char, proc_macro2::Spacing, Span)>) -> TokenTree {
+        let (op, _, span) = t.unwrap();
+        let mut punct = Punct::new(op, Joint);
+        punct.set_span(span);
+        TokenTree::Punct(punct)
+    }
+    let mut i = 0;
+    let mut till = if tokens.len() >= 2 {
+        tokens.len() - 2
+    } else {
+        0
+    };
+    while i < till {
+        let t0 = pun(&tokens[i]);
+        let t1_ident = ident(&tokens[i + 1]);
+        match (t0, t1_ident.as_ref().map(|(a, b)| (a.as_str(), *b))) {
+            (Some(('!', Alone, s1)), Some(("is", s2))) => {
+                if adjacent(s1, s2) {
+                    tokens[i] = TokenTree::Ident(proc_macro2::Ident::new(
+                        "isnt",
+                        s1.join(s2).unwrap_or(s1),
+                    ));
+                    tokens.remove(i + 1);
+                    i += 1;
+                    till -= 1;
+                    continue;
+                }
+            }
+            (Some(('!', Alone, s1)), Some(("has", s2))) => {
+                if adjacent(s1, s2) {
+                    tokens[i] = TokenTree::Ident(proc_macro2::Ident::new(
+                        "hasnt",
+                        s1.join(s2).unwrap_or(s1),
+                    ));
+                    tokens.remove(i + 1);
+                    i += 1;
+                    till -= 1;
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        let t1_pun = pun(&tokens[i + 1]);
+        let t2 = pun(&tokens[i + 2]);
+        let t3 = if i + 3 < tokens.len() {
+            pun(&tokens[i + 3])
+        } else {
+            None
+        };
+        match (t0, t1_pun, t2, t3) {
+            (
+                Some(('<', Joint, _)),
+                Some(('=', Alone, s1)),
+                Some(('=', Joint, s2)),
+                Some(('>', Alone, _)),
+            )
+            | (Some(('=', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
+            | (Some(('!', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
+            | (Some(('=', Joint, _)), Some(('=', Alone, s1)), Some(('>', Alone, s2)), _)
+            | (Some(('<', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
+            | (Some(('&', Joint, _)), Some(('&', Alone, s1)), Some(('&', Alone, s2)), _)
+            | (Some(('|', Joint, _)), Some(('|', Alone, s1)), Some(('|', Alone, s2)), _) => {
+                if adjacent(s1, s2) {
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
+                }
+            }
+            (Some(('=', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _)
+            | (Some(('!', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _) => {
+                if adjacent(s1, s2) {
+                    tokens[i] = mk_joint_punct(t0);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
+                }
+            }
+            (
+                Some(('=', Alone, _)),
+                Some(('~', Alone, _)),
+                Some(('~', Alone, s2)),
+                Some(('=', Alone, s3)),
+            )
+            | (
+                Some(('!', Alone, _)),
+                Some(('~', Alone, _)),
+                Some(('~', Alone, s2)),
+                Some(('=', Alone, s3)),
+            ) => {
+                if adjacent(s2, s3) {
+                    tokens[i] = mk_joint_punct(t0);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
+                    tokens[i + 2] = mk_joint_punct(t2);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    for tt in &mut tokens {
+        match tt {
+            TokenTree::Group(group) => {
+                let mut new_group = Group::new(group.delimiter(), rejoin_tokens(group.stream()));
+                new_group.set_span(group.span());
+                *group = new_group;
+            }
+            _ => {}
+        }
+    }
+    use std::iter::FromIterator;
+    proc_macro2::TokenStream::from_iter(tokens.into_iter())
 }

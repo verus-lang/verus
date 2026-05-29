@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2026-02-15-0106",
+  "version": "0.0.0-2026-05-24-0157",
   "types": [
     {
       "ident": "Abi",
@@ -1881,9 +1881,19 @@
             "syn": "Expr"
           }
         },
+        "invariant_except_break": {
+          "option": {
+            "syn": "InvariantExceptBreak"
+          }
+        },
         "invariant": {
           "option": {
             "syn": "Invariant"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
           }
         },
         "decreases": {
@@ -4211,6 +4221,11 @@
             "token": "Unsafe"
           }
         },
+        "constness": {
+          "option": {
+            "token": "Const"
+          }
+        },
         "impl_token": {
           "token": "Impl"
         },
@@ -4448,6 +4463,11 @@
         },
         "vis": {
           "syn": "Visibility"
+        },
+        "constness": {
+          "option": {
+            "token": "Const"
+          }
         },
         "unsafety": {
           "option": {
@@ -7631,6 +7651,14 @@
                 "syn": "Pat"
               }
             ]
+          }
+        },
+        "erased_fields": {
+          "punctuated": {
+            "element": {
+              "syn": "FieldValue"
+            },
+            "punct": "Comma"
           }
         }
       }

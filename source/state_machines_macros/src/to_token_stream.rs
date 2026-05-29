@@ -67,6 +67,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
     }
 
     let final_code = quote! {
+        #[cfg_attr(verus_keep_ghost, verifier::deprecated_postcondition_mut_ref_style(true))]
         #[allow(unused_parens)]
         pub mod #sm_name {
             use super::*;
@@ -1111,12 +1112,14 @@ fn output_other_fns(
         let self_ty = get_self_ty(&bundle.sm);
         impl_stream.extend(quote_vstd! { vstd =>
             #[cfg(verus_keep_ghost_body)]
-            #[verifier::custom_req_err(#error_msg)] /* vattr */
             #[verifier::external_body] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::proof]
             fn #lemma_msg_ident(s: #self_ty) {
-                #vstd::prelude::requires(s.#inv_ident());
+                #vstd::prelude::requires(
+                    #[verifier::custom_err(#error_msg)] /* vattr */
+                    s.#inv_ident(),
+                );
                 #vstd::prelude::ensures(s.#inv_ident());
             }
         });

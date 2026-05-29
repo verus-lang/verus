@@ -70,5 +70,5 @@ test_verify_one_file! {
         proof fn test() {
             assert(0real <= 1int <= 2real);
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: chained inequalities require all elements to have the same type (all integers or all reals)")
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: chained inequalities require all elements to have the same type")
 }

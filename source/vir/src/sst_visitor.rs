@@ -26,9 +26,24 @@ pub(crate) trait Scoper {
 pub(crate) struct NoScoper;
 impl Scoper for NoScoper {}
 
-pub type VisitorScopeMap = ScopeMap<VarIdent, bool>;
+pub enum BndKind {
+    Let,
+    Quant,
+    Lambda,
+    Choose,
+    /// Used by a pass in triggers.rs to distinguish trigger variables of interest
+    /// that are bound outside the walked expression.
+    OuterTrigger,
+}
 
-impl Scoper for ScopeMap<VarIdent, bool> {
+pub(crate) struct ScopeEntry {
+    /// Is this a Quant, Choose, or Let?
+    pub bnd_kind: BndKind,
+}
+
+pub type VisitorScopeMap = ScopeMap<VarIdent, ScopeEntry>;
+
+impl Scoper for ScopeMap<VarIdent, ScopeEntry> {
     fn push_scope(&mut self) {
         self.push_scope(true);
     }
@@ -38,17 +53,20 @@ impl Scoper for ScopeMap<VarIdent, bool> {
     }
 
     fn insert_binding_typ(&mut self, binder: &VarBinder<Typ>, bnd_source: &Bnd) {
-        let is_triggered = match bnd_source.x {
-            BndX::Quant(..) | BndX::Choose(..) => true,
-            BndX::Lambda(..) => false,
+        let bnd_kind = match bnd_source.x {
+            BndX::Quant(..) => BndKind::Quant,
+            BndX::Choose(..) => BndKind::Choose,
+            BndX::Lambda(..) => BndKind::Lambda,
             BndX::Let(..) => unreachable!(),
         };
-        let _ = self.insert(binder.name.clone(), is_triggered);
+        let entry = ScopeEntry { bnd_kind: bnd_kind };
+        let _ = self.insert(binder.name.clone(), entry);
     }
 
     fn insert_binding_exp(&mut self, binder: &VarBinder<Exp>, bnd_source: &Bnd) {
         assert!(matches!(bnd_source.x, BndX::Let(..)));
-        let _ = self.insert(binder.name.clone(), true);
+        let entry = ScopeEntry { bnd_kind: BndKind::Let };
+        let _ = self.insert(binder.name.clone(), entry);
     }
 }
 
@@ -297,10 +315,16 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         let t = self.visit_typ(t)?;
                         R::ret(|| UnaryOpr::HasResolved(R::get(t)))
                     }
+                    UnaryOpr::ToDyn(t) => {
+                        let t = self.visit_typ(t)?;
+                        R::ret(|| UnaryOpr::ToDyn(R::get(t)))
+                    }
                     UnaryOpr::IsVariant { .. }
                     | UnaryOpr::Field { .. }
                     | UnaryOpr::IntegerTypeBound(..)
                     | UnaryOpr::CustomErr(..)
+                    | UnaryOpr::AutoDecreases
+                    | UnaryOpr::AutoLoopEnsures
                     | UnaryOpr::ProofNote(..) => R::ret(|| op.clone()),
                 }?;
                 R::ret(|| exp_new(ExpX::UnaryOpr(R::get(op), R::get(e1))))
@@ -560,7 +584,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     name: par.x.name.clone(),
                     typ: R::get(t),
                     mode: par.x.mode,
-                    is_mut: par.x.is_mut,
                     purpose: par.x.purpose,
                 },
             )
@@ -641,8 +664,9 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             let es = self.visit_exps(es)?;
             R::push(&mut inv_masks, R::ret(|| R::get_vec_a(es))?);
         }
-        let unwind_condition =
+        let unwind_condition: <R as Returner>::Opt<Arc<SpannedTyped<ExpX>>> =
             R::map_opt(&func_decl.unwind_condition, &mut |exp| self.visit_exp(exp))?;
+
         R::ret(|| FuncDeclSst {
             req_inv_pars: R::get_vec_a(req_inv_pars),
             ens_pars: R::get_vec_a(ens_pars),
@@ -721,6 +745,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let recommends_check =
             R::map_opt(&f.x.recommends_check, &mut |c| self.visit_func_check(c))?;
         let safe_api_check = R::map_opt(&f.x.safe_api_check, &mut |c| self.visit_func_check(c))?;
+        let async_ret = R::map_opt(&f.x.async_ret, &mut |c| self.visit_par(c))?;
         R::ret(|| {
             Spanned::new(
                 f.span.clone(),
@@ -744,6 +769,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exec_proof_check: R::get_opt(exec_proof_check).map(|c| Arc::new(c)),
                     recommends_check: R::get_opt(recommends_check).map(|c| Arc::new(c)),
                     safe_api_check: R::get_opt(safe_api_check).map(|c| Arc::new(c)),
+                    async_ret: R::get_opt(async_ret),
                 },
             )
         })
@@ -822,7 +848,6 @@ where
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn stm_visitor_dfs<T, F>(stm: &Stm, f: &mut F) -> VisitorControlFlow<T>
 where
     F: FnMut(&Stm) -> VisitorControlFlow<T>,
@@ -831,6 +856,20 @@ where
     match visitor.visit_stm(stm) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(val) => VisitorControlFlow::Stop(val),
+    }
+}
+
+pub(crate) fn stm_visitor_check<E, MF>(stm: &Stm, mf: &mut MF) -> Result<(), E>
+where
+    MF: FnMut(&Stm) -> Result<(), E>,
+{
+    match stm_visitor_dfs(stm, &mut |stm| match mf(stm) {
+        Ok(()) => VisitorControlFlow::Recurse,
+        Err(e) => VisitorControlFlow::Stop(e),
+    }) {
+        VisitorControlFlow::Recurse => Ok(()),
+        VisitorControlFlow::Return => unreachable!(),
+        VisitorControlFlow::Stop(e) => Err(e),
     }
 }
 

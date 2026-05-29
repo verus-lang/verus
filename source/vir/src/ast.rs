@@ -21,11 +21,27 @@ pub type VirErrAs = MessageAs;
 pub type Ident = Arc<String>;
 pub type Idents = Arc<Vec<Ident>>;
 
+/// Crate name, used at the beginning of a Path
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum CrateId {
+    // Verus-generated internal paths with no crate
+    Internal,
+    // Verus treats the Rust core crate specially
+    Core,
+    // Verus treats the Rust alloc crate specially
+    Alloc,
+    // Verus treats the vstd crate specially
+    Vstd,
+    // All other crates have Rust's stable crate id and a user-friendly name
+    // Note: to make sorting via PartialOrd/Ord more stable, the u64 id goes after the Ident
+    Id(Ident, u64),
+}
+
 /// A fully-qualified name, such as a module name, function name, or datatype name
 pub type Path = Arc<PathX>;
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PathX {
-    pub krate: Option<Ident>, // None for local crate
+    pub krate: CrateId,
     pub segments: Idents,
 }
 
@@ -198,9 +214,6 @@ pub enum IntRange {
 pub enum TypDecoration {
     /// &T
     Ref,
-    /// &mut T
-    /// For new-mut-ref, don't use this; use TypX::MutRef instead
-    MutRef,
     /// Box<T>
     /// This is complicated due to the Allocator type argument; see `TypDecorationArg`.
     Box,
@@ -267,7 +280,7 @@ pub enum TypX {
     /// `spec_fn` type (t1, ..., tn) -> t0.
     SpecFn(Typs, Typ),
     /// Executable function types (with a requires and ensures)
-    AnonymousClosure(Typs, Typ, usize),
+    AnonymousClosure(Typs, Typ, ClosureKind, usize),
     /// Corresponds to Rust's FnDef type
     /// Typs are generic type args
     /// If Fun is a trait function, then the Option<Fun> has the statically resolved
@@ -338,10 +351,6 @@ pub enum TriggerAnnotation {
 /// Operations on Ghost and Tracked
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, Hash, PartialEq, Eq, ToDebugSNode)]
 pub enum ModeCoercion {
-    /// Mutable borrows (Ghost::borrow_mut and Tracked::borrow_mut) are treated specially by
-    /// the mode checker when checking assignments.
-    /// (Only used outside new-mut-ref)
-    BorrowMut,
     /// This operation behaves like a datatype constructor with a mode annotation
     /// `from_mode` on its field.
     /// (e.g., Tracked(...) is proof -> exec, Ghost(...) is spec -> exec.
@@ -373,6 +382,28 @@ pub enum ArrayKind {
     Slice,
 }
 
+/// IEEE floating point unary ops
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum IeeeFloatUnaryOp {
+    /// Cast to integer: rounding mode RTZ
+    /// Cast to float: rounding mode RNE
+    /// Cast to real: no rounding
+    Cast,
+    Neg,
+    Floor,
+    Ceil,
+    Round,
+    RoundTiesEven,
+    Trunc,
+    IsNormal,
+    IsSubnormal,
+    IsZero,
+    IsInfinite,
+    IsNaN,
+    IsNegative,
+    IsPositive,
+}
+
 /// Primitive unary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -402,6 +433,8 @@ pub enum UnaryOp {
     RealToInt,
     /// Return raw bits of a float as an int
     FloatToBits,
+    /// IEEE unary floating point ops
+    IeeeFloat(IeeeFloatUnaryOp),
     /// Operations that coerce from/to verus_builtin::Ghost or verus_builtin::Tracked
     CoerceMode {
         op_mode: Mode,
@@ -409,8 +442,6 @@ pub enum UnaryOp {
         to_mode: Mode,
         kind: ModeCoercion,
     },
-    /// Coerce from concrete type to dyn T
-    ToDyn,
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
@@ -425,8 +456,6 @@ pub enum UnaryOp {
     HeightTrigger,
     /// Used only for handling verus_builtin::strslice_len
     StrLen,
-    /// Used only for handling verus_builtin::strslice_is_ascii
-    StrIsAscii,
     /// Given an exec/proof expression used to construct a loop iterator,
     /// try to infer a pure specification for the loop iterator.
     /// Evaluate to Some(spec) if successful, None otherwise.
@@ -488,6 +517,14 @@ pub enum IntegerTypeBoundKind {
     ArchWordBits,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub struct ProofNoteLabel {
+    /// The text to show in error messages.
+    pub text: Arc<String>,
+    /// Whether this label acts as a custom error message.
+    pub is_custom_err: bool,
+}
+
 /// More complex unary operations (requires Clone rather than Copy)
 /// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
@@ -512,13 +549,21 @@ pub enum UnaryOpr {
     IntegerTypeBound(IntegerTypeBoundKind, Mode),
     /// Custom diagnostic message
     CustomErr(Arc<String>),
+    /// Marker for expressions with #[verus::internal(auto_decreases)] attribute
+    /// Used to filter out auto-generated decreases-related invariants
+    AutoDecreases,
+    /// Marker for expressions with #[verus::internal(auto_loop_ensures)] attribute
+    /// Used to filter out auto-generated ensures clauses on for-loops
+    AutoLoopEnsures,
     /// Label from a `proof_note` attribute.
-    ProofNote(Arc<String>),
+    ProofNote(ProofNoteLabel),
     /// Predicate over any type that indicates its mutable references has resolved.
     /// For &mut T this says the prophetic value == the current value.
     /// For primitive types this is trivially true.
     /// For datatypes this is recursive in the natural way.
     HasResolved(Typ),
+    /// Coerce from concrete type to `dyn T`. Typ arg is the Self type
+    ToDyn(Typ),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -629,6 +674,17 @@ pub enum ChainedOp {
     MultiEq,
 }
 
+/// IEEE floating point binary ops (rounding mode RNE)
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum IeeeFloatBinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Eq,
+    InEq(InequalityOp),
+}
+
 /// Primitive binary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 /// Note that all integer operations are on mathematic integers (IntRange::Int),
@@ -660,6 +716,8 @@ pub enum BinaryOp {
     RealArith(RealArithOp),
     /// Bit Vector Operators
     Bitwise(BitwiseOp, BitshiftBehavior),
+    /// IEEE floating point binary ops (rounding mode RNE)
+    IeeeFloat(IeeeFloatBinaryOp),
     /// Used only for handling verus_builtin::strslice_get_char
     StrGetChar,
     /// Index into an array or slice, no bounds-checking.
@@ -892,6 +950,15 @@ pub enum ImplPath {
 pub type ImplPaths = Arc<Vec<ImplPath>>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct CallTargetAttrs {
+    pub autospec: AutospecUsage,
+    /// If true, represents an associated const var
+    pub const_var: bool,
+    /// If the expected Fun is undeclared, enable replacing Fun with AssumeExternal
+    pub assume_external_allowed: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTargetKind {
     /// Statically known function
     Static,
@@ -908,12 +975,14 @@ pub enum CallTargetKind {
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
     /// Regular function, passing some type arguments
-    /// If the final bool is true, represents an associated const var
-    Fun(CallTargetKind, Fun, Typs, ImplPaths, AutospecUsage, bool),
+    Fun(CallTargetKind, Fun, Typs, ImplPaths, CallTargetAttrs),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
     BuiltinSpecFun(BuiltinSpecFun, Typs, ImplPaths),
+    /// If enabled, unsoundly allow calls to exec functions with no specs,
+    /// and treat them as requires true, ensures true.
+    AssumeExternal,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq, Hash)]
@@ -969,6 +1038,13 @@ pub struct CtorUpdateTail {
     pub taken_fields: Arc<Vec<(Ident, UnfinalizedReadKind)>>,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, Hash, PartialEq, Eq)]
+pub enum ClosureKind {
+    Fn,
+    FnMut,
+    FnOnce,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -978,9 +1054,8 @@ pub enum ExprX {
     /// Constant
     Const(Constant),
     /// Local variable as a right-hand side
+    /// Note: mostly unused; use PlaceX::Local instead.
     Var(VarIdent),
-    /// Local variable as a left-hand side
-    VarLoc(VarIdent),
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(VarIdent, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
@@ -989,9 +1064,6 @@ pub enum ExprX {
     ConstVar(Fun, AutospecUsage),
     /// Use of a static variable.
     StaticVar(Fun),
-    /// Location ("l-value") used for mutable references and assignments.
-    /// Not used when new-mut-refs is enabled.
-    Loc(Expr),
     /// Call to a function passing some expression arguments
     /// The optional expression is to be executed *after* the arguments but *before* the call.
     /// This is used for two-phase borrows.
@@ -1041,11 +1113,6 @@ pub enum ExprX {
     Choose { params: VarBinders<Typ>, cond: Expr, body: Expr },
     /// Manually supply triggers for body of quantifier
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
-    /// Assign to local variable
-    /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
-    ///
-    /// Not used when new-mut-refs is enabled.
-    Assign { lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Assign to the given place.
     ///
     /// If `resolve` is set, then we also emit
@@ -1058,7 +1125,7 @@ pub enum ExprX {
     /// lower to a Call node instead.)
     ///
     /// Used only when new-mut-refs is enabled.
-    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp>, resolve: Option<Typ> },
+    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp>, typ: Typ, resolve: bool },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
     /// Reveal a string
@@ -1128,6 +1195,8 @@ pub enum ExprX {
     ///
     /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
+    /// Borrow from a tracked place to get &mut Tracked<T>
+    BorrowMutTracked(Place),
     /// In exec/tracked code ExprX::BorrowMut(PlaceX::DerefMut(place))
     /// (with bool true = TwoPhaseBorrowMut)
     /// In spec code, it's just a spec snapshot of the place without a borrow
@@ -1147,6 +1216,13 @@ pub enum ExprX {
     /// and well-formedness checks, but otherwise has no meaning. The `Old` node is
     /// ignored after these checks are complete.
     Old(Expr),
+    /// Async await
+    Await(Expr),
+    /// Used to check that match guards don't mutate the scrutinee, these are used between
+    /// ast_simplify and ast_to_sst
+    MatchGuardFreeze(Place, Expr),
+    /// Turn tracked &A into &B where B has A as a field
+    ShrRefStructWrap(Expr, Expr, Typ, Typ, Ident, Ident),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
@@ -1195,56 +1271,33 @@ pub enum ModeWrapperMode {
 /// A `Place` represents (the computation of) a place that can be read from,
 /// moved from, or mutated. Like ordinary Exprs, the evaluation of a Place expression
 /// can have arbitrary side-effects.
+/// The evaluation order is a bit complicated; see place_preconditions.rs.
 ///
 /// A `Place` tree is always a sequence of modifiers that terminates in either a Local
 /// or a Temporary. Note that there are no modifier nodes for dereferencing a box or dereferencing
 /// a shared reference. These are implicit.
 ///
-/// ### Evaluation order and side-effects (more than you wanted to know)
+/// The type of a place node should be correct, including decoration, and should NOT account
+/// for the implicit dereferences that might be applied on top.
 ///
-/// A Place expression can have arbitrary side-effects, INCLUDING modifying the place that
-/// is being referred to. As a result, we have to be very careful about evaluation order.
-/// In general, you evaluate the "place" first, then read/write whatever from the place.
-/// That means if you write something like `a[{ a = b; i }]` this is equivalent to `a = b; a[i]`.
+/// Example: Suppose x is a local of type `Box<(&T, &T)>` and the expression `*(*x).0`.
+/// Conceptually, this would be:
 ///
-/// Things get more complicated when dealing with bounds-checks.
-/// Consider: `a[i][{ a = b; j }]`. In this expression, we bounds-check `a[i]` first, then
-/// evaluate the second index. Does that mean the `a = b` assignment could invalidate the
-/// bounds-check that was performed previously?
-///  - If `a` is an array then no, because the length of the array is fixed
-///  - If `a` is a slice then yes, so rustc checks for this case and disallows it.
-///    (See [https://doc.rust-lang.org/1.93.0/nightly-rustc/rustc_middle/mir/enum.FakeReadCause.html#variant.ForIndex])
-/// Either way this is fine for us; either we don't have to worry about it or the bounds-check
-/// is unaffected by the assignment.
+/// ```
+/// ImmutableDeref(typ = T,
+///    Field("0", typ = &T,
+///        BoxDeref(typ = (&T, &T),
+///            Local("x", typ = Box<(&T, &T)>)
+/// )))
+/// ```
 ///
-/// What about unions? In Verus, we naturally have a precondition that a union access, but
-/// in Rust there's no actual check (except in the Abstract Machine state to determine UB).
-/// Anyway, despite the fact that union fields have a "precondition",
-/// there's no analogous check like there is for slice indexing.
-/// Thus, Rust's borrow-checker accepts this: `a.union_field[{a = b}]`
-/// and reading this is non-UB provided `b.union_field` is a valid union field read.
-/// Counter-intuitively, it doesn't even matter if `a.union_field` is valid _before_ the assignment,
-/// since that memory location isn't actually read from.
-/// Note, though, that the ordering of the bounds-check and the ordering of the field access
-/// depends on whether the index is for an array or slice (since for the slice, we need to do
-/// the field access to get the length).
+/// Since box and immutable deref are implicit, the "real" representation is:
 ///
-/// To summarize, the evaluation order for a place expression with only array accesses:
-///   local.foo[e1].bar[e2]
-/// Would be:
-///   - evaluate e1
-///   - bounds-check e1
-///   - evaluate e2
-///   - bounds-check e2
-///   - check all field accesses are safe
-/// However, if any of the indices are _slice_ indices, then the relevant field safety checks
-/// need to be moved earlier. (Though, again, index checks actually block subsequent mutations,
-/// so we wouldn't need to do any field safety check more than once.)
-/// Also, the order of the checks doesn't really matter to Verus, as long as both are hard
-/// requirements, but it might matter if we model unwinding.
-///
-/// TODO(new_mut_ref): fix or error on these cases and then document what we actually support
-
+/// ```
+/// Field("0", typ = &T,
+///     Local("x", typ = Box<(&T, &T)>)
+/// )
+/// ```
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
@@ -1331,8 +1384,6 @@ pub struct ParamX {
     pub mode: Mode,
     /// Marked 'mut' at the source level?
     pub user_mut: bool,
-    /// An &mut parameter (only used outside new-mut-ref)
-    pub is_mut: bool,
     /// If the parameter uses a Ghost(x) or Tracked(x) pattern to unwrap the value, this is
     /// the mode of the resulting unwrapped x variable (Spec for Ghost(x), Proof for Tracked(x)).
     /// We also save a copy of the original wrapped name for lifetime_generate
@@ -1419,8 +1470,6 @@ pub struct FunctionAttrsX {
     pub no_auto_trigger: bool,
     /// Specify which places we auto-promote == to =~= when verifying this function
     pub auto_ext_equal: AutoExtEqual,
-    /// Custom error message to display when a pre-condition fails
-    pub custom_req_err: Option<String>,
     /// When used in a ghost context, redirect to a specified spec function
     pub autospec: Option<Fun>,
     /// Verify using bitvector theory
@@ -1460,8 +1509,12 @@ pub struct FunctionAttrsX {
     pub exec_assume_termination: bool,
     /// Whether to allow this function to not terminate
     pub exec_allows_no_decreases_clause: bool,
-    /// Is this only for the new_mut_ref experiment
-    pub ignore_outside_new_mut_ref: bool,
+    /// Is this function `tracked_swap`, which requires special handling
+    pub tracked_swap: bool,
+    /// Is this function `Option::tracked_take`, which requires special handling
+    pub tracked_take_option: bool,
+    /// Whether the function is an async function
+    pub is_async: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1565,6 +1618,7 @@ pub struct FunctionX {
     pub mode: Mode,
     /// Type parameters to generic functions
     /// (for trait methods, the trait parameters come first, then the method parameters)
+    /// REVIEW: for trait methods, maybe we should separate the trait parameters (see fix_missing_trigger_params_fn)
     pub typ_params: Idents,
     /// Type bounds of generic functions
     pub typ_bounds: GenericBounds,
@@ -1609,6 +1663,8 @@ pub struct FunctionX {
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
+    /// The return type of the async function i.e., impl Future<Output>.
+    pub async_ret: Option<Param>,
 }
 
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;
@@ -1624,7 +1680,7 @@ pub struct RevealGroupX {
     pub owning_module: Option<Path>,
     /// If Some(crate_name), this group is revealed by default for crates that import crate_name.
     /// No more than one such group is allowed in each crate.
-    pub broadcast_use_by_default_when_this_crate_is_imported: Option<Ident>,
+    pub broadcast_use_by_default_when_this_crate_is_imported: Option<CrateId>,
     /// All the subgroups or functions included in this group
     pub members: Arc<Vec<Fun>>,
 }

@@ -10,6 +10,11 @@ pub trait ExClone: Sized {
     fn clone(&self) -> Self;
 }
 
+#[verifier::external_trait_specification]
+pub trait ExCopy: Clone {
+    type ExternalTraitSpecificationFor: core::marker::Copy;
+}
+
 /*
 #[verifier::external_fn_specification]
 pub fn ex_clone_clone_from<T: Clone>(a: &mut T, b: &T)

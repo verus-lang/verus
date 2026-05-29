@@ -11,70 +11,12 @@ use std::env;
 use std::process::ExitCode;
 
 use anyhow::Result;
-use clap::Parser;
 
-mod cli;
-mod metadata;
-mod subcommands;
-#[cfg(any(test, feature = "integration-tests"))]
-pub mod test_utils;
+use cargo_verus::{execute_plan, plan_execution};
 
-use crate::{
-    cli::{CargoVerusCli, VerusSubcommand},
-    subcommands::CargoRunConfig,
-};
-
-pub fn main() -> Result<ExitCode> {
-    let normalized_args: Vec<_> = normalize_args(env::args()).collect();
-    let parsed_cli =
-        CargoVerusCli::parse_from(normalized_args.iter().cloned()).clap_trailing_args_hotfix();
-
-    if parsed_cli.has_inadvisable_verus_arg() {
-        return Ok(ExitCode::from(2));
-    }
-
-    let cfg = match parsed_cli.command {
-        VerusSubcommand::New(new_cmd) => {
-            match (new_cmd.bin, new_cmd.lib) {
-                (Some(name), None) => subcommands::create_new_project(&name, true)?,
-                (None, Some(name)) => subcommands::create_new_project(&name, false)?,
-                _ => unreachable!("clap enforces exactly one of --bin/--lib"),
-            }
-            return Ok(ExitCode::SUCCESS);
-        }
-        VerusSubcommand::Verify(options) => CargoRunConfig {
-            subcommand: "build",
-            options,
-            compile_primary: false,
-            verify_deps: true,
-            warn_if_nothing_verified: true,
-        },
-        VerusSubcommand::Focus(options) => CargoRunConfig {
-            subcommand: "build",
-            options,
-            compile_primary: false,
-            verify_deps: false,
-            warn_if_nothing_verified: true,
-        },
-        VerusSubcommand::Build(options) => CargoRunConfig {
-            subcommand: "build",
-            options,
-            compile_primary: true,
-            verify_deps: true,
-            warn_if_nothing_verified: false,
-        },
-        VerusSubcommand::Check(options) => CargoRunConfig {
-            subcommand: "check",
-            options,
-            compile_primary: false,
-            verify_deps: true,
-            warn_if_nothing_verified: true,
-        },
-    };
-
-    subcommands::run_cargo(cfg)
-}
-
-fn normalize_args(args: impl Iterator<Item = String>) -> impl Iterator<Item = String> {
-    args.enumerate().filter(|(i, arg)| *i != 1 || arg != "verus").map(|(_, arg)| arg)
+fn main() -> Result<ExitCode> {
+    let args: Vec<String> = env::args().collect();
+    let plan = plan_execution(None, args.iter().map(String::as_str))?;
+    let exit_code = execute_plan(&plan)?;
+    Ok(exit_code)
 }

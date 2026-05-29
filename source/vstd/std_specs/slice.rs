@@ -1,8 +1,10 @@
 use super::super::prelude::*;
-use super::core::IndexSetTrustedSpec;
-use super::core::TrustedSpecSealed;
+use super::super::slice::SliceIndexSpec;
+use super::core::{IndexSetTrustedSpec, IndexSpec, TrustedSpecSealed};
+use super::iter::IteratorSpec;
 
-use core::slice::Iter;
+use core::ops::{Index, Range};
+use core::slice::{Iter, SliceIndex};
 
 use verus as verus_;
 
@@ -16,7 +18,7 @@ impl<T, const N: usize> IndexSetTrustedSpec<usize> for [T; N] {
     }
 
     open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ === self@.update(index as int, val)
+        new_container@ == self@.update(index as int, val)
     }
 }
 
@@ -32,6 +34,60 @@ impl<T> IndexSetTrustedSpec<usize> for [T] {
     }
 }
 
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for usize {
+    open spec fn index_req(&self, slice: &[T]) -> bool {
+        *self < slice@.len()
+    }
+}
+
+pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index ](i: usize, slice: &[T]) -> &T
+    returns
+        slice@[i as int],
+;
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for Range<usize> {
+    open spec fn index_req(&self, slice: &[T]) -> bool {
+        &&& self.start <= self.end
+        &&& self.end <= slice@.len()
+    }
+}
+
+pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index ](i: Range<usize>, slice: &[T]) -> (r: &[T])
+    ensures
+        r@ == slice@.subrange(i.start as int, i.end as int),
+;
+
+impl<T, I: SliceIndex<[T]>> super::core::IndexSpecImpl<I> for [T] {
+    open spec fn index_req(&self, index: &I) -> bool {
+        index.index_req(self)
+    }
+}
+
+impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
+    where [T]: Index<I>
+{
+    open spec fn index_req(&self, index: &I) -> bool {
+        <[T] as IndexSpec<I>>::index_req(self, index)
+    }
+}
+
+pub assume_specification<T, I: SliceIndex<[T]>> [<[T] as Index<I>>::index] (
+    slice: &[T],
+    index: I,
+) -> (output: &<I as core::slice::SliceIndex<[T]>>::Output)
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::index, (index, slice), output),
+;
+
+pub assume_specification<T, I, const N: usize> [<[T; N] as Index<I>>::index] (
+    array: &[T; N],
+    index: I,
+) -> (output: &<[T; N] as core::ops::Index<I>>::Output)
+    where [T]: Index<I>,
+    ensures
+        call_ensures(<[T] as Index<I>>::index, (array, index), output),
+;
+
 pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
     requires
         false,
@@ -44,107 +100,37 @@ pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
 #[verifier::accept_recursive_types(T)]
 pub struct ExIter<'a, T: 'a>(Iter<'a, T>);
 
-impl<T> View for Iter<'_, T> {
-    type V = (int, Seq<T>);
+// To allow reasoning about the "contents" of the slice iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original slice.
+pub uninterp spec fn into_iter_elts<'a, T: 'a>(i: Iter<'a, T>) -> Seq<T>;
 
-    uninterp spec fn view(&self) -> (int, Seq<T>);
-}
-
-impl<T: DeepView> DeepView for Iter<'_, T> {
-    type V = (int, Seq<T::V>);
-
-    open spec fn deep_view(&self) -> Self::V {
-        let (i, v) = self@;
-        (i, Seq::new(v.len(), |i: int| v[i].deep_view()))
-    }
-}
-
-pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T>) -> (r: Option<
-    &'a T,
->)
-    ensures
-        ({
-            let (old_index, old_seq) = old(elements)@;
-            match r {
-                None => {
-                    &&& elements@ == old(elements)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(element) => {
-                    let (new_index, new_seq) = elements@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
-                },
-            }
-        }),
-;
-
-pub struct IterGhostIterator<'a, T> {
-    pub pos: int,
-    pub elements: Seq<T>,
-    pub phantom: Option<&'a T>,
-}
-
-impl<'a, T> super::super::pervasive::ForLoopGhostIteratorNew for Iter<'a, T> {
-    type GhostIter = IterGhostIterator<'a, T>;
-
-    open spec fn ghost_iter(&self) -> IterGhostIterator<'a, T> {
-        IterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
-    }
-}
-
-impl<'a, T: 'a> super::super::pervasive::ForLoopGhostIterator for IterGhostIterator<'a, T> {
-    type ExecIter = Iter<'a, T>;
-
-    type Item = T;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &Iter<'a, T>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.elements == exec_iter@.1
+impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.elements == self.elements
-            &&& 0 <= self.pos <= self.elements.len()
-        }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter_elts(*self) == IteratorSpec::remaining(self).unref()
     }
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.elements.len()
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.elements.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<T> {
-        if 0 <= self.pos < self.elements.len() {
-            Some(self.elements[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_elts(*self).len() {
+            Some(&into_iter_elts(*self)[index])
         } else {
             None
         }
     }
-
-    open spec fn ghost_advance(&self, _exec_iter: &Iter<'a, T>) -> IterGhostIterator<'a, T> {
-        Self { pos: self.pos + 1, ..*self }
-    }
 }
 
-impl<'a, T> View for IterGhostIterator<'a, T> {
-    type V = Seq<T>;
 
-    open spec fn view(&self) -> Seq<T> {
-        self.elements.take(self.pos)
-    }
-}
-
-// To allow reasoning about the ghost iterator when the executable
+// To allow reasoning about the returned iterator when the executable
 // function `iter()` is invoked in a `for` loop header (e.g., in
 // `for x in it: s.iter() { ... }`), we need to specify the behavior of
 // the iterator in spec mode. To do that, we add
@@ -154,7 +140,7 @@ pub uninterp spec fn spec_slice_iter<'a, T>(s: &'a [T]) -> (iter: Iter<'a, T>);
 
 pub broadcast proof fn axiom_spec_slice_iter<'a, T>(s: &'a [T])
     ensures
-        (#[trigger] spec_slice_iter(s))@ == (0int, s@),
+        #[trigger] spec_slice_iter(s).remaining() == s@.as_ref(),
 {
     admit();
 }
@@ -162,11 +148,18 @@ pub broadcast proof fn axiom_spec_slice_iter<'a, T>(s: &'a [T])
 #[verifier::when_used_as_spec(spec_slice_iter)]
 pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>)
     ensures
-        ({
-            let (index, seq) = iter@;
-            &&& index == 0
-            &&& seq == s@
-        }),
+        iter == spec_slice_iter(s),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_relation(&iter, &iter),
+;
+
+#[verifier::when_used_as_spec(spec_slice_iter)]
+pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_iter] (s: &'a [T]) ->
+    (iter: Iter<'a, T>)
+    ensures
+        iter == spec_slice_iter(s),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 pub assume_specification<T> [ <[T]>::first ](slice: &[T]) -> (res: Option<&T>)
@@ -182,21 +175,19 @@ pub assume_specification<T> [ <[T]>::last ](slice: &[T]) -> (res: Option<&T>)
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T> [ <[T]>::first_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
     ensures
-        old(slice).len() == 0 ==> res.is_none() && final(slice)@ === seq![],
+        old(slice).len() == 0 ==> res.is_none() && final(slice)@ == seq![],
         old(slice).len() != 0 ==> res.is_some() && *res.unwrap() == old(slice)[0]
-            && final(slice)@ === old(slice)@.update(0, *final(res.unwrap()))
+            && final(slice)@ == old(slice)@.update(0, *final(res.unwrap()))
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T> [ <[T]>::last_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
     ensures
-        old(slice).len() == 0 ==> res.is_none() && final(slice)@ === seq![],
+        old(slice).len() == 0 ==> res.is_none() && final(slice)@ == seq![],
         old(slice).len() != 0 ==> res.is_some() && *res.unwrap() == old(slice)@.last()
-            && final(slice)@ === old(slice)@.update(old(slice).len() - 1, *final(res.unwrap()))
+            && final(slice)@ == old(slice)@.update(old(slice).len() - 1, *final(res.unwrap()))
 ;
 
 pub assume_specification<T> [ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))
@@ -208,7 +199,6 @@ pub assume_specification<T> [ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T> [ <[T]>::split_at_mut ](slice: &mut [T], mid: usize) -> (ret: (&mut [T], &mut [T]))
     requires
         0 <= mid <= slice.len(),

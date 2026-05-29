@@ -156,39 +156,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_assume_specification_str_eq_suggestion_made code! {
-        use vstd::prelude::*;
-
-        verus! {
-            fn foo(x: &str, y: &str) -> (res: bool)
-            {
-                x == y
-            }
-        }
-    } => Err(err) => assert_help_error_msg(err, "pub assume_specification<'a, 'b, A, B> [<&'b A as std::cmp::PartialEq<&B>>::eq] (_0: &&'b A, _1: &&B) -> bool
-           where
-           A: std::cmp::PartialEq<B> + ?Sized,
-           B: ?Sized,;")
-}
-test_verify_one_file! {
-    #[test] test_assume_specification_str_eq_suggestion_correct code! {
-        use vstd::prelude::*;
-
-        verus! {
-            pub assume_specification<'a, 'b, A, B> [<&'b A as std::cmp::PartialEq<&B>>::eq] (_0: &&'b A, _1: &&B) -> bool
-            where
-            A: std::cmp::PartialEq<B> + core::marker::PointeeSized,
-            B: core::marker::PointeeSized,;
-
-
-            fn foo(x: &str, y: &str) -> (res: bool)
-            {
-                x == y
-            }
-        }
-    } => Ok(())
-}
-test_verify_one_file! {
     #[test] test_assume_specification_format_visibility code! {
         use vstd::prelude::*;
 
@@ -272,7 +239,7 @@ test_verify_one_file! {
         fn stuff(y: Y) -> X {
             panic!()
         }
-    } => Err(err) => assert_help_error_msgs(err, &["cannot use type `crate::X` which is ignored", "cannot use type `crate::Y` which is ignored"])
+    } => Err(err) => assert_help_error_msgs(err, &["cannot use type `test_crate::X` which is ignored", "cannot use type `test_crate::Y` which is ignored"])
 }
 
 // These two together form a 'smoke test' that the suggestions provided are correct.
