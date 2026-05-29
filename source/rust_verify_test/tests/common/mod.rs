@@ -443,6 +443,52 @@ pub fn run_verus(
     run
 }
 
+pub fn run_verus_raw(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    if std::env::var("VERUS_IN_VARGO").is_err() {
+        panic!("not running in vargo, read the README for instructions");
+    }
+    let exe = if cfg!(target_os = "windows") { ".exe" } else { "" };
+
+    let current_exe = std::env::current_exe().unwrap();
+    let deps_path = current_exe.parent().unwrap();
+    let target_path = deps_path.parent().unwrap();
+    let profile = target_path.file_name().unwrap().to_str().unwrap();
+    let verus_target_path = target_path
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf()
+        .join("target-verus")
+        .join(profile);
+    let bin = verus_target_path.join(format!("rust_verify{exe}"));
+
+    let z3 = std::env::var("VERUS_Z3_PATH")
+        .map(|p| {
+            let p = std::path::PathBuf::from(p);
+            if p.is_relative() { std::path::PathBuf::from("..").join(p) } else { p }
+        })
+        .unwrap_or({
+            if cfg!(target_os = "windows") {
+                std::path::PathBuf::from("..\\z3.exe")
+            } else {
+                std::path::PathBuf::from("../z3")
+            }
+        });
+    let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
+
+    let mut child = std::process::Command::new(bin);
+    let child = child
+        .current_dir(dir)
+        .env("VERUS_Z3_PATH", z3)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("could not execute raw verus process");
+    child.wait_with_output().expect("raw verus wait failed")
+}
+
 pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     run_cargo_verus_with_target(args, dir, &dir.join("target"))
 }
