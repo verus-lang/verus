@@ -607,6 +607,10 @@ test_verify_one_file! {
                 w.push(x);
             }
             assert(w@ == seq![3, 4]);
+
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let w: Vec<u32> = v.into_iter().skip(2).rev().collect();
+            assert(w@ == seq![4u32, 3]);
         }
     } => Ok(())
 }

@@ -435,6 +435,22 @@ impl <I> IteratorSpecImpl for Skip<I>
     }
 }
 
+impl <I> DoubleEndedIteratorSpecImpl for Skip<I>
+    where I: DoubleEndedIteratorSpec + ExactSizeIterator
+{
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        // Skip only drops elements from the front, so the back of the skipped
+        // sequence coincides with the back of the inner iterator, as long as
+        // `index` stays within the (un-skipped) remaining elements.
+        let len = iter_len(&skip_iter(*self));
+        if len < skip_init_n(*self) || index >= len - skip_init_n(*self) {
+            None
+        } else {
+            skip_iter(*self).peek_back(index)
+        }
+    }
+}
+
 /********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
  * for ergonomic for-loop support.
