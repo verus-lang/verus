@@ -5,7 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{FromIterator, Iterator, Rev};
+use core::iter::{FromIterator, Iterator, Rev, Take};
 
 verus_! {
 
@@ -93,6 +93,14 @@ pub trait ExIterator {
             self.will_return_none(),
             self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
+    ;
+
+    // We can't provide the ensures directly here, since Rust doesn't think that Take<Self> is an iterator
+    fn take(self, n: usize) -> (t: Take<Self>)
+        where Self: Sized,
+        default_ensures
+            self.obeys_prophetic_iter_laws() ==> 
+                t == into_take_spec(self, n) && take_post(self, n, t),
     ;
 }
 
@@ -269,6 +277,78 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
 }
 
 /********************************************************************************
+ * Definitions for `take()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+pub struct ExTake<I>(Take<I>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn take_iter<I>(r: Take<I>) -> I;
+
+// Ghost accessor for the count 
+pub uninterp spec fn take_count<I>(r: Take<I>) -> usize;
+
+// Spec version of Take::new
+pub uninterp spec fn into_take_spec<I>(i: I, n: usize) -> Take<I>;
+
+
+// Ideally, we would write this postcondition directly on the definition of Iterator::take above.
+pub uninterp spec fn take_post<I>(i: I, n: usize, t: Take<I>) -> bool;
+
+pub broadcast axiom fn take_postcondition<I: IteratorSpec>(i: I, n: usize)
+    requires
+        i.obeys_prophetic_iter_laws(),
+        i.initial_value_relation(&i),
+        take_post(i, n, into_take_spec(i, n)),
+    ensures
+        {
+            let r = #[trigger] into_take_spec(i, n);
+            &&& IteratorSpec::remaining(&r) == if i.remaining().len() < n { i.remaining() } else { i.remaining().take(n as int) } 
+            &&& IteratorSpec::will_return_none(&r) <==> i.will_return_none() || i.remaining().len() >= n
+            &&& IteratorSpec::decrease(&r) is Some 
+            &&& IteratorSpec::initial_value_relation(&r, &r)
+        },
+;
+
+impl <I> IteratorSpecImpl for Take<I>
+    where I: Iterator {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        take_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    uninterp spec fn will_return_none(&self) -> bool; 
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& take_iter(*self).initial_value_relation(&take_iter(*init))
+        &&& take_iter(*self) == take_iter(*init)
+        &&& IteratorSpec::remaining(self) == if take_iter(*self).remaining().len() < take_count(*self) 
+                { take_iter(*self).remaining() } else { take_iter(*self).remaining().take(take_count(*self) as int) }
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        take_iter(*self).peek(index)
+    }
+}
+
+// impl <I> DoubleEndedIteratorSpecImpl for Take<I>
+//     where I: DoubleEndedIterator + IteratorSpec {
+
+//     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+//         take_iter(*self).peek(index)
+//     }
+// }
+
+/********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
  * for ergonomic for-loop support.
  ********************************************************************************/
@@ -426,6 +506,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 
 pub broadcast group group_iter_axioms {
     rev_postcondition,
+    take_postcondition,
 }
 
 } // verus!

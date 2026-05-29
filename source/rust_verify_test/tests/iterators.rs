@@ -7,8 +7,7 @@ test_verify_one_file! {
     #[test] collect_works verus_code! {
         use vstd::prelude::*;
 
-        fn test(u: &Vec<u32>)
-        {
+        fn test() {
             let v: Vec<u32> = vec![1, 2, 3, 4];
             let w: Vec<u32> = v.into_iter().collect();
             assert(v@ == w@);
@@ -568,5 +567,30 @@ test_verify_one_file! {
         //     assert(out is None);
 
         // }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] take_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let w: Vec<u32> = v.into_iter().take(2).collect();
+            assert(w@ == seq![1, 2]);
+        
+        
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let mut w: Vec<u32> = Vec::new();
+
+            for x in it: v.into_iter().take(3)
+                invariant
+                    w.len() == it.index(),
+                    forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],            
+            {
+                w.push(x);
+            }
+            assert(w@ == seq![1, 2, 3]);
+        }
     } => Ok(())
 }
