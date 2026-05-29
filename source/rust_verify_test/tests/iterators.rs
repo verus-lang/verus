@@ -554,19 +554,6 @@ test_verify_one_file! {
                 assert(x == it.index() + 2);
             }
         }
-
-        // fn take_skip<I: Iterator>(iter: I, n: usize)
-        //     requires
-        //         iter.obeys_prophetic_iter_laws(),
-        // {
-        //     // Creusot:
-        //     // assert!(iter.take(n).skip(n).next().is_none())
-        //     let mut r = MySkip::new(MyTake::new(iter, n), n);
-        //     assert(r.remaining().len() == 0);
-        //     let out = r.next();
-        //     assert(out is None);
-
-        // }
     } => Ok(())
 }
 
@@ -598,6 +585,51 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] skip_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let w: Vec<u32> = v.into_iter().skip(2).collect();
+            assert(w@ == seq![3, 4]);
+
+
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let mut w: Vec<u32> = Vec::new();
+
+            for x in it: v.into_iter().skip(2)
+                invariant
+                    w.len() == it.index(),
+                    forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],
+            {
+                w.push(x);
+            }
+            assert(w@ == seq![3, 4]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] take_skip verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test<I: Iterator>(v: Vec<u32>, n: usize)
+            requires
+                n <= v.len(),
+        {
+            // Creusot:
+            //   assert!(iter.take(n).skip(n).next().is_none())
+            // Verus:
+            let mut r = v.into_iter().take(n).skip(n);
+            assert(r.remaining().len() == 0);
+
+            // TODO: We can't call next() here, b/c Verus says we that `core::iter::adapters::skip::impl&%1::next`
+            // is not supported, even though it's covered by the trait specification for Iterator
+            // let out = r.next();
+            // assert(out is None);
         }
     } => Ok(())
 }

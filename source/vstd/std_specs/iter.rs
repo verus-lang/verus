@@ -5,7 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{FromIterator, Iterator, Rev, Take};
+use core::iter::{FromIterator, Iterator, Rev, Skip, Take};
 
 verus_! {
 
@@ -99,8 +99,16 @@ pub trait ExIterator {
     fn take(self, n: usize) -> (t: Take<Self>)
         where Self: Sized,
         default_ensures
-            self.obeys_prophetic_iter_laws() ==> 
+            self.obeys_prophetic_iter_laws() ==>
                 t == into_take_spec(self, n) && take_post(self, n, t),
+    ;
+
+    // We can't provide the ensures directly here, since Rust doesn't think that Skip<Self> is an iterator
+    fn skip(self, n: usize) -> (s: Skip<Self>)
+        where Self: Sized,
+        default_ensures
+            self.obeys_prophetic_iter_laws() ==>
+                s == into_skip_spec(self, n) && skip_post(self, n, s),
     ;
 }
 
@@ -360,6 +368,72 @@ impl <I> DoubleEndedIteratorSpecImpl for Take<I>
     }
 }
 
+/********************************************************************************
+ * Definitions for `skip()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+pub struct ExSkip<I>(Skip<I>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn skip_iter<I>(s: Skip<I>) -> I;
+
+// Ghost accessor for the (current) count of items still to be skipped
+pub uninterp spec fn skip_n<I>(s: Skip<I>) -> usize;
+
+// Ghost accessor for the initial count of items to skip
+pub uninterp spec fn skip_init_n<I>(s: Skip<I>) -> usize;
+
+// Spec version of Skip::new
+pub uninterp spec fn into_skip_spec<I>(i: I, n: usize) -> Skip<I>;
+
+// Ideally, we would write this postcondition directly on the definition of Iterator::skip above.
+pub uninterp spec fn skip_post<I>(i: I, n: usize, s: Skip<I>) -> bool;
+
+pub broadcast axiom fn skip_postcondition<I: IteratorSpec>(i: I, n: usize)
+    requires
+        i.obeys_prophetic_iter_laws(),
+        i.initial_value_relation(&i),
+        skip_post(i, n, into_skip_spec(i, n)),
+    ensures
+        {
+            let r = #[trigger] into_skip_spec(i, n);
+            &&& IteratorSpec::remaining(&r) == if i.remaining().len() < n { Seq::empty() } else { i.remaining().skip(n as int) }
+            &&& IteratorSpec::will_return_none(&r) <==> i.will_return_none()
+            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
+            &&& IteratorSpec::initial_value_relation(&r, &r)
+        },
+;
+
+impl <I> IteratorSpecImpl for Skip<I>
+    where I: Iterator {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        skip_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& skip_iter(*self).initial_value_relation(&skip_iter(*init))
+        &&& skip_iter(*self) == skip_iter(*init)
+        &&& skip_init_n(*self) == skip_init_n(*init)
+        &&& IteratorSpec::remaining(self) == if skip_iter(*self).remaining().len() < skip_n(*self)
+                { Seq::empty() } else { skip_iter(*self).remaining().skip(skip_n(*self) as int) }
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        skip_iter(*self).peek(skip_init_n(*self) + index)
+    }
+}
 
 /********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
@@ -520,6 +594,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 pub broadcast group group_iter_axioms {
     rev_postcondition,
     take_postcondition,
+    skip_postcondition,
     iter_len_exact,
 }
 
