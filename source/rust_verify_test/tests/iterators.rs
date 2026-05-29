@@ -23,6 +23,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] find_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>)
+        {
+            let v_result = v.into_iter().find(
+                |i| -> (ret: bool)
+                ensures ret == (*i < 10)
+                {*i < 10}
+            );
+            if let Some(i) = v_result {
+                assert(i < 10);
+            } else {
+                proof{
+                    if v.len() > 0  {
+                        assert(v[0] >= 10) by {
+                            assert(v.into_iter().peek(0).unwrap() >= 10);
+                        }
+                    }
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] map_can_be_implemented verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;
