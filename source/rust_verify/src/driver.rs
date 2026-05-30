@@ -115,6 +115,7 @@ This would avoid the complex interleaving above and avoid needing to use lifetim
 for all functions (it would only be needed for functions with tracked data in proof code).
 */
 struct CompilerCallbacksEraseMacro {
+    pub do_compile: bool,
     pub override_stability: bool,
 }
 
@@ -136,6 +137,19 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
             });
         }
     }
+
+    fn after_expansion<'tcx>(
+        &mut self,
+        _compiler: &rustc_interface::interface::Compiler,
+        tcx: TyCtxt<'tcx>,
+    ) -> rustc_driver::Compilation {
+        if !self.do_compile {
+            rustc_hir_analysis::check_crate(tcx);
+            rustc_driver::Compilation::Stop
+        } else {
+            rustc_driver::Compilation::Continue
+        }
+    }
 }
 
 /// Captures the verification and compilation time
@@ -153,9 +167,11 @@ pub struct Stats {
 
 pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
+    do_compile: bool,
     vstd: Vstd,
 ) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro {
+        do_compile,
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
     };
     rustc_args.extend(["--cfg", "verus_only", "--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
@@ -320,7 +336,8 @@ pub fn run(
         if !verifier.compile && (verifier.args.no_erasure_check || verifier.args.no_lifetime) {
             Ok(())
         } else {
-            run_with_erase_macro_compile(rustc_args, verifier.args.vstd)
+            let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
+            run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
         };
 
     let time2 = Instant::now();
