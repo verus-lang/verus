@@ -454,11 +454,9 @@ pub fn run_verus_raw(args: &[&str], dir: &std::path::Path) -> std::process::Outp
     let target_path = deps_path.parent().unwrap();
     let profile = target_path.file_name().unwrap().to_str().unwrap();
     let verus_target_path = target_path
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf()
+        .ancestors()
+        .nth(2)
+        .expect("expected path to have at least two parents")
         .join("target-verus")
         .join(profile);
     let bin = verus_target_path.join(format!("rust_verify{exe}"));
