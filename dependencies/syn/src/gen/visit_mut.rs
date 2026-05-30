@@ -3343,9 +3343,9 @@ where
 {
     v.visit_attributes_mut(&mut node.attrs);
     v.visit_visibility_mut(&mut node.vis);
+    skip!(node.constness);
     skip!(node.unsafety);
     skip!(node.auto_token);
-    skip!(node.constness);
     if let Some(it) = &mut node.restriction {
         v.visit_impl_restriction_mut(it);
     }

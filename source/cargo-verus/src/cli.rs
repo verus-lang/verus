@@ -51,9 +51,9 @@ pub struct VerifyCommand {
     #[command(flatten)]
     pub cargo_opts: CargoOptions,
 
-    /// Make cargo-verus verbose
-    #[arg(short, long)]
-    pub verbose: bool,
+    /// Increase verbosity (use -vv for more output)
+    #[arg(short, long, action = ArgAction::Count)]
+    pub verbosity: u8,
 
     /// Crates to receive forwarded Verus args
     #[arg(
