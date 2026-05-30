@@ -475,16 +475,16 @@ pub fn run_verus_raw(args: &[&str], dir: &std::path::Path) -> std::process::Outp
         });
     let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
 
-    let mut child = std::process::Command::new(bin);
-    let child = child
+    std::process::Command::new(bin)
         .current_dir(dir)
         .env("VERUS_Z3_PATH", z3)
         .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .expect("could not execute raw verus process");
-    child.wait_with_output().expect("raw verus wait failed")
+        .expect("could not execute verus")
+        .wait_with_output()
+        .expect("raw verus wait failed")
 }
 
 pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Output {
