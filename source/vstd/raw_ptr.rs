@@ -98,11 +98,13 @@ impl Provenance {
 }
 
 /// Allocations do not "wrap around" the address space.
-// Q: Where in the documentation do we get this fact?
-// A: Should be self-evident, comes from allocations being contiguous regions of memory
+/// See: https://doc.rust-lang.org/std/ptr/index.html#allocation
 pub broadcast axiom fn alloc_bound(p: Provenance)
     ensures
-        #[trigger] p.start_addr() + #[trigger] p.alloc_len() <= usize::MAX + 1,
+        #![trigger p.start_addr()]
+        #![trigger p.alloc_len()]
+        p.start_addr() + p.alloc_len() <= usize::MAX,
+        p.alloc_len() <= isize::MAX
 ;
 
 /// Since `self.alignment()` returns a `int`, `Alignment` invariants do not follow directly from the type.
@@ -1254,7 +1256,7 @@ impl PointsTo<str> {
     // Note that even for ZSTs, pointers need to be aligned.
     pub axiom fn is_aligned(tracked &self)
         ensures
-            self.ptr()@.addr as nat % spec_align_of_val::<str>(self.value()) == 0,
+            self.ptr()@.addr as int % spec_align_of_val::<str>(self.value()) as int == 0,
     ;
 }
 
@@ -2126,7 +2128,7 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
-pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
+pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
     requires
         old(perm).ptr() == ptr,
         old(perm).is_init(),
@@ -2135,6 +2137,44 @@ pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> 
         final(perm).is_init(),
         old(perm).value() == *v,
         final(perm).value() == *final(v),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
+}
+
+/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v: &mut [T])
+    requires
+        old(perm).ptr() == ptr,
+        old(perm).is_init(),
+    ensures
+        final(perm).ptr() == ptr,
+        final(perm).is_init(),
+        old(perm).value() == v@,
+        final(perm).value() == final(v)@,
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
+}
+
+/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo<str>>) -> (v: &mut str)
+    requires
+        old(perm).ptr() == ptr,
+        old(perm).is_init(),
+    ensures
+        final(perm).ptr() == ptr,
+        final(perm).is_init(),
+        old(perm).value() == &*v,
+        final(perm).value() == &*final(v),
     opens_invariants none
     no_unwind
 {
@@ -2734,11 +2774,19 @@ impl<'a, T> SharedReference<'a, [T]> {
 
 impl<'a> SharedReference<'a, str> {
     #[verifier::external_body]
-    pub const fn as_ptr(self) -> (ptr: *const u8)
+    pub const fn as_ptr(self) -> (ptr: *const str)
+        ensures
+            ptr == self.ptr(),
+    {
+        self.0 as *const str
+    }
+
+    // commonly used operation: this function's signature corresponds to Rust's `str::as_ptr`
+    pub const fn as_u8_ptr(self) -> (ptr: *const u8)
         ensures
             ptr == self.ptr() as *const u8,
     {
-        self.0.as_ptr()
+        self.as_ptr() as *const u8
     }
 
     pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
@@ -2760,6 +2808,65 @@ pub broadcast axiom fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedRefe
     ensures
         shared_ref.value()@ == #[trigger] shared_ref@,
 ;
+
+/*
+/// Returns the underlying pointer of a mutable reference.
+pub uninterp spec fn mut_ref_ptr<T>(mut_ref: &mut T) -> *mut T;
+
+/// Cast a mutable reference to a pointer.
+/// Temporary until we get as-casting support.
+#[verifier::external_body]
+pub fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> (ptr: *mut T)
+    ensures
+        ptr == mut_ref_ptr(old(mut_ref)),
+        // *old(mut_ref) == *final(mut_ref),
+{
+    mut_ref as *mut T
+}
+
+/// We can always get an `&mut` to the `PointsTo` which corresponds to a mutable reference.
+pub axiom fn mut_ref_points_to<T>(tracked mut_ref: &mut T) -> (tracked pt: &mut PointsTo<T>)
+    ensures
+        pt.ptr() == mut_ref_ptr(old(mut_ref)),
+        pt.is_init(),
+        pt.value() == *old(mut_ref),
+        //mut_ref_ptr(final(mut_ref)) == final(pt).ptr(),
+        *final(mut_ref) == final(pt).value(),
+;
+*/
+
+#[verifier::external_body]
+pub const fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> (out: (*mut T, Tracked<&mut PointsTo<T>>))
+    ensures
+        out.1@.ptr() == out.0,
+        out.1@.is_init(),
+        out.1@.value() == *old(mut_ref),
+        *final(mut_ref) == final(out.1@).value(),
+{
+    (mut_ref as *mut T, Tracked::assume_new())
+}
+
+#[verifier::external_body]
+pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> (out: (*mut [T], Tracked<&mut PointsTo<[T]>>))
+    ensures
+        out.1@.ptr() == out.0,
+        out.1@.is_init(),
+        out.1@.value() == old(mut_ref)@,
+        final(mut_ref)@ == final(out.1@).value(),
+{
+    (mut_ref as *mut [T], Tracked::assume_new())
+}
+
+#[verifier::external_body]
+pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> (out: (*mut str, Tracked<&mut PointsTo<str>>))
+    ensures
+        out.1@.ptr() == out.0,
+        out.1@.is_init(),
+        out.1@.value() == &*old(mut_ref),
+        &*final(mut_ref) == final(out.1@).value(),
+{
+    (mut_ref as *mut str, Tracked::assume_new())
+}
 
 // impl<'a, T> Index<usize> for SharedReference<'a, [T]>
 // where
