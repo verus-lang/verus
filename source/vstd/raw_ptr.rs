@@ -98,7 +98,10 @@ impl Provenance {
 }
 
 /// Allocations do not "wrap around" the address space.
-/// See: https://doc.rust-lang.org/std/ptr/index.html#allocation
+/// From: https://doc.rust-lang.org/std/ptr/index.html#allocation:
+/// For any allocation with `base` address and size `size`, the following are guaranteed:
+/// - `base + size <= usize::MAX`
+/// - `size <= isize::MAX`
 pub broadcast axiom fn alloc_bound(p: Provenance)
     ensures
         #![trigger p.start_addr()]
