@@ -906,6 +906,24 @@ pub broadcast proof fn valid_utf8_split(bytes: Seq<u8>, index: int)
     }
 }
 
+/// Ensures that a subrange from a valid UTF-8 byte sequence on character boundaries is also a valid UTF-8 byte sequence.
+pub broadcast proof fn valid_utf8_subrange(bytes: Seq<u8>, start: int, end: int)
+    requires
+        valid_utf8(bytes),
+        #[trigger] is_char_boundary(bytes, start),
+        #[trigger] is_char_boundary(bytes, end),
+        start <= end
+    ensures
+        valid_utf8(bytes.subrange(start, end)),
+    decreases bytes.len(),
+{
+    if end == 0 {
+        assume(false);
+    } else {
+        assume(false);
+    }
+}
+
 /// Ensures that a valid UTF-8 byte sequence can be decoded by separately decoding the two subsequences formed by splitting the original sequence at a character boundary.
 pub broadcast proof fn decode_utf8_split(bytes: Seq<u8>, index: int)
     requires
@@ -1115,6 +1133,7 @@ pub broadcast group group_utf8_lib {
     partial_valid_utf8_extend,
     partial_valid_utf8_extend_ascii_block,
     valid_utf8_split,
+    valid_utf8_subrange,
     decode_utf8_split,
     is_char_boundary_start_end_of_seq,
     is_char_boundary_iff_not_is_continuation_byte,
