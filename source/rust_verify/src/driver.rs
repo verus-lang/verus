@@ -138,13 +138,12 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         }
     }
 
-    fn after_expansion<'tcx>(
+    fn after_analysis<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
-        tcx: TyCtxt<'tcx>,
+        _tcx: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         if !self.do_compile {
-            rustc_hir_analysis::check_crate(tcx);
             rustc_driver::Compilation::Stop
         } else {
             rustc_driver::Compilation::Continue
