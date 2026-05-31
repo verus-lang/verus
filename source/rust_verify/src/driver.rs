@@ -143,10 +143,10 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         _compiler: &rustc_interface::interface::Compiler,
         _tcx: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
-        if !self.do_compile {
-            rustc_driver::Compilation::Stop
-        } else {
+        if self.do_compile {
             rustc_driver::Compilation::Continue
+        } else {
+            rustc_driver::Compilation::Stop
         }
     }
 }
