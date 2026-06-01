@@ -2104,13 +2104,17 @@ pub(crate) fn check_item_fn<'tcx>(
 
     if let Some(action) = autoderive_action {
         if let Some(body_hir_id) = body_hir_id {
-            crate::automatic_derive::modify_derived_item(
+            let new_function = crate::automatic_derive::modify_derived_item(
                 ctxt,
                 sig.span,
                 body_hir_id,
                 action,
                 &mut func,
+                id,
             )?;
+            if let Some(new_function) = new_function {
+                functions.push(new_function);
+            }
         }
     }
 

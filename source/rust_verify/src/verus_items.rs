@@ -363,6 +363,7 @@ pub(crate) enum VstdItem {
     VecIndex,
     VecIndexMut,
     SharedReference,
+    StrictlyCloned,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -677,6 +678,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::raw_ptr::cast_str_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastStrPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_str_ptr_to_slice_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
         ("verus::vstd::raw_ptr::SharedReference", VerusItem::Vstd(VstdItem::SharedReference, Some(Arc::new("raw_ptr::SharedReference".to_owned())))),
+        ("verus::vstd::pervasive::strictly_cloned", VerusItem::Vstd(VstdItem::StrictlyCloned, Some(Arc::new("pervasive::strictly_cloned".to_owned())))),
         ("verus::vstd::float::float_cast", VerusItem::Vstd(VstdItem::FloatCast, Some(Arc::new("float::float_cast".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
