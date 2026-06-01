@@ -3882,6 +3882,7 @@ pub broadcast group group_filter_ensures {
 
 pub broadcast group group_seq_lib_default {
     group_filter_ensures,
+    Seq::lemma_filter_index,
     Seq::add_empty_left,
     Seq::add_empty_right,
     Seq::push_distributes_over_add,

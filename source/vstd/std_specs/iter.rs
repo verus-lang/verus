@@ -5,7 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{Iterator, Rev};
+use core::iter::{Filter, Iterator, Rev};
 
 verus_! {
 
@@ -89,6 +89,24 @@ pub trait ExIterator {
         default_ensures
             self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
                 r == into_rev_spec(self) && rev_post(self, r),
+    ;
+
+    //#[verifier::when_used_as_spec(into_filter_spec)]
+    fn filter<P>(self, predicate: P) -> (r: core::iter::Filter<Self, P>)
+        where
+            Self: Sized,
+            P: FnMut(&Self::Item) -> bool,
+        requires
+            self.obeys_prophetic_iter_laws(),
+            // `filter`'s implementation loops over the inner iterator until the
+            // predicate accepts an element, so it needs a decreases metric to
+            // prove termination.
+            self.decrease() is Some,
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
+            self.initial_value_relation(&self),
+        default_ensures
+            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
+                r == into_filter_spec::<Self, P>(self, predicate) && filter_post(self, predicate, r),
     ;
 
 }
@@ -208,6 +226,96 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
 
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         rev_iter(*self).peek(index)
+    }
+}
+
+/********************************************************************************
+ * Definitions for `filter()`
+ ********************************************************************************/
+
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+#[verifier::reject_recursive_types(F)]
+pub struct ExFilter<I, F>(Filter<I, F>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn filter_iter<I, F>(r: Filter<I, F>) -> I;
+
+// Ghost accessor for the inner predicate
+pub uninterp spec fn filter_fun<I, F>(r: Filter<I, F>) -> F;
+
+// Spec version of Filter::new()
+pub uninterp spec fn into_filter_spec<I, F>(i: I, f: F) -> Filter<I, F>;
+
+// Ideally, we would write this postcondition directly on the definition of
+// Iterator::filter above.  However, to do so, we would need to impose a trait
+// bound of `Self: IteratorSpec`.  However, this introduces a cyclic
+// dependency, since IteratorSpec depends on Iterator.  Hence,
+// we introduce a layer of indirection via this uninterp spec function.
+pub uninterp spec fn filter_post<I, F>(i: I, f: F, r: Filter<I, F>) -> bool;
+
+pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F)
+    where
+        I: IteratorSpec,
+        F: FnMut(&I::Item) -> bool,
+    requires
+        i.obeys_prophetic_iter_laws(),
+        i.decrease() is Some,
+        i.initial_value_relation(&i),
+        forall |k| #![auto] 0 <= k < i.remaining().len() ==> call_requires(f, (&i.remaining()[k], )),
+        filter_post(i, f, into_filter_spec(i, f)),
+    ensures
+        {
+            let r = #[trigger] into_filter_spec(i, f);
+            {
+            // Filtering can only drop elements, never add them
+            &&& IteratorSpec::remaining(&r).len() <= i.remaining().len()
+            // Every retained element comes from the inner iterator and was accepted by the predicate
+            &&& forall |k| #![trigger IteratorSpec::remaining(&r)[k]] 0 <= k < IteratorSpec::remaining(&r).len() ==>
+                    exists |j| 0 <= j < i.remaining().len()
+                        && IteratorSpec::remaining(&r)[k] == #[trigger] i.remaining()[j]
+                        && call_ensures(f, (&i.remaining()[j],), true)
+            &&& IteratorSpec::will_return_none(&r) ==> i.will_return_none()
+            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
+            &&& IteratorSpec::initial_value_relation(&r, &r)
+            &&& filter_iter(r) == i
+            &&& filter_fun(r) == f
+            }
+        },
+;
+
+// See rust_verify_test/tests/iterators.rs for how this Filter
+// spec can be verifiably implemented when Filter is not an
+// external type.
+impl <I, P> IteratorSpecImpl for core::iter::Filter<I, P>
+    where
+        I: Iterator + IteratorSpec,
+        P: FnMut(&I::Item) -> bool,
+{
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        filter_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& filter_iter(*self).initial_value_relation(&filter_iter(*init))
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    // `filter` cannot make a useful static guess about which element will be
+    // returned at a given index, since that depends on prophetic evaluations of
+    // the predicate.  (The verifiable implementation likewise returns `None`.)
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        None
     }
 }
 
@@ -369,6 +477,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 
 pub broadcast group group_iter_axioms {
     rev_postcondition,
+    filter_postcondition,
 }
 
 } // verus!

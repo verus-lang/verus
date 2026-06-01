@@ -271,6 +271,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] filter_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        fn test() {
+            let p = |x: &u32| -> (b: bool)
+                ensures b == (*x % 2 == 0)
+            { *x % 2 == 0 };
+
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let mut w: Vec<u32> = Vec::new();
+
+            for x in it: v.into_iter().filter(p)
+                invariant
+                    w.len() == it.index(),
+                    forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],
+            {
+                w.push(x);
+            }
+            broadcast use Seq::lemma_filter_index;
+            assert(w@.contains(2));
+            assert(w@.contains(4));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] filter_can_be_implemented verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;
