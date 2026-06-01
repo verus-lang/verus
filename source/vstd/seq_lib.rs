@@ -486,6 +486,55 @@ impl<A> Seq<A> {
         self.lemma_filter_index_witness(pred);
     }
 
+    /// `filter_index` depends only on the predicate's values on the valid index range,
+    /// so two pointwise-equal (but distinct) predicate closures yield the same result.
+    pub proof fn filter_index_ext(self, p: spec_fn(int) -> bool, q: spec_fn(int) -> bool)
+        requires forall|i| 0 <= i < self.len() ==> #[trigger] p(i) == q(i),
+        ensures self.filter_index(p) == self.filter_index(q),
+        decreases self.len(),
+    {
+        reveal(Seq::filter_index);
+        if self.len() != 0 {
+            self.drop_last().filter_index_ext(p, q);
+        }
+    }
+
+    /// Head decomposition for `filter_index` to better match its use in loops
+    pub proof fn lemma_filter_index_head(self, pred: spec_fn(int) -> bool)
+        requires self.len() > 0,
+        ensures
+            pred(0) ==> self.filter_index(pred)
+                == seq![self[0]] + self.drop_first().filter_index(|i: int| pred(i + 1)),
+            !pred(0) ==> self.filter_index(pred)
+                == self.drop_first().filter_index(|i: int| pred(i + 1)),
+        decreases self.len(),
+    {
+        reveal(Seq::filter_index);
+        let p2 = |i: int| pred(i + 1);
+        let t = self.drop_first();
+        if self.len() == 1 {
+            reveal_with_fuel(Seq::filter_index, 2);
+            assert(t.len() == 0);
+            assert(self.drop_last().len() == 0);
+            if pred(0) {
+                assert(self.filter_index(pred) =~= seq![self[0]] + t.filter_index(p2));
+            } else {
+                assert(self.filter_index(pred) =~= t.filter_index(p2));
+            }
+        } else {
+            let sdl = self.drop_last();
+            sdl.lemma_filter_index_head(pred);
+            assert(t.drop_last() =~= sdl.drop_first());
+            let p2b = |i: int| pred(i + 1);
+            sdl.drop_first().filter_index_ext(p2, p2b);
+            if pred(0) {
+                assert(self.filter_index(pred) =~= seq![self[0]] + t.filter_index(p2));
+            } else {
+                assert(self.filter_index(pred) =~= t.filter_index(p2));
+            }
+        }
+    }
+
     pub broadcast proof fn add_empty_left(a: Self, b: Self)
         requires
             a.len() == 0,
