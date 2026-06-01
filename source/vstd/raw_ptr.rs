@@ -2676,6 +2676,7 @@ pub fn deallocate(
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::SharedReference")]
+#[repr(transparent)]
 pub struct SharedReference<'a, T: ?Sized>(&'a T);
 
 impl<'a, T: ?Sized> Clone for SharedReference<'a, T> {
@@ -2726,7 +2727,7 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     }
 
     #[verifier::external_body]
-    const fn as_ref(self) -> (t: &'a T)
+    pub const fn as_ref(self) -> (t: &'a T)
         ensures
             t == self.value(),
     {
@@ -2811,32 +2812,6 @@ pub broadcast axiom fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedRefe
     ensures
         shared_ref.value()@ == #[trigger] shared_ref@,
 ;
-
-/*
-/// Returns the underlying pointer of a mutable reference.
-pub uninterp spec fn mut_ref_ptr<T>(mut_ref: &mut T) -> *mut T;
-
-/// Cast a mutable reference to a pointer.
-/// Temporary until we get as-casting support.
-#[verifier::external_body]
-pub fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> (ptr: *mut T)
-    ensures
-        ptr == mut_ref_ptr(old(mut_ref)),
-        // *old(mut_ref) == *final(mut_ref),
-{
-    mut_ref as *mut T
-}
-
-/// We can always get an `&mut` to the `PointsTo` which corresponds to a mutable reference.
-pub axiom fn mut_ref_points_to<T>(tracked mut_ref: &mut T) -> (tracked pt: &mut PointsTo<T>)
-    ensures
-        pt.ptr() == mut_ref_ptr(old(mut_ref)),
-        pt.is_init(),
-        pt.value() == *old(mut_ref),
-        //mut_ref_ptr(final(mut_ref)) == final(pt).ptr(),
-        *final(mut_ref) == final(pt).value(),
-;
-*/
 
 #[verifier::external_body]
 pub const fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> (out: (*mut T, Tracked<&mut PointsTo<T>>))
@@ -2952,6 +2927,36 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
 {
     SharedReference(unsafe { &*ptr })
 }
+
+/// Same as [`ptr_ref2`], but operates on ghost values.
+/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) -> (tracked v: SharedReference<'a, T>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v.value() == perm.value(),
+        v.ptr() == ptr;
+
+/// Same as [`ptr_ref2`], but operates on ghost values.
+/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str>) -> (tracked v: SharedReference<'a, str>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v.value() == perm.value(),
+        v.ptr() == ptr;
+
+/// Same as [`ptr_ref2`], but operates on ghost values.
+/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsTo<[T]>) -> (tracked v: SharedReference<'a, [T]>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v.value()@ == perm.value(),
+        v.ptr() == ptr;
 
 } // verus!
 /// Trusted wrapper around `ptr_ref`, due to
