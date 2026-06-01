@@ -1088,7 +1088,7 @@ pub broadcast axiom fn shared_ref_cannot_be_encoded<T: ?Sized>()
 ;
 
 /// The layout for shared references is the same as that for pointers
-/// (see: https://doc.rust-lang.org/reference/type-layout.html#pointers-and-references-layout).
+/// (see: <https://doc.rust-lang.org/reference/type-layout.html#pointers-and-references-layout>).
 ///
 /// To transmute values of type `&T`, we must use the `SharedReference<T>` type.
 /// In practice, transmuting with a `SharedReference` requires first constructing a `PointsTo` for the destination type.
