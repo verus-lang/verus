@@ -223,7 +223,9 @@ pub broadcast axiom fn layout_of_references_and_pointers_for_unsized_types<T: ?S
         align_of::<*mut T>() >= align_of::<usize>(),
         // unstable assumption: pointer layout is the pointer metadata plus the address
         // needed to define type representation for pointers to unsized types
-        size_of::<*mut T>() == (size_of::<<T as core::ptr::Pointee>::Metadata>() + size_of::<usize>())
+        size_of::<*mut T>() == (size_of::<<T as core::ptr::Pointee>::Metadata>() + size_of::<
+            usize,
+        >()),
 ;
 
 /// Slices have the same layout as the underlying type.

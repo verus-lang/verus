@@ -2846,33 +2846,41 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
 
 /// Same as [`ptr_ref2`], but operates on ghost values.
 /// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
-pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) -> (tracked v: SharedReference<'a, T>)
+pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) -> (tracked v:
+    SharedReference<'a, T>)
     requires
         perm.ptr() == ptr,
         perm.is_init(),
     ensures
         v.value() == perm.value(),
-        v.ptr() == ptr;
+        v.ptr() == ptr,
+;
 
 /// Same as [`ptr_ref2`], but operates on ghost values.
 /// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
-pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str>) -> (tracked v: SharedReference<'a, str>)
+pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str>) -> (tracked v:
+    SharedReference<'a, str>)
     requires
         perm.ptr() == ptr,
         perm.is_init(),
     ensures
         v.value() == perm.value(),
-        v.ptr() == ptr;
+        v.ptr() == ptr,
+;
 
 /// Same as [`ptr_ref2`], but operates on ghost values.
 /// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
-pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsTo<[T]>) -> (tracked v: SharedReference<'a, [T]>)
+pub axiom fn ptr_ref2_slice_ghost<'a, T>(
+    ptr: *const [T],
+    tracked perm: &PointsTo<[T]>,
+) -> (tracked v: SharedReference<'a, [T]>)
     requires
         perm.ptr() == ptr,
         perm.is_init(),
     ensures
         v.value()@ == perm.value(),
-        v.ptr() == ptr;
+        v.ptr() == ptr,
+;
 
 } // verus!
 /// Trusted wrapper around `ptr_ref`, due to

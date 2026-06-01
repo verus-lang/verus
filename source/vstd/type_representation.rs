@@ -860,7 +860,10 @@ pub broadcast proof fn ptr_metadata_encoding_well_defined_slices<T: Sized>()
         encoding_exists::<<[T] as core::ptr::Pointee>::Metadata>(value) by {
         broadcast use usize_encode;
 
-        let bytes = endian_to_bytes(EndianNat::<u8>::from_nat(value as nat, size_of::<usize>()), None);
+        let bytes = endian_to_bytes(
+            EndianNat::<u8>::from_nat(value as nat, size_of::<usize>()),
+            None,
+        );
         <<[T] as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(
             value,
             bytes,
@@ -874,6 +877,7 @@ pub broadcast proof fn ptr_metadata_encoding_well_defined_str()
         #[trigger] ptr_metadata_encoding_well_defined::<str>(),
 {
     broadcast use ptr_metadata_encoding_well_defined_slices;
+
     assert(ptr_metadata_encoding_well_defined::<[u8]>());
 }
 
@@ -1074,13 +1078,14 @@ raw_ptr_encoding_from_type_representation! {
 
 /// It is not sound to **directly** transmute values of type `&T` in Verus.
 /// In Verus, `&T` is interpreted simply as the pointed-to value of type `T`.
-/// However, the layout for `&T` is the same as that of raw pointers. 
-/// Thus, according to the Rust specification for transmute, 
+/// However, the layout for `&T` is the same as that of raw pointers.
+/// Thus, according to the Rust specification for transmute,
 /// it is safe to transmute any value of type `&T` to any value of type `&U`, as long as they have the same pointer layout.
 /// However, in Verus, this would mean that you could transmute any value of type `T` to any value of type `U`, and this is unsound.
-pub broadcast axiom fn shared_ref_cannot_be_encoded<T: ?Sized>() 
+pub broadcast axiom fn shared_ref_cannot_be_encoded<T: ?Sized>()
     ensures
-        !(#[trigger] abs_can_be_encoded::<&T>());
+        !(#[trigger] abs_can_be_encoded::<&T>()),
+;
 
 /// The layout for shared references is the same as that for pointers
 /// (see: https://doc.rust-lang.org/reference/type-layout.html#pointers-and-references-layout).
@@ -1105,7 +1110,7 @@ impl<'a, T: ?Sized> AbstractByteRepresentation for SharedReference<'a, T> {
     axiom fn encoding_size(v: Self, b: Seq<AbstractByte>);
 
     proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
-       broadcast use endian_to_bytes_to_endian;
+        broadcast use endian_to_bytes_to_endian;
 
         unsigned_int_max_values();
         let prefix = endian_to_bytes(
@@ -1366,7 +1371,7 @@ pub broadcast group group_type_representation_axioms {
     ptr_metadata_encoding_well_defined_sized_types,
     ptr_metadata_encoding_well_defined_slices,
     ptr_metadata_encoding_well_defined_str,
-    shared_ref_cannot_be_encoded
+    shared_ref_cannot_be_encoded,
 }
 
 } // verus!

@@ -300,18 +300,23 @@ impl PointsTo<str> {
 }
 
 impl PointsTo<[u8]> {
-    pub axiom fn transmute_shared<'a>(tracked &'a self, value: &[u8], tracked target: &str) -> (tracked ret:
-        &'a PointsTo<str>)
+    pub axiom fn transmute_shared<'a>(
+        tracked &'a self,
+        value: &[u8],
+        tracked target: &str,
+    ) -> (tracked ret: &'a PointsTo<str>)
         requires
             transmute_pre_points_to::<[u8], str>(value, target),
             self.is_init(),
-            self.value() == value@ //require a separate argument for value since transmute_pre_points_to expects a &[u8] instead of a Seq<u8>
+            self.value()
+                == value@,  //require a separate argument for value since transmute_pre_points_to expects a &[u8] instead of a Seq<u8>
+
         ensures
             ret.is_init(),
             ret.value() == target,
             ret.ptr()@.addr == self.ptr()@.addr,
             ret.ptr()@.provenance == self.ptr()@.provenance,
-            ret.ptr()@.metadata == self.ptr()@.metadata
+            ret.ptr()@.metadata == self.ptr()@.metadata,
     ;
 }
 
