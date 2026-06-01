@@ -354,7 +354,7 @@ test_verify_one_file! {
         impl<Iter, F> Predicate<bool> for FilterIteratorPred<Iter, F>
             where
                 Iter: Iterator,
-                F: FnMut(&Iter::Item) -> bool 
+                F: FnMut(&Iter::Item) -> bool
         {
             #[verifier::prophetic]
             closed spec fn pred(&self, i: int, b: bool) -> bool {
@@ -574,7 +574,7 @@ test_verify_one_file! {
         impl<Iter, F> Iterator for FilterIterator<Iter, F>
             where
                 Iter: Iterator,
-                F: FnMut(&Iter::Item) -> bool 
+                F: FnMut(&Iter::Item) -> bool
         {
             type Item = Iter::Item;
 
@@ -632,7 +632,7 @@ test_verify_one_file! {
         impl<Iter, F> IteratorSpecImpl for FilterIterator<Iter, F>
             where
                 Iter: Iterator,
-                F: FnMut(&Iter::Item) -> bool 
+                F: FnMut(&Iter::Item) -> bool
         {
 
             open spec fn obeys_prophetic_iter_laws(&self) -> bool {

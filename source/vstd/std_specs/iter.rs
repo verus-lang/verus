@@ -320,8 +320,8 @@ impl <I, P> IteratorSpecImpl for core::iter::Filter<I, P>
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
-    // `filter` cannot make a useful static guess about which element will be returned at a given index, 
-    // since that depends on prophetic evaluations of the predicate.  
+    // `filter` cannot make a useful static guess about which element will be returned at a given index,
+    // since that depends on prophetic evaluations of the predicate.
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         None
     }
