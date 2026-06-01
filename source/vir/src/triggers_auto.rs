@@ -300,6 +300,21 @@ fn make_score(term: &Term, depth: u64) -> Score {
     }
 }
 
+fn check_no_reachable_internal_auto_trigger_ops(exp: &Exp) -> Result<(), VirErr> {
+    let mut scope_map = air::scope_map::ScopeMap::new();
+    crate::sst_visitor::exp_visitor_check(exp, &mut scope_map, &mut |expr, _scope_map| match &expr.x {
+        ExpX::Unary(UnaryOp::StrLen, _) | ExpX::Binary(BinaryOp::StrGetChar, _, _) => Err(error(
+            &expr.span,
+            "automatic trigger inference does not support internal string operations from verus_builtin",
+        )),
+        ExpX::Unary(UnaryOp::CastToInteger, _) => Err(error(
+            &expr.span,
+            "automatic trigger inference encountered an internal integer cast operation",
+        )),
+        _ => Ok(()),
+    })
+}
+
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
     let fail_on_strop = || {
         unreachable!(
@@ -767,6 +782,7 @@ pub(crate) fn build_triggers(
         ctxt.pure_terms_by_var.insert(x.clone(), HashMap::new());
     }
     let mut timer = Timer { span: span.clone(), timeout_countdown: 10000 };
+    check_no_reachable_internal_auto_trigger_ops(exp)?;
     gather_terms(&mut ctxt, ctx, exp, 0);
     /*
     println!();
