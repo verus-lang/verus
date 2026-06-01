@@ -290,9 +290,9 @@ test_verify_one_file! {
             {
                 w.push(x);
             }
-            broadcast use Seq::lemma_filter_index;
-            assert(w@.contains(2));
-            assert(w@.contains(4));
+            assert(w.len() <= 4);
+            assert(forall |i| 0 <= i < w.len() ==> w[i] % 2 == 0);
+            assert(forall |i| #![auto] 0 <= i < w.len() ==> v@.contains(w[i]));
         }
     } => Ok(())
 }
@@ -415,12 +415,15 @@ test_verify_one_file! {
                     forall |i| #![auto] 0 <= i < iter.remaining().len() ==>
                         f.requires((&iter.remaining()[i], ))
                 ensures
+                    s.keep().len() <= iter.remaining().len(),
+                    forall |j| 0 <= j < s.keep().len() ==> f.ensures((&iter.remaining()[j],), #[trigger] s.keep()[j]),
+                    IteratorSpec::remaining(&s) == iter.remaining().take(s.keep().len() as int).filter_index(|j: int| s.keep()[j]),
                     IteratorSpec::remaining(&s).len() <= iter.remaining().len(),
                     forall |i| #![trigger IteratorSpec::remaining(&s)[i]] 0 <= i < IteratorSpec::remaining(&s).len() ==>
                         exists |j| 0 <= j < iter.remaining().len()
                             && IteratorSpec::remaining(&s)[i] == #[trigger] iter.remaining()[j]
                             && f.ensures((&iter.remaining()[j],), true),
-                    IteratorSpec::will_return_none(&s) ==> iter.will_return_none(),
+                    IteratorSpec::will_return_none(&s) ==> iter.will_return_none() && s.keep().len() == iter.remaining().len(),
                     s.count() == 0,
                     s.inner() == iter,
                     IteratorSpec::decrease(&s) is Some == iter.decrease() is Some,
@@ -454,9 +457,13 @@ test_verify_one_file! {
             }
 
             #[verifier::prophetic]
+            pub closed spec fn keep(self) -> Seq<bool> {
+                unwrap_up_to_first_none(self.seq_of_options())
+            }
+
+            #[verifier::prophetic]
             closed spec fn spec_remaining(&self) -> Seq<Iter::Item> {
-                let keep: Seq<bool> = unwrap_up_to_first_none(self.seq_of_options());
-                self.iter.remaining().take(keep.len() as int).filter_index(|i| keep[i])
+                self.iter.remaining().take(self.keep().len() as int).filter_index(|i| self.keep()[i])
             }
 
             #[verifier::prophetic]

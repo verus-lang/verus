@@ -245,6 +245,10 @@ pub uninterp spec fn filter_iter<I, F>(r: Filter<I, F>) -> I;
 // Ghost accessor for the inner predicate
 pub uninterp spec fn filter_fun<I, F>(r: Filter<I, F>) -> F;
 
+// Ghost accessor for the sequence of predicate decisions made for the (prefix of) the
+// inner iterator's elements
+pub uninterp spec fn filter_keep<I, F>(r: Filter<I, F>) -> Seq<bool>;
+
 // Spec version of Filter::new()
 pub uninterp spec fn into_filter_spec<I, F>(i: I, f: F) -> Filter<I, F>;
 
@@ -268,15 +272,20 @@ pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F)
     ensures
         {
             let r = #[trigger] into_filter_spec(i, f);
+            let keep = filter_keep(r);
             {
-            // Filtering can only drop elements, never add them
+            // `keep` records, for each inspected inner element, the predicate's decision
+            &&& keep.len() <= i.remaining().len()
+            &&& forall |j| 0 <= j < keep.len() ==> call_ensures(f, (&i.remaining()[j],), #[trigger] keep[j])
+            // Completeness: Every inner element the predicate keeps is retained and in order.
+            &&& IteratorSpec::remaining(&r) == i.remaining().take(keep.len() as int).filter_index(|j: int| keep[j])
+            // The two facts below follow from the `filter_index` above; we expose them directly for convenience.
             &&& IteratorSpec::remaining(&r).len() <= i.remaining().len()
-            // Every retained element comes from the inner iterator and was accepted by the predicate
             &&& forall |k| #![trigger IteratorSpec::remaining(&r)[k]] 0 <= k < IteratorSpec::remaining(&r).len() ==>
                     exists |j| 0 <= j < i.remaining().len()
                         && IteratorSpec::remaining(&r)[k] == #[trigger] i.remaining()[j]
                         && call_ensures(f, (&i.remaining()[j],), true)
-            &&& IteratorSpec::will_return_none(&r) ==> i.will_return_none()
+            &&& IteratorSpec::will_return_none(&r) ==> i.will_return_none() && keep.len() == i.remaining().len()
             &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
             &&& IteratorSpec::initial_value_relation(&r, &r)
             &&& filter_iter(r) == i
@@ -311,9 +320,8 @@ impl <I, P> IteratorSpecImpl for core::iter::Filter<I, P>
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
-    // `filter` cannot make a useful static guess about which element will be
-    // returned at a given index, since that depends on prophetic evaluations of
-    // the predicate.  (The verifiable implementation likewise returns `None`.)
+    // `filter` cannot make a useful static guess about which element will be returned at a given index, 
+    // since that depends on prophetic evaluations of the predicate.  
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         None
     }
