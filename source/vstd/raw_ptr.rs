@@ -2633,6 +2633,7 @@ pub fn deallocate(
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::SharedReference")]
+#[repr(transparent)]
 pub struct SharedReference<'a, T: ?Sized>(&'a T);
 
 impl<'a, T: ?Sized> Clone for SharedReference<'a, T> {
@@ -2683,7 +2684,7 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     }
 
     #[verifier::external_body]
-    const fn as_ref(self) -> (t: &'a T)
+    pub const fn as_ref(self) -> (t: &'a T)
         ensures
             t == self.value(),
     {
@@ -2842,6 +2843,36 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
 {
     SharedReference(unsafe { &*ptr })
 }
+
+/// Same as [`ptr_ref2`], but operates on ghost values.
+/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) -> (tracked v: SharedReference<'a, T>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v.value() == perm.value(),
+        v.ptr() == ptr;
+
+/// Same as [`ptr_ref2`], but operates on ghost values.
+/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str>) -> (tracked v: SharedReference<'a, str>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v.value() == perm.value(),
+        v.ptr() == ptr;
+
+/// Same as [`ptr_ref2`], but operates on ghost values.
+/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsTo<[T]>) -> (tracked v: SharedReference<'a, [T]>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v.value()@ == perm.value(),
+        v.ptr() == ptr;
 
 } // verus!
 /// Trusted wrapper around `ptr_ref`, due to

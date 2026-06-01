@@ -812,6 +812,71 @@ pub broadcast proof fn ptr_metadata_encoding_well_defined_sized_types<T: Sized>(
     }
 }
 
+/// For `T: Sized`, the pointer metadata type for `[T]` has a suitable encoding.
+pub broadcast proof fn ptr_metadata_encoding_well_defined_slices<T: Sized>()
+    ensures
+        #[trigger] ptr_metadata_encoding_well_defined::<[T]>(),
+{
+    assert forall|value, bytes| #[trigger]
+        abs_encode::<<[T] as core::ptr::Pointee>::Metadata>(&value, bytes) implies size_of::<
+        <[T] as core::ptr::Pointee>::Metadata,
+    >() == bytes.len() by {
+        <<[T] as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(
+            value,
+            bytes,
+        );
+        <<[T] as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::encoding_size(
+            value,
+            bytes,
+        );
+    }
+    assert forall|value, bytes| #[trigger]
+        abs_decode::<<[T] as core::ptr::Pointee>::Metadata>(bytes, &value) implies size_of::<
+        <[T] as core::ptr::Pointee>::Metadata,
+    >() == bytes.len() by {
+        <<[T] as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(
+            value,
+            bytes,
+        );
+        <<[T] as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::encoding_size(
+            value,
+            bytes,
+        );
+    }
+    assert forall|value, bytes| #[trigger]
+        abs_encode::<<[T] as core::ptr::Pointee>::Metadata>(&value, bytes) implies abs_decode::<
+        <[T] as core::ptr::Pointee>::Metadata,
+    >(bytes, &value) by {
+        <<[T] as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(
+            value,
+            bytes,
+        );
+        <<[T] as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::encoding_invertible(
+            value,
+            bytes,
+        );
+    }
+    assert forall|value| #[trigger]
+        encoding_exists::<<[T] as core::ptr::Pointee>::Metadata>(value) by {
+        broadcast use usize_encode;
+
+        let bytes = endian_to_bytes(EndianNat::<u8>::from_nat(value as nat, size_of::<usize>()), None);
+        <<[T] as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(
+            value,
+            bytes,
+        );
+    }
+}
+
+/// The pointer metadata type for `str` has a suitable encoding.
+pub broadcast proof fn ptr_metadata_encoding_well_defined_str()
+    ensures
+        #[trigger] ptr_metadata_encoding_well_defined::<str>(),
+{
+    broadcast use ptr_metadata_encoding_well_defined_slices;
+    assert(ptr_metadata_encoding_well_defined::<[u8]>());
+}
+
 /// Implements `AbstractByteEncoding` for raw pointers.
 ///
 /// This encoding is intended to be shared across `*const T` and `*mut T`, as both types have the same layout (see: [Raw pointer type layout](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer)).
@@ -1005,6 +1070,65 @@ macro_rules! raw_ptr_encoding_from_type_representation {
 raw_ptr_encoding_from_type_representation! {
     (mut, mut_ptr_sized_encode, mut_ptr_unsized_encode);
     (const, const_ptr_sized_encode, const_ptr_unsized_encode);
+}
+
+/// It is not sound to **directly** transmute values of type `&T` in Verus.
+/// In Verus, `&T` is interpreted simply as the pointed-to value of type `T`.
+/// However, the layout for `&T` is the same as that of raw pointers. 
+/// Thus, according to the Rust specification for transmute, 
+/// it is safe to transmute any value of type `&T` to any value of type `&U`, as long as they have the same pointer layout.
+/// However, in Verus, this would mean that you could transmute any value of type `T` to any value of type `U`, and this is unsound.
+pub broadcast axiom fn shared_ref_cannot_be_encoded<T: ?Sized>() 
+    ensures
+        !(#[trigger] abs_can_be_encoded::<&T>());
+
+/// The layout for shared references is the same as that for pointers
+/// (see: https://doc.rust-lang.org/reference/type-layout.html#pointers-and-references-layout).
+///
+/// To transmute values of type `&T`, we must use the `SharedReference<T>` type.
+/// In practice, transmuting with a `SharedReference` requires first constructing a `PointsTo` for the destination type.
+/// This is done using the `transmute_shared` axioms on `PointsTo`.
+/// Then, one constructs a tracked `SharedReference` for the destination type using the `ptr_shared_ref_ghost` axioms.
+impl<'a, T: ?Sized> AbstractByteRepresentation for SharedReference<'a, T> {
+    open spec fn can_be_encoded() -> bool {
+        <*const T as AbstractByteRepresentation>::can_be_encoded()
+    }
+
+    open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
+        <*const T as AbstractByteRepresentation>::encode(value.ptr(), bytes)
+    }
+
+    open spec fn decode(bytes: Seq<AbstractByte>, value: Self) -> bool {
+        <*const T as AbstractByteRepresentation>::decode(bytes, value.ptr())
+    }
+
+    axiom fn encoding_size(v: Self, b: Seq<AbstractByte>);
+
+    proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
+       broadcast use endian_to_bytes_to_endian;
+
+        unsigned_int_max_values();
+        let prefix = endian_to_bytes(
+            EndianNat::<u8>::from_nat(v.ptr()@.addr as nat, size_of::<usize>()),
+            Some(v.ptr()@.provenance),
+        );
+
+        assert(encoding_exists::<<T as core::ptr::Pointee>::Metadata>(v.ptr()@.metadata));
+        let suffix = choose|bytes|
+            abs_encode::<<T as core::ptr::Pointee>::Metadata>(&(v.ptr()@.metadata), bytes);
+        let b = prefix.add(suffix);
+        assert(b.subrange(0, size_of::<usize>() as int) == prefix);
+        assert(b.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int) == suffix);
+        b
+    }
+
+    proof fn encoding_invertible(v: Self, b: Seq<AbstractByte>) {
+        <*const T as AbstractByteRepresentation>::encoding_invertible(v.ptr(), b);
+    }
+
+    axiom fn abs_encode_impl(v: Self, b: Seq<AbstractByte>);
+
+    axiom fn abs_can_be_encoded_impl();
 }
 
 /// This trait is implemented on fieldness enums with a primitive type representation, defined with the `#[repr(<primitive>)]` attribute.
@@ -1240,6 +1364,9 @@ pub broadcast group group_type_representation_axioms {
     const_ptr_sized_encode,
     const_ptr_unsized_encode,
     ptr_metadata_encoding_well_defined_sized_types,
+    ptr_metadata_encoding_well_defined_slices,
+    ptr_metadata_encoding_well_defined_str,
+    shared_ref_cannot_be_encoded
 }
 
 } // verus!
