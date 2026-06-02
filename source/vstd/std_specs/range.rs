@@ -93,11 +93,17 @@ pub assume_specification<Idx: PartialOrd<Idx>, U>[ RangeInclusive::<Idx>::contai
 // `#[verifier::when_used_as_spec(spec_range_inclusive_new)]` to the
 // specification for the executable `RangeInclusive::new` method and define
 // that spec function here.
-pub uninterp spec fn spec_range_inclusive_new<Idx>(start: Idx, end: Idx) -> core::ops::RangeInclusive<Idx>;
+pub uninterp spec fn spec_range_inclusive_new<Idx>(
+    start: Idx,
+    end: Idx,
+) -> core::ops::RangeInclusive<Idx>;
 
 pub broadcast axiom fn axiom_spec_range_inclusive_new<Idx>(start: Idx, end: Idx)
     ensures
-        (#[trigger] spec_range_inclusive_new(start, end))@ == {RangeInclusiveView { start, end, exhausted: false }};
+        (#[trigger] spec_range_inclusive_new(start, end))@ == {
+            RangeInclusiveView { start, end, exhausted: false }
+        },
+;
 
 #[verifier::when_used_as_spec(spec_range_inclusive_new)]
 pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx) -> (ret:
