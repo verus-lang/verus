@@ -34,8 +34,6 @@ test_verify_one_file! {
             invariant
                 v.len() == iter.index(),
                 i <= 5,
-                iter.snapshot@@.start == 0,
-                iter.snapshot@@.end == 4,
             {
                 assert(i <= 4);
                 v.push(i);

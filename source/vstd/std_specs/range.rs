@@ -86,12 +86,24 @@ pub assume_specification<Idx: PartialOrd<Idx>, U>[ RangeInclusive::<Idx>::contai
             == r.contains_spec(i),
 ;
 
+// To allow reasoning about the returned range when the executable
+// function `RangeInclusive::new()` is invoked in a `for` loop header
+// (e.g., in `for x in it: start..=end { ... }`), we need to specify the
+// behavior of the constructed range in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_range_inclusive_new)]` to the
+// specification for the executable `RangeInclusive::new` method and define
+// that spec function here.
+pub uninterp spec fn spec_range_inclusive_new<Idx>(start: Idx, end: Idx) -> core::ops::RangeInclusive<Idx>;
+
+pub broadcast axiom fn axiom_spec_range_inclusive_new<Idx>(start: Idx, end: Idx)
+    ensures
+        (#[trigger] spec_range_inclusive_new(start, end))@ == {RangeInclusiveView { start, end, exhausted: false }};
+
+#[verifier::when_used_as_spec(spec_range_inclusive_new)]
 pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx) -> (ret:
     core::ops::RangeInclusive<Idx>)
     ensures
-        ret@.start == start,
-        ret@.end == end,
-        ret@.exhausted == false,
+        ret == spec_range_inclusive_new(start, end),
 ;
 
 impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
@@ -300,6 +312,7 @@ pub broadcast group group_range_axioms {
     axiom_spec_range_next_i64,
     axiom_spec_range_next_i128,
     axiom_spec_range_next_isize,
+    axiom_spec_range_inclusive_new,
 }
 
 } // verus!
