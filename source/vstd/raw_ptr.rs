@@ -98,11 +98,15 @@ impl Provenance {
 }
 
 /// Allocations do not "wrap around" the address space.
+/// A given allocation is of length at most `isize::MAX`.
 // Q: Where in the documentation do we get this fact?
 // A: Should be self-evident, comes from allocations being contiguous regions of memory
+// TODO-Elanor: update with links to Rust documentation
 pub broadcast axiom fn alloc_bound(p: Provenance)
     ensures
-        #[trigger] p.start_addr() + #[trigger] p.alloc_len() <= usize::MAX + 1,
+        #![trigger p.alloc_len()]
+        p.start_addr() + p.alloc_len() <= usize::MAX + 1,
+        p.alloc_len() <= isize::MAX,
 ;
 
 /// Since `self.alignment()` returns a `int`, `Alignment` invariants do not follow directly from the type.
@@ -137,6 +141,7 @@ pub broadcast axiom fn is_nonnull(p: Provenance)
 ;
 
 pub broadcast group group_provenance_properties {
+    prov_alignment,
     alloc_bound,
     start_addr_aligned,
     is_nonnull,
@@ -1285,6 +1290,19 @@ pub axiom fn seq_into_slice<T>(tracked spt: SeqPointsTo<T>) -> (tracked pt: Poin
         pt.ptr()@.metadata == spt.len(),
 ;
 
+/// If the domain exactly contains the indices bounded by `self.len()`,
+/// we can convert this permission into a `PointsTo<[T]>` with the same pointer
+/// and the same memory contents at every index.
+pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked pt: &mut PointsTo<[T]>)
+    ensures
+        forall|i|
+            0 <= i < pt.mem_contents_seq().len() ==> #[trigger] final(pt).mem_contents_seq()[i as int]
+                == final(spt)[i].mem_contents(),
+        old(spt).ptr() == final(spt).ptr(),
+        pt.ptr() as *mut T == final(spt).ptr(),
+        pt.ptr()@.metadata == final(spt).len() == old(spt).len(),
+;
+
 impl<T> SeqPointsTo<T> {
     /// The keys must fall in the range `[0, self.len())`.
     /// For each key `i`, the corresponding `PointsTo<T>` must have the same provenance as
@@ -1439,6 +1457,13 @@ impl<T> SeqPointsTo<T> {
         broadcast use is_nonnull;
 
     }
+
+    // TODO: come back and figure out what to do about the value transformation (sigh)
+    pub axiom fn cast_to_u8(tracked self) -> (tracked out: SeqPointsTo<u8>)
+        ensures
+            out.ptr() == self.ptr() as *mut u8,
+            out.len() == self.len() * layout::size_of::<T>(),
+    ;
 }
 
 impl SeqPointsTo<u8> {
@@ -2181,6 +2206,26 @@ pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> 
     unsafe { &mut *ptr }
 }
 
+/// Equivalent to `&mut *[X]`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v: &mut [T])
+    requires
+        old(perm).ptr() == ptr,
+        old(perm).is_init(),
+    ensures
+        final(perm).ptr() == ptr,
+        final(perm).is_init(),
+        old(perm).value() == v@,
+        final(perm).value() == final(v)@,
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
+}
+
+
 macro_rules! pointer_specs {
     ($mod_ident:ident, $ptr_from_data:ident, $mu:tt) => {
         #[cfg(verus_keep_ghost)]
@@ -2223,8 +2268,8 @@ pub broadcast group group_raw_ptr_axioms {
     axiom_ptr_mut_from_data,
     ptrs_mut_eq,
     ptrs_mut_eq_sized,
-    alloc_bound,
     axiom_pt_slice_len,
+    group_provenance_properties,
 }
 
 /// Tracked object that indicates a given provenance has been exposed.

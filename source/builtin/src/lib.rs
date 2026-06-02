@@ -449,7 +449,7 @@ impl<A> core::ops::Deref for Tracked<A> {
 
 #[cfg(verus_keep_ghost)]
 #[cfg(verus_verify_core)]
-#[rustc_const_unstable(feature = "const deref impl", issue = "none")]
+#[rustc_const_unstable(feature = "your_feature_name", issue = "none")]
 impl<A> const core::ops::Deref for Tracked<A> {
     type Target = A;
     // #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::const_deref"]
@@ -473,7 +473,7 @@ impl<A> core::ops::DerefMut for Tracked<A> {
 
 #[cfg(verus_keep_ghost)]
 #[cfg(verus_verify_core)]
-#[rustc_const_unstable(feature = "const deref_mut impl", issue = "none")]
+#[rustc_const_unstable(feature = "your_feature_name", issue = "none")]
 impl<A> const core::ops::DerefMut for Tracked<A> {
     // #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::const_deref_mut"]
     fn deref_mut(&mut self) -> &mut Self::Target {
