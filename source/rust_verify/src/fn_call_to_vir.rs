@@ -2061,10 +2061,14 @@ fn verus_item_to_vir<'tcx, 'a>(
             let t = bctx.mid_ty_to_vir(expr.span, &arg_typ)?;
             mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
         }
-        VerusItem::MutRefCurrent | VerusItem::MutRefFuture | VerusItem::Final => {
+        VerusItem::MutRefPtr
+        | VerusItem::MutRefCurrent
+        | VerusItem::MutRefFuture
+        | VerusItem::Final => {
             let name = match verus_item {
                 VerusItem::MutRefCurrent => "mut_ref_current",
                 VerusItem::MutRefFuture => "mut_ref_future",
+                VerusItem::MutRefPtr => "mut_ref_ptr",
                 VerusItem::Final => "final",
                 _ => unreachable!(),
             };
@@ -2089,6 +2093,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     UnaryOp::MutRefFuture(vir::ast::MutRefFutureSourceName::MutRefFuture)
                 }
                 VerusItem::Final => UnaryOp::MutRefFinal(false),
+                VerusItem::MutRefPtr => UnaryOp::MutRefPtr,
                 _ => unreachable!(),
             };
             mk_expr(ExprX::Unary(op, exp))

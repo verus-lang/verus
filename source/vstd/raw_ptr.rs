@@ -2843,6 +2843,12 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     SharedReference(unsafe { &*ptr })
 }
 
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::spec_ptr_addr")]
+#[verifier::inline]
+pub open spec fn spec_ptr_addr<T: Sized>(ptr: *mut T) -> usize {
+    spec_cast_ptr_to_usize(ptr)
+}
+
 } // verus!
 /// Trusted wrapper around `ptr_ref`, due to
 /// [current limitations](https://verus-lang.github.io/verus/guide/exec_attr.html?highlight=verus_spec#using-a-mix-of-verus_spec-and-verus)

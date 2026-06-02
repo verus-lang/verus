@@ -2150,7 +2150,7 @@ fn check_expr(
             });
             Ok((Mode::Spec, proph))
         }
-        ExprX::Unary(UnaryOp::MutRefCurrent, e1) => {
+        ExprX::Unary(UnaryOp::MutRefCurrent | UnaryOp::MutRefPtr, e1) => {
             let (_m, proph) =
                 check_expr(ctxt, record, typing, Mode::Spec, Expect(Mode::Spec), e1, outer_proph)?;
             Ok((Mode::Spec, proph))
