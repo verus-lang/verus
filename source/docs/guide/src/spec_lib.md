@@ -1,4 +1,4 @@
-# Specification libraries: Seq, Set, Map
+# Specification libraries: Seq, Set, ISet, Map, IMap
 
 The Verus libraries contain types `Seq<T>`, `Set<T>`, `ISet<T>`,
 `Map<Key, Value>`, and `IMap<Key, Value>`
@@ -29,7 +29,7 @@ prevent some SMT-time proof failure surprises. For instance, adding an element
 to a `Set` increases its `len()` by 1, but this doesn't always hold for an
 `ISet` since it might have an undefined length.
 
-## Constructing and using Seq, Set, Map
+## Constructing and using Seq, Set, ISet, Map, and IMap
 
 The `seq!`, `set!`, and `map!` macros construct values of type `Seq`, `Set`, and `Map`
 with particular contents:
@@ -105,14 +105,14 @@ see:
 
 See also the [API documentation](https://verus-lang.github.io/verus/verusdoc/vstd/index.html).
 
-## Proving properties of Seq, Set, Map
+## Proving properties of Seq, Set, ISet, Map, and IMap
 
-The SMT solver will prove some properties about Seq, Set, and Map automatically,
+The SMT solver will prove some properties about Seq, Set, ISet, Map, and IMap automatically,
 as shown in the examples above.
 However, some other properties may require calling lemmas in the library
 or may require proofs by induction.
 
-If two collections (`Seq`, `Set`, or `Map`) have the same elements,
+If two collections (`Seq`, `Set`, `ISet`, `Map`, or `IMap`) have the same elements,
 Verus considers them to be equal.
 This is known as equality via [extensionality](https://en.wikipedia.org/wiki/Extensionality).
 However, the SMT solver will in general not automatically recognize that
