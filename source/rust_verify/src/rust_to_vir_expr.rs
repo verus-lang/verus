@@ -1521,6 +1521,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     }
 }
 
+#[allow(dead_code)]
 enum OpKind {
     UnOp(rustc_hir::UnOp),
     BinOp(rustc_hir::BinOp),
@@ -1593,26 +1594,13 @@ fn lang_item_for_op(
 /// Return None if we do not want to overload the operator.
 /// We do not replace operators for some primitive types so that we still see
 /// consistent errors for integer overflow/underflow.
-fn operator_overload_to_vir<'tcx>(
+fn binary_operator_overload_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<Option<vir::ast::Expr>, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let span = expr.span;
     let (op, bin_args) = match expr.kind {
-        ExprKind::Unary(UnOp::Deref, _) => {
-            return Ok(None);
-        }
-        ExprKind::Unary(op @ (UnOp::Not | UnOp::Neg), arg) => {
-            let ty = bctx.types.expr_ty_adjusted(arg);
-            match ty.kind() {
-                TyKind::Adt(_, _) | TyKind::Uint(_) | TyKind::Int(_) | TyKind::Bool => {
-                    return Ok(None);
-                }
-                _ => {}
-            }
-            (OpKind::UnOp(op), None)
-        }
         ExprKind::Binary(op, lhs, rhs) => {
             match op.node {
                 BinOpKind::Eq | BinOpKind::Ne => {
@@ -1655,15 +1643,15 @@ fn operator_overload_to_vir<'tcx>(
             };
             (OpKind::BinOp(op), Some((lhs, rhs)))
         }
-        ExprKind::AssignOp(op, lhs, rhs) => {
-            if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
-                return Ok(None);
-            }
-            // This should work, except for lacking external specifications
-            (OpKind::AssignOp(op), Some((lhs, rhs)))
-        }
         _ => return Ok(None),
     };
+
+    // Usually it's easier to get the fn_def_id like this:
+    // fn_def_id = bctx.types.type_dependent_def_id(expr.hir_id);
+    // However, this only works for the method_call case, i.e., when the operator
+    // isn't primitive. However, because of the signed div and signed rem cases,
+    // we reach this point outside the method_call case.
+    // So we can't clean this all up in favor of type_dependent_def_id right now.
 
     let (trait_id, fun_sym, args, substs) = if let Some((lhs, rhs)) = bin_args {
         let (fun_sym, Some(trait_id)) = lang_item_for_op(tcx, op, span)? else {
@@ -1677,15 +1665,6 @@ fn operator_overload_to_vir<'tcx>(
         let substs = tcx.mk_args(&[lhs_ty.into(), rhs_ty.into()]);
 
         let args = vec![lhs, rhs];
-        (trait_id, fun_sym, args, substs)
-    } else if let ExprKind::Unary(_, arg) = expr.kind {
-        let (fun_sym, Some(trait_id)) = lang_item_for_op(tcx, op, span)? else {
-            crate::internal_err!(span, "Needs to import trait for operator");
-        };
-
-        let args = vec![arg];
-        let arg_ty = strip_ref(bctx.types.expr_ty_adjusted(arg));
-        let substs = tcx.mk_args(&[arg_ty.into()]);
         (trait_id, fun_sym, args, substs)
     } else {
         return Ok(None);
@@ -2220,6 +2199,22 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             unsupported_err!(expr.span, format!("offset_of!()"))
         }
         ExprKind::Unary(op, arg) => match op {
+            UnOp::Not | UnOp::Neg if bctx.types.is_method_call(expr) => {
+                let fn_def_id = bctx
+                    .types
+                    .type_dependent_def_id(expr.hir_id)
+                    .expect("cannot get the function definition id for a unary op");
+                let arg_ty = tc.expr_ty_adjusted(arg);
+                let arg_vir = expr_to_vir_consume(bctx, arg)?;
+                Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::call_unary_method(
+                    bctx,
+                    expr.span,
+                    expr_typ()?,
+                    fn_def_id,
+                    arg_vir,
+                    arg_ty,
+                )?))
+            }
             UnOp::Not => {
                 let ty = tc.expr_ty_adjusted(arg);
                 let not_op = match ty.kind() {
@@ -2237,10 +2232,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     }
                     TyKind::Bool => UnaryOp::Not,
                     _ => {
-                        let ret = operator_overload_to_vir(bctx, expr)?;
-                        if let Some(r) = ret {
-                            return Ok(ExprOrPlace::Expr(r));
-                        }
                         unsupported_err!(
                             expr.span,
                             format!("applying `!` operator to type {:}", ty)
@@ -2351,7 +2342,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         },
         ExprKind::Binary(op, lhs, rhs) => {
-            let ret = operator_overload_to_vir(bctx, expr)?;
+            let ret = binary_operator_overload_to_vir(bctx, expr)?;
             if let Some(r) = ret {
                 return Ok(ExprOrPlace::Expr(r));
             }
@@ -2369,7 +2360,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             Ok(ExprOrPlace::Expr(mk_ty_clip(bctx, &expr_typ()?, &e, true)))
                         }
                         IntRange::I(_) | IntRange::ISize => {
-                            // Handled by operator_overload_to_vir
+                            // Handled by binary_operator_overload_to_vir
                             unreachable!("signed fixed-width div/mod handled by traits")
                         }
                         IntRange::Char => {
