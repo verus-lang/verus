@@ -45,8 +45,8 @@ broadcast use group_set_lemmas;
 // since it might map an infinite number of elements to the same one).
 // Also, note that if multiset were infinite, it couldn't accept_recursive_types.
 //
-// Perhaps someday Verus will be able to mark finite-Map as accept_recursive_types, then this file
-// can be rewritten as just a wrapper around Map rather than the present pile of trusted axioms.
+// Now that Verus has a finite Map that is labeled as accept_recursive_types, this file should
+// be rewritten as just a wrapper around Map rather than the present pile of trusted axioms.
 // See https://github.com/verus-lang/verus/discussions/1663
 //
 #[verifier::external_body]
