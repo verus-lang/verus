@@ -442,9 +442,24 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 let bv_typ = if is_bool { BvTyp::Bool } else { bv_typ };
                 Ok(BvExpr { expr: Arc::new(ExprX::Unary(op, expr)), bv_typ })
             }
-            UnaryOp::IntToReal => panic!("internal error: unexpected int to real coercion"),
-            UnaryOp::RealToInt => panic!("internal error: unexpected real to int coercion"),
-            UnaryOp::FloatToBits => panic!("internal error: unexpected float to bits coercion"),
+            UnaryOp::IntToReal => {
+                return Err(error(
+                    &exp.span,
+                    "int-to-real coercion not supported in bit_vector assert",
+                ));
+            }
+            UnaryOp::RealToInt => {
+                return Err(error(
+                    &exp.span,
+                    "real-to-int coercion not supported in bit_vector assert",
+                ));
+            }
+            UnaryOp::FloatToBits => {
+                return Err(error(
+                    &exp.span,
+                    "float-to-bits coercion not supported in bit_vector assert",
+                ));
+            }
             UnaryOp::HeightTrigger => panic!("internal error: unexpected HeightTrigger"),
             UnaryOp::Trigger(_) => bv_exp_to_expr(ctx, state, arg),
             UnaryOp::CoerceMode { .. } => {
@@ -453,11 +468,17 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", arg)
             }
-            UnaryOp::StrLen => panic!(
-                "internal error: matching for bit vector ops on this match should be impossible"
-            ),
+            UnaryOp::StrLen => {
+                return Err(error(
+                    &exp.span,
+                    "string slice length not supported in bit_vector assert",
+                ));
+            }
             UnaryOp::InferSpecForLoopIter { .. } => {
-                panic!("internal error: unexpected Option type (from InferSpecForLoopIter)")
+                return Err(error(
+                    &exp.span,
+                    "loop-iterator inference hint not supported in bit_vector assert",
+                ));
             }
             UnaryOp::CastToInteger => {
                 panic!("internal error: unexpected CastToInteger")
