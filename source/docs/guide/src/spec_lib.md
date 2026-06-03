@@ -1,10 +1,12 @@
 # Specification libraries: Seq, Set, Map
 
-The Verus libraries contain types `Seq<T>`, `Set<T>`, and `Map<Key, Value>`
-for representing sequences, sets, and maps in specifications.
+The Verus libraries contain types `Seq<T>`, `Set<T>`, `ISet<T>`,
+`Map<Key, Value>`, and `IMap<Key, Value>`
+for representing sequences, finite sets, potentially infinite sets,
+finite maps, and potentially infinite maps in specifications.
 In contrast to executable Rust collection datatypes in
 [std::collections](https://doc.rust-lang.org/std/collections/),
-the `Seq`, `Set` and `Map` types
+the `Seq`, `Set`, `ISet`, `Map`, and `IMap` types
 represent collections of arbitrary size.
 For example, while the `len()` method of
 [`std::collections::HashSet`](https://doc.rust-lang.org/std/collections/hash_set/struct.HashSet.html)
