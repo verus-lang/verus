@@ -85,7 +85,11 @@ impl<K, V> IMap<K, V> {
 
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
     pub open spec fn contains_pair(self, k: K, v: V) -> bool {
-        self.dom().contains(k) && self[k] == v
+        // We use the implication below to make sure that the solver tries to prove
+        // `self.dom().contains(k)` first. That fact is sometimes necessary to trigger
+        // a quantifier helpful in proving `self[k] == v`.
+        &&& self.dom().contains(k)
+        &&& self.dom().contains(k) ==> self[k] == v
     }
 
     /// Returns true if `m1` is _contained in_ `m2`, i.e., the domain of `m1` is a subset

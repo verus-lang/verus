@@ -763,15 +763,6 @@ pub broadcast proof fn lemma_iset_ext_equal<A>(s1: ISet<A>, s2: ISet<A>)
     }
 }
 
-pub broadcast proof fn lemma_iset_ext_equal_eq<A>(s1: ISet<A>, s2: ISet<A>)
-    ensures
-        #[trigger] (s1 =~= s2) ==> s1 == s2,
-{
-    if s1 =~= s2 {
-        assert(s1 == s2);
-    }
-}
-
 pub broadcast proof fn lemma_iset_ext_equal_deep<A>(s1: ISet<A>, s2: ISet<A>)
     ensures
         #[trigger] (s1 =~~= s2) <==> s1 =~= s2,
@@ -1049,7 +1040,6 @@ pub broadcast group group_iset_lemmas {
     lemma_iset_difference,
     lemma_iset_complement,
     lemma_iset_ext_equal,
-    lemma_iset_ext_equal_eq,
     lemma_iset_ext_equal_deep,
     lemma_iset_mk_map_domain,
     lemma_iset_mk_map_index,
