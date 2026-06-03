@@ -1648,7 +1648,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] impl_not verus_code! {
+    #[test] impl_not_issue2519 verus_code! {
+        use std::ops::*;
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+
         #[derive(Copy, Clone, PartialEq, Eq)]
         pub enum B {
             True,
@@ -1688,10 +1692,64 @@ test_verify_one_file! {
         }
 
         fn main() {
-            let c1 = B::True.not(); // This does not cause rustc to panic
+            let c1 = B::True.not();
             assert(c1 == B::False);
 
-            let c2 = !B::True; // This causes rustc to panic
+            let c2 = !B::True;
+            assert(c2 == B::False);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] impl_neg_issue2519 verus_code! {
+        use std::ops::*;
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+
+        #[derive(Copy, Clone, PartialEq, Eq)]
+        pub enum B {
+            True,
+            False,
+        }
+
+        impl Neg for B {
+            type Output = Self;
+
+            fn neg(self) -> (res: Self)
+                ensures
+                    self is True ==> res is False,
+                    self is False ==> res is True,
+            {
+                match self {
+                    B::True => B::False,
+                    B::False => B::True,
+                }
+            }
+        }
+
+        impl NegSpecImpl for B {
+            open spec fn obeys_neg_spec() -> bool {
+                true
+            }
+
+            open spec fn neg_req(self) -> bool {
+                true
+            }
+
+            open spec fn neg_spec(self) -> Self::Output {
+                match self {
+                    B::True => B::False,
+                    B::False => B::True,
+                }
+            }
+        }
+
+        fn main() {
+            let c1 = B::True.neg();
+            assert(c1 == B::False);
+
+            let c2 = -B::True;
             assert(c2 == B::False);
         }
     } => Ok(())
