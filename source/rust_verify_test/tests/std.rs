@@ -1646,3 +1646,53 @@ test_verify_one_file! {
 
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] impl_not verus_code! {
+        #[derive(Copy, Clone, PartialEq, Eq)]
+        pub enum B {
+            True,
+            False,
+        }
+
+        impl Not for B {
+            type Output = Self;
+
+            fn not(self) -> (res: Self)
+                ensures
+                    self is True ==> res is False,
+                    self is False ==> res is True,
+            {
+                match self {
+                    B::True => B::False,
+                    B::False => B::True,
+                }
+            }
+        }
+
+        impl NotSpecImpl for B {
+            open spec fn obeys_not_spec() -> bool {
+                true
+            }
+
+            open spec fn not_req(self) -> bool {
+                true
+            }
+
+            open spec fn not_spec(self) -> Self::Output {
+                match self {
+                    B::True => B::False,
+                    B::False => B::True,
+                }
+            }
+        }
+
+        fn main() {
+            let c1 = B::True.not(); // This does not cause rustc to panic
+            assert(c1 == B::False);
+
+            let c2 = !B::True; // This causes rustc to panic
+            assert(c2 == B::False);
+        }
+    } => Ok(())
+}

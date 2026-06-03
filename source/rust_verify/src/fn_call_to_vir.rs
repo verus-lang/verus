@@ -430,14 +430,29 @@ pub(crate) fn call_index<'tcx>(
     idx: vir::ast::Expr,
     idx_ty: rustc_middle::ty::Ty<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
-    // deref has arg &Self
-    // deref_mut has arg &mut Self
+    // index has arg &Self
+    // index_mut has arg &mut Self
     // In either case, strip off the reference to get the Self type for the trait
     let TyKind::Ref(_, self_ty, _) = arg_ty.kind() else {
         crate::internal_err!(span, "deref_to_vir: expected ref")
     };
     let trait_args = bctx.ctxt.tcx.mk_args(&[GenericArg::from(*self_ty), GenericArg::from(idx_ty)]);
     let args = Arc::new(vec![arg, idx]);
+    call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
+}
+
+/// Emit a call to unary method call (Neg or Not)
+pub(crate) fn call_unary_method<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    expr_typ: Typ,
+    trait_fun_id: DefId,
+    arg: vir::ast::Expr,
+    arg_ty: rustc_middle::ty::Ty<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    let self_ty = arg_ty;
+    let trait_args = bctx.ctxt.tcx.mk_args(&[GenericArg::from(self_ty)]);
+    let args = Arc::new(vec![arg]);
     call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
 }
 
