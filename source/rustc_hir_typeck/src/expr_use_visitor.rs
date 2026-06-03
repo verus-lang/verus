@@ -232,18 +232,18 @@ impl<'tcx> TypeInformationCtxt<'tcx> for &crate::upvar::FnCtxt<'_, 'tcx> {
     }
 
     fn type_is_copy_modulo_regions(&self, ty: Ty<'tcx>) -> bool {
-        let typing_env = rustc_middle::ty::TypingEnv {
-            typing_mode: rustc_middle::ty::TypingMode::PostAnalysis,
-            param_env: self.param_env,
-        };
+        let typing_env = rustc_middle::ty::TypingEnv::new(
+            self.param_env,
+            rustc_middle::ty::TypingMode::PostAnalysis,
+        );
         self.tcx.type_is_copy_modulo_regions(typing_env, ty)
     }
 
     fn type_is_use_cloned_modulo_regions(&self, ty: Ty<'tcx>) -> bool {
-        let typing_env = rustc_middle::ty::TypingEnv {
-            typing_mode: rustc_middle::ty::TypingMode::PostAnalysis,
-            param_env: self.param_env,
-        };
+        let typing_env = rustc_middle::ty::TypingEnv::new(
+            self.param_env,
+            rustc_middle::ty::TypingMode::PostAnalysis,
+        );
         self.tcx.type_is_use_cloned_modulo_regions(typing_env, ty)
     }
 

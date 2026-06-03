@@ -43,7 +43,7 @@ struct PatCtxt<'tcx, 'ptcx> {
     rust_2024_migration: Option<PatMigration<'tcx>>,
 }
 
-pub(super) fn pat_from_hir<'tcx>(
+pub(super) fn pat_from_hir<'tcx, 'ptcx>(
     upper: &'ptcx mut ThirBuildCx<'tcx>,
     tcx: TyCtxt<'tcx>,
     typing_env: ty::TypingEnv<'tcx>,

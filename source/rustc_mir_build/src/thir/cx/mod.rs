@@ -137,16 +137,17 @@ impl<'tcx> ThirBuildCx<'tcx> {
         pat: &'tcx hir::Pat<'tcx>,
         let_stmt_type: Option<&hir::Ty<'tcx>>,
     ) -> Box<Pat<'tcx>> {
+        let pat = crate::thir::pattern::pat_from_hir(
+            self,
+            self.tcx,
+            self.typing_env,
+            self.typeck_results,
+            pat,
+            let_stmt_type,
+        );
         crate::verus::erase_pat(
             self,
-            crate::thir::pattern::pat_from_hir(
-                self,
-                self.tcx,
-                self.typing_env,
-                self.typeck_results,
-                pat,
-                let_stmt_type,
-            ),
+            pat,
         )
     }
 

@@ -885,17 +885,16 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         closure_def_id: LocalDefId,
         var_hir_id: HirId,
     ) -> Place<'tcx> {
+        // 1.96.0: Upstream calls `normalize_capture_place` here, so that
+        // "capture analysis can assume a normalized `Place`". Since we
+        // don't use capture analysis in this fork, we skip normalizing.
         let upvar_id = ty::UpvarId::new(var_hir_id, closure_def_id);
 
-        let place = Place {
+        Place {
             base_ty: self.node_ty(var_hir_id),
             base: PlaceBase::Upvar(upvar_id),
             projections: Default::default(),
-        };
-
-        // Normalize eagerly when inserting into `capture_information`, so all downstream
-        // capture analysis can assume a normalized `Place`.
-        self.normalize_capture_place(self.tcx.hir_span(var_hir_id), place)
+        }
     }
 
     /// A captured place is mutable if
@@ -1142,11 +1141,11 @@ impl<'fcx, 'a, 'tcx> euv::Delegate<'tcx> for InferBorrowKind<'fcx, 'a, 'tcx> {
         let PlaceBase::Upvar(upvar_id) = place_with_id.place.base else { return };
         assert_eq!(self.closure_def_id, upvar_id.closure_expr_id);
 
-        let span = self.fcx.tcx.hir_span(diag_expr_id);
-        let place = self.fcx.normalize_capture_place(span, place_with_id.place.clone());
+        // let span = self.fcx.tcx.hir_span(diag_expr_id);
+        // let place = self.fcx.normalize_capture_place(span, place_with_id.place.clone());
 
         self.capture_information.push((
-            place,
+            place_with_id.place.clone(),
             ty::CaptureInfo {
                 capture_kind_expr_id: Some(diag_expr_id),
                 path_expr_id: Some(diag_expr_id),
@@ -1160,11 +1159,11 @@ impl<'fcx, 'a, 'tcx> euv::Delegate<'tcx> for InferBorrowKind<'fcx, 'a, 'tcx> {
         let PlaceBase::Upvar(upvar_id) = place_with_id.place.base else { return };
         assert_eq!(self.closure_def_id, upvar_id.closure_expr_id);
 
-        let span = self.fcx.tcx.hir_span(diag_expr_id);
-        let place = self.fcx.normalize_capture_place(span, place_with_id.place.clone());
+        // let span = self.fcx.tcx.hir_span(diag_expr_id);
+        // let place = self.fcx.normalize_capture_place(span, place_with_id.place.clone());
 
         self.capture_information.push((
-            place,
+            place_with_id.place.clone(),
             ty::CaptureInfo {
                 capture_kind_expr_id: Some(diag_expr_id),
                 path_expr_id: Some(diag_expr_id),
@@ -1180,11 +1179,12 @@ impl<'fcx, 'a, 'tcx> euv::Delegate<'tcx> for InferBorrowKind<'fcx, 'a, 'tcx> {
         diag_expr_id: HirId,
         bk: ty::BorrowKind,
     ) {
+        let capture_kind = ty::UpvarCapture::ByRef(bk);
+        /*
         let PlaceBase::Upvar(upvar_id) = place_with_id.place.base else { return };
         assert_eq!(self.closure_def_id, upvar_id.closure_expr_id);
 
         // The region here will get discarded/ignored
-        let capture_kind = ty::UpvarCapture::ByRef(bk);
 
         let span = self.fcx.tcx.hir_span(diag_expr_id);
         let place = self.fcx.normalize_capture_place(span, place_with_id.place.clone());
@@ -1198,9 +1198,10 @@ impl<'fcx, 'a, 'tcx> euv::Delegate<'tcx> for InferBorrowKind<'fcx, 'a, 'tcx> {
         if place.deref_tys().any(Ty::is_raw_ptr) {
             capture_kind = ty::UpvarCapture::ByRef(ty::BorrowKind::Immutable);
         }
+        */
 
         self.capture_information.push((
-            place,
+            place_with_id.place.clone(),
             ty::CaptureInfo {
                 capture_kind_expr_id: Some(diag_expr_id),
                 path_expr_id: Some(diag_expr_id),

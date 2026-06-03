@@ -237,6 +237,9 @@ fn pat_get_ids<'tcx>(pat: &Pat<'tcx>, out: &mut Vec<LocalVarId>) {
                 pat_get_ids(&pats[0], out);
             }
         }
+        PatKind::Guard { subpattern, condition: _ } => {
+            pat_get_ids(subpattern, out);
+        }
         PatKind::Never => {}
         PatKind::Error(_error_guaranteed) => {}
     }

@@ -654,6 +654,7 @@ fn pat_has_shadow<'tcx>(enclosing_def_id: LocalDefId, pat: &Pat<'tcx>) -> bool {
             }
             false
         }
+        PatKind::Guard { subpattern, condition: _ } => pat_has_shadow(enclosing_def_id, subpattern),
         PatKind::Never => false,
         PatKind::Error(_error_guaranteed) => false,
     }
@@ -831,6 +832,7 @@ fn pattern_bindings_rec<'tcx>(bindings: &mut Vec<Binding<'tcx>>, pat: &Pat<'tcx>
                 pattern_bindings_rec(bindings, &pats[0]);
             }
         }
+        PatKind::Guard { subpattern, condition: _ } => pattern_bindings_rec(bindings, subpattern),
         PatKind::Never => {}
         PatKind::Error(_error_guaranteed) => {}
     }
@@ -921,6 +923,7 @@ fn make_half_pat_rec<'tcx>(pat: &mut Pat<'tcx>, half_kind: Half) {
                 make_half_pat_rec(p, half_kind);
             }
         }
+        PatKind::Guard { subpattern, condition: _ } => make_half_pat_rec(subpattern, half_kind),
         PatKind::Never => {}
         PatKind::Error(_error_guaranteed) => {}
     }
