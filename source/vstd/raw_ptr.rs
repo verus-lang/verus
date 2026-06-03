@@ -98,11 +98,16 @@ impl Provenance {
 }
 
 /// Allocations do not "wrap around" the address space.
-// Q: Where in the documentation do we get this fact?
-// A: Should be self-evident, comes from allocations being contiguous regions of memory
+/// From: <https://doc.rust-lang.org/std/ptr/index.html#allocation>:
+/// For any allocation with `base` address and size `size`, the following are guaranteed:
+/// - `base + size <= usize::MAX`
+/// - `size <= isize::MAX`
 pub broadcast axiom fn alloc_bound(p: Provenance)
     ensures
-        #[trigger] p.start_addr() + #[trigger] p.alloc_len() <= usize::MAX + 1,
+        #![trigger p.start_addr()]
+        #![trigger p.alloc_len()]
+        p.start_addr() + p.alloc_len() <= usize::MAX,
+        p.alloc_len() <= isize::MAX,
 ;
 
 /// Since `self.alignment()` returns a `int`, `Alignment` invariants do not follow directly from the type.
@@ -1254,7 +1259,7 @@ impl PointsTo<str> {
     // Note that even for ZSTs, pointers need to be aligned.
     pub axiom fn is_aligned(tracked &self)
         ensures
-            self.ptr()@.addr as nat % spec_align_of_val::<str>(self.value()) == 0,
+            self.ptr()@.addr as int % spec_align_of_val::<str>(self.value()) as int == 0,
     ;
 }
 
