@@ -2,8 +2,7 @@ const REPOS_CACHE_PATH_VAR: &str = "REPOS_CACHE_PATH";
 const WORKDIR_PATH_VAR: &str = "WORKDIR_PATH";
 const Z3_CACHE_PATH_VAR: &str = "Z3_CACHE_PATH";
 const OUTPUT_PATH_VAR: &str = "OUTPUT_PATH";
-const RUNNER_PATH_VAR: &str = "VERITAS_RUNNER_PATH";
-const RUNNER_PATH_DEFAULT: &str = "/root/veritas";
+const RUNNER_PATH: &str = "/root/veritas";
 const BUILD_VERUS_SCRIPT_FILENAME: &str = "build_verus.sh";
 const GET_Z3_SCRIPT_FILENAME: &str = "get-z3.sh";
 const VERUS_PROJECT_NAME: &str = "verus";
@@ -51,10 +50,7 @@ mod printing {
     }
 }
 
-use std::{
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{path::PathBuf, process::Command};
 
 #[allow(unused_imports)]
 use printing::{info, log_command, verror, warn};
@@ -136,19 +132,6 @@ struct ReposCache {
     repos_cache_path: PathBuf,
 }
 
-fn runner_path() -> PathBuf {
-    std::env::var(RUNNER_PATH_VAR)
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(RUNNER_PATH_DEFAULT))
-}
-
-fn display_path(path: &std::path::Path) -> String {
-    path.strip_prefix("/root")
-        .unwrap_or(path)
-        .display()
-        .to_string()
-}
-
 fn env_var_dir_or_err(var: &str) -> Result<PathBuf, VeritasError> {
     let path = std::env::var(var)
         .map_err(|_| verror!("{} env var not set", var))
@@ -219,7 +202,7 @@ impl Z3Cache {
         let result = log_command(
             Command::new("/bin/bash")
                 .current_dir(scratch_dir)
-                .arg(runner_path().join(GET_Z3_SCRIPT_FILENAME))
+                .arg(std::path::Path::new(RUNNER_PATH).join(GET_Z3_SCRIPT_FILENAME))
                 .arg(version)
                 .arg(&z3_path),
         )
@@ -235,7 +218,7 @@ struct WorkDir {
 }
 
 struct Checkout {
-    workdir: PathBuf,
+    repository: git2::Repository,
     hash: String,
 }
 
@@ -265,7 +248,7 @@ impl WorkDir {
             .join(repo_name.to_owned() + "-" + &digest::str_digest(revspec));
 
         let cached_repo = cache.ensure_cache_repo(repo_name, repo_url)?;
-        let repository = git2::Repository::init(&work_path)
+        let repository = git2::Repository::init(work_path)
             .map_err(|e| verror!("failed to init repo in work path: {}", e))?;
         let mut origin_remote = repository
             .find_remote("origin")
@@ -302,34 +285,7 @@ impl WorkDir {
         std::mem::drop(object);
         std::mem::drop(reference);
 
-        Ok(Checkout {
-            workdir: work_path,
-            hash,
-        })
-    }
-
-    fn checkout_local(
-        &mut self,
-        repo_name: &str,
-        local_path: &str,
-    ) -> Result<Checkout, VeritasError> {
-        let local_path = Path::new(local_path);
-        if !local_path.exists() {
-            return Err(verror!(
-                "local checkout path does not exist: {}",
-                local_path.display()
-            ));
-        }
-        let work_path = self.workdir_path.join(
-            repo_name.to_owned()
-                + "-local-"
-                + &digest::str_digest(local_path.to_string_lossy().as_ref()),
-        );
-        copy_directory(local_path, &work_path)?;
-        Ok(Checkout {
-            workdir: work_path,
-            hash: local_checkout_hash(local_path)?,
-        })
+        Ok(Checkout { repository, hash })
     }
 
     fn scratch(&mut self) -> Result<PathBuf, VeritasError> {
@@ -354,216 +310,11 @@ impl WorkDir {
     }
 }
 
-fn copy_directory(src: &Path, dst: &Path) -> Result<(), VeritasError> {
-    if !src.is_dir() {
-        return Err(verror!("{} is not a directory", src.display()));
-    }
-    std::fs::create_dir(dst)
-        .map_err(|e| verror!("cannot create {}: {}", dst.display(), e))?;
-    for entry in
-        std::fs::read_dir(src).map_err(|e| verror!("cannot read {}: {}", src.display(), e))?
-    {
-        let entry = entry.map_err(|e| verror!("cannot read directory entry: {}", e))?;
-        let entry_path = entry.path();
-        let entry_name = entry.file_name();
-        if should_skip_local_copy_entry(&entry_name) {
-            continue;
-        }
-        let dst_path = dst.join(&entry_name);
-        let file_type = entry
-            .file_type()
-            .map_err(|e| verror!("cannot stat {}: {}", entry_path.display(), e))?;
-        if file_type.is_dir() {
-            copy_directory(&entry_path, &dst_path)?;
-        } else if file_type.is_symlink() {
-            let target = std::fs::read_link(&entry_path)
-                .map_err(|e| verror!("cannot read symlink {}: {}", entry_path.display(), e))?;
-            #[cfg(unix)]
-            std::os::unix::fs::symlink(&target, &dst_path)
-                .map_err(|e| verror!("cannot create symlink {}: {}", dst_path.display(), e))?;
-            #[cfg(not(unix))]
-            {
-                return Err(verror!(
-                    "symlink copy unsupported on this platform: {}",
-                    entry_path.display()
-                ));
-            }
-        } else {
-            std::fs::copy(&entry_path, &dst_path).map_err(|e| {
-                verror!(
-                    "cannot copy {} to {}: {}",
-                    entry_path.display(),
-                    dst_path.display(),
-                    e
-                )
-            })?;
-        }
-    }
-    Ok(())
-}
-
-fn should_skip_local_copy_entry(entry_name: &std::ffi::OsStr) -> bool {
-    matches!(
-        entry_name.to_str(),
-        Some(".git" | ".verus-solver-log" | "target" | "target-verus")
-    )
-}
-
-fn local_checkout_hash(local_path: &Path) -> Result<String, VeritasError> {
-    let repository = match git2::Repository::discover(local_path) {
-        Ok(repository) => repository,
-        Err(_) => {
-            return Ok(format!(
-                "local-{}",
-                digest::str_digest(local_path.to_string_lossy().as_ref())
-            ));
-        }
-    };
-    let head = repository
-        .head()
-        .ok()
-        .and_then(|head| head.target())
-        .map(|oid| oid.to_string())
-        .unwrap_or_else(|| "HEAD".to_owned());
-    let mut status_options = git2::StatusOptions::new();
-    status_options
-        .include_untracked(true)
-        .recurse_untracked_dirs(true);
-    let dirty = repository
-        .statuses(Some(&mut status_options))
-        .map_err(|e| verror!("cannot read git status for {}: {}", local_path.display(), e))?
-        .iter()
-        .any(|entry| entry.status() != git2::Status::CURRENT);
-    Ok(if dirty {
-        format!("{head}-dirty")
-    } else {
-        head
-    })
-}
-
-fn find_verus_support_artifact(deps_dir: &Path, crate_name: &str) -> Result<PathBuf, VeritasError> {
-    let prefix = format!("lib{crate_name}-");
-    let mut matches = Vec::new();
-    for entry in std::fs::read_dir(deps_dir)
-        .map_err(|e| verror!("cannot read {}: {}", deps_dir.display(), e))?
-    {
-        let entry = entry.map_err(|e| verror!("cannot read directory entry: {}", e))?;
-        let path = entry.path();
-        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        if file_name.starts_with(&prefix)
-            && (file_name.ends_with(".rlib")
-                || file_name.ends_with(".so")
-                || file_name.ends_with(".dylib")
-                || file_name.ends_with(".dll"))
-        {
-            let modified = std::fs::metadata(&path)
-                .and_then(|metadata| metadata.modified())
-                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-            matches.push((modified, path));
-        }
-    }
-    matches
-        .into_iter()
-        .max_by_key(|(modified, _path)| *modified)
-        .map(|(_modified, path)| path)
-        .ok_or_else(|| verror!("cannot find verus support artifact for {}", crate_name))
-}
-
-fn push_verus_support_extern(
-    args: &mut Vec<String>,
-    deps_dir: &Path,
-    extern_name: &str,
-    crate_name: &str,
-) -> Result<(), VeritasError> {
-    let artifact = find_verus_support_artifact(deps_dir, crate_name)?;
-    args.push("--extern".to_owned());
-    args.push(format!("{extern_name}={}", artifact.display()));
-    Ok(())
-}
-
-fn verus_support_args(verus_binary_path: &Path) -> Result<Vec<String>, VeritasError> {
-    let release_dir = verus_binary_path
-        .parent()
-        .ok_or_else(|| verror!("verus binary has no parent directory"))?;
-    let deps_dir = release_dir
-        .parent()
-        .and_then(|target_verus_dir| target_verus_dir.parent())
-        .map(|source_dir| source_dir.join("target/release/deps"))
-        .filter(|deps_dir| deps_dir.is_dir())
-        .unwrap_or_else(|| release_dir.join("vstd/target/debug/deps"));
-    if !deps_dir.is_dir() {
-        return Err(verror!(
-            "cannot find verus support deps directory {}",
-            deps_dir.display()
-        ));
-    }
-    let mut args = vec!["-L".to_owned(), format!("dependency={}", deps_dir.display())];
-    push_verus_support_extern(&mut args, &deps_dir, "builtin", "verus_builtin")?;
-    push_verus_support_extern(&mut args, &deps_dir, "builtin_macros", "verus_builtin_macros")?;
-    push_verus_support_extern(
-        &mut args,
-        &deps_dir,
-        "state_machines_macros",
-        "verus_state_machines_macros",
-    )?;
-    push_verus_support_extern(&mut args, &deps_dir, "verus_builtin", "verus_builtin")?;
-    push_verus_support_extern(
-        &mut args,
-        &deps_dir,
-        "verus_builtin_macros",
-        "verus_builtin_macros",
-    )?;
-    push_verus_support_extern(
-        &mut args,
-        &deps_dir,
-        "verus_state_machines_macros",
-        "verus_state_machines_macros",
-    )?;
-    Ok(args)
-}
-
-fn refresh_local_vstd(verus_workdir: &Path, verus_binary_path: &Path) -> Result<(), VeritasError> {
-    let verus_target_path = verus_binary_path
-        .parent()
-        .ok_or_else(|| verror!("verus binary has no parent directory"))?;
-    let mut cmd = Command::new("cargo");
-    cmd.current_dir(verus_workdir.join("source"))
-        .env("VERUS_IN_VARGO", "1")
-        .env("RUSTC_BOOTSTRAP", "1")
-        .arg("run")
-        .arg("--locked")
-        .arg("--offline")
-        .arg("-p")
-        .arg("vstd_build")
-        .arg("--")
-        .arg(verus_target_path);
-    match verus_target_path.file_name().and_then(|name| name.to_str()) {
-        Some("release") => {
-            cmd.arg("--release");
-        }
-        Some("debug") => {}
-        _ => {
-            warn(&format!(
-                "unknown verus target profile directory {}; rebuilding vstd without explicit profile flag",
-                verus_target_path.display()
-            ));
-        }
-    }
-    cmd.arg("--no-solver-version-check");
-    let result = log_command(&mut cmd)
-        .status()
-        .map_err(|e| verror!("cannot execute vstd build helper: {}", e))?;
-    result.success_or_err()
-}
-
 #[derive(Debug, Serialize, Deserialize, Hash, Clone)]
 struct RunConfigurationProject {
     name: String,
     git_url: String,
     revspec: String,
-    local_path: Option<String>,
     crate_root: String,
     extra_args: Option<Vec<String>>,
     prepare_script: Option<String>,
@@ -577,8 +328,6 @@ fn verus_verify_vstd_default() -> bool {
 struct RunConfiguration {
     verus_git_url: String,
     verus_revspec: String,
-    verus_local_path: Option<String>,
-    verus_binary_path: Option<String>,
     verus_features: Vec<String>,
     #[serde(default = "verus_verify_vstd_default")]
     verus_verify_vstd: bool,
@@ -641,7 +390,6 @@ fn run(run_configuration_path: &str) -> Result<(), VeritasError> {
                     name: "verus-vstd".to_owned(),
                     git_url: run_configuration.verus_git_url.clone(),
                     revspec: run_configuration.verus_revspec.clone(),
-                    local_path: run_configuration.verus_local_path.clone(),
                     crate_root: "source/vstd/vstd.rs".to_owned(),
                     extra_args: Some(vec![
                         "--is-vstd".to_owned(),
@@ -661,92 +409,66 @@ fn run(run_configuration_path: &str) -> Result<(), VeritasError> {
     let mut workdir = WorkDir::init()?;
     let mut z3_cache = Z3Cache::init()?;
 
-    let verus_checkout = if let Some(local_path) = &run_configuration.verus_local_path {
-        info(&format!("copying local verus from {}", local_path));
-        workdir.checkout_local(VERUS_PROJECT_NAME, local_path)?
-    } else {
-        info(&format!(
-            "checking out verus {}",
-            run_configuration.verus_revspec
-        ));
-        workdir.checkout(
-            &mut repos_cache,
-            VERUS_PROJECT_NAME,
-            &run_configuration.verus_git_url,
-            &run_configuration.verus_revspec,
-        )?
-    };
+    info(&format!(
+        "checking out verus {}",
+        run_configuration.verus_revspec
+    ));
+    let verus_checkout = workdir.checkout(
+        &mut repos_cache,
+        VERUS_PROJECT_NAME,
+        &run_configuration.verus_git_url,
+        &run_configuration.verus_revspec,
+    )?;
     info(&format!("checked out verus commit {}", verus_checkout.hash));
-    let verus_workdir = verus_checkout.workdir.as_path();
-    let (verus_build_duration, verus_binary_path) =
-        if let Some(verus_binary_path) = &run_configuration.verus_binary_path {
-            let verus_binary_path = PathBuf::from(verus_binary_path);
-            if !verus_binary_path.exists() {
-                return Err(verror!(
-                    "configured verus binary does not exist: {}",
-                    verus_binary_path.display()
-                ));
-            }
-            info(&format!(
-                "using existing verus binary {}",
-                verus_binary_path.display()
-            ));
-            if run_configuration.verus_local_path.is_some() {
-                info("refreshing bundled vstd from the checked-out local verus source");
-                refresh_local_vstd(verus_workdir, &verus_binary_path)?;
-            }
-            (std::time::Duration::ZERO, verus_binary_path)
-        } else {
-            info("building verus");
-            let z3_version = {
-                let get_z3_src =
-                    std::fs::read_to_string(verus_workdir.join("source/tools/get-z3.sh"))
-                        .map_err(|e| verror!("cannot read get-z3.sh: {}", e))?;
-                let z3_version_regex = regex::Regex::new(r#"z3_version="([^"]+)""#)
-                    .expect("invalid regex for z3_version");
-                z3_version_regex
-                    .captures(&get_z3_src)
-                    .ok_or_else(|| verror!("cannot find z3_version in get_z3.sh"))?
-                    .get(1)
-                    .expect("no capture group")
-                    .as_str()
-                    .to_string()
-            };
-            info(&format!("getting z3 {z3_version}"));
-            let z3_cached = z3_cache.ensure_z3_version(&mut workdir, &z3_version)?;
-            std::fs::copy(&z3_cached, verus_workdir.join("source/z3"))
-                .map_err(|e| verror!("cannot copy z3 to verus source: {}", e))?;
+    info("building verus");
+    let verus_workdir = verus_checkout
+        .repository
+        .workdir()
+        .expect("no workdir in work repository");
+    let z3_version = {
+        let get_z3_src = std::fs::read_to_string(verus_workdir.join("source/tools/get-z3.sh"))
+            .map_err(|e| verror!("cannot read get-z3.sh: {}", e))?;
+        let z3_version_regex =
+            regex::Regex::new(r#"z3_version="([^"]+)""#).expect("invalid regex for z3_version");
+        z3_version_regex
+            .captures(&get_z3_src)
+            .ok_or_else(|| verror!("cannot find z3_version in get_z3.sh"))?
+            .get(1)
+            .expect("no capture group")
+            .as_str()
+            .to_string()
+    };
+    info(&format!("getting z3 {z3_version}"));
+    let z3_cached = z3_cache.ensure_z3_version(&mut workdir, &z3_version)?;
+    std::fs::copy(&z3_cached, verus_workdir.join("source/z3"))
+        .map_err(|e| verror!("cannot copy z3 to verus source: {}", e))?;
 
-            let features_args = if run_configuration.verus_features.len() > 0 {
-                Some("--features".to_string())
-                    .into_iter()
-                    .chain(run_configuration.verus_features.iter().cloned())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            } else {
-                String::new()
-            };
+    let features_args = if run_configuration.verus_features.len() > 0 {
+        Some("--features".to_string())
+            .into_iter()
+            .chain(run_configuration.verus_features.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(" ")
+    } else {
+        String::new()
+    };
 
-            let verus_build_start = std::time::Instant::now();
-            let result = log_command(
-                Command::new("/bin/bash")
-                    .current_dir(verus_workdir)
-                    .env("VERUS_FEATURES_ARGS", &features_args)
-                    .arg(runner_path().join(BUILD_VERUS_SCRIPT_FILENAME)),
-            )
-            .status()
-            .map_err(|e| verror!("cannot execute verus build script: {}", e))?;
-            result.success_or_err()?;
+    let verus_build_start = std::time::Instant::now();
+    let result = log_command(
+        Command::new("/bin/bash")
+            .current_dir(verus_workdir)
+            .env("VERUS_FEATURES_ARGS", &features_args)
+            .arg(std::path::Path::new(RUNNER_PATH).join(BUILD_VERUS_SCRIPT_FILENAME)),
+    )
+    .status()
+    .map_err(|e| verror!("cannot execute verus build script: {}", e))?;
+    result.success_or_err()?;
+    let verus_build_duration = verus_build_start.elapsed();
 
-            info("verus ready");
-            (
-                verus_build_start.elapsed(),
-                verus_workdir.join("source/target-verus/release/verus"),
-            )
-        };
+    info("verus ready");
+    let verus_binary_path = verus_workdir.join("source/target-verus/release/verus");
     // TODO perform line counting? (once line_count is fixed)
     // let _verus_line_count_path = verus_workdir.join("source/target/release/line_count");
-    let verus_support_args = verus_support_args(&verus_binary_path)?;
 
     let output_path = env_var_dir_or_err(OUTPUT_PATH_VAR)?;
     let date = chrono::Utc::now()
@@ -771,22 +493,20 @@ fn run(run_configuration_path: &str) -> Result<(), VeritasError> {
     info("running projects");
     for project in run_configuration.projects.iter() {
         info(&format!("running project {}", project.name));
-        let proj_checkout = if let Some(local_path) = &project.local_path {
-            workdir.checkout_local(&project.name, local_path)?
-        } else {
-            workdir.checkout(
-                &mut repos_cache,
-                &project.name,
-                &project.git_url,
-                &project.revspec,
-            )?
-        };
-        let proj_workdir = proj_checkout.workdir.as_path();
+        let proj_checkout = workdir.checkout(
+            &mut repos_cache,
+            &project.name,
+            &project.git_url,
+            &project.revspec,
+        )?;
+        let proj_workdir = proj_checkout
+            .repository
+            .workdir()
+            .expect("no workdir in work repository");
         if let Some(prepare_script) = &project.prepare_script {
             let result = log_command(
                 Command::new("/bin/bash")
                     .current_dir(proj_workdir)
-                    .env_remove("CARGO_TARGET_DIR")
                     .arg("-c")
                     .arg(prepare_script),
             )
@@ -802,11 +522,6 @@ fn run(run_configuration_path: &str) -> Result<(), VeritasError> {
                 .current_dir(proj_workdir)
                 .arg(&project.crate_root)
                 .args(project.extra_args.as_ref().map(|ea| &ea[..]).unwrap_or(&[]))
-                .args(if project.name == "verus-vstd" {
-                    &[][..]
-                } else {
-                    &verus_support_args[..]
-                })
                 .arg("--output-json")
                 .arg("--time")
                 .arg("--no-report-long-running"),
@@ -994,11 +709,17 @@ fn run(run_configuration_path: &str) -> Result<(), VeritasError> {
     .map_err(|e| verror!("cannot write summary toml: {}", e))?;
     info(&format!(
         "output written to {}",
-        display_path(&run_output_path)
+        run_output_path
+            .strip_prefix("/root")
+            .expect("/root prefix")
+            .display()
     ));
     info(&format!(
         "summary written to {}",
-        display_path(&summary_output_path)
+        summary_output_path
+            .strip_prefix("/root")
+            .expect("/root prefix")
+            .display()
     ));
 
     {
@@ -1087,7 +808,10 @@ fn run(run_configuration_path: &str) -> Result<(), VeritasError> {
         std::mem::drop(summary_md_file);
         info(&format!(
             "markdown table written to {}",
-            display_path(&summary_md_output_path)
+            summary_md_output_path
+                .strip_prefix("/root")
+                .expect("/root prefix")
+                .display()
         ));
     }
 
