@@ -348,21 +348,22 @@ pub(crate) fn const_var_to_vir<'tcx>(
 
 pub(crate) fn deref_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    expr_typ: Typ,
     trait_fun_id: DefId,
     arg: vir::ast::Expr,
-    expr_typ: Typ,
     arg_ty: rustc_middle::ty::Ty<'tcx>,
-    span: Span,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let typing_env = TypingEnv::non_body_analysis(tcx, bctx.fun_id);
-    // The `arg_ty`, if `&T`, should be Rust automatically adding the `&`
-    // reference for calling `deref`. We strip it for trait resolution.
-    //
-    // Otherwise, it may be `deref` coercion. Leave it as-is.
-    let arg_ty =
-        if let TyKind::Ref(_, arg_ty, _) = arg_ty.kind() { arg_ty.clone() } else { arg_ty };
-    let node_substs = tcx.mk_args(&[GenericArg::from(arg_ty)]);
+
+    // deref has arg &Self
+    // deref_mut has arg &mut Self
+    // In either case, strip off the reference to get the Self type for the trait
+    let TyKind::Ref(_, self_ty, _) = arg_ty.kind() else {
+        crate::internal_err!(span, "deref_to_vir: expected ref")
+    };
+    let node_substs = tcx.mk_args(&[GenericArg::from(*self_ty)]);
 
     let trait_fun = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(trait_fun_id) });
 
