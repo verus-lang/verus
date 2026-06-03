@@ -8,7 +8,7 @@ pub(crate) enum ResOrSymbol {
 }
 
 pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
-    crate_: &mut rustc_hir::Crate<'tcx>,
+    crate_: &mut rustc_middle::hir::Crate<'tcx>,
     tcx: TyCtxt<'tcx>,
 ) {
     for owner in crate_.owners.iter_mut() {

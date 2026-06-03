@@ -92,7 +92,7 @@ use rustc_middle::ty::{
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
-use rustc_span::source_map::Spanned;
+use rustc_span::Spanned;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck, CallTarget,
@@ -3147,7 +3147,7 @@ fn lit_to_vir<'tcx>(
         LitKind::Float(..) => {
             if let Some(ty) = ty {
                 use rustc_middle::ty::LitToConstInput;
-                let lit_const = LitToConstInput { lit: lit.node, ty, neg: negated };
+                let lit_const = LitToConstInput { lit: lit.node, ty: Some(ty), neg: negated };
                 if let Some(v) = bctx.ctxt.tcx.lit_to_const(lit_const) {
                     if let Some(i) = v.valtree.try_to_leaf() {
                         match i.size().bytes() {

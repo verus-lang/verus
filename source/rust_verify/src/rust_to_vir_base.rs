@@ -877,8 +877,8 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         // so don't auto-import ! for now.
         TyKind::Never => false,
 
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, _) => false,
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => false,
+        TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque { def_id: _ }, _) => false,
+        TyKind::Alias(rustc_middle::ty::AliasTyKind::Free { def_id: _ }, _) => false,
         TyKind::Foreign(..) => false,
         TyKind::Dynamic(..) => false,
         TyKind::FnPtr(..) => false,
@@ -900,7 +900,7 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
             is_verus_type || is_rust_type || is_declared_to_verus
         }
         TyKind::Alias(
-            rustc_middle::ty::AliasTyKind::Projection | rustc_middle::ty::AliasTyKind::Inherent,
+            rustc_middle::ty::AliasTyKind::Projection { def_id: _ } | rustc_middle::ty::AliasTyKind::Inherent { def_id: _ },
             t,
         ) => {
             let trait_def = ctxt.tcx.generics_of(t.def_id).parent;
@@ -1219,7 +1219,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             (Arc::new(TypX::AnonymousClosure(args, ret, kind, id)), false)
         }
         TyKind::Alias(
-            rustc_middle::ty::AliasTyKind::Projection | rustc_middle::ty::AliasTyKind::Inherent,
+            rustc_middle::ty::AliasTyKind::Projection { def_id: _ } | rustc_middle::ty::AliasTyKind::Inherent { def_id: _},
             t,
         ) => {
             // First, try to normalize to a non-projection type.
@@ -1330,7 +1330,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             };
             (Arc::new(TypX::Opaque { def_path: def_path, args: Arc::new(args) }), false)
         }
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => {
+        TyKind::Alias(rustc_middle::ty::AliasTyKind::Free { def_id: _ }, _) => {
             unsupported_err!(span, "opaque type")
         }
         TyKind::FnDef(def_id, args) => {
@@ -1450,10 +1450,10 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
 ) -> Result<Typ, VirErr> {
     let cnst = match cnst.kind() {
         ConstKind::Unevaluated(unevaluated) => {
-            let typing_env = TypingEnv {
-                param_env: tcx.param_env(unevaluated.def),
-                typing_mode: TypingMode::PostAnalysis,
-            };
+            let typing_env = TypingEnv::new(
+                tcx.param_env(unevaluated.def),
+                TypingMode::PostAnalysis,
+            );
             &tcx.normalize_erasing_regions(typing_env, cnst.clone())
         }
         _ => cnst,
@@ -2326,7 +2326,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
         ty.kind(),
         assume_specification_ty.map(|assume_specification_ty| assume_specification_ty.kind()),
     ) {
-        (rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty), _) => {
+        (rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque { .. }, al_ty), _) => {
             let span = ctxt.tcx.def_span(al_ty.def_id);
             let opaque_type_path = def_id_to_vir_path(
                 ctxt.tcx,
@@ -2368,7 +2368,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             let assume_specification_ty_instantiated_bounds =
                 if let Some(assume_specification_ty) = assume_specification_ty {
                     if let rustc_middle::ty::TyKind::Alias(
-                        rustc_middle::ty::AliasTyKind::Opaque,
+                        rustc_middle::ty::AliasTyKind::Opaque { .. },
                         assume_specification_al_ty,
                     ) = assume_specification_ty.kind()
                     {

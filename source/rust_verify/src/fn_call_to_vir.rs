@@ -25,7 +25,7 @@ use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
-use rustc_span::source_map::Spanned;
+use rustc_span::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{

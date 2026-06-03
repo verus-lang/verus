@@ -523,7 +523,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                 unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
             }
         }
-        AssocKind::Const { name: _name } => {
+        AssocKind::Const { name: _name, is_type_const: _ } => {
             if let ImplItemKind::Const(_ty, ConstItemRhs::Body(body_id)) = &impl_item.kind {
                 let def_id = body_id.hir_id.owner.to_def_id();
                 let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();

@@ -2573,10 +2573,12 @@ impl Verifier {
         }
 
         self.air_no_span = {
-            let no_span = tcx
-                .hir_crate(())
-                .owners
+            let hir_crate = tcx.hir_crate(());
+            let no_span =
+                hir_crate
+                .delayed_ids
                 .iter()
+                .map(|def_id| hir_crate.owner(tcx, *def_id))
                 .filter_map(|oi| {
                     oi.as_owner().as_ref().and_then(|o| {
                         if let OwnerNode::Crate(c) = o.node() {
@@ -3022,7 +3024,7 @@ pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
     >,
 > = std::sync::RwLock::new(None);
 
-fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
+fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_middle::hir::Crate<'tcx> {
     let mut crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_crate)(tcx, ());
     crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(&mut crate_, tcx);
     crate_
